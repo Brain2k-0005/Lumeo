@@ -19,6 +19,31 @@
         </div>
     </ComponentDemo>
 
+    <ComponentDemo Title="2FA Verification" Code="@_tfaCode">
+        <div class="w-full max-w-sm">
+            <Card>
+                <CardHeader>
+                    <h3 class="text-lg font-semibold leading-none tracking-tight">Two-factor authentication</h3>
+                    <p class="text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
+                </CardHeader>
+                <CardContent>
+                    <div class="flex flex-col items-center gap-4">
+                        <OtpInput @bind-Value="_tfaValue" OnComplete="HandleTfa" />
+                        @if (_tfaVerified)
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Success">
+                                <Blazicon Svg="Lucide.Check" class="h-3 w-3 mr-1" /> Verified
+                            </Badge>
+                        }
+                    </div>
+                </CardContent>
+                <CardFooter>
+                    <Button Class="w-full" Disabled="@(_tfaValue.Length < 6)">Verify</Button>
+                </CardFooter>
+            </Card>
+        </div>
+    </ComponentDemo>
+
     <ComponentDemo Title="4 Digit Code" Code="@_fourDigitCode">
         <div class="flex flex-col items-center gap-4">
             <OtpInput @bind-Value="_shortOtp" Length="4" />
@@ -33,14 +58,38 @@
 @code {
     private string _otpValue = "";
     private string _shortOtp = "";
+    private string _tfaValue = "";
     private bool _completed;
+    private bool _tfaVerified;
 
     private void HandleComplete(string code)
     {
         _completed = true;
     }
 
+    private void HandleTfa(string code)
+    {
+        _tfaVerified = true;
+    }
+
     private string _defaultCode = @"<OtpInput @bind-Value=""_otpValue"" OnComplete=""HandleComplete"" />";
+
+    private string _tfaCode = @"<Card>
+    <CardHeader>
+        <h3 class=""text-lg font-semibold"">Two-factor authentication</h3>
+        <p class=""text-sm text-muted-foreground"">Enter the 6-digit code from your authenticator app.</p>
+    </CardHeader>
+    <CardContent>
+        <OtpInput @bind-Value=""_tfaValue"" OnComplete=""HandleTfa"" />
+        @if (_tfaVerified)
+        {
+            <Badge Variant=""Badge.BadgeVariant.Success"">Verified</Badge>
+        }
+    </CardContent>
+    <CardFooter>
+        <Button Class=""w-full"" Disabled=""@(_tfaValue.Length < 6)"">Verify</Button>
+    </CardFooter>
+</Card>";
 
     private string _fourDigitCode = @"<OtpInput @bind-Value=""_otp"" Length=""4"" />";
 }
