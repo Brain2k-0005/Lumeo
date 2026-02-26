@@ -1,0 +1,313 @@
+@page "/patterns/calendar"
+
+<PageTitle>Calendar — Lumeo Patterns</PageTitle>
+
+<PageHeader Title="Calendar / Scheduling" Description="A full-featured calendar view with day/week/month toggle, event dots, and a side panel for event details and creation." />
+
+<div class="space-y-12">
+
+    <ComponentDemo Title="Calendar View" Code="@_calendarCode">
+        <div class="w-full flex flex-col lg:flex-row gap-4">
+
+            <!-- Main Calendar -->
+            <div class="flex-1">
+                <Card>
+                    <!-- Calendar Header -->
+                    <CardHeader>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon"
+                                        OnClick="@PrevMonth">
+                                    <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+                                </Button>
+                                <h3 class="text-base font-semibold text-foreground min-w-[140px] text-center">
+                                    @_currentMonth.ToString("MMMM yyyy")
+                                </h3>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon"
+                                        OnClick="@NextMonth">
+                                    <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <Button Variant="@(_view == "day" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                        Size="Button.ButtonSize.Sm"
+                                        OnClick="@(() => _view = "day")">Day</Button>
+                                <Button Variant="@(_view == "week" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                        Size="Button.ButtonSize.Sm"
+                                        OnClick="@(() => _view = "week")">Week</Button>
+                                <Button Variant="@(_view == "month" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                        Size="Button.ButtonSize.Sm"
+                                        OnClick="@(() => _view = "month")">Month</Button>
+                            </div>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent>
+                        <!-- Day Headers -->
+                        <div class="grid grid-cols-7 mb-2">
+                            @foreach (var day in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
+                            {
+                                <div class="text-center text-xs font-medium text-muted-foreground py-1">@day</div>
+                            }
+                        </div>
+
+                        <!-- Calendar Grid -->
+                        <div class="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+                            @{
+                                var firstDay = new DateTime(_currentMonth.Year, _currentMonth.Month, 1);
+                                var startOffset = (int)firstDay.DayOfWeek;
+                                var daysInMonth = DateTime.DaysInMonth(_currentMonth.Year, _currentMonth.Month);
+                                var today = DateTime.Today;
+                                var totalCells = ((startOffset + daysInMonth + 6) / 7) * 7;
+                            }
+                            @for (int i = 0; i < totalCells; i++)
+                            {
+                                var dayNum = i - startOffset + 1;
+                                var isCurrentMonth = dayNum >= 1 && dayNum <= daysInMonth;
+                                var date = isCurrentMonth ? new DateTime(_currentMonth.Year, _currentMonth.Month, dayNum) : (DateTime?)null;
+                                var isToday = date.HasValue && date.Value.Date == today;
+                                var isSelected = date.HasValue && date.Value.Date == _selectedDate.Date;
+                                var hasEvents = date.HasValue && _events.Any(e => e.Date.Date == date.Value.Date);
+                                var dayEvents = date.HasValue ? _events.Where(e => e.Date.Date == date.Value.Date).ToList() : new();
+                                var cellDay = dayNum;
+                                var cellDate = date;
+
+                                <div class="@($"bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent transition-colors {(isSelected ? "bg-accent" : "")}")"
+                                     @onclick="@(() => { if (cellDate.HasValue) _selectedDate = cellDate.Value; })">
+                                    <div class="flex flex-col h-full">
+                                        <span class="@($"text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 {(isToday ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-foreground" : "text-muted-foreground/40")}")">
+                                            @(isCurrentMonth ? dayNum.ToString() : "")
+                                        </span>
+                                        @if (hasEvents)
+                                        {
+                                            <div class="flex flex-wrap gap-0.5">
+                                                @foreach (var ev in dayEvents.Take(3))
+                                                {
+                                                    <span class="@($"inline-block w-1.5 h-1.5 rounded-full {ev.ColorClass}")"></span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <!-- Side Panel -->
+            <div class="w-full lg:w-72 flex flex-col gap-4">
+
+                <!-- Selected Day Events -->
+                <Card>
+                    <CardHeader>
+                        <h3 class="text-sm font-semibold text-foreground">
+                            @_selectedDate.ToString("dddd, MMMM d")
+                        </h3>
+                    </CardHeader>
+                    <CardContent Class="p-0">
+                        @{
+                            var selectedEvents = _events.Where(e => e.Date.Date == _selectedDate.Date).ToList();
+                        }
+                        @if (!selectedEvents.Any())
+                        {
+                            <p class="text-sm text-muted-foreground px-4 pb-4">No events scheduled.</p>
+                        }
+                        else
+                        {
+                            <div class="divide-y divide-border">
+                                @foreach (var ev in selectedEvents)
+                                {
+                                    <div class="flex items-start gap-3 px-4 py-3">
+                                        <span class="@($"mt-1 w-2 h-2 rounded-full shrink-0 {ev.ColorClass}")"></span>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-medium text-foreground truncate">@ev.Title</p>
+                                            <p class="text-xs text-muted-foreground">@ev.Time</p>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </CardContent>
+                </Card>
+
+                <!-- New Event Form -->
+                <Card>
+                    <CardHeader>
+                        <h3 class="text-sm font-semibold text-foreground">New Event</h3>
+                    </CardHeader>
+                    <CardContent>
+                        <div class="space-y-3">
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">Title</label>
+                                <Input @bind-Value="_newEventTitle" placeholder="Event title" />
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-medium text-foreground">Start</label>
+                                    <Input type="time" Value="09:00" />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-medium text-foreground">End</label>
+                                    <Input type="time" Value="10:00" />
+                                </div>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">Description</label>
+                                <Textarea placeholder="Add a description..." />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">Color</label>
+                                <div class="flex gap-2">
+                                    @foreach (var color in _colorOptions)
+                                    {
+                                        var c = color;
+                                        <button @onclick="@(() => _selectedColor = c.Key)"
+                                                class="@($"w-6 h-6 rounded-full {c.Value} ring-offset-2 ring-offset-background transition-all {(_selectedColor == c.Key ? "ring-2 ring-foreground" : "")}")">
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <Button Class="w-full" OnClick="@AddEvent">
+                                <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
+                                Create Event
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+            </div>
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private DateTime _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _selectedDate = DateTime.Today;
+    private string _view = "month";
+    private string _newEventTitle = "";
+    private string _selectedColor = "blue";
+
+    private Dictionary<string, string> _colorOptions = new()
+    {
+        { "blue", "bg-blue-500" },
+        { "green", "bg-green-500" },
+        { "red", "bg-red-500" },
+        { "purple", "bg-purple-500" },
+        { "orange", "bg-orange-500" },
+    };
+
+    private List<CalendarEvent> _events = new()
+    {
+        new(DateTime.Today, "Team standup", "9:00 AM", "bg-blue-500"),
+        new(DateTime.Today, "Design review", "2:00 PM", "bg-purple-500"),
+        new(DateTime.Today, "Sprint planning", "4:00 PM", "bg-green-500"),
+        new(DateTime.Today.AddDays(2), "Client call", "10:00 AM", "bg-orange-500"),
+        new(DateTime.Today.AddDays(2), "Lunch with Sarah", "12:30 PM", "bg-red-500"),
+        new(DateTime.Today.AddDays(5), "Product demo", "3:00 PM", "bg-blue-500"),
+        new(DateTime.Today.AddDays(-2), "Release v2.0", "11:00 AM", "bg-green-500"),
+    };
+
+    private void PrevMonth() => _currentMonth = _currentMonth.AddMonths(-1);
+    private void NextMonth() => _currentMonth = _currentMonth.AddMonths(1);
+
+    private void AddEvent()
+    {
+        if (!string.IsNullOrWhiteSpace(_newEventTitle))
+        {
+            var colorClass = _colorOptions.GetValueOrDefault(_selectedColor, "bg-blue-500");
+            _events.Add(new CalendarEvent(_selectedDate, _newEventTitle, "12:00 PM", colorClass));
+            _newEventTitle = "";
+        }
+    }
+
+    private record CalendarEvent(DateTime Date, string Title, string Time, string ColorClass);
+
+    private string _calendarCode = @"<!-- Calendar with month grid, event dots, side panel, and new event form -->
+<div class=""flex gap-4"">
+    <!-- Main Calendar -->
+    <Card class=""flex-1"">
+        <CardHeader>
+            <div class=""flex items-center justify-between"">
+                <div class=""flex items-center gap-2"">
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"" OnClick=""PrevMonth"">
+                        <Blazicon Svg=""Lucide.ChevronLeft"" class=""h-4 w-4"" />
+                    </Button>
+                    <h3 class=""font-semibold"">@_currentMonth.ToString(""MMMM yyyy"")</h3>
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"" OnClick=""NextMonth"">
+                        <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+                    </Button>
+                </div>
+                <div class=""flex gap-1"">
+                    <Button Size=""Button.ButtonSize.Sm"">Day</Button>
+                    <Button Size=""Button.ButtonSize.Sm"">Week</Button>
+                    <Button Size=""Button.ButtonSize.Sm"">Month</Button>
+                </div>
+            </div>
+        </CardHeader>
+        <CardContent>
+            <!-- 7-column day grid -->
+            <div class=""grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden"">
+                @for (int i = 0; i < totalCells; i++)
+                {
+                    <div class=""bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent"">
+                        <span class=""text-xs font-medium"">@dayNum</span>
+                        <!-- Event dots -->
+                        <div class=""flex gap-0.5 mt-1"">
+                            <span class=""w-1.5 h-1.5 rounded-full bg-blue-500""></span>
+                            <span class=""w-1.5 h-1.5 rounded-full bg-green-500""></span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </CardContent>
+    </Card>
+
+    <!-- Side Panel -->
+    <div class=""w-72 flex flex-col gap-4"">
+        <!-- Day Events -->
+        <Card>
+            <CardHeader>
+                <h3 class=""text-sm font-semibold"">@_selectedDate.ToString(""dddd, MMMM d"")</h3>
+            </CardHeader>
+            <CardContent>
+                <div class=""flex items-center gap-3 py-2"">
+                    <span class=""w-2 h-2 rounded-full bg-blue-500""></span>
+                    <div>
+                        <p class=""text-sm font-medium"">Team standup</p>
+                        <p class=""text-xs text-muted-foreground"">9:00 AM</p>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        <!-- New Event -->
+        <Card>
+            <CardHeader><h3 class=""text-sm font-semibold"">New Event</h3></CardHeader>
+            <CardContent>
+                <div class=""space-y-3"">
+                    <Input placeholder=""Event title"" />
+                    <div class=""grid grid-cols-2 gap-2"">
+                        <Input type=""time"" Value=""09:00"" />
+                        <Input type=""time"" Value=""10:00"" />
+                    </div>
+                    <Textarea placeholder=""Description..."" />
+                    <Button Class=""w-full"">
+                        <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" />
+                        Create Event
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    </div>
+</div>
+
+@code {
+    private DateTime _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _selectedDate = DateTime.Today;
+
+    private void PrevMonth() => _currentMonth = _currentMonth.AddMonths(-1);
+    private void NextMonth() => _currentMonth = _currentMonth.AddMonths(1);
+}";
+}

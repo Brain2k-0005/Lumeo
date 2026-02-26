@@ -1,0 +1,96 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<GraphNode> Nodes { get; set; } = new();
+    [Parameter] public List<GraphLink> Links { get; set; } = new();
+    [Parameter] public List<GraphCategory> Categories { get; set; } = new();
+    [Parameter] public string Layout { get; set; } = "force";
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public bool Roam { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var nodes = Nodes.Select(n => new EChartGraphNode
+        {
+            Name = n.Name,
+            X = n.X,
+            Y = n.Y,
+            Value = n.Value,
+            Category = n.Category,
+            SymbolSize = n.SymbolSize ?? 20
+        }).ToList();
+
+        var links = Links.Select(l => new EChartGraphLink
+        {
+            Source = l.Source,
+            Target = l.Target,
+            Value = l.Value
+        }).ToList();
+
+        var categories = Categories.Select(c => new EChartGraphCategory { Name = c.Name }).ToList();
+
+        var series = new EChartSeries
+        {
+            Type = "graph",
+            Layout = Layout,
+            Roam = Roam,
+            Nodes = nodes,
+            Links = links,
+            Categories = categories,
+            Label = new EChartLabel { Show = true, Position = "right" },
+            Emphasis = new EChartEmphasis { Focus = "adjacency" }
+        };
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
+        }
+
+        if (ShowLegend && Categories.Count > 0)
+        {
+            _option.Legend = new EChartLegend
+            {
+                Data = Categories.Select(c => c.Name).ToList()
+            };
+        }
+    }
+
+    public class GraphNode
+    {
+        public string Name { get; set; } = "";
+        public double? X { get; set; }
+        public double? Y { get; set; }
+        public double? Value { get; set; }
+        public string? Category { get; set; }
+        public int? SymbolSize { get; set; }
+    }
+
+    public class GraphLink
+    {
+        public string Source { get; set; } = "";
+        public string Target { get; set; } = "";
+        public double? Value { get; set; }
+    }
+
+    public class GraphCategory
+    {
+        public string Name { get; set; } = "";
+    }
+}

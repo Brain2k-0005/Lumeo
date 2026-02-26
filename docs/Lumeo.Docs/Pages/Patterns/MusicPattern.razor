@@ -1,0 +1,318 @@
+@page "/patterns/music"
+
+<PageTitle>Music Player — Lumeo Patterns</PageTitle>
+
+<PageHeader Title="Music Player" Description="A full music player application layout with sidebar navigation, album browsing, and a persistent bottom player bar." />
+
+<ComponentDemo Title="Music Player App" Code="@_code">
+    <div class="w-full border rounded-lg overflow-hidden" style="height: 600px;">
+        <div class="flex h-full">
+
+            <!-- Sidebar -->
+            <div class="w-56 border-r bg-card flex flex-col shrink-0">
+                <div class="p-4">
+                    <h2 class="text-lg font-bold text-foreground">Music</h2>
+                </div>
+                <div class="px-3 flex-1 overflow-y-auto">
+                    <!-- Discover Section -->
+                    <div class="mb-4">
+                        <p class="px-2 mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Discover</p>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm font-medium bg-accent text-accent-foreground">
+                            <Blazicon Svg="Lucide.Heart" class="h-4 w-4 shrink-0" />
+                            Listen Now
+                        </button>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <Blazicon Svg="Lucide.Search" class="h-4 w-4 shrink-0" />
+                            Browse
+                        </button>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <Blazicon Svg="Lucide.Star" class="h-4 w-4 shrink-0" />
+                            Radio
+                        </button>
+                    </div>
+                    <Separator />
+                    <!-- Library Section -->
+                    <div class="mt-4">
+                        <p class="px-2 mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Library</p>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <Blazicon Svg="Lucide.Plus" class="h-4 w-4 shrink-0" />
+                            Playlists
+                        </button>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <Blazicon Svg="Lucide.User" class="h-4 w-4 shrink-0" />
+                            Songs
+                        </button>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <Blazicon Svg="Lucide.User" class="h-4 w-4 shrink-0" />
+                            Artists
+                        </button>
+                        <button class="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <Blazicon Svg="Lucide.Star" class="h-4 w-4 shrink-0" />
+                            Albums
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <div class="flex-1 overflow-y-auto p-6">
+
+                    <!-- Listen Now Section -->
+                    <div class="mb-8">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-semibold text-foreground">Listen Now</h3>
+                            <button class="text-sm text-primary hover:underline flex items-center gap-1">
+                                See all <Blazicon Svg="Lucide.ChevronRight" class="h-3 w-3" />
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            @foreach (var album in _featuredAlbums)
+                            {
+                                <Card Class="cursor-pointer hover:shadow-md transition-shadow overflow-hidden" @onclick="@(() => SelectSong(album.Title, album.Artist))">
+                                    <div class="h-36 w-full @album.Color flex items-center justify-center">
+                                        <Blazicon Svg="Lucide.Star" class="h-12 w-12 text-white/60" />
+                                    </div>
+                                    <CardContent Class="p-3">
+                                        <p class="text-sm font-semibold text-foreground truncate">@album.Title</p>
+                                        <p class="text-xs text-muted-foreground truncate">@album.Artist</p>
+                                    </CardContent>
+                                </Card>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Made For You Section -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-semibold text-foreground">Made For You</h3>
+                            <button class="text-sm text-primary hover:underline flex items-center gap-1">
+                                See all <Blazicon Svg="Lucide.ChevronRight" class="h-3 w-3" />
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-3 lg:grid-cols-6 gap-3">
+                            @foreach (var album in _madeForYouAlbums)
+                            {
+                                <div class="cursor-pointer group" @onclick="@(() => SelectSong(album.Title, album.Artist))">
+                                    <div class="h-20 w-full rounded-md @album.Color flex items-center justify-center mb-2 group-hover:opacity-80 transition-opacity">
+                                        <Blazicon Svg="Lucide.Heart" class="h-8 w-8 text-white/60" />
+                                    </div>
+                                    <p class="text-xs font-medium text-foreground truncate">@album.Title</p>
+                                    <p class="text-xs text-muted-foreground truncate">@album.Artist</p>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Bottom Player Bar -->
+                <div class="border-t bg-card px-4 py-3 shrink-0">
+                    <div class="flex items-center gap-4">
+
+                        <!-- Current Song -->
+                        <div class="flex items-center gap-3 w-48 shrink-0">
+                            <div class="h-10 w-10 rounded bg-primary/20 flex items-center justify-center shrink-0">
+                                <Blazicon Svg="Lucide.Heart" class="h-5 w-5 text-primary" />
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-foreground truncate">@_currentSong</p>
+                                <p class="text-xs text-muted-foreground truncate">@_currentArtist</p>
+                            </div>
+                        </div>
+
+                        <!-- Playback Controls -->
+                        <div class="flex-1 flex flex-col items-center gap-1">
+                            <div class="flex items-center gap-2">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" @onclick="PrevSong">
+                                    <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+                                </Button>
+                                <Button Size="Button.ButtonSize.Icon" @onclick="TogglePlay">
+                                    @if (_isPlaying)
+                                    {
+                                        <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                                    }
+                                    else
+                                    {
+                                        <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                                    }
+                                </Button>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" @onclick="NextSong">
+                                    <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <div class="flex items-center gap-2 w-full max-w-xs">
+                                <span class="text-xs text-muted-foreground w-8 text-right">@FormatTime(_progress)</span>
+                                <Slider @bind-Value="_progress" Min="0" Max="240" Class="flex-1" />
+                                <span class="text-xs text-muted-foreground w-8">3:00</span>
+                            </div>
+                        </div>
+
+                        <!-- Volume -->
+                        <div class="flex items-center gap-2 w-32 shrink-0">
+                            <Blazicon Svg="Lucide.Settings" class="h-4 w-4 text-muted-foreground shrink-0" />
+                            <Slider @bind-Value="_volume" Min="0" Max="100" Class="flex-1" />
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</ComponentDemo>
+
+@code {
+    private string _currentSong = "Midnight Dreams";
+    private string _currentArtist = "The Echoes";
+    private bool _isPlaying = false;
+    private double _progress = 42;
+    private double _volume = 70;
+
+    private record AlbumItem(string Title, string Artist, string Color);
+
+    private List<AlbumItem> _featuredAlbums = new()
+    {
+        new("Midnight Dreams", "The Echoes", "bg-primary"),
+        new("Solar Flares", "Nova Burst", "bg-destructive/80"),
+        new("Ocean Depths", "Blue Tide", "bg-chart-1/80"),
+        new("Urban Pulse", "City Beats", "bg-chart-2/80"),
+    };
+
+    private List<AlbumItem> _madeForYouAlbums = new()
+    {
+        new("Chill Mix", "Various", "bg-primary/60"),
+        new("Focus Flow", "Various", "bg-chart-1/60"),
+        new("Late Night", "Various", "bg-chart-2/60"),
+        new("Morning Vibes", "Various", "bg-chart-3/60"),
+        new("Workout Hit", "Various", "bg-destructive/60"),
+        new("Jazz Hour", "Various", "bg-chart-4/60"),
+    };
+
+    private void SelectSong(string title, string artist)
+    {
+        _currentSong = title;
+        _currentArtist = artist;
+        _isPlaying = true;
+        _progress = 0;
+    }
+
+    private void TogglePlay() => _isPlaying = !_isPlaying;
+
+    private void PrevSong()
+    {
+        _progress = 0;
+    }
+
+    private void NextSong()
+    {
+        _progress = 0;
+        _isPlaying = true;
+    }
+
+    private string FormatTime(double seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
+    }
+
+    private string _code = @"<!-- Music Player Layout -->
+<div class=""flex h-full border rounded-lg overflow-hidden"">
+
+    <!-- Sidebar -->
+    <div class=""w-56 border-r bg-card flex flex-col"">
+        <div class=""p-4"">
+            <h2 class=""text-lg font-bold"">Music</h2>
+        </div>
+        <div class=""px-3 flex-1"">
+            <!-- Discover -->
+            <p class=""text-xs font-semibold text-muted-foreground uppercase mb-1"">Discover</p>
+            <button class=""flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm bg-accent"">
+                <Blazicon Svg=""Lucide.Heart"" class=""h-4 w-4"" /> Listen Now
+            </button>
+            <button class=""flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground"">
+                <Blazicon Svg=""Lucide.Search"" class=""h-4 w-4"" /> Browse
+            </button>
+            <button class=""flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground"">
+                <Blazicon Svg=""Lucide.Star"" class=""h-4 w-4"" /> Radio
+            </button>
+            <Separator />
+            <!-- Library -->
+            <p class=""text-xs font-semibold text-muted-foreground uppercase mt-4 mb-1"">Library</p>
+            <button class=""flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground"">
+                <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" /> Playlists
+            </button>
+            <!-- Songs, Artists, Albums ... -->
+        </div>
+    </div>
+
+    <!-- Main -->
+    <div class=""flex-1 flex flex-col"">
+        <div class=""flex-1 overflow-y-auto p-6"">
+            <h3 class=""text-xl font-semibold mb-4"">Listen Now</h3>
+            <div class=""grid grid-cols-4 gap-4"">
+                @foreach (var album in _featuredAlbums)
+                {
+                    <Card @onclick=""@(() => SelectSong(album.Title, album.Artist))"">
+                        <div class=""h-36 @album.Color""></div>
+                        <CardContent Class=""p-3"">
+                            <p class=""text-sm font-semibold"">@album.Title</p>
+                            <p class=""text-xs text-muted-foreground"">@album.Artist</p>
+                        </CardContent>
+                    </Card>
+                }
+            </div>
+        </div>
+
+        <!-- Player Bar -->
+        <div class=""border-t bg-card px-4 py-3"">
+            <div class=""flex items-center gap-4"">
+                <div class=""w-48"">
+                    <p class=""text-sm font-medium"">@_currentSong</p>
+                    <p class=""text-xs text-muted-foreground"">@_currentArtist</p>
+                </div>
+                <div class=""flex-1 flex flex-col items-center gap-1"">
+                    <div class=""flex items-center gap-2"">
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" @onclick=""PrevSong"">
+                            <Blazicon Svg=""Lucide.ChevronLeft"" class=""h-4 w-4"" />
+                        </Button>
+                        <Button Size=""Button.ButtonSize.Icon"" @onclick=""TogglePlay"">
+                            <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+                        </Button>
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" @onclick=""NextSong"">
+                            <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+                        </Button>
+                    </div>
+                    <Slider @bind-Value=""_progress"" Min=""0"" Max=""240"" Class=""w-full max-w-xs"" />
+                </div>
+                <div class=""flex items-center gap-2 w-32"">
+                    <Blazicon Svg=""Lucide.Settings"" class=""h-4 w-4 text-muted-foreground"" />
+                    <Slider @bind-Value=""_volume"" Min=""0"" Max=""100"" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _currentSong = ""Midnight Dreams"";
+    private string _currentArtist = ""The Echoes"";
+    private bool _isPlaying = false;
+    private double _progress = 42;
+    private double _volume = 70;
+
+    private record AlbumItem(string Title, string Artist, string Color);
+    private List<AlbumItem> _featuredAlbums = new()
+    {
+        new(""Midnight Dreams"", ""The Echoes"", ""bg-primary""),
+        new(""Solar Flares"", ""Nova Burst"", ""bg-destructive/80""),
+        new(""Ocean Depths"", ""Blue Tide"", ""bg-chart-1/80""),
+        new(""Urban Pulse"", ""City Beats"", ""bg-chart-2/80""),
+    };
+
+    private void SelectSong(string title, string artist) { _currentSong = title; _currentArtist = artist; _isPlaying = true; }
+    private void TogglePlay() => _isPlaying = !_isPlaying;
+    private void PrevSong() => _progress = 0;
+    private void NextSong() { _progress = 0; _isPlaying = true; }
+}";
+}

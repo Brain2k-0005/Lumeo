@@ -1,0 +1,60 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public TreeData? Data { get; set; }
+    [Parameter] public string Orient { get; set; } = "LR";
+    [Parameter] public bool ShowLabels { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        EChartTreeData? BuildTree(TreeData? node)
+        {
+            if (node is null) return null;
+            return new EChartTreeData
+            {
+                Name = node.Name,
+                Value = node.Value,
+                Children = node.Children?.Select(c => BuildTree(c)).Where(c => c is not null).Select(c => c!).ToList()
+            };
+        }
+
+        var treeData = BuildTree(Data);
+
+        var series = new EChartSeries
+        {
+            Type = "tree",
+            Data = treeData is not null ? new List<EChartTreeData> { treeData } : null,
+            Orient = Orient,
+            Label = new EChartLabel { Show = ShowLabels }
+        };
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
+        }
+    }
+
+    public class TreeData
+    {
+        public string Name { get; set; } = "";
+        public double? Value { get; set; }
+        public List<TreeData>? Children { get; set; }
+    }
+}

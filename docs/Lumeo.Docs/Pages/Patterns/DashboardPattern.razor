@@ -1,0 +1,374 @@
+@page "/patterns/dashboard"
+@namespace Lumeo.Docs.Pages.Patterns
+
+<PageTitle>Dashboard Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="Dashboard" Description="A complete analytics dashboard built with Lumeo components. Includes a top bar, stats cards, revenue chart, activity feed, data table, and mini charts." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="Analytics Dashboard" Code="@_dashboardCode">
+        <div class="w-full space-y-4">
+
+            <!-- Top Bar -->
+            <div class="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                        <Blazicon Svg="Lucide.Star" class="h-4 w-4 text-primary-foreground" />
+                    </div>
+                    <span class="text-base font-semibold text-foreground">Acme Dashboard</span>
+                </div>
+                <div class="flex flex-1 max-w-sm items-center gap-2 rounded-md border bg-background px-3">
+                    <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground shrink-0" />
+                    <input type="text" placeholder="Search..." class="flex h-8 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                        <Blazicon Svg="Lucide.Bell" class="h-4 w-4" />
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                        <Blazicon Svg="Lucide.Settings" class="h-4 w-4" />
+                    </Button>
+                    <div class="flex items-center gap-2 ml-1">
+                        <Avatar Size="Avatar.AvatarSize.Sm">
+                            <AvatarFallback>JD</AvatarFallback>
+                        </Avatar>
+                        <div class="hidden sm:block">
+                            <p class="text-sm font-medium text-foreground leading-none">Jane Doe</p>
+                            <p class="text-xs text-muted-foreground">Admin</p>
+                        </div>
+                        <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 text-muted-foreground" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Row -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                @foreach (var stat in _stats)
+                {
+                    <Card>
+                        <CardHeader>
+                            <div class="flex items-center justify-between">
+                                <p class="text-sm font-medium text-muted-foreground">@stat.Label</p>
+                                @((MarkupString)stat.IconHtml)
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="text-2xl font-bold text-foreground">@stat.Value</div>
+                            <div class="mt-1 flex items-center gap-1">
+                                <Badge Variant="@stat.BadgeVariant">@stat.Trend</Badge>
+                                <span class="text-xs text-muted-foreground">from last month</span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                }
+            </div>
+
+            <!-- Main Chart + Activity Feed -->
+            <div class="grid grid-cols-1 lg:grid-cols-7 gap-4">
+                <!-- Area Chart -->
+                <Card Class="lg:col-span-5">
+                    <CardHeader>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold leading-none tracking-tight">Revenue Overview</h3>
+                                <p class="text-sm text-muted-foreground mt-1">12-month revenue and expenses</p>
+                            </div>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 mr-1" />
+                                This Year
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <AreaChart
+                            Categories="@_areaCategories"
+                            Series="@_areaSeries"
+                            Smooth="true"
+                            Height="280px" />
+                    </CardContent>
+                </Card>
+
+                <!-- Recent Activity -->
+                <Card Class="lg:col-span-2">
+                    <CardHeader>
+                        <h3 class="text-lg font-semibold leading-none tracking-tight">Activity</h3>
+                        <p class="text-sm text-muted-foreground">Recent events</p>
+                    </CardHeader>
+                    <CardContent>
+                        <div class="space-y-0">
+                            @foreach (var activity in _activities)
+                            {
+                                <div class="flex gap-3 py-3 border-b last:border-0">
+                                    <div class="mt-0.5 h-2 w-2 shrink-0 rounded-full @activity.DotClass"></div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm text-foreground leading-snug">@activity.Text</p>
+                                        <p class="text-xs text-muted-foreground mt-0.5">@activity.Time</p>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <!-- Data Table -->
+            <Card>
+                <CardHeader>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Transactions</h3>
+                            <p class="text-sm text-muted-foreground mt-1">8 most recent transactions</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                <Blazicon Svg="Lucide.Copy" class="h-4 w-4 mr-1" />
+                                Export
+                            </Button>
+                            <Button Size="Button.ButtonSize.Sm">
+                                <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-1" />
+                                Add New
+                            </Button>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Customer</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead Class="text-right">Amount</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            @foreach (var tx in _transactions)
+                            {
+                                <TableRow>
+                                    <TableCell Class="font-medium">@tx.Customer</TableCell>
+                                    <TableCell>
+                                        <Badge Variant="@tx.BadgeVariant">@tx.Status</Badge>
+                                    </TableCell>
+                                    <TableCell Class="text-muted-foreground">@tx.Date</TableCell>
+                                    <TableCell Class="text-right font-medium">@tx.Amount</TableCell>
+                                </TableRow>
+                            }
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            <!-- Bottom Mini Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                    <CardHeader>
+                        <h3 class="text-lg font-semibold leading-none tracking-tight">Monthly Sales</h3>
+                        <p class="text-sm text-muted-foreground">Units sold per month</p>
+                    </CardHeader>
+                    <CardContent>
+                        <BarChart
+                            Categories="@_barCategories"
+                            Series="@_barSeries"
+                            Height="220px" />
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <h3 class="text-lg font-semibold leading-none tracking-tight">Revenue by Channel</h3>
+                        <p class="text-sm text-muted-foreground">Breakdown of revenue sources</p>
+                    </CardHeader>
+                    <CardContent>
+                        <PieChart
+                            Data="@_pieData"
+                            Height="220px" />
+                    </CardContent>
+                </Card>
+            </div>
+
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private record StatItem(string Label, string Value, string Trend, Badge.BadgeVariant BadgeVariant, string IconHtml);
+    private List<StatItem> _stats = new()
+    {
+        new StatItem("Total Revenue",    "$45,231.89", "+12.5%", Badge.BadgeVariant.Success,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"1\" x2=\"12\" y2=\"23\"/><path d=\"M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6\"/></svg>"),
+        new StatItem("Subscriptions",    "+2,350",     "+18.1%", Badge.BadgeVariant.Success,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 0 0-3-3.87\"/><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"/></svg>"),
+        new StatItem("Total Sales",      "+12,234",    "+19.0%", Badge.BadgeVariant.Success,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"23 6 13.5 15.5 8.5 10.5 1 18\"/><polyline points=\"17 6 23 6 23 12\"/></svg>"),
+        new StatItem("Active Users",     "+573",       "-4.2%",  Badge.BadgeVariant.Destructive,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>"),
+    };
+
+    // Area chart — 12 months
+    private List<string> _areaCategories = new()
+    {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+    private List<AreaChart.ChartSeriesData> _areaSeries = new()
+    {
+        new AreaChart.ChartSeriesData
+        {
+            Name   = "Revenue",
+            Values = new List<double> { 18000, 22000, 19500, 28000, 32000, 45000, 41000, 38000, 43000, 49000, 52000, 61000 }
+        },
+        new AreaChart.ChartSeriesData
+        {
+            Name   = "Expenses",
+            Values = new List<double> { 12000, 14000, 13500, 16000, 18000, 21000, 19500, 17000, 20000, 22000, 24000, 27000 }
+        }
+    };
+
+    // Recent activity feed
+    private record ActivityItem(string Text, string Time, string DotClass);
+    private List<ActivityItem> _activities = new()
+    {
+        new ActivityItem("New subscription from Olivia M.",  "2 min ago",   "bg-primary"),
+        new ActivityItem("Payment of $1,999 completed",      "18 min ago",  "bg-primary"),
+        new ActivityItem("Server CPU spiked to 94%",         "1 hour ago",  "bg-destructive"),
+        new ActivityItem("Isabella N. upgraded to Pro plan", "3 hours ago", "bg-primary"),
+        new ActivityItem("Monthly report generated",         "Yesterday",   "bg-muted-foreground"),
+    };
+
+    // Transaction table — Completed / Pending / Failed
+    private record TransactionItem(string Customer, string Status, Badge.BadgeVariant BadgeVariant, string Date, string Amount);
+    private List<TransactionItem> _transactions = new()
+    {
+        new TransactionItem("Olivia Martin",   "Completed", Badge.BadgeVariant.Success,     "Feb 15, 2026", "$1,999.00"),
+        new TransactionItem("Jackson Lee",      "Completed", Badge.BadgeVariant.Success,     "Feb 14, 2026", "$39.00"),
+        new TransactionItem("Isabella Nguyen",  "Pending",   Badge.BadgeVariant.Warning,     "Feb 13, 2026", "$299.00"),
+        new TransactionItem("William Kim",      "Failed",    Badge.BadgeVariant.Destructive,  "Feb 12, 2026", "$99.00"),
+        new TransactionItem("Sofia Davis",      "Completed", Badge.BadgeVariant.Success,     "Feb 11, 2026", "$2,500.00"),
+        new TransactionItem("Liam Johnson",     "Pending",   Badge.BadgeVariant.Warning,     "Feb 10, 2026", "$750.00"),
+        new TransactionItem("Emma Wilson",      "Completed", Badge.BadgeVariant.Success,     "Feb 9, 2026",  "$1,200.00"),
+        new TransactionItem("Noah Brown",       "Failed",    Badge.BadgeVariant.Destructive,  "Feb 8, 2026",  "$450.00"),
+    };
+
+    // Bar chart
+    private List<string> _barCategories = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun" };
+    private List<BarChart.ChartSeriesData> _barSeries = new()
+    {
+        new BarChart.ChartSeriesData
+        {
+            Name   = "Units Sold",
+            Values = new List<double> { 4200, 3800, 5100, 4700, 6300, 7200 }
+        }
+    };
+
+    // Pie chart
+    private List<PieChart.PieChartData> _pieData = new()
+    {
+        new PieChart.PieChartData { Name = "Direct",   Value = 38 },
+        new PieChart.PieChartData { Name = "Organic",  Value = 27 },
+        new PieChart.PieChartData { Name = "Referral", Value = 20 },
+        new PieChart.PieChartData { Name = "Social",   Value = 15 },
+    };
+
+    private string _dashboardCode = @"<!-- Top Bar -->
+<div class=""flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3"">
+    <div class=""flex items-center gap-3"">
+        <div class=""flex h-8 w-8 items-center justify-center rounded-md bg-primary"">
+            <Blazicon Svg=""Lucide.Star"" class=""h-4 w-4 text-primary-foreground"" />
+        </div>
+        <span class=""text-base font-semibold text-foreground"">Acme Dashboard</span>
+    </div>
+    <div class=""flex flex-1 max-w-sm items-center gap-2 rounded-md border bg-background px-3"">
+        <Blazicon Svg=""Lucide.Search"" class=""h-4 w-4 text-muted-foreground"" />
+        <input placeholder=""Search..."" class=""flex h-8 w-full bg-transparent text-sm outline-none"" />
+    </div>
+    <div class=""flex items-center gap-2"">
+        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
+            <Blazicon Svg=""Lucide.Bell"" class=""h-4 w-4"" />
+        </Button>
+        <Avatar Size=""Avatar.AvatarSize.Sm"">
+            <AvatarFallback>JD</AvatarFallback>
+        </Avatar>
+        <Blazicon Svg=""Lucide.ChevronDown"" class=""h-4 w-4 text-muted-foreground"" />
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class=""grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
+    <Card>
+        <CardHeader>
+            <p class=""text-sm font-medium text-muted-foreground"">Total Revenue</p>
+        </CardHeader>
+        <CardContent>
+            <div class=""text-2xl font-bold text-foreground"">$45,231.89</div>
+            <Badge Variant=""Badge.BadgeVariant.Success"">+12.5%</Badge>
+            <span class=""text-xs text-muted-foreground"">from last month</span>
+        </CardContent>
+    </Card>
+    <!-- ... repeat for other stats ... -->
+</div>
+
+<!-- Main Chart + Activity -->
+<div class=""grid grid-cols-1 lg:grid-cols-7 gap-4"">
+    <Card Class=""lg:col-span-5"">
+        <CardHeader><h3>Revenue Overview</h3></CardHeader>
+        <CardContent>
+            <AreaChart Categories=""@_areaCategories"" Series=""@_areaSeries"" Smooth=""true"" Height=""280px"" />
+        </CardContent>
+    </Card>
+    <Card Class=""lg:col-span-2"">
+        <CardHeader><h3>Activity</h3></CardHeader>
+        <CardContent>
+            @foreach (var a in _activities)
+            {
+                <div class=""flex gap-3 py-3 border-b last:border-0"">
+                    <div class=""mt-0.5 h-2 w-2 rounded-full bg-primary""></div>
+                    <div>
+                        <p class=""text-sm text-foreground"">@a.Text</p>
+                        <p class=""text-xs text-muted-foreground"">@a.Time</p>
+                    </div>
+                </div>
+            }
+        </CardContent>
+    </Card>
+</div>
+
+<!-- Transactions Table -->
+<Table>
+    <TableHeader>
+        <TableRow>
+            <TableHead>Customer</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead Class=""text-right"">Amount</TableHead>
+        </TableRow>
+    </TableHeader>
+    <TableBody>
+        @foreach (var tx in _transactions)
+        {
+            <TableRow>
+                <TableCell Class=""font-medium"">@tx.Customer</TableCell>
+                <TableCell><Badge Variant=""@tx.BadgeVariant"">@tx.Status</Badge></TableCell>
+                <TableCell Class=""text-muted-foreground"">@tx.Date</TableCell>
+                <TableCell Class=""text-right font-medium"">@tx.Amount</TableCell>
+            </TableRow>
+        }
+    </TableBody>
+</Table>
+
+<!-- Mini Charts -->
+<div class=""grid grid-cols-1 lg:grid-cols-2 gap-4"">
+    <Card>
+        <CardHeader><h3>Monthly Sales</h3></CardHeader>
+        <CardContent>
+            <BarChart Categories=""@_barCategories"" Series=""@_barSeries"" Height=""220px"" />
+        </CardContent>
+    </Card>
+    <Card>
+        <CardHeader><h3>Revenue by Channel</h3></CardHeader>
+        <CardContent>
+            <PieChart Data=""@_pieData"" Height=""220px"" />
+        </CardContent>
+    </Card>
+</div>";
+}

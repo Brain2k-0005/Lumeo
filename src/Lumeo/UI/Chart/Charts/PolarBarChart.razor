@@ -1,0 +1,53 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<string> Categories { get; set; } = new();
+    [Parameter] public List<double> Values { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = false;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var series = new EChartSeries
+        {
+            Type = "bar",
+            Data = Values,
+            CoordinateSystem = "polar"
+        };
+
+        _option = new EChartOption
+        {
+            Polar = new { },
+            AngleAxis = new List<object>
+            {
+                new { type = "category", data = Categories }
+            },
+            RadiusAxis = new List<object>
+            {
+                new { }
+            },
+            Series = new List<EChartSeries> { series },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
+        }
+
+        if (ShowLegend)
+        {
+            _option.Legend = new EChartLegend();
+        }
+    }
+}

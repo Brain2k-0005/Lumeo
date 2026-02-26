@@ -58,6 +58,72 @@
             </TableBody>
         </Table>
     </ComponentDemo>
+
+    <ComponentDemo Title="Table with Status Badges" Code="@_statusCode">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Task</TableHead>
+                    <TableHead>Assignee</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Status</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                @foreach (var task in _tasks)
+                {
+                    <TableRow>
+                        <TableCell Class="font-medium">@task.Name</TableCell>
+                        <TableCell>@task.Assignee</TableCell>
+                        <TableCell>
+                            <Badge Variant="@task.PriorityVariant">@task.Priority</Badge>
+                        </TableCell>
+                        <TableCell>
+                            <Badge Variant="@task.StatusVariant">@task.Status</Badge>
+                        </TableCell>
+                    </TableRow>
+                }
+            </TableBody>
+        </Table>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Table with Pagination" Code="@_paginatedCode">
+        <div class="space-y-4">
+            <Table>
+                <TableCaption>Showing @(_pageStart + 1)–@(Math.Min(_pageStart + _pageSize, _invoices.Count)) of @_invoices.Count invoices</TableCaption>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead Class="text-right">Amount</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    @foreach (var invoice in _invoices.Skip(_pageStart).Take(_pageSize))
+                    {
+                        <TableRow>
+                            <TableCell Class="font-medium">@invoice.Id</TableCell>
+                            <TableCell>@invoice.Status</TableCell>
+                            <TableCell>@invoice.Method</TableCell>
+                            <TableCell Class="text-right">@invoice.Amount</TableCell>
+                        </TableRow>
+                    }
+                </TableBody>
+            </Table>
+            <div class="flex items-center justify-end gap-2">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                        Disabled="@(_tablePage <= 1)" OnClick="@(() => GoTablePage(_tablePage - 1))">
+                    <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" /> Previous
+                </Button>
+                <span class="text-sm text-muted-foreground">Page @_tablePage of @_tablePages</span>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                        Disabled="@(_tablePage >= _tablePages)" OnClick="@(() => GoTablePage(_tablePage + 1))">
+                    Next <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                </Button>
+            </div>
+        </div>
+    </ComponentDemo>
 </div>
 
 @code {
@@ -73,6 +139,42 @@
     };
 
     private record Invoice(string Id, string Status, string Method, string Amount);
+
+    private int _tablePage = 1;
+    private int _pageSize = 3;
+    private int _tablePages => (int)Math.Ceiling(_invoices.Count / (double)_pageSize);
+    private int _pageStart => (_tablePage - 1) * _pageSize;
+
+    private void GoTablePage(int page)
+    {
+        if (page >= 1 && page <= _tablePages) _tablePage = page;
+    }
+
+    private List<TaskItem> _tasks = new()
+    {
+        new("Design onboarding flow", "Alice Johnson", "High", "In Progress"),
+        new("Fix login bug", "Bob Smith", "Critical", "Done"),
+        new("Write API docs", "Carol Williams", "Medium", "Todo"),
+        new("Update homepage copy", "David Lee", "Low", "In Progress"),
+        new("Code review: auth module", "Alice Johnson", "High", "Todo"),
+    };
+
+    private record TaskItem(string Name, string Assignee, string Priority, string Status)
+    {
+        public Badge.BadgeVariant PriorityVariant => Priority switch
+        {
+            "Critical" => Badge.BadgeVariant.Destructive,
+            "High" => Badge.BadgeVariant.Warning,
+            "Medium" => Badge.BadgeVariant.Secondary,
+            _ => Badge.BadgeVariant.Outline
+        };
+        public Badge.BadgeVariant StatusVariant => Status switch
+        {
+            "Done" => Badge.BadgeVariant.Success,
+            "In Progress" => Badge.BadgeVariant.Default,
+            _ => Badge.BadgeVariant.Secondary
+        };
+    }
 
     private string _defaultCode = @"<Table>
     <TableCaption>A list of recent invoices.</TableCaption>
@@ -118,4 +220,59 @@
         </TableRow>
     </TableBody>
 </Table>";
+
+    private string _statusCode = @"<Table>
+    <TableHeader>
+        <TableRow>
+            <TableHead>Task</TableHead>
+            <TableHead>Assignee</TableHead>
+            <TableHead>Priority</TableHead>
+            <TableHead>Status</TableHead>
+        </TableRow>
+    </TableHeader>
+    <TableBody>
+        @foreach (var task in _tasks)
+        {
+            <TableRow>
+                <TableCell Class=""font-medium"">@task.Name</TableCell>
+                <TableCell>@task.Assignee</TableCell>
+                <TableCell><Badge Variant=""@task.PriorityVariant"">@task.Priority</Badge></TableCell>
+                <TableCell><Badge Variant=""@task.StatusVariant"">@task.Status</Badge></TableCell>
+            </TableRow>
+        }
+    </TableBody>
+</Table>";
+
+    private string _paginatedCode = @"<Table>
+    <TableHeader>
+        <TableRow>
+            <TableHead>Invoice</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Method</TableHead>
+            <TableHead Class=""text-right"">Amount</TableHead>
+        </TableRow>
+    </TableHeader>
+    <TableBody>
+        @foreach (var invoice in _invoices.Skip(_pageStart).Take(_pageSize))
+        {
+            <TableRow>
+                <TableCell Class=""font-medium"">@invoice.Id</TableCell>
+                <TableCell>@invoice.Status</TableCell>
+                <TableCell>@invoice.Method</TableCell>
+                <TableCell Class=""text-right"">@invoice.Amount</TableCell>
+            </TableRow>
+        }
+    </TableBody>
+</Table>
+<div class=""flex items-center justify-end gap-2 mt-4"">
+    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
+            Disabled=""@(_tablePage <= 1)"" OnClick=""@(() => GoTablePage(_tablePage - 1))"">
+        <Blazicon Svg=""Lucide.ChevronLeft"" class=""h-4 w-4"" /> Previous
+    </Button>
+    <span class=""text-sm text-muted-foreground"">Page @_tablePage of @_tablePages</span>
+    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
+            Disabled=""@(_tablePage >= _tablePages)"" OnClick=""@(() => GoTablePage(_tablePage + 1))"">
+        Next <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+    </Button>
+</div>";
 }
