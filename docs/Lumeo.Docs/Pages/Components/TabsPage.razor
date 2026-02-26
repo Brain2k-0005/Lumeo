@@ -62,6 +62,49 @@
         </div>
     </ComponentDemo>
 
+    <ComponentDemo Title="Notifications" Code="@_notifCode">
+        <div class="w-full max-w-md">
+            <Tabs ActiveValue="all">
+                <TabsList>
+                    <TabsTrigger Value="all">All</TabsTrigger>
+                    <TabsTrigger Value="unread">Unread</TabsTrigger>
+                    <TabsTrigger Value="archived">Archived</TabsTrigger>
+                </TabsList>
+                <TabsContent Value="all">
+                    <div class="space-y-2 pt-2">
+                        @foreach (var n in _notifications)
+                        {
+                            <div class="flex items-start gap-3 p-3 rounded-lg border bg-card">
+                                <span class="@($"mt-1.5 h-2 w-2 rounded-full shrink-0 {(n.Unread ? "bg-primary" : "bg-muted")}")"></span>
+                                <div>
+                                    <p class="text-sm font-medium text-foreground">@n.Title</p>
+                                    <p class="text-xs text-muted-foreground">@n.Time</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </TabsContent>
+                <TabsContent Value="unread">
+                    <div class="space-y-2 pt-2">
+                        @foreach (var n in _notifications.Where(x => x.Unread))
+                        {
+                            <div class="flex items-start gap-3 p-3 rounded-lg border bg-card">
+                                <span class="mt-1.5 h-2 w-2 rounded-full shrink-0 bg-primary"></span>
+                                <div>
+                                    <p class="text-sm font-medium text-foreground">@n.Title</p>
+                                    <p class="text-xs text-muted-foreground">@n.Time</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </TabsContent>
+                <TabsContent Value="archived">
+                    <p class="text-sm text-muted-foreground p-4 text-center">No archived notifications.</p>
+                </TabsContent>
+            </Tabs>
+        </div>
+    </ComponentDemo>
+
     <ComponentDemo Title="Simple" Code="@_simpleCode">
         <div class="w-full max-w-md">
             <Tabs ActiveValue="overview">
@@ -85,6 +128,41 @@
 </div>
 
 @code {
+    private record NotifItem(string Title, string Time, bool Unread);
+    private List<NotifItem> _notifications = new()
+    {
+        new("Your call has been confirmed.", "2 min ago", true),
+        new("You have a new message!", "1 hour ago", true),
+        new("Subscription expiring soon.", "3 hours ago", false),
+        new("Report ready to download.", "2 days ago", false),
+    };
+
+    private string _notifCode = @"<Tabs ActiveValue=""all"">
+    <TabsList>
+        <TabsTrigger Value=""all"">All</TabsTrigger>
+        <TabsTrigger Value=""unread"">Unread</TabsTrigger>
+        <TabsTrigger Value=""archived"">Archived</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""all"">
+        @foreach (var n in _notifications)
+        {
+            <div class=""flex items-start gap-3 p-3 rounded-lg border"">
+                <span class=""mt-1.5 h-2 w-2 rounded-full @(n.Unread ? ""bg-primary"" : ""bg-muted"")""></span>
+                <div>
+                    <p class=""text-sm font-medium"">@n.Title</p>
+                    <p class=""text-xs text-muted-foreground"">@n.Time</p>
+                </div>
+            </div>
+        }
+    </TabsContent>
+    <TabsContent Value=""unread"">
+        @foreach (var n in _notifications.Where(x => x.Unread)) { /* same */ }
+    </TabsContent>
+    <TabsContent Value=""archived"">
+        <p class=""text-sm text-muted-foreground p-4 text-center"">No archived notifications.</p>
+    </TabsContent>
+</Tabs>";
+
     private string _defaultCode = @"<Tabs ActiveValue=""account"">
     <TabsList>
         <TabsTrigger Value=""account"">Account</TabsTrigger>
