@@ -1,0 +1,399 @@
+@page "/patterns/ecommerce"
+
+<PageTitle>E-Commerce — Lumeo</PageTitle>
+
+<PageHeader Title="E-Commerce" Description="A product detail page with variant selectors, cart actions, reviews, and related products." />
+
+<ComponentDemo Title="Product Page" Code="@_ecommerceCode">
+    <div class="w-full space-y-8">
+
+        <!-- Product Detail Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+            <!-- Product Images -->
+            <div class="space-y-3">
+                <!-- Main Image -->
+                <div class="aspect-square rounded-lg bg-muted flex items-center justify-center border">
+                    <Blazicon Svg="Lucide.Eye" class="h-16 w-16 text-muted-foreground" />
+                </div>
+                <!-- Thumbnails -->
+                <div class="grid grid-cols-4 gap-2">
+                    @for (int i = 0; i < 4; i++)
+                    {
+                        var idx = i;
+                        <div class="@($"aspect-square rounded-md bg-muted flex items-center justify-center border cursor-pointer transition-colors {(_activeThumb == idx ? "border-primary ring-2 ring-primary" : "hover:border-muted-foreground")}")"
+                             @onclick="@(() => _activeThumb = idx)">
+                            <Blazicon Svg="Lucide.Eye" class="h-6 w-6 text-muted-foreground" />
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Product Details -->
+            <div class="space-y-5">
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2">
+                        <Badge>New Arrival</Badge>
+                        <Badge Variant="Badge.BadgeVariant.Success">In Stock</Badge>
+                    </div>
+                    <h1 class="text-2xl font-bold text-foreground">Lumeo Pro Wireless Headphones</h1>
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-0.5">
+                            @for (int s = 0; s < 5; s++)
+                            {
+                                <Blazicon Svg="Lucide.Star" class="@($"h-4 w-4 {(s < 4 ? "text-yellow-500" : "text-muted-foreground")}")" />
+                            }
+                        </div>
+                        <span class="text-sm text-muted-foreground">4.0</span>
+                        <Badge Variant="Badge.BadgeVariant.Outline">128 reviews</Badge>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-foreground">$99.99</span>
+                        <span class="text-sm text-muted-foreground line-through">$129.99</span>
+                        <Badge Variant="Badge.BadgeVariant.Destructive">-23%</Badge>
+                    </div>
+                    <p class="text-sm text-muted-foreground leading-relaxed">
+                        Experience premium sound quality with our Lumeo Pro headphones. Featuring 40-hour battery life,
+                        active noise cancellation, and a sleek foldable design perfect for travel and everyday use.
+                    </p>
+                </div>
+
+                <Separator />
+
+                <!-- Color Selector -->
+                <div class="space-y-2">
+                    <p class="text-sm font-medium text-foreground">
+                        Color: <span class="text-muted-foreground">@_selectedColor</span>
+                    </p>
+                    <div class="flex items-center gap-2">
+                        @foreach (var color in _colors)
+                        {
+                            var c = color;
+                            <button class="@($"h-8 w-8 rounded-full border-2 transition-all {(_selectedColor == c.Name ? "ring-2 ring-offset-2 ring-primary border-primary" : "border-border hover:border-foreground")}")"
+                                    style="@($"background-color: {c.Hex};")"
+                                    title="@c.Name"
+                                    @onclick="@(() => _selectedColor = c.Name)">
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Size Selector -->
+                <div class="space-y-2">
+                    <p class="text-sm font-medium text-foreground">
+                        Size: <span class="text-muted-foreground">@_selectedSize</span>
+                    </p>
+                    <div class="flex items-center gap-2">
+                        @foreach (var size in new[] { "S", "M", "L", "XL" })
+                        {
+                            var s = size;
+                            <Button Variant="@(_selectedSize == s ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                    Size="Button.ButtonSize.Sm"
+                                    Class="w-12"
+                                    @onclick="@(() => _selectedSize = s)">@s</Button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Quantity -->
+                <div class="space-y-2">
+                    <p class="text-sm font-medium text-foreground">Quantity</p>
+                    <div class="flex items-center gap-2">
+                        <Button Variant="Button.ButtonVariant.Outline"
+                                Size="Button.ButtonSize.Icon"
+                                Class="h-9 w-9"
+                                @onclick="DecrementQty">
+                            <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
+                        </Button>
+                        <Input Value="@_quantity.ToString()" Class="w-16 text-center h-9" />
+                        <Button Variant="Button.ButtonVariant.Outline"
+                                Size="Button.ButtonSize.Icon"
+                                Class="h-9 w-9"
+                                @onclick="IncrementQty">
+                            <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-3">
+                    <Button Class="flex-1">
+                        <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-2" />
+                        Add to Cart
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="h-10 w-10">
+                        <Blazicon Svg="Lucide.Heart" class="h-4 w-4" />
+                    </Button>
+                </div>
+            </div>
+        </div>
+
+        <Separator />
+
+        <!-- Tabs: Details, Reviews, Shipping -->
+        <Tabs @bind-ActiveValue="_activeTab">
+            <TabsList>
+                <TabsTrigger Value="details">Details</TabsTrigger>
+                <TabsTrigger Value="reviews">Reviews <Badge Class="ml-1.5">3</Badge></TabsTrigger>
+                <TabsTrigger Value="shipping">Shipping</TabsTrigger>
+            </TabsList>
+
+            <TabsContent Value="details">
+                <Card>
+                    <CardContent Class="pt-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div class="space-y-2">
+                                <div class="flex justify-between py-1 border-b">
+                                    <span class="text-muted-foreground">Driver Size</span>
+                                    <span class="text-foreground font-medium">40mm</span>
+                                </div>
+                                <div class="flex justify-between py-1 border-b">
+                                    <span class="text-muted-foreground">Frequency</span>
+                                    <span class="text-foreground font-medium">20Hz – 20kHz</span>
+                                </div>
+                                <div class="flex justify-between py-1 border-b">
+                                    <span class="text-muted-foreground">Battery Life</span>
+                                    <span class="text-foreground font-medium">40 hours</span>
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between py-1 border-b">
+                                    <span class="text-muted-foreground">Connectivity</span>
+                                    <span class="text-foreground font-medium">Bluetooth 5.3</span>
+                                </div>
+                                <div class="flex justify-between py-1 border-b">
+                                    <span class="text-muted-foreground">Weight</span>
+                                    <span class="text-foreground font-medium">250g</span>
+                                </div>
+                                <div class="flex justify-between py-1 border-b">
+                                    <span class="text-muted-foreground">Warranty</span>
+                                    <span class="text-foreground font-medium">2 years</span>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
+            <TabsContent Value="reviews">
+                <div class="space-y-4">
+                    @foreach (var review in _reviews)
+                    {
+                        <Card>
+                            <CardContent Class="pt-4">
+                                <div class="flex items-start gap-3">
+                                    <Avatar Size="Avatar.AvatarSize.Sm">
+                                        <AvatarFallback>@review.Initials</AvatarFallback>
+                                    </Avatar>
+                                    <div class="flex-1 space-y-1">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm font-semibold text-foreground">@review.Author</span>
+                                            <span class="text-xs text-muted-foreground">@review.Date</span>
+                                        </div>
+                                        <div class="flex items-center gap-0.5">
+                                            @for (int s = 0; s < 5; s++)
+                                            {
+                                                <Blazicon Svg="Lucide.Star" class="@($"h-3.5 w-3.5 {(s < review.Rating ? "text-yellow-500" : "text-muted-foreground")}")" />
+                                            }
+                                        </div>
+                                        <p class="text-sm text-muted-foreground">@review.Text</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    }
+                </div>
+            </TabsContent>
+
+            <TabsContent Value="shipping">
+                <Card>
+                    <CardContent Class="pt-4 space-y-3 text-sm">
+                        <div class="flex items-start gap-3">
+                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                            <div>
+                                <p class="font-medium text-foreground">Free Standard Shipping</p>
+                                <p class="text-muted-foreground">5-7 business days — Orders over $50</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                            <div>
+                                <p class="font-medium text-foreground">Express Shipping</p>
+                                <p class="text-muted-foreground">2-3 business days — $12.99</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                            <div>
+                                <p class="font-medium text-foreground">Free Returns</p>
+                                <p class="text-muted-foreground">30-day return window. No questions asked.</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+        </Tabs>
+
+        <Separator />
+
+        <!-- Related Products -->
+        <div class="space-y-4">
+            <h2 class="text-lg font-semibold text-foreground">Related Products</h2>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                @foreach (var product in _relatedProducts)
+                {
+                    <Card Class="overflow-hidden cursor-pointer hover:border-primary transition-colors">
+                        <div class="aspect-square bg-muted flex items-center justify-center">
+                            <Blazicon Svg="Lucide.Eye" class="h-10 w-10 text-muted-foreground" />
+                        </div>
+                        <CardContent Class="p-3 space-y-1">
+                            <p class="text-sm font-medium text-foreground truncate">@product.Name</p>
+                            <div class="flex items-center gap-0.5">
+                                @for (int s = 0; s < 5; s++)
+                                {
+                                    <Blazicon Svg="Lucide.Star" class="@($"h-3 w-3 {(s < product.Rating ? "text-yellow-500" : "text-muted-foreground")}")" />
+                                }
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-bold text-foreground">@product.Price</span>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7">
+                                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                }
+            </div>
+        </div>
+
+    </div>
+</ComponentDemo>
+
+@code {
+    private int _activeThumb = 0;
+    private string _selectedColor = "Midnight Black";
+    private string _selectedSize = "M";
+    private int _quantity = 1;
+    private string _activeTab = "details";
+
+    private record ColorOption(string Name, string Hex);
+    private record ReviewItem(string Author, string Initials, int Rating, string Date, string Text);
+    private record RelatedProduct(string Name, string Price, int Rating);
+
+    private List<ColorOption> _colors = new()
+    {
+        new("Midnight Black", "#1a1a1a"),
+        new("Pearl White", "#f5f5f0"),
+        new("Ocean Blue", "#1e6fbf"),
+        new("Rose Gold", "#b76e79"),
+    };
+
+    private List<ReviewItem> _reviews = new()
+    {
+        new("Alex Johnson", "AJ", 5, "Feb 18, 2026",
+            "Absolutely love these headphones! The sound quality is incredible and the noise cancellation works perfectly on my morning commute."),
+        new("Maria Garcia", "MG", 4, "Feb 10, 2026",
+            "Great build quality and comfortable to wear for long sessions. Battery life is exactly as advertised. Docking one star only because the carrying case feels a bit flimsy."),
+        new("Sam Lee", "SL", 4, "Jan 30, 2026",
+            "Really impressed with the Bluetooth range — I can walk around my entire apartment without dropout. Setup was a breeze too."),
+    };
+
+    private List<RelatedProduct> _relatedProducts = new()
+    {
+        new("Lumeo Earbuds Pro", "$59.99", 4),
+        new("Lumeo Speaker Mini", "$79.99", 5),
+        new("Lumeo Cable Braided", "$19.99", 4),
+        new("Lumeo Headphone Stand", "$34.99", 3),
+    };
+
+    private void IncrementQty()
+    {
+        if (_quantity < 99) _quantity++;
+    }
+
+    private void DecrementQty()
+    {
+        if (_quantity > 1) _quantity--;
+    }
+
+    private string _ecommerceCode = @"<!-- Product Detail -->
+<div class=""grid grid-cols-2 gap-8"">
+    <!-- Images -->
+    <div class=""space-y-3"">
+        <div class=""aspect-square rounded-lg bg-muted border""></div>
+        <div class=""grid grid-cols-4 gap-2"">
+            @for (int i = 0; i < 4; i++) {
+                <div class=""aspect-square rounded-md bg-muted border cursor-pointer""></div>
+            }
+        </div>
+    </div>
+    <!-- Details -->
+    <div class=""space-y-5"">
+        <Badge>New Arrival</Badge>
+        <h1 class=""text-2xl font-bold"">Lumeo Pro Headphones</h1>
+        <div class=""flex gap-2"">
+            <span class=""text-3xl font-bold"">$99.99</span>
+            <Badge Variant=""Badge.BadgeVariant.Destructive"">-23%</Badge>
+        </div>
+        <!-- Color Selector -->
+        <div class=""flex gap-2"">
+            @foreach (var color in _colors) {
+                <button class=""h-8 w-8 rounded-full border-2"" style=""background-color: @color.Hex;""></button>
+            }
+        </div>
+        <!-- Size Selector -->
+        <div class=""flex gap-2"">
+            @foreach (var size in new[] { ""S"", ""M"", ""L"", ""XL"" }) {
+                <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">@size</Button>
+            }
+        </div>
+        <!-- Quantity -->
+        <div class=""flex items-center gap-2"">
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"">
+                <Blazicon Svg=""Lucide.Minus"" class=""h-4 w-4"" />
+            </Button>
+            <Input Value=""1"" Class=""w-16 text-center"" />
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"">
+                <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" />
+            </Button>
+        </div>
+        <!-- Actions -->
+        <div class=""flex gap-3"">
+            <Button Class=""flex-1"">Add to Cart</Button>
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"">
+                <Blazicon Svg=""Lucide.Heart"" class=""h-4 w-4"" />
+            </Button>
+        </div>
+    </div>
+</div>
+<!-- Tabs -->
+<Tabs @bind-ActiveValue=""_activeTab"">
+    <TabsList>
+        <TabsTrigger Value=""details"">Details</TabsTrigger>
+        <TabsTrigger Value=""reviews"">Reviews</TabsTrigger>
+        <TabsTrigger Value=""shipping"">Shipping</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""details"">...</TabsContent>
+    <TabsContent Value=""reviews"">
+        @foreach (var review in _reviews) {
+            <Card><CardContent>
+                <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>@review.Initials</AvatarFallback></Avatar>
+                <span>@review.Author</span>
+                <p class=""text-sm text-muted-foreground"">@review.Text</p>
+            </CardContent></Card>
+        }
+    </TabsContent>
+</Tabs>
+<!-- Related Products -->
+<div class=""grid grid-cols-4 gap-4"">
+    @foreach (var p in _relatedProducts) {
+        <Card>
+            <div class=""aspect-square bg-muted""></div>
+            <CardContent class=""p-3"">
+                <p class=""font-medium"">@p.Name</p>
+                <p class=""font-bold"">@p.Price</p>
+            </CardContent>
+        </Card>
+    }
+</div>";
+}

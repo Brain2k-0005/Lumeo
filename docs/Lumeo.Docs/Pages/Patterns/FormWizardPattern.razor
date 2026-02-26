@@ -1,0 +1,432 @@
+@page "/patterns/form-wizard"
+
+<PageTitle>Form Wizard — Lumeo Patterns</PageTitle>
+
+<PageHeader Title="Multi-Step Form Wizard" Description="A multi-step form with step indicator, validation, and a review summary before submission." />
+
+<div class="space-y-12">
+
+    <ComponentDemo Title="Form Wizard" Code="@_wizardCode">
+        <div class="w-full max-w-2xl mx-auto">
+            <Card>
+                <CardHeader>
+                    <!-- Step Indicator -->
+                    <div class="flex items-center justify-between">
+                        @for (int i = 1; i <= 4; i++)
+                        {
+                            var step = i;
+                            var stepLabel = step switch { 1 => "Personal", 2 => "Address", 3 => "Preferences", 4 => "Review", _ => "" };
+                            var isDone = _currentStep > step;
+                            var isActive = _currentStep == step;
+
+                            <div class="flex items-center @(step < 4 ? "flex-1" : "")">
+                                <div class="flex flex-col items-center gap-1">
+                                    <div class="@($"w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors {(isDone ? "bg-primary text-primary-foreground" : isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}")">
+                                        @if (isDone)
+                                        {
+                                            <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
+                                        }
+                                        else
+                                        {
+                                            @step
+                                        }
+                                    </div>
+                                    <span class="text-xs @(isActive ? "text-foreground font-medium" : "text-muted-foreground") hidden sm:block">@stepLabel</span>
+                                </div>
+                                @if (step < 4)
+                                {
+                                    <div class="flex-1 h-px @(isDone ? "bg-primary" : "bg-border") mx-2 mb-4"></div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </CardHeader>
+
+                <CardContent>
+                    <!-- Step 1: Personal Info -->
+                    @if (_currentStep == 1)
+                    {
+                        <div class="space-y-4">
+                            <h4 class="text-base font-semibold text-foreground">Personal Information</h4>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground">First Name</label>
+                                    <Input @bind-Value="_firstName" placeholder="John" />
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground">Last Name</label>
+                                    <Input @bind-Value="_lastName" placeholder="Doe" />
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-medium text-foreground">Email Address</label>
+                                <Input @bind-Value="_email" type="email" placeholder="john.doe@example.com" />
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-medium text-foreground">Phone Number</label>
+                                <Input @bind-Value="_phone" type="tel" placeholder="+1 (555) 000-0000" />
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Step 2: Address -->
+                    @if (_currentStep == 2)
+                    {
+                        <div class="space-y-4">
+                            <h4 class="text-base font-semibold text-foreground">Address</h4>
+                            <div class="space-y-2">
+                                <label class="text-sm font-medium text-foreground">Street Address</label>
+                                <Input @bind-Value="_street" placeholder="123 Main Street" />
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground">City</label>
+                                    <Input @bind-Value="_city" placeholder="San Francisco" />
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground">State</label>
+                                    <Select @bind-Value="_state">
+                                        <SelectTrigger>
+                                            <span class="@(_state == null ? "text-muted-foreground" : "")">
+                                                @(_state ?? "Select state")
+                                            </span>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem Value="CA">California</SelectItem>
+                                            <SelectItem Value="NY">New York</SelectItem>
+                                            <SelectItem Value="TX">Texas</SelectItem>
+                                            <SelectItem Value="FL">Florida</SelectItem>
+                                            <SelectItem Value="WA">Washington</SelectItem>
+                                            <SelectItem Value="IL">Illinois</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-medium text-foreground">ZIP Code</label>
+                                <Input @bind-Value="_zip" placeholder="94105" Class="max-w-32" />
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Step 3: Preferences -->
+                    @if (_currentStep == 3)
+                    {
+                        <div class="space-y-6">
+                            <h4 class="text-base font-semibold text-foreground">Preferences</h4>
+
+                            <!-- Notifications -->
+                            <div class="space-y-3">
+                                <h5 class="text-sm font-medium text-foreground">Notifications</h5>
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="text-sm text-foreground">Email notifications</p>
+                                            <p class="text-xs text-muted-foreground">Receive updates via email</p>
+                                        </div>
+                                        <Switch @bind-Checked="_emailNotif" />
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="text-sm text-foreground">SMS notifications</p>
+                                            <p class="text-xs text-muted-foreground">Receive updates via text message</p>
+                                        </div>
+                                        <Switch @bind-Checked="_smsNotif" />
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="text-sm text-foreground">Push notifications</p>
+                                            <p class="text-xs text-muted-foreground">Receive browser push notifications</p>
+                                        </div>
+                                        <Switch @bind-Checked="_pushNotif" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator />
+
+                            <!-- Interests -->
+                            <div class="space-y-3">
+                                <h5 class="text-sm font-medium text-foreground">Interests</h5>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    @foreach (var interest in _interests)
+                                    {
+                                        var i = interest;
+                                        <div class="flex items-center gap-2">
+                                            <Checkbox Checked="@i.Selected" CheckedChanged="@(v => i.Selected = v)" />
+                                            <label class="text-sm text-foreground cursor-pointer">@i.Label</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <Separator />
+
+                            <!-- Communication Preference -->
+                            <div class="space-y-3">
+                                <h5 class="text-sm font-medium text-foreground">Preferred Communication</h5>
+                                <RadioGroup @bind-Value="_communication">
+                                    <div class="flex items-center gap-2">
+                                        <RadioGroupItem Value="email" />
+                                        <label class="text-sm text-foreground">Email</label>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <RadioGroupItem Value="phone" />
+                                        <label class="text-sm text-foreground">Phone</label>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <RadioGroupItem Value="sms" />
+                                        <label class="text-sm text-foreground">SMS</label>
+                                    </div>
+                                </RadioGroup>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Step 4: Review -->
+                    @if (_currentStep == 4)
+                    {
+                        <div class="space-y-6">
+                            <h4 class="text-base font-semibold text-foreground">Review Your Information</h4>
+
+                            <Card Class="bg-muted/40">
+                                <CardContent Class="pt-4">
+                                    <div class="space-y-4 text-sm">
+                                        <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                                            <span class="text-muted-foreground">Name</span>
+                                            <span class="text-foreground font-medium">@(_firstName) @(_lastName)</span>
+
+                                            <span class="text-muted-foreground">Email</span>
+                                            <span class="text-foreground">@(_email.Length > 0 ? _email : "—")</span>
+
+                                            <span class="text-muted-foreground">Phone</span>
+                                            <span class="text-foreground">@(_phone.Length > 0 ? _phone : "—")</span>
+                                        </div>
+
+                                        <Separator />
+
+                                        <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                                            <span class="text-muted-foreground">Address</span>
+                                            <span class="text-foreground">@(_street.Length > 0 ? _street : "—")</span>
+
+                                            <span class="text-muted-foreground">City / State</span>
+                                            <span class="text-foreground">@(_city) @(_state)</span>
+
+                                            <span class="text-muted-foreground">ZIP</span>
+                                            <span class="text-foreground">@(_zip.Length > 0 ? _zip : "—")</span>
+                                        </div>
+
+                                        <Separator />
+
+                                        <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                                            <span class="text-muted-foreground">Notifications</span>
+                                            <span class="text-foreground">
+                                                @string.Join(", ", new[] {
+                                                    _emailNotif ? "Email" : null,
+                                                    _smsNotif ? "SMS" : null,
+                                                    _pushNotif ? "Push" : null
+                                                }.Where(x => x != null))
+                                            </span>
+
+                                            <span class="text-muted-foreground">Interests</span>
+                                            <span class="text-foreground">@string.Join(", ", _interests.Where(x => x.Selected).Select(x => x.Label))</span>
+
+                                            <span class="text-muted-foreground">Communication</span>
+                                            <span class="text-foreground capitalize">@(_communication ?? "—")</span>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <div class="flex items-center gap-2">
+                                <Checkbox @bind-Checked="_confirmed" />
+                                <label class="text-sm text-foreground">
+                                    I confirm that the information above is accurate and I agree to the <a href="#" class="text-primary hover:underline">terms and conditions</a>.
+                                </label>
+                            </div>
+                        </div>
+                    }
+                </CardContent>
+
+                <CardFooter>
+                    <div class="flex justify-between w-full">
+                        <Button Variant="Button.ButtonVariant.Outline"
+                                OnClick="@PreviousStep"
+                                Disabled="@(_currentStep == 1)">
+                            <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+                            Previous
+                        </Button>
+
+                        @if (_currentStep < 4)
+                        {
+                            <Button OnClick="@NextStep">
+                                Next
+                                <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                            </Button>
+                        }
+                        else
+                        {
+                            <Button OnClick="@Submit" Disabled="@(!_confirmed)">
+                                <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
+                                Submit
+                            </Button>
+                        }
+                    </div>
+                </CardFooter>
+            </Card>
+
+            @if (_submitted)
+            {
+                <div class="mt-4">
+                    <Alert>
+                        <div class="flex gap-3">
+                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 mt-0.5 text-primary" />
+                            <div>
+                                <h5 class="mb-1 font-medium leading-none tracking-tight">Form submitted!</h5>
+                                <div class="text-sm [&_p]:leading-relaxed">
+                                    <p>Thank you, @_firstName. Your information has been received.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </Alert>
+                </div>
+            }
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private int _currentStep = 1;
+    private bool _submitted = false;
+
+    // Step 1
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _email = "";
+    private string _phone = "";
+
+    // Step 2
+    private string _street = "";
+    private string _city = "";
+    private string? _state;
+    private string _zip = "";
+
+    // Step 3
+    private bool _emailNotif = true;
+    private bool _smsNotif = false;
+    private bool _pushNotif = false;
+    private string? _communication = "email";
+
+    private List<InterestItem> _interests = new()
+    {
+        new("Technology", false),
+        new("Design", false),
+        new("Marketing", false),
+        new("Business", false),
+        new("Science", false),
+    };
+
+    // Step 4
+    private bool _confirmed = false;
+
+    private void NextStep()
+    {
+        if (_currentStep < 4) _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        if (_currentStep > 1) _currentStep--;
+    }
+
+    private void Submit()
+    {
+        if (_confirmed)
+        {
+            _submitted = true;
+        }
+    }
+
+    private class InterestItem
+    {
+        public string Label { get; init; }
+        public bool Selected { get; set; }
+        public InterestItem(string label, bool selected) { Label = label; Selected = selected; }
+    }
+
+    private string _wizardCode = @"<!-- Multi-step form wizard with 4 steps -->
+<Card>
+    <CardHeader>
+        <!-- Step indicator with numbered circles and connecting lines -->
+        <div class=""flex items-center"">
+            @for (int step = 1; step <= 4; step++)
+            {
+                <div class=""flex items-center flex-1"">
+                    <div class=""w-8 h-8 rounded-full flex items-center justify-center
+                        @(_currentStep > step ? ""bg-primary text-primary-foreground"" :
+                          _currentStep == step ? ""bg-primary text-primary-foreground"" :
+                          ""bg-muted text-muted-foreground"")"">
+                        @if (_currentStep > step)
+                        {
+                            <Blazicon Svg=""Lucide.Check"" class=""h-4 w-4"" />
+                        }
+                        else { @step }
+                    </div>
+                    @if (step < 4)
+                    {
+                        <div class=""flex-1 h-px @(_currentStep > step ? ""bg-primary"" : ""bg-border"") mx-2""></div>
+                    }
+                </div>
+            }
+        </div>
+    </CardHeader>
+    <CardContent>
+        @if (_currentStep == 1)
+        {
+            <!-- Step 1: Personal Info (First/Last name, Email, Phone) -->
+        }
+        @if (_currentStep == 2)
+        {
+            <!-- Step 2: Address (Street, City, State Select, Zip) -->
+        }
+        @if (_currentStep == 3)
+        {
+            <!-- Step 3: Notification Switches, Interest Checkboxes, Communication RadioGroup -->
+        }
+        @if (_currentStep == 4)
+        {
+            <!-- Step 4: Summary Card, confirm Checkbox, Submit Button -->
+        }
+    </CardContent>
+    <CardFooter>
+        <div class=""flex justify-between w-full"">
+            <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""PreviousStep""
+                    Disabled=""@(_currentStep == 1)"">
+                <Blazicon Svg=""Lucide.ChevronLeft"" class=""h-4 w-4"" /> Previous
+            </Button>
+            @if (_currentStep < 4)
+            {
+                <Button OnClick=""NextStep"">
+                    Next <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+                </Button>
+            }
+            else
+            {
+                <Button OnClick=""Submit"" Disabled=""@(!_confirmed)"">
+                    <Blazicon Svg=""Lucide.Check"" class=""h-4 w-4"" /> Submit
+                </Button>
+            }
+        </div>
+    </CardFooter>
+</Card>
+
+@code {
+    private int _currentStep = 1;
+    private bool _confirmed = false;
+
+    private void NextStep() { if (_currentStep < 4) _currentStep++; }
+    private void PreviousStep() { if (_currentStep > 1) _currentStep--; }
+    private void Submit() { if (_confirmed) { /* handle submit */ } }
+}";
+}

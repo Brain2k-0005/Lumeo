@@ -1,0 +1,273 @@
+@page "/patterns/mail"
+
+<PageTitle>Mail — Lumeo</PageTitle>
+
+<PageHeader Title="Mail" Description="An inbox layout with a message list, email viewer, and reply composer." />
+
+<ComponentDemo Title="Mail / Inbox" Code="@_mailCode">
+    <div class="w-full border rounded-lg overflow-hidden" style="height: 560px;">
+        <div class="flex h-full">
+
+            <!-- Left Sidebar -->
+            <div class="w-72 border-r flex flex-col bg-card">
+                <!-- Toolbar -->
+                <div class="p-3 border-b space-y-2">
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input placeholder="Search mail..." Class="pl-8 h-8 text-xs" />
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <Button Variant="@(_activeFilter == "all" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                                Size="Button.ButtonSize.Sm"
+                                Class="h-7 text-xs"
+                                @onclick="@(() => _activeFilter = "all")">All</Button>
+                        <Button Variant="@(_activeFilter == "unread" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                                Size="Button.ButtonSize.Sm"
+                                Class="h-7 text-xs"
+                                @onclick="@(() => _activeFilter = "unread")">Unread</Button>
+                        <Button Variant="@(_activeFilter == "starred" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                                Size="Button.ButtonSize.Sm"
+                                Class="h-7 text-xs"
+                                @onclick="@(() => _activeFilter = "starred")">Starred</Button>
+                        <Badge Class="ml-auto">@_mailItems.Count(m => !m.IsRead)</Badge>
+                    </div>
+                </div>
+
+                <!-- Mail List -->
+                <div class="flex-1 overflow-y-auto">
+                    @for (int i = 0; i < _mailItems.Count; i++)
+                    {
+                        var index = i;
+                        var mail = _mailItems[i];
+                        var isActive = _selectedIndex == index;
+                        <div class="@($"flex flex-col gap-1 px-3 py-2.5 border-b cursor-pointer transition-colors {(isActive ? "bg-accent" : "hover:bg-muted/50")}")"
+                             @onclick="@(() => _selectedIndex = index)">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    @if (!mail.IsRead)
+                                    {
+                                        <span class="h-2 w-2 rounded-full bg-primary shrink-0"></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="h-2 w-2 shrink-0"></span>
+                                    }
+                                    <span class="text-sm font-medium text-foreground truncate">@mail.Sender</span>
+                                </div>
+                                <span class="text-xs text-muted-foreground shrink-0">@mail.Time</span>
+                            </div>
+                            <p class="text-xs font-medium text-foreground pl-4 truncate">@mail.Subject</p>
+                            <p class="text-xs text-muted-foreground pl-4 truncate">@mail.Preview</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Main Email View -->
+            <div class="flex-1 flex flex-col bg-card">
+                @{
+                    var selected = _mailItems[_selectedIndex];
+                }
+
+                <!-- Email Header -->
+                <div class="p-4 border-b">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex items-start gap-3">
+                            <Avatar>
+                                <AvatarFallback>@selected.Initials</AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-semibold text-foreground">@selected.Sender</span>
+                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">@selected.SenderEmail</Badge>
+                                </div>
+                                <p class="text-base font-semibold text-foreground mt-1">@selected.Subject</p>
+                                <p class="text-xs text-muted-foreground mt-0.5">@selected.Date</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                <Blazicon Svg="Lucide.ArrowRight" class="h-4 w-4" />
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                <Blazicon Svg="Lucide.Trash" class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Body -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">@selected.Body</p>
+                </div>
+
+                <Separator />
+
+                <!-- Reply Composer -->
+                <div class="p-3 space-y-2">
+                    <p class="text-xs font-medium text-muted-foreground">Reply to @selected.Sender</p>
+                    <Textarea placeholder="Write your reply..." Class="min-h-[80px] text-sm resize-none" @bind-Value="_replyText" />
+                    <div class="flex justify-end gap-2">
+                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                            <Blazicon Svg="Lucide.Copy" class="h-3.5 w-3.5 mr-1.5" />
+                            Forward
+                        </Button>
+                        <Button Size="Button.ButtonSize.Sm">
+                            <Blazicon Svg="Lucide.ArrowRight" class="h-3.5 w-3.5 mr-1.5" />
+                            Send
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</ComponentDemo>
+
+@code {
+    private int _selectedIndex = 0;
+    private string _activeFilter = "all";
+    private string _replyText = "";
+
+    private record MailItem(
+        string Sender,
+        string Initials,
+        string SenderEmail,
+        string Subject,
+        string Preview,
+        string Time,
+        string Date,
+        string Body,
+        bool IsRead
+    );
+
+    private List<MailItem> _mailItems = new()
+    {
+        new("William Kim", "WK", "will@email.com",
+            "Meeting Tomorrow at 10am",
+            "Hi, just a reminder about our sync tomorrow...",
+            "9:34am",
+            "Feb 26, 2026, 9:34 AM",
+            "Hi,\n\nJust a quick reminder about our sync tomorrow at 10am. Please review the attached agenda beforehand so we can make the most of our time.\n\nLet me know if you have any questions.\n\nBest,\nWilliam",
+            false),
+        new("Sofia Davis", "SD", "sofia@email.com",
+            "Q1 Report Ready for Review",
+            "The Q1 financial report is now ready...",
+            "8:15am",
+            "Feb 26, 2026, 8:15 AM",
+            "Hello,\n\nThe Q1 financial report has been finalized and is ready for your review. You can find it in the shared drive under 'Reports > 2026'.\n\nHighlights: Revenue up 18%, costs down 5%.\n\nRegards,\nSofia",
+            false),
+        new("Jackson Lee", "JL", "jackson@email.com",
+            "Re: Project Proposal",
+            "Thanks for sending over the proposal...",
+            "Yesterday",
+            "Feb 25, 2026, 4:22 PM",
+            "Thanks for sending over the proposal. I've reviewed it and I'm really impressed with the scope and timeline you've outlined. I have a few minor comments which I'll add in the document.\n\nLooking forward to getting started!\n\nJackson",
+            true),
+        new("Olivia Martin", "OM", "olivia@email.com",
+            "Design Assets Updated",
+            "I've pushed the latest design tokens...",
+            "Yesterday",
+            "Feb 25, 2026, 2:10 PM",
+            "Hi team,\n\nI've pushed the latest design tokens and component specs to Figma. The dark mode palette has been updated and all spacing values are now consistent.\n\nPlease check and let me know if anything looks off.\n\nOlivia",
+            true),
+        new("Isabella Nguyen", "IN", "isabella@email.com",
+            "Invoice #2024-089 Attached",
+            "Please find attached invoice #2024-089...",
+            "Mon",
+            "Feb 24, 2026, 11:05 AM",
+            "Dear team,\n\nPlease find the attached invoice #2024-089 for the services rendered in February. Payment is due within 30 days.\n\nDon't hesitate to reach out with any questions.\n\nThank you,\nIsabella",
+            true),
+        new("Ethan Brown", "EB", "ethan@email.com",
+            "Team Lunch This Friday?",
+            "Wanted to check if everyone is free...",
+            "Mon",
+            "Feb 24, 2026, 10:00 AM",
+            "Hey everyone,\n\nWanted to check if the team is free this Friday for a lunch outing. I was thinking we could try that new Italian place downtown.\n\nLet me know your availability!\n\nEthan",
+            false),
+        new("Ava Wilson", "AW", "ava@email.com",
+            "Onboarding Docs Review",
+            "I've updated the onboarding guide...",
+            "Sun",
+            "Feb 23, 2026, 3:45 PM",
+            "Hi,\n\nI've updated the onboarding guide with the new process flows and tool links. Could you take a look and confirm everything is accurate before we share it with new hires?\n\nThanks,\nAva",
+            true),
+        new("Liam Johnson", "LJ", "liam@email.com",
+            "Server Downtime Notice",
+            "Scheduled maintenance window this Saturday...",
+            "Sat",
+            "Feb 22, 2026, 9:00 AM",
+            "Dear all,\n\nPlease be advised that we have a scheduled maintenance window this Saturday from 2 AM to 5 AM UTC. The production servers will be unavailable during this period.\n\nPlan accordingly.\n\nLiam — Infrastructure",
+            true),
+        new("Emma Taylor", "ET", "emma@email.com",
+            "Welcome to the Team!",
+            "We are thrilled to have you on board...",
+            "Feb 20",
+            "Feb 20, 2026, 10:30 AM",
+            "Hi,\n\nWe are thrilled to have you on board! Your first day is Monday, Feb 24. Please bring your ID for the security badge setup.\n\nYour manager will be in touch to walk you through your first week.\n\nWelcome!\nEmma — HR",
+            true),
+        new("Noah Martinez", "NM", "noah@email.com",
+            "Bug Report: Login Page",
+            "Found an issue on the login page in Safari...",
+            "Feb 19",
+            "Feb 19, 2026, 5:55 PM",
+            "Hi,\n\nI found a reproducible bug on the login page when using Safari 17. The password field autofill causes the form to submit prematurely.\n\nSteps to reproduce:\n1. Open Safari\n2. Navigate to /login\n3. Allow autofill to populate credentials\n\nAttached screenshots.\n\nNoah",
+            true),
+    };
+
+    private string _mailCode = @"<div class=""flex h-full border rounded-lg overflow-hidden"">
+    <!-- Sidebar -->
+    <div class=""w-72 border-r flex flex-col"">
+        <div class=""p-3 border-b space-y-2"">
+            <Input placeholder=""Search mail..."" />
+            <div class=""flex gap-1"">
+                <Button Size=""Button.ButtonSize.Sm"">All</Button>
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">Unread</Button>
+                <Badge class=""ml-auto"">3</Badge>
+            </div>
+        </div>
+        <div class=""flex-1 overflow-y-auto"">
+            @foreach (var mail in _mailItems)
+            {
+                <div class=""px-3 py-2.5 border-b cursor-pointer hover:bg-muted/50""
+                     @onclick=""() => SelectMail(mail)"">
+                    <div class=""flex items-center justify-between"">
+                        @if (!mail.IsRead) { <span class=""h-2 w-2 rounded-full bg-primary""></span> }
+                        <span class=""text-sm font-medium"">@mail.Sender</span>
+                        <span class=""text-xs text-muted-foreground"">@mail.Time</span>
+                    </div>
+                    <p class=""text-xs font-medium truncate"">@mail.Subject</p>
+                    <p class=""text-xs text-muted-foreground truncate"">@mail.Preview</p>
+                </div>
+            }
+        </div>
+    </div>
+    <!-- Email View -->
+    <div class=""flex-1 flex flex-col"">
+        <div class=""p-4 border-b"">
+            <div class=""flex items-start gap-3"">
+                <Avatar><AvatarFallback>WK</AvatarFallback></Avatar>
+                <div>
+                    <span class=""font-semibold"">@selected.Sender</span>
+                    <Badge Variant=""Badge.BadgeVariant.Outline"">@selected.SenderEmail</Badge>
+                    <p class=""font-semibold mt-1"">@selected.Subject</p>
+                    <p class=""text-xs text-muted-foreground"">@selected.Date</p>
+                </div>
+            </div>
+        </div>
+        <div class=""flex-1 p-4 overflow-y-auto"">
+            <p class=""text-sm leading-relaxed"">@selected.Body</p>
+        </div>
+        <Separator />
+        <div class=""p-3 space-y-2"">
+            <Textarea placeholder=""Write your reply..."" @bind-Value=""_replyText"" />
+            <div class=""flex justify-end gap-2"">
+                <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Forward</Button>
+                <Button Size=""Button.ButtonSize.Sm"">Send</Button>
+            </div>
+        </div>
+    </div>
+</div>";
+}

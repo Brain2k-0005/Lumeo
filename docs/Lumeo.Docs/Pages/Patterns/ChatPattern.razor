@@ -1,0 +1,291 @@
+@page "/patterns/chat"
+
+<PageTitle>Chat — Lumeo Patterns</PageTitle>
+
+<PageHeader Title="Chat" Description="A full messaging interface with contact list, conversation view, and message input." />
+
+<ComponentDemo Title="Chat Messaging Interface" Code="@_code">
+    <div class="w-full border rounded-lg overflow-hidden" style="height: 600px;">
+        <div class="flex h-full">
+
+            <!-- Contact Sidebar -->
+            <div class="w-72 border-r bg-card flex flex-col shrink-0">
+                <div class="p-4 border-b">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-bold text-foreground">Messages</h2>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                            <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
+                        </Button>
+                    </div>
+                    <div class="flex items-center gap-2 rounded-md border px-3 bg-background">
+                        <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground shrink-0" />
+                        <input type="text" placeholder="Search messages..." class="flex h-9 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none" />
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto">
+                    @foreach (var contact in _contacts)
+                    {
+                        <button class="flex items-start gap-3 w-full p-3 hover:bg-accent transition-colors text-left @(contact.Id == _selectedContact?.Id ? "bg-accent" : "")"
+                                @onclick="@(() => SelectContact(contact))">
+                            <div class="relative shrink-0">
+                                <Avatar Size="Avatar.AvatarSize.Sm">
+                                    <AvatarFallback>@contact.Initials</AvatarFallback>
+                                </Avatar>
+                                @if (contact.IsOnline)
+                                {
+                                    <span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card"></span>
+                                }
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm font-medium text-foreground truncate">@contact.Name</span>
+                                    <span class="text-xs text-muted-foreground shrink-0 ml-1">@contact.Timestamp</span>
+                                </div>
+                                <div class="flex items-center justify-between mt-0.5">
+                                    <p class="text-xs text-muted-foreground truncate">@contact.LastMessage</p>
+                                    @if (contact.UnreadCount > 0)
+                                    {
+                                        <Badge Class="ml-1 shrink-0 h-4 min-w-4 text-xs px-1">@contact.UnreadCount</Badge>
+                                    }
+                                </div>
+                            </div>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Main Chat Area -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                @if (_selectedContact is not null)
+                {
+                    <!-- Chat Header -->
+                    <div class="flex items-center gap-3 px-4 py-3 border-b bg-card shrink-0">
+                        <div class="relative">
+                            <Avatar Size="Avatar.AvatarSize.Sm">
+                                <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
+                            </Avatar>
+                            @if (_selectedContact.IsOnline)
+                            {
+                                <span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card"></span>
+                            }
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-foreground">@_selectedContact.Name</p>
+                            <p class="text-xs @(_selectedContact.IsOnline ? "text-green-600" : "text-muted-foreground")">
+                                @(_selectedContact.IsOnline ? "Online" : "Offline")
+                            </p>
+                        </div>
+                        <div class="ml-auto flex items-center gap-1">
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                                <Blazicon Svg="Lucide.Search" class="h-4 w-4" />
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                                <Blazicon Svg="Lucide.Settings" class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <!-- Messages -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3">
+                        @foreach (var msg in _messages)
+                        {
+                            <div class="flex @(msg.IsSent ? "justify-end" : "justify-start")">
+                                @if (!msg.IsSent)
+                                {
+                                    <Avatar Size="Avatar.AvatarSize.Sm" Class="mr-2 mt-1 shrink-0">
+                                        <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
+                                    </Avatar>
+                                }
+                                <div class="max-w-xs lg:max-w-md">
+                                    <div class="rounded-2xl px-4 py-2 @(msg.IsSent ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted text-foreground rounded-tl-sm")">
+                                        <p class="text-sm">@msg.Text</p>
+                                    </div>
+                                    <p class="text-xs text-muted-foreground mt-1 @(msg.IsSent ? "text-right" : "text-left")">@msg.Time</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Message Input -->
+                    <div class="border-t bg-card px-4 py-3 shrink-0">
+                        <div class="flex items-center gap-2">
+                            <Input placeholder="Type a message..." @bind-Value="_newMessage" Class="flex-1" />
+                            <Button @onclick="SendMessage">
+                                <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                                Send
+                            </Button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="text-center">
+                            <Blazicon Svg="Lucide.User" class="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                            <p class="text-sm text-muted-foreground">Select a conversation to start messaging</p>
+                        </div>
+                    </div>
+                }
+            </div>
+
+        </div>
+    </div>
+</ComponentDemo>
+
+@code {
+    private record Contact(int Id, string Name, string Initials, string LastMessage, string Timestamp, bool IsOnline, int UnreadCount);
+    private record Message(string Text, bool IsSent, string Time);
+
+    private List<Contact> _contacts = new()
+    {
+        new(1, "Olivia Martin",   "OM", "See you tomorrow!",          "2m",   true,  2),
+        new(2, "Jackson Lee",     "JL", "Thanks for the update.",      "15m",  false, 0),
+        new(3, "Isabella Nguyen", "IN", "Can we reschedule?",          "1h",   true,  1),
+        new(4, "William Kim",     "WK", "The report looks great.",     "2h",   false, 0),
+        new(5, "Sofia Davis",     "SD", "Let me know when you're free","3h",   true,  0),
+        new(6, "Liam Johnson",    "LJ", "Got it, will do!",            "5h",   false, 3),
+        new(7, "Emma Wilson",     "EW", "Sounds good to me.",          "1d",   true,  0),
+        new(8, "Noah Brown",      "NB", "I'll send the files over.",   "2d",   false, 0),
+    };
+
+    private List<Message> _messages = new()
+    {
+        new("Hey! How are you doing?",                                    false, "9:00 AM"),
+        new("I'm doing great, thanks for asking!",                        true,  "9:02 AM"),
+        new("Did you get a chance to review the project proposal?",       false, "9:05 AM"),
+        new("Yes, I went through it last night. It looks really solid.",  true,  "9:07 AM"),
+        new("I had a few thoughts on the timeline section.",              false, "9:08 AM"),
+        new("Oh? What did you think?",                                    true,  "9:09 AM"),
+        new("I think we might be underestimating the testing phase.",     false, "9:11 AM"),
+        new("That's a fair point. We could add a buffer of a week.",      true,  "9:13 AM"),
+        new("Exactly! Also, the budget estimate seems a bit tight.",      false, "9:14 AM"),
+        new("Agreed. Let's set up a call to discuss the details.",        true,  "9:15 AM"),
+        new("Works for me. How about Thursday at 2pm?",                  false, "9:16 AM"),
+        new("Perfect, I'll send a calendar invite.",                     true,  "9:17 AM"),
+    };
+
+    private Contact? _selectedContact;
+    private string _newMessage = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _selectedContact = _contacts[0];
+    }
+
+    private void SelectContact(Contact contact)
+    {
+        _selectedContact = contact;
+    }
+
+    private void SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_newMessage)) return;
+        _messages.Add(new Message(_newMessage, true, DateTime.Now.ToString("h:mm tt")));
+        _newMessage = string.Empty;
+    }
+
+    private string _code = @"<!-- Chat Interface Layout -->
+<div class=""flex h-full border rounded-lg overflow-hidden"">
+
+    <!-- Contact Sidebar -->
+    <div class=""w-72 border-r bg-card flex flex-col"">
+        <div class=""p-4 border-b"">
+            <div class=""flex items-center justify-between mb-3"">
+                <h2 class=""text-lg font-bold"">Messages</h2>
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
+                    <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" />
+                </Button>
+            </div>
+            <div class=""flex items-center gap-2 rounded-md border px-3"">
+                <Blazicon Svg=""Lucide.Search"" class=""h-4 w-4 text-muted-foreground"" />
+                <input placeholder=""Search messages..."" class=""flex h-9 w-full bg-transparent text-sm outline-none"" />
+            </div>
+        </div>
+        <div class=""flex-1 overflow-y-auto"">
+            @foreach (var contact in _contacts)
+            {
+                <button class=""flex items-start gap-3 w-full p-3 hover:bg-accent"" @onclick=""@(() => SelectContact(contact))"">
+                    <div class=""relative"">
+                        <Avatar Size=""Avatar.AvatarSize.Sm"">
+                            <AvatarFallback>@contact.Initials</AvatarFallback>
+                        </Avatar>
+                        @if (contact.IsOnline)
+                        {
+                            <span class=""absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500""></span>
+                        }
+                    </div>
+                    <div class=""flex-1 min-w-0"">
+                        <div class=""flex items-center justify-between"">
+                            <span class=""text-sm font-medium truncate"">@contact.Name</span>
+                            <span class=""text-xs text-muted-foreground"">@contact.Timestamp</span>
+                        </div>
+                        <div class=""flex items-center justify-between"">
+                            <p class=""text-xs text-muted-foreground truncate"">@contact.LastMessage</p>
+                            @if (contact.UnreadCount > 0)
+                            {
+                                <Badge>@contact.UnreadCount</Badge>
+                            }
+                        </div>
+                    </div>
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class=""flex-1 flex flex-col"">
+        <!-- Header -->
+        <div class=""flex items-center gap-3 px-4 py-3 border-b"">
+            <Avatar Size=""Avatar.AvatarSize.Sm"">
+                <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
+            </Avatar>
+            <div>
+                <p class=""text-sm font-semibold"">@_selectedContact.Name</p>
+                <p class=""text-xs text-muted-foreground"">Online</p>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div class=""flex-1 overflow-y-auto p-4 space-y-3"">
+            @foreach (var msg in _messages)
+            {
+                <div class=""flex @(msg.IsSent ? ""justify-end"" : ""justify-start"")"">
+                    <div class=""rounded-2xl px-4 py-2 max-w-xs @(msg.IsSent ? ""bg-primary text-primary-foreground"" : ""bg-muted text-foreground"")"">
+                        <p class=""text-sm"">@msg.Text</p>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Input -->
+        <div class=""border-t px-4 py-3"">
+            <div class=""flex items-center gap-2"">
+                <Input placeholder=""Type a message..."" @bind-Value=""_newMessage"" Class=""flex-1"" />
+                <Button @onclick=""SendMessage"">
+                    <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" /> Send
+                </Button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private record Contact(int Id, string Name, string Initials, string LastMessage, string Timestamp, bool IsOnline, int UnreadCount);
+    private record Message(string Text, bool IsSent, string Time);
+
+    private List<Contact> _contacts = new() { /* ... 8 contacts ... */ };
+    private List<Message> _messages = new() { /* ... 12 messages ... */ };
+
+    private Contact? _selectedContact;
+    private string _newMessage = string.Empty;
+
+    private void SelectContact(Contact contact) => _selectedContact = contact;
+
+    private void SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_newMessage)) return;
+        _messages.Add(new Message(_newMessage, true, DateTime.Now.ToString(""h:mm tt"")));
+        _newMessage = string.Empty;
+    }
+}";
+}

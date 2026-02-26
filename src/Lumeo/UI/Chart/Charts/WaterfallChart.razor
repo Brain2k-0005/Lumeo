@@ -1,0 +1,86 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<string> Categories { get; set; } = new();
+    [Parameter] public List<double> Values { get; set; } = new();
+    [Parameter] public string IncreaseColor { get; set; } = "var(--color-primary)";
+    [Parameter] public string DecreaseColor { get; set; } = "var(--color-destructive)";
+    [Parameter] public bool ShowLegend { get; set; } = false;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        // Build stacked helper (transparent base) and colored actual bar
+        var baseData = new List<double>();
+        var barData = new List<object>();
+        double running = 0;
+
+        for (int i = 0; i < Values.Count; i++)
+        {
+            double val = Values[i];
+            double baseVal = val >= 0 ? running : running + val;
+            baseData.Add(baseVal);
+            running += val;
+            barData.Add(new
+            {
+                value = Math.Abs(val),
+                itemStyle = new { color = val >= 0 ? IncreaseColor : DecreaseColor }
+            });
+        }
+
+        var transparentSeries = new EChartSeries
+        {
+            Type = "bar",
+            Stack = "waterfall",
+            Data = baseData,
+            ItemStyle = new EChartItemStyle { Color = "transparent", BorderColor = "transparent" }
+        };
+
+        var barSeries = new EChartSeries
+        {
+            Type = "bar",
+            Stack = "waterfall",
+            Data = barData
+        };
+
+        _option = new EChartOption
+        {
+            XAxis = new List<EChartAxis>
+            {
+                new() { Type = "category", Data = Categories }
+            },
+            YAxis = new List<EChartAxis>
+            {
+                new() { Type = "value" }
+            },
+            Series = new List<EChartSeries> { transparentSeries, barSeries },
+            Grid = new EChartGrid
+            {
+                Left = "3%",
+                Right = "4%",
+                Top = "5%",
+                Bottom = "3%",
+                ContainLabel = true
+            }
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip
+            {
+                Trigger = "axis",
+                AxisPointer = new EChartAxisPointer { Type = "shadow" }
+            };
+        }
+    }
+}

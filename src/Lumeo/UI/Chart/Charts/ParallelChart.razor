@@ -1,0 +1,79 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<ParallelDimension> Dimensions { get; set; } = new();
+    [Parameter] public List<ParallelSeriesData> Series { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var parallelAxes = Dimensions.Select((d, i) => new EChartParallelAxis
+        {
+            Dim = i,
+            Name = d.Name,
+            Min = d.Min,
+            Max = d.Max,
+            Type = d.Type ?? "value"
+        }).ToList();
+
+        var seriesList = Series.Select(s => new EChartSeries
+        {
+            Name = s.Name,
+            Type = "parallel",
+            Data = s.Data
+        }).ToList();
+
+        _option = new EChartOption
+        {
+            Parallel = new EChartParallel
+            {
+                Left = "5%",
+                Right = "13%",
+                Top = ShowLegend ? "15%" : "5%",
+                Bottom = "10%"
+            },
+            ParallelAxis = parallelAxes,
+            Series = seriesList,
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
+        }
+
+        if (ShowLegend && Series.Count > 0)
+        {
+            _option.Legend = new EChartLegend
+            {
+                Data = Series.Select(s => s.Name).ToList(),
+                Top = "3%"
+            };
+        }
+    }
+
+    public class ParallelDimension
+    {
+        public string Name { get; set; } = "";
+        public double? Min { get; set; }
+        public double? Max { get; set; }
+        public string? Type { get; set; }
+    }
+
+    public class ParallelSeriesData
+    {
+        public string Name { get; set; } = "";
+        public List<double[]> Data { get; set; } = new();
+    }
+}
