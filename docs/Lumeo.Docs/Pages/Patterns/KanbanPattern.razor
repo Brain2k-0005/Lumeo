@@ -3,7 +3,7 @@
 
 <PageTitle>Kanban Board — Lumeo</PageTitle>
 
-<PageHeader Title="Kanban Board" Description="A project board with task cards organized by status columns." />
+<PageHeader Title="Kanban Board" Description="A project board with task cards organized by status columns. Drag cards between columns to change status." />
 
 <div class="w-full space-y-6">
 
@@ -36,10 +36,17 @@
                     <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
                 </Button>
             </div>
-            <div class="space-y-3">
+            <div class="space-y-3 min-h-[80px] rounded-lg p-1 transition-colors @(_dropTarget == "todo" ? "bg-primary/10 ring-2 ring-primary/30" : "")"
+                 ondragover="event.preventDefault()"
+                 @ondragover="() => _dropTarget = &quot;todo&quot;"
+                 @ondragleave="() => _dropTarget = &quot;&quot;"
+                 @ondrop="() => Drop(_todoCards)">
                 @foreach (var card in _todoCards)
                 {
-                    @RenderTaskCard(card)
+                    <div draggable="true"
+                         @ondragstart="() => DragStart(card, _todoCards)">
+                        @RenderTaskCard(card)
+                    </div>
                 }
             </div>
         </div>
@@ -55,10 +62,17 @@
                     <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
                 </Button>
             </div>
-            <div class="space-y-3">
+            <div class="space-y-3 min-h-[80px] rounded-lg p-1 transition-colors @(_dropTarget == "inprogress" ? "bg-primary/10 ring-2 ring-primary/30" : "")"
+                 ondragover="event.preventDefault()"
+                 @ondragover="() => _dropTarget = &quot;inprogress&quot;"
+                 @ondragleave="() => _dropTarget = &quot;&quot;"
+                 @ondrop="() => Drop(_inProgressCards)">
                 @foreach (var card in _inProgressCards)
                 {
-                    @RenderTaskCard(card)
+                    <div draggable="true"
+                         @ondragstart="() => DragStart(card, _inProgressCards)">
+                        @RenderTaskCard(card)
+                    </div>
                 }
             </div>
         </div>
@@ -74,10 +88,17 @@
                     <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
                 </Button>
             </div>
-            <div class="space-y-3">
+            <div class="space-y-3 min-h-[80px] rounded-lg p-1 transition-colors @(_dropTarget == "done" ? "bg-primary/10 ring-2 ring-primary/30" : "")"
+                 ondragover="event.preventDefault()"
+                 @ondragover="() => _dropTarget = &quot;done&quot;"
+                 @ondragleave="() => _dropTarget = &quot;&quot;"
+                 @ondrop="() => Drop(_doneCards)">
                 @foreach (var card in _doneCards)
                 {
-                    @RenderTaskCard(card)
+                    <div draggable="true"
+                         @ondragstart="() => DragStart(card, _doneCards)">
+                        @RenderTaskCard(card)
+                    </div>
                 }
             </div>
         </div>
@@ -87,6 +108,9 @@
 
 @code {
     private string _search = "";
+    private TaskCard? _draggedCard;
+    private List<TaskCard>? _dragSource;
+    private string _dropTarget = "";
 
     public record TaskCard(string Title, string Description, string Priority, string Assignee, string Initials, string DueDate);
 
@@ -111,6 +135,22 @@
         new("Database schema", "Design and migrate initial database schema for users, projects, and tasks.", "High", "Sofia Davis", "SD", "Mar 1"),
     };
 
+    private void DragStart(TaskCard card, List<TaskCard> source)
+    {
+        _draggedCard = card;
+        _dragSource = source;
+    }
+
+    private void Drop(List<TaskCard> target)
+    {
+        _dropTarget = "";
+        if (_draggedCard is null || _dragSource is null || _dragSource == target) return;
+        _dragSource.Remove(_draggedCard);
+        target.Add(_draggedCard);
+        _draggedCard = null;
+        _dragSource = null;
+    }
+
     private RenderFragment RenderTaskCard(TaskCard card) => __builder =>
     {
         var priorityVariant = card.Priority switch
@@ -120,7 +160,7 @@
             _ => Badge.BadgeVariant.Outline
         };
 
-        <Card Class="cursor-pointer hover:shadow-md transition-shadow">
+        <Card Class="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow">
             <CardContent Class="p-4 space-y-3">
                 <div class="flex items-start justify-between gap-2">
                     <p class="text-sm font-medium text-foreground leading-snug">@card.Title</p>
