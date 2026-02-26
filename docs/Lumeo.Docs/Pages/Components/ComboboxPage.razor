@@ -1,0 +1,83 @@
+@page "/components/combobox"
+
+<PageTitle>Combobox — Lumeo</PageTitle>
+
+<PageHeader Title="Combobox" Description="An autocomplete input with a filterable dropdown list." />
+
+<div class="space-y-8">
+    <ComponentDemo Title="Default" Code="@_defaultCode">
+        <div class="w-full max-w-xs">
+            <Combobox @bind-Value="_selectedFramework" @bind-IsOpen="_isOpen1">
+                <ComboboxInput Placeholder="Search frameworks..." />
+                <ComboboxContent>
+                    @foreach (var fw in _frameworks.Where(f => string.IsNullOrEmpty(_searchText1) || f.Label.Contains(_searchText1, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        <ComboboxItem Value="@fw.Value">@fw.Label</ComboboxItem>
+                    }
+                    <ComboboxEmpty>No framework found.</ComboboxEmpty>
+                </ComboboxContent>
+            </Combobox>
+            @if (!string.IsNullOrEmpty(_selectedFramework))
+            {
+                <p class="text-sm text-muted-foreground mt-2">Selected: @_selectedFramework</p>
+            }
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Label" Code="@_labelCode">
+        <div class="w-full max-w-xs space-y-2">
+            <Label>Language</Label>
+            <Combobox @bind-Value="_selectedLanguage" @bind-IsOpen="_isOpen2">
+                <ComboboxInput Placeholder="Search languages..." />
+                <ComboboxContent>
+                    @foreach (var lang in _languages)
+                    {
+                        <ComboboxItem Value="@lang">@lang</ComboboxItem>
+                    }
+                    <ComboboxEmpty>No language found.</ComboboxEmpty>
+                </ComboboxContent>
+            </Combobox>
+        </div>
+    </ComponentDemo>
+</div>
+
+@code {
+    private string? _selectedFramework;
+    private string? _selectedLanguage;
+    private bool _isOpen1;
+    private bool _isOpen2;
+    private string _searchText1 = "";
+
+    private record FrameworkOption(string Value, string Label);
+
+    private readonly FrameworkOption[] _frameworks =
+    [
+        new("blazor", "Blazor"),
+        new("react", "React"),
+        new("vue", "Vue.js"),
+        new("angular", "Angular"),
+        new("svelte", "Svelte"),
+    ];
+
+    private readonly string[] _languages = ["C#", "TypeScript", "Python", "Rust", "Go"];
+
+    private string _defaultCode = @"<Combobox @bind-Value=""_selected"" @bind-IsOpen=""_isOpen"">
+    <ComboboxInput Placeholder=""Search frameworks..."" />
+    <ComboboxContent>
+        <ComboboxItem Value=""blazor"">Blazor</ComboboxItem>
+        <ComboboxItem Value=""react"">React</ComboboxItem>
+        <ComboboxItem Value=""vue"">Vue.js</ComboboxItem>
+        <ComboboxEmpty>No framework found.</ComboboxEmpty>
+    </ComboboxContent>
+</Combobox>";
+
+    private string _labelCode = @"<Label>Language</Label>
+<Combobox @bind-Value=""_selected"" @bind-IsOpen=""_isOpen"">
+    <ComboboxInput Placeholder=""Search languages..."" />
+    <ComboboxContent>
+        <ComboboxItem Value=""C#"">C#</ComboboxItem>
+        <ComboboxItem Value=""TypeScript"">TypeScript</ComboboxItem>
+        <ComboboxEmpty>No language found.</ComboboxEmpty>
+    </ComboboxContent>
+</Combobox>";
+}

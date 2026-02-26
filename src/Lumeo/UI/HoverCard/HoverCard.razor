@@ -1,0 +1,73 @@
+@namespace Lumeo
+@implements IDisposable
+
+@{
+    var context = new HoverCardContext(
+        IsOpen,
+        EventCallback.Factory.Create(this, RequestOpen),
+        EventCallback.Factory.Create(this, RequestClose));
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div class="relative inline-block" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public int OpenDelay { get; set; } = 200;
+    [Parameter] public int CloseDelay { get; set; } = 300;
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private Timer? _openTimer;
+    private Timer? _closeTimer;
+
+    private void RequestOpen()
+    {
+        _closeTimer?.Dispose();
+        _closeTimer = null;
+
+        if (IsOpen) return;
+
+        _openTimer?.Dispose();
+        _openTimer = new Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                IsOpen = true;
+                await IsOpenChanged.InvokeAsync(true);
+                StateHasChanged();
+            });
+        }, null, OpenDelay, Timeout.Infinite);
+    }
+
+    private void RequestClose()
+    {
+        _openTimer?.Dispose();
+        _openTimer = null;
+
+        if (!IsOpen) return;
+
+        _closeTimer?.Dispose();
+        _closeTimer = new Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                IsOpen = false;
+                await IsOpenChanged.InvokeAsync(false);
+                StateHasChanged();
+            });
+        }, null, CloseDelay, Timeout.Infinite);
+    }
+
+    public void Dispose()
+    {
+        _openTimer?.Dispose();
+        _closeTimer?.Dispose();
+    }
+
+    public record HoverCardContext(bool IsOpen, EventCallback RequestOpen, EventCallback RequestClose);
+}

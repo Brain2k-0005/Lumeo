@@ -1,0 +1,97 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<DonutChartData> Data { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public bool ShowLabels { get; set; } = true;
+    [Parameter] public string InnerRadius { get; set; } = "50%";
+    [Parameter] public string OuterRadius { get; set; } = "70%";
+    [Parameter] public string? CenterLabel { get; set; }
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var pieData = Data.Select(d => new EChartPieData
+        {
+            Name = d.Name,
+            Value = d.Value
+        }).ToList();
+
+        var series = new EChartSeries
+        {
+            Type = "pie",
+            RadiusList = new List<string> { InnerRadius, OuterRadius },
+            CenterList = new List<string> { "50%", "50%" },
+            Data = pieData,
+            Label = new EChartLabel
+            {
+                Show = ShowLabels,
+                Position = "outside",
+                Formatter = "{b}: {d}%"
+            },
+            Emphasis = new EChartEmphasis
+            {
+                Focus = "self",
+                ItemStyle = new EChartItemStyle
+                {
+                    ShadowBlur = 10
+                }
+            }
+        };
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series },
+            Color = Colors
+        };
+
+        if (!string.IsNullOrEmpty(CenterLabel))
+        {
+            _option.Title = new EChartTitle
+            {
+                Text = CenterLabel,
+                Left = "center",
+                Top = "center",
+                TextStyle = new EChartTextStyle
+                {
+                    FontSize = 18,
+                    FontWeight = "bold"
+                }
+            };
+        }
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip
+            {
+                Trigger = "item"
+            };
+        }
+
+        if (ShowLegend)
+        {
+            _option.Legend = new EChartLegend
+            {
+                Orient = "horizontal",
+                Bottom = "0%",
+                Data = Data.Select(d => d.Name).ToList()
+            };
+        }
+    }
+
+    public class DonutChartData
+    {
+        public string Name { get; set; } = "";
+        public double Value { get; set; }
+    }
+}

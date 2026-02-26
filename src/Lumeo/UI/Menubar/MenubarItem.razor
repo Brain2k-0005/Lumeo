@@ -1,0 +1,22 @@
+@namespace Lumeo
+
+<button class="@CssClass" @onclick="HandleClick" disabled="@Disabled" @attributes="AdditionalAttributes">
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public Menubar.MenubarContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 {Class}".Trim();
+
+    private async Task HandleClick()
+    {
+        await OnClick.InvokeAsync();
+        await Context.SetOpenMenuId.InvokeAsync(null);
+    }
+}

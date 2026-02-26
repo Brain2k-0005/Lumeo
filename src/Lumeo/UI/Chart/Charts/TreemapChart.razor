@@ -1,0 +1,61 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<TreemapData> Data { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var treemapData = Data.Select(MapTreemapData).ToList();
+
+        var series = new EChartSeries
+        {
+            Type = "treemap",
+            Data = treemapData
+        };
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip
+            {
+                Trigger = "item"
+            };
+        }
+
+        if (ShowLegend)
+        {
+            _option.Legend = new EChartLegend();
+        }
+    }
+
+    private static EChartTreemapData MapTreemapData(TreemapData d) => new()
+    {
+        Name = d.Name,
+        Value = d.Value,
+        Children = d.Children?.Select(MapTreemapData).ToList()
+    };
+
+    public class TreemapData
+    {
+        public string Name { get; set; } = "";
+        public double Value { get; set; }
+        public List<TreemapData>? Children { get; set; }
+    }
+}

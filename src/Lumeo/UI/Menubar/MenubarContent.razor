@@ -1,0 +1,64 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@if (Context.OpenMenuId == MenuContext.MenuId)
+{
+    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public Menubar.MenubarContext Context { get; set; } = default!;
+    [CascadingParameter] public MenubarMenu.MenubarMenuContext MenuContext { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _contentId = $"menubar-content-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => $"absolute left-0 z-50 mt-1 min-w-[12rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-fade-in {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.OpenMenuId == MenuContext.MenuId && !_registered)
+        {
+            await Interop.RegisterClickOutside(_contentId, null, async () =>
+            {
+                await Context.SetOpenMenuId.InvokeAsync(null);
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
+        }
+        else if (Context.OpenMenuId != MenuContext.MenuId && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await Context.SetOpenMenuId.InvokeAsync(null);
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try
+        {
+            await Interop.UnregisterClickOutside(_contentId);
+        }
+        catch (JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+}

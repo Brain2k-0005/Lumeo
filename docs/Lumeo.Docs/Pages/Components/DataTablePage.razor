@@ -1,0 +1,102 @@
+@page "/components/data-table"
+
+<PageTitle>Data Table — Lumeo</PageTitle>
+
+<PageHeader Title="Data Table" Description="A powerful table component with templated headers, rows, loading states, and empty states." />
+
+<div class="space-y-8">
+    <ComponentDemo Title="Default" Code="@_defaultCode">
+        <DataTable Items="_payments" Context="payment">
+            <HeaderTemplate>
+                <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Email</th>
+                <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Amount</th>
+            </HeaderTemplate>
+            <RowTemplate>
+                <td class="p-4 align-middle">
+                    <Badge Variant="@(payment.Status == "Success" ? Badge.BadgeVariant.Success : payment.Status == "Pending" ? Badge.BadgeVariant.Warning : Badge.BadgeVariant.Destructive)">
+                        @payment.Status
+                    </Badge>
+                </td>
+                <td class="p-4 align-middle text-foreground">@payment.Email</td>
+                <td class="p-4 align-middle text-right text-foreground">$@payment.Amount.ToString("N2")</td>
+            </RowTemplate>
+        </DataTable>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Loading State" Code="@_loadingCode">
+        <DataTable Items="Array.Empty<Payment>()" TItem="Payment" IsLoading="true" SkeletonRows="3">
+            <HeaderTemplate>
+                <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Email</th>
+                <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Amount</th>
+            </HeaderTemplate>
+            <LoadingTemplate>
+                <td class="p-4"><Skeleton Class="h-4 w-16" /></td>
+                <td class="p-4"><Skeleton Class="h-4 w-40" /></td>
+                <td class="p-4"><Skeleton Class="h-4 w-20 ml-auto" /></td>
+            </LoadingTemplate>
+            <RowTemplate>
+                <td></td><td></td><td></td>
+            </RowTemplate>
+        </DataTable>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Empty State" Code="@_emptyCode">
+        <DataTable Items="Array.Empty<Payment>()" TItem="Payment">
+            <HeaderTemplate>
+                <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Email</th>
+                <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Amount</th>
+            </HeaderTemplate>
+            <EmptyTemplate>
+                <EmptyState Title="No payments found" Description="There are no payments to display yet." />
+            </EmptyTemplate>
+            <RowTemplate>
+                <td></td><td></td><td></td>
+            </RowTemplate>
+        </DataTable>
+    </ComponentDemo>
+</div>
+
+@code {
+    private record Payment(string Status, string Email, decimal Amount);
+
+    private readonly Payment[] _payments =
+    [
+        new("Success", "ken@example.com", 316.00m),
+        new("Success", "abe@example.com", 242.00m),
+        new("Pending", "monserrat@example.com", 837.00m),
+        new("Failed", "silas@example.com", 874.00m),
+        new("Success", "carmella@example.com", 721.00m),
+    ];
+
+    private string _defaultCode = @"<DataTable Items=""_payments"" Context=""payment"">
+    <HeaderTemplate>
+        <th class=""h-10 px-4 text-left font-medium text-muted-foreground"">Status</th>
+        <th class=""h-10 px-4 text-left font-medium text-muted-foreground"">Email</th>
+        <th class=""h-10 px-4 text-right font-medium text-muted-foreground"">Amount</th>
+    </HeaderTemplate>
+    <RowTemplate>
+        <td class=""p-4"">@payment.Status</td>
+        <td class=""p-4"">@payment.Email</td>
+        <td class=""p-4 text-right"">$@payment.Amount</td>
+    </RowTemplate>
+</DataTable>";
+
+    private string _loadingCode = @"<DataTable Items=""Array.Empty<Item>()"" TItem=""Item"" IsLoading=""true"" SkeletonRows=""3"">
+    <HeaderTemplate>...</HeaderTemplate>
+    <LoadingTemplate>
+        <td class=""p-4""><Skeleton Class=""h-4 w-16"" /></td>
+    </LoadingTemplate>
+    <RowTemplate>...</RowTemplate>
+</DataTable>";
+
+    private string _emptyCode = @"<DataTable Items=""Array.Empty<Item>()"" TItem=""Item"">
+    <HeaderTemplate>...</HeaderTemplate>
+    <EmptyTemplate>
+        <EmptyState Title=""No data"" Description=""Nothing to display."" />
+    </EmptyTemplate>
+    <RowTemplate>...</RowTemplate>
+</DataTable>";
+}

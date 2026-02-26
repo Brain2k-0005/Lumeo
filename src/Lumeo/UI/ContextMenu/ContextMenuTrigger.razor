@@ -1,0 +1,20 @@
+@namespace Lumeo
+
+<div class="@CssClass" @oncontextmenu="HandleContextMenu" @oncontextmenu:preventDefault @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] public ContextMenu.ContextMenuContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"inline-flex {Class}".Trim();
+
+    private async Task HandleContextMenu(MouseEventArgs e)
+    {
+        await Context.SetPosition.InvokeAsync((e.ClientX, e.ClientY));
+        await Context.SetOpen.InvokeAsync(true);
+    }
+}

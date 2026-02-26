@@ -1,0 +1,61 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Min { get; set; } = 0;
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public bool ShowProgress { get; set; } = true;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var series = new EChartSeries
+        {
+            Type = "gauge",
+            Min = Min,
+            Max = Max,
+            StartAngle = 225,
+            EndAngle = -45,
+            Progress = new EChartSeriesProgress
+            {
+                Show = ShowProgress,
+                Width = 18
+            },
+            Pointer = new EChartPointer { Show = false },
+            Detail = new EChartSeriesDetail
+            {
+                FontSize = 24,
+                Formatter = "{value}%"
+            },
+            Data = new List<Dictionary<string, object>>
+            {
+                new() { ["value"] = Value, ["name"] = Label ?? "" }
+            }
+        };
+
+        if (!string.IsNullOrEmpty(Color))
+        {
+            series.ItemStyle = new EChartItemStyle { Color = Color };
+        }
+
+        if (!string.IsNullOrEmpty(Label))
+        {
+            series.Title = new EChartTitle { Text = Label };
+        }
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series }
+        };
+    }
+}

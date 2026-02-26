@@ -1,0 +1,33 @@
+@namespace Lumeo
+
+@{
+    var itemContext = new NavigationMenuItemContext(_itemId, _triggerId);
+}
+
+<CascadingValue Value="itemContext" IsFixed="true">
+    <li class="@CssClass" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
+        @ChildContent
+    </li>
+</CascadingValue>
+
+@code {
+    [CascadingParameter] public NavigationMenu.NavigationMenuContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _itemId = $"nav-item-{Guid.NewGuid():N}";
+    private readonly string _triggerId = $"nav-trigger-{Guid.NewGuid():N}";
+
+    private string CssClass => $"relative {Class}".Trim();
+
+    private async Task HandleMouseLeave()
+    {
+        if (Context.ActiveItemId == _itemId)
+        {
+            await Context.SetActiveItemId.InvokeAsync(null);
+        }
+    }
+
+    public record NavigationMenuItemContext(string ItemId, string TriggerId);
+}

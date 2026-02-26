@@ -1,0 +1,134 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@{
+    var context = new CarouselContext(
+        _contentId,
+        Orientation,
+        _canScrollPrev,
+        _canScrollNext,
+        EventCallback.Factory.Create(this, ScrollPrev),
+        EventCallback.Factory.Create(this, ScrollNext)
+    );
+}
+
+<div role="region" aria-roledescription="carousel" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public CarouselOrientation Orientation { get; set; } = CarouselOrientation.Horizontal;
+    [Parameter] public bool Loop { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private int _currentIndex;
+    private bool _canScrollPrev;
+    private bool _canScrollNext = true;
+    private readonly string _contentId = $"carousel-{Guid.NewGuid():N}";
+
+    private string CssClass => $"relative {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var orientationStr = Orientation == CarouselOrientation.Horizontal ? "horizontal" : "vertical";
+            await Interop.RegisterCarouselSwipe(
+                _contentId,
+                orientationStr,
+                OnSwipe,
+                OnScroll
+            );
+        }
+    }
+
+    private async Task OnSwipe(string direction)
+    {
+        if (direction == "prev")
+            await ScrollPrev();
+        else if (direction == "next")
+            await ScrollNext();
+    }
+
+    private Task OnScroll(double scrollPos, double maxScroll)
+    {
+        _canScrollPrev = scrollPos > 0;
+        _canScrollNext = scrollPos < maxScroll - 1;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task ScrollPrev()
+    {
+        if (!_canScrollPrev && !Loop) return;
+
+        if (_canScrollPrev)
+        {
+            _currentIndex--;
+        }
+        else if (Loop)
+        {
+            _currentIndex = -1;
+        }
+
+        await Interop.CarouselScrollTo(_contentId, _currentIndex < 0 ? int.MaxValue : _currentIndex);
+        StateHasChanged();
+    }
+
+    private async Task ScrollNext()
+    {
+        if (!_canScrollNext && !Loop) return;
+
+        if (_canScrollNext)
+        {
+            _currentIndex++;
+        }
+        else if (Loop)
+        {
+            _currentIndex = 0;
+        }
+
+        await Interop.CarouselScrollTo(_contentId, _currentIndex);
+        StateHasChanged();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (Orientation == CarouselOrientation.Horizontal)
+        {
+            if (e.Key == "ArrowLeft") await ScrollPrev();
+            else if (e.Key == "ArrowRight") await ScrollNext();
+        }
+        else
+        {
+            if (e.Key == "ArrowUp") await ScrollPrev();
+            else if (e.Key == "ArrowDown") await ScrollNext();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.UnregisterCarouselSwipe(_contentId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public enum CarouselOrientation { Horizontal, Vertical }
+
+    public record CarouselContext(
+        string ContentId,
+        CarouselOrientation Orientation,
+        bool CanScrollPrev,
+        bool CanScrollNext,
+        EventCallback ScrollPrev,
+        EventCallback ScrollNext
+    );
+}

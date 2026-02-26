@@ -1,0 +1,46 @@
+@namespace Lumeo
+
+<button type="button" aria-pressed="@IsPressed.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+    @ChildContent
+</button>
+
+@code {
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [CascadingParameter] public ToggleGroup.ToggleGroupContext Context { get; set; } = default!;
+
+    private bool IsPressed => Context.SelectedItems.Contains(Value);
+
+    private string CssClass => $"{VariantClasses} {SizeClasses} {BaseClasses} {Class}".Trim();
+
+    private const string BaseClasses = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+    private string VariantClasses => (Context.Variant, IsPressed) switch
+    {
+        (ToggleGroup.ToggleGroupVariant.Default, true) => "bg-accent text-accent-foreground",
+        (ToggleGroup.ToggleGroupVariant.Default, false) => "bg-transparent hover:bg-muted hover:text-muted-foreground",
+        (ToggleGroup.ToggleGroupVariant.Outline, true) => "bg-accent text-accent-foreground border border-input",
+        (ToggleGroup.ToggleGroupVariant.Outline, false) => "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
+        _ => ""
+    };
+
+    private string SizeClasses => Context.Size switch
+    {
+        ToggleGroup.ToggleGroupSize.Default => "h-9 px-3",
+        ToggleGroup.ToggleGroupSize.Sm => "h-8 px-2",
+        ToggleGroup.ToggleGroupSize.Lg => "h-10 px-4",
+        _ => ""
+    };
+
+    private async Task Toggle()
+    {
+        if (!Disabled)
+        {
+            await Context.Toggle.InvokeAsync(Value);
+        }
+    }
+}
