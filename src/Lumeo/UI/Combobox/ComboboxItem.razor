@@ -1,0 +1,25 @@
+@namespace Lumeo
+
+<button type="button" class="@CssClass" @onclick="Select" @attributes="AdditionalAttributes">
+    <span class="flex h-3.5 w-3.5 items-center justify-center">
+        @if (IsSelected)
+        {
+            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+        }
+    </span>
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsSelected => Context.Value == Value;
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground {Class}".Trim();
+
+    private async Task Select() => await Context.OnSelect.InvokeAsync(Value);
+}

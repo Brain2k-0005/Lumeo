@@ -1,0 +1,68 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @for (var i = 0; i < Length; i++)
+    {
+        var index = i;
+        <input id="@($"{_baseId}-{index}")"
+               type="text"
+               inputmode="numeric"
+               maxlength="1"
+               autocomplete="one-time-code"
+               class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               value="@GetChar(index)"
+               @oninput="@(e => HandleInput(index, e))"
+               @onkeydown="@(e => HandleKeyDown(index, e))" />
+    }
+</div>
+
+@inject IJSRuntime JS
+
+@code {
+    [Parameter] public int Length { get; set; } = 6;
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public EventCallback<string> OnComplete { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _baseId = $"otp-{Guid.NewGuid():N}";
+
+    private string CssClass => $"flex items-center gap-2 {Class}".Trim();
+
+    private string GetChar(int index) => index < Value.Length ? Value[index].ToString() : "";
+
+    private async Task HandleInput(int index, ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        if (input.Length > 0)
+        {
+            var chars = Value.PadRight(Length).ToCharArray();
+            chars[index] = input[^1];
+            Value = new string(chars).TrimEnd();
+            await ValueChanged.InvokeAsync(Value);
+
+            if (index < Length - 1)
+            {
+                await JS.InvokeVoidAsync("eval", $"document.getElementById('{_baseId}-{index + 1}')?.focus()");
+            }
+
+            if (Value.Length == Length)
+            {
+                await OnComplete.InvokeAsync(Value);
+            }
+        }
+    }
+
+    private async Task HandleKeyDown(int index, KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && GetChar(index) == "" && index > 0)
+        {
+            var chars = Value.PadRight(Length).ToCharArray();
+            chars[index - 1] = ' ';
+            Value = new string(chars).TrimEnd();
+            await ValueChanged.InvokeAsync(Value);
+            await JS.InvokeVoidAsync("eval", $"document.getElementById('{_baseId}-{index - 1}')?.focus()");
+        }
+    }
+}

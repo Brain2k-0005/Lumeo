@@ -1,0 +1,29 @@
+@namespace Lumeo
+
+@{
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue));
+}
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string ActiveValue { get; set; } = "";
+    [Parameter] public EventCallback<string> ActiveValueChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"{Class}".Trim();
+
+    private async Task SetValue(string value)
+    {
+        ActiveValue = value;
+        await ActiveValueChanged.InvokeAsync(value);
+    }
+
+    public record TabsContext(string ActiveValue, EventCallback<string> SetValue);
+}

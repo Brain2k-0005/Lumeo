@@ -1,0 +1,109 @@
+@namespace Lumeo
+@using Lumeo.Services
+@using Blazicons
+@inject ThemeService Theme
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <!-- Color scheme swatches -->
+    <div>
+        <p class="mb-2 text-xs font-medium text-muted-foreground">Color</p>
+        <div class="flex flex-wrap gap-2">
+            @foreach (var scheme in ThemeService.AvailableSchemes)
+            {
+                <button class="@GetSwatchClass(scheme.Id)"
+                        style="background-color: @scheme.PreviewColor;"
+                        title="@scheme.DisplayName"
+                        @onclick="() => SetScheme(scheme.Id)">
+                    @if (scheme.Id == _currentScheme)
+                    {
+                        <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-white" />
+                    }
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Mode toggle -->
+    <div>
+        <p class="mb-2 text-xs font-medium text-muted-foreground">Mode</p>
+        <div class="inline-flex items-center gap-1 rounded-lg border bg-muted p-1">
+            <button class="@GetModeButtonClass(ThemeMode.Light)"
+                    title="Light"
+                    @onclick="() => SetMode(ThemeMode.Light)">
+                <Blazicon Svg="Lucide.Sun" class="h-3.5 w-3.5" />
+            </button>
+            <button class="@GetModeButtonClass(ThemeMode.Dark)"
+                    title="Dark"
+                    @onclick="() => SetMode(ThemeMode.Dark)">
+                <Blazicon Svg="Lucide.Moon" class="h-3.5 w-3.5" />
+            </button>
+            <button class="@GetModeButtonClass(ThemeMode.System)"
+                    title="System"
+                    @onclick="() => SetMode(ThemeMode.System)">
+                <Blazicon Svg="Lucide.Monitor" class="h-3.5 w-3.5" />
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _currentScheme = "orange";
+    private ThemeMode _currentMode = ThemeMode.System;
+
+    private string CssClass => $"space-y-4 {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Theme.InitializeAsync();
+            _currentScheme = Theme.CurrentScheme;
+            _currentMode = Theme.CurrentMode;
+            Theme.OnThemeChanged += OnThemeChanged;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetScheme(string scheme)
+    {
+        _currentScheme = scheme;
+        await Theme.SetSchemeAsync(scheme);
+    }
+
+    private async Task SetMode(ThemeMode mode)
+    {
+        _currentMode = mode;
+        await Theme.SetModeAsync(mode);
+    }
+
+    private void OnThemeChanged()
+    {
+        _currentScheme = Theme.CurrentScheme;
+        _currentMode = Theme.CurrentMode;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetSwatchClass(string schemeId)
+    {
+        var baseClass = "flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all";
+        return schemeId == _currentScheme
+            ? $"{baseClass} border-foreground scale-110"
+            : $"{baseClass} border-transparent hover:scale-105";
+    }
+
+    private string GetModeButtonClass(ThemeMode mode)
+    {
+        var baseClass = "inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-sm transition-colors";
+        return mode == _currentMode
+            ? $"{baseClass} bg-background text-foreground shadow-sm"
+            : $"{baseClass} text-muted-foreground hover:text-foreground";
+    }
+
+    public void Dispose()
+    {
+        Theme.OnThemeChanged -= OnThemeChanged;
+    }
+}

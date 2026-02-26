@@ -1,0 +1,25 @@
+@namespace Lumeo
+
+<div class="flex items-center border-b px-3">
+    <Blazicon Svg="Lucide.Search" class="mr-2 h-4 w-4 shrink-0 opacity-50" />
+    <input type="text"
+           class="@CssClass"
+           placeholder="@Placeholder"
+           value="@Context.SearchText"
+           @oninput="HandleInput"
+           @attributes="AdditionalAttributes" />
+</div>
+
+@code {
+    [CascadingParameter] public Command.CommandContext Context { get; set; } = default!;
+    [Parameter] public string Placeholder { get; set; } = "Type a command or search...";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        await Context.OnSearch.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+}

@@ -1,0 +1,55 @@
+@namespace Lumeo
+@implements IDisposable
+
+<ToastViewport>
+    @foreach (var toast in _toasts)
+    {
+        <Toast Variant="@toast.Variant" @key="@toast.Id">
+            <div class="grid gap-1">
+                <ToastTitle>@toast.Title</ToastTitle>
+                @if (toast.Description is not null)
+                {
+                    <ToastDescription>@toast.Description</ToastDescription>
+                }
+            </div>
+            <ToastClose OnClose="@(() => Remove(toast.Id))" />
+        </Toast>
+    }
+</ToastViewport>
+
+@inject ToastService ToastService
+
+@code {
+    private readonly List<ToastItem> _toasts = new();
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += HandleShow;
+    }
+
+    private async void HandleShow(ToastMessage message)
+    {
+        var item = new ToastItem(Guid.NewGuid().ToString(), message.Title, message.Description, message.Variant);
+        _toasts.Add(item);
+        await InvokeAsync(StateHasChanged);
+
+        _ = Task.Delay(5000).ContinueWith(async _ =>
+        {
+            _toasts.Remove(item);
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void Remove(string id)
+    {
+        _toasts.RemoveAll(t => t.Id == id);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ToastService.OnShow -= HandleShow;
+    }
+
+    private record ToastItem(string Id, string Title, string? Description, ToastVariant Variant);
+}

@@ -1,0 +1,39 @@
+@namespace Lumeo
+
+<div class="relative">
+    <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+    <input type="text"
+           class="@CssClass"
+           placeholder="@Placeholder"
+           value="@Context.SearchText"
+           @oninput="HandleInput"
+           @onfocus="Open"
+           @attributes="AdditionalAttributes" />
+</div>
+
+@code {
+    [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
+    [Parameter] public string Placeholder { get; set; } = "Search...";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"flex h-9 w-full rounded-md border border-input bg-transparent py-2 pl-8 pr-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {Class}".Trim();
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        await Context.OnSearch.InvokeAsync(text);
+        if (!Context.IsOpen)
+        {
+            await Context.SetOpen.InvokeAsync(true);
+        }
+    }
+
+    private async Task Open()
+    {
+        if (!Context.IsOpen)
+        {
+            await Context.SetOpen.InvokeAsync(true);
+        }
+    }
+}

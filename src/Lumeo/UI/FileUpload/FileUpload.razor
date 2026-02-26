@@ -1,0 +1,41 @@
+@namespace Lumeo
+
+<label class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="flex flex-col items-center justify-center gap-2 py-4">
+        <Blazicon Svg="Lucide.Upload" class="h-8 w-8 text-muted-foreground" />
+        <div class="text-center">
+            <p class="text-sm font-medium">
+                @if (Label is not null)
+                {
+                    @Label
+                }
+                else
+                {
+                    <span>Click to upload or drag and drop</span>
+                }
+            </p>
+            @if (Description is not null)
+            {
+                <p class="text-xs text-muted-foreground mt-1">@Description</p>
+            }
+        </div>
+    </div>
+    <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+</label>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public string? Accept { get; set; }
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input bg-background px-6 transition-colors hover:border-primary/50 hover:bg-muted/50 {Class}".Trim();
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        await OnFilesSelected.InvokeAsync(e);
+    }
+}

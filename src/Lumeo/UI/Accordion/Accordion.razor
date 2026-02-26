@@ -1,0 +1,47 @@
+@namespace Lumeo
+
+@{
+    var context = new AccordionContext(Type, _openItems, EventCallback.Factory.Create<string>(this, ToggleItem));
+}
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public AccordionType Type { get; set; } = AccordionType.Single;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly HashSet<string> _openItems = new();
+
+    private string CssClass => $"{Class}".Trim();
+
+    private Task ToggleItem(string value)
+    {
+        if (_openItems.Contains(value))
+        {
+            _openItems.Remove(value);
+        }
+        else
+        {
+            if (Type == AccordionType.Single)
+            {
+                _openItems.Clear();
+            }
+            _openItems.Add(value);
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public enum AccordionType { Single, Multiple }
+
+    public record AccordionContext(AccordionType Type, HashSet<string> OpenItems, EventCallback<string> Toggle)
+    {
+        public bool IsOpen(string value) => OpenItems.Contains(value);
+    }
+}

@@ -1,0 +1,30 @@
+@namespace Lumeo
+
+@{
+    var context = new CommandContext(SearchText, EventCallback.Factory.Create<string>(this, OnSearchChanged));
+}
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string SearchText { get; set; } = "";
+
+    private string CssClass => $"flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground {Class}".Trim();
+
+    private Task OnSearchChanged(string text)
+    {
+        SearchText = text;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public record CommandContext(string SearchText, EventCallback<string> OnSearch);
+}

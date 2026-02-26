@@ -1,0 +1,51 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@if (Context.IsOpen)
+{
+    <div id="@_contentId" class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _contentId = $"combobox-content-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => $"absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-fade-in {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.IsOpen && !_registered)
+        {
+            await Interop.RegisterClickOutside(_contentId, null, async () =>
+            {
+                await Context.SetOpen.InvokeAsync(false);
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
+        }
+        else if (!Context.IsOpen && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+}

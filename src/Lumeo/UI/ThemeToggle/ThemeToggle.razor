@@ -1,0 +1,52 @@
+@namespace Lumeo
+@using Lumeo.Services
+@using Blazicons
+@inject ThemeService Theme
+
+<button class="inline-flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+        @onclick="ToggleTheme"
+        title="Toggle theme"
+        @attributes="AdditionalAttributes">
+    @if (_isDark)
+    {
+        <Blazicon Svg="Lucide.Sun" class="h-4 w-4" />
+    }
+    else
+    {
+        <Blazicon Svg="Lucide.Moon" class="h-4 w-4" />
+    }
+</button>
+
+@code {
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isDark;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Theme.InitializeAsync();
+            _isDark = Theme.IsDark;
+            Theme.OnThemeChanged += OnThemeChanged;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        _isDark = !_isDark;
+        await Theme.ToggleModeAsync();
+    }
+
+    private void OnThemeChanged()
+    {
+        _isDark = Theme.IsDark;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Theme.OnThemeChanged -= OnThemeChanged;
+    }
+}

@@ -1,0 +1,22 @@
+@namespace Lumeo
+
+<button type="button" class="@CssClass" @onclick="Toggle" @attributes="AdditionalAttributes">
+    @ChildContent
+    <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
+</button>
+
+@code {
+    [CascadingParameter] public Accordion.AccordionContext Context { get; set; } = default!;
+    [CascadingParameter] public AccordionItem.AccordionItemContext ItemContext { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsOpen => Context.IsOpen(ItemContext.Value);
+
+    private string CssClass => $"flex flex-1 w-full items-center justify-between py-4 text-sm font-medium transition-all hover:underline {Class}".Trim();
+
+    private string IconClasses => $"h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 {(IsOpen ? "rotate-180" : "")}";
+
+    private async Task Toggle() => await Context.Toggle.InvokeAsync(ItemContext.Value);
+}

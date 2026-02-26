@@ -1,0 +1,19 @@
+@namespace Lumeo
+
+<div id="@_triggerId" class="@CssClass" @onclick="Toggle" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] public DropdownMenu.DropdownMenuContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    internal string TriggerId => _triggerId;
+    private readonly string _triggerId = $"dropdown-trigger-{Guid.NewGuid():N}";
+
+    private string CssClass => $"inline-flex {Class}".Trim();
+
+    private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);
+}

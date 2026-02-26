@@ -1,0 +1,79 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@if (Context.IsOpen)
+{
+    <div class="fixed inset-0 z-50">
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="Close"></div>
+        <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+            @ChildContent
+            <button class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" @onclick="Close">
+                <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                <span class="sr-only">Close</span>
+            </button>
+        </div>
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public SheetSide Side { get; set; } = SheetSide.Right;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _contentId = $"sheet-{Guid.NewGuid():N}";
+    private bool _wasOpen;
+
+    private string CssClass => $"fixed z-50 gap-4 bg-background p-6 shadow-lg {SideClasses} {Class}".Trim();
+
+    private string SideClasses => Side switch
+    {
+        SheetSide.Top => "inset-x-0 top-0 border-b animate-slide-in-from-top",
+        SheetSide.Bottom => "inset-x-0 bottom-0 border-t animate-slide-in-from-bottom",
+        SheetSide.Left => "inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm animate-slide-in-from-left",
+        SheetSide.Right => "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm animate-slide-in-from-right",
+        _ => "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm animate-slide-in-from-right"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.IsOpen && !_wasOpen)
+        {
+            await Interop.LockScroll();
+            await Interop.SetupFocusTrap(_contentId);
+            _wasOpen = true;
+        }
+        else if (!Context.IsOpen && _wasOpen)
+        {
+            await Cleanup();
+            _wasOpen = false;
+        }
+    }
+
+    private async Task Close() => await Context.SetOpen.InvokeAsync(false);
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+    }
+
+    private async Task Cleanup()
+    {
+        try
+        {
+            await Interop.RemoveFocusTrap(_contentId);
+            await Interop.UnlockScroll();
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasOpen) await Cleanup();
+    }
+
+    public enum SheetSide { Top, Right, Bottom, Left }
+}

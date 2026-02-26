@@ -1,0 +1,22 @@
+@namespace Lumeo
+
+<button type="button" role="tab" aria-selected="@IsActive.ToString().ToLower()" class="@CssClass" @onclick="Activate" @attributes="AdditionalAttributes">
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public Tabs.TabsContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsActive => Context.ActiveValue == Value;
+
+    private string CssClass => $"inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 {(IsActive ? "bg-background text-foreground shadow" : "")} {Class}".Trim();
+
+    private async Task Activate()
+    {
+        await Context.SetValue.InvokeAsync(Value);
+    }
+}

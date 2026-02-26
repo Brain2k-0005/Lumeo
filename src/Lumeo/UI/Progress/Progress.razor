@@ -1,0 +1,30 @@
+@namespace Lumeo
+
+<div class="@CssClass" role="progressbar" aria-valuenow="@Value" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
+    <div class="@IndicatorClasses" style="width: @(Percentage)%"></div>
+</div>
+
+@code {
+    [Parameter] public int Value { get; set; }
+    [Parameter] public int Max { get; set; } = 100;
+    [Parameter] public ProgressVariant Variant { get; set; } = ProgressVariant.Default;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private int Percentage => Max > 0 ? Math.Min(100, (int)((double)Value / Max * 100)) : 0;
+
+    private string CssClass => $"relative h-2 w-full overflow-hidden rounded-full bg-primary/20 {Class}".Trim();
+
+    private string IndicatorClasses => $"h-full rounded-full transition-all duration-300 {VariantClasses}";
+
+    private string VariantClasses => Variant switch
+    {
+        ProgressVariant.Default => "bg-primary",
+        ProgressVariant.Success => "bg-success",
+        ProgressVariant.Warning => "bg-warning",
+        ProgressVariant.Destructive => "bg-destructive",
+        _ => "bg-primary"
+    };
+
+    public enum ProgressVariant { Default, Success, Warning, Destructive }
+}

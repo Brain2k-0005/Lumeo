@@ -1,0 +1,63 @@
+@namespace Lumeo
+@typeparam TItem
+
+<div class="relative w-full overflow-auto" @attributes="AdditionalAttributes">
+    <table class="@CssClass">
+        <thead class="[&_tr]:border-b">
+            <tr class="border-b transition-colors hover:bg-muted/50">
+                @HeaderTemplate
+            </tr>
+        </thead>
+        <tbody class="[&_tr:last-child]:border-0">
+            @if (IsLoading)
+            {
+                @for (var i = 0; i < SkeletonRows; i++)
+                {
+                    <tr class="border-b">
+                        @LoadingTemplate
+                    </tr>
+                }
+            }
+            else if (Items is null || !Items.Any())
+            {
+                <tr>
+                    <td colspan="100" class="p-8">
+                        @if (EmptyTemplate is not null)
+                        {
+                            @EmptyTemplate
+                        }
+                        else
+                        {
+                            <div class="flex flex-col items-center justify-center py-8 text-center">
+                                <p class="text-sm text-muted-foreground">No results.</p>
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var item in Items)
+                {
+                    <tr class="border-b transition-colors hover:bg-muted/50">
+                        @RowTemplate!(item)
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public RenderFragment? HeaderTemplate { get; set; }
+    [Parameter] public RenderFragment<TItem>? RowTemplate { get; set; }
+    [Parameter] public RenderFragment? LoadingTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptyTemplate { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public int SkeletonRows { get; set; } = 5;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"w-full caption-bottom text-sm {Class}".Trim();
+}

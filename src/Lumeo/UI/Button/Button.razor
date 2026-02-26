@@ -1,0 +1,41 @@
+@namespace Lumeo
+
+<button class="@CssClass" @attributes="AdditionalAttributes" @onclick="OnClick">
+    @ChildContent
+</button>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public ButtonVariant Variant { get; set; } = ButtonVariant.Default;
+    [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Default;
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"{VariantClasses} {SizeClasses} {BaseClasses} {Class}".Trim();
+
+    private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+    private string VariantClasses => Variant switch
+    {
+        ButtonVariant.Default => "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+        ButtonVariant.Destructive => "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+        ButtonVariant.Outline => "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        ButtonVariant.Secondary => "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        ButtonVariant.Ghost => "hover:bg-accent hover:text-accent-foreground",
+        ButtonVariant.Link => "text-primary underline-offset-4 hover:underline",
+        _ => ""
+    };
+
+    private string SizeClasses => Size switch
+    {
+        ButtonSize.Default => "h-9 px-4 py-2",
+        ButtonSize.Sm => "h-8 rounded-md px-3 text-xs",
+        ButtonSize.Lg => "h-10 rounded-md px-8",
+        ButtonSize.Icon => "h-9 w-9",
+        _ => ""
+    };
+
+    public enum ButtonVariant { Default, Destructive, Outline, Secondary, Ghost, Link }
+    public enum ButtonSize { Default, Sm, Lg, Icon }
+}

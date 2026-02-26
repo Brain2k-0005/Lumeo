@@ -1,0 +1,29 @@
+@namespace Lumeo
+
+@{
+    var context = new SidebarState(IsCollapsed, EventCallback.Factory.Create(this, Toggle));
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool IsCollapsed { get; set; }
+    [Parameter] public EventCallback<bool> IsCollapsedChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"flex min-h-svh {Class}".Trim();
+
+    private async Task Toggle()
+    {
+        IsCollapsed = !IsCollapsed;
+        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+    }
+
+    public record SidebarState(bool IsCollapsed, EventCallback Toggle);
+}

@@ -1,0 +1,67 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@if (Context.IsOpen)
+{
+    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public Popover.PopoverContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public PopoverAlign Align { get; set; } = PopoverAlign.Center;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _contentId = $"popover-content-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => $"absolute z-50 mt-2 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-fade-in {AlignClasses} {Class}".Trim();
+
+    private string AlignClasses => Align switch
+    {
+        PopoverAlign.Start => "left-0",
+        PopoverAlign.Center => "left-1/2 -translate-x-1/2",
+        PopoverAlign.End => "right-0",
+        _ => "left-1/2 -translate-x-1/2"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.IsOpen && !_registered)
+        {
+            await Interop.RegisterClickOutside(_contentId, null, async () =>
+            {
+                await Context.SetOpen.InvokeAsync(false);
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
+        }
+        else if (!Context.IsOpen && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Context.SetOpen.InvokeAsync(false);
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+
+    public enum PopoverAlign { Start, Center, End }
+}

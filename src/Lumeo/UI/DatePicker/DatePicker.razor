@@ -1,0 +1,40 @@
+@namespace Lumeo
+
+<Popover @bind-IsOpen="_isOpen">
+    <PopoverTrigger>
+        <button type="button" class="@CssClass" @attributes="AdditionalAttributes">
+            <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4" />
+            @if (Value.HasValue)
+            {
+                <span>@Value.Value.ToString(Format)</span>
+            }
+            else
+            {
+                <span class="text-muted-foreground">@Placeholder</span>
+            }
+        </button>
+    </PopoverTrigger>
+    <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
+        <Calendar Value="@Value" ValueChanged="HandleDateSelected" />
+    </PopoverContent>
+</Popover>
+
+@code {
+    [Parameter] public DateOnly? Value { get; set; }
+    [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Pick a date";
+    [Parameter] public string Format { get; set; } = "dd.MM.yyyy";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isOpen;
+
+    private string CssClass => $"flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background hover:bg-accent hover:text-accent-foreground {Class}".Trim();
+
+    private async Task HandleDateSelected(DateOnly? date)
+    {
+        Value = date;
+        await ValueChanged.InvokeAsync(date);
+        _isOpen = false;
+    }
+}

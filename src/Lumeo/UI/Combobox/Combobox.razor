@@ -1,0 +1,48 @@
+@namespace Lumeo
+
+@{
+    var context = new ComboboxContext(Value, SearchText, IsOpen,
+        EventCallback.Factory.Create<string>(this, OnValueSelected),
+        EventCallback.Factory.Create<bool>(this, SetOpen),
+        EventCallback.Factory.Create<string>(this, OnSearchChanged));
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div class="relative" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string SearchText { get; set; } = "";
+
+    private async Task OnValueSelected(string value)
+    {
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+        await SetOpen(false);
+    }
+
+    private async Task SetOpen(bool value)
+    {
+        IsOpen = value;
+        if (!value) SearchText = "";
+        await IsOpenChanged.InvokeAsync(value);
+    }
+
+    private Task OnSearchChanged(string text)
+    {
+        SearchText = text;
+        return Task.CompletedTask;
+    }
+
+    public record ComboboxContext(string? Value, string SearchText, bool IsOpen,
+        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch);
+}

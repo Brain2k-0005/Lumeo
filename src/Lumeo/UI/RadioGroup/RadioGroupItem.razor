@@ -1,0 +1,28 @@
+@namespace Lumeo
+
+<button type="button" role="radio" aria-checked="@IsSelected.ToString().ToLower()" class="@CssClass" @onclick="Select" disabled="@Disabled" @attributes="AdditionalAttributes">
+    @if (IsSelected)
+    {
+        <span class="flex h-2 w-2 rounded-full bg-current"></span>
+    }
+</button>
+
+@code {
+    [CascadingParameter] public RadioGroup.RadioGroupContext Context { get; set; } = default!;
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsSelected => Context.Value == Value;
+
+    private string CssClass => $"aspect-square h-4 w-4 rounded-full border border-primary text-primary shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center {Class}".Trim();
+
+    private async Task Select()
+    {
+        if (!Disabled)
+        {
+            await Context.OnSelect.InvokeAsync(Value);
+        }
+    }
+}

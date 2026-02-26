@@ -1,0 +1,85 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="flex items-center justify-between px-1 mb-2">
+        <button type="button" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousMonth">
+            <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+        </button>
+        <span class="text-sm font-medium">@DisplayDate.ToString("MMMM yyyy")</span>
+        <button type="button" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextMonth">
+            <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+        </button>
+    </div>
+
+    <div class="grid grid-cols-7 gap-0 text-center">
+        @foreach (var day in new[] { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" })
+        {
+            <div class="text-xs font-medium text-muted-foreground py-1">@day</div>
+        }
+
+        @foreach (var day in GetCalendarDays())
+        {
+            var d = day;
+            <button type="button" class="@DayClasses(d)" @onclick="() => SelectDay(d)">
+                @d.Day
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public DateOnly? Value { get; set; }
+    [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private DateOnly DisplayDate { get; set; }
+
+    private string CssClass => $"p-3 {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        DisplayDate = Value ?? DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    private List<DateOnly> GetCalendarDays()
+    {
+        var days = new List<DateOnly>();
+        var firstOfMonth = new DateOnly(DisplayDate.Year, DisplayDate.Month, 1);
+        var startOffset = ((int)firstOfMonth.DayOfWeek + 6) % 7;
+        var start = firstOfMonth.AddDays(-startOffset);
+
+        for (var i = 0; i < 42; i++)
+        {
+            days.Add(start.AddDays(i));
+        }
+        return days;
+    }
+
+    private string DayClasses(DateOnly day)
+    {
+        var isCurrentMonth = day.Month == DisplayDate.Month;
+        var isSelected = Value.HasValue && day == Value.Value;
+        var isToday = day == DateOnly.FromDateTime(DateTime.Today);
+
+        var baseClass = "inline-flex items-center justify-center rounded-md h-8 w-8 text-sm transition-colors";
+
+        if (isSelected)
+            return $"{baseClass} bg-primary text-primary-foreground font-medium";
+        if (isToday)
+            return $"{baseClass} bg-accent text-accent-foreground font-medium";
+        if (!isCurrentMonth)
+            return $"{baseClass} text-muted-foreground/50 hover:bg-accent hover:text-accent-foreground";
+        return $"{baseClass} hover:bg-accent hover:text-accent-foreground";
+    }
+
+    private async Task SelectDay(DateOnly day)
+    {
+        DisplayDate = new DateOnly(day.Year, day.Month, 1);
+        Value = day;
+        await ValueChanged.InvokeAsync(day);
+    }
+
+    private void PreviousMonth() => DisplayDate = DisplayDate.AddMonths(-1);
+    private void NextMonth() => DisplayDate = DisplayDate.AddMonths(1);
+}
