@@ -1,0 +1,39 @@
+@namespace Lumeo
+
+<button class="@CssClass" @onclick="HandleClick" @onmouseenter="HandleMouseEnter" @attributes="AdditionalAttributes">
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public Menubar.MenubarContext Context { get; set; } = default!;
+    [CascadingParameter] public MenubarMenu.MenubarMenuContext MenuContext { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsOpen => Context.OpenMenuId == MenuContext.MenuId;
+
+    private string ActiveClasses => IsOpen ? "bg-accent text-accent-foreground" : "";
+
+    private string CssClass => $"flex cursor-default select-none items-center rounded-sm px-3 py-1 text-sm font-medium outline-none {ActiveClasses} {Class}".Trim();
+
+    private async Task HandleClick()
+    {
+        if (IsOpen)
+        {
+            await Context.SetOpenMenuId.InvokeAsync(null);
+        }
+        else
+        {
+            await Context.SetOpenMenuId.InvokeAsync(MenuContext.MenuId);
+        }
+    }
+
+    private async Task HandleMouseEnter()
+    {
+        if (Context.AnyOpen)
+        {
+            await Context.SetOpenMenuId.InvokeAsync(MenuContext.MenuId);
+        }
+    }
+}

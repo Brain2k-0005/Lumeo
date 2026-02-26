@@ -1,0 +1,49 @@
+@namespace Lumeo
+
+<button type="button" aria-pressed="@Pressed.ToString().ToLower()" class="@CssClass" @onclick="HandleToggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+    @ChildContent
+</button>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Pressed { get; set; }
+    [Parameter] public EventCallback<bool> PressedChanged { get; set; }
+    [Parameter] public ToggleVariant Variant { get; set; } = ToggleVariant.Default;
+    [Parameter] public ToggleSize Size { get; set; } = ToggleSize.Default;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"{VariantClasses} {SizeClasses} {BaseClasses} {Class}".Trim();
+
+    private const string BaseClasses = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+    private string VariantClasses => (Variant, Pressed) switch
+    {
+        (ToggleVariant.Default, true) => "bg-accent text-accent-foreground",
+        (ToggleVariant.Default, false) => "bg-transparent hover:bg-muted hover:text-muted-foreground",
+        (ToggleVariant.Outline, true) => "bg-accent text-accent-foreground border border-input",
+        (ToggleVariant.Outline, false) => "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
+        _ => ""
+    };
+
+    private string SizeClasses => Size switch
+    {
+        ToggleSize.Default => "h-9 px-3",
+        ToggleSize.Sm => "h-8 px-2",
+        ToggleSize.Lg => "h-10 px-4",
+        _ => ""
+    };
+
+    private async Task HandleToggle()
+    {
+        if (!Disabled)
+        {
+            Pressed = !Pressed;
+            await PressedChanged.InvokeAsync(Pressed);
+        }
+    }
+
+    public enum ToggleVariant { Default, Outline }
+    public enum ToggleSize { Default, Sm, Lg }
+}

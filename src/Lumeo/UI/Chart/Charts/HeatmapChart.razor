@@ -1,0 +1,82 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<string> XCategories { get; set; } = new();
+    [Parameter] public List<string> YCategories { get; set; } = new();
+    [Parameter] public List<double[]> Data { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var maxValue = Data.Count > 0 ? Data.Max(d => d.Length > 2 ? d[2] : 0) : 10;
+
+        var series = new EChartSeries
+        {
+            Type = "heatmap",
+            Data = Data,
+            Label = new EChartLabel
+            {
+                Show = true
+            },
+            Emphasis = new EChartEmphasis
+            {
+                ItemStyle = new EChartItemStyle
+                {
+                    ShadowBlur = 10
+                }
+            }
+        };
+
+        _option = new EChartOption
+        {
+            XAxis = new List<EChartAxis> { new() { Type = "category", Data = XCategories } },
+            YAxis = new List<EChartAxis> { new() { Type = "category", Data = YCategories } },
+            Series = new List<EChartSeries> { series },
+            Grid = new EChartGrid
+            {
+                Left = "3%",
+                Right = "10%",
+                Top = "5%",
+                Bottom = "3%",
+                ContainLabel = true
+            },
+            VisualMap = new EChartVisualMap
+            {
+                Min = 0,
+                Max = maxValue,
+                Calculable = true,
+                Orient = "vertical",
+                Left = "right",
+                Bottom = "center",
+                InRange = Colors != null && Colors.Count > 0
+                    ? new EChartVisualMapInRange { Color = Colors }
+                    : new EChartVisualMapInRange { Color = new List<string> { "#313695", "#4575b4", "#74add1", "#abd9e9", "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026" } }
+            },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip
+            {
+                Trigger = "item"
+            };
+        }
+
+        if (ShowLegend)
+        {
+            _option.Legend = new EChartLegend();
+        }
+    }
+}

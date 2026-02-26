@@ -1,0 +1,30 @@
+@namespace Lumeo
+
+@{
+    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId));
+}
+
+<nav class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string? _activeItemId;
+
+    private string CssClass => $"relative z-10 flex max-w-max flex-1 items-center justify-center {Class}".Trim();
+
+    private Task SetActiveItemId(string? value)
+    {
+        _activeItemId = value;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId);
+}

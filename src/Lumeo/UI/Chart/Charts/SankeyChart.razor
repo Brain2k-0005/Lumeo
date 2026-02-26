@@ -1,0 +1,75 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<SankeyNode> Nodes { get; set; } = new();
+    [Parameter] public List<SankeyLink> Links { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var nodes = Nodes.Select(n => new EChartSankeyNode { Name = n.Name }).ToList();
+        var links = Links.Select(l => new EChartSankeyLink
+        {
+            Source = l.Source,
+            Target = l.Target,
+            Value = l.Value
+        }).ToList();
+
+        var series = new EChartSeries
+        {
+            Type = "sankey",
+            Nodes = nodes,
+            Links = links,
+            Emphasis = new EChartEmphasis
+            {
+                Focus = "adjacency"
+            },
+            Label = new EChartLabel
+            {
+                Show = true
+            }
+        };
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip
+            {
+                Trigger = "item"
+            };
+        }
+
+        if (ShowLegend)
+        {
+            _option.Legend = new EChartLegend();
+        }
+    }
+
+    public class SankeyNode
+    {
+        public string Name { get; set; } = "";
+    }
+
+    public class SankeyLink
+    {
+        public string Source { get; set; } = "";
+        public string Target { get; set; } = "";
+        public double Value { get; set; }
+    }
+}

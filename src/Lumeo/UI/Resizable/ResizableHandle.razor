@@ -1,0 +1,77 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div id="@_handleId"
+     role="separator"
+     tabindex="0"
+     class="@CssClass"
+     data-panel-group-direction="@DirectionString"
+     @attributes="AdditionalAttributes">
+    @if (WithHandle)
+    {
+        @if (Context.Direction == ResizablePanelGroup.ResizableDirection.Horizontal)
+        {
+            <div class="z-10 flex h-4 w-3 items-center justify-center rounded-sm border bg-border">
+                <Blazicon Svg="Lucide.GripVertical" class="h-2.5 w-2.5" />
+            </div>
+        }
+        else
+        {
+            <div class="z-10 flex h-3 w-4 items-center justify-center rounded-sm border bg-border">
+                <Blazicon Svg="Lucide.GripHorizontal" class="h-2.5 w-2.5" />
+            </div>
+        }
+    }
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public ResizablePanelGroup.ResizablePanelGroupContext Context { get; set; } = default!;
+    [Parameter, EditorRequired] public int PanelIndex { get; set; }
+    [Parameter] public bool WithHandle { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _handleId = $"resizable-handle-{Guid.NewGuid():N}";
+
+    private string DirectionString =>
+        Context.Direction == ResizablePanelGroup.ResizableDirection.Horizontal ? "horizontal" : "vertical";
+
+    private string CssClass =>
+        Context.Direction == ResizablePanelGroup.ResizableDirection.Horizontal
+            ? $"relative flex w-px items-center justify-center bg-border after:absolute after:inset-y-0 after:-left-1 after:-right-1 after:content-[''] hover:bg-primary/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 cursor-col-resize {Class}".Trim()
+            : $"relative flex h-px w-full items-center justify-center bg-border after:absolute after:inset-x-0 after:-top-1 after:-bottom-1 after:content-[''] hover:bg-primary/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 cursor-row-resize {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var direction = Context.Direction == ResizablePanelGroup.ResizableDirection.Horizontal
+                ? "horizontal"
+                : "vertical";
+
+            await Interop.RegisterResizeHandle(
+                _handleId,
+                direction,
+                async (delta) =>
+                {
+                    await Context.OnHandleDrag.InvokeAsync((PanelIndex, delta));
+                },
+                async () =>
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            );
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.UnregisterResizeHandle(_handleId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+}

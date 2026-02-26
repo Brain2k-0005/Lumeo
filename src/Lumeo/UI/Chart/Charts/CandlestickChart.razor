@@ -1,0 +1,57 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public List<string> Categories { get; set; } = new();
+    [Parameter] public List<double[]> Data { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var series = new EChartSeries
+        {
+            Type = "candlestick",
+            Data = Data
+        };
+
+        _option = new EChartOption
+        {
+            XAxis = new List<EChartAxis> { new() { Type = "category", Data = Categories } },
+            YAxis = new List<EChartAxis> { new() { Type = "value" } },
+            Series = new List<EChartSeries> { series },
+            Grid = new EChartGrid
+            {
+                Left = "3%",
+                Right = "4%",
+                Top = ShowLegend ? "14%" : "5%",
+                Bottom = "3%",
+                ContainLabel = true
+            },
+            Color = Colors
+        };
+
+        if (ShowTooltip)
+        {
+            _option.Tooltip = new EChartTooltip
+            {
+                Trigger = "axis",
+                AxisPointer = new EChartAxisPointer { Type = "cross" }
+            };
+        }
+
+        if (ShowLegend)
+        {
+            _option.Legend = new EChartLegend();
+        }
+    }
+}

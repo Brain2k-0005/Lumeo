@@ -1,0 +1,51 @@
+@namespace Lumeo
+
+@{
+    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem));
+}
+
+<div role="group" class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public ToggleGroupType Type { get; set; } = ToggleGroupType.Single;
+    [Parameter] public ToggleGroupVariant Variant { get; set; } = ToggleGroupVariant.Default;
+    [Parameter] public ToggleGroupSize Size { get; set; } = ToggleGroupSize.Default;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly HashSet<string> _selectedItems = new();
+
+    private string CssClass => $"flex items-center gap-1 {Class}".Trim();
+
+    private Task ToggleItem(string value)
+    {
+        if (_selectedItems.Contains(value))
+        {
+            _selectedItems.Remove(value);
+        }
+        else
+        {
+            if (Type == ToggleGroupType.Single)
+            {
+                _selectedItems.Clear();
+            }
+            _selectedItems.Add(value);
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public enum ToggleGroupType { Single, Multiple }
+    public enum ToggleGroupVariant { Default, Outline }
+    public enum ToggleGroupSize { Default, Sm, Lg }
+
+    public record ToggleGroupContext(ToggleGroupType Type, HashSet<string> SelectedItems, ToggleGroupVariant Variant, ToggleGroupSize Size, EventCallback<string> Toggle)
+    {
+        public bool IsSelected(string value) => SelectedItems.Contains(value);
+    }
+}

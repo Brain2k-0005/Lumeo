@@ -1,0 +1,42 @@
+@namespace Lumeo
+
+<button id="@ItemContext.TriggerId"
+        type="button"
+        class="@CssClass"
+        @onclick="HandleClick"
+        @onmouseenter="HandleMouseEnter"
+        @attributes="AdditionalAttributes">
+    @ChildContent
+    <Blazicon Svg="Lucide.ChevronDown" class="@ChevronClasses" />
+</button>
+
+@code {
+    [CascadingParameter] public NavigationMenu.NavigationMenuContext Context { get; set; } = default!;
+    [CascadingParameter] public NavigationMenuItem.NavigationMenuItemContext ItemContext { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsActive => Context.ActiveItemId == ItemContext.ItemId;
+
+    private string CssClass => $"group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50 {(IsActive ? "bg-accent/50" : "")} {Class}".Trim();
+
+    private string ChevronClasses => $"relative top-[1px] ml-1 h-3 w-3 transition-transform duration-200 {(IsActive ? "rotate-180" : "")}";
+
+    private async Task HandleClick()
+    {
+        if (IsActive)
+        {
+            await Context.SetActiveItemId.InvokeAsync(null);
+        }
+        else
+        {
+            await Context.SetActiveItemId.InvokeAsync(ItemContext.ItemId);
+        }
+    }
+
+    private async Task HandleMouseEnter()
+    {
+        await Context.SetActiveItemId.InvokeAsync(ItemContext.ItemId);
+    }
+}

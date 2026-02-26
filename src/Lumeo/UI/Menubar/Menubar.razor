@@ -1,0 +1,29 @@
+@namespace Lumeo
+
+@{
+    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null);
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div role="menubar" class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string? _openMenuId;
+
+    private string CssClass => $"flex h-9 items-center space-x-1 rounded-md border bg-background p-1 shadow-sm {Class}".Trim();
+
+    private void SetOpenMenuId(string? menuId)
+    {
+        _openMenuId = menuId;
+        StateHasChanged();
+    }
+
+    public record MenubarContext(string? OpenMenuId, EventCallback<string?> SetOpenMenuId, bool AnyOpen);
+}

@@ -1,0 +1,99 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div id="@_chartId" class="@CssClass" style="@StyleStr" @attributes="AdditionalAttributes"></div>
+
+@inject IJSRuntime JSRuntime
+
+@code {
+    [Parameter] public EChartOption? Option { get; set; }
+    [Parameter] public string? OptionJson { get; set; }
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? EChartsSource { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public EventCallback<ChartEventArgs> OnClick { get; set; }
+    [Parameter] public EventCallback<ChartEventArgs> OnMouseOver { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Chart>? _selfRef;
+    private bool _initialized;
+    private string? _lastJson;
+
+    private string CssClass => $"{Class}".Trim();
+    private string StyleStr => $"width: {Width}; height: {Height};";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./_content/Lumeo/js/echarts-interop.js");
+
+            var json = GetOptionsJson();
+            _lastJson = json;
+
+            await _module.InvokeVoidAsync("initChart", _chartId, json, Theme, EChartsSource);
+            _initialized = true;
+
+            if (OnClick.HasDelegate || OnMouseOver.HasDelegate)
+            {
+                _selfRef = DotNetObjectReference.Create(this);
+                if (OnClick.HasDelegate)
+                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "click", _selfRef);
+                if (OnMouseOver.HasDelegate)
+                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "mouseover", _selfRef);
+            }
+        }
+        else if (_initialized)
+        {
+            var json = GetOptionsJson();
+            if (json != _lastJson)
+            {
+                _lastJson = json;
+                await _module!.InvokeVoidAsync("updateChart", _chartId, json, false);
+            }
+        }
+    }
+
+    private string GetOptionsJson()
+    {
+        if (!string.IsNullOrEmpty(OptionJson)) return OptionJson;
+        return Option?.ToJson() ?? "{}";
+    }
+
+    [JSInvokable]
+    public async Task OnChartEvent(string eventName, string dataJson)
+    {
+        var args = System.Text.Json.JsonSerializer.Deserialize<ChartEventArgs>(dataJson) ?? new();
+        if (eventName == "click") await OnClick.InvokeAsync(args);
+        else if (eventName == "mouseover") await OnMouseOver.InvokeAsync(args);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null && _initialized)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("disposeChart", _chartId);
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+
+    public class ChartEventArgs
+    {
+        public string Name { get; set; } = "";
+        public string SeriesName { get; set; } = "";
+        public int SeriesIndex { get; set; } = -1;
+        public int DataIndex { get; set; } = -1;
+        public string Value { get; set; } = "";
+        public string ComponentType { get; set; } = "";
+    }
+}

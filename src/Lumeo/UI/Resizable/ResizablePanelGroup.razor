@@ -1,0 +1,111 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@{
+    var context = new ResizablePanelGroupContext(
+        _groupId,
+        Direction,
+        EventCallback.Factory.Create<(int PanelIndex, double Delta)>(this, HandleDrag),
+        GetPanelSize,
+        _sizes.Count
+    );
+}
+
+<div id="@_groupId"
+     class="@CssClass"
+     data-panel-group-direction="@DirectionString"
+     @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public ResizableDirection Direction { get; set; } = ResizableDirection.Horizontal;
+    [Parameter] public double[]? DefaultSizes { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _groupId = $"resizable-group-{Guid.NewGuid():N}";
+    private List<double> _sizes = new();
+    private int _panelCount;
+
+    private string DirectionString => Direction == ResizableDirection.Horizontal ? "horizontal" : "vertical";
+
+    private string CssClass =>
+        Direction == ResizableDirection.Horizontal
+            ? $"flex h-full w-full {Class}".Trim()
+            : $"flex h-full w-full flex-col {Class}".Trim();
+
+    protected override void OnParametersSet()
+    {
+        if (DefaultSizes is { Length: > 0 })
+        {
+            if (_sizes.Count != DefaultSizes.Length)
+            {
+                _sizes = new List<double>(DefaultSizes);
+                _panelCount = DefaultSizes.Length;
+            }
+        }
+    }
+
+    private double GetPanelSize(int index)
+    {
+        if (index >= 0 && index < _sizes.Count)
+        {
+            return _sizes[index];
+        }
+
+        // Fallback: equal distribution
+        var count = _panelCount > 0 ? _panelCount : 1;
+        return 100.0 / count;
+    }
+
+    private async Task HandleDrag((int PanelIndex, double Delta) args)
+    {
+        var (panelIndex, deltaPx) = args;
+
+        if (panelIndex < 0 || panelIndex + 1 >= _sizes.Count)
+            return;
+
+        // Convert delta from pixels to percentage of total group dimension
+        var dimension = Direction == ResizableDirection.Horizontal ? "width" : "height";
+        var totalSize = await Interop.GetElementDimension(_groupId, dimension);
+
+        if (totalSize <= 0)
+            return;
+
+        var deltaPercent = (deltaPx / totalSize) * 100.0;
+
+        var newLeft = _sizes[panelIndex] + deltaPercent;
+        var newRight = _sizes[panelIndex + 1] - deltaPercent;
+
+        // Enforce minimum sizes (clamp at 0 to avoid negatives)
+        const double minSize = 0;
+        if (newLeft < minSize || newRight < minSize)
+            return;
+
+        _sizes[panelIndex] = newLeft;
+        _sizes[panelIndex + 1] = newRight;
+
+        StateHasChanged();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    public enum ResizableDirection { Horizontal, Vertical }
+
+    public record ResizablePanelGroupContext(
+        string GroupId,
+        ResizableDirection Direction,
+        EventCallback<(int PanelIndex, double Delta)> OnHandleDrag,
+        Func<int, double> GetPanelSize,
+        int PanelCount
+    );
+}

@@ -1,0 +1,64 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@if (Context.ActiveItemId == ItemContext.ItemId)
+{
+    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        <div class="@InnerCssClass">
+            @ChildContent
+        </div>
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public NavigationMenu.NavigationMenuContext Context { get; set; } = default!;
+    [CascadingParameter] public NavigationMenuItem.NavigationMenuItemContext ItemContext { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _contentId = $"nav-content-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => $"absolute left-0 top-0 w-full animate-fade-in sm:absolute sm:w-auto {Class}".Trim();
+
+    private string InnerCssClass => "z-50 mt-1.5 min-w-[12rem] overflow-hidden rounded-md border bg-popover p-4 text-popover-foreground shadow-lg";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.ActiveItemId == ItemContext.ItemId && !_registered)
+        {
+            await Interop.RegisterClickOutside(_contentId, ItemContext.TriggerId, async () =>
+            {
+                await Context.SetActiveItemId.InvokeAsync(null);
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
+        }
+        else if (Context.ActiveItemId != ItemContext.ItemId && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await Context.SetActiveItemId.InvokeAsync(null);
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+}

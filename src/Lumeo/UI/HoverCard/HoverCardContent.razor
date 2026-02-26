@@ -1,0 +1,28 @@
+@namespace Lumeo
+
+@if (Context.IsOpen)
+{
+    <div class="@CssClass" @onmouseenter="() => Context.RequestOpen.InvokeAsync()" @onmouseleave="() => Context.RequestClose.InvokeAsync()" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@code {
+    [CascadingParameter] public HoverCard.HoverCardContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public HoverCardAlign Align { get; set; } = HoverCardAlign.Center;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"absolute z-50 mt-2 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-fade-in {AlignClasses} {Class}".Trim();
+
+    private string AlignClasses => Align switch
+    {
+        HoverCardAlign.Start => "left-0",
+        HoverCardAlign.Center => "left-1/2 -translate-x-1/2",
+        HoverCardAlign.End => "right-0",
+        _ => "left-1/2 -translate-x-1/2"
+    };
+
+    public enum HoverCardAlign { Start, Center, End }
+}
