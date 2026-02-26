@@ -1,30 +1,112 @@
-<div class="space-y-4">
-    <div class="flex items-center justify-between">
-        @if (Title != null)
-        {
-            <h3 class="text-sm font-medium text-foreground">@Title</h3>
-        }
-        <button class="text-xs text-muted-foreground hover:text-foreground transition-colors" @onclick="ToggleCode">
-            @(_showCode ? "Hide Code" : "View Code")
-        </button>
+@inject IJSRuntime JS
+
+<div class="rounded-xl border bg-card shadow-sm overflow-hidden">
+    @* Header bar with title and tab switcher *@
+    <div class="flex items-center justify-between border-b px-4 py-3 bg-muted/30">
+        <div class="flex items-center gap-1 rounded-md border bg-background p-0.5">
+            <button class="@TabButtonClass(true)" @onclick="ShowPreview">
+                <Blazicon Svg="Lucide.Eye" class="h-3.5 w-3.5 mr-1.5" />
+                Preview
+            </button>
+            <button class="@TabButtonClass(false)" @onclick="ShowCode">
+                <Blazicon Svg="Lucide.Code" class="h-3.5 w-3.5 mr-1.5" />
+                Code
+            </button>
+        </div>
+        <div class="flex items-center gap-2">
+            @if (Title != null)
+            {
+                <span class="text-xs text-muted-foreground font-medium hidden sm:inline">@Title</span>
+            }
+        </div>
     </div>
 
-    <div class="rounded-lg border bg-card p-6 flex items-center justify-center min-h-[120px]">
-        @ChildContent
-    </div>
-
-    @if (_showCode && Code != null)
+    @* Preview panel *@
+    @if (_activeTab == Tab.Preview)
     {
-        <div class="code-block">@Code</div>
+        <div class="flex items-center justify-center min-h-[160px] p-8 bg-muted/20">
+            <div class="flex items-center justify-center w-full">
+                @ChildContent
+            </div>
+        </div>
     }
+
+    @* Code panel *@
+    @if (_activeTab == Tab.Code && Code != null)
+    {
+        <div class="relative">
+            <div class="code-block !rounded-none !border-0 max-h-[420px] overflow-auto">@Code</div>
+        </div>
+    }
+
+    @* Footer bar *@
+    <div class="flex items-center justify-between border-t px-4 py-2.5 bg-muted/20">
+        @if (Description != null)
+        {
+            <p class="text-xs text-muted-foreground">@Description</p>
+        }
+        else
+        {
+            <span></span>
+        }
+        <div class="flex items-center gap-1.5">
+            @if (Code != null)
+            {
+                <button class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        @onclick="CopyCode"
+                        title="Copy code">
+                    @if (_copied)
+                    {
+                        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-primary" />
+                        <span class="text-primary">Copied</span>
+                    }
+                    else
+                    {
+                        <Blazicon Svg="Lucide.Clipboard" class="h-3.5 w-3.5" />
+                        <span>Copy</span>
+                    }
+                </button>
+                <button class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        @onclick="ToggleCode"
+                        title="View source">
+                    <Blazicon Svg="Lucide.Code" class="h-3.5 w-3.5" />
+                    <span>@(_activeTab == Tab.Code ? "Preview" : "Code")</span>
+                </button>
+            }
+        </div>
+    </div>
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Code { get; set; }
+    [Parameter] public string? Description { get; set; }
 
-    private bool _showCode;
+    private enum Tab { Preview, Code }
+    private Tab _activeTab = Tab.Preview;
+    private bool _copied;
 
-    private void ToggleCode() => _showCode = !_showCode;
+    private string TabButtonClass(bool isPreview)
+    {
+        var active = (isPreview && _activeTab == Tab.Preview) || (!isPreview && _activeTab == Tab.Code);
+        return active
+            ? "inline-flex items-center rounded px-3 py-1 text-xs font-medium bg-background shadow-sm text-foreground transition-all"
+            : "inline-flex items-center rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-all";
+    }
+
+    private void ShowPreview() => _activeTab = Tab.Preview;
+    private void ShowCode() => _activeTab = Tab.Code;
+    private void ToggleCode() => _activeTab = _activeTab == Tab.Code ? Tab.Preview : Tab.Code;
+
+    private async Task CopyCode()
+    {
+        if (Code == null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", Code);
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false;
+        StateHasChanged();
+    }
 }

@@ -3,784 +3,928 @@
 
 <PageTitle>Patterns — Lumeo</PageTitle>
 
-<PageHeader Title="Patterns" Description="Real-world UI patterns built with Lumeo components. Copy and adapt these blocks to jump-start your application." />
+<div class="flex gap-8">
+    <!-- Left sidebar with categories -->
+    <aside class="hidden lg:block w-48 shrink-0 sticky top-[calc(3.5rem+2rem)] self-start">
+        <div class="space-y-1">
+            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Categories</p>
+            @foreach (var cat in _categories)
+            {
+                <button class="@CategoryButtonClass(cat.Name)"
+                        @onclick="() => SelectCategory(cat.Name)">
+                    <span class="flex-1 text-left">@cat.Name</span>
+                    <span class="ml-auto text-xs font-medium rounded-md bg-muted px-1.5 py-0.5">@cat.Count</span>
+                </button>
+            }
+        </div>
+    </aside>
 
-<!-- Full-page pattern blocks -->
-<div class="mb-10">
-    <h2 class="text-xl font-semibold text-foreground mb-1">Full-Page Patterns</h2>
-    <p class="text-sm text-muted-foreground mb-5">Complete application layouts ready to copy and adapt.</p>
+    <!-- Main content area -->
+    <div class="flex-1 min-w-0 space-y-8">
+        <!-- Header -->
+        <div class="space-y-4">
+            <div class="space-y-1">
+                <h1 class="text-3xl font-bold tracking-tight text-foreground">Patterns</h1>
+                <p class="text-muted-foreground">Real-world UI patterns built with Lumeo components.</p>
+            </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        @foreach (var pattern in _patterns)
+            <!-- Search bar -->
+            <div class="relative max-w-md">
+                <Blazicon Svg="Lucide.Search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <input class="flex h-9 w-full rounded-md border bg-background px-3 py-1 text-sm shadow-sm pl-9 pr-4 outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground text-foreground transition-colors"
+                       placeholder="Search patterns..."
+                       value="@_searchQuery"
+                       @oninput="OnSearchInput" />
+                @if (_searchQuery.Length > 0)
+                {
+                    <button class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            @onclick='() => _searchQuery = string.Empty'>
+                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Full-page pattern cards (unfiltered by category, filtered by search) -->
+        @{
+            var filteredPagePatterns = FilterPatterns(_patterns);
+            var filteredCategories = GetFilteredCategories();
+        }
+
+        @if (filteredPagePatterns.Count > 0 && (_selectedCategory == "All" || _selectedCategory == "Full Page"))
         {
-            <a href="@pattern.Href" class="no-underline group">
-                <Card Class="h-full transition-shadow hover:shadow-md group-hover:border-primary/50">
-                    <CardHeader>
-                        <div class="flex items-center gap-3">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                                @((MarkupString)pattern.IconHtml)
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground">Full-Page Patterns</h2>
+                        <p class="text-sm text-muted-foreground">Complete application layouts ready to copy and adapt.</p>
+                    </div>
+                    <span class="text-xs text-muted-foreground">@filteredPagePatterns.Count pattern@(filteredPagePatterns.Count == 1 ? "" : "s")</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    @foreach (var pattern in filteredPagePatterns)
+                    {
+                        <a href="@pattern.Href" class="no-underline group">
+                            <div class="rounded-xl border bg-card p-5 h-full transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5">
+                                <div class="flex items-start gap-3 mb-3">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        @((MarkupString)pattern.IconHtml)
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <h3 class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">@pattern.Title</h3>
+                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="mt-1 text-xs">@pattern.Tag</Badge>
+                                    </div>
+                                </div>
+                                <p class="text-sm text-muted-foreground leading-relaxed mb-4">@pattern.Description</p>
+                                <div class="flex items-center text-xs text-primary font-medium gap-1">
+                                    View pattern
+                                    <Blazicon Svg="Lucide.ArrowRight" class="h-3 w-3" />
+                                </div>
                             </div>
-                            <div>
-                                <h3 class="text-sm font-semibold leading-none text-foreground group-hover:text-primary transition-colors">@pattern.Title</h3>
-                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="mt-1.5 text-xs">@pattern.Tag</Badge>
+                        </a>
+                    }
+                </div>
+            </section>
+        }
+
+        <!-- Quick inline pattern blocks -->
+        @{
+            bool showNoResults = true;
+        }
+
+        @if (ShowBlock("Authentication") && MatchesSearch("Sign In Form", "Authentication", "Credential form with OAuth providers"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Sign In Form" Description="Credential form with OAuth providers and forgot password link." Code="@_authCardCode">
+                <div class="w-full max-w-sm">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-2xl font-semibold leading-none tracking-tight text-center">Sign In</h3>
+                            <p class="text-sm text-muted-foreground text-center">Enter your credentials to access your account</p>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-4">
+                                <div class="space-y-2">
+                                    <Label>Email</Label>
+                                    <Input type="email" placeholder="name@example.com" />
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <Label>Password</Label>
+                                        <a href="#" class="text-sm text-primary hover:underline no-underline">Forgot password?</a>
+                                    </div>
+                                    <Input type="password" placeholder="Enter your password" />
+                                </div>
+                                <Button Class="w-full">Sign In</Button>
+                                <div class="relative my-4">
+                                    <Separator />
+                                    <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">Or continue with</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <Button Variant="Button.ButtonVariant.Outline">Google</Button>
+                                    <Button Variant="Button.ButtonVariant.Outline">GitHub</Button>
+                                </div>
                             </div>
+                        </CardContent>
+                        <CardFooter>
+                            <p class="text-sm text-muted-foreground text-center w-full">
+                                Don't have an account? <a href="#" class="text-primary hover:underline no-underline">Sign up</a>
+                            </p>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Dashboard") && MatchesSearch("Dashboard Stats", "Dashboard", "Four stat cards showing KPIs"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Dashboard Stats" Description="Four stat cards showing KPIs with trend badges." Code="@_dashboardCode">
+                <div class="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card>
+                        <CardHeader><p class="text-sm font-medium text-muted-foreground">Total Revenue</p></CardHeader>
+                        <CardContent>
+                            <div class="text-2xl font-bold text-foreground">$45,231.89</div>
+                            <div class="mt-1"><Badge Variant="Badge.BadgeVariant.Success">+20.1%</Badge><span class="text-xs text-muted-foreground ml-1">from last month</span></div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader><p class="text-sm font-medium text-muted-foreground">Subscriptions</p></CardHeader>
+                        <CardContent>
+                            <div class="text-2xl font-bold text-foreground">+2,350</div>
+                            <div class="mt-1"><Badge Variant="Badge.BadgeVariant.Success">+180.1%</Badge><span class="text-xs text-muted-foreground ml-1">from last month</span></div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader><p class="text-sm font-medium text-muted-foreground">Sales</p></CardHeader>
+                        <CardContent>
+                            <div class="text-2xl font-bold text-foreground">+12,234</div>
+                            <div class="mt-1"><Badge Variant="Badge.BadgeVariant.Success">+19%</Badge><span class="text-xs text-muted-foreground ml-1">from last month</span></div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader><p class="text-sm font-medium text-muted-foreground">Active Now</p></CardHeader>
+                        <CardContent>
+                            <div class="text-2xl font-bold text-foreground">+573</div>
+                            <div class="mt-1"><Badge Variant="Badge.BadgeVariant.Success">+201</Badge><span class="text-xs text-muted-foreground ml-1">since last hour</span></div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Dashboard") && MatchesSearch("Data Table", "Dashboard", "Payments table with row selection"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Data Table" Description="Payments table with row selection, status badges, and row actions." Code="@_tableCode">
+                <div class="w-full">
+                    <Card>
+                        <CardHeader>
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold leading-none tracking-tight">Payments</h3>
+                                    <p class="text-sm text-muted-foreground mt-1">Manage your recent transactions.</p>
+                                </div>
+                                <Input placeholder="Filter..." Class="max-w-xs" />
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead Class="w-12"><Checkbox @bind-Checked="_selectAll" /></TableHead>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead Class="text-right">Amount</TableHead>
+                                        <TableHead Class="w-12"></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell><Checkbox @bind-Checked="_row1" /></TableCell>
+                                        <TableCell Class="font-medium">Olivia Martin</TableCell>
+                                        <TableCell><Badge Variant="Badge.BadgeVariant.Success">Active</Badge></TableCell>
+                                        <TableCell class="text-muted-foreground">olivia.martin@email.com</TableCell>
+                                        <TableCell Class="text-right font-medium">$1,999.00</TableCell>
+                                        <TableCell><Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"><Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" /></Button></TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell><Checkbox @bind-Checked="_row2" /></TableCell>
+                                        <TableCell Class="font-medium">Jackson Lee</TableCell>
+                                        <TableCell><Badge Variant="Badge.BadgeVariant.Success">Active</Badge></TableCell>
+                                        <TableCell class="text-muted-foreground">jackson.lee@email.com</TableCell>
+                                        <TableCell Class="text-right font-medium">$39.00</TableCell>
+                                        <TableCell><Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"><Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" /></Button></TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell><Checkbox @bind-Checked="_row3" /></TableCell>
+                                        <TableCell Class="font-medium">Isabella Nguyen</TableCell>
+                                        <TableCell><Badge Variant="Badge.BadgeVariant.Warning">Pending</Badge></TableCell>
+                                        <TableCell class="text-muted-foreground">isabella.nguyen@email.com</TableCell>
+                                        <TableCell Class="text-right font-medium">$299.00</TableCell>
+                                        <TableCell><Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"><Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" /></Button></TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell><Checkbox @bind-Checked="_row4" /></TableCell>
+                                        <TableCell Class="font-medium">William Kim</TableCell>
+                                        <TableCell><Badge Variant="Badge.BadgeVariant.Secondary">Inactive</Badge></TableCell>
+                                        <TableCell class="text-muted-foreground">will@email.com</TableCell>
+                                        <TableCell Class="text-right font-medium">$99.00</TableCell>
+                                        <TableCell><Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"><Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" /></Button></TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Dashboard") && MatchesSearch("Notification List", "Dashboard", "Unread notifications"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Notification List" Description="Unread/read notifications with timestamps and mark-all action." Code="@_notificationCode">
+                <div class="w-full max-w-lg">
+                    <Card>
+                        <CardHeader>
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold leading-none tracking-tight">Notifications</h3>
+                                    <p class="text-sm text-muted-foreground mt-1">You have 3 unread messages.</p>
+                                </div>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Mark all as read</Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-1">
+                                <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
+                                    <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
+                                    <div class="flex-1 min-w-0"><p class="text-sm font-medium text-foreground">Your call has been confirmed.</p><p class="text-sm text-muted-foreground">2 min ago</p></div>
+                                </div>
+                                <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
+                                    <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
+                                    <div class="flex-1 min-w-0"><p class="text-sm font-medium text-foreground">You have a new message!</p><p class="text-sm text-muted-foreground">1 hour ago</p></div>
+                                </div>
+                                <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
+                                    <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
+                                    <div class="flex-1 min-w-0"><p class="text-sm font-medium text-foreground">Your subscription is expiring soon!</p><p class="text-sm text-muted-foreground">3 hours ago</p></div>
+                                </div>
+                                <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
+                                    <span class="mt-1.5 h-2 w-2 rounded-full bg-muted shrink-0"></span>
+                                    <div class="flex-1 min-w-0"><p class="text-sm text-muted-foreground">Your report is ready to download.</p><p class="text-sm text-muted-foreground">2 days ago</p></div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Dashboard") && MatchesSearch("Activity Feed", "Dashboard", "Chronological activity feed"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Activity Feed" Description="Chronological activity feed with avatar, action, and timestamp." Code="@_activityCode">
+                <div class="w-full max-w-md">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Recent Activity</h3>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-4">
+                                @foreach (var item in _activityItems)
+                                {
+                                    <div class="flex items-start gap-3">
+                                        <Avatar Class="h-8 w-8 shrink-0">
+                                            <AvatarFallback>@item.Initials</AvatarFallback>
+                                        </Avatar>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm text-foreground"><span class="font-medium">@item.Name</span> @item.Action</p>
+                                            <p class="text-xs text-muted-foreground">@item.Time</p>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Forms") && MatchesSearch("Profile Settings", "Forms", "Settings form"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Profile Settings" Description="Settings form with avatar upload, profile fields, and notification toggles." Code="@_settingsCode">
+                <div class="w-full max-w-2xl">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Profile Settings</h3>
+                            <p class="text-sm text-muted-foreground">Manage your account settings and preferences.</p>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-6">
+                                <div class="flex items-center gap-4">
+                                    <div class="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
+                                        <Blazicon Svg="Lucide.User" class="h-8 w-8 text-muted-foreground" />
+                                    </div>
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Change Avatar</Button>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div class="space-y-2"><Label>Name</Label><Input placeholder="Your name" Value="Olivia Martin" /></div>
+                                    <div class="space-y-2"><Label>Email</Label><Input type="email" placeholder="Your email" Value="olivia@example.com" /></div>
+                                </div>
+                                <div class="space-y-2"><Label>Bio</Label><Textarea placeholder="Tell us about yourself..." /></div>
+                                <Separator />
+                                <div class="space-y-4">
+                                    <h4 class="text-sm font-medium text-foreground">Notifications</h4>
+                                    <div class="flex items-center justify-between">
+                                        <div><p class="text-sm font-medium text-foreground">Email notifications</p><p class="text-sm text-muted-foreground">Receive emails about account activity.</p></div>
+                                        <Switch @bind-Checked="_emailNotif" />
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div><p class="text-sm font-medium text-foreground">Push notifications</p><p class="text-sm text-muted-foreground">Receive push notifications on your device.</p></div>
+                                        <Switch @bind-Checked="_pushNotif" />
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <div class="flex justify-end gap-2 w-full">
+                                <Button Variant="Button.ButtonVariant.Outline">Cancel</Button>
+                                <Button>Save Changes</Button>
+                            </div>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Forms") && MatchesSearch("File Upload", "Forms", "Drag-and-drop upload zone"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="File Upload" Description="Drag-and-drop upload zone with progress bar for active uploads." Code="@_uploadCode">
+                <div class="w-full max-w-lg">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Upload File</h3>
+                            <p class="text-sm text-muted-foreground">Drag and drop your file here or click to browse.</p>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-4">
+                                <div class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 text-center hover:border-muted-foreground/50 transition-colors cursor-pointer">
+                                    <Blazicon Svg="Lucide.Upload" class="h-10 w-10 text-muted-foreground mb-4" />
+                                    <p class="text-sm font-medium text-foreground">Click to upload or drag and drop</p>
+                                    <p class="text-xs text-muted-foreground mt-1">SVG, PNG, JPG or GIF (max. 10MB)</p>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span class="text-foreground font-medium">design-system.fig</span>
+                                        <span class="text-muted-foreground">65%</span>
+                                    </div>
+                                    <Progress Value="65" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Forms") && MatchesSearch("Contact Form", "Forms", "Full contact form"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Contact Form" Description="Full contact form with name, email, subject, message, and submit." Code="@_contactCode">
+                <div class="w-full max-w-lg">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Contact Us</h3>
+                            <p class="text-sm text-muted-foreground">Send us a message and we'll get back to you within 24 hours.</p>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="space-y-2"><Label>First Name</Label><Input placeholder="John" /></div>
+                                    <div class="space-y-2"><Label>Last Name</Label><Input placeholder="Doe" /></div>
+                                </div>
+                                <div class="space-y-2"><Label>Email</Label><Input type="email" placeholder="john@example.com" /></div>
+                                <div class="space-y-2"><Label>Subject</Label><Input placeholder="How can we help?" /></div>
+                                <div class="space-y-2"><Label>Message</Label><Textarea placeholder="Tell us more about your inquiry..." Class="min-h-[120px]" /></div>
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button Class="w-full">
+                                <Blazicon Svg="Lucide.Send" class="h-4 w-4 mr-2" />
+                                Send Message
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Marketing") && MatchesSearch("Pricing Cards", "Marketing", "Three-tier pricing table"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Pricing Cards" Description="Three-tier pricing table with feature comparison and CTA buttons." Code="@_pricingCode">
+                <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Free</h3>
+                            <p class="text-sm text-muted-foreground">For individuals getting started.</p>
+                            <div class="mt-4"><span class="text-3xl font-bold text-foreground">$0</span><span class="text-muted-foreground">/month</span></div>
+                        </CardHeader>
+                        <CardContent>
+                            <ul class="space-y-3 text-sm">
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Up to 3 projects</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Basic analytics</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Community support</span></li>
+                            </ul>
+                        </CardContent>
+                        <CardFooter><Button Variant="Button.ButtonVariant.Outline" Class="w-full">Get Started</Button></CardFooter>
+                    </Card>
+                    <Card Class="border-primary">
+                        <CardHeader>
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-lg font-semibold leading-none tracking-tight">Pro</h3>
+                                <Badge>Popular</Badge>
+                            </div>
+                            <p class="text-sm text-muted-foreground">For growing teams.</p>
+                            <div class="mt-4"><span class="text-3xl font-bold text-foreground">$15</span><span class="text-muted-foreground">/month</span></div>
+                        </CardHeader>
+                        <CardContent>
+                            <ul class="space-y-3 text-sm">
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Unlimited projects</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Advanced analytics</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Priority support</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Custom integrations</span></li>
+                            </ul>
+                        </CardContent>
+                        <CardFooter><Button Class="w-full">Subscribe</Button></CardFooter>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-lg font-semibold leading-none tracking-tight">Enterprise</h3>
+                            <p class="text-sm text-muted-foreground">For large-scale organizations.</p>
+                            <div class="mt-4"><span class="text-3xl font-bold text-foreground">$49</span><span class="text-muted-foreground">/month</span></div>
+                        </CardHeader>
+                        <CardContent>
+                            <ul class="space-y-3 text-sm">
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Everything in Pro</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">Dedicated account manager</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">SLA guarantees</span></li>
+                                <li class="flex items-center gap-2"><Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" /><span class="text-foreground">SSO and SAML</span></li>
+                            </ul>
+                        </CardContent>
+                        <CardFooter><Button Variant="Button.ButtonVariant.Outline" Class="w-full">Contact Sales</Button></CardFooter>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Marketing") && MatchesSearch("Feature Grid", "Marketing", "Feature highlights with icons"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Feature Grid" Description="Three-column feature highlights with icons for marketing pages." Code="@_featureGridCode">
+                <div class="w-full">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="rounded-xl border bg-card p-6 space-y-3">
+                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Blazicon Svg="Lucide.Zap" class="h-5 w-5" />
+                            </div>
+                            <h3 class="font-semibold text-foreground">Lightning Fast</h3>
+                            <p class="text-sm text-muted-foreground leading-relaxed">Optimized for performance with minimal bundle size and fast load times.</p>
                         </div>
-                    </CardHeader>
-                    <CardContent>
-                        <p class="text-sm text-muted-foreground leading-relaxed">@pattern.Description</p>
-                    </CardContent>
-                    <CardFooter>
-                        <span class="text-xs text-primary flex items-center gap-1">
-                            View pattern
-                            <Blazicon Svg="Lucide.ArrowRight" class="h-3 w-3" />
-                        </span>
-                    </CardFooter>
-                </Card>
-            </a>
+                        <div class="rounded-xl border bg-card p-6 space-y-3">
+                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Blazicon Svg="Lucide.Shield" class="h-5 w-5" />
+                            </div>
+                            <h3 class="font-semibold text-foreground">Secure by Default</h3>
+                            <p class="text-sm text-muted-foreground leading-relaxed">Built with security best practices and OWASP guidelines in mind.</p>
+                        </div>
+                        <div class="rounded-xl border bg-card p-6 space-y-3">
+                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Blazicon Svg="Lucide.Globe" class="h-5 w-5" />
+                            </div>
+                            <h3 class="font-semibold text-foreground">Global Scale</h3>
+                            <p class="text-sm text-muted-foreground leading-relaxed">Deploy to any region with multi-tenant architecture and CDN support.</p>
+                        </div>
+                    </div>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (ShowBlock("Authentication") && MatchesSearch("Sign Up Form", "Authentication", "Registration form"))
+        {
+            @{ showNoResults = false; }
+            <ComponentDemo Title="Sign Up Form" Description="Registration form with full name, email, password, and terms checkbox." Code="@_signupCode">
+                <div class="w-full max-w-sm">
+                    <Card>
+                        <CardHeader>
+                            <h3 class="text-2xl font-semibold leading-none tracking-tight text-center">Create Account</h3>
+                            <p class="text-sm text-muted-foreground text-center">Enter your details to get started</p>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="space-y-4">
+                                <div class="space-y-2"><Label>Full Name</Label><Input placeholder="John Doe" /></div>
+                                <div class="space-y-2"><Label>Email</Label><Input type="email" placeholder="name@example.com" /></div>
+                                <div class="space-y-2"><Label>Password</Label><Input type="password" placeholder="Create a password" /></div>
+                                <div class="flex items-center gap-2">
+                                    <Checkbox @bind-Checked="_termsAccepted" />
+                                    <span class="text-sm text-muted-foreground">I agree to the <a href="#" class="text-primary hover:underline no-underline">Terms of Service</a></span>
+                                </div>
+                                <Button Class="w-full">Create Account</Button>
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <p class="text-sm text-muted-foreground text-center w-full">
+                                Already have an account? <a href="#" class="text-primary hover:underline no-underline">Sign in</a>
+                            </p>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </ComponentDemo>
+        }
+
+        @if (showNoResults && (_searchQuery.Length > 0 || _selectedCategory != "All"))
+        {
+            <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                    <Blazicon Svg="Lucide.SearchX" class="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p class="font-medium text-foreground">No patterns found</p>
+                <p class="text-sm text-muted-foreground">Try a different search term or category.</p>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="ResetFilters">
+                    Clear filters
+                </Button>
+            </div>
         }
     </div>
-</div>
-
-<Separator Class="mb-10" />
-
-<!-- Quick inline pattern blocks -->
-<div class="space-y-2 mb-6">
-    <h2 class="text-xl font-semibold text-foreground">Quick Patterns</h2>
-    <p class="text-sm text-muted-foreground">Smaller self-contained patterns to drop into any page.</p>
-</div>
-
-<div class="space-y-12">
-
-    <!-- 1. Authentication Card -->
-    <ComponentDemo Title="Authentication Card" Code="@_authCardCode">
-        <div class="w-full max-w-sm">
-            <Card>
-                <CardHeader>
-                    <h3 class="text-2xl font-semibold leading-none tracking-tight text-center">Sign In</h3>
-                    <p class="text-sm text-muted-foreground text-center">Enter your credentials to access your account</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="space-y-4">
-                        <div class="space-y-2">
-                            <Label>Email</Label>
-                            <Input type="email" placeholder="name@example.com" />
-                        </div>
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <Label>Password</Label>
-                                <a href="#" class="text-sm text-primary hover:underline no-underline">Forgot password?</a>
-                            </div>
-                            <Input type="password" placeholder="Enter your password" />
-                        </div>
-                        <Button Class="w-full">Sign In</Button>
-                        <div class="relative my-4">
-                            <Separator />
-                            <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">Or continue with</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <Button Variant="Button.ButtonVariant.Outline">
-                                <svg class="h-4 w-4 mr-2" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                                Google
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Outline">
-                                <svg class="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-                                GitHub
-                            </Button>
-                        </div>
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    <p class="text-sm text-muted-foreground text-center w-full">
-                        Don't have an account? <a href="#" class="text-primary hover:underline no-underline">Sign up</a>
-                    </p>
-                </CardFooter>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 2. Dashboard Stats -->
-    <ComponentDemo Title="Dashboard Stats" Code="@_dashboardCode">
-        <div class="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-                <CardHeader>
-                    <p class="text-sm font-medium text-muted-foreground">Total Revenue</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="text-2xl font-bold text-foreground">$45,231.89</div>
-                    <div class="mt-1">
-                        <Badge Variant="Badge.BadgeVariant.Success">+20.1%</Badge>
-                        <span class="text-xs text-muted-foreground ml-1">from last month</span>
-                    </div>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <p class="text-sm font-medium text-muted-foreground">Subscriptions</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="text-2xl font-bold text-foreground">+2,350</div>
-                    <div class="mt-1">
-                        <Badge Variant="Badge.BadgeVariant.Success">+180.1%</Badge>
-                        <span class="text-xs text-muted-foreground ml-1">from last month</span>
-                    </div>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <p class="text-sm font-medium text-muted-foreground">Sales</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="text-2xl font-bold text-foreground">+12,234</div>
-                    <div class="mt-1">
-                        <Badge Variant="Badge.BadgeVariant.Success">+19%</Badge>
-                        <span class="text-xs text-muted-foreground ml-1">from last month</span>
-                    </div>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <p class="text-sm font-medium text-muted-foreground">Active Now</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="text-2xl font-bold text-foreground">+573</div>
-                    <div class="mt-1">
-                        <Badge Variant="Badge.BadgeVariant.Success">+201</Badge>
-                        <span class="text-xs text-muted-foreground ml-1">since last hour</span>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 3. Settings Form -->
-    <ComponentDemo Title="Settings Form" Code="@_settingsCode">
-        <div class="w-full max-w-2xl">
-            <Card>
-                <CardHeader>
-                    <h3 class="text-lg font-semibold leading-none tracking-tight">Profile Settings</h3>
-                    <p class="text-sm text-muted-foreground">Manage your account settings and preferences.</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="space-y-6">
-                        <div class="flex items-center gap-4">
-                            <div class="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
-                                <Blazicon Svg="Lucide.User" class="h-8 w-8 text-muted-foreground" />
-                            </div>
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Change Avatar</Button>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div class="space-y-2">
-                                <Label>Name</Label>
-                                <Input placeholder="Your name" Value="Olivia Martin" />
-                            </div>
-                            <div class="space-y-2">
-                                <Label>Email</Label>
-                                <Input type="email" placeholder="Your email" Value="olivia@example.com" />
-                            </div>
-                        </div>
-                        <div class="space-y-2">
-                            <Label>Bio</Label>
-                            <Textarea placeholder="Tell us about yourself..." />
-                        </div>
-                        <Separator />
-                        <div class="space-y-4">
-                            <h4 class="text-sm font-medium text-foreground">Notifications</h4>
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-foreground">Email notifications</p>
-                                    <p class="text-sm text-muted-foreground">Receive emails about account activity.</p>
-                                </div>
-                                <Switch @bind-Checked="_emailNotif" />
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-foreground">Push notifications</p>
-                                    <p class="text-sm text-muted-foreground">Receive push notifications on your device.</p>
-                                </div>
-                                <Switch @bind-Checked="_pushNotif" />
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-foreground">Marketing emails</p>
-                                    <p class="text-sm text-muted-foreground">Receive emails about new products and features.</p>
-                                </div>
-                                <Switch @bind-Checked="_marketingNotif" />
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    <div class="flex justify-end gap-2 w-full">
-                        <Button Variant="Button.ButtonVariant.Outline">Cancel</Button>
-                        <Button>Save Changes</Button>
-                    </div>
-                </CardFooter>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 4. Data Table with Actions -->
-    <ComponentDemo Title="Data Table with Actions" Code="@_tableCode">
-        <div class="w-full">
-            <Card>
-                <CardHeader>
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-lg font-semibold leading-none tracking-tight">Payments</h3>
-                            <p class="text-sm text-muted-foreground mt-1">Manage your recent transactions.</p>
-                        </div>
-                        <Input placeholder="Filter emails..." Class="max-w-xs" />
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead Class="w-12">
-                                    <Checkbox @bind-Checked="_selectAll" />
-                                </TableHead>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead Class="text-right">Amount</TableHead>
-                                <TableHead Class="w-12"></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            <TableRow>
-                                <TableCell><Checkbox @bind-Checked="_row1" /></TableCell>
-                                <TableCell Class="font-medium">Olivia Martin</TableCell>
-                                <TableCell><Badge Variant="Badge.BadgeVariant.Success">Active</Badge></TableCell>
-                                <TableCell class="text-muted-foreground">olivia.martin@email.com</TableCell>
-                                <TableCell Class="text-right font-medium">$1,999.00</TableCell>
-                                <TableCell>
-                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                        <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell><Checkbox @bind-Checked="_row2" /></TableCell>
-                                <TableCell Class="font-medium">Jackson Lee</TableCell>
-                                <TableCell><Badge Variant="Badge.BadgeVariant.Success">Active</Badge></TableCell>
-                                <TableCell class="text-muted-foreground">jackson.lee@email.com</TableCell>
-                                <TableCell Class="text-right font-medium">$39.00</TableCell>
-                                <TableCell>
-                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                        <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell><Checkbox @bind-Checked="_row3" /></TableCell>
-                                <TableCell Class="font-medium">Isabella Nguyen</TableCell>
-                                <TableCell><Badge Variant="Badge.BadgeVariant.Warning">Pending</Badge></TableCell>
-                                <TableCell class="text-muted-foreground">isabella.nguyen@email.com</TableCell>
-                                <TableCell Class="text-right font-medium">$299.00</TableCell>
-                                <TableCell>
-                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                        <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell><Checkbox @bind-Checked="_row4" /></TableCell>
-                                <TableCell Class="font-medium">William Kim</TableCell>
-                                <TableCell><Badge Variant="Badge.BadgeVariant.Secondary">Inactive</Badge></TableCell>
-                                <TableCell class="text-muted-foreground">will@email.com</TableCell>
-                                <TableCell Class="text-right font-medium">$99.00</TableCell>
-                                <TableCell>
-                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                        <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell><Checkbox @bind-Checked="_row5" /></TableCell>
-                                <TableCell Class="font-medium">Sofia Davis</TableCell>
-                                <TableCell><Badge Variant="Badge.BadgeVariant.Success">Active</Badge></TableCell>
-                                <TableCell class="text-muted-foreground">sofia.davis@email.com</TableCell>
-                                <TableCell Class="text-right font-medium">$2,500.00</TableCell>
-                                <TableCell>
-                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                        <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 5. Pricing Cards -->
-    <ComponentDemo Title="Pricing Cards" Code="@_pricingCode">
-        <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-                <CardHeader>
-                    <h3 class="text-lg font-semibold leading-none tracking-tight">Free</h3>
-                    <p class="text-sm text-muted-foreground">For individuals getting started.</p>
-                    <div class="mt-4">
-                        <span class="text-3xl font-bold text-foreground">$0</span>
-                        <span class="text-muted-foreground">/month</span>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <ul class="space-y-3 text-sm">
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Up to 3 projects</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Basic analytics</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Community support</span>
-                        </li>
-                    </ul>
-                </CardContent>
-                <CardFooter>
-                    <Button Variant="Button.ButtonVariant.Outline" Class="w-full">Get Started</Button>
-                </CardFooter>
-            </Card>
-            <Card Class="border-primary">
-                <CardHeader>
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-lg font-semibold leading-none tracking-tight">Pro</h3>
-                        <Badge>Popular</Badge>
-                    </div>
-                    <p class="text-sm text-muted-foreground">For growing teams and businesses.</p>
-                    <div class="mt-4">
-                        <span class="text-3xl font-bold text-foreground">$15</span>
-                        <span class="text-muted-foreground">/month</span>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <ul class="space-y-3 text-sm">
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Unlimited projects</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Advanced analytics</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Priority support</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Custom integrations</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Team collaboration</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">API access</span>
-                        </li>
-                    </ul>
-                </CardContent>
-                <CardFooter>
-                    <Button Class="w-full">Subscribe</Button>
-                </CardFooter>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <h3 class="text-lg font-semibold leading-none tracking-tight">Enterprise</h3>
-                    <p class="text-sm text-muted-foreground">For large-scale organizations.</p>
-                    <div class="mt-4">
-                        <span class="text-3xl font-bold text-foreground">$49</span>
-                        <span class="text-muted-foreground">/month</span>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <ul class="space-y-3 text-sm">
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Everything in Pro</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Dedicated account manager</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">Custom contracts</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">SLA guarantees</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">SSO and SAML</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
-                            <span class="text-foreground">On-premise deployment</span>
-                        </li>
-                    </ul>
-                </CardContent>
-                <CardFooter>
-                    <Button Variant="Button.ButtonVariant.Outline" Class="w-full">Contact Sales</Button>
-                </CardFooter>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 6. Notification List -->
-    <ComponentDemo Title="Notification List" Code="@_notificationCode">
-        <div class="w-full max-w-lg">
-            <Card>
-                <CardHeader>
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-lg font-semibold leading-none tracking-tight">Notifications</h3>
-                            <p class="text-sm text-muted-foreground mt-1">You have 3 unread messages.</p>
-                        </div>
-                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Mark all as read</Button>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div class="space-y-1">
-                        <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
-                            <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-foreground">Your call has been confirmed.</p>
-                                <p class="text-sm text-muted-foreground">2 min ago</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
-                            <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-foreground">You have a new message!</p>
-                                <p class="text-sm text-muted-foreground">1 hour ago</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
-                            <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-foreground">Your subscription is expiring soon!</p>
-                                <p class="text-sm text-muted-foreground">3 hours ago</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
-                            <span class="mt-1.5 h-2 w-2 rounded-full bg-muted shrink-0"></span>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-muted-foreground">Your report is ready to download.</p>
-                                <p class="text-sm text-muted-foreground">2 days ago</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3 rounded-md p-3 hover:bg-accent transition-colors">
-                            <span class="mt-1.5 h-2 w-2 rounded-full bg-muted shrink-0"></span>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-muted-foreground">Welcome to Lumeo! Get started now.</p>
-                                <p class="text-sm text-muted-foreground">5 days ago</p>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 7. File Upload -->
-    <ComponentDemo Title="File Upload" Code="@_uploadCode">
-        <div class="w-full max-w-lg">
-            <Card>
-                <CardHeader>
-                    <h3 class="text-lg font-semibold leading-none tracking-tight">Upload File</h3>
-                    <p class="text-sm text-muted-foreground">Drag and drop your file here or click to browse.</p>
-                </CardHeader>
-                <CardContent>
-                    <div class="space-y-4">
-                        <div class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 text-center hover:border-muted-foreground/50 transition-colors cursor-pointer">
-                            <Blazicon Svg="Lucide.Upload" class="h-10 w-10 text-muted-foreground mb-4" />
-                            <p class="text-sm font-medium text-foreground">Click to upload or drag and drop</p>
-                            <p class="text-xs text-muted-foreground mt-1">SVG, PNG, JPG or GIF (max. 10MB)</p>
-                        </div>
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between text-sm">
-                                <span class="text-foreground font-medium">design-system.fig</span>
-                                <span class="text-muted-foreground">65%</span>
-                            </div>
-                            <Progress Value="65" />
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    </ComponentDemo>
-
-    <!-- 8. Search Command -->
-    <ComponentDemo Title="Search Command" Code="@_searchCode">
-        <div class="w-full max-w-lg">
-            <Card>
-                <CardContent Class="p-3">
-                    <div class="space-y-3">
-                        <div class="flex items-center gap-2 rounded-md border px-3">
-                            <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground shrink-0" />
-                            <input type="text" placeholder="Type a command or search..." class="flex h-10 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none" />
-                            <Badge Variant="Badge.BadgeVariant.Outline" Class="shrink-0 text-xs px-1.5">⌘K</Badge>
-                        </div>
-                        <Separator />
-                        <div class="space-y-1">
-                            <p class="px-2 py-1 text-xs font-semibold text-muted-foreground">Recent</p>
-                            <div class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent transition-colors cursor-pointer">
-                                <Blazicon Svg="Lucide.Calendar" class="h-4 w-4 text-muted-foreground" />
-                                <span class="text-sm text-foreground">Calendar</span>
-                            </div>
-                            <div class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent transition-colors cursor-pointer">
-                                <Blazicon Svg="Lucide.Settings" class="h-4 w-4 text-muted-foreground" />
-                                <span class="text-sm text-foreground">Settings</span>
-                            </div>
-                        </div>
-                        <Separator />
-                        <div class="space-y-1">
-                            <p class="px-2 py-1 text-xs font-semibold text-muted-foreground">Suggestions</p>
-                            <div class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent transition-colors cursor-pointer">
-                                <Blazicon Svg="Lucide.User" class="h-4 w-4 text-muted-foreground" />
-                                <span class="text-sm text-foreground">Profile</span>
-                            </div>
-                            <div class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent transition-colors cursor-pointer">
-                                <Blazicon Svg="Lucide.Bell" class="h-4 w-4 text-muted-foreground" />
-                                <span class="text-sm text-foreground">Notifications</span>
-                            </div>
-                            <div class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent transition-colors cursor-pointer">
-                                <Blazicon Svg="Lucide.Mail" class="h-4 w-4 text-muted-foreground" />
-                                <span class="text-sm text-foreground">Messages</span>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    </ComponentDemo>
-
 </div>
 
 @code {
     private record PatternItem(string Title, string Tag, string Description, string Href, string IconHtml);
 
-    private List<PatternItem> _patterns = new()
-    {
-        new PatternItem(
-            "Dashboard", "Analytics",
-            "Complete analytics dashboard with stats cards, revenue chart, activity feed, transactions table, and mini charts.",
+    private string _searchQuery = string.Empty;
+    private string _selectedCategory = "All";
+    private bool _emailNotif = true;
+    private bool _pushNotif;
+    private bool _selectAll;
+    private bool _row1, _row2, _row3, _row4, _row5;
+    private bool _termsAccepted;
+
+    private record CategoryItem(string Name, int Count);
+    private record ActivityItem(string Name, string Initials, string Action, string Time);
+
+    private readonly List<ActivityItem> _activityItems =
+    [
+        new("Sarah Johnson", "SJ", "pushed 3 commits to main", "2 min ago"),
+        new("Mike Chen", "MC", "opened a pull request", "15 min ago"),
+        new("Anna Park", "AP", "commented on issue #42", "1 hour ago"),
+        new("Tom Wright", "TW", "closed issue #38", "3 hours ago"),
+        new("Lisa Moore", "LM", "created branch feature/auth", "5 hours ago"),
+    ];
+
+    private readonly List<CategoryItem> _categories =
+    [
+        new("All", 10),
+        new("Authentication", 2),
+        new("Dashboard", 4),
+        new("Forms", 3),
+        new("Marketing", 2),
+    ];
+
+    private List<PatternItem> _patterns =
+    [
+        new("Dashboard", "Analytics",
+            "Complete analytics dashboard with stats cards, revenue chart, activity feed, and transactions table.",
             "patterns/dashboard",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/></svg>"),
-        new PatternItem(
-            "Mail", "Productivity",
+        new("Mail", "Productivity",
             "Three-pane email client with inbox list, message viewer, compose area, and folder navigation.",
             "patterns/mail",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z\"/><polyline points=\"22,6 12,13 2,6\"/></svg>"),
-        new PatternItem(
-            "E-Commerce", "Commerce",
+        new("E-Commerce", "Commerce",
             "Product grid with filters, cart sidebar, product cards with badges, and checkout flow.",
             "patterns/ecommerce",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"9\" cy=\"21\" r=\"1\"/><circle cx=\"20\" cy=\"21\" r=\"1\"/><path d=\"M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6\"/></svg>"),
-        new PatternItem(
-            "Settings", "Configuration",
+        new("Settings", "Configuration",
             "Settings page with sidebar navigation, profile form, notification toggles, and danger zone.",
             "patterns/settings",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z\"/></svg>"),
-        new PatternItem(
-            "Kanban Board", "Project Management",
+        new("Kanban Board", "Project Management",
             "Drag-and-drop project board with To Do, In Progress, and Done columns and task priority badges.",
             "patterns/kanban",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"5\" height=\"18\"/><rect x=\"10\" y=\"3\" width=\"5\" height=\"12\"/><rect x=\"17\" y=\"3\" width=\"5\" height=\"8\"/></svg>"),
-        new PatternItem(
-            "Music Player", "Media",
+        new("Music Player", "Media",
             "Full music player with album art, track list, progress bar, and playback controls.",
             "patterns/music",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 18V5l12-2v13\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"18\" cy=\"16\" r=\"3\"/></svg>"),
-        new PatternItem(
-            "Chat", "Messaging",
+        new("Chat", "Messaging",
             "Real-time chat interface with conversation list, message bubbles, and a compose input.",
             "patterns/chat",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>"),
-        new PatternItem(
-            "Calendar", "Scheduling",
+        new("Calendar", "Scheduling",
             "Monthly calendar with event creation, event list, and day/week navigation controls.",
             "patterns/calendar",
             "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\" ry=\"2\"/><line x1=\"16\" y1=\"2\" x2=\"16\" y2=\"6\"/><line x1=\"8\" y1=\"2\" x2=\"8\" y2=\"6\"/><line x1=\"3\" y1=\"10\" x2=\"21\" y2=\"10\"/></svg>"),
-        new PatternItem(
-            "Form Wizard", "Forms",
+        new("Form Wizard", "Forms",
             "Multi-step form with progress indicator, validation, and a review/confirm step.",
             "patterns/form-wizard",
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/><line x1=\"16\" y1=\"13\" x2=\"8\" y2=\"13\"/><line x1=\"16\" y1=\"17\" x2=\"8\" y2=\"17\"/><polyline points=\"10 9 9 9 8 9\"/></svg>"),
-    };
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/><line x1=\"16\" y1=\"13\" x2=\"8\" y2=\"13\"/><line x1=\"16\" y1=\"17\" x2=\"8\" y2=\"17\"/></svg>"),
+    ];
 
-    private bool _emailNotif = true;
-    private bool _pushNotif;
-    private bool _marketingNotif;
-    private bool _selectAll;
-    private bool _row1, _row2, _row3, _row4, _row5;
+    private bool ShowBlock(string category) =>
+        _selectedCategory == "All" || _selectedCategory == category;
 
-    private string _authCardCode = @"<Card>
+    private bool MatchesSearch(string title, string category, string description)
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery)) return true;
+        var q = _searchQuery.ToLowerInvariant();
+        return title.ToLowerInvariant().Contains(q)
+            || category.ToLowerInvariant().Contains(q)
+            || description.ToLowerInvariant().Contains(q);
+    }
+
+    private List<PatternItem> FilterPatterns(List<PatternItem> items)
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery)) return items;
+        var q = _searchQuery.ToLowerInvariant();
+        return items.Where(p => p.Title.ToLowerInvariant().Contains(q) || p.Tag.ToLowerInvariant().Contains(q) || p.Description.ToLowerInvariant().Contains(q)).ToList();
+    }
+
+    private List<CategoryItem> GetFilteredCategories() => _categories;
+
+    private void SelectCategory(string category) => _selectedCategory = category;
+
+    private void ResetFilters()
+    {
+        _searchQuery = string.Empty;
+        _selectedCategory = "All";
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) => _searchQuery = e.Value?.ToString() ?? string.Empty;
+
+    private string CategoryButtonClass(string name) =>
+        _selectedCategory == name
+            ? "w-full flex items-center rounded-md px-2.5 py-1.5 text-sm font-medium bg-accent text-accent-foreground transition-colors"
+            : "w-full flex items-center rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors";
+
+    private string _authCardCode = """
+<Card>
     <CardHeader>
-        <h3 class=""text-2xl font-semibold text-center"">Sign In</h3>
-        <p class=""text-sm text-muted-foreground text-center"">Enter your credentials</p>
+        <h3 class="text-2xl font-semibold text-center">Sign In</h3>
+        <p class="text-sm text-muted-foreground text-center">Enter your credentials</p>
     </CardHeader>
     <CardContent>
-        <div class=""space-y-4"">
-            <div class=""space-y-2"">
+        <div class="space-y-4">
+            <div class="space-y-2">
                 <Label>Email</Label>
-                <Input type=""email"" placeholder=""name@example.com"" />
+                <Input type="email" placeholder="name@example.com" />
             </div>
-            <div class=""space-y-2"">
+            <div class="space-y-2">
                 <Label>Password</Label>
-                <Input type=""password"" />
+                <Input type="password" />
             </div>
-            <Button Class=""w-full"">Sign In</Button>
-            <Separator />
-            <div class=""grid grid-cols-2 gap-2"">
-                <Button Variant=""Button.ButtonVariant.Outline"">Google</Button>
-                <Button Variant=""Button.ButtonVariant.Outline"">GitHub</Button>
-            </div>
+            <Button Class="w-full">Sign In</Button>
         </div>
     </CardContent>
-</Card>";
+</Card>
+""";
 
-    private string _dashboardCode = @"<div class=""grid grid-cols-4 gap-4"">
+    private string _dashboardCode = """
+<div class="grid grid-cols-4 gap-4">
     <Card>
         <CardHeader>
-            <p class=""text-sm font-medium text-muted-foreground"">Total Revenue</p>
+            <p class="text-sm font-medium text-muted-foreground">Total Revenue</p>
         </CardHeader>
         <CardContent>
-            <div class=""text-2xl font-bold"">$45,231.89</div>
-            <Badge Variant=""Badge.BadgeVariant.Success"">+20.1%</Badge>
+            <div class="text-2xl font-bold">$45,231.89</div>
+            <Badge Variant="Badge.BadgeVariant.Success">+20.1%</Badge>
         </CardContent>
     </Card>
     <!-- Repeat for other stats -->
-</div>";
+</div>
+""";
 
-    private string _settingsCode = @"<Card>
+    private string _settingsCode = """
+<Card>
     <CardHeader>
-        <h3 class=""text-lg font-semibold"">Profile Settings</h3>
+        <h3 class="text-lg font-semibold">Profile Settings</h3>
     </CardHeader>
     <CardContent>
-        <div class=""space-y-4"">
-            <Input placeholder=""Your name"" />
-            <Input type=""email"" placeholder=""Your email"" />
-            <Textarea placeholder=""Bio..."" />
+        <div class="space-y-4">
+            <Input placeholder="Your name" />
+            <Input type="email" placeholder="Your email" />
+            <Textarea placeholder="Bio..." />
             <Separator />
-            <div class=""flex items-center justify-between"">
+            <div class="flex items-center justify-between">
                 <Label>Email notifications</Label>
-                <Switch @bind-Checked=""_emailNotif"" />
+                <Switch @bind-Checked="_emailNotif" />
             </div>
         </div>
     </CardContent>
     <CardFooter>
-        <Button Variant=""Button.ButtonVariant.Outline"">Cancel</Button>
+        <Button Variant="Button.ButtonVariant.Outline">Cancel</Button>
         <Button>Save Changes</Button>
     </CardFooter>
-</Card>";
+</Card>
+""";
 
-    private string _tableCode = @"<Table>
+    private string _tableCode = """
+<Table>
     <TableHeader>
         <TableRow>
             <TableHead><Checkbox /></TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Email</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead></TableHead>
+            <TableHead class="text-right">Amount</TableHead>
         </TableRow>
     </TableHeader>
     <TableBody>
         <TableRow>
             <TableCell><Checkbox /></TableCell>
-            <TableCell>Olivia Martin</TableCell>
-            <TableCell><Badge Variant=""Badge.BadgeVariant.Success"">Active</Badge></TableCell>
+            <TableCell class="font-medium">Olivia Martin</TableCell>
+            <TableCell><Badge Variant="Badge.BadgeVariant.Success">Active</Badge></TableCell>
             <TableCell>olivia.martin@email.com</TableCell>
-            <TableCell>$1,999.00</TableCell>
-            <TableCell>
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                    <Blazicon Svg=""Lucide.Ellipsis"" class=""h-4 w-4"" />
-                </Button>
-            </TableCell>
+            <TableCell class="text-right font-medium">$1,999.00</TableCell>
         </TableRow>
     </TableBody>
-</Table>";
+</Table>
+""";
 
-    private string _pricingCode = @"<div class=""grid grid-cols-3 gap-6"">
+    private string _pricingCode = """
+<div class="grid grid-cols-3 gap-6">
     <Card>
         <CardHeader>
-            <h3>Free</h3>
-            <span class=""text-3xl font-bold"">$0</span>/month
+            <h3 class="text-lg font-semibold">Free</h3>
+            <span class="text-3xl font-bold">$0</span>/month
         </CardHeader>
         <CardContent>
-            <ul>
-                <li><Blazicon Svg=""Lucide.Check"" /> Up to 3 projects</li>
-                <li><Blazicon Svg=""Lucide.Check"" /> Basic analytics</li>
+            <ul class="space-y-2 text-sm">
+                <li class="flex items-center gap-2">
+                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary" />
+                    Up to 3 projects
+                </li>
             </ul>
         </CardContent>
         <CardFooter>
-            <Button Variant=""Button.ButtonVariant.Outline"">Get Started</Button>
+            <Button Variant="Button.ButtonVariant.Outline">Get Started</Button>
         </CardFooter>
     </Card>
-    <Card Class=""border-primary"">
+    <Card Class="border-primary">
         <CardHeader>
-            <h3>Pro</h3><Badge>Popular</Badge>
-            <span class=""text-3xl font-bold"">$15</span>/month
+            <h3 class="text-lg font-semibold">Pro</h3>
+            <Badge>Popular</Badge>
+            <span class="text-3xl font-bold">$15</span>/month
         </CardHeader>
-        <!-- ... features ... -->
         <CardFooter><Button>Subscribe</Button></CardFooter>
     </Card>
-</div>";
+</div>
+""";
 
-    private string _notificationCode = @"<Card>
+    private string _notificationCode = """
+<Card>
     <CardHeader>
-        <div class=""flex items-center justify-between"">
-            <h3>Notifications</h3>
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Notifications</h3>
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
                 Mark all as read
             </Button>
         </div>
     </CardHeader>
     <CardContent>
-        <div class=""flex items-start gap-3 p-3"">
-            <span class=""h-2 w-2 rounded-full bg-primary""></span>
+        <div class="flex items-start gap-3 p-3 rounded-md hover:bg-accent">
+            <span class="mt-1.5 h-2 w-2 rounded-full bg-primary"></span>
             <div>
-                <p class=""text-sm font-medium"">Your call has been confirmed.</p>
-                <p class=""text-sm text-muted-foreground"">2 min ago</p>
+                <p class="text-sm font-medium">Your call has been confirmed.</p>
+                <p class="text-sm text-muted-foreground">2 min ago</p>
             </div>
         </div>
     </CardContent>
-</Card>";
+</Card>
+""";
 
-    private string _uploadCode = @"<Card>
+    private string _uploadCode = """
+<Card>
     <CardHeader>
-        <h3>Upload File</h3>
+        <h3 class="text-lg font-semibold">Upload File</h3>
     </CardHeader>
     <CardContent>
-        <div class=""border-2 border-dashed rounded-lg p-8 text-center"">
-            <Blazicon Svg=""Lucide.Upload"" class=""h-10 w-10 text-muted-foreground"" />
-            <p>Click to upload or drag and drop</p>
-            <p class=""text-xs text-muted-foreground"">SVG, PNG, JPG or GIF (max. 10MB)</p>
+        <div class="border-2 border-dashed rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-colors">
+            <Blazicon Svg="Lucide.Upload" class="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+            <p class="text-sm font-medium">Click to upload or drag and drop</p>
+            <p class="text-xs text-muted-foreground mt-1">SVG, PNG, JPG or GIF (max. 10MB)</p>
         </div>
-        <Progress Value=""65"" />
+        <div class="mt-4 space-y-1">
+            <div class="flex justify-between text-sm">
+                <span class="font-medium">design-system.fig</span>
+                <span class="text-muted-foreground">65%</span>
+            </div>
+            <Progress Value="65" />
+        </div>
     </CardContent>
-</Card>";
+</Card>
+""";
 
-    private string _searchCode = @"<div class=""flex items-center gap-2 border rounded-md px-3"">
-    <Blazicon Svg=""Lucide.Search"" class=""h-4 w-4 text-muted-foreground"" />
-    <input placeholder=""Type a command or search..."" />
-    <Badge Variant=""Badge.BadgeVariant.Outline"">⌘K</Badge>
-</div>
-<Separator />
-<div>
-    <p class=""text-xs font-semibold text-muted-foreground"">Recent</p>
-    <div class=""flex items-center gap-2 p-2"">
-        <Blazicon Svg=""Lucide.Calendar"" class=""h-4 w-4"" />
-        <span>Calendar</span>
+    private string _activityCode = """
+<Card>
+    <CardHeader>
+        <h3 class="text-lg font-semibold">Recent Activity</h3>
+    </CardHeader>
+    <CardContent>
+        <div class="space-y-4">
+            <div class="flex items-start gap-3">
+                <Avatar Class="h-8 w-8 shrink-0">
+                    <AvatarFallback>SJ</AvatarFallback>
+                </Avatar>
+                <div>
+                    <p class="text-sm">
+                        <span class="font-medium">Sarah Johnson</span>
+                        pushed 3 commits to main
+                    </p>
+                    <p class="text-xs text-muted-foreground">2 min ago</p>
+                </div>
+            </div>
+        </div>
+    </CardContent>
+</Card>
+""";
+
+    private string _featureGridCode = """
+<div class="grid grid-cols-3 gap-6">
+    <div class="rounded-xl border bg-card p-6 space-y-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Blazicon Svg="Lucide.Zap" class="h-5 w-5" />
+        </div>
+        <h3 class="font-semibold">Lightning Fast</h3>
+        <p class="text-sm text-muted-foreground">Optimized for performance.</p>
     </div>
-</div>";
+    <!-- Repeat for other features -->
+</div>
+""";
+
+    private string _contactCode = """
+<Card>
+    <CardHeader>
+        <h3 class="text-lg font-semibold">Contact Us</h3>
+        <p class="text-sm text-muted-foreground">We'll get back to you within 24 hours.</p>
+    </CardHeader>
+    <CardContent>
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <Label>First Name</Label>
+                    <Input placeholder="John" />
+                </div>
+                <div class="space-y-2">
+                    <Label>Last Name</Label>
+                    <Input placeholder="Doe" />
+                </div>
+            </div>
+            <div class="space-y-2">
+                <Label>Email</Label>
+                <Input type="email" placeholder="john@example.com" />
+            </div>
+            <div class="space-y-2">
+                <Label>Message</Label>
+                <Textarea placeholder="Your message..." />
+            </div>
+        </div>
+    </CardContent>
+    <CardFooter>
+        <Button Class="w-full">Send Message</Button>
+    </CardFooter>
+</Card>
+""";
+
+    private string _signupCode = """
+<Card>
+    <CardHeader>
+        <h3 class="text-2xl font-semibold text-center">Create Account</h3>
+    </CardHeader>
+    <CardContent>
+        <div class="space-y-4">
+            <div class="space-y-2">
+                <Label>Full Name</Label>
+                <Input placeholder="John Doe" />
+            </div>
+            <div class="space-y-2">
+                <Label>Email</Label>
+                <Input type="email" placeholder="name@example.com" />
+            </div>
+            <div class="space-y-2">
+                <Label>Password</Label>
+                <Input type="password" placeholder="Create a password" />
+            </div>
+            <div class="flex items-center gap-2">
+                <Checkbox />
+                <span class="text-sm text-muted-foreground">I agree to the Terms of Service</span>
+            </div>
+            <Button Class="w-full">Create Account</Button>
+        </div>
+    </CardContent>
+</Card>
+""";
 }
