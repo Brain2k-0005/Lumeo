@@ -1,20 +1,40 @@
 @inherits LayoutComponentBase
+@inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <div class="min-h-screen bg-background">
     <!-- Top Header -->
-    <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
-        <div class="flex h-14 items-center px-6">
-            <a href="" class="mr-6 flex items-center space-x-2 font-bold text-lg text-foreground no-underline">
-                <span class="text-primary">Lumeo</span>
+    <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div class="flex h-14 items-center px-4 sm:px-6 gap-4">
+            <!-- Logo -->
+            <a href="" class="flex items-center space-x-2 font-bold text-lg text-foreground no-underline shrink-0">
+                <div class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">L</div>
+                <span class="text-foreground">Lumeo</span>
             </a>
-            <nav class="hidden md:flex items-center space-x-6 text-sm font-medium">
-                <a href="" class="text-foreground/60 hover:text-foreground transition-colors no-underline">Home</a>
-                <a href="components" class="text-foreground/60 hover:text-foreground transition-colors no-underline">Components</a>
-                <a href="patterns" class="text-foreground/60 hover:text-foreground transition-colors no-underline">Patterns</a>
-                <a href="themes" class="text-foreground/60 hover:text-foreground transition-colors no-underline">Themes</a>
+
+            <!-- Nav links (desktop) -->
+            <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2">
+                <a href="" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Home</a>
+                <a href="components" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Components</a>
+                <a href="patterns" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Patterns</a>
+                <a href="themes" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Themes</a>
             </nav>
-            <div class="flex flex-1 items-center justify-end space-x-2">
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" OnClick="ToggleDarkMode">
+
+            <!-- Spacer -->
+            <div class="flex-1"></div>
+
+            <!-- Search trigger -->
+            <button class="hidden sm:flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-52"
+                    data-search-trigger="true"
+                    @onclick="OpenSearch">
+                <Blazicon Svg="Lucide.Search" class="h-3.5 w-3.5 shrink-0" />
+                <span class="flex-1 text-left">Search docs...</span>
+                <kbd class="pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
+            </button>
+
+            <!-- Right actions -->
+            <div class="flex items-center gap-1">
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" OnClick="ToggleDarkMode" title="Toggle dark mode">
                     @if (_darkMode)
                     {
                         <Blazicon Svg="Lucide.Sun" class="h-4 w-4" />
@@ -24,8 +44,12 @@
                         <Blazicon Svg="Lucide.Moon" class="h-4 w-4" />
                     }
                 </Button>
-                <a href="https://github.com/Brain2k-0005/Lumeo" target="_blank" class="inline-flex items-center justify-center h-9 w-9 rounded-md text-foreground/60 hover:text-foreground transition-colors no-underline">
-                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                <a href="https://github.com/Brain2k-0005/Lumeo" target="_blank"
+                   class="inline-flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
+                   title="GitHub">
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
                 </a>
             </div>
         </div>
@@ -34,18 +58,199 @@
     <!-- Main Content with Sidebar -->
     <div class="flex">
         <NavMenu />
-        <main class="flex-1 overflow-auto">
-            <div class="container mx-auto px-6 py-8 max-w-5xl">
+        <main class="flex-1 overflow-auto min-w-0">
+            <div class="container mx-auto px-4 sm:px-6 py-8 max-w-5xl">
                 @Body
             </div>
         </main>
     </div>
 </div>
 
-@inject IJSRuntime JS
+<!-- Search Command Palette -->
+@if (_searchOpen)
+{
+    <div class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" @onclick="CloseSearch">
+        <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
+        <div class="relative w-full max-w-lg mx-4 rounded-xl border bg-card shadow-2xl overflow-hidden" @onclick:stopPropagation>
+            <div class="flex items-center border-b px-4">
+                <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground shrink-0" />
+                <input class="flex-1 bg-transparent px-3 py-3.5 text-sm outline-none placeholder:text-muted-foreground text-foreground"
+                       placeholder="Search components, patterns..."
+                       value="@_searchQuery"
+                       @oninput="OnSearchInput"
+                       @ref="_searchInput"
+                       autofocus />
+                @if (_searchQuery.Length > 0)
+                {
+                    <button class="text-muted-foreground hover:text-foreground" @onclick='() => { _searchQuery = string.Empty; _searchResults = []; }'>
+                        <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                    </button>
+                }
+            </div>
+            <div class="max-h-[400px] overflow-y-auto p-2">
+                @{
+                    var displayItems = _searchQuery.Length == 0
+                        ? _allSearchItems.Take(6).ToList()
+                        : _searchResults;
+                }
+                @if (_searchQuery.Length > 0 && _searchResults.Count == 0)
+                {
+                    <div class="py-6 text-center text-sm text-muted-foreground">
+                        No results for "<span class="text-foreground">@_searchQuery</span>"
+                    </div>
+                }
+                else
+                {
+                    <div class="py-1">
+                        @if (_searchQuery.Length == 0)
+                        {
+                            <p class="px-3 py-1.5 text-xs font-medium text-muted-foreground">Suggestions</p>
+                        }
+                        else
+                        {
+                            <p class="px-3 py-1.5 text-xs font-medium text-muted-foreground">@_searchResults.Count result@(_searchResults.Count == 1 ? "" : "s")</p>
+                        }
+                        @foreach (var item in displayItems)
+                        {
+                            <button class="w-full flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-accent transition-colors"
+                                    @onclick="() => NavigateTo(item)">
+                                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background">
+                                    @if (item.Category == "Patterns")
+                                    {
+                                        <Blazicon Svg="Lucide.LayoutTemplate" class="h-3.5 w-3.5 text-muted-foreground" />
+                                    }
+                                    else if (item.Category == "Customization")
+                                    {
+                                        <Blazicon Svg="Lucide.Palette" class="h-3.5 w-3.5 text-muted-foreground" />
+                                    }
+                                    else
+                                    {
+                                        <Blazicon Svg="Lucide.Box" class="h-3.5 w-3.5 text-muted-foreground" />
+                                    }
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-medium text-foreground">@item.Label</div>
+                                    <div class="text-xs text-muted-foreground">@item.Category</div>
+                                </div>
+                                <Blazicon Svg="Lucide.ArrowRight" class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="border-t px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
+                <span class="flex items-center gap-1.5"><kbd class="rounded border bg-muted px-1 py-0.5 text-[10px]">↵</kbd> select</span>
+                <span class="flex items-center gap-1.5"><kbd class="rounded border bg-muted px-1 py-0.5 text-[10px]">Esc</kbd> close</span>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private bool _darkMode;
+    private bool _searchOpen;
+    private string _searchQuery = string.Empty;
+    private ElementReference _searchInput;
+
+    private record SearchItem(string Label, string Category, string Href);
+
+    private readonly List<SearchItem> _allSearchItems =
+    [
+        new("Button", "Components", "components/button"),
+        new("Input", "Components", "components/input"),
+        new("Card", "Components", "components/card"),
+        new("Dialog", "Components", "components/dialog"),
+        new("Select", "Components", "components/select"),
+        new("Tabs", "Components", "components/tabs"),
+        new("Table", "Components", "components/table"),
+        new("Accordion", "Components", "components/accordion"),
+        new("Alert", "Components", "components/alert"),
+        new("Badge", "Components", "components/badge"),
+        new("Checkbox", "Components", "components/checkbox"),
+        new("Combobox", "Components", "components/combobox"),
+        new("Date Picker", "Components", "components/date-picker"),
+        new("Dropdown Menu", "Components", "components/dropdown-menu"),
+        new("Avatar", "Components", "components/avatar"),
+        new("Progress", "Components", "components/progress"),
+        new("Skeleton", "Components", "components/skeleton"),
+        new("Tooltip", "Components", "components/tooltip"),
+        new("Sheet", "Components", "components/sheet"),
+        new("Switch", "Components", "components/switch"),
+        new("Slider", "Components", "components/slider"),
+        new("Chart", "Components", "components/chart"),
+        new("Toast", "Components", "components/toast"),
+        new("Drawer", "Components", "components/drawer"),
+        new("Dashboard", "Patterns", "patterns/dashboard"),
+        new("Mail", "Patterns", "patterns/mail"),
+        new("E-Commerce", "Patterns", "patterns/ecommerce"),
+        new("Settings", "Patterns", "patterns/settings"),
+        new("Kanban Board", "Patterns", "patterns/kanban"),
+        new("Chat", "Patterns", "patterns/chat"),
+        new("Calendar", "Patterns", "patterns/calendar"),
+        new("Form Wizard", "Patterns", "patterns/form-wizard"),
+        new("Themes", "Customization", "themes"),
+    ];
+
+    private List<SearchItem> _searchResults = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                document.addEventListener('keydown', function(e) {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                        e.preventDefault();
+                        document.dispatchEvent(new CustomEvent('lumeo-open-search'));
+                    }
+                });
+            ");
+            await JS.InvokeVoidAsync("eval", @"
+                document.addEventListener('lumeo-open-search', function() {
+                    var btn = document.querySelector('[data-search-trigger]');
+                    if (btn) btn.click();
+                });
+            ");
+        }
+    }
+
+    private async Task OpenSearch()
+    {
+        _searchOpen = true;
+        _searchQuery = string.Empty;
+        _searchResults = [];
+        StateHasChanged();
+        await Task.Delay(50);
+        try { await _searchInput.FocusAsync(); } catch { }
+    }
+
+    private void CloseSearch()
+    {
+        _searchOpen = false;
+        _searchQuery = string.Empty;
+        _searchResults = [];
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _searchResults = [];
+            return;
+        }
+        var q = _searchQuery.ToLowerInvariant();
+        _searchResults = _allSearchItems
+            .Where(x => x.Label.ToLowerInvariant().Contains(q) || x.Category.ToLowerInvariant().Contains(q))
+            .Take(10)
+            .ToList();
+    }
+
+    private void NavigateTo(SearchItem item)
+    {
+        CloseSearch();
+        Nav.NavigateTo(item.Href);
+    }
 
     private async Task ToggleDarkMode()
     {

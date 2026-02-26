@@ -743,6 +743,8 @@ public class EChartParallel
 [JsonSerializable(typeof(List<object>))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSerializable(typeof(List<Dictionary<string, object>>))]
+[JsonSerializable(typeof(Dictionary<string, object?>))]
+[JsonSerializable(typeof(List<Dictionary<string, object?>>))]
 [JsonSerializable(typeof(EChartGraphNode))]
 [JsonSerializable(typeof(List<EChartGraphNode>))]
 [JsonSerializable(typeof(EChartGraphLink))]
