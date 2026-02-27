@@ -1,0 +1,292 @@
+@inherits Bunit.BunitContext
+
+@code {
+    public AccordionTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Renders_Root_Div_With_ChildContent()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.NotNull(cut.Find("div"));
+    }
+
+    [Fact]
+    public void AccordionTrigger_Renders_Button()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var button = cut.Find("button");
+        Assert.NotNull(button);
+        Assert.Contains("Item 1", button.TextContent);
+    }
+
+    [Fact]
+    public void AccordionContent_Is_Hidden_By_Default()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.DoesNotContain("Content 1", cut.Markup);
+    }
+
+    [Fact]
+    public void Clicking_Trigger_Opens_Content()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.Find("button").Click();
+
+        Assert.Contains("Content 1", cut.Markup);
+    }
+
+    [Fact]
+    public void Clicking_Open_Trigger_Closes_Content()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.Find("button").Click();
+        Assert.Contains("Content 1", cut.Markup);
+
+        cut.Find("button").Click();
+        Assert.DoesNotContain("Content 1", cut.Markup);
+    }
+
+    [Fact]
+    public void Single_Mode_Closes_Previous_Item_When_Opening_Another()
+    {
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Single">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Item 2</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var buttons = cut.FindAll("button");
+        buttons[0].Click();
+        Assert.Contains("Content 1", cut.Markup);
+        Assert.DoesNotContain("Content 2", cut.Markup);
+
+        buttons = cut.FindAll("button");
+        buttons[1].Click();
+        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.Contains("Content 2", cut.Markup);
+    }
+
+    [Fact]
+    public void Multiple_Mode_Allows_Multiple_Items_Open()
+    {
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Multiple">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Item 2</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var buttons = cut.FindAll("button");
+        buttons[0].Click();
+        buttons = cut.FindAll("button");
+        buttons[1].Click();
+
+        Assert.Contains("Content 1", cut.Markup);
+        Assert.Contains("Content 2", cut.Markup);
+    }
+
+    [Fact]
+    public void Default_Type_Is_Single()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Item 2</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var buttons = cut.FindAll("button");
+        buttons[0].Click();
+        buttons = cut.FindAll("button");
+        buttons[1].Click();
+
+        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.Contains("Content 2", cut.Markup);
+    }
+
+    [Fact]
+    public void Open_Item_Trigger_Icon_Has_Rotate_Class()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var svgsBefore = cut.FindAll("svg");
+        Assert.All(svgsBefore, svg =>
+            Assert.DoesNotContain("rotate-180", svg.GetAttribute("class") ?? ""));
+
+        cut.Find("button").Click();
+
+        var svgsAfter = cut.FindAll("svg");
+        Assert.Contains(svgsAfter, svg =>
+            (svg.GetAttribute("class") ?? "").Contains("rotate-180"));
+    }
+
+    [Fact]
+    public void Multiple_Items_All_Start_Closed()
+    {
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Multiple">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Item 2</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item3">
+                <AccordionTrigger>Item 3</AccordionTrigger>
+                <AccordionContent>Content 3</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.DoesNotContain("Content 2", cut.Markup);
+        Assert.DoesNotContain("Content 3", cut.Markup);
+    }
+
+    [Fact]
+    public void Accordion_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Accordion Class="my-accordion">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.Contains("my-accordion", cut.Find("div").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void AccordionItem_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1" Class="my-item">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var itemDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("my-item"));
+        Assert.NotNull(itemDiv);
+    }
+
+    [Fact]
+    public void AccordionTrigger_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger Class="my-trigger">Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.Contains("my-trigger", cut.Find("button").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void AccordionContent_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent Class="my-content">Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.Find("button").Click();
+
+        var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("my-content"));
+        Assert.NotNull(contentDiv);
+    }
+
+    [Fact]
+    public void Accordion_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<Accordion data-testid="my-accordion">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.Equal("my-accordion", cut.Find("div").GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void AccordionTrigger_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger data-testid="my-trigger">Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.Equal("my-trigger", cut.Find("button").GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void AccordionItem_Has_Border_B_Class()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var itemDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("border-b"));
+        Assert.NotNull(itemDiv);
+    }
+}
