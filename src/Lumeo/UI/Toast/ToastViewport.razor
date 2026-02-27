@@ -7,7 +7,20 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter] public ToastPosition Position { get; set; } = ToastPosition.BottomRight;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"fixed bottom-4 right-4 z-[100] flex max-h-screen w-full max-w-[420px] flex-col gap-2 {Class}".Trim();
+    private string PositionClasses => Position switch
+    {
+        ToastPosition.TopLeft => "fixed top-4 left-4",
+        ToastPosition.TopCenter => "fixed top-4 left-1/2 -translate-x-1/2",
+        ToastPosition.TopRight => "fixed top-4 right-4",
+        ToastPosition.BottomLeft => "fixed bottom-4 left-4",
+        ToastPosition.BottomCenter => "fixed bottom-4 left-1/2 -translate-x-1/2",
+        _ => "fixed bottom-4 right-4",
+    };
+
+    private string CssClass => $"{PositionClasses} z-[100] flex max-h-screen w-full max-w-[420px] flex-col gap-2 {Class}".Trim();
+
+    public enum ToastPosition { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
 }
