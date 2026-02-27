@@ -1,0 +1,174 @@
+@page "/components/kbd"
+
+<PageTitle>Kbd — Lumeo</PageTitle>
+
+<PageHeader Title="Kbd" Description="Display keyboard shortcuts and register global hotkeys." />
+
+<div class="space-y-8">
+    <ComponentDemo Title="Default" Code="@_defaultCode">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-1">
+                <Kbd>Ctrl</Kbd>
+                <span class="text-muted-foreground text-sm">+</span>
+                <Kbd>K</Kbd>
+            </div>
+            <div class="flex items-center gap-1">
+                <Kbd>Ctrl</Kbd>
+                <span class="text-muted-foreground text-sm">+</span>
+                <Kbd>Shift</Kbd>
+                <span class="text-muted-foreground text-sm">+</span>
+                <Kbd>P</Kbd>
+            </div>
+            <Kbd>Esc</Kbd>
+            <Kbd>Enter</Kbd>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Sizes" Code="@_sizesCode">
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-1">
+                <span class="text-sm text-muted-foreground mr-1">Small:</span>
+                <Kbd Size="Kbd.KbdSize.Sm">Ctrl</Kbd>
+                <span class="text-muted-foreground text-xs">+</span>
+                <Kbd Size="Kbd.KbdSize.Sm">S</Kbd>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-sm text-muted-foreground mr-1">Default:</span>
+                <Kbd>Ctrl</Kbd>
+                <span class="text-muted-foreground text-sm">+</span>
+                <Kbd>S</Kbd>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-sm text-muted-foreground mr-1">Large:</span>
+                <Kbd Size="Kbd.KbdSize.Lg">Ctrl</Kbd>
+                <span class="text-muted-foreground text-sm">+</span>
+                <Kbd Size="Kbd.KbdSize.Lg">S</Kbd>
+            </div>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="In Context" Code="@_contextCode">
+        <div class="w-full max-w-lg space-y-4">
+            <div class="flex items-center justify-between rounded-md border px-3 py-2">
+                <span class="text-sm text-muted-foreground">Open command palette</span>
+                <div class="flex items-center gap-1">
+                    <Kbd>Ctrl</Kbd>
+                    <span class="text-muted-foreground text-xs">+</span>
+                    <Kbd>K</Kbd>
+                </div>
+            </div>
+            <div class="flex items-center justify-between rounded-md border px-3 py-2">
+                <span class="text-sm text-muted-foreground">Search</span>
+                <div class="flex items-center gap-1">
+                    <Kbd>Ctrl</Kbd>
+                    <span class="text-muted-foreground text-xs">+</span>
+                    <Kbd>F</Kbd>
+                </div>
+            </div>
+            <div class="flex items-center justify-between rounded-md border px-3 py-2">
+                <span class="text-sm text-muted-foreground">Save</span>
+                <div class="flex items-center gap-1">
+                    <Kbd>Ctrl</Kbd>
+                    <span class="text-muted-foreground text-xs">+</span>
+                    <Kbd>S</Kbd>
+                </div>
+            </div>
+            <div class="flex items-center justify-between rounded-md border px-3 py-2">
+                <span class="text-sm text-muted-foreground">Close</span>
+                <Kbd>Esc</Kbd>
+            </div>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Keyboard Shortcut Service" Code="@_serviceCode">
+        <div class="w-full max-w-lg space-y-4">
+            <Alert>
+                <div class="flex gap-3">
+                    <Blazicon Svg="Lucide.Info" class="h-4 w-4 mt-0.5" />
+                    <div>
+                        <h5 class="mb-1 font-medium leading-none tracking-tight">Try it!</h5>
+                        <div class="text-sm [&_p]:leading-relaxed">
+                            <p>Press <Kbd Size="Kbd.KbdSize.Sm">Ctrl</Kbd> + <Kbd Size="Kbd.KbdSize.Sm">K</Kbd> to trigger the shortcut counter.</p>
+                        </div>
+                    </div>
+                </div>
+            </Alert>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1">
+                    <Kbd>Ctrl</Kbd>
+                    <span class="text-muted-foreground text-sm">+</span>
+                    <Kbd>K</Kbd>
+                </div>
+                <span class="text-sm text-muted-foreground">triggered @_count time(s)</span>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="@(() => _count = 0)">Reset</Button>
+            </div>
+        </div>
+    </ComponentDemo>
+</div>
+
+@inject Lumeo.Services.KeyboardShortcutService Shortcuts
+@implements IAsyncDisposable
+
+@code {
+    private int _count;
+    private IDisposable? _shortcut;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _shortcut = await Shortcuts.RegisterAsync("ctrl+k", () =>
+            {
+                _count++;
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            });
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _shortcut?.Dispose();
+    }
+
+    private string _defaultCode = @"<div class=""flex items-center gap-1"">
+    <Kbd>Ctrl</Kbd>
+    <span class=""text-muted-foreground"">+</span>
+    <Kbd>K</Kbd>
+</div>";
+
+    private string _sizesCode = @"<Kbd Size=""Kbd.KbdSize.Sm"">Ctrl</Kbd>
+<Kbd>Ctrl</Kbd>
+<Kbd Size=""Kbd.KbdSize.Lg"">Ctrl</Kbd>";
+
+    private string _contextCode = @"<div class=""flex items-center justify-between border rounded-md px-3 py-2"">
+    <span class=""text-sm text-muted-foreground"">Open command palette</span>
+    <div class=""flex items-center gap-1"">
+        <Kbd>Ctrl</Kbd><span>+</span><Kbd>K</Kbd>
+    </div>
+</div>";
+
+    private string _serviceCode = @"@inject KeyboardShortcutService Shortcuts
+@implements IAsyncDisposable
+
+@code {
+    private IDisposable? _shortcut;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _shortcut = await Shortcuts.RegisterAsync(""ctrl+k"", () =>
+            {
+                // Handle shortcut
+                return Task.CompletedTask;
+            });
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _shortcut?.Dispose();
+    }
+}";
+}

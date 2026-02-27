@@ -341,3 +341,57 @@ export function unregisterResizeHandle(elementId) {
         resizeHandlers.delete(elementId);
     }
 }
+
+// --- Keyboard Shortcuts ---
+
+let shortcutDotnetRef = null;
+const shortcuts = new Map();
+
+export function registerKeyboardShortcuts(dotnetRef) {
+    shortcutDotnetRef = dotnetRef;
+    if (!window.__lumeoKbdListener) {
+        window.__lumeoKbdListener = (e) => {
+            for (const [id, { combo, preventDefault }] of shortcuts) {
+                if (matchesCombo(e, combo)) {
+                    if (preventDefault) e.preventDefault();
+                    shortcutDotnetRef?.invokeMethodAsync('OnShortcutTriggered', id);
+                    return;
+                }
+            }
+        };
+        document.addEventListener('keydown', window.__lumeoKbdListener);
+    }
+}
+
+export function unregisterKeyboardShortcuts() {
+    if (window.__lumeoKbdListener) {
+        document.removeEventListener('keydown', window.__lumeoKbdListener);
+        window.__lumeoKbdListener = null;
+    }
+    shortcuts.clear();
+    shortcutDotnetRef = null;
+}
+
+export function addShortcut(id, combo, preventDefault) {
+    shortcuts.set(id, { combo, preventDefault });
+}
+
+export function removeShortcut(id) {
+    shortcuts.delete(id);
+}
+
+function matchesCombo(e, combo) {
+    const parts = combo.split('+');
+    const key = parts[parts.length - 1];
+    const needCtrl = parts.includes('ctrl');
+    const needAlt = parts.includes('alt');
+    const needShift = parts.includes('shift');
+    const needMeta = parts.includes('meta');
+
+    if (needCtrl !== (e.ctrlKey || e.metaKey)) return false;
+    if (needAlt !== e.altKey) return false;
+    if (needShift !== e.shiftKey) return false;
+    if (needMeta && !e.metaKey) return false;
+
+    return e.key.toLowerCase() === key || e.code.toLowerCase() === key;
+}
