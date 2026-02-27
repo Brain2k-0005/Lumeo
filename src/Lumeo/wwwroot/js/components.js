@@ -92,6 +92,58 @@ export function removeFocusTrap(elementId) {
     }
 }
 
+// --- Floating Position ---
+
+export function positionFixed(contentId, referenceId, align, matchWidth) {
+    const content = document.getElementById(contentId);
+    const reference = document.getElementById(referenceId);
+    if (!content || !reference) return;
+
+    const refRect = reference.getBoundingClientRect();
+    const gap = 4;
+
+    content.style.position = 'fixed';
+    content.style.zIndex = '50';
+    content.style.top = `${refRect.bottom + gap}px`;
+
+    if (matchWidth) {
+        content.style.width = `${refRect.width}px`;
+    }
+
+    switch (align) {
+        case 'center':
+            content.style.left = `${refRect.left + refRect.width / 2}px`;
+            content.style.transform = 'translateX(-50%)';
+            break;
+        case 'end':
+            content.style.left = 'auto';
+            content.style.right = `${window.innerWidth - refRect.right}px`;
+            break;
+        default:
+            content.style.left = `${refRect.left}px`;
+            break;
+    }
+
+    // Viewport bounds check
+    requestAnimationFrame(() => {
+        if (!content.isConnected) return;
+        const cr = content.getBoundingClientRect();
+        if (cr.bottom > window.innerHeight) {
+            content.style.top = `${refRect.top - cr.height - gap}px`;
+        }
+        if (cr.right > window.innerWidth) {
+            content.style.left = `${window.innerWidth - cr.width - 8}px`;
+            content.style.transform = '';
+            content.style.right = 'auto';
+        }
+        if (cr.left < 0) {
+            content.style.left = '8px';
+            content.style.transform = '';
+            content.style.right = 'auto';
+        }
+    });
+}
+
 // --- Element Rect ---
 
 export function getElementRect(elementId) {

@@ -20,20 +20,21 @@
     private readonly string _contentId = $"popover-content-{Guid.NewGuid():N}";
     private bool _registered;
 
-    private string CssClass => $"absolute z-50 mt-2 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-fade-in {AlignClasses} {Class}".Trim();
+    private string CssClass => $"fixed z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-fade-in {Class}".Trim();
 
-    private string AlignClasses => Align switch
+    private string AlignStr => Align switch
     {
-        PopoverAlign.Start => "left-0",
-        PopoverAlign.Center => "left-1/2 -translate-x-1/2",
-        PopoverAlign.End => "right-0",
-        _ => "left-1/2 -translate-x-1/2"
+        PopoverAlign.Start => "start",
+        PopoverAlign.Center => "center",
+        PopoverAlign.End => "end",
+        _ => "center"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen && !_registered)
         {
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr);
             await Interop.RegisterClickOutside(_contentId, null, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);

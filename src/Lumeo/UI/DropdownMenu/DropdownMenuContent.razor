@@ -20,20 +20,21 @@
     private readonly string _contentId = $"dropdown-content-{Guid.NewGuid():N}";
     private bool _registered;
 
-    private string CssClass => $"absolute z-50 mt-1 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-fade-in {AlignClasses} {Class}".Trim();
+    private string CssClass => $"fixed z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-fade-in {Class}".Trim();
 
-    private string AlignClasses => Align switch
+    private string AlignStr => Align switch
     {
-        DropdownMenuAlign.Start => "left-0",
-        DropdownMenuAlign.Center => "left-1/2 -translate-x-1/2",
-        DropdownMenuAlign.End => "right-0",
-        _ => "left-0"
+        DropdownMenuAlign.Start => "start",
+        DropdownMenuAlign.Center => "center",
+        DropdownMenuAlign.End => "end",
+        _ => "start"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen && !_registered)
         {
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr);
             await Interop.RegisterClickOutside(_contentId, null, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
