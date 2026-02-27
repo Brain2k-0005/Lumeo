@@ -1,0 +1,613 @@
+@page "/patterns/filters"
+@namespace Lumeo.Docs.Pages.Patterns
+
+<PageTitle>Filters — Lumeo</PageTitle>
+
+<div class="w-full space-y-6">
+
+    <!-- Page Title Bar -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">Tasks</h1>
+            <p class="text-sm text-muted-foreground mt-1">Manage and filter your team's tasks across all projects.</p>
+        </div>
+        <Button>
+            <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-2" />
+            New Task
+        </Button>
+    </div>
+
+    <Separator />
+
+    <!-- Filter Bar -->
+    <Card>
+        <CardContent Class="pt-6">
+            <div class="space-y-4">
+
+                <!-- Filter Controls Row -->
+                <div class="flex items-center gap-3 flex-wrap">
+
+                    <!-- Add Filter Dropdown -->
+                    <DropdownMenu @bind-IsOpen="_addFilterOpen">
+                        <DropdownMenuTrigger>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5 mr-1.5" />
+                                Add Filter
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Status"))">
+                                <Blazicon Svg="Lucide.CircleDot" class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Status
+                                @if (_activeFilterFields.Contains("Status"))
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Priority"))">
+                                <Blazicon Svg="Lucide.Flag" class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Priority
+                                @if (_activeFilterFields.Contains("Priority"))
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Category"))">
+                                <Blazicon Svg="Lucide.Tag" class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Category
+                                @if (_activeFilterFields.Contains("Category"))
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Assignee"))">
+                                <Blazicon Svg="Lucide.User" class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Assignee
+                                @if (_activeFilterFields.Contains("Assignee"))
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <!-- Active Filter Selectors -->
+                    @if (_activeFilterFields.Contains("Status"))
+                    {
+                        <Select Value="@_statusFilter" ValueChanged="OnStatusChanged">
+                            <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                <span class="truncate">@(_statusFilter == "" ? "Status" : $"Status: {_statusFilter}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Active">Active</SelectItem>
+                                <SelectItem Value="Inactive">Inactive</SelectItem>
+                                <SelectItem Value="Pending">Pending</SelectItem>
+                                <SelectItem Value="Archived">Archived</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    }
+
+                    @if (_activeFilterFields.Contains("Priority"))
+                    {
+                        <Select Value="@_priorityFilter" ValueChanged="OnPriorityChanged">
+                            <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                <span class="truncate">@(_priorityFilter == "" ? "Priority" : $"Priority: {_priorityFilter}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Low">Low</SelectItem>
+                                <SelectItem Value="Medium">Medium</SelectItem>
+                                <SelectItem Value="High">High</SelectItem>
+                                <SelectItem Value="Critical">Critical</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    }
+
+                    @if (_activeFilterFields.Contains("Category"))
+                    {
+                        <DropdownMenu @bind-IsOpen="_categoryDropdownOpen">
+                            <DropdownMenuTrigger>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">
+                                    @if (_categoryFilters.Count == 0)
+                                    {
+                                        <span>Category</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Category: @_categoryFilters.Count selected</span>
+                                    }
+                                    <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1.5 opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuLabel>Categories</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                @foreach (var category in _allCategories)
+                                {
+                                    var cat = category;
+                                    <div class="flex items-center gap-2 px-2 py-1.5">
+                                        <Checkbox Checked="@_categoryFilters.Contains(cat)"
+                                                  CheckedChanged="@(v => ToggleCategory(cat, v))" />
+                                        <span class="text-sm">@cat</span>
+                                    </div>
+                                }
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    }
+
+                    @if (_activeFilterFields.Contains("Assignee"))
+                    {
+                        <Select Value="@_assigneeFilter" ValueChanged="OnAssigneeChanged">
+                            <SelectTrigger Class="w-[180px] h-8 text-xs">
+                                <span class="truncate">@(_assigneeFilter == "" ? "Assignee" : $"Assignee: {_assigneeFilter}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                @foreach (var assignee in _allAssignees)
+                                {
+                                    <SelectItem Value="@assignee.Name">
+                                        <div class="flex items-center gap-2">
+                                            <Avatar Size="Avatar.AvatarSize.Sm" Class="h-5 w-5">
+                                                <AvatarFallback Class="text-[10px]">@assignee.Initials</AvatarFallback>
+                                            </Avatar>
+                                            @assignee.Name
+                                        </div>
+                                    </SelectItem>
+                                }
+                            </SelectContent>
+                        </Select>
+                    }
+
+                    <!-- Spacer -->
+                    <div class="flex-1"></div>
+
+                    <!-- Clear All button -->
+                    @if (HasActiveFilters)
+                    {
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                Class="h-8 text-xs text-muted-foreground"
+                                @onclick="ClearFilters">
+                            <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 mr-1" />
+                            Clear all
+                        </Button>
+                    }
+                </div>
+
+                <!-- Active Filter Pills -->
+                @if (HasActiveFilters)
+                {
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs text-muted-foreground font-medium">Active filters:</span>
+
+                        @if (_statusFilter != "")
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
+                                Status: @_statusFilter
+                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
+                                        @onclick="@(() => { _statusFilter = ""; })">
+                                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        }
+
+                        @if (_priorityFilter != "")
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
+                                Priority: @_priorityFilter
+                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
+                                        @onclick="@(() => { _priorityFilter = ""; })">
+                                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        }
+
+                        @foreach (var cat in _categoryFilters.ToList())
+                        {
+                            var c = cat;
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
+                                Category: @c
+                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
+                                        @onclick="@(() => _categoryFilters.Remove(c))">
+                                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        }
+
+                        @if (_assigneeFilter != "")
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
+                                Assignee: @_assigneeFilter
+                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
+                                        @onclick="@(() => { _assigneeFilter = ""; })">
+                                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        }
+
+                        @if (_searchQuery != "")
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
+                                Search: "@_searchQuery"
+                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
+                                        @onclick="@(() => { _searchQuery = ""; })">
+                                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        }
+                    </div>
+                }
+
+                <!-- Search Input -->
+                <div class="relative">
+                    <Blazicon Svg="Lucide.Search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input placeholder="Search tasks by title..."
+                           Value="@_searchQuery"
+                           OnInput="OnSearchInput"
+                           Class="pl-9 max-w-sm" />
+                </div>
+
+            </div>
+        </CardContent>
+    </Card>
+
+    <!-- Data Table -->
+    <Card>
+        <CardContent Class="pt-6 px-0">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-[40px]">
+                            <Checkbox Checked="@_selectAll" CheckedChanged="ToggleSelectAll" />
+                        </TableHead>
+                        <TableHead Class="w-[80px]">
+                            <button class="flex items-center gap-1 hover:text-foreground transition-colors" @onclick="@(() => ToggleSort("Id"))">
+                                ID
+                                @if (_sortField == "Id")
+                                {
+                                    <Blazicon Svg="@(_sortAsc ? Lucide.ArrowUp : Lucide.ArrowDown)" class="h-3.5 w-3.5" />
+                                }
+                            </button>
+                        </TableHead>
+                        <TableHead>
+                            <button class="flex items-center gap-1 hover:text-foreground transition-colors" @onclick="@(() => ToggleSort("Title"))">
+                                Title
+                                @if (_sortField == "Title")
+                                {
+                                    <Blazicon Svg="@(_sortAsc ? Lucide.ArrowUp : Lucide.ArrowDown)" class="h-3.5 w-3.5" />
+                                }
+                            </button>
+                        </TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Assignee</TableHead>
+                        <TableHead Class="text-right">Created</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    @if (FilteredTasks.Count == 0)
+                    {
+                        <TableRow>
+                            <TableCell Class="text-center py-12 text-muted-foreground" colspan="8">
+                                <div class="flex flex-col items-center gap-2">
+                                    <Blazicon Svg="Lucide.SearchX" class="h-8 w-8 text-muted-foreground/50" />
+                                    <p class="text-sm font-medium">No tasks found</p>
+                                    <p class="text-xs">Try adjusting your filters to find what you're looking for.</p>
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="mt-2" @onclick="ClearFilters">
+                                        Clear Filters
+                                    </Button>
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    }
+                    else
+                    {
+                        @foreach (var task in SortedTasks)
+                        {
+                            var t = task;
+                            <TableRow>
+                                <TableCell>
+                                    <Checkbox Checked="@_selectedIds.Contains(t.Id)"
+                                              CheckedChanged="@(v => ToggleRowSelection(t.Id, v))" />
+                                </TableCell>
+                                <TableCell>
+                                    <span class="text-xs text-muted-foreground font-mono">@t.Id</span>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex flex-col">
+                                        <span class="font-medium text-foreground">@t.Title</span>
+                                        <span class="text-xs text-muted-foreground truncate max-w-[280px]">@t.Description</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <Badge Variant="@GetStatusVariant(t.Status)" Class="text-xs">
+                                        @t.Status
+                                    </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="@GetPriorityDotClass(t.Priority)"></div>
+                                        <span class="text-sm">@t.Priority</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs font-normal">@t.Category</Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex items-center gap-2">
+                                        <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6">
+                                            <AvatarFallback Class="text-[10px]">@GetInitials(t.Assignee)</AvatarFallback>
+                                        </Avatar>
+                                        <span class="text-sm">@t.Assignee</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell Class="text-right">
+                                    <span class="text-xs text-muted-foreground">@t.CreatedDate.ToString("MMM d, yyyy")</span>
+                                </TableCell>
+                            </TableRow>
+                        }
+                    }
+                </TableBody>
+            </Table>
+        </CardContent>
+        <CardFooter Class="justify-between border-t py-4">
+            <div class="text-sm text-muted-foreground">
+                @if (_selectedIds.Count > 0)
+                {
+                    <span>@_selectedIds.Count of @FilteredTasks.Count row(s) selected.</span>
+                }
+                else
+                {
+                    <span>Showing @FilteredTasks.Count of @_allTasks.Count results</span>
+                }
+            </div>
+            <div class="flex items-center gap-2">
+                @if (_selectedIds.Count > 0)
+                {
+                    <DropdownMenu @bind-IsOpen="_bulkActionsOpen">
+                        <DropdownMenuTrigger>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                Bulk Actions
+                                <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1.5" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent Align="DropdownMenuContent.DropdownMenuAlign.End">
+                            <DropdownMenuItem OnClick="@(() => BulkSetStatus("Active"))">
+                                <Blazicon Svg="Lucide.CircleCheck" class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Set Active
+                            </DropdownMenuItem>
+                            <DropdownMenuItem OnClick="@(() => BulkSetStatus("Archived"))">
+                                <Blazicon Svg="Lucide.Archive" class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Archive
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem OnClick="@(() => _selectedIds.Clear())" Class="text-destructive">
+                                <Blazicon Svg="Lucide.Trash2" class="h-4 w-4 mr-2" />
+                                Delete Selected
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                }
+            </div>
+        </CardFooter>
+    </Card>
+
+</div>
+
+@code {
+    // Filter state
+    private string _searchQuery = "";
+    private string _statusFilter = "";
+    private string _priorityFilter = "";
+    private string _assigneeFilter = "";
+    private List<string> _categoryFilters = new();
+    private HashSet<string> _activeFilterFields = new();
+
+    // Dropdown state
+    private bool _addFilterOpen;
+    private bool _categoryDropdownOpen;
+    private bool _bulkActionsOpen;
+
+    // Table state
+    private HashSet<int> _selectedIds = new();
+    private bool _selectAll;
+    private string _sortField = "Id";
+    private bool _sortAsc = true;
+
+    // Data records
+    private record TaskItem(int Id, string Title, string Description, string Status, string Priority, string Category, string Assignee, DateTime CreatedDate);
+    private record AssigneeInfo(string Name, string Initials);
+
+    // Reference data
+    private readonly string[] _allCategories = { "Engineering", "Design", "Marketing", "Sales", "Support" };
+
+    private readonly List<AssigneeInfo> _allAssignees = new()
+    {
+        new("John Davis", "JD"),
+        new("Sarah Chen", "SC"),
+        new("Mike Torres", "MT"),
+        new("Lisa Park", "LP"),
+    };
+
+    // Task data
+    private readonly List<TaskItem> _allTasks = new()
+    {
+        new(1001, "Migrate database to PostgreSQL 16", "Update the primary database engine and run migration scripts for all schemas.", "Active", "High", "Engineering", "John Davis", new DateTime(2026, 2, 1)),
+        new(1002, "Redesign onboarding flow", "Create a streamlined onboarding experience with guided tooltips and progress tracking.", "Active", "Medium", "Design", "Sarah Chen", new DateTime(2026, 2, 3)),
+        new(1003, "Q1 campaign landing page", "Build and deploy the landing page for the Q1 product launch campaign.", "Pending", "High", "Marketing", "Lisa Park", new DateTime(2026, 2, 5)),
+        new(1004, "Fix checkout timeout errors", "Investigate and resolve intermittent 504 errors during payment processing.", "Active", "Critical", "Engineering", "Mike Torres", new DateTime(2026, 2, 6)),
+        new(1005, "Update sales deck for Enterprise tier", "Revise pricing slides and add new case studies for enterprise prospects.", "Inactive", "Low", "Sales", "John Davis", new DateTime(2026, 2, 8)),
+        new(1006, "Implement SSO integration", "Add SAML and OIDC single sign-on support for enterprise customers.", "Active", "High", "Engineering", "Sarah Chen", new DateTime(2026, 2, 10)),
+        new(1007, "Customer feedback analysis report", "Compile and analyze NPS survey responses from January.", "Archived", "Low", "Support", "Lisa Park", new DateTime(2026, 1, 15)),
+        new(1008, "Design system color token audit", "Review and standardize color tokens across all component libraries.", "Pending", "Medium", "Design", "Sarah Chen", new DateTime(2026, 2, 12)),
+        new(1009, "Set up monitoring dashboards", "Configure Grafana dashboards for API latency, error rates, and throughput.", "Active", "Medium", "Engineering", "Mike Torres", new DateTime(2026, 2, 14)),
+        new(1010, "Partner co-marketing proposal", "Draft partnership proposal for joint webinar series with Acme Corp.", "Pending", "Medium", "Marketing", "John Davis", new DateTime(2026, 2, 16)),
+        new(1011, "Automate support ticket triage", "Build rules engine to auto-categorize and route incoming support tickets.", "Inactive", "High", "Support", "Mike Torres", new DateTime(2026, 2, 18)),
+        new(1012, "Mobile app push notification system", "Implement push notification infrastructure for iOS and Android apps.", "Active", "Critical", "Engineering", "Lisa Park", new DateTime(2026, 2, 20)),
+    };
+
+    // Computed properties
+    private bool HasActiveFilters =>
+        _statusFilter != "" || _priorityFilter != "" || _assigneeFilter != "" || _categoryFilters.Count > 0 || _searchQuery != "";
+
+    private List<TaskItem> FilteredTasks
+    {
+        get
+        {
+            var tasks = _allTasks.AsEnumerable();
+
+            if (_searchQuery != "")
+                tasks = tasks.Where(t => t.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+
+            if (_statusFilter != "")
+                tasks = tasks.Where(t => t.Status == _statusFilter);
+
+            if (_priorityFilter != "")
+                tasks = tasks.Where(t => t.Priority == _priorityFilter);
+
+            if (_assigneeFilter != "")
+                tasks = tasks.Where(t => t.Assignee == _assigneeFilter);
+
+            if (_categoryFilters.Count > 0)
+                tasks = tasks.Where(t => _categoryFilters.Contains(t.Category));
+
+            return tasks.ToList();
+        }
+    }
+
+    private List<TaskItem> SortedTasks
+    {
+        get
+        {
+            var tasks = FilteredTasks;
+            return _sortField switch
+            {
+                "Id" => _sortAsc ? tasks.OrderBy(t => t.Id).ToList() : tasks.OrderByDescending(t => t.Id).ToList(),
+                "Title" => _sortAsc ? tasks.OrderBy(t => t.Title).ToList() : tasks.OrderByDescending(t => t.Title).ToList(),
+                _ => tasks
+            };
+        }
+    }
+
+    // Event handlers
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+    }
+
+    private void OnStatusChanged(string value)
+    {
+        _statusFilter = value;
+    }
+
+    private void OnPriorityChanged(string value)
+    {
+        _priorityFilter = value;
+    }
+
+    private void OnAssigneeChanged(string value)
+    {
+        _assigneeFilter = value;
+    }
+
+    private void ToggleCategory(string category, bool isChecked)
+    {
+        if (isChecked && !_categoryFilters.Contains(category))
+            _categoryFilters.Add(category);
+        else if (!isChecked)
+            _categoryFilters.Remove(category);
+    }
+
+    private void ToggleFilterField(string field)
+    {
+        if (_activeFilterFields.Contains(field))
+        {
+            _activeFilterFields.Remove(field);
+            // Clear the filter value when removing the field
+            switch (field)
+            {
+                case "Status": _statusFilter = ""; break;
+                case "Priority": _priorityFilter = ""; break;
+                case "Category": _categoryFilters.Clear(); break;
+                case "Assignee": _assigneeFilter = ""; break;
+            }
+        }
+        else
+        {
+            _activeFilterFields.Add(field);
+        }
+    }
+
+    private void ClearFilters()
+    {
+        _searchQuery = "";
+        _statusFilter = "";
+        _priorityFilter = "";
+        _assigneeFilter = "";
+        _categoryFilters.Clear();
+        _activeFilterFields.Clear();
+        _selectedIds.Clear();
+    }
+
+    // Table interactions
+    private void ToggleSelectAll(bool value)
+    {
+        _selectAll = value;
+        _selectedIds = value ? FilteredTasks.Select(t => t.Id).ToHashSet() : new();
+    }
+
+    private void ToggleRowSelection(int id, bool value)
+    {
+        if (value)
+            _selectedIds.Add(id);
+        else
+            _selectedIds.Remove(id);
+
+        _selectAll = _selectedIds.Count == FilteredTasks.Count && FilteredTasks.Count > 0;
+    }
+
+    private void ToggleSort(string field)
+    {
+        if (_sortField == field)
+            _sortAsc = !_sortAsc;
+        else
+        {
+            _sortField = field;
+            _sortAsc = true;
+        }
+    }
+
+    private void BulkSetStatus(string status)
+    {
+        // In a real app this would update the data source
+        _selectedIds.Clear();
+        _selectAll = false;
+    }
+
+    // Helpers
+    private string GetInitials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[1][0]}"
+            : name.Length >= 2 ? name[..2].ToUpper() : name.ToUpper();
+    }
+
+    private Badge.BadgeVariant GetStatusVariant(string status) => status switch
+    {
+        "Active" => Badge.BadgeVariant.Success,
+        "Pending" => Badge.BadgeVariant.Warning,
+        "Inactive" => Badge.BadgeVariant.Secondary,
+        "Archived" => Badge.BadgeVariant.Outline,
+        _ => Badge.BadgeVariant.Default
+    };
+
+    private string GetPriorityDotClass(string priority) => priority switch
+    {
+        "Critical" => "h-2 w-2 rounded-full bg-destructive",
+        "High" => "h-2 w-2 rounded-full bg-warning-text",
+        "Medium" => "h-2 w-2 rounded-full bg-primary",
+        "Low" => "h-2 w-2 rounded-full bg-muted-foreground",
+        _ => "h-2 w-2 rounded-full bg-muted-foreground"
+    };
+}

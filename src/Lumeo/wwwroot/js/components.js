@@ -395,3 +395,95 @@ function matchesCombo(e, combo) {
 
     return e.key.toLowerCase() === key || e.code.toLowerCase() === key;
 }
+
+// --- Scrollspy ---
+
+const scrollspyHandlers = new Map();
+
+function findScrollableViewport(container) {
+    // Prefer Lumeo ScrollArea viewport
+    const scrollArea = container.querySelector('[data-slot="scroll-area-viewport"]');
+    if (scrollArea) return scrollArea;
+
+    // Find first child with overflow scrolling
+    const scrollable = container.querySelector('[style*="overflow"], .overflow-y-auto, .overflow-auto, .overflow-y-scroll');
+    if (scrollable) return scrollable;
+
+    // Fallback: find first descendant that is actually scrollable
+    const children = container.querySelectorAll('*');
+    for (const child of children) {
+        const style = window.getComputedStyle(child);
+        if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && child.scrollHeight > child.clientHeight) {
+            return child;
+        }
+    }
+
+    return container;
+}
+
+export function registerScrollspy(containerId, offset, smooth, dotnetRef) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const viewport = findScrollableViewport(container);
+
+    const onScroll = () => {
+        const sections = container.querySelectorAll('[data-scrollspy-section]');
+        if (sections.length === 0) return;
+
+        const scrollTop = viewport.scrollTop;
+        let activeId = null;
+        let minDelta = Infinity;
+
+        for (const section of sections) {
+            const top = section.offsetTop - offset;
+            if (top <= scrollTop + 10) {
+                const delta = scrollTop - top;
+                if (delta >= 0 && delta < minDelta) {
+                    minDelta = delta;
+                    activeId = section.id;
+                }
+            }
+        }
+
+        // If scrolled to bottom, activate last section
+        const isAtBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 5;
+        if (isAtBottom && sections.length > 0) {
+            activeId = sections[sections.length - 1].id;
+        }
+
+        if (activeId === null && sections.length > 0) {
+            activeId = sections[0].id;
+        }
+
+        dotnetRef.invokeMethodAsync('OnScrollspyUpdate', containerId, activeId);
+    };
+
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    scrollspyHandlers.set(containerId, { viewport, onScroll });
+
+    // Initial check
+    requestAnimationFrame(onScroll);
+}
+
+export function unregisterScrollspy(containerId) {
+    const handler = scrollspyHandlers.get(containerId);
+    if (handler) {
+        handler.viewport.removeEventListener('scroll', handler.onScroll);
+        scrollspyHandlers.delete(containerId);
+    }
+}
+
+export function scrollspyScrollTo(containerId, sectionId, smooth) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const viewport = findScrollableViewport(container);
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+
+    viewport.scrollTo({
+        top: section.offsetTop,
+        behavior: smooth ? 'smooth' : 'auto'
+    });
+}

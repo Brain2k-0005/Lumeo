@@ -1,0 +1,66 @@
+@namespace Lumeo
+@inject ComponentInteropService Interop
+@implements IAsyncDisposable
+
+<div id="@_containerId" data-slot="scrollspy" class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="_context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int Offset { get; set; }
+    [Parameter] public bool Smooth { get; set; } = true;
+    [Parameter] public string? ActiveId { get; set; }
+    [Parameter] public EventCallback<string> ActiveIdChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _containerId = $"scrollspy-{Guid.NewGuid():N}";
+    private ScrollspyContext _context = default!;
+    private string? _currentActiveId;
+
+    private string CssClass => $"relative {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        _currentActiveId = ActiveId;
+        _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Interop.RegisterScrollspy(_containerId, Offset, Smooth, OnScrollspyUpdate);
+        }
+    }
+
+    private async Task OnScrollspyUpdate(string? activeId)
+    {
+        if (_currentActiveId != activeId)
+        {
+            _currentActiveId = activeId;
+            _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+            await ActiveIdChanged.InvokeAsync(activeId ?? string.Empty);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnNavigate(string sectionId)
+    {
+        await Interop.ScrollspyScrollTo(_containerId, sectionId, Smooth);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.UnregisterScrollspy(_containerId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public record ScrollspyContext(string? ActiveId, EventCallback<string> OnNavigate);
+}
