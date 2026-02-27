@@ -11,7 +11,7 @@
             <div class="relative mb-4">
                 <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <input class="flex h-8 w-full rounded-md border bg-background px-3 py-1 text-xs pl-8 outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground text-foreground"
-                       placeholder="Filter categories..."
+                       placeholder="Filter patterns..."
                        @bind="_sidebarSearch"
                        @bind:event="oninput" />
             </div>
@@ -20,31 +20,20 @@
             <div class="space-y-0.5">
                 <button class="@SidebarItemClass("All")" @onclick='() => _selectedCategory = "All"'>
                     <span>All Patterns</span>
-                    <span class="ml-auto text-xs font-medium text-muted-foreground">@_allItems.Count</span>
+                    <span class="ml-auto text-xs font-medium text-muted-foreground">@_patterns.Count</span>
                 </button>
 
-                <div class="pt-2 pb-1">
-                    <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2">Full Page</p>
-                </div>
-
-                @foreach (var item in _fullPageItems.Where(p => MatchesSidebarSearch(p.Name)))
+                @foreach (var group in _categories.Where(c => MatchesSidebarSearch(c.Name)))
                 {
-                    <button class="@SidebarItemClass(item.Name)" @onclick="() => _selectedCategory = item.Name">
-                        <span>@item.Name</span>
-                        <span class="ml-auto text-xs font-medium text-muted-foreground">@item.Count</span>
-                    </button>
-                }
-
-                <div class="pt-2 pb-1">
-                    <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2">Components</p>
-                </div>
-
-                @foreach (var item in _componentGroups.Where(p => MatchesSidebarSearch(p.Name)))
-                {
-                    <button class="@SidebarItemClass(item.Name)" @onclick="() => _selectedCategory = item.Name">
-                        <span>@item.Name</span>
-                        <span class="ml-auto text-xs font-medium text-muted-foreground">@item.Count</span>
-                    </button>
+                    <div class="pt-2 pb-1">
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2">@group.Name</p>
+                    </div>
+                    @foreach (var p in _patterns.Where(x => x.Category == group.Name && MatchesSidebarSearch(x.Name)))
+                    {
+                        <button class="@SidebarItemClass(p.Name)" @onclick="() => _selectedCategory = p.Name">
+                            <span>@p.Name</span>
+                        </button>
+                    }
                 }
             </div>
         </div>
@@ -63,14 +52,13 @@
                 <select class="flex h-9 w-full rounded-md border bg-background px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-ring text-foreground"
                         @onchange="OnMobileCategoryChange"
                         value="@_selectedCategory">
-                    <option value="All">All Patterns (@_allItems.Count)</option>
-                    @foreach (var item in _fullPageItems)
+                    <option value="All">All Patterns (@_patterns.Count)</option>
+                    @foreach (var group in _categories)
                     {
-                        <option value="@item.Name">@item.Name (@item.Count)</option>
-                    }
-                    @foreach (var item in _componentGroups)
-                    {
-                        <option value="@item.Name">@item.Name (@item.Count)</option>
+                        @foreach (var p in _patterns.Where(x => x.Category == group.Name))
+                        {
+                            <option value="@p.Name">@p.Name</option>
+                        }
                     }
                 </select>
             </div>
@@ -118,52 +106,33 @@
     private string _sidebarSearch = "";
 
     private record PatternItem(string Name, string Category, string Description, string Href, SvgIcon Icon);
-    private record SidebarItem(string Name, int Count);
+    private record CategoryGroup(string Name);
 
-    private readonly List<PatternItem> _allItems =
+    private readonly List<CategoryGroup> _categories =
     [
-        // Full page patterns
-        new("Dashboard", "Full Page", "Analytics dashboard with charts, stats cards, and data tables.", "/patterns/dashboard", Lucide.LayoutGrid),
-        new("Mail", "Full Page", "Email inbox with message list, preview pane, and compose.", "/patterns/mail", Lucide.Mail),
-        new("E-Commerce", "Full Page", "Product catalog with filtering, cart, and checkout.", "/patterns/ecommerce", Lucide.ShoppingCart),
-        new("Settings", "Full Page", "User settings with profile, notifications, and preferences.", "/patterns/settings", Lucide.Settings),
-        new("Kanban Board", "Full Page", "Drag-and-drop task management board with columns.", "/patterns/kanban", Lucide.Box),
-        new("Music Player", "Full Page", "Music streaming interface with playlists and player controls.", "/patterns/music", Lucide.Music),
-        new("Chat", "Full Page", "Real-time messaging interface with contacts and threads.", "/patterns/chat", Lucide.MessageCircle),
-        new("Calendar", "Full Page", "Event scheduling with month and agenda views.", "/patterns/calendar", Lucide.Calendar),
-        new("Form Wizard", "Full Page", "Multi-step form with validation and progress indicator.", "/patterns/form-wizard", Lucide.ClipboardList),
-        new("Filters", "Full Page", "Data filtering with operators and visual indicators.", "/patterns/filters", Lucide.Filter),
-
-        // Component patterns
-        new("Sign In", "Authentication", "Credential form with OAuth providers and forgot password.", "/patterns#auth-signin", Lucide.LogIn),
-        new("Sign Up", "Authentication", "Registration form with terms acceptance and validation.", "/patterns#auth-signup", Lucide.UserPlus),
-        new("Pricing", "Commerce", "Three-tier pricing table with feature comparison.", "/patterns#pricing", Lucide.CreditCard),
-        new("Product Card", "Commerce", "Product display card with image, price, and actions.", "/patterns#product", Lucide.Package),
-        new("Stats Cards", "Dashboard", "KPI cards with trend badges and metrics.", "/patterns#stats", Lucide.ChartBar),
-        new("Analytics Chart", "Dashboard", "Revenue chart with period selector.", "/patterns#analytics", Lucide.TrendingUp),
-        new("Data Table", "Data Display", "Sortable table with row selection and actions.", "/patterns#table", Lucide.Table),
-        new("Activity Feed", "Data Display", "Timeline of recent events with avatars.", "/patterns#activity", Lucide.Clock),
-        new("Contact Form", "Forms", "Contact form with validation and send button.", "/patterns#contact", Lucide.Send),
-        new("Settings Form", "Forms", "Profile settings with toggles and preferences.", "/patterns#settings-form", Lucide.SlidersHorizontal),
-        new("Notifications", "Marketing", "Notification center with read/unread status.", "/patterns#notifications", Lucide.Bell),
-        new("Feature Grid", "Marketing", "Feature showcase with icons and descriptions.", "/patterns#features", Lucide.Blocks),
-        new("File Upload", "Forms", "Drag-and-drop file upload with progress bar.", "/patterns#upload", Lucide.Upload),
+        new("Application"),
+        new("Productivity"),
+        new("Communication"),
+        new("Data & Forms"),
     ];
 
-    private List<SidebarItem> _fullPageItems => _allItems
-        .Where(x => x.Category == "Full Page")
-        .Select(x => new SidebarItem(x.Name, 1))
-        .ToList();
-
-    private List<SidebarItem> _componentGroups => _allItems
-        .Where(x => x.Category != "Full Page")
-        .GroupBy(x => x.Category)
-        .Select(g => new SidebarItem(g.Key, g.Count()))
-        .ToList();
+    private readonly List<PatternItem> _patterns =
+    [
+        new("Dashboard", "Application", "Analytics dashboard with charts, stats cards, and data tables.", "/patterns/dashboard", Lucide.LayoutGrid),
+        new("E-Commerce", "Application", "Product catalog with filtering, cart, and checkout.", "/patterns/ecommerce", Lucide.ShoppingCart),
+        new("Settings", "Application", "User settings with profile, notifications, and preferences.", "/patterns/settings", Lucide.Settings),
+        new("Music Player", "Application", "Music streaming interface with playlists and player controls.", "/patterns/music", Lucide.Music),
+        new("Kanban Board", "Productivity", "Drag-and-drop task management board with columns.", "/patterns/kanban", Lucide.Box),
+        new("Calendar", "Productivity", "Event scheduling with month and agenda views.", "/patterns/calendar", Lucide.Calendar),
+        new("Form Wizard", "Productivity", "Multi-step form with validation and progress indicator.", "/patterns/form-wizard", Lucide.ClipboardList),
+        new("Mail", "Communication", "Email inbox with message list, preview pane, and compose.", "/patterns/mail", Lucide.Mail),
+        new("Chat", "Communication", "Real-time messaging interface with contacts and threads.", "/patterns/chat", Lucide.MessageCircle),
+        new("Filters", "Data & Forms", "Data filtering with operators and visual indicators.", "/patterns/filters", Lucide.Filter),
+    ];
 
     private List<PatternItem> FilteredItems => _selectedCategory == "All"
-        ? _allItems
-        : _allItems.Where(x => x.Name == _selectedCategory || x.Category == _selectedCategory).ToList();
+        ? _patterns
+        : _patterns.Where(x => x.Name == _selectedCategory || x.Category == _selectedCategory).ToList();
 
     private bool MatchesSidebarSearch(string name) =>
         string.IsNullOrEmpty(_sidebarSearch) || name.Contains(_sidebarSearch, StringComparison.OrdinalIgnoreCase);
