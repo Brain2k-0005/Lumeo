@@ -1,0 +1,60 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo.Docs.Services
+@inject PatternFilterService Filter
+@implements IDisposable
+
+<aside class="hidden lg:block w-64 shrink-0 border-r border-border bg-background overflow-y-auto h-[calc(100vh-3.5rem)] sticky top-14">
+    <nav class="p-4 space-y-4 text-sm">
+        <!-- Search -->
+        <div class="relative">
+            <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input class="flex h-8 w-full rounded-md border border-border bg-background px-3 py-1 text-xs pl-8 outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground text-foreground"
+                   placeholder="Filter patterns..."
+                   @bind="_search"
+                   @bind:event="oninput" />
+        </div>
+
+        <!-- Category list -->
+        <div class="space-y-1">
+            @if (Matches("All"))
+            {
+                <button class="@ItemClass("All")" @onclick='() => Select("All")'>
+                    <span>All Patterns</span>
+                    <span class="ml-auto text-xs font-medium text-muted-foreground">@PatternFilterService.TotalCount</span>
+                </button>
+            }
+
+            @foreach (var cat in PatternFilterService.Categories.Where(c => Matches(c.Name)))
+            {
+                <button class="@ItemClass(cat.Name)" @onclick="() => Select(cat.Name)">
+                    <span>@cat.Name</span>
+                    <span class="ml-auto text-xs font-medium text-muted-foreground">@cat.Count</span>
+                </button>
+            }
+        </div>
+    </nav>
+</aside>
+
+@code {
+    private string _search = "";
+
+    protected override void OnInitialized()
+    {
+        Filter.OnChange += StateHasChanged;
+    }
+
+    private bool Matches(string name) =>
+        string.IsNullOrEmpty(_search) || name.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private void Select(string category) => Filter.SetCategory(category);
+
+    private string ItemClass(string name)
+    {
+        var active = name == Filter.SelectedCategory;
+        return active
+            ? "w-full flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors cursor-pointer bg-accent text-foreground font-medium"
+            : "w-full flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent";
+    }
+
+    public void Dispose() => Filter.OnChange -= StateHasChanged;
+}

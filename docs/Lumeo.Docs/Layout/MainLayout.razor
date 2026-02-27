@@ -1,10 +1,10 @@
-@inherits LayoutComponentBase
+﻿@inherits LayoutComponentBase
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
 <div class="min-h-screen bg-background">
     <!-- Top Header -->
-    <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div class="flex h-14 items-center px-4 sm:px-6 gap-4">
             <!-- Logo -->
             <a href="" class="flex items-center space-x-2 font-bold text-lg text-foreground no-underline shrink-0">
@@ -17,20 +17,19 @@
 
             <!-- Nav links (desktop) -->
             <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2">
-                <a href="" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Home</a>
-                <a href="components" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Components</a>
-                <a href="patterns" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Patterns</a>
-                <a href="themes" class="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">Themes</a>
+                <a href="components/button" class="@NavLinkClass("components")">Docs</a>
+                <a href="patterns" class="@NavLinkClass("patterns")">Patterns</a>
+                <a href="themes" class="@NavLinkClass("themes")">Themes</a>
             </nav>
 
             <!-- Spacer -->
             <div class="flex-1"></div>
 
             <!-- Search trigger -->
-            <button class="hidden sm:flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-52"
+            <button class="hidden sm:flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-52"
                     data-search-trigger="true"
                     @onclick="OpenSearch">
-                <Blazicon Svg="Lucide.Search" class="h-3.5 w-3.5 shrink-0" />
+                <DynamicIcon Name="Search" Class="h-3.5 w-3.5 shrink-0" />
                 <span class="flex-1 text-left">Search docs...</span>
                 <kbd class="pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
             </button>
@@ -40,11 +39,11 @@
                 <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" OnClick="ToggleDarkMode" title="Toggle dark mode">
                     @if (_darkMode)
                     {
-                        <Blazicon Svg="Lucide.Sun" class="h-4 w-4" />
+                        <DynamicIcon Name="Sun" Class="h-4 w-4" />
                     }
                     else
                     {
-                        <Blazicon Svg="Lucide.Moon" class="h-4 w-4" />
+                        <DynamicIcon Name="Moon" Class="h-4 w-4" />
                     }
                 </Button>
                 <a href="https://github.com/Brain2k-0005/Lumeo" target="_blank"
@@ -58,15 +57,32 @@
         </div>
     </header>
 
-    <!-- Main Content with Sidebar -->
-    <div class="flex">
-        <NavMenu />
-        <main class="flex-1 overflow-auto min-w-0">
-            <div class="container mx-auto px-4 sm:px-6 py-8 max-w-5xl">
-                @Body
-            </div>
+    <!-- Main Content -->
+    @if (ShowDocsLayout)
+    {
+        <div class="flex">
+            @if (IsPatterns)
+            {
+                <PatternsSidebar />
+            }
+            else
+            {
+                <NavMenu />
+            }
+            <main class="flex-1 min-w-0">
+                <div class="container mx-auto px-4 sm:px-6 py-8 max-w-5xl">
+                    @Body
+                </div>
+            </main>
+            <CustomizerSidebar />
+        </div>
+    }
+    else
+    {
+        <main class="flex-1 min-w-0">
+            @Body
         </main>
-    </div>
+    }
 </div>
 
 <!-- Search Command Palette -->
@@ -74,9 +90,9 @@
 {
     <div class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" @onclick="CloseSearch">
         <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-lg mx-4 rounded-xl border bg-card shadow-2xl overflow-hidden" @onclick:stopPropagation>
+        <div class="relative w-full max-w-lg mx-4 rounded-xl border bg-card shadow-lg overflow-hidden" @onclick:stopPropagation>
             <div class="flex items-center border-b px-4">
-                <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground shrink-0" />
+                <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground shrink-0" />
                 <input class="flex-1 bg-transparent px-3 py-3.5 text-sm outline-none placeholder:text-muted-foreground text-foreground"
                        placeholder="Search components, patterns..."
                        value="@_searchQuery"
@@ -86,7 +102,7 @@
                 @if (_searchQuery.Length > 0)
                 {
                     <button class="text-muted-foreground hover:text-foreground" @onclick='() => { _searchQuery = string.Empty; _searchResults = []; }'>
-                        <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                        <DynamicIcon Name="X" Class="h-4 w-4" />
                     </button>
                 }
             </div>
@@ -120,22 +136,22 @@
                                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background">
                                     @if (item.Category == "Patterns")
                                     {
-                                        <Blazicon Svg="Lucide.LayoutTemplate" class="h-3.5 w-3.5 text-muted-foreground" />
+                                        <DynamicIcon Name="LayoutTemplate" Class="h-3.5 w-3.5 text-muted-foreground" />
                                     }
                                     else if (item.Category == "Customization")
                                     {
-                                        <Blazicon Svg="Lucide.Palette" class="h-3.5 w-3.5 text-muted-foreground" />
+                                        <DynamicIcon Name="Palette" Class="h-3.5 w-3.5 text-muted-foreground" />
                                     }
                                     else
                                     {
-                                        <Blazicon Svg="Lucide.Box" class="h-3.5 w-3.5 text-muted-foreground" />
+                                        <DynamicIcon Name="Box" Class="h-3.5 w-3.5 text-muted-foreground" />
                                     }
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="text-sm font-medium text-foreground">@item.Label</div>
                                     <div class="text-xs text-muted-foreground">@item.Category</div>
                                 </div>
-                                <Blazicon Svg="Lucide.ArrowRight" class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             </button>
                         }
                     </div>
@@ -154,6 +170,28 @@
     private bool _searchOpen;
     private string _searchQuery = string.Empty;
     private ElementReference _searchInput;
+
+    private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+
+    private bool ShowDocsLayout
+    {
+        get
+        {
+            // Landing and themes get full-width layout (no docs sidebar)
+            if (CurrentPath == "" || CurrentPath == "themes") return false;
+            return true;
+        }
+    }
+
+    private bool IsPatterns => CurrentPath == "patterns";
+
+    private string NavLinkClass(string segment)
+    {
+        var isActive = CurrentPath.StartsWith(segment, StringComparison.OrdinalIgnoreCase);
+        return isActive
+            ? "rounded-md px-3 py-1.5 text-foreground bg-accent transition-colors no-underline"
+            : "rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline";
+    }
 
     private record SearchItem(string Label, string Category, string Href);
 
