@@ -13,6 +13,7 @@ public sealed class ComponentInteropService : IAsyncDisposable
     private readonly Dictionary<string, Func<double, double, Task>> _carouselScrollHandlers = new();
     private readonly Dictionary<string, Func<double, Task>> _resizeHandlers = new();
     private readonly Dictionary<string, Func<Task>> _resizeEndHandlers = new();
+    private readonly Dictionary<string, Func<string?, Task>> _scrollspyHandlers = new();
 
     public ComponentInteropService(IJSRuntime jsRuntime)
     {
@@ -210,6 +211,37 @@ public sealed class ComponentInteropService : IAsyncDisposable
         }
     }
 
+    // --- Scrollspy ---
+
+    public async ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler)
+    {
+        _scrollspyHandlers[containerId] = handler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerScrollspy", containerId, offset, smooth, GetSelfRef());
+    }
+
+    public async ValueTask UnregisterScrollspy(string containerId)
+    {
+        _scrollspyHandlers.Remove(containerId);
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unregisterScrollspy", containerId);
+    }
+
+    public async ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("scrollspyScrollTo", containerId, sectionId, smooth);
+    }
+
+    [JSInvokable]
+    public async Task OnScrollspyUpdate(string containerId, string? activeId)
+    {
+        if (_scrollspyHandlers.TryGetValue(containerId, out var handler))
+        {
+            await handler(activeId);
+        }
+    }
+
     public record ElementRect(double X, double Y, double Width, double Height);
 
     public async ValueTask DisposeAsync()
@@ -235,6 +267,7 @@ public sealed class ComponentInteropService : IAsyncDisposable
         _carouselScrollHandlers.Clear();
         _resizeHandlers.Clear();
         _resizeEndHandlers.Clear();
+        _scrollspyHandlers.Clear();
 
         if (_module is not null)
         {
