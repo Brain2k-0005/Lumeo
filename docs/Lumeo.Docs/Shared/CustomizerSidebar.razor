@@ -1,0 +1,656 @@
+@namespace Lumeo.Docs.Shared
+@using Blazicons
+@inject IJSRuntime JS
+@inject IconService _iconService
+
+<!-- Sidebar Toggle Button (shown when sidebar is closed) -->
+@if (!_sidebarOpen)
+{
+    <button class="fixed right-4 top-16 z-40 hidden lg:flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent shadow-sm transition-colors"
+            @onclick="() => _sidebarOpen = true">
+        <Blazicon Svg="Lucide.PanelRightOpen" class="h-3.5 w-3.5" />
+        Customize
+    </button>
+}
+
+<!-- Customizer Sidebar -->
+<aside class="w-[280px] shrink-0 border-l border-border sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto @(_sidebarOpen ? "hidden lg:flex" : "hidden") flex-col">
+    <!-- Header -->
+    <div class="px-4 py-3 border-b border-border">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="none" class="text-primary">
+                    <circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="2" opacity="0.55"/>
+                    <circle cx="16" cy="16" r="3" fill="currentColor"/>
+                </svg>
+                <span class="text-sm font-semibold text-foreground">/ create</span>
+            </div>
+            <button @onclick="() => _sidebarOpen = false" class="hover:bg-accent rounded p-0.5 transition-colors">
+                <Blazicon Svg="Lucide.PanelRightClose" class="h-4 w-4 text-muted-foreground" />
+            </button>
+        </div>
+        <p class="text-xs text-muted-foreground mt-0.5">Adjust Lumeo styles</p>
+    </div>
+
+    <!-- Settings List -->
+    <div class="flex-1 overflow-y-auto">
+
+        <!-- Preset -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "preset" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("preset")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Preset</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@GetActivePresetName()</p>
+                </div>
+            </button>
+            @if (_expandedSection == "preset")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var preset in _presets)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => ApplyPreset(preset)">
+                            <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/30">
+                                @if (preset.Name == GetActivePresetName())
+                                {
+                                    <span class="h-2 w-2 rounded-full bg-foreground"></span>
+                                }
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[13px] font-medium text-foreground">@preset.Name</p>
+                                <p class="text-[11px] text-muted-foreground leading-tight">@preset.Description</p>
+                            </div>
+                            @if (preset.Name == GetActivePresetName())
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Style -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "style" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("style")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Style</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@(_activeStyle == "new-york" ? "New York" : "Default")</p>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-muted-foreground/50">
+                    <circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            @if (_expandedSection == "style")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var style in _styles)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetStyle(style.Value)">
+                            <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/30">
+                                @if (style.Value == _activeStyle)
+                                {
+                                    <span class="h-2 w-2 rounded-full bg-foreground"></span>
+                                }
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[13px] font-medium text-foreground">@style.Name</p>
+                                <p class="text-[11px] text-muted-foreground leading-tight">@style.Description</p>
+                            </div>
+                            @if (style.Value == _activeStyle)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Base Color -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "baseColor" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("baseColor")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Base Color</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@GetActiveBaseColorName()</p>
+                </div>
+                <span class="h-4 w-4 rounded-full" style="background: @GetActiveBaseColorPreview()"></span>
+            </button>
+            @if (_expandedSection == "baseColor")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var color in _baseColors)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetBaseColor(color.Value)">
+                            <span class="h-3 w-3 rounded-full shrink-0" style="background: @color.Preview"></span>
+                            <span class="text-[13px] text-foreground flex-1">@color.Name</span>
+                            @if (color.Value == _activeBaseColor)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Theme -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "theme" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("theme")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Theme</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@GetActiveThemeName()</p>
+                </div>
+                <span class="h-4 w-4 rounded-full" style="background: @GetActiveThemePreview()"></span>
+            </button>
+            @if (_expandedSection == "theme")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var theme in _themes)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetTheme(theme.Value)">
+                            <span class="h-3 w-3 rounded-full shrink-0" style="background: @theme.Color"></span>
+                            <span class="text-[13px] text-foreground flex-1">@theme.Name</span>
+                            @if (theme.Value == _activeTheme)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Font -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "font" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("font")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Font</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@GetActiveFontName()</p>
+                </div>
+                <span class="text-[11px] font-bold text-muted-foreground/50 leading-none">Aa</span>
+            </button>
+            @if (_expandedSection == "font")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var font in _fonts)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetFont(font.Value)">
+                            <span class="text-[13px] text-foreground flex-1" style="font-family: @font.Family">@font.Name</span>
+                            <span class="text-[11px] text-muted-foreground">@font.Label</span>
+                            @if (font.Value == _activeFont)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Icon Library -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "icons" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("icons")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Icon Library</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@GetActiveIconLibraryName()</p>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-muted-foreground/50">
+                    <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                    <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                    <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                    <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            @if (_expandedSection == "icons")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var lib in _iconLibraries)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetIconLibrary(lib.Value)">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[13px] text-foreground">@lib.Name</p>
+                                <p class="text-[10px] text-muted-foreground font-mono truncate">@lib.Package</p>
+                            </div>
+                            @if (lib.Value == _activeIconLibrary)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+            <IconPreview Library="@_activeIconLibrary" />
+        </div>
+
+        <!-- Radius -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "radius" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("radius")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Radius</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@GetActiveRadiusName()</p>
+                </div>
+                <span class="inline-flex items-center justify-center h-4 w-4">
+                    <span class="h-3.5 w-3.5 border-t-2 border-l-2 border-muted-foreground/50" style="border-radius: @(_activeRadius)rem 0 0 0"></span>
+                </span>
+            </button>
+            @if (_expandedSection == "radius")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var radius in _radiiOptions)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetRadius(radius.Value)">
+                            <span class="inline-flex items-center justify-center h-3.5 w-3.5 shrink-0">
+                                <span class="h-3 w-3 border-t-2 border-l-2 border-muted-foreground/40" style="border-radius: @(radius.Value)rem 0 0 0"></span>
+                            </span>
+                            <span class="text-[13px] text-foreground flex-1">@radius.Name</span>
+                            <span class="text-[11px] text-muted-foreground">@(radius.Value)rem</span>
+                            @if (radius.Value == _activeRadius)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Menu Color -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "menuColor" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("menuColor")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Menu Color</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@(_activeMenuColor == "dark" ? "Dark" : _activeMenuColor == "light" ? "Light" : "Default")</p>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-muted-foreground/50">
+                    <rect x="2" y="2" width="4" height="12" rx="1" fill="currentColor" opacity="0.4"/>
+                    <rect x="7" y="2" width="7" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            @if (_expandedSection == "menuColor")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var mc in _menuColors)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetMenuColor(mc.Value)">
+                            <span class="text-[13px] text-foreground flex-1">@mc.Name</span>
+                            @if (mc.Value == _activeMenuColor)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Menu Accent -->
+        <div class="relative">
+            <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "menuAccent" ? "bg-accent/40" : "")"
+                    @onclick='() => ToggleSection("menuAccent")'>
+                <div>
+                    <p class="text-[11px] text-muted-foreground leading-none">Menu Accent</p>
+                    <p class="text-[13px] font-semibold text-foreground mt-0.5">@(_activeMenuAccent == "bold" ? "Bold" : _activeMenuAccent == "outline" ? "Outline" : "Subtle")</p>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-muted-foreground/50">
+                    <path d="M3 8a5 5 0 0 1 10 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="8" cy="11" r="2" fill="currentColor" opacity="0.5"/>
+                </svg>
+            </button>
+            @if (_expandedSection == "menuAccent")
+            {
+                <div class="border-y border-border bg-muted/30 py-1 px-2">
+                    @foreach (var ma in _menuAccents)
+                    {
+                        <button class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                                @onclick="() => SetMenuAccent(ma.Value)">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[13px] font-medium text-foreground">@ma.Name</p>
+                                <p class="text-[11px] text-muted-foreground leading-tight">@ma.Description</p>
+                            </div>
+                            @if (ma.Value == _activeMenuAccent)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Mode -->
+        <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
+                @onclick="ToggleDarkMode">
+            <div>
+                <p class="text-[11px] text-muted-foreground leading-none">Mode</p>
+                <p class="text-[13px] font-semibold text-foreground mt-0.5">@(_darkMode ? "Dark" : "Light")</p>
+            </div>
+            @if (_darkMode)
+            {
+                <Blazicon Svg="Lucide.Moon" class="h-4 w-4 text-muted-foreground/50" />
+            }
+            else
+            {
+                <Blazicon Svg="Lucide.Sun" class="h-4 w-4 text-muted-foreground/50" />
+            }
+        </button>
+
+        <!-- Spacer before actions -->
+        <div class="my-1"></div>
+
+        <!-- Shuffle -->
+        <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
+                @onclick="ShuffleSettings">
+            <div>
+                <p class="text-[11px] text-muted-foreground leading-none">Shuffle</p>
+                <p class="text-[13px] font-semibold text-foreground mt-0.5">Try Random</p>
+            </div>
+            <span class="inline-flex items-center justify-center h-5 w-5 rounded bg-primary text-primary-foreground text-[11px] font-bold">R</span>
+        </button>
+
+        <!-- Reset -->
+        <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
+                @onclick="ResetSettings">
+            <div>
+                <p class="text-[11px] text-muted-foreground leading-none">Reset</p>
+                <p class="text-[13px] font-semibold text-foreground mt-0.5">Start Over</p>
+            </div>
+            <Blazicon Svg="Lucide.RotateCcw" class="h-4 w-4 text-muted-foreground/50" />
+        </button>
+    </div>
+
+    <!-- Copy Theme — pinned bottom -->
+    <div class="px-4 py-3 border-t border-border">
+        <button class="w-full flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                @onclick="CopyTheme">
+            @if (_copied)
+            {
+                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                <span>Copied!</span>
+            }
+            else
+            {
+                <Blazicon Svg="Lucide.Copy" class="h-3.5 w-3.5" />
+                <span>Copy Theme</span>
+            }
+        </button>
+    </div>
+</aside>
+
+@code {
+    private bool _sidebarOpen = true;
+    private string _expandedSection = "";
+    private bool _darkMode;
+    private bool _copied;
+
+    private string _activeTheme = "";
+    private string _activeRadius = "0.75";
+    private string _activeStyle = "default";
+    private string _activeBaseColor = "slate";
+    private string _activeFont = "system";
+    private string _activeIconLibrary = "lucide";
+    private string _activeMenuColor = "default";
+    private string _activeMenuAccent = "subtle";
+
+    private record ThemeOption(string Name, string Value, string Color);
+    private record StyleOption(string Name, string Value, string Description);
+    private record BaseColorOption(string Name, string Value, string Preview);
+    private record RadiusOption(string Name, string Value);
+    private record FontOption(string Name, string Value, string Family, string Label);
+    private record IconLibraryOption(string Name, string Value, string Package);
+    private record MenuColorOption(string Name, string Value);
+    private record MenuAccentOption(string Name, string Value, string Description);
+    private record PresetOption(string Name, string ThemeValue, string StyleValue, string BaseColorValue, string RadiusValue, string FontValue, string MenuColorValue, string MenuAccentValue, string Preview, string Description);
+
+    private readonly ThemeOption[] _themes =
+    [
+        new("Orange", "", "hsl(14 70% 50%)"),
+        new("Blue", "blue", "hsl(221 83% 53%)"),
+        new("Green", "green", "hsl(142 71% 45%)"),
+        new("Rose", "rose", "hsl(346 77% 50%)"),
+        new("Zinc", "zinc", "hsl(240 6% 10%)"),
+        new("Violet", "violet", "hsl(262 83% 58%)"),
+        new("Amber", "amber", "hsl(38 92% 50%)"),
+        new("Teal", "teal", "hsl(173 58% 39%)"),
+    ];
+
+    private readonly StyleOption[] _styles =
+    [
+        new("Default", "default", "The classic shadcn/ui look. Clean, neutral, and familiar."),
+        new("New York", "new-york", "Reduced padding and margins for compact layouts."),
+    ];
+
+    private readonly BaseColorOption[] _baseColors =
+    [
+        new("Slate", "slate", "hsl(215 16% 47%)"),
+        new("Gray", "gray", "hsl(220 9% 46%)"),
+        new("Zinc", "zinc", "hsl(240 4% 46%)"),
+        new("Neutral", "neutral", "hsl(0 0% 45%)"),
+        new("Stone", "stone", "hsl(25 5% 45%)"),
+    ];
+
+    private readonly RadiusOption[] _radiiOptions =
+    [
+        new("None", "0"),
+        new("Small", "0.25"),
+        new("Default", "0.5"),
+        new("Medium", "0.75"),
+        new("Large", "1"),
+    ];
+
+    private readonly FontOption[] _fonts =
+    [
+        new("System", "system", "system-ui, -apple-system, sans-serif", "default"),
+        new("Inter", "inter", "'Inter', sans-serif", "sans"),
+        new("Geist", "geist", "'Geist', sans-serif", "sans"),
+        new("IBM Plex Sans", "ibm-plex-sans", "'IBM Plex Sans', sans-serif", "sans"),
+        new("JetBrains Mono", "jetbrains-mono", "'JetBrains Mono', monospace", "mono"),
+        new("Fira Code", "fira-code", "'Fira Code', monospace", "mono"),
+    ];
+
+    private readonly IconLibraryOption[] _iconLibraries =
+    [
+        new("Lucide", "lucide", "Blazicons.Lucide"),
+        new("Bootstrap", "bootstrap", "Blazicons.Bootstrap"),
+        new("Fluent UI", "fluentui", "Blazicons.FluentUI"),
+        new("Font Awesome", "font-awesome", "Blazicons.FontAwesome"),
+        new("Google Material", "google-material", "Blazicons.GoogleMaterialDesign"),
+        new("Material Design", "material-design", "Blazicons.MaterialDesignIcons"),
+        new("Ionicons", "ionicons", "Blazicons.Ionicons"),
+        new("Devicon", "devicon", "Blazicons.Devicon"),
+        new("Flag Icons", "flag-icons", "Blazicons.FlagIcons"),
+    ];
+
+    private readonly MenuColorOption[] _menuColors =
+    [
+        new("Default", "default"),
+        new("Dark", "dark"),
+        new("Light", "light"),
+    ];
+
+    private readonly MenuAccentOption[] _menuAccents =
+    [
+        new("Subtle", "subtle", "Soft tinted active state"),
+        new("Bold", "bold", "Primary color active state"),
+        new("Outline", "outline", "Bordered transparent active state"),
+    ];
+
+    private readonly PresetOption[] _presets =
+    [
+        new("Vega", "", "default", "slate", "0.75", "system", "default", "subtle", "hsl(14 70% 50%)", "The classic shadcn/ui look. Clean, neutral, and familiar."),
+        new("Nova", "blue", "new-york", "slate", "0.5", "inter", "default", "subtle", "hsl(221 83% 53%)", "Sleek and compact. Blue with tight spacing."),
+        new("Maia", "rose", "default", "stone", "1", "system", "default", "subtle", "hsl(346 77% 50%)", "Soft and rounded, with generous spacing."),
+        new("Lyra", "zinc", "default", "zinc", "0", "jetbrains-mono", "default", "subtle", "hsl(240 6% 10%)", "Boxy and sharp. Pairs well with mono fonts."),
+        new("Mira", "green", "new-york", "gray", "0.25", "system", "default", "bold", "hsl(142 71% 45%)", "Compact. Made for dense interfaces."),
+    ];
+
+    private string GetActivePresetName()
+    {
+        foreach (var p in _presets)
+            if (p.ThemeValue == _activeTheme && p.StyleValue == _activeStyle && p.BaseColorValue == _activeBaseColor && p.RadiusValue == _activeRadius)
+                return p.Name;
+        return "Custom";
+    }
+
+    private string GetActiveThemeName() => _themes.FirstOrDefault(t => t.Value == _activeTheme)?.Name ?? "Orange";
+    private string GetActiveThemePreview() => _themes.FirstOrDefault(t => t.Value == _activeTheme)?.Color ?? "hsl(14 70% 50%)";
+    private string GetActiveBaseColorName() => _baseColors.FirstOrDefault(c => c.Value == _activeBaseColor)?.Name ?? "Slate";
+    private string GetActiveBaseColorPreview() => _baseColors.FirstOrDefault(c => c.Value == _activeBaseColor)?.Preview ?? "hsl(215 16% 47%)";
+    private string GetActiveRadiusName() => _radiiOptions.FirstOrDefault(r => r.Value == _activeRadius)?.Name ?? _activeRadius + "rem";
+    private string GetActiveFontName() => _fonts.FirstOrDefault(f => f.Value == _activeFont)?.Name ?? "System";
+    private string GetActiveIconLibraryName() => _iconLibraries.FirstOrDefault(l => l.Value == _activeIconLibrary)?.Name ?? "Lucide";
+
+    private void ToggleSection(string section) => _expandedSection = _expandedSection == section ? "" : section;
+
+    private async Task ApplyPreset(PresetOption preset)
+    {
+        await SetTheme(preset.ThemeValue);
+        await SetStyle(preset.StyleValue);
+        await SetBaseColor(preset.BaseColorValue);
+        await SetRadius(preset.RadiusValue);
+        await SetFont(preset.FontValue);
+        await SetMenuColor(preset.MenuColorValue);
+        await SetMenuAccent(preset.MenuAccentValue);
+        _expandedSection = "";
+    }
+
+    private async Task SetStyle(string style)
+    {
+        _activeStyle = style;
+        await JS.InvokeVoidAsync("eval", style == "new-york"
+            ? "document.documentElement.classList.add('style-new-york')"
+            : "document.documentElement.classList.remove('style-new-york')");
+    }
+
+    private async Task SetTheme(string theme)
+    {
+        _activeTheme = theme;
+        await JS.InvokeVoidAsync("eval", string.IsNullOrEmpty(theme)
+            ? "document.documentElement.removeAttribute('data-theme')"
+            : $"document.documentElement.setAttribute('data-theme', '{theme}')");
+    }
+
+    private async Task SetRadius(string radius)
+    {
+        _activeRadius = radius;
+        await JS.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--radius', '{radius}rem')");
+    }
+
+    private async Task SetBaseColor(string baseColor)
+    {
+        _activeBaseColor = baseColor;
+        await JS.InvokeVoidAsync("eval", baseColor == "slate"
+            ? "document.documentElement.removeAttribute('data-base-color')"
+            : $"document.documentElement.setAttribute('data-base-color', '{baseColor}')");
+    }
+
+    private async Task SetFont(string font)
+    {
+        _activeFont = font;
+        var fontOption = _fonts.FirstOrDefault(f => f.Value == font);
+        var family = fontOption?.Family ?? "system-ui, -apple-system, sans-serif";
+        var css = font == "system"
+            ? ""
+            : $"body, body * {{ font-family: {family} !important; }} pre, pre *, code, code *, .font-mono, .font-mono * {{ font-family: revert !important; }}";
+        var escapedCss = css.Replace("\\", "\\\\").Replace("`", "\\`").Replace("$", "\\$");
+        await JS.InvokeVoidAsync("eval", $"(function(){{ var el = document.getElementById('lumeo-font-override'); if (!el) {{ el = document.createElement('style'); el.id = 'lumeo-font-override'; document.head.appendChild(el); }} el.textContent = `{escapedCss}`; }})()");
+    }
+
+    private Task SetIconLibrary(string library)
+    {
+        _activeIconLibrary = library;
+        _iconService.SetLibrary(library);
+        return Task.CompletedTask;
+    }
+
+    private async Task SetMenuColor(string menuColor)
+    {
+        _activeMenuColor = menuColor;
+        var js = menuColor switch
+        {
+            "dark" => "document.documentElement.style.setProperty('--color-sidebar', 'hsl(220 13% 10%)'); document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(0 0% 95%)')",
+            "light" => "document.documentElement.style.setProperty('--color-sidebar', 'hsl(0 0% 100%)'); document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)')",
+            _ => "document.documentElement.style.removeProperty('--color-sidebar'); document.documentElement.style.removeProperty('--color-sidebar-foreground')"
+        };
+        await JS.InvokeVoidAsync("eval", js);
+    }
+
+    private async Task SetMenuAccent(string accent)
+    {
+        _activeMenuAccent = accent;
+        await JS.InvokeVoidAsync("eval", accent == "subtle"
+            ? "document.documentElement.removeAttribute('data-menu-accent')"
+            : $"document.documentElement.setAttribute('data-menu-accent', '{accent}')");
+    }
+
+    private async Task ToggleDarkMode()
+    {
+        _darkMode = !_darkMode;
+        await JS.InvokeVoidAsync("eval", _darkMode
+            ? "document.documentElement.classList.add('dark')"
+            : "document.documentElement.classList.remove('dark')");
+    }
+
+    private async Task ShuffleSettings()
+    {
+        var random = new Random();
+        await SetTheme(_themes[random.Next(_themes.Length)].Value);
+        await SetRadius(_radiiOptions[random.Next(_radiiOptions.Length)].Value);
+        await SetStyle(_styles[random.Next(_styles.Length)].Value);
+        await SetBaseColor(_baseColors[random.Next(_baseColors.Length)].Value);
+        await SetFont(_fonts[random.Next(_fonts.Length)].Value);
+        await SetMenuColor(_menuColors[random.Next(_menuColors.Length)].Value);
+        await SetMenuAccent(_menuAccents[random.Next(_menuAccents.Length)].Value);
+        if (random.Next(2) == 1 != _darkMode) await ToggleDarkMode();
+        _expandedSection = "";
+    }
+
+    private async Task ResetSettings()
+    {
+        await SetTheme("");
+        await SetRadius("0.75");
+        await SetStyle("default");
+        await SetBaseColor("slate");
+        await SetFont("system");
+        await SetMenuColor("default");
+        await SetMenuAccent("subtle");
+        if (_darkMode) await ToggleDarkMode();
+        _expandedSection = "";
+    }
+
+    private async Task CopyTheme()
+    {
+        var parts = new List<string> { "/* Lumeo Theme Configuration */", "@import \"lumeo/css/lumeo.css\";" };
+        if (!string.IsNullOrEmpty(_activeTheme)) parts.Add($"/* Theme: {GetActiveThemeName()} */\n@import \"lumeo/css/themes/_{_activeTheme}.css\";");
+        parts.Add($"\n:root {{\n  --radius: {_activeRadius}rem;\n}}");
+        if (_activeBaseColor != "slate") parts.Add($"\n/* Base Color: {GetActiveBaseColorName()} - add data-base-color=\"{_activeBaseColor}\" to <html> */");
+        if (_activeStyle == "new-york") parts.Add("\n/* Style: New York - add class=\"style-new-york\" to <html> */");
+        if (_activeFont != "system")
+        {
+            var fontOption = _fonts.FirstOrDefault(f => f.Value == _activeFont);
+            parts.Add($"\n:root {{\n  font-family: {fontOption?.Family};\n}}");
+        }
+        var css = string.Join("\n", parts);
+        await JS.InvokeVoidAsync("eval", $"navigator.clipboard.writeText({System.Text.Json.JsonSerializer.Serialize(css)})");
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false;
+        StateHasChanged();
+    }
+}

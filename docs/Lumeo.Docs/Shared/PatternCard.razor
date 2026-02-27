@@ -1,0 +1,61 @@
+﻿@inject IJSRuntime JS
+
+<div class="border border-border rounded-lg overflow-hidden">
+    <div class="p-6 flex items-center justify-center min-h-[120px] bg-background">
+        @ChildContent
+    </div>
+    @if (_showCode && !string.IsNullOrEmpty(Code))
+    {
+        <div class="border-t border-border bg-muted/20 overflow-x-auto">
+            <pre class="p-4 text-xs leading-relaxed text-foreground font-mono whitespace-pre-wrap">@Code</pre>
+        </div>
+    }
+    <div class="border-t border-border px-4 py-2 flex items-center justify-between text-sm text-muted-foreground">
+        <span>@Label</span>
+        <div class="flex items-center gap-2">
+            @if (_showCode && !string.IsNullOrEmpty(Code))
+            {
+                <button class="text-xs hover:text-foreground transition-colors flex items-center gap-1"
+                        @onclick="CopyCode">
+                    @if (_copied)
+                    {
+                        <DynamicIcon Name="Check" Class="h-3 w-3 text-primary" />
+                        <span class="text-primary">Copied</span>
+                    }
+                    else
+                    {
+                        <DynamicIcon Name="Clipboard" Class="h-3 w-3" />
+                        <span>Copy</span>
+                    }
+                </button>
+            }
+            <button class="text-xs hover:text-foreground transition-colors flex items-center gap-1"
+                    @onclick="Toggle">
+                <DynamicIcon Name="Code" Class="h-3 w-3" />
+                @(_showCode ? "Hide code" : "View code")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Code { get; set; }
+
+    private bool _showCode;
+    private bool _copied;
+
+    private void Toggle() => _showCode = !_showCode;
+
+    private async Task CopyCode()
+    {
+        if (string.IsNullOrEmpty(Code)) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", Code);
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false;
+        StateHasChanged();
+    }
+}

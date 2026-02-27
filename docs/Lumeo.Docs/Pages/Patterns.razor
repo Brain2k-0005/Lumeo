@@ -1,145 +1,2486 @@
-@page "/patterns"
+﻿@page "/patterns"
 @namespace Lumeo.Docs.Pages.PatternsIndex
+@using Lumeo.Services
+@using Lumeo.Docs.Services
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject PatternFilterService Filter
+@implements IDisposable
 
 <PageTitle>Patterns — Lumeo</PageTitle>
 
-<div class="-mx-4 sm:-mx-6 -mt-8 flex">
-    <!-- Left Sidebar -->
-    <aside class="hidden lg:block w-56 shrink-0 border-r sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto">
-        <div class="p-4">
-            <!-- Search -->
-            <div class="relative mb-4">
-                <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <input class="flex h-8 w-full rounded-md border bg-background px-3 py-1 text-xs pl-8 outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground text-foreground"
-                       placeholder="Filter patterns..."
-                       @bind="_sidebarSearch"
-                       @bind:event="oninput" />
-            </div>
+<div class="space-y-8">
+    <div>
+        <h1 class="text-3xl font-bold tracking-tight text-foreground">Patterns</h1>
+        <p class="text-muted-foreground mt-1">Live component variants built with Lumeo.</p>
+    </div>
 
-            <!-- Sidebar Items -->
-            <div class="space-y-0.5">
-                <button class="@SidebarItemClass("All")" @onclick='() => _selectedCategory = "All"'>
-                    <span>All Patterns</span>
-                    <span class="ml-auto text-xs font-medium text-muted-foreground">@_patterns.Count</span>
-                </button>
+    <!-- Pattern sections -->
+    <div class="space-y-10">
 
-                @foreach (var group in _categories.Where(c => MatchesSidebarSearch(c.Name)))
-                {
-                    <div class="pt-2 pb-1">
-                        <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2">@group.Name</p>
+            <!-- â"€â"€ Accordion â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Accordion")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Accordion</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Basic Accordion" Code="@_codeAccordionBasic">
+                            <Accordion Class="w-full max-w-md">
+                                <AccordionItem Value="item-1">
+                                    <AccordionTrigger>Is it accessible?</AccordionTrigger>
+                                    <AccordionContent>Yes. It adheres to the WAI-ARIA design pattern.</AccordionContent>
+                                </AccordionItem>
+                                <AccordionItem Value="item-2">
+                                    <AccordionTrigger>Is it styled?</AccordionTrigger>
+                                    <AccordionContent>Yes. It comes with default styles that match your theme.</AccordionContent>
+                                </AccordionItem>
+                                <AccordionItem Value="item-3">
+                                    <AccordionTrigger>Is it animated?</AccordionTrigger>
+                                    <AccordionContent>Yes. It's animated by default using CSS transitions.</AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
+                        </PatternCard>
+
+                        <PatternCard Label="Multiple Open" Code="@_codeAccordionMultiple">
+                            <Accordion Type="Accordion.AccordionType.Multiple" Class="w-full max-w-md">
+                                <AccordionItem Value="a">
+                                    <AccordionTrigger>Section One</AccordionTrigger>
+                                    <AccordionContent>Content for section one. Multiple sections can be open simultaneously.</AccordionContent>
+                                </AccordionItem>
+                                <AccordionItem Value="b">
+                                    <AccordionTrigger>Section Two</AccordionTrigger>
+                                    <AccordionContent>Content for section two.</AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
+                        </PatternCard>
+
+                        <PatternCard Label="Compact FAQ" Code="@_codeAccordionFaq">
+                            <Accordion Class="w-full max-w-md text-sm">
+                                <AccordionItem Value="q1">
+                                    <AccordionTrigger>What is Lumeo?</AccordionTrigger>
+                                    <AccordionContent>Lumeo is a Blazor component library inspired by shadcn/ui.</AccordionContent>
+                                </AccordionItem>
+                                <AccordionItem Value="q2">
+                                    <AccordionTrigger>How do I install it?</AccordionTrigger>
+                                    <AccordionContent>Install via NuGet: <code class="font-mono bg-muted px-1 rounded">dotnet add package Lumeo</code></AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
+                        </PatternCard>
+
                     </div>
-                    @foreach (var p in _patterns.Where(x => x.Category == group.Name && MatchesSidebarSearch(x.Name)))
+                </section>
+            }
+
+            <!-- â"€â"€ Alert â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Alert")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
                     {
-                        <button class="@SidebarItemClass(p.Name)" @onclick="() => _selectedCategory = p.Name">
-                            <span>@p.Name</span>
-                        </button>
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Alert</h2>
                     }
-                }
-            </div>
-        </div>
-    </aside>
+                    <div class="space-y-3">
 
-    <!-- Main Content -->
-    <div class="flex-1 min-w-0 p-6 lg:p-8">
-        <div class="space-y-6">
-            <div>
-                <h1 class="text-3xl font-bold tracking-tight text-foreground">Patterns</h1>
-                <p class="text-muted-foreground mt-1">Real-world UI patterns built with Lumeo components. @FilteredItems.Count patterns.</p>
-            </div>
+                        <PatternCard Label="Default" Code="@_codeAlertDefault">
+                            <Alert Class="w-full max-w-md">
+                                <p class="font-medium text-foreground">Heads up!</p>
+                                <p class="text-sm text-muted-foreground mt-1">You can add components using the NuGet package.</p>
+                            </Alert>
+                        </PatternCard>
 
-            <!-- Mobile category selector -->
-            <div class="lg:hidden">
-                <select class="flex h-9 w-full rounded-md border bg-background px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-ring text-foreground"
-                        @onchange="OnMobileCategoryChange"
-                        value="@_selectedCategory">
-                    <option value="All">All Patterns (@_patterns.Count)</option>
-                    @foreach (var group in _categories)
+                        <PatternCard Label="Destructive" Code="@_codeAlertDestructive">
+                            <Alert Variant="Alert.AlertVariant.Destructive" Class="w-full max-w-md">
+                                <p class="font-medium">Error</p>
+                                <p class="text-sm mt-1">Your session has expired. Please sign in again.</p>
+                            </Alert>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Avatar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Avatar")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
                     {
-                        @foreach (var p in _patterns.Where(x => x.Category == group.Name))
-                        {
-                            <option value="@p.Name">@p.Name</option>
-                        }
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Avatar</h2>
                     }
-                </select>
-            </div>
+                    <div class="space-y-3">
 
-            <!-- Grid of pattern cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                @foreach (var item in FilteredItems)
-                {
-                    <a href="@item.Href" class="no-underline group">
-                        <div class="rounded-xl border bg-card p-5 h-full transition-all hover:shadow-md hover:border-primary/40">
-                            <div class="flex items-start gap-3 mb-3">
-                                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                    <Blazicon Svg="@item.Icon" class="h-4 w-4" />
+                        <PatternCard Label="Default" Code="@_codeAvatarDefault">
+                            <Avatar>
+                                <AvatarFallback>JD</AvatarFallback>
+                            </Avatar>
+                        </PatternCard>
+
+                        <PatternCard Label="Small" Code="@_codeAvatarSmall">
+                            <Avatar Size="Avatar.AvatarSize.Sm">
+                                <AvatarFallback>AB</AvatarFallback>
+                            </Avatar>
+                        </PatternCard>
+
+                        <PatternCard Label="Large" Code="@_codeAvatarLarge">
+                            <Avatar Size="Avatar.AvatarSize.Lg">
+                                <AvatarFallback>XY</AvatarFallback>
+                            </Avatar>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Badge â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Badge")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Badge</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeBadgeDefault">
+                            <Badge>Badge</Badge>
+                        </PatternCard>
+
+                        <PatternCard Label="Secondary" Code="@_codeBadgeSecondary">
+                            <Badge Variant="Badge.BadgeVariant.Secondary">Secondary</Badge>
+                        </PatternCard>
+
+                        <PatternCard Label="Outline" Code="@_codeBadgeOutline">
+                            <Badge Variant="Badge.BadgeVariant.Outline">Outline</Badge>
+                        </PatternCard>
+
+                        <PatternCard Label="Destructive" Code="@_codeBadgeDestructive">
+                            <Badge Variant="Badge.BadgeVariant.Destructive">Destructive</Badge>
+                        </PatternCard>
+
+                        <PatternCard Label="Success" Code="@_codeBadgeSuccess">
+                            <Badge Variant="Badge.BadgeVariant.Success">Success</Badge>
+                        </PatternCard>
+
+                        <PatternCard Label="Warning" Code="@_codeBadgeWarning">
+                            <Badge Variant="Badge.BadgeVariant.Warning">Warning</Badge>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Button â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Button")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Button</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeButtonDefault">
+                            <Button>Button</Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Secondary" Code="@_codeButtonSecondary">
+                            <Button Variant="Button.ButtonVariant.Secondary">Secondary</Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Destructive" Code="@_codeButtonDestructive">
+                            <Button Variant="Button.ButtonVariant.Destructive">Destructive</Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Outline" Code="@_codeButtonOutline">
+                            <Button Variant="Button.ButtonVariant.Outline">Outline</Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Ghost" Code="@_codeButtonGhost">
+                            <Button Variant="Button.ButtonVariant.Ghost">Ghost</Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Link" Code="@_codeButtonLink">
+                            <Button Variant="Button.ButtonVariant.Link">Link</Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Icon Only" Code="@_codeButtonIcon">
+                            <Button Variant="Button.ButtonVariant.Outline" Class="h-9 w-9 p-0">
+                                <DynamicIcon Name="Plus" Class="h-4 w-4" />
+                            </Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Loading State" Code="@_codeButtonLoading">
+                            <Button Disabled="true">
+                                <Spinner Size="Spinner.SpinnerSize.Sm" Class="mr-2" />
+                                Please wait
+                            </Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Button Group" Code="@_codeButtonGroup">
+                            <div class="flex divide-x divide-border overflow-hidden rounded-md border border-border">
+                                <Button Variant="Button.ButtonVariant.Ghost" Class="rounded-none h-9 px-3 text-sm">Left</Button>
+                                <Button Variant="Button.ButtonVariant.Ghost" Class="rounded-none h-9 px-3 text-sm">Center</Button>
+                                <Button Variant="Button.ButtonVariant.Ghost" Class="rounded-none h-9 px-3 text-sm">Right</Button>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Card â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Card")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Card</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Simple Card" Code="@_codeCardSimple">
+                            <Card Class="w-full max-w-sm">
+                                <CardHeader>
+                                    <p class="text-base font-semibold text-foreground">Card Title</p>
+                                    <p class="text-sm text-muted-foreground">Card description goes here.</p>
+                                </CardHeader>
+                                <CardContent>
+                                    <p class="text-sm text-muted-foreground">Your content lives here.</p>
+                                </CardContent>
+                            </Card>
+                        </PatternCard>
+
+                        <PatternCard Label="With Form" Code="@_codeCardForm">
+                            <Card Class="w-full max-w-sm">
+                                <CardHeader>
+                                    <p class="text-base font-semibold text-foreground">Create Account</p>
+                                    <p class="text-sm text-muted-foreground">Fill in your details to get started.</p>
+                                </CardHeader>
+                                <CardContent>
+                                    <div class="space-y-3">
+                                        <div class="space-y-1.5">
+                                            <Label>Name</Label>
+                                            <Input placeholder="Your name" />
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <Label>Email</Label>
+                                            <Input placeholder="you@example.com" />
+                                        </div>
+                                    </div>
+                                </CardContent>
+                                <CardFooter Class="gap-2">
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="flex-1">Cancel</Button>
+                                    <Button Class="flex-1">Create</Button>
+                                </CardFooter>
+                            </Card>
+                        </PatternCard>
+
+                        <PatternCard Label="Stats Card" Code="@_codeCardStats">
+                            <Card Class="w-full max-w-xs">
+                                <CardHeader>
+                                    <p class="text-sm font-medium text-muted-foreground">Total Revenue</p>
+                                </CardHeader>
+                                <CardContent>
+                                    <p class="text-3xl font-bold text-foreground">$45,231</p>
+                                    <p class="text-xs text-muted-foreground mt-1">+20.1% from last month</p>
+                                </CardContent>
+                            </Card>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Checkbox â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Checkbox")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Checkbox</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeCheckboxDefault">
+                            <div class="flex items-center gap-2">
+                                <Checkbox @bind-Checked="_checkbox1" />
+                                <Label>Accept terms and conditions</Label>
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="Checked" Code="@_codeCheckboxChecked">
+                            <div class="flex items-center gap-2">
+                                <Checkbox Checked="true" />
+                                <Label>Enabled by default</Label>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Dialog â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Dialog")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Dialog</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Basic Dialog" Code="@_codeDialogBasic">
+                            <Dialog @bind-IsOpen="_dialog1Open">
+                                <DialogTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Open Dialog</Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Edit Profile</DialogTitle>
+                                        <DialogDescription>Make changes to your profile here. Click save when done.</DialogDescription>
+                                    </DialogHeader>
+                                    <div class="space-y-3 py-4">
+                                        <div class="space-y-1.5">
+                                            <Label>Name</Label>
+                                            <Input placeholder="Your name" />
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <Label>Username</Label>
+                                            <Input placeholder="username" />
+                                        </div>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button OnClick="() => _dialog1Open = false">Save changes</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </PatternCard>
+
+                        <PatternCard Label="Confirmation Dialog" Code="@_codeDialogConfirm">
+                            <Dialog @bind-IsOpen="_dialog2Open">
+                                <DialogTrigger>
+                                    <Button Variant="Button.ButtonVariant.Destructive">Delete Account</Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Are you absolutely sure?</DialogTitle>
+                                        <DialogDescription>This action cannot be undone. This will permanently delete your account and remove all data.</DialogDescription>
+                                    </DialogHeader>
+                                    <DialogFooter>
+                                        <Button Variant="Button.ButtonVariant.Outline" OnClick="() => _dialog2Open = false">Cancel</Button>
+                                        <Button Variant="Button.ButtonVariant.Destructive" OnClick="() => _dialog2Open = false">Delete</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Input â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Input")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Input</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeInputDefault">
+                            <Input placeholder="Email" Class="w-full max-w-sm" />
+                        </PatternCard>
+
+                        <PatternCard Label="With Label" Code="@_codeInputLabel">
+                            <div class="w-full max-w-sm space-y-2">
+                                <Label>Email</Label>
+                                <Input placeholder="Enter your email" />
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="Disabled" Code="@_codeInputDisabled">
+                            <Input placeholder="Disabled input" disabled Class="w-full max-w-sm" />
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Select â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Select")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Select</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Basic Select" Code="@_codeSelectBasic">
+                            <Select @bind-Value="_select1Value" @bind-IsOpen="_select1Open" Class="w-full max-w-xs">
+                                <SelectTrigger>
+                                    <span class="@(string.IsNullOrEmpty(_select1Value) ? "text-muted-foreground" : "")">
+                                        @(string.IsNullOrEmpty(_select1Value) ? "Select a fruit" : _select1Value)
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem Value="Apple">Apple</SelectItem>
+                                    <SelectItem Value="Banana">Banana</SelectItem>
+                                    <SelectItem Value="Cherry">Cherry</SelectItem>
+                                    <SelectItem Value="Mango">Mango</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </PatternCard>
+
+                        <PatternCard Label="With Groups" Code="@_codeSelectGroups">
+                            <Select @bind-Value="_select2Value" @bind-IsOpen="_select2Open" Class="w-full max-w-xs">
+                                <SelectTrigger>
+                                    <span class="@(string.IsNullOrEmpty(_select2Value) ? "text-muted-foreground" : "")">
+                                        @(string.IsNullOrEmpty(_select2Value) ? "Select timezone" : _select2Value)
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectLabel>North America</SelectLabel>
+                                        <SelectItem Value="EST (UTC-5)">EST (UTC-5)</SelectItem>
+                                        <SelectItem Value="CST (UTC-6)">CST (UTC-6)</SelectItem>
+                                        <SelectItem Value="PST (UTC-8)">PST (UTC-8)</SelectItem>
+                                    </SelectGroup>
+                                    <SelectGroup>
+                                        <SelectLabel>Europe</SelectLabel>
+                                        <SelectItem Value="CET (UTC+1)">CET (UTC+1)</SelectItem>
+                                        <SelectItem Value="GMT (UTC+0)">GMT (UTC+0)</SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Switch â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Switch")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Switch</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeSwitchDefault">
+                            <div class="flex items-center gap-2">
+                                <Switch @bind-Checked="_switch1" />
+                                <Label>Airplane Mode</Label>
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="Checked" Code="@_codeSwitchChecked">
+                            <div class="flex items-center gap-2">
+                                <Switch Checked="true" />
+                                <Label>Active</Label>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Tabs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Tabs")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Tabs</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Basic Tabs" Code="@_codeTabsBasic">
+                            <Tabs ActiveValue="account" Class="w-full max-w-md">
+                                <TabsList>
+                                    <TabsTrigger Value="account">Account</TabsTrigger>
+                                    <TabsTrigger Value="password">Password</TabsTrigger>
+                                </TabsList>
+                                <TabsContent Value="account">
+                                    <p class="text-sm text-muted-foreground pt-2">Manage your account settings here.</p>
+                                </TabsContent>
+                                <TabsContent Value="password">
+                                    <p class="text-sm text-muted-foreground pt-2">Change your password here.</p>
+                                </TabsContent>
+                            </Tabs>
+                        </PatternCard>
+
+                        <PatternCard Label="Three Tabs" Code="@_codeTabsThree">
+                            <Tabs ActiveValue="overview" Class="w-full max-w-md">
+                                <TabsList>
+                                    <TabsTrigger Value="overview">Overview</TabsTrigger>
+                                    <TabsTrigger Value="analytics">Analytics</TabsTrigger>
+                                    <TabsTrigger Value="reports">Reports</TabsTrigger>
+                                </TabsList>
+                                <TabsContent Value="overview">
+                                    <p class="text-sm text-muted-foreground pt-2">Overview content goes here.</p>
+                                </TabsContent>
+                                <TabsContent Value="analytics">
+                                    <p class="text-sm text-muted-foreground pt-2">Analytics content goes here.</p>
+                                </TabsContent>
+                                <TabsContent Value="reports">
+                                    <p class="text-sm text-muted-foreground pt-2">Reports content goes here.</p>
+                                </TabsContent>
+                            </Tabs>
+                        </PatternCard>
+
+                        <PatternCard Label="With Content" Code="@_codeTabsContent">
+                            <Tabs @bind-ActiveValue="_tabsActiveValue" Class="w-full max-w-md">
+                                <TabsList>
+                                    <TabsTrigger Value="profile">Profile</TabsTrigger>
+                                    <TabsTrigger Value="settings">Settings</TabsTrigger>
+                                </TabsList>
+                                <TabsContent Value="profile">
+                                    <div class="space-y-2 pt-2">
+                                        <Label>Display Name</Label>
+                                        <Input placeholder="Your display name" />
+                                    </div>
+                                </TabsContent>
+                                <TabsContent Value="settings">
+                                    <div class="flex items-center justify-between pt-2">
+                                        <Label>Email notifications</Label>
+                                        <Switch />
+                                    </div>
+                                </TabsContent>
+                            </Tabs>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Table â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Table")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Table</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Basic Table" Code="@_codeTableBasic">
+                            <DataTable TItem="InvoiceRow" Items="_invoices">
+                                <HeaderTemplate>
+                                    <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Invoice</th>
+                                    <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Status</th>
+                                    <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground text-xs">Amount</th>
+                                </HeaderTemplate>
+                                <RowTemplate Context="row">
+                                    <td class="p-4 align-middle text-sm text-foreground">@row.Id</td>
+                                    <td class="p-4 align-middle">
+                                        <Badge Variant="@(row.Status == "Paid" ? Badge.BadgeVariant.Success : row.Status == "Pending" ? Badge.BadgeVariant.Warning : Badge.BadgeVariant.Secondary)">
+                                            @row.Status
+                                        </Badge>
+                                    </td>
+                                    <td class="p-4 align-middle text-sm text-right font-medium text-foreground">@row.Amount</td>
+                                </RowTemplate>
+                            </DataTable>
+                        </PatternCard>
+
+                        <PatternCard Label="Loading State" Code="@_codeTableLoading">
+                            <DataTable TItem="InvoiceRow" Items="@(new List<InvoiceRow>())" IsLoading="true" SkeletonRows="3">
+                                <HeaderTemplate>
+                                    <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Name</th>
+                                    <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Email</th>
+                                    <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground text-xs">Role</th>
+                                </HeaderTemplate>
+                                <RowTemplate Context="row">
+                                    <td class="p-4">@row.Id</td>
+                                </RowTemplate>
+                                <LoadingTemplate>
+                                    <td class="p-4"><Skeleton Class="h-4 w-24" /></td>
+                                    <td class="p-4"><Skeleton Class="h-4 w-36" /></td>
+                                    <td class="p-4 text-right"><Skeleton Class="h-4 w-16 ml-auto" /></td>
+                                </LoadingTemplate>
+                            </DataTable>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Toast â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Toast")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Toast</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default Toast" Code="@_codeToastDefault">
+                            <Button Variant="Button.ButtonVariant.Outline"
+                                    OnClick='() => Toast.Show("Event has been created", "Monday, January 3 at 6:00pm")'>
+                                Show Toast
+                            </Button>
+                        </PatternCard>
+
+                        <PatternCard Label="Destructive Toast" Code="@_codeToastDestructive">
+                            <Button Variant="Button.ButtonVariant.Destructive"
+                                    OnClick='() => Toast.Error("Something went wrong", "Your request could not be completed.")'>
+                                Show Error Toast
+                            </Button>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Progress â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Progress")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Progress</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeProgressDefault">
+                            <div class="w-full max-w-sm space-y-2">
+                                <div class="flex justify-between text-xs text-muted-foreground">
+                                    <span>Progress</span>
+                                    <span>60%</span>
                                 </div>
-                                <div>
-                                    <h3 class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">@item.Name</h3>
-                                    <Badge Variant="Badge.BadgeVariant.Secondary" Class="mt-1 text-[10px]">@item.Category</Badge>
+                                <Progress Value="60" />
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="All Variants" Code="@_codeProgressVariants">
+                            <div class="w-full max-w-sm space-y-3">
+                                <div class="space-y-1">
+                                    <p class="text-xs text-muted-foreground">Default â€" 40%</p>
+                                    <Progress Value="40" />
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-xs text-muted-foreground">Success â€" 75%</p>
+                                    <Progress Value="75" Variant="Progress.ProgressVariant.Success" />
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-xs text-muted-foreground">Warning â€" 55%</p>
+                                    <Progress Value="55" Variant="Progress.ProgressVariant.Warning" />
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-xs text-muted-foreground">Destructive â€" 90%</p>
+                                    <Progress Value="90" Variant="Progress.ProgressVariant.Destructive" />
                                 </div>
                             </div>
-                            <p class="text-sm text-muted-foreground leading-relaxed">@item.Description</p>
-                        </div>
-                    </a>
-                }
-            </div>
+                        </PatternCard>
 
-            @if (FilteredItems.Count == 0)
-            {
-                <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
-                    <div class="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-                        <Blazicon Svg="Lucide.Search" class="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <p class="font-medium text-foreground">No patterns found</p>
-                    <p class="text-sm text-muted-foreground">Try a different category.</p>
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick='() => _selectedCategory = "All"'>
-                        Clear filter
-                    </Button>
-                </div>
+                </section>
             }
-        </div>
+
+            <!-- â"€â"€ Separator â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Separator")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Separator</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Horizontal &amp; Vertical" Code="@_codeSeparator">
+                            <div class="w-full max-w-sm space-y-3">
+                                <div>
+                                    <p class="text-sm font-medium text-foreground">Radix Primitives</p>
+                                    <p class="text-xs text-muted-foreground">An open-source UI component library.</p>
+                                </div>
+                                <Separator />
+                                <div class="flex items-center gap-3 text-sm text-muted-foreground">
+                                    <span>Blog</span>
+                                    <Separator Orientation="Separator.SeparatorOrientation.Vertical" Class="h-4" />
+                                    <span>Docs</span>
+                                    <Separator Orientation="Separator.SeparatorOrientation.Vertical" Class="h-4" />
+                                    <span>Source</span>
+                                </div>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Skeleton â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Skeleton")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Skeleton</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Card Skeleton" Code="@_codeSkeletonCard">
+                            <div class="w-full max-w-sm flex items-center gap-4">
+                                <Skeleton Class="h-12 w-12 rounded-full" />
+                                <div class="flex-1 space-y-2">
+                                    <Skeleton Class="h-4 w-3/4" />
+                                    <Skeleton Class="h-4 w-1/2" />
+                                </div>
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="Text Skeleton" Code="@_codeSkeletonText">
+                            <div class="w-full max-w-sm space-y-2">
+                                <Skeleton Class="h-4 w-full" />
+                                <Skeleton Class="h-4 w-5/6" />
+                                <Skeleton Class="h-4 w-4/6" />
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="Full Card Skeleton" Code="@_codeSkeletonFull">
+                            <div class="w-full max-w-sm space-y-4">
+                                <Skeleton Class="h-32 w-full rounded-lg" />
+                                <div class="space-y-2">
+                                    <Skeleton Class="h-4 w-3/4" />
+                                    <Skeleton Class="h-4 w-1/2" />
+                                </div>
+                                <Skeleton Class="h-9 w-full" />
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Popover â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Popover")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Popover</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codePopoverDefault">
+                            <Popover @bind-IsOpen="_popover1Open">
+                                <PopoverTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Open Popover</Button>
+                                </PopoverTrigger>
+                                <PopoverContent Class="w-64 p-4">
+                                    <p class="text-sm font-medium text-foreground">Popover Content</p>
+                                    <p class="text-xs text-muted-foreground mt-1">This is the popover content area.</p>
+                                </PopoverContent>
+                            </Popover>
+                        </PatternCard>
+
+                        <PatternCard Label="With Form" Code="@_codePopoverForm">
+                            <Popover @bind-IsOpen="_popover2Open">
+                                <PopoverTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Settings</Button>
+                                </PopoverTrigger>
+                                <PopoverContent Class="w-72 p-4">
+                                    <p class="text-sm font-semibold text-foreground mb-3">Dimensions</p>
+                                    <div class="space-y-2">
+                                        <div class="flex items-center gap-3">
+                                            <Label Class="w-16 text-xs">Width</Label>
+                                            <Input placeholder="100%" Class="flex-1 h-7 text-xs" />
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <Label Class="w-16 text-xs">Height</Label>
+                                            <Input placeholder="auto" Class="flex-1 h-7 text-xs" />
+                                        </div>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Tooltip â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Tooltip")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Tooltip</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeTooltipDefault">
+                            <Tooltip Text="This is a tooltip">
+                                <Button Variant="Button.ButtonVariant.Outline">Hover me</Button>
+                            </Tooltip>
+                        </PatternCard>
+
+                        <PatternCard Label="Positions" Code="@_codeTooltipPositions">
+                            <div class="flex items-center justify-center gap-4">
+                                <Tooltip Text="Top tooltip" Position="Tooltip.TooltipPosition.Top">
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="text-xs px-2 h-7">Top</Button>
+                                </Tooltip>
+                                <Tooltip Text="Bottom tooltip" Position="Tooltip.TooltipPosition.Bottom">
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="text-xs px-2 h-7">Bottom</Button>
+                                </Tooltip>
+                                <Tooltip Text="Left tooltip" Position="Tooltip.TooltipPosition.Left">
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="text-xs px-2 h-7">Left</Button>
+                                </Tooltip>
+                                <Tooltip Text="Right tooltip" Position="Tooltip.TooltipPosition.Right">
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="text-xs px-2 h-7">Right</Button>
+                                </Tooltip>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Sheet â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Sheet")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Sheet</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default (Right)" Code="@_codeSheetDefault">
+                            <Sheet @bind-IsOpen="_sheet1Open">
+                                <SheetTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Open Sheet</Button>
+                                </SheetTrigger>
+                                <SheetContent>
+                                    <SheetHeader>
+                                        <SheetTitle>Edit Profile</SheetTitle>
+                                        <SheetDescription>Make changes to your profile here.</SheetDescription>
+                                    </SheetHeader>
+                                    <div class="py-4 space-y-3">
+                                        <div class="space-y-1.5">
+                                            <Label>Name</Label>
+                                            <Input placeholder="Your name" />
+                                        </div>
+                                    </div>
+                                    <SheetFooter>
+                                        <Button OnClick="() => _sheet1Open = false">Save changes</Button>
+                                    </SheetFooter>
+                                </SheetContent>
+                            </Sheet>
+                        </PatternCard>
+
+                        <PatternCard Label="Left Side" Code="@_codeSheetLeft">
+                            <Sheet @bind-IsOpen="_sheet2Open">
+                                <SheetTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Open Left Sheet</Button>
+                                </SheetTrigger>
+                                <SheetContent Side="SheetContent.SheetSide.Left">
+                                    <SheetHeader>
+                                        <SheetTitle>Navigation</SheetTitle>
+                                        <SheetDescription>Browse pages from here.</SheetDescription>
+                                    </SheetHeader>
+                                    <div class="py-4 space-y-1">
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start">Home</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start">About</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start">Contact</Button>
+                                    </div>
+                                </SheetContent>
+                            </Sheet>
+                        </PatternCard>
+
+                        <PatternCard Label="With Form" Code="@_codeSheetForm">
+                            <Sheet @bind-IsOpen="_sheet3Open">
+                                <SheetTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Contact Form</Button>
+                                </SheetTrigger>
+                                <SheetContent>
+                                    <SheetHeader>
+                                        <SheetTitle>Contact Us</SheetTitle>
+                                        <SheetDescription>Send us a message.</SheetDescription>
+                                    </SheetHeader>
+                                    <div class="py-4 space-y-3">
+                                        <div class="space-y-1.5">
+                                            <Label>Email</Label>
+                                            <Input placeholder="you@example.com" />
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <Label>Message</Label>
+                                            <Textarea placeholder="Your message..." Class="min-h-[100px]" />
+                                        </div>
+                                    </div>
+                                    <SheetFooter>
+                                        <Button Variant="Button.ButtonVariant.Outline" OnClick="() => _sheet3Open = false">Cancel</Button>
+                                        <Button OnClick="() => _sheet3Open = false">Send</Button>
+                                    </SheetFooter>
+                                </SheetContent>
+                            </Sheet>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ DropdownMenu â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "DropdownMenu")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">DropdownMenu</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeDropdownDefault">
+                            <DropdownMenu @bind-IsOpen="_dropdown1Open">
+                                <DropdownMenuTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">Open Menu</Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem>Profile</DropdownMenuItem>
+                                    <DropdownMenuItem>Billing</DropdownMenuItem>
+                                    <DropdownMenuItem>Settings</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem>Log out</DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </PatternCard>
+
+                        <PatternCard Label="With Icons" Code="@_codeDropdownIcons">
+                            <DropdownMenu @bind-IsOpen="_dropdown2Open">
+                                <DropdownMenuTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline">
+                                        <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuGroup>
+                                        <DropdownMenuItem>
+                                            <DynamicIcon Name="User" Class="mr-2 h-4 w-4" />
+                                            Profile
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem>
+                                            <DynamicIcon Name="Settings" Class="mr-2 h-4 w-4" />
+                                            Settings
+                                        </DropdownMenuItem>
+                                    </DropdownMenuGroup>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem>
+                                        <DynamicIcon Name="LogOut" Class="mr-2 h-4 w-4" />
+                                        Log out
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Combobox â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Combobox")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Combobox</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeComboboxDefault">
+                            <Combobox @bind-Value="_combobox1Value" @bind-IsOpen="_combobox1Open" Class="w-64">
+                                <ComboboxInput Placeholder="Select framework..." />
+                                <ComboboxContent>
+                                    <ComboboxItem Value="Next.js">Next.js</ComboboxItem>
+                                    <ComboboxItem Value="SvelteKit">SvelteKit</ComboboxItem>
+                                    <ComboboxItem Value="Nuxt.js">Nuxt.js</ComboboxItem>
+                                    <ComboboxItem Value="Remix">Remix</ComboboxItem>
+                                    <ComboboxEmpty>No framework found.</ComboboxEmpty>
+                                </ComboboxContent>
+                            </Combobox>
+                        </PatternCard>
+
+                        <PatternCard Label="Searchable" Code="@_codeComboboxSearch">
+                            <Combobox @bind-Value="_combobox2Value" @bind-IsOpen="_combobox2Open" Class="w-64">
+                                <ComboboxInput Placeholder="Search languages..." />
+                                <ComboboxContent>
+                                    <ComboboxItem Value="C#">C#</ComboboxItem>
+                                    <ComboboxItem Value="TypeScript">TypeScript</ComboboxItem>
+                                    <ComboboxItem Value="Rust">Rust</ComboboxItem>
+                                    <ComboboxItem Value="Go">Go</ComboboxItem>
+                                    <ComboboxItem Value="Python">Python</ComboboxItem>
+                                    <ComboboxEmpty>No language found.</ComboboxEmpty>
+                                </ComboboxContent>
+                            </Combobox>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ DatePicker â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "DatePicker")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">DatePicker</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeDatePickerDefault">
+                            <DatePicker @bind-Value="_datePicker1" Class="w-64" />
+                        </PatternCard>
+
+                        <PatternCard Label="With Label" Code="@_codeDatePickerLabel">
+                            <div class="flex flex-col gap-2 w-64">
+                                <Label Class="text-xs text-muted-foreground">Date of birth</Label>
+                                <DatePicker @bind-Value="_datePicker2" Placeholder="Pick your birthday" Class="w-full" />
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Breadcrumb â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Breadcrumb")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Breadcrumb</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeBreadcrumbDefault">
+                            <Breadcrumb>
+                                <BreadcrumbList>
+                                    <BreadcrumbItem>
+                                        <BreadcrumbLink href="#">Home</BreadcrumbLink>
+                                    </BreadcrumbItem>
+                                    <BreadcrumbSeparator />
+                                    <BreadcrumbItem>
+                                        <BreadcrumbLink href="#">Components</BreadcrumbLink>
+                                    </BreadcrumbItem>
+                                    <BreadcrumbSeparator />
+                                    <BreadcrumbItem>
+                                        <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+                                    </BreadcrumbItem>
+                                </BreadcrumbList>
+                            </Breadcrumb>
+                        </PatternCard>
+
+                        <PatternCard Label="Custom Separator" Code="@_codeBreadcrumbCustom">
+                            <Breadcrumb>
+                                <BreadcrumbList>
+                                    <BreadcrumbItem>
+                                        <BreadcrumbLink href="#">
+                                            <DynamicIcon Name="House" Class="h-4 w-4" />
+                                        </BreadcrumbLink>
+                                    </BreadcrumbItem>
+                                    <BreadcrumbSeparator>
+                                        <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
+                                    </BreadcrumbSeparator>
+                                    <BreadcrumbItem>
+                                        <BreadcrumbLink href="#">Docs</BreadcrumbLink>
+                                    </BreadcrumbItem>
+                                    <BreadcrumbSeparator>
+                                        <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
+                                    </BreadcrumbSeparator>
+                                    <BreadcrumbItem>
+                                        <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+                                    </BreadcrumbItem>
+                                </BreadcrumbList>
+                            </Breadcrumb>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Pagination â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Pagination")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Pagination</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codePaginationDefault">
+                            <Pagination>
+                                <PaginationContent>
+                                    <PaginationPrevious OnClick="() => { if (_page1 > 1) _page1--; }" />
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        var pg = i;
+                                        <PaginationItem IsActive="_page1 == pg" OnClick="() => _page1 = pg">@pg</PaginationItem>
+                                    }
+                                    <PaginationNext OnClick="() => { if (_page1 < 5) _page1++; }" />
+                                </PaginationContent>
+                            </Pagination>
+                        </PatternCard>
+
+                        <PatternCard Label="With Ellipsis" Code="@_codePaginationEllipsis">
+                            <Pagination>
+                                <PaginationContent>
+                                    <PaginationPrevious OnClick="() => { if (_page2 > 1) _page2--; }" />
+                                    <PaginationItem IsActive="_page2 == 1" OnClick='() => _page2 = 1'>1</PaginationItem>
+                                    <PaginationItem IsActive="_page2 == 2" OnClick='() => _page2 = 2'>2</PaginationItem>
+                                    <PaginationEllipsis />
+                                    <PaginationItem IsActive="_page2 == 10" OnClick='() => _page2 = 10'>10</PaginationItem>
+                                    <PaginationNext OnClick="() => { if (_page2 < 10) _page2++; }" />
+                                </PaginationContent>
+                            </Pagination>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ RadioGroup â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "RadioGroup")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">RadioGroup</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeRadioGroupDefault">
+                            <RadioGroup @bind-Value="_radio1Value" Class="space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <RadioGroupItem Value="default" />
+                                    <Label>Default</Label>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <RadioGroupItem Value="comfortable" />
+                                    <Label>Comfortable</Label>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <RadioGroupItem Value="compact" />
+                                    <Label>Compact</Label>
+                                </div>
+                            </RadioGroup>
+                        </PatternCard>
+
+                        <PatternCard Label="Card Style" Code="@_codeRadioGroupCard">
+                            <RadioGroup @bind-Value="_radio2Value" Class="grid grid-cols-3 gap-2">
+                                @foreach (var plan in new[] { "Starter", "Pro", "Enterprise" })
+                                {
+                                    var p = plan;
+                                    <label class="@($"flex items-center justify-center rounded-md border p-3 cursor-pointer text-sm font-medium transition-colors {(_radio2Value == p ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-accent")}")">
+                                        <RadioGroupItem Value="@p" Class="sr-only" />
+                                        @p
+                                    </label>
+                                }
+                            </RadioGroup>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Label â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Label")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Label</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeLabelDefault">
+                            <div class="space-y-1.5">
+                                <Label>Email address</Label>
+                                <Input placeholder="you@example.com" Class="w-64" />
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="With Required Indicator" Code="@_codeLabelRequired">
+                            <div class="space-y-1.5">
+                                <div class="flex items-center gap-1">
+                                    <Label>Username</Label>
+                                    <span class="text-xs text-destructive">*</span>
+                                </div>
+                                <Input placeholder="johndoe" Class="w-64" />
+                                <p class="text-xs text-muted-foreground">This is your public display name.</p>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Textarea â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Textarea")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Textarea</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeTextareaDefault">
+                            <Textarea placeholder="Type your message here..." Class="w-full max-w-sm" />
+                        </PatternCard>
+
+                        <PatternCard Label="With Character Count" Code="@_codeTextareaCharCount">
+                            <div class="w-full max-w-sm space-y-1.5">
+                                <Textarea placeholder="Max 200 characters..."
+                                          Class="w-full resize-none"
+                                          @oninput='e => _textareaValue = e.Value?.ToString() ?? ""' />
+                                <div class="flex justify-end">
+                                    <span class="text-xs text-muted-foreground">@_textareaValue.Length / 200</span>
+                                </div>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Collapsible â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Collapsible")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Collapsible</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeCollapsibleDefault">
+                            <Collapsible @bind-IsOpen="_collapsible1Open" Class="w-full max-w-sm space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-sm font-semibold text-foreground">Repositories</p>
+                                    <CollapsibleTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="h-8 w-8 p-0">
+                                            <DynamicIcon Name="ChevronsUpDown" Class="h-4 w-4" />
+                                        </Button>
+                                    </CollapsibleTrigger>
+                                </div>
+                                <div class="rounded-md border border-border px-4 py-2 text-sm text-foreground">lumeo</div>
+                                <CollapsibleContent>
+                                    <div class="space-y-2 mt-2">
+                                        <div class="rounded-md border border-border px-4 py-2 text-sm text-foreground">blazicons</div>
+                                        <div class="rounded-md border border-border px-4 py-2 text-sm text-foreground">tailwindcss-v4</div>
+                                    </div>
+                                </CollapsibleContent>
+                            </Collapsible>
+                        </PatternCard>
+
+                        <PatternCard Label="Panel Style" Code="@_codeCollapsiblePanel">
+                            <Collapsible @bind-IsOpen="_collapsible2Open" Class="w-full max-w-sm border border-border rounded-lg overflow-hidden">
+                                <CollapsibleTrigger Class="w-full">
+                                    <div class="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors">
+                                        <span class="text-sm font-medium text-foreground">Advanced Settings</span>
+                                        <Blazicon Svg="@(_collapsible2Open ? Lucide.ChevronUp : Lucide.ChevronDown)" class="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                    <div class="border-t border-border px-4 py-3 space-y-2">
+                                        <div class="flex items-center justify-between">
+                                            <Label Class="text-xs">Enable analytics</Label>
+                                            <Switch />
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <Label Class="text-xs">Dark mode</Label>
+                                            <Switch />
+                                        </div>
+                                    </div>
+                                </CollapsibleContent>
+                            </Collapsible>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Spinner â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Spinner")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Spinner</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeSpinnerDefault">
+                            <Spinner />
+                        </PatternCard>
+
+                        <PatternCard Label="Sizes" Code="@_codeSpinnerSizes">
+                            <div class="flex items-center justify-center gap-6">
+                                <Spinner Size="Spinner.SpinnerSize.Sm" />
+                                <Spinner Size="Spinner.SpinnerSize.Default" />
+                                <Spinner Size="Spinner.SpinnerSize.Lg" />
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="With Button" Code="@_codeSpinnerButton">
+                            <Button Variant="Button.ButtonVariant.Outline" Disabled="true">
+                                <Spinner Size="Spinner.SpinnerSize.Sm" Class="mr-2" />
+                                Loading...
+                            </Button>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ EmptyState â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "EmptyState")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">EmptyState</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeEmptyStateDefault">
+                            <EmptyState Title="No results" Description="Try adjusting your search or filter." Class="w-full max-w-sm">
+                                <Icon>
+                                    <DynamicIcon Name="SearchX" Class="h-8 w-8" />
+                                </Icon>
+                            </EmptyState>
+                        </PatternCard>
+
+                        <PatternCard Label="With Action" Code="@_codeEmptyStateAction">
+                            <EmptyState Title="No projects yet" Description="Create your first project to get started." Class="w-full max-w-sm">
+                                <Icon>
+                                    <DynamicIcon Name="FolderOpen" Class="h-8 w-8" />
+                                </Icon>
+                                <Action>
+                                    <Button>
+                                        <DynamicIcon Name="Plus" Class="mr-2 h-4 w-4" />
+                                        New Project
+                                    </Button>
+                                </Action>
+                            </EmptyState>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Slider â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Slider")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Slider</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeSliderDefault">
+                            <Slider @bind-Value="_slider1Value" Class="w-full max-w-sm" />
+                        </PatternCard>
+
+                        <PatternCard Label="Custom Steps" Code="@_codeSliderSteps">
+                            <div class="w-full max-w-sm space-y-4">
+                                <Slider @bind-Value="_slider2Value" Min="0" Max="10" Step="1" Class="w-full" />
+                                <Slider @bind-Value="_slider3Value" Min="0" Max="100" Step="5" Class="w-full" />
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="With Labels" Code="@_codeSliderLabels">
+                            <div class="w-full max-w-sm space-y-2">
+                                <div class="flex justify-between text-xs text-muted-foreground">
+                                    <span>Volume</span>
+                                    <span>@((int)_slider4Value)%</span>
+                                </div>
+                                <Slider @bind-Value="_slider4Value" Class="w-full" />
+                                <div class="flex justify-between text-xs text-muted-foreground">
+                                    <span>0%</span>
+                                    <span>100%</span>
+                                </div>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Toggle â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Toggle")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Toggle</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default" Code="@_codeToggleDefault">
+                            <div class="flex items-center justify-center gap-2">
+                                <Toggle @bind-Pressed="_toggle1Pressed">Bold</Toggle>
+                                <Toggle @bind-Pressed="_toggle2Pressed" Variant="Toggle.ToggleVariant.Outline">Italic</Toggle>
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="With Icons" Code="@_codeToggleIcons">
+                            <div class="flex items-center justify-center gap-2">
+                                <Toggle @bind-Pressed="_toggle3Pressed">
+                                    <DynamicIcon Name="Bold" Class="h-4 w-4" />
+                                </Toggle>
+                                <Toggle @bind-Pressed="_toggle4Pressed">
+                                    <DynamicIcon Name="Italic" Class="h-4 w-4" />
+                                </Toggle>
+                                <Toggle @bind-Pressed="_toggle5Pressed">
+                                    <DynamicIcon Name="Underline" Class="h-4 w-4" />
+                                </Toggle>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ ToggleGroup â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "ToggleGroup")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">ToggleGroup</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Single Select" Code="@_codeToggleGroupSingle">
+                            <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single">
+                                <ToggleGroupItem Value="left">
+                                    <DynamicIcon Name="AlignLeft" Class="h-4 w-4" />
+                                </ToggleGroupItem>
+                                <ToggleGroupItem Value="center">
+                                    <DynamicIcon Name="AlignCenter" Class="h-4 w-4" />
+                                </ToggleGroupItem>
+                                <ToggleGroupItem Value="right">
+                                    <DynamicIcon Name="AlignRight" Class="h-4 w-4" />
+                                </ToggleGroupItem>
+                            </ToggleGroup>
+                        </PatternCard>
+
+                        <PatternCard Label="Multiple Select" Code="@_codeToggleGroupMultiple">
+                            <ToggleGroup Type="ToggleGroup.ToggleGroupType.Multiple">
+                                <ToggleGroupItem Value="bold">
+                                    <DynamicIcon Name="Bold" Class="h-4 w-4" />
+                                </ToggleGroupItem>
+                                <ToggleGroupItem Value="italic">
+                                    <DynamicIcon Name="Italic" Class="h-4 w-4" />
+                                </ToggleGroupItem>
+                                <ToggleGroupItem Value="underline">
+                                    <DynamicIcon Name="Underline" Class="h-4 w-4" />
+                                </ToggleGroupItem>
+                            </ToggleGroup>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ Kbd â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "Kbd")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Kbd</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Single Keys" Code="@_codeKbdSingle">
+                            <div class="flex items-center justify-center gap-2">
+                                <Kbd>Enter</Kbd>
+                                <Kbd>Escape</Kbd>
+                                <Kbd>Tab</Kbd>
+                            </div>
+                        </PatternCard>
+
+                        <PatternCard Label="Key Combinations" Code="@_codeKbdCombinations">
+                            <div class="flex items-center justify-center gap-4">
+                                <span class="flex items-center gap-1 text-sm text-muted-foreground">
+                                    <Kbd>âŒ˜</Kbd><Kbd>K</Kbd>
+                                </span>
+                                <span class="flex items-center gap-1 text-sm text-muted-foreground">
+                                    <Kbd>Ctrl</Kbd><Kbd>Shift</Kbd><Kbd>P</Kbd>
+                                </span>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ OtpInput â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "OtpInput")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">OtpInput</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Default OTP Input" Code="@_codeOtpDefault">
+                            <div class="flex flex-col items-center gap-3">
+                                <p class="text-sm text-muted-foreground">Enter the 6-digit code sent to your email</p>
+                                <OtpInput @bind-Value="_otpValue" Length="6" />
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ FileUpload â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "FileUpload")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">FileUpload</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Drop Zone" Code="@_codeFileUploadDefault">
+                            <FileUpload Description="PNG, JPG up to 10MB" Class="w-full max-w-sm" />
+                        </PatternCard>
+
+                        <PatternCard Label="Multiple Files" Code="@_codeFileUploadMultiple">
+                            <FileUpload Multiple="true" Accept=".csv,.xlsx" Description=".CSV or .XLSX files" Class="w-full max-w-sm" />
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ AspectRatio â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "AspectRatio")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">AspectRatio</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="16:9 Ratio" Code="@_codeAspectRatio">
+                            <div class="w-full max-w-sm">
+                                <AspectRatio Ratio="16.0/9.0" Class="rounded-md overflow-hidden bg-muted">
+                                    <div class="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                                        16 / 9
+                                    </div>
+                                </AspectRatio>
+                            </div>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
+            <!-- â"€â"€ ScrollArea â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ -->
+            @if (Filter.SelectedCategory == "All" || Filter.SelectedCategory == "ScrollArea")
+            {
+                <section>
+                    @if (Filter.SelectedCategory == "All")
+                    {
+                        <h2 class="text-lg font-semibold text-foreground mb-4">ScrollArea</h2>
+                    }
+                    <div class="space-y-3">
+
+                        <PatternCard Label="Scrollable List" Code="@_codeScrollArea">
+                            <ScrollArea Class="h-48 w-full max-w-xs rounded-md border border-border">
+                                <div class="p-4 space-y-2">
+                                    @foreach (var tag in new[] { "Radix UI", "Tailwind CSS", "Blazor", "ASP.NET", "C#", "TypeScript", "React", "Vue", "Svelte", "Next.js", "Nuxt", "Remix" })
+                                    {
+                                        <div class="flex items-center gap-2 text-sm text-foreground py-1">
+                                            <DynamicIcon Name="Tag" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                            @tag
+                                        </div>
+                                    }
+                                </div>
+                            </ScrollArea>
+                        </PatternCard>
+
+                    </div>
+                </section>
+            }
+
     </div>
 </div>
 
 @code {
-    private string _selectedCategory = "All";
-    private string _sidebarSearch = "";
+    protected override void OnInitialized() => Filter.OnChange += StateHasChanged;
+    public void Dispose() => Filter.OnChange -= StateHasChanged;
 
-    private record PatternItem(string Name, string Category, string Description, string Href, SvgIcon Icon);
-    private record CategoryGroup(string Name);
+    // â"€â"€ Live component state â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+    private bool _checkbox1;
+    private bool _switch1;
+    private bool _dialog1Open;
+    private bool _dialog2Open;
+    private string? _select1Value;
+    private bool _select1Open;
+    private string? _select2Value;
+    private bool _select2Open;
+    private string _tabsActiveValue = "profile";
 
-    private readonly List<CategoryGroup> _categories =
+    // Popover
+    private bool _popover1Open;
+    private bool _popover2Open;
+
+    // Sheet
+    private bool _sheet1Open;
+    private bool _sheet2Open;
+    private bool _sheet3Open;
+
+    // DropdownMenu
+    private bool _dropdown1Open;
+    private bool _dropdown2Open;
+
+    // Combobox
+    private string? _combobox1Value;
+    private bool _combobox1Open;
+    private string? _combobox2Value;
+    private bool _combobox2Open;
+
+    // DatePicker
+    private DateOnly? _datePicker1;
+    private DateOnly? _datePicker2;
+
+    // Pagination
+    private int _page1 = 1;
+    private int _page2 = 1;
+
+    // RadioGroup
+    private string _radio1Value = "option-1";
+    private string _radio2Value = "comfortable";
+
+    // Collapsible
+    private bool _collapsible1Open;
+    private bool _collapsible2Open;
+
+    // Textarea
+    private string _textareaValue = "";
+
+    // Slider
+    private double _slider1Value = 50;
+    private double _slider2Value = 25;
+    private double _slider3Value = 75;
+    private double _slider4Value = 40;
+
+    // Toggle
+    private bool _toggle1Pressed;
+    private bool _toggle2Pressed;
+    private bool _toggle3Pressed;
+    private bool _toggle4Pressed;
+    private bool _toggle5Pressed;
+
+    // OtpInput
+    private string _otpValue = "";
+
+    // â"€â"€ Table data â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+    private record InvoiceRow(string Id, string Status, string Amount);
+    private readonly List<InvoiceRow> _invoices =
     [
-        new("Application"),
-        new("Productivity"),
-        new("Communication"),
-        new("Data & Forms"),
+        new("INV-001", "Paid", "$250.00"),
+        new("INV-002", "Pending", "$150.00"),
+        new("INV-003", "Paid", "$350.00"),
+        new("INV-004", "Draft", "$450.00"),
     ];
 
-    private readonly List<PatternItem> _patterns =
-    [
-        new("Dashboard", "Application", "Analytics dashboard with charts, stats cards, and data tables.", "/patterns/dashboard", Lucide.LayoutGrid),
-        new("E-Commerce", "Application", "Product catalog with filtering, cart, and checkout.", "/patterns/ecommerce", Lucide.ShoppingCart),
-        new("Settings", "Application", "User settings with profile, notifications, and preferences.", "/patterns/settings", Lucide.Settings),
-        new("Music Player", "Application", "Music streaming interface with playlists and player controls.", "/patterns/music", Lucide.Music),
-        new("Kanban Board", "Productivity", "Drag-and-drop task management board with columns.", "/patterns/kanban", Lucide.Box),
-        new("Calendar", "Productivity", "Event scheduling with month and agenda views.", "/patterns/calendar", Lucide.Calendar),
-        new("Form Wizard", "Productivity", "Multi-step form with validation and progress indicator.", "/patterns/form-wizard", Lucide.ClipboardList),
-        new("Mail", "Communication", "Email inbox with message list, preview pane, and compose.", "/patterns/mail", Lucide.Mail),
-        new("Chat", "Communication", "Real-time messaging interface with contacts and threads.", "/patterns/chat", Lucide.MessageCircle),
-        new("Filters", "Data & Forms", "Data filtering with operators and visual indicators.", "/patterns/filters", Lucide.Filter),
-    ];
+    // â"€â"€ Code snippets â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-    private List<PatternItem> FilteredItems => _selectedCategory == "All"
-        ? _patterns
-        : _patterns.Where(x => x.Name == _selectedCategory || x.Category == _selectedCategory).ToList();
+    // Accordion
+    private string _codeAccordionBasic = @"<Accordion>
+    <AccordionItem Value=""item-1"">
+        <AccordionTrigger>Is it accessible?</AccordionTrigger>
+        <AccordionContent>Yes. It adheres to the WAI-ARIA design pattern.</AccordionContent>
+    </AccordionItem>
+    <AccordionItem Value=""item-2"">
+        <AccordionTrigger>Is it styled?</AccordionTrigger>
+        <AccordionContent>Yes. It comes with default styles that match your theme.</AccordionContent>
+    </AccordionItem>
+</Accordion>";
 
-    private bool MatchesSidebarSearch(string name) =>
-        string.IsNullOrEmpty(_sidebarSearch) || name.Contains(_sidebarSearch, StringComparison.OrdinalIgnoreCase);
+    private string _codeAccordionMultiple = @"<Accordion Type=""Accordion.AccordionType.Multiple"">
+    <AccordionItem Value=""a"">
+        <AccordionTrigger>Section One</AccordionTrigger>
+        <AccordionContent>Content for section one.</AccordionContent>
+    </AccordionItem>
+    <AccordionItem Value=""b"">
+        <AccordionTrigger>Section Two</AccordionTrigger>
+        <AccordionContent>Content for section two.</AccordionContent>
+    </AccordionItem>
+</Accordion>";
 
-    private string SidebarItemClass(string name) =>
-        $"w-full flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors cursor-pointer {(name == _selectedCategory ? "bg-accent text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-accent/50")}";
+    private string _codeAccordionFaq = @"<Accordion Class=""text-sm"">
+    <AccordionItem Value=""q1"">
+        <AccordionTrigger>What is Lumeo?</AccordionTrigger>
+        <AccordionContent>Lumeo is a Blazor component library inspired by shadcn/ui.</AccordionContent>
+    </AccordionItem>
+    <AccordionItem Value=""q2"">
+        <AccordionTrigger>How do I install it?</AccordionTrigger>
+        <AccordionContent>Install via NuGet: dotnet add package Lumeo</AccordionContent>
+    </AccordionItem>
+</Accordion>";
 
-    private void OnMobileCategoryChange(ChangeEventArgs e) =>
-        _selectedCategory = e.Value?.ToString() ?? "All";
+    // Alert
+    private string _codeAlertDefault = @"<Alert>
+    <p class=""font-medium text-foreground"">Heads up!</p>
+    <p class=""text-sm text-muted-foreground mt-1"">You can add components using the NuGet package.</p>
+</Alert>";
+
+    private string _codeAlertDestructive = @"<Alert Variant=""Alert.AlertVariant.Destructive"">
+    <p class=""font-medium"">Error</p>
+    <p class=""text-sm mt-1"">Your session has expired. Please sign in again.</p>
+</Alert>";
+
+    // Avatar
+    private string _codeAvatarDefault = @"<Avatar>
+    <AvatarFallback>JD</AvatarFallback>
+</Avatar>";
+
+    private string _codeAvatarSmall = @"<Avatar Size=""Avatar.AvatarSize.Sm"">
+    <AvatarFallback>AB</AvatarFallback>
+</Avatar>";
+
+    private string _codeAvatarLarge = @"<Avatar Size=""Avatar.AvatarSize.Lg"">
+    <AvatarFallback>XY</AvatarFallback>
+</Avatar>";
+
+    // Badge
+    private string _codeBadgeDefault = @"<Badge>Badge</Badge>";
+    private string _codeBadgeSecondary = @"<Badge Variant=""Badge.BadgeVariant.Secondary"">Secondary</Badge>";
+    private string _codeBadgeOutline = @"<Badge Variant=""Badge.BadgeVariant.Outline"">Outline</Badge>";
+    private string _codeBadgeDestructive = @"<Badge Variant=""Badge.BadgeVariant.Destructive"">Destructive</Badge>";
+    private string _codeBadgeSuccess = @"<Badge Variant=""Badge.BadgeVariant.Success"">Success</Badge>";
+    private string _codeBadgeWarning = @"<Badge Variant=""Badge.BadgeVariant.Warning"">Warning</Badge>";
+
+    // Button
+    private string _codeButtonDefault = @"<Button>Button</Button>";
+    private string _codeButtonSecondary = @"<Button Variant=""Button.ButtonVariant.Secondary"">Secondary</Button>";
+    private string _codeButtonDestructive = @"<Button Variant=""Button.ButtonVariant.Destructive"">Destructive</Button>";
+    private string _codeButtonOutline = @"<Button Variant=""Button.ButtonVariant.Outline"">Outline</Button>";
+    private string _codeButtonGhost = @"<Button Variant=""Button.ButtonVariant.Ghost"">Ghost</Button>";
+    private string _codeButtonLink = @"<Button Variant=""Button.ButtonVariant.Link"">Link</Button>";
+
+    private string _codeButtonIcon = @"<Button Variant=""Button.ButtonVariant.Outline"" Class=""h-9 w-9 p-0"">
+    <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" />
+</Button>";
+
+    private string _codeButtonLoading = @"<Button Disabled=""true"">
+    <Spinner Size=""Spinner.SpinnerSize.Sm"" Class=""mr-2"" />
+    Please wait
+</Button>";
+
+    private string _codeButtonGroup = @"<div class=""flex divide-x divide-border overflow-hidden rounded-md border border-border"">
+    <Button Variant=""Button.ButtonVariant.Ghost"" Class=""rounded-none h-9 px-3 text-sm"">Left</Button>
+    <Button Variant=""Button.ButtonVariant.Ghost"" Class=""rounded-none h-9 px-3 text-sm"">Center</Button>
+    <Button Variant=""Button.ButtonVariant.Ghost"" Class=""rounded-none h-9 px-3 text-sm"">Right</Button>
+</div>";
+
+    // Card
+    private string _codeCardSimple = @"<Card>
+    <CardHeader>
+        <p class=""text-base font-semibold text-foreground"">Card Title</p>
+        <p class=""text-sm text-muted-foreground"">Card description goes here.</p>
+    </CardHeader>
+    <CardContent>
+        <p class=""text-sm text-muted-foreground"">Your content lives here.</p>
+    </CardContent>
+</Card>";
+
+    private string _codeCardForm = @"<Card>
+    <CardHeader>
+        <p class=""text-base font-semibold text-foreground"">Create Account</p>
+        <p class=""text-sm text-muted-foreground"">Fill in your details to get started.</p>
+    </CardHeader>
+    <CardContent>
+        <div class=""space-y-3"">
+            <div class=""space-y-1.5"">
+                <Label>Name</Label>
+                <Input placeholder=""Your name"" />
+            </div>
+            <div class=""space-y-1.5"">
+                <Label>Email</Label>
+                <Input placeholder=""you@example.com"" />
+            </div>
+        </div>
+    </CardContent>
+    <CardFooter Class=""gap-2"">
+        <Button Variant=""Button.ButtonVariant.Outline"" Class=""flex-1"">Cancel</Button>
+        <Button Class=""flex-1"">Create</Button>
+    </CardFooter>
+</Card>";
+
+    private string _codeCardStats = @"<Card>
+    <CardHeader>
+        <p class=""text-sm font-medium text-muted-foreground"">Total Revenue</p>
+    </CardHeader>
+    <CardContent>
+        <p class=""text-3xl font-bold text-foreground"">$45,231</p>
+        <p class=""text-xs text-muted-foreground mt-1"">+20.1% from last month</p>
+    </CardContent>
+</Card>";
+
+    // Checkbox
+    private string _codeCheckboxDefault = @"<div class=""flex items-center gap-2"">
+    <Checkbox @bind-Checked=""_checked"" />
+    <Label>Accept terms and conditions</Label>
+</div>";
+
+    private string _codeCheckboxChecked = @"<div class=""flex items-center gap-2"">
+    <Checkbox Checked=""true"" />
+    <Label>Enabled by default</Label>
+</div>";
+
+    // Dialog
+    private string _codeDialogBasic = @"<Dialog @bind-IsOpen=""_open"">
+    <DialogTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Dialog</Button>
+    </DialogTrigger>
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+            <DialogDescription>Make changes to your profile here.</DialogDescription>
+        </DialogHeader>
+        <div class=""space-y-3 py-4"">
+            <div class=""space-y-1.5"">
+                <Label>Name</Label>
+                <Input placeholder=""Your name"" />
+            </div>
+        </div>
+        <DialogFooter>
+            <Button OnClick=""() => _open = false"">Save changes</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>";
+
+    private string _codeDialogConfirm = @"<Dialog @bind-IsOpen=""_open"">
+    <DialogTrigger>
+        <Button Variant=""Button.ButtonVariant.Destructive"">Delete Account</Button>
+    </DialogTrigger>
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""() => _open = false"">Cancel</Button>
+            <Button Variant=""Button.ButtonVariant.Destructive"" OnClick=""() => _open = false"">Delete</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>";
+
+    // Input
+    private string _codeInputDefault = @"<Input placeholder=""Email"" />";
+    private string _codeInputLabel = @"<div class=""space-y-2"">
+    <Label>Email</Label>
+    <Input placeholder=""Enter your email"" />
+</div>";
+    private string _codeInputDisabled = @"<Input placeholder=""Disabled input"" disabled />";
+
+    // Select
+    private string _codeSelectBasic = @"<Select @bind-Value=""_value"" @bind-IsOpen=""_open"">
+    <SelectTrigger>
+        <span>Select a fruit</span>
+    </SelectTrigger>
+    <SelectContent>
+        <SelectItem Value=""Apple"">Apple</SelectItem>
+        <SelectItem Value=""Banana"">Banana</SelectItem>
+        <SelectItem Value=""Cherry"">Cherry</SelectItem>
+    </SelectContent>
+</Select>";
+
+    private string _codeSelectGroups = @"<Select @bind-Value=""_value"" @bind-IsOpen=""_open"">
+    <SelectTrigger>
+        <span>Select timezone</span>
+    </SelectTrigger>
+    <SelectContent>
+        <SelectGroup>
+            <SelectLabel>North America</SelectLabel>
+            <SelectItem Value=""EST (UTC-5)"">EST (UTC-5)</SelectItem>
+            <SelectItem Value=""PST (UTC-8)"">PST (UTC-8)</SelectItem>
+        </SelectGroup>
+        <SelectGroup>
+            <SelectLabel>Europe</SelectLabel>
+            <SelectItem Value=""CET (UTC+1)"">CET (UTC+1)</SelectItem>
+        </SelectGroup>
+    </SelectContent>
+</Select>";
+
+    // Switch
+    private string _codeSwitchDefault = @"<div class=""flex items-center gap-2"">
+    <Switch @bind-Checked=""_checked"" />
+    <Label>Airplane Mode</Label>
+</div>";
+
+    private string _codeSwitchChecked = @"<div class=""flex items-center gap-2"">
+    <Switch Checked=""true"" />
+    <Label>Active</Label>
+</div>";
+
+    // Tabs
+    private string _codeTabsBasic = @"<Tabs ActiveValue=""account"">
+    <TabsList>
+        <TabsTrigger Value=""account"">Account</TabsTrigger>
+        <TabsTrigger Value=""password"">Password</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""account"">
+        <p>Manage your account settings here.</p>
+    </TabsContent>
+    <TabsContent Value=""password"">
+        <p>Change your password here.</p>
+    </TabsContent>
+</Tabs>";
+
+    private string _codeTabsThree = @"<Tabs ActiveValue=""overview"">
+    <TabsList>
+        <TabsTrigger Value=""overview"">Overview</TabsTrigger>
+        <TabsTrigger Value=""analytics"">Analytics</TabsTrigger>
+        <TabsTrigger Value=""reports"">Reports</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""overview"">Overview content.</TabsContent>
+    <TabsContent Value=""analytics"">Analytics content.</TabsContent>
+    <TabsContent Value=""reports"">Reports content.</TabsContent>
+</Tabs>";
+
+    private string _codeTabsContent = @"<Tabs @bind-ActiveValue=""_active"">
+    <TabsList>
+        <TabsTrigger Value=""profile"">Profile</TabsTrigger>
+        <TabsTrigger Value=""settings"">Settings</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""profile"">
+        <Label>Display Name</Label>
+        <Input placeholder=""Your display name"" />
+    </TabsContent>
+    <TabsContent Value=""settings"">
+        <Label>Email notifications</Label>
+        <Switch />
+    </TabsContent>
+</Tabs>";
+
+    // Table
+    private string _codeTableBasic = @"<DataTable TItem=""InvoiceRow"" Items=""_invoices"">
+    <HeaderTemplate>
+        <th>Invoice</th>
+        <th>Status</th>
+        <th>Amount</th>
+    </HeaderTemplate>
+    <RowTemplate Context=""row"">
+        <td>@row.Id</td>
+        <td><Badge>@row.Status</Badge></td>
+        <td>@row.Amount</td>
+    </RowTemplate>
+</DataTable>";
+
+    private string _codeTableLoading = @"<DataTable TItem=""MyRow"" Items=""_items"" IsLoading=""true"" SkeletonRows=""3"">
+    <HeaderTemplate>
+        <th>Name</th><th>Email</th><th>Role</th>
+    </HeaderTemplate>
+    <RowTemplate Context=""row"">
+        <td>@row.Name</td>
+    </RowTemplate>
+    <LoadingTemplate>
+        <td><Skeleton Class=""h-4 w-24"" /></td>
+        <td><Skeleton Class=""h-4 w-36"" /></td>
+        <td><Skeleton Class=""h-4 w-16 ml-auto"" /></td>
+    </LoadingTemplate>
+</DataTable>";
+
+    // Toast
+    private string _codeToastDefault = @"<Button Variant=""Button.ButtonVariant.Outline""
+        OnClick='() => Toast.Show(""Event has been created"", ""Monday, January 3 at 6:00pm"")'>
+    Show Toast
+</Button>";
+
+    private string _codeToastDestructive = @"<Button Variant=""Button.ButtonVariant.Destructive""
+        OnClick='() => Toast.Error(""Something went wrong"", ""Your request could not be completed."")'>
+    Show Error Toast
+</Button>";
+
+    // Progress
+    private string _codeProgressDefault = @"<Progress Value=""60"" />";
+
+    private string _codeProgressVariants = @"<div class=""space-y-3"">
+    <Progress Value=""40"" />
+    <Progress Value=""75"" Variant=""Progress.ProgressVariant.Success"" />
+    <Progress Value=""55"" Variant=""Progress.ProgressVariant.Warning"" />
+    <Progress Value=""90"" Variant=""Progress.ProgressVariant.Destructive"" />
+</div>";
+
+    // Separator
+    private string _codeSeparator = @"<Separator />
+<Separator Orientation=""Separator.SeparatorOrientation.Vertical"" Class=""h-4"" />";
+
+    // Skeleton
+    private string _codeSkeletonCard = @"<div class=""flex items-center gap-4"">
+    <Skeleton Class=""h-12 w-12 rounded-full"" />
+    <div class=""flex-1 space-y-2"">
+        <Skeleton Class=""h-4 w-3/4"" />
+        <Skeleton Class=""h-4 w-1/2"" />
+    </div>
+</div>";
+
+    private string _codeSkeletonText = @"<div class=""space-y-2"">
+    <Skeleton Class=""h-4 w-full"" />
+    <Skeleton Class=""h-4 w-5/6"" />
+    <Skeleton Class=""h-4 w-4/6"" />
+</div>";
+
+    private string _codeSkeletonFull = @"<div class=""space-y-4"">
+    <Skeleton Class=""h-32 w-full rounded-lg"" />
+    <div class=""space-y-2"">
+        <Skeleton Class=""h-4 w-3/4"" />
+        <Skeleton Class=""h-4 w-1/2"" />
+    </div>
+    <Skeleton Class=""h-9 w-full"" />
+</div>";
+
+    // Popover
+    private string _codePopoverDefault = @"<Popover @bind-IsOpen=""_open"">
+    <PopoverTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Popover</Button>
+    </PopoverTrigger>
+    <PopoverContent Class=""w-64 p-4"">
+        <p class=""text-sm font-medium text-foreground"">Popover Content</p>
+        <p class=""text-xs text-muted-foreground mt-1"">This is the popover content area.</p>
+    </PopoverContent>
+</Popover>";
+
+    private string _codePopoverForm = @"<Popover @bind-IsOpen=""_open"">
+    <PopoverTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Settings</Button>
+    </PopoverTrigger>
+    <PopoverContent Class=""w-72 p-4"">
+        <p class=""text-sm font-semibold text-foreground mb-3"">Dimensions</p>
+        <div class=""space-y-2"">
+            <div class=""flex items-center gap-3"">
+                <Label Class=""w-16 text-xs"">Width</Label>
+                <Input placeholder=""100%"" Class=""flex-1 h-7 text-xs"" />
+            </div>
+        </div>
+    </PopoverContent>
+</Popover>";
+
+    // Tooltip
+    private string _codeTooltipDefault = @"<Tooltip Text=""This is a tooltip"">
+    <Button Variant=""Button.ButtonVariant.Outline"">Hover me</Button>
+</Tooltip>";
+
+    private string _codeTooltipPositions = @"<Tooltip Text=""Top"" Position=""Tooltip.TooltipPosition.Top"">
+    <Button>Top</Button>
+</Tooltip>
+<Tooltip Text=""Bottom"" Position=""Tooltip.TooltipPosition.Bottom"">
+    <Button>Bottom</Button>
+</Tooltip>
+<Tooltip Text=""Left"" Position=""Tooltip.TooltipPosition.Left"">
+    <Button>Left</Button>
+</Tooltip>
+<Tooltip Text=""Right"" Position=""Tooltip.TooltipPosition.Right"">
+    <Button>Right</Button>
+</Tooltip>";
+
+    // Sheet
+    private string _codeSheetDefault = @"<Sheet @bind-IsOpen=""_open"">
+    <SheetTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Sheet</Button>
+    </SheetTrigger>
+    <SheetContent>
+        <SheetHeader>
+            <SheetTitle>Edit Profile</SheetTitle>
+            <SheetDescription>Make changes to your profile here.</SheetDescription>
+        </SheetHeader>
+        <div class=""py-4"">
+            <Label>Name</Label>
+            <Input placeholder=""Your name"" />
+        </div>
+        <SheetFooter>
+            <Button OnClick=""() => _open = false"">Save changes</Button>
+        </SheetFooter>
+    </SheetContent>
+</Sheet>";
+
+    private string _codeSheetLeft = @"<Sheet @bind-IsOpen=""_open"">
+    <SheetTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Left Sheet</Button>
+    </SheetTrigger>
+    <SheetContent Side=""SheetContent.SheetSide.Left"">
+        <SheetHeader>
+            <SheetTitle>Navigation</SheetTitle>
+        </SheetHeader>
+        <div class=""py-4 space-y-1"">
+            <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start"">Home</Button>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start"">About</Button>
+        </div>
+    </SheetContent>
+</Sheet>";
+
+    private string _codeSheetForm = @"<Sheet @bind-IsOpen=""_open"">
+    <SheetTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Contact Form</Button>
+    </SheetTrigger>
+    <SheetContent>
+        <SheetHeader>
+            <SheetTitle>Contact Us</SheetTitle>
+        </SheetHeader>
+        <div class=""py-4 space-y-3"">
+            <Label>Email</Label>
+            <Input placeholder=""you@example.com"" />
+            <Label>Message</Label>
+            <Textarea placeholder=""Your message..."" />
+        </div>
+        <SheetFooter>
+            <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""() => _open = false"">Cancel</Button>
+            <Button OnClick=""() => _open = false"">Send</Button>
+        </SheetFooter>
+    </SheetContent>
+</Sheet>";
+
+    // DropdownMenu
+    private string _codeDropdownDefault = @"<DropdownMenu @bind-IsOpen=""_open"">
+    <DropdownMenuTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Menu</Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent>
+        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>Profile</DropdownMenuItem>
+        <DropdownMenuItem>Billing</DropdownMenuItem>
+        <DropdownMenuItem>Settings</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>Log out</DropdownMenuItem>
+    </DropdownMenuContent>
+</DropdownMenu>";
+
+    private string _codeDropdownIcons = @"<DropdownMenu @bind-IsOpen=""_open"">
+    <DropdownMenuTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">
+            <Blazicon Svg=""Lucide.Ellipsis"" class=""h-4 w-4"" />
+        </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent>
+        <DropdownMenuItem>
+            <Blazicon Svg=""Lucide.User"" class=""mr-2 h-4 w-4"" />
+            Profile
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>
+            <Blazicon Svg=""Lucide.LogOut"" class=""mr-2 h-4 w-4"" />
+            Log out
+        </DropdownMenuItem>
+    </DropdownMenuContent>
+</DropdownMenu>";
+
+    // Combobox
+    private string _codeComboboxDefault = @"<Combobox @bind-Value=""_value"" @bind-IsOpen=""_open"">
+    <ComboboxInput Placeholder=""Select framework..."" />
+    <ComboboxContent>
+        <ComboboxItem Value=""Next.js"">Next.js</ComboboxItem>
+        <ComboboxItem Value=""SvelteKit"">SvelteKit</ComboboxItem>
+        <ComboboxItem Value=""Nuxt.js"">Nuxt.js</ComboboxItem>
+        <ComboboxEmpty>No framework found.</ComboboxEmpty>
+    </ComboboxContent>
+</Combobox>";
+
+    private string _codeComboboxSearch = @"<Combobox @bind-Value=""_value"" @bind-IsOpen=""_open"">
+    <ComboboxInput Placeholder=""Search languages..."" />
+    <ComboboxContent>
+        <ComboboxItem Value=""C#"">C#</ComboboxItem>
+        <ComboboxItem Value=""TypeScript"">TypeScript</ComboboxItem>
+        <ComboboxItem Value=""Rust"">Rust</ComboboxItem>
+        <ComboboxEmpty>No language found.</ComboboxEmpty>
+    </ComboboxContent>
+</Combobox>";
+
+    // DatePicker
+    private string _codeDatePickerDefault = @"<DatePicker @bind-Value=""_date"" />";
+    private string _codeDatePickerLabel = @"<div class=""flex flex-col gap-2"">
+    <Label Class=""text-xs text-muted-foreground"">Date of birth</Label>
+    <DatePicker @bind-Value=""_date"" Placeholder=""Pick your birthday"" />
+</div>";
+
+    // Breadcrumb
+    private string _codeBreadcrumbDefault = @"<Breadcrumb>
+    <BreadcrumbList>
+        <BreadcrumbItem>
+            <BreadcrumbLink href=""#"">Home</BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+            <BreadcrumbLink href=""#"">Components</BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+            <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+        </BreadcrumbItem>
+    </BreadcrumbList>
+</Breadcrumb>";
+
+    private string _codeBreadcrumbCustom = @"<Breadcrumb>
+    <BreadcrumbList>
+        <BreadcrumbItem>
+            <BreadcrumbLink href=""#"">
+                <Blazicon Svg=""Lucide.House"" class=""h-4 w-4"" />
+            </BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator>
+            <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+        </BreadcrumbSeparator>
+        <BreadcrumbItem>
+            <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+        </BreadcrumbItem>
+    </BreadcrumbList>
+</Breadcrumb>";
+
+    // Pagination
+    private string _codePaginationDefault = @"<Pagination>
+    <PaginationContent>
+        <PaginationPrevious OnClick=""() => _page--"" />
+        <PaginationItem IsActive=""true"">1</PaginationItem>
+        <PaginationItem>2</PaginationItem>
+        <PaginationItem>3</PaginationItem>
+        <PaginationNext OnClick=""() => _page++"" />
+    </PaginationContent>
+</Pagination>";
+
+    private string _codePaginationEllipsis = @"<Pagination>
+    <PaginationContent>
+        <PaginationPrevious OnClick=""() => _page--"" />
+        <PaginationItem IsActive=""true"">1</PaginationItem>
+        <PaginationItem>2</PaginationItem>
+        <PaginationEllipsis />
+        <PaginationItem>10</PaginationItem>
+        <PaginationNext OnClick=""() => _page++"" />
+    </PaginationContent>
+</Pagination>";
+
+    // RadioGroup
+    private string _codeRadioGroupDefault = @"<RadioGroup @bind-Value=""_value"" Class=""space-y-2"">
+    <div class=""flex items-center gap-2"">
+        <RadioGroupItem Value=""default"" />
+        <Label>Default</Label>
+    </div>
+    <div class=""flex items-center gap-2"">
+        <RadioGroupItem Value=""comfortable"" />
+        <Label>Comfortable</Label>
+    </div>
+    <div class=""flex items-center gap-2"">
+        <RadioGroupItem Value=""compact"" />
+        <Label>Compact</Label>
+    </div>
+</RadioGroup>";
+
+    private string _codeRadioGroupCard = @"<RadioGroup @bind-Value=""_value"" Class=""grid grid-cols-3 gap-2"">
+    <label class=""flex items-center justify-center rounded-md border p-3 cursor-pointer"">
+        <RadioGroupItem Value=""Starter"" Class=""sr-only"" />
+        Starter
+    </label>
+    <label class=""flex items-center justify-center rounded-md border p-3 cursor-pointer"">
+        <RadioGroupItem Value=""Pro"" Class=""sr-only"" />
+        Pro
+    </label>
+    <label class=""flex items-center justify-center rounded-md border p-3 cursor-pointer"">
+        <RadioGroupItem Value=""Enterprise"" Class=""sr-only"" />
+        Enterprise
+    </label>
+</RadioGroup>";
+
+    // Label
+    private string _codeLabelDefault = @"<div class=""space-y-1.5"">
+    <Label>Email address</Label>
+    <Input placeholder=""you@example.com"" />
+</div>";
+
+    private string _codeLabelRequired = @"<div class=""space-y-1.5"">
+    <div class=""flex items-center gap-1"">
+        <Label>Username</Label>
+        <span class=""text-xs text-destructive"">*</span>
+    </div>
+    <Input placeholder=""johndoe"" />
+    <p class=""text-xs text-muted-foreground"">This is your public display name.</p>
+</div>";
+
+    // Textarea
+    private string _codeTextareaDefault = @"<Textarea placeholder=""Type your message here..."" />";
+    private string _codeTextareaCharCount = @"<div class=""space-y-1.5"">
+    <Textarea placeholder=""Max 200 characters..."" Class=""resize-none""
+              @oninput='e => _value = e.Value?.ToString() ?? """"' />
+    <div class=""flex justify-end"">
+        <span class=""text-xs text-muted-foreground"">@_value.Length / 200</span>
+    </div>
+</div>";
+
+    // Collapsible
+    private string _codeCollapsibleDefault = @"<Collapsible @bind-IsOpen=""_open"">
+    <CollapsibleTrigger>
+        <Button Variant=""Button.ButtonVariant.Ghost"" Class=""h-8 w-8 p-0"">
+            <Blazicon Svg=""Lucide.ChevronsUpDown"" class=""h-4 w-4"" />
+        </Button>
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+        <div>Hidden content here</div>
+    </CollapsibleContent>
+</Collapsible>";
+
+    private string _codeCollapsiblePanel = @"<Collapsible @bind-IsOpen=""_open"" Class=""border border-border rounded-lg overflow-hidden"">
+    <CollapsibleTrigger Class=""w-full"">
+        <div class=""flex items-center justify-between px-4 py-3 hover:bg-accent/50"">
+            <span class=""text-sm font-medium"">Advanced Settings</span>
+            <Blazicon Svg=""Lucide.ChevronDown"" class=""h-4 w-4"" />
+        </div>
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+        <div class=""border-t px-4 py-3"">
+            <div class=""flex items-center justify-between"">
+                <Label>Enable analytics</Label>
+                <Switch />
+            </div>
+        </div>
+    </CollapsibleContent>
+</Collapsible>";
+
+    // Spinner
+    private string _codeSpinnerDefault = @"<Spinner />";
+    private string _codeSpinnerSizes = @"<Spinner Size=""Spinner.SpinnerSize.Sm"" />
+<Spinner Size=""Spinner.SpinnerSize.Default"" />
+<Spinner Size=""Spinner.SpinnerSize.Lg"" />";
+
+    private string _codeSpinnerButton = @"<Button Variant=""Button.ButtonVariant.Outline"" Disabled=""true"">
+    <Spinner Size=""Spinner.SpinnerSize.Sm"" Class=""mr-2"" />
+    Loading...
+</Button>";
+
+    // EmptyState
+    private string _codeEmptyStateDefault = @"<EmptyState Title=""No results"" Description=""Try adjusting your search or filter."">
+    <Icon>
+        <Blazicon Svg=""Lucide.SearchX"" class=""h-8 w-8"" />
+    </Icon>
+</EmptyState>";
+
+    private string _codeEmptyStateAction = @"<EmptyState Title=""No projects yet"" Description=""Create your first project to get started."">
+    <Icon>
+        <Blazicon Svg=""Lucide.FolderOpen"" class=""h-8 w-8"" />
+    </Icon>
+    <Action>
+        <Button>
+            <Blazicon Svg=""Lucide.Plus"" class=""mr-2 h-4 w-4"" />
+            New Project
+        </Button>
+    </Action>
+</EmptyState>";
+
+    // Slider
+    private string _codeSliderDefault = @"<Slider @bind-Value=""_value"" />";
+    private string _codeSliderSteps = @"<Slider @bind-Value=""_value"" Min=""0"" Max=""10"" Step=""1"" />
+<Slider @bind-Value=""_value2"" Min=""0"" Max=""100"" Step=""5"" />";
+
+    private string _codeSliderLabels = @"<div class=""space-y-2"">
+    <div class=""flex justify-between text-xs text-muted-foreground"">
+        <span>Volume</span>
+        <span>@((int)_value)%</span>
+    </div>
+    <Slider @bind-Value=""_value"" />
+    <div class=""flex justify-between text-xs text-muted-foreground"">
+        <span>0%</span>
+        <span>100%</span>
+    </div>
+</div>";
+
+    // Toggle
+    private string _codeToggleDefault = @"<Toggle @bind-Pressed=""_pressed"">Bold</Toggle>
+<Toggle @bind-Pressed=""_pressed2"" Variant=""Toggle.ToggleVariant.Outline"">Italic</Toggle>";
+
+    private string _codeToggleIcons = @"<Toggle @bind-Pressed=""_bold"">
+    <Blazicon Svg=""Lucide.Bold"" class=""h-4 w-4"" />
+</Toggle>
+<Toggle @bind-Pressed=""_italic"">
+    <Blazicon Svg=""Lucide.Italic"" class=""h-4 w-4"" />
+</Toggle>
+<Toggle @bind-Pressed=""_underline"">
+    <Blazicon Svg=""Lucide.Underline"" class=""h-4 w-4"" />
+</Toggle>";
+
+    // ToggleGroup
+    private string _codeToggleGroupSingle = @"<ToggleGroup Type=""ToggleGroup.ToggleGroupType.Single"">
+    <ToggleGroupItem Value=""left"">
+        <Blazicon Svg=""Lucide.AlignLeft"" class=""h-4 w-4"" />
+    </ToggleGroupItem>
+    <ToggleGroupItem Value=""center"">
+        <Blazicon Svg=""Lucide.AlignCenter"" class=""h-4 w-4"" />
+    </ToggleGroupItem>
+    <ToggleGroupItem Value=""right"">
+        <Blazicon Svg=""Lucide.AlignRight"" class=""h-4 w-4"" />
+    </ToggleGroupItem>
+</ToggleGroup>";
+
+    private string _codeToggleGroupMultiple = @"<ToggleGroup Type=""ToggleGroup.ToggleGroupType.Multiple"">
+    <ToggleGroupItem Value=""bold"">
+        <Blazicon Svg=""Lucide.Bold"" class=""h-4 w-4"" />
+    </ToggleGroupItem>
+    <ToggleGroupItem Value=""italic"">
+        <Blazicon Svg=""Lucide.Italic"" class=""h-4 w-4"" />
+    </ToggleGroupItem>
+    <ToggleGroupItem Value=""underline"">
+        <Blazicon Svg=""Lucide.Underline"" class=""h-4 w-4"" />
+    </ToggleGroupItem>
+</ToggleGroup>";
+
+    // Kbd
+    private string _codeKbdSingle = @"<Kbd>Enter</Kbd>
+<Kbd>Escape</Kbd>
+<Kbd>Tab</Kbd>";
+
+    private string _codeKbdCombinations = @"<span class=""flex items-center gap-1"">
+    <Kbd>âŒ˜</Kbd><Kbd>K</Kbd>
+</span>
+<span class=""flex items-center gap-1"">
+    <Kbd>Ctrl</Kbd><Kbd>Shift</Kbd><Kbd>P</Kbd>
+</span>";
+
+    // OtpInput
+    private string _codeOtpDefault = @"<OtpInput @bind-Value=""_otp"" Length=""6"" />";
+
+    // FileUpload
+    private string _codeFileUploadDefault = @"<FileUpload Description=""PNG, JPG up to 10MB"" />";
+    private string _codeFileUploadMultiple = @"<FileUpload Multiple=""true"" Accept="".csv,.xlsx"" Description="".CSV or .XLSX files"" />";
+
+    // AspectRatio
+    private string _codeAspectRatio = @"<AspectRatio Ratio=""16.0/9.0"" Class=""rounded-md overflow-hidden bg-muted"">
+    <div class=""flex h-full w-full items-center justify-center text-sm text-muted-foreground"">
+        16 / 9
+    </div>
+</AspectRatio>";
+
+    // ScrollArea
+    private string _codeScrollArea = @"<ScrollArea Class=""h-48 w-full rounded-md border border-border"">
+    <div class=""p-4 space-y-2"">
+        @foreach (var tag in _tags)
+        {
+            <div class=""flex items-center gap-2 text-sm"">
+                <Blazicon Svg=""Lucide.Tag"" class=""h-3.5 w-3.5 text-muted-foreground"" />
+                @tag
+            </div>
+        }
+    </div>
+</ScrollArea>";
+
+    // â"€â"€ Category filter helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 }
