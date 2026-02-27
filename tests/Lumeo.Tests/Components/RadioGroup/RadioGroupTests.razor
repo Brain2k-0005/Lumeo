@@ -1,0 +1,223 @@
+@inherits Bunit.BunitContext
+
+@code {
+    public RadioGroupTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Renders_With_Radiogroup_Role()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.NotNull(cut.Find("[role='radiogroup']"));
+    }
+
+    [Fact]
+    public void RadioGroupItem_Renders_With_Radio_Role()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.NotNull(cut.Find("[role='radio']"));
+    }
+
+    [Fact]
+    public void Default_State_Has_No_Selection()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        var radios = cut.FindAll("[role='radio']");
+        Assert.All(radios, r => Assert.Equal("false", r.GetAttribute("aria-checked")));
+    }
+
+    [Fact]
+    public void Selected_Item_Has_Aria_Checked_True()
+    {
+        var cut = Render(@<RadioGroup Value="a">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        var radios = cut.FindAll("[role='radio']");
+        Assert.Equal("true", radios[0].GetAttribute("aria-checked"));
+        Assert.Equal("false", radios[1].GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void Selected_Item_Shows_Inner_Dot()
+    {
+        var cut = Render(@<RadioGroup Value="a">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        var radios = cut.FindAll("[role='radio']");
+        Assert.NotEmpty(radios[0].QuerySelectorAll("span"));
+        Assert.Empty(radios[1].QuerySelectorAll("span"));
+    }
+
+    [Fact]
+    public void Clicking_Item_Selects_It()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        cut.FindAll("[role='radio']")[0].Click();
+
+        Assert.Equal("true", cut.FindAll("[role='radio']")[0].GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void Clicking_Item_Deselects_Previous()
+    {
+        var cut = Render(@<RadioGroup Value="a">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        cut.FindAll("[role='radio']")[1].Click();
+
+        var radios = cut.FindAll("[role='radio']");
+        Assert.Equal("false", radios[0].GetAttribute("aria-checked"));
+        Assert.Equal("true", radios[1].GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void ValueChanged_Fires_With_Correct_Value()
+    {
+        string? receivedValue = null;
+        var cut = Render(@<RadioGroup ValueChanged="v => receivedValue = v">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        cut.FindAll("[role='radio']")[1].Click();
+
+        Assert.Equal("b", receivedValue);
+    }
+
+    [Fact]
+    public void Disabled_Item_Cannot_Be_Clicked()
+    {
+        string? receivedValue = null;
+        var cut = Render(@<RadioGroup ValueChanged="v => receivedValue = v">
+            <RadioGroupItem Value="a" Disabled="true">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        cut.Find("[role='radio']").Click();
+
+        Assert.Null(receivedValue);
+    }
+
+    [Fact]
+    public void Disabled_Item_Has_Disabled_Attribute()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a" Disabled="true">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.NotNull(cut.Find("[role='radio']").GetAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Disabled_Item_Has_Aria_Checked_False()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a" Disabled="true">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Equal("false", cut.Find("[role='radio']").GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void RadioGroup_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<RadioGroup Class="my-radio-group">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Contains("my-radio-group", cut.Find("[role='radiogroup']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void RadioGroupItem_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a" Class="my-radio-item">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Contains("my-radio-item", cut.Find("[role='radio']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void RadioGroup_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<RadioGroup data-testid="my-group">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Equal("my-group", cut.Find("[role='radiogroup']").GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void RadioGroupItem_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a" data-testid="my-radio">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Equal("my-radio", cut.Find("[role='radio']").GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void RadioGroupItem_Has_Rounded_Full_Class()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Contains("rounded-full", cut.Find("[role='radio']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void RadioGroupItem_Has_Border_Primary_Class()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Contains("border-primary", cut.Find("[role='radio']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Multiple_Items_Only_One_Selected_At_A_Time()
+    {
+        string? receivedValue = null;
+        var cut = Render(@<RadioGroup Value="a" ValueChanged="v => receivedValue = v">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+            <RadioGroupItem Value="c">Option C</RadioGroupItem>
+        </RadioGroup>);
+
+        cut.FindAll("[role='radio']")[2].Click();
+
+        Assert.Equal("c", receivedValue);
+    }
+
+    [Fact]
+    public void RadioGroup_Has_Grid_Class()
+    {
+        var cut = Render(@<RadioGroup>
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Contains("grid", cut.Find("[role='radiogroup']").GetAttribute("class") ?? "");
+    }
+}

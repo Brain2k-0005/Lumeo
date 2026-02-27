@@ -1,0 +1,259 @@
+@inherits Bunit.BunitContext
+
+@code {
+    public TabsTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Renders_Root_Div_With_ChildContent()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+        </Tabs>);
+
+        Assert.NotNull(cut.Find("div"));
+    }
+
+    [Fact]
+    public void TabsList_Renders_With_Tablist_Role()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.NotNull(cut.Find("[role='tablist']"));
+    }
+
+    [Fact]
+    public void TabsTrigger_Renders_With_Tab_Role()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.NotNull(cut.Find("[role='tab']"));
+    }
+
+    [Fact]
+    public void Active_Tab_Has_Aria_Selected_True()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var tabs = cut.FindAll("[role='tab']");
+        Assert.Equal("true", tabs[0].GetAttribute("aria-selected"));
+        Assert.Equal("false", tabs[1].GetAttribute("aria-selected"));
+    }
+
+    [Fact]
+    public void Inactive_Tab_Has_Aria_Selected_False()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab2">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var tabs = cut.FindAll("[role='tab']");
+        Assert.Equal("false", tabs[0].GetAttribute("aria-selected"));
+        Assert.Equal("true", tabs[1].GetAttribute("aria-selected"));
+    }
+
+    [Fact]
+    public void Active_TabsContent_Renders_Tabpanel()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+        </Tabs>);
+
+        var panel = cut.Find("[role='tabpanel']");
+        Assert.NotNull(panel);
+        Assert.Contains("Content 1", panel.TextContent);
+    }
+
+    [Fact]
+    public void Inactive_TabsContent_Does_Not_Render()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        var panels = cut.FindAll("[role='tabpanel']");
+        Assert.Single(panels);
+        Assert.Contains("Content 1", panels[0].TextContent);
+    }
+
+    [Fact]
+    public void Clicking_Trigger_Changes_Active_Content()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+        Assert.Contains("Content 1", cut.Find("[role='tabpanel']").TextContent);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+        Assert.Contains("Content 2", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    [Fact]
+    public void Clicking_Trigger_Updates_Aria_Selected()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        var tabs = cut.FindAll("[role='tab']");
+        Assert.Equal("false", tabs[0].GetAttribute("aria-selected"));
+        Assert.Equal("true", tabs[1].GetAttribute("aria-selected"));
+    }
+
+    [Fact]
+    public void ActiveValueChanged_Fires_With_Correct_Value()
+    {
+        string? receivedValue = null;
+        var cut = Render(@<Tabs ActiveValue="tab1" ActiveValueChanged="v => receivedValue = v">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        Assert.Equal("tab2", receivedValue);
+    }
+
+    [Fact]
+    public void Tabs_Custom_Class_Is_Appended_To_Root()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1" Class="my-tabs">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.Contains("my-tabs", cut.Find("div").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void TabsList_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList Class="my-tabslist">
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.Contains("my-tabslist", cut.Find("[role='tablist']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void TabsTrigger_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1" Class="my-trigger">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.Contains("my-trigger", cut.Find("[role='tab']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void TabsContent_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1" Class="my-content">Content</TabsContent>
+        </Tabs>);
+
+        Assert.Contains("my-content", cut.Find("[role='tabpanel']").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Tabs_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1" data-testid="my-tabs">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.Equal("my-tabs", cut.Find("div").GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void Active_Trigger_Has_Background_Shadow_Classes()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var classes = cut.Find("[role='tab']").GetAttribute("class") ?? "";
+        Assert.Contains("bg-background", classes);
+        Assert.Contains("shadow", classes);
+    }
+
+    [Fact]
+    public void Inactive_Trigger_Does_Not_Have_Active_Classes()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab2">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var tab1Classes = cut.FindAll("[role='tab']")[0].GetAttribute("class") ?? "";
+        Assert.DoesNotContain("bg-background", tab1Classes);
+    }
+
+    [Fact]
+    public void TabsTrigger_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1" data-testid="my-trigger">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        Assert.Equal("my-trigger", cut.Find("[role='tab']").GetAttribute("data-testid"));
+    }
+}

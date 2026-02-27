@@ -1,0 +1,226 @@
+@inherits Bunit.BunitContext
+
+@code {
+    public CollapsibleTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Renders_Root_Div()
+    {
+        var cut = Render(@<Collapsible>
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        Assert.NotNull(cut.Find("div"));
+    }
+
+    [Fact]
+    public void CollapsibleTrigger_Renders_Div_With_Cursor_Pointer()
+    {
+        var cut = Render(@<Collapsible>
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var triggerDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        Assert.NotNull(triggerDiv);
+    }
+
+    [Fact]
+    public void CollapsibleContent_Is_Hidden_When_IsOpen_False()
+    {
+        var cut = Render(@<Collapsible IsOpen="false">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Hidden Content</CollapsibleContent>
+        </Collapsible>);
+
+        Assert.DoesNotContain("Hidden Content", cut.Markup);
+    }
+
+    [Fact]
+    public void CollapsibleContent_Is_Visible_When_IsOpen_True()
+    {
+        var cut = Render(@<Collapsible IsOpen="true">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Visible Content</CollapsibleContent>
+        </Collapsible>);
+
+        Assert.Contains("Visible Content", cut.Markup);
+    }
+
+    [Fact]
+    public void Clicking_Trigger_Opens_Content()
+    {
+        var cut = Render(@<Collapsible IsOpen="false">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+
+        Assert.Contains("Content", cut.Markup);
+    }
+
+    [Fact]
+    public void Clicking_Trigger_Closes_Open_Content()
+    {
+        var cut = Render(@<Collapsible IsOpen="true">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        Assert.Contains("Content", cut.Markup);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+
+        Assert.DoesNotContain("Content", cut.Markup);
+    }
+
+    [Fact]
+    public void IsOpenChanged_Fires_With_True_When_Opening()
+    {
+        bool? receivedValue = null;
+        var cut = Render(@<Collapsible IsOpen="false" IsOpenChanged="v => receivedValue = v">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+
+        Assert.True(receivedValue);
+    }
+
+    [Fact]
+    public void IsOpenChanged_Fires_With_False_When_Closing()
+    {
+        bool? receivedValue = null;
+        var cut = Render(@<Collapsible IsOpen="true" IsOpenChanged="v => receivedValue = v">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+
+        Assert.False(receivedValue);
+    }
+
+    [Fact]
+    public void Trigger_Can_Be_Clicked_Multiple_Times()
+    {
+        var cut = Render(@<Collapsible IsOpen="false">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+        Assert.Contains("Content", cut.Markup);
+
+        trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+        Assert.DoesNotContain("Content", cut.Markup);
+
+        trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+        Assert.Contains("Content", cut.Markup);
+    }
+
+    [Fact]
+    public void Collapsible_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Collapsible Class="my-collapsible">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        Assert.Contains("my-collapsible", cut.Find("div").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void CollapsibleTrigger_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Collapsible>
+            <CollapsibleTrigger Class="my-trigger">Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("my-trigger"));
+        Assert.NotNull(trigger);
+    }
+
+    [Fact]
+    public void CollapsibleContent_Custom_Class_Is_Appended()
+    {
+        var cut = Render(@<Collapsible IsOpen="true">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent Class="my-content">Content</CollapsibleContent>
+        </Collapsible>);
+
+        var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("my-content"));
+        Assert.NotNull(contentDiv);
+    }
+
+    [Fact]
+    public void Collapsible_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<Collapsible data-testid="my-collapsible">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        Assert.Equal("my-collapsible", cut.Find("div").GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void CollapsibleTrigger_AdditionalAttributes_Are_Forwarded()
+    {
+        var cut = Render(@<Collapsible>
+            <CollapsibleTrigger data-testid="my-trigger">Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").FirstOrDefault(d =>
+            d.GetAttribute("data-testid") == "my-trigger");
+        Assert.NotNull(trigger);
+    }
+
+    [Fact]
+    public void CollapsibleContent_Has_Overflow_Hidden_Class()
+    {
+        var cut = Render(@<Collapsible IsOpen="true">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("overflow-hidden"));
+        Assert.NotNull(contentDiv);
+    }
+
+    [Fact]
+    public void Trigger_Shows_Text_Content()
+    {
+        var cut = Render(@<Collapsible>
+            <CollapsibleTrigger>My Toggle Button</CollapsibleTrigger>
+            <CollapsibleContent>Content</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        Assert.Contains("My Toggle Button", trigger.TextContent);
+    }
+}
