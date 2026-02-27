@@ -85,6 +85,14 @@ public sealed class ComponentInteropService : IAsyncDisposable
         await module.InvokeVoidAsync("removeFocusTrap", elementId);
     }
 
+    // --- Floating Position ---
+
+    public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth);
+    }
+
     // --- Element Rect ---
 
     public async ValueTask<ElementRect?> GetElementRect(string elementId)

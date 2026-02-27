@@ -14,8 +14,14 @@ public sealed class ToastService
 
     public void Error(string title, string? description = null)
         => Show(title, description, ToastVariant.Destructive);
+
+    public void Warning(string title, string? description = null)
+        => Show(title, description, ToastVariant.Warning);
+
+    public void Info(string title, string? description = null)
+        => Show(title, description, ToastVariant.Info);
 }
 
 public record ToastMessage(string Title, string? Description, ToastVariant Variant);
 
-public enum ToastVariant { Default, Success, Destructive }
+public enum ToastVariant { Default, Success, Destructive, Warning, Info }

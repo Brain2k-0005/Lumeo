@@ -4,11 +4,12 @@
     var context = new ComboboxContext(Value, SearchText, IsOpen,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
-        EventCallback.Factory.Create<string>(this, OnSearchChanged));
+        EventCallback.Factory.Create<string>(this, OnSearchChanged),
+        _wrapperId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
-    <div class="relative" @attributes="AdditionalAttributes">
+    <div id="@_wrapperId" class="relative" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 </CascadingValue>
@@ -21,6 +22,7 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _wrapperId = $"combobox-{Guid.NewGuid():N}";
     private string SearchText { get; set; } = "";
 
     private async Task OnValueSelected(string value)
@@ -44,5 +46,5 @@
     }
 
     public record ComboboxContext(string? Value, string SearchText, bool IsOpen,
-        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch);
+        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch, string WrapperId);
 }

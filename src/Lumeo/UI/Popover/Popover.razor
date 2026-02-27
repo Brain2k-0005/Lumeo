@@ -1,11 +1,11 @@
 @namespace Lumeo
 
 @{
-    var context = new PopoverContext(IsOpen, EventCallback.Factory.Create<bool>(this, SetOpen));
+    var context = new PopoverContext(IsOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _wrapperId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
-    <div class="relative inline-block" @attributes="AdditionalAttributes">
+    <div id="@_wrapperId" class="relative inline-block" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 </CascadingValue>
@@ -16,11 +16,13 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _wrapperId = $"popover-{Guid.NewGuid():N}";
+
     private async Task SetOpen(bool value)
     {
         IsOpen = value;
         await IsOpenChanged.InvokeAsync(value);
     }
 
-    public record PopoverContext(bool IsOpen, EventCallback<bool> SetOpen);
+    public record PopoverContext(bool IsOpen, EventCallback<bool> SetOpen, string WrapperId);
 }

@@ -2,10 +2,12 @@
 
 @if (Context.IsOpen)
 {
-    <div class="@CssClass" @onmouseenter="() => Context.RequestOpen.InvokeAsync()" @onmouseleave="() => Context.RequestClose.InvokeAsync()" @attributes="AdditionalAttributes">
+    <div id="@_contentId" class="@CssClass" @onmouseenter="() => Context.RequestOpen.InvokeAsync()" @onmouseleave="() => Context.RequestClose.InvokeAsync()" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
+
+@inject ComponentInteropService Interop
 
 @code {
     [CascadingParameter] public HoverCard.HoverCardContext Context { get; set; } = default!;
@@ -14,15 +16,31 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"absolute z-50 mt-2 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-fade-in {AlignClasses} {Class}".Trim();
+    private readonly string _contentId = $"hovercard-content-{Guid.NewGuid():N}";
+    private bool _positioned;
 
-    private string AlignClasses => Align switch
+    private string CssClass => $"fixed z-50 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-fade-in {Class}".Trim();
+
+    private string AlignStr => Align switch
     {
-        HoverCardAlign.Start => "left-0",
-        HoverCardAlign.Center => "left-1/2 -translate-x-1/2",
-        HoverCardAlign.End => "right-0",
-        _ => "left-1/2 -translate-x-1/2"
+        HoverCardAlign.Start => "start",
+        HoverCardAlign.Center => "center",
+        HoverCardAlign.End => "end",
+        _ => "center"
     };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.IsOpen && !_positioned)
+        {
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr);
+            _positioned = true;
+        }
+        else if (!Context.IsOpen && _positioned)
+        {
+            _positioned = false;
+        }
+    }
 
     public enum HoverCardAlign { Start, Center, End }
 }
