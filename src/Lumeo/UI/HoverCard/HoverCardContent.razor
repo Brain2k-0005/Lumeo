@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
 @if (Context.IsOpen)
 {
@@ -39,6 +40,20 @@
         else if (!Context.IsOpen && _positioned)
         {
             _positioned = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_positioned)
+        {
+            try
+            {
+                // No explicit cleanup needed for positionFixed (inline styles only),
+                // but reset state in case component is reused
+                _positioned = false;
+            }
+            catch (JSDisconnectedException) { }
         }
     }
 

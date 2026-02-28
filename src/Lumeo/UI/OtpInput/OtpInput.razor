@@ -16,7 +16,8 @@
     }
 </div>
 
-@inject IJSRuntime JS
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
 
 @code {
     [Parameter] public int Length { get; set; } = 6;
@@ -44,7 +45,7 @@
 
             if (index < Length - 1)
             {
-                await JS.InvokeVoidAsync("eval", $"document.getElementById('{_baseId}-{index + 1}')?.focus()");
+                await Interop.FocusElement($"{_baseId}-{index + 1}");
             }
 
             if (Value.Length == Length)
@@ -62,7 +63,9 @@
             chars[index - 1] = ' ';
             Value = new string(chars).TrimEnd();
             await ValueChanged.InvokeAsync(Value);
-            await JS.InvokeVoidAsync("eval", $"document.getElementById('{_baseId}-{index - 1}')?.focus()");
+            await Interop.FocusElement($"{_baseId}-{index - 1}");
         }
     }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
