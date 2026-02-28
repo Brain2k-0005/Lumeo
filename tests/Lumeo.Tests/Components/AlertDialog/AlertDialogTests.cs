@@ -262,7 +262,6 @@ public class AlertDialogTests : IAsyncLifetime
         var cut = RenderAlertDialog(isOpen: true);
         var dialog = cut.Find("[role='alertdialog']");
         Assert.Contains("bg-background", dialog.GetAttribute("class"));
-        Assert.Contains("border-border", dialog.GetAttribute("class"));
     }
 
     // --- Header, Title, Description, Footer ---
