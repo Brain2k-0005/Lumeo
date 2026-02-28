@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DialogContext(IsOpen, EventCallback.Factory.Create<bool>(this, SetOpen));
+    var context = new DialogContext(IsOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -13,11 +13,14 @@
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
 
+    private readonly string _titleId = $"dialog-title-{Guid.NewGuid():N}";
+    private readonly string _descriptionId = $"dialog-desc-{Guid.NewGuid():N}";
+
     private async Task SetOpen(bool value)
     {
         IsOpen = value;
         await IsOpenChanged.InvokeAsync(value);
     }
 
-    public record DialogContext(bool IsOpen, EventCallback<bool> SetOpen);
+    public record DialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId);
 }
