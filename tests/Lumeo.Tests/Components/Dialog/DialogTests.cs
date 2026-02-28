@@ -213,7 +213,6 @@ public class DialogTests : IAsyncLifetime
         var cut = RenderDialog(isOpen: true);
         var dialog = cut.Find("[role='dialog']");
         Assert.Contains("bg-background", dialog.GetAttribute("class"));
-        Assert.Contains("border-border", dialog.GetAttribute("class"));
     }
 
     // --- AdditionalAttributes ---

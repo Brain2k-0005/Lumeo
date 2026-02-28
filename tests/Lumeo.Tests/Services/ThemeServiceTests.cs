@@ -1,28 +1,18 @@
-using Bunit;
 using Xunit;
 using Lumeo.Services;
-using Microsoft.Extensions.DependencyInjection;
-using Lumeo.Tests.Helpers;
+using Microsoft.JSInterop;
 
 namespace Lumeo.Tests.Services;
 
-public class ThemeServiceTests : IDisposable
+public class ThemeServiceTests
 {
-    private readonly BunitContext _ctx = new();
+    private readonly FakeJSRuntime _js = new();
     private readonly ThemeService _service;
 
     public ThemeServiceTests()
     {
-        _ctx.AddLumeoServices();
-        // Default JS return values for theme operations
-        _ctx.JSInterop.Setup<string>("themeManager.getMode").SetResult("system");
-        _ctx.JSInterop.Setup<string>("themeManager.getScheme").SetResult("orange");
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
-
-        _service = _ctx.Services.GetRequiredService<ThemeService>();
+        _service = new ThemeService(_js);
     }
-
-    public void Dispose() => _ctx.Dispose();
 
     // --- Default state ---
 
@@ -42,6 +32,44 @@ public class ThemeServiceTests : IDisposable
     public void DefaultIsDark_Is_False()
     {
         Assert.False(_service.IsDark);
+    }
+
+    // --- InitializeAsync ---
+
+    [Fact]
+    public async Task InitializeAsync_Reads_Mode_From_JS()
+    {
+        _js.SetResult("themeManager.getMode", "dark");
+        _js.SetResult("themeManager.getScheme", "orange");
+        _js.SetResult("themeManager.isDark", true);
+
+        await _service.InitializeAsync();
+
+        Assert.Equal(ThemeMode.Dark, _service.CurrentMode);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_Reads_Scheme_From_JS()
+    {
+        _js.SetResult("themeManager.getMode", "system");
+        _js.SetResult("themeManager.getScheme", "blue");
+        _js.SetResult("themeManager.isDark", false);
+
+        await _service.InitializeAsync();
+
+        Assert.Equal("blue", _service.CurrentScheme);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_Reads_IsDark_From_JS()
+    {
+        _js.SetResult("themeManager.getMode", "system");
+        _js.SetResult("themeManager.getScheme", "orange");
+        _js.SetResult("themeManager.isDark", true);
+
+        await _service.InitializeAsync();
+
+        Assert.True(_service.IsDark);
     }
 
     // --- AvailableSchemes ---
@@ -103,8 +131,6 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetSchemeAsync_Updates_CurrentScheme()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setScheme", _ => true);
-
         await _service.SetSchemeAsync("blue");
 
         Assert.Equal("blue", _service.CurrentScheme);
@@ -113,8 +139,6 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetSchemeAsync_Fires_OnThemeChanged()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setScheme", _ => true);
-
         var changed = false;
         _service.OnThemeChanged += () => changed = true;
 
@@ -126,8 +150,6 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetSchemeAsync_Can_Set_Any_Scheme()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setScheme", _ => true);
-
         foreach (var scheme in ThemeService.AvailableSchemes)
         {
             await _service.SetSchemeAsync(scheme.Id);
@@ -140,8 +162,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetModeAsync_Updates_CurrentMode()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setMode", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(true);
+        _js.SetResult("themeManager.isDark", true);
 
         await _service.SetModeAsync(ThemeMode.Dark);
 
@@ -151,8 +172,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetModeAsync_Light_Mode_Updates_IsDark_False()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setMode", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
+        _js.SetResult("themeManager.isDark", false);
 
         await _service.SetModeAsync(ThemeMode.Light);
 
@@ -162,8 +182,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetModeAsync_Dark_Mode_Updates_IsDark_True()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setMode", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(true);
+        _js.SetResult("themeManager.isDark", true);
 
         await _service.SetModeAsync(ThemeMode.Dark);
 
@@ -173,8 +192,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task SetModeAsync_Fires_OnThemeChanged()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setMode", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
+        _js.SetResult("themeManager.isDark", false);
 
         var changed = false;
         _service.OnThemeChanged += () => changed = true;
@@ -189,8 +207,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task ToggleModeAsync_Updates_IsDark()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.toggle", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(true);
+        _js.SetResult("themeManager.isDark", true);
 
         await _service.ToggleModeAsync();
 
@@ -200,8 +217,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task ToggleModeAsync_When_Dark_Sets_Mode_To_Dark()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.toggle", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(true);
+        _js.SetResult("themeManager.isDark", true);
 
         await _service.ToggleModeAsync();
 
@@ -211,8 +227,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task ToggleModeAsync_When_Light_Sets_Mode_To_Light()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.toggle", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
+        _js.SetResult("themeManager.isDark", false);
 
         await _service.ToggleModeAsync();
 
@@ -222,8 +237,7 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task ToggleModeAsync_Fires_OnThemeChanged()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.toggle", _ => true);
-        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
+        _js.SetResult("themeManager.isDark", false);
 
         var changed = false;
         _service.OnThemeChanged += () => changed = true;
@@ -249,8 +263,6 @@ public class ThemeServiceTests : IDisposable
     [Fact]
     public async Task OnThemeChanged_Notifies_Multiple_Subscribers()
     {
-        _ctx.JSInterop.SetupVoid("themeManager.setScheme", _ => true);
-
         int count = 0;
         _service.OnThemeChanged += () => count++;
         _service.OnThemeChanged += () => count++;
@@ -258,5 +270,21 @@ public class ThemeServiceTests : IDisposable
         await _service.SetSchemeAsync("blue");
 
         Assert.Equal(2, count);
+    }
+
+    // --- Fake IJSRuntime ---
+
+    private sealed class FakeJSRuntime : IJSRuntime
+    {
+        private readonly Dictionary<string, object?> _results = new();
+
+        public void SetResult(string identifier, object? value) =>
+            _results[identifier] = value;
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
+            ValueTask.FromResult(_results.TryGetValue(identifier, out var val) ? (TValue)val! : default!);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
+            InvokeAsync<TValue>(identifier, args);
     }
 }
