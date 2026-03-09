@@ -1,0 +1,24 @@
+@namespace Lumeo
+
+@if (!string.IsNullOrWhiteSpace(Context.SearchText) && ShowCreate)
+{
+    <button type="button" class="@CssClass" @onclick="HandleCreate" @attributes="AdditionalAttributes">
+        <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5 mr-2" />
+        Create "@Context.SearchText"
+    </button>
+}
+
+@code {
+    [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
+    [Parameter] public EventCallback<string> OnCreate { get; set; }
+    [Parameter] public bool ShowCreate { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground border-t border-border mt-1 pt-2 {Class}".Trim();
+
+    private async Task HandleCreate()
+    {
+        await OnCreate.InvokeAsync(Context.SearchText);
+    }
+}

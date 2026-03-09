@@ -1,12 +1,33 @@
 @namespace Lumeo
 
-<input class="@CssClass" value="@Value" @oninput="OnInput" @attributes="AdditionalAttributes" />
+@if (Prefix != null || Suffix != null)
+{
+    <div class="flex h-9 w-full rounded-md border border-input bg-transparent text-sm transition-colors focus-within:ring-[1.5px] focus-within:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+        @if (Prefix != null)
+        {
+            <div class="flex items-center px-3 text-muted-foreground">@Prefix</div>
+        }
+        <input class="@WrappedInputClass" value="@Value" @oninput="OnInput" @attributes="AdditionalAttributes" />
+        @if (Suffix != null)
+        {
+            <div class="flex items-center px-3 text-muted-foreground">@Suffix</div>
+        }
+    </div>
+}
+else
+{
+    <input class="@CssClass" value="@Value" @oninput="OnInput" @attributes="AdditionalAttributes" />
+}
 
 @code {
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnInput { get; set; }
+    [Parameter] public RenderFragment? Prefix { get; set; }
+    [Parameter] public RenderFragment? Suffix { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => $"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    private string WrappedInputClass => $"flex-1 bg-transparent px-3 py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed {Class}".Trim();
 }

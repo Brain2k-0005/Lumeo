@@ -1,12 +1,39 @@
 @namespace Lumeo
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
-    <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled" class="@InputClasses" @oninput="OnInput" />
+    @if (IsRange)
+    {
+        <div class="relative w-full">
+            <div class="absolute inset-0 flex items-center">
+                <div class="h-2 w-full rounded-[var(--radius)] bg-primary/20"></div>
+            </div>
+            <div class="absolute inset-0 flex items-center" style="pointer-events: none;">
+                <div class="h-2 rounded-[var(--radius)] bg-primary" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;"></div>
+            </div>
+            <div class="relative flex items-center" style="pointer-events: none;">
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                       class="@RangeInputClasses"
+                       style="pointer-events: auto;"
+                       @oninput="OnStartInput" />
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
+                       class="@RangeInputClasses"
+                       style="pointer-events: auto; position: absolute; left: 0; width: 100%;"
+                       @oninput="OnEndInput" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled" class="@InputClasses" @oninput="OnInput" />
+    }
 </div>
 
 @code {
     [Parameter] public double Value { get; set; }
     [Parameter] public EventCallback<double> ValueChanged { get; set; }
+    [Parameter] public bool IsRange { get; set; }
+    [Parameter] public double ValueEnd { get; set; }
+    [Parameter] public EventCallback<double> ValueEndChanged { get; set; }
     [Parameter] public double Min { get; set; } = 0;
     [Parameter] public double Max { get; set; } = 100;
     [Parameter] public double Step { get; set; } = 1;
@@ -16,7 +43,12 @@
 
     private string CssClass => $"relative flex w-full touch-none select-none items-center {Class}".Trim();
 
-    private const string InputClasses = "w-full h-2 cursor-pointer appearance-none rounded-full bg-primary/20 accent-primary disabled:cursor-not-allowed disabled:opacity-50";
+    private const string InputClasses = "w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] bg-primary/20 accent-primary disabled:cursor-not-allowed disabled:opacity-50";
+
+    private const string RangeInputClasses = "w-full h-2 cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50";
+
+    private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
+    private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;
 
     private async Task OnInput(ChangeEventArgs e)
     {
@@ -24,6 +56,24 @@
         {
             Value = newValue;
             await ValueChanged.InvokeAsync(Value);
+        }
+    }
+
+    private async Task OnStartInput(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
+        {
+            Value = newValue;
+            await ValueChanged.InvokeAsync(Value);
+        }
+    }
+
+    private async Task OnEndInput(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
+        {
+            ValueEnd = newValue;
+            await ValueEndChanged.InvokeAsync(ValueEnd);
         }
     }
 }

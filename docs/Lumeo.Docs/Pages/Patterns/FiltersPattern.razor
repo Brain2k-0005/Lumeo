@@ -1,4 +1,4 @@
-﻿@page "/patterns/filters"
+﻿@page "/blocks/filters"
 @namespace Lumeo.Docs.Pages.Patterns
 
 <PageTitle>Filters — Lumeo</PageTitle>
@@ -22,231 +22,199 @@
     <!-- Filter Bar -->
     <Card>
         <CardContent Class="pt-6">
-            <div class="space-y-4">
+            <FilterBar>
+                <ChildContent>
+                    <!-- Filter Controls Row -->
+                    <div class="flex items-center gap-3 flex-wrap">
 
-                <!-- Filter Controls Row -->
-                <div class="flex items-center gap-3 flex-wrap">
-
-                    <!-- Add Filter Dropdown -->
-                    <DropdownMenu @bind-IsOpen="_addFilterOpen">
-                        <DropdownMenuTrigger>
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                                <DynamicIcon Name="Plus" Class="h-3.5 w-3.5 mr-1.5" />
-                                Add Filter
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                            <DropdownMenuLabel>Filter by</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Status"))">
-                                <DynamicIcon Name="CircleDot" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                Status
-                                @if (_activeFilterFields.Contains("Status"))
-                                {
-                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                }
-                            </DropdownMenuItem>
-                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Priority"))">
-                                <DynamicIcon Name="Flag" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                Priority
-                                @if (_activeFilterFields.Contains("Priority"))
-                                {
-                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                }
-                            </DropdownMenuItem>
-                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Category"))">
-                                <DynamicIcon Name="Tag" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                Category
-                                @if (_activeFilterFields.Contains("Category"))
-                                {
-                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                }
-                            </DropdownMenuItem>
-                            <DropdownMenuItem OnClick="@(() => ToggleFilterField("Assignee"))">
-                                <DynamicIcon Name="User" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                Assignee
-                                @if (_activeFilterFields.Contains("Assignee"))
-                                {
-                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                }
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <!-- Active Filter Selectors -->
-                    @if (_activeFilterFields.Contains("Status"))
-                    {
-                        <Select Value="@_statusFilter" ValueChanged="OnStatusChanged">
-                            <SelectTrigger Class="w-[160px] h-8 text-xs">
-                                <span class="truncate">@(_statusFilter == "" ? "Status" : $"Status: {_statusFilter}")</span>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem Value="Active">Active</SelectItem>
-                                <SelectItem Value="Inactive">Inactive</SelectItem>
-                                <SelectItem Value="Pending">Pending</SelectItem>
-                                <SelectItem Value="Archived">Archived</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    }
-
-                    @if (_activeFilterFields.Contains("Priority"))
-                    {
-                        <Select Value="@_priorityFilter" ValueChanged="OnPriorityChanged">
-                            <SelectTrigger Class="w-[160px] h-8 text-xs">
-                                <span class="truncate">@(_priorityFilter == "" ? "Priority" : $"Priority: {_priorityFilter}")</span>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem Value="Low">Low</SelectItem>
-                                <SelectItem Value="Medium">Medium</SelectItem>
-                                <SelectItem Value="High">High</SelectItem>
-                                <SelectItem Value="Critical">Critical</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    }
-
-                    @if (_activeFilterFields.Contains("Category"))
-                    {
-                        <DropdownMenu @bind-IsOpen="_categoryDropdownOpen">
+                        <!-- Add Filter Dropdown -->
+                        <DropdownMenu @bind-IsOpen="_addFilterOpen">
                             <DropdownMenuTrigger>
-                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">
-                                    @if (_categoryFilters.Count == 0)
-                                    {
-                                        <span>Category</span>
-                                    }
-                                    else
-                                    {
-                                        <span>Category: @_categoryFilters.Count selected</span>
-                                    }
-                                    <DynamicIcon Name="ChevronDown" Class="h-3.5 w-3.5 ml-1.5 opacity-50" />
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                    <DynamicIcon Name="Plus" Class="h-3.5 w-3.5 mr-1.5" />
+                                    Add Filter
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                <DropdownMenuLabel>Categories</DropdownMenuLabel>
+                                <DropdownMenuLabel>Filter by</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                @foreach (var category in _allCategories)
-                                {
-                                    var cat = category;
-                                    <div class="flex items-center gap-2 px-2 py-1.5">
-                                        <Checkbox Checked="@_categoryFilters.Contains(cat)"
-                                                  CheckedChanged="@(v => ToggleCategory(cat, v))" />
-                                        <span class="text-sm">@cat</span>
-                                    </div>
-                                }
+                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Status"))">
+                                    <DynamicIcon Name="CircleDot" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Status
+                                    @if (_activeFilterFields.Contains("Status"))
+                                    {
+                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                    }
+                                </DropdownMenuItem>
+                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Priority"))">
+                                    <DynamicIcon Name="Flag" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Priority
+                                    @if (_activeFilterFields.Contains("Priority"))
+                                    {
+                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                    }
+                                </DropdownMenuItem>
+                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Category"))">
+                                    <DynamicIcon Name="Tag" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Category
+                                    @if (_activeFilterFields.Contains("Category"))
+                                    {
+                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                    }
+                                </DropdownMenuItem>
+                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Assignee"))">
+                                    <DynamicIcon Name="User" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Assignee
+                                    @if (_activeFilterFields.Contains("Assignee"))
+                                    {
+                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                    }
+                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
-                    }
 
-                    @if (_activeFilterFields.Contains("Assignee"))
-                    {
-                        <Select Value="@_assigneeFilter" ValueChanged="OnAssigneeChanged">
-                            <SelectTrigger Class="w-[180px] h-8 text-xs">
-                                <span class="truncate">@(_assigneeFilter == "" ? "Assignee" : $"Assignee: {_assigneeFilter}")</span>
-                            </SelectTrigger>
-                            <SelectContent>
-                                @foreach (var assignee in _allAssignees)
-                                {
-                                    <SelectItem Value="@assignee.Name">
-                                        <div class="flex items-center gap-2">
-                                            <Avatar Size="Avatar.AvatarSize.Sm" Class="h-5 w-5">
-                                                <AvatarFallback Class="text-[10px]">@assignee.Initials</AvatarFallback>
-                                            </Avatar>
-                                            @assignee.Name
+                        <!-- Active Filter Selectors -->
+                        @if (_activeFilterFields.Contains("Status"))
+                        {
+                            <Select Value="@_statusFilter" ValueChanged="OnStatusChanged">
+                                <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                    <span class="truncate">@(_statusFilter == "" ? "Status" : $"Status: {_statusFilter}")</span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem Value="Active">Active</SelectItem>
+                                    <SelectItem Value="Inactive">Inactive</SelectItem>
+                                    <SelectItem Value="Pending">Pending</SelectItem>
+                                    <SelectItem Value="Archived">Archived</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        }
+
+                        @if (_activeFilterFields.Contains("Priority"))
+                        {
+                            <Select Value="@_priorityFilter" ValueChanged="OnPriorityChanged">
+                                <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                    <span class="truncate">@(_priorityFilter == "" ? "Priority" : $"Priority: {_priorityFilter}")</span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem Value="Low">Low</SelectItem>
+                                    <SelectItem Value="Medium">Medium</SelectItem>
+                                    <SelectItem Value="High">High</SelectItem>
+                                    <SelectItem Value="Critical">Critical</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        }
+
+                        @if (_activeFilterFields.Contains("Category"))
+                        {
+                            <DropdownMenu @bind-IsOpen="_categoryDropdownOpen">
+                                <DropdownMenuTrigger>
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">
+                                        @if (_categoryFilters.Count == 0)
+                                        {
+                                            <span>Category</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Category: @_categoryFilters.Count selected</span>
+                                        }
+                                        <DynamicIcon Name="ChevronDown" Class="h-3.5 w-3.5 ml-1.5 opacity-50" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuLabel>Categories</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    @foreach (var category in _allCategories)
+                                    {
+                                        var cat = category;
+                                        <div class="flex items-center gap-2 px-2 py-1.5">
+                                            <Checkbox Checked="@_categoryFilters.Contains(cat)"
+                                                      CheckedChanged="@(v => ToggleCategory(cat, v))" />
+                                            <span class="text-sm">@cat</span>
                                         </div>
-                                    </SelectItem>
-                                }
-                            </SelectContent>
-                        </Select>
-                    }
+                                    }
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        }
 
-                    <!-- Spacer -->
-                    <div class="flex-1"></div>
+                        @if (_activeFilterFields.Contains("Assignee"))
+                        {
+                            <Select Value="@_assigneeFilter" ValueChanged="OnAssigneeChanged">
+                                <SelectTrigger Class="w-[180px] h-8 text-xs">
+                                    <span class="truncate">@(_assigneeFilter == "" ? "Assignee" : $"Assignee: {_assigneeFilter}")</span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    @foreach (var assignee in _allAssignees)
+                                    {
+                                        <SelectItem Value="@assignee.Name">
+                                            <div class="flex items-center gap-2">
+                                                <Avatar Size="Avatar.AvatarSize.Sm" Class="h-5 w-5">
+                                                    <AvatarFallback Class="text-[10px]">@assignee.Initials</AvatarFallback>
+                                                </Avatar>
+                                                @assignee.Name
+                                            </div>
+                                        </SelectItem>
+                                    }
+                                </SelectContent>
+                            </Select>
+                        }
 
-                    <!-- Clear All button -->
+                        <!-- Spacer -->
+                        <div class="flex-1"></div>
+
+                        <!-- Clear All button -->
+                        @if (HasActiveFilters)
+                        {
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                    Class="h-8 text-xs text-muted-foreground"
+                                    @onclick="ClearFilters">
+                                <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
+                                Clear all
+                            </Button>
+                        }
+                    </div>
+
+                    <!-- Search Input -->
+                    <div class="relative">
+                        <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Input placeholder="Search tasks by title..."
+                               Value="@_searchQuery"
+                               OnInput="OnSearchInput"
+                               Class="pl-9 max-w-sm" />
+                    </div>
+                </ChildContent>
+                <Pills>
                     @if (HasActiveFilters)
                     {
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
-                                Class="h-8 text-xs text-muted-foreground"
-                                @onclick="ClearFilters">
-                            <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
-                            Clear all
-                        </Button>
-                    }
-                </div>
-
-                <!-- Active Filter Pills -->
-                @if (HasActiveFilters)
-                {
-                    <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-xs text-muted-foreground font-medium">Active filters:</span>
 
                         @if (_statusFilter != "")
                         {
-                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
-                                Status: @_statusFilter
-                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
-                                        @onclick="@(() => { _statusFilter = ""; })">
-                                    <DynamicIcon Name="X" Class="h-3 w-3" />
-                                </button>
-                            </Badge>
+                            <FilterPill Label="Status" Value="@_statusFilter" OnDismiss="@(() => { _statusFilter = ""; })" />
                         }
 
                         @if (_priorityFilter != "")
                         {
-                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
-                                Priority: @_priorityFilter
-                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
-                                        @onclick="@(() => { _priorityFilter = ""; })">
-                                    <DynamicIcon Name="X" Class="h-3 w-3" />
-                                </button>
-                            </Badge>
+                            <FilterPill Label="Priority" Value="@_priorityFilter" OnDismiss="@(() => { _priorityFilter = ""; })" />
                         }
 
                         @foreach (var cat in _categoryFilters.ToList())
                         {
                             var c = cat;
-                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
-                                Category: @c
-                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
-                                        @onclick="@(() => _categoryFilters.Remove(c))">
-                                    <DynamicIcon Name="X" Class="h-3 w-3" />
-                                </button>
-                            </Badge>
+                            <FilterPill Label="Category" Value="@c" OnDismiss="@(() => _categoryFilters.Remove(c))" />
                         }
 
                         @if (_assigneeFilter != "")
                         {
-                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
-                                Assignee: @_assigneeFilter
-                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
-                                        @onclick="@(() => { _assigneeFilter = ""; })">
-                                    <DynamicIcon Name="X" Class="h-3 w-3" />
-                                </button>
-                            </Badge>
+                            <FilterPill Label="Assignee" Value="@_assigneeFilter" OnDismiss="@(() => { _assigneeFilter = ""; })" />
                         }
 
                         @if (_searchQuery != "")
                         {
-                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="flex items-center gap-1 pl-2 pr-1">
-                                Search: "@_searchQuery"
-                                <button class="ml-1 rounded-full hover:bg-muted p-0.5"
-                                        @onclick="@(() => { _searchQuery = ""; })">
-                                    <DynamicIcon Name="X" Class="h-3 w-3" />
-                                </button>
-                            </Badge>
+                            <FilterPill Label="Search" Value="@($"\"{_searchQuery}\"")" OnDismiss="@(() => { _searchQuery = ""; })" />
                         }
-                    </div>
-                }
-
-                <!-- Search Input -->
-                <div class="relative">
-                    <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    <Input placeholder="Search tasks by title..."
-                           Value="@_searchQuery"
-                           OnInput="OnSearchInput"
-                           Class="pl-9 max-w-sm" />
-                </div>
-
-            </div>
+                    }
+                </Pills>
+            </FilterBar>
         </CardContent>
     </Card>
 

@@ -5,7 +5,7 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.Progress;
 
-public class ProgressTests : IDisposable
+public class ProgressTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -14,7 +14,8 @@ public class ProgressTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public void Renders_Progressbar_Element()
@@ -139,7 +140,7 @@ public class ProgressTests : IDisposable
         Assert.Contains("h-2", cls);
         Assert.Contains("w-full", cls);
         Assert.Contains("overflow-hidden", cls);
-        Assert.Contains("rounded-full", cls);
+        Assert.Contains("rounded-[var(--radius)]", cls);
     }
 
     [Fact]

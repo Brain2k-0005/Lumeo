@@ -1,0 +1,772 @@
+@page "/components/filter"
+
+<PageTitle>Filter — Lumeo</PageTitle>
+
+<PageHeader Title="Filter" Description="Composable filter pills and bar for building advanced data filtering interfaces." />
+
+<div class="space-y-8">
+
+    <!-- Demo 1: Filters with various field types -->
+    <ComponentDemo Title="Filters with various field types" Code="@_demo1Code">
+        <FilterBar>
+            <ChildContent>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <!-- Add Filter Dropdown -->
+                    <DropdownMenu @bind-IsOpen="_demo1DropdownOpen">
+                        <DropdownMenuTrigger>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="SlidersHorizontal" Class="h-3.5 w-3.5 mr-1.5" />
+                                Add Filter
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem OnClick="@(() => ToggleDemo1Field("Status"))">
+                                <DynamicIcon Name="CircleDot" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Status
+                                @if (_demo1Fields.Contains("Status"))
+                                {
+                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                            <DropdownMenuItem OnClick="@(() => ToggleDemo1Field("Priority"))">
+                                <DynamicIcon Name="Flag" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Priority
+                                @if (_demo1Fields.Contains("Priority"))
+                                {
+                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                            <DropdownMenuItem OnClick="@(() => ToggleDemo1Field("Category"))">
+                                <DynamicIcon Name="Tag" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                Category
+                                @if (_demo1Fields.Contains("Category"))
+                                {
+                                    <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
+                                }
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    @if (_demo1Fields.Contains("Status"))
+                    {
+                        <Select Value="@_demo1Status" ValueChanged="v => _demo1Status = v">
+                            <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                <span class="truncate">@(_demo1Status == "" ? "Status" : $"Status: {_demo1Status}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Active">Active</SelectItem>
+                                <SelectItem Value="Inactive">Inactive</SelectItem>
+                                <SelectItem Value="Pending">Pending</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    }
+
+                    @if (_demo1Fields.Contains("Priority"))
+                    {
+                        <Select Value="@_demo1Priority" ValueChanged="v => _demo1Priority = v">
+                            <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                <span class="truncate">@(_demo1Priority == "" ? "Priority" : $"Priority: {_demo1Priority}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Low">Low</SelectItem>
+                                <SelectItem Value="Medium">Medium</SelectItem>
+                                <SelectItem Value="High">High</SelectItem>
+                                <SelectItem Value="Critical">Critical</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    }
+
+                    @if (_demo1Fields.Contains("Category"))
+                    {
+                        <Select Value="@_demo1Category" ValueChanged="v => _demo1Category = v">
+                            <SelectTrigger Class="w-[160px] h-8 text-xs">
+                                <span class="truncate">@(_demo1Category == "" ? "Category" : $"Category: {_demo1Category}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Engineering">Engineering</SelectItem>
+                                <SelectItem Value="Design">Design</SelectItem>
+                                <SelectItem Value="Marketing">Marketing</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    }
+
+                    @if (Demo1HasFilters)
+                    {
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-8 text-xs text-muted-foreground" OnClick="ClearDemo1">
+                            <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
+                            Clear
+                        </Button>
+                    }
+                </div>
+            </ChildContent>
+            <Pills>
+                @if (Demo1HasFilters)
+                {
+                    @if (_demo1Status != "")
+                    {
+                        <FilterPill Label="Status" Value="@_demo1Status" OnDismiss="@(() => _demo1Status = "")" />
+                    }
+                    @if (_demo1Priority != "")
+                    {
+                        <FilterPill Label="Priority" Value="@_demo1Priority" OnDismiss="@(() => _demo1Priority = "")" />
+                    }
+                    @if (_demo1Category != "")
+                    {
+                        <FilterPill Label="Category" Value="@_demo1Category" OnDismiss="@(() => _demo1Category = "")" />
+                    }
+                }
+            </Pills>
+        </FilterBar>
+
+        @if (Demo1HasFilters)
+        {
+            <pre class="mt-4 rounded-lg bg-muted/50 p-4 text-xs font-mono text-foreground overflow-x-auto">@Demo1Json</pre>
+        }
+    </ComponentDemo>
+
+    <!-- Demo 2: Filters with search input -->
+    <ComponentDemo Title="Filters with search input" Code="@_demo2Code">
+        <FilterBar>
+            <ChildContent>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <div class="flex items-center gap-2">
+                        <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4 text-muted-foreground" />
+                        <div class="relative">
+                            <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                            <Input placeholder="Search by name..."
+                                   Value="@_demo2Search"
+                                   OnInput="@(e => _demo2Search = e.Value?.ToString() ?? string.Empty)"
+                                   Class="h-8 w-[220px] text-xs pl-8" />
+                        </div>
+                    </div>
+
+                    <Select Value="@_demo2Role" ValueChanged="v => _demo2Role = v">
+                        <SelectTrigger Class="w-[150px] h-8 text-xs">
+                            <span class="truncate">@(_demo2Role == "" ? "Role" : $"Role: {_demo2Role}")</span>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem Value="Admin">Admin</SelectItem>
+                            <SelectItem Value="Editor">Editor</SelectItem>
+                            <SelectItem Value="Viewer">Viewer</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    @if (Demo2HasFilters)
+                    {
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-8 text-xs text-muted-foreground" OnClick="ClearDemo2">
+                            <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
+                            Clear
+                        </Button>
+                    }
+                </div>
+            </ChildContent>
+            <Pills>
+                @if (_demo2Search != "")
+                {
+                    <FilterPill Label="Search" Value='@($"\"{_demo2Search}\"")' OnDismiss="@(() => _demo2Search = "")" />
+                }
+                @if (_demo2Role != "")
+                {
+                    <FilterPill Label="Role" Value="@_demo2Role" OnDismiss="@(() => _demo2Role = "")" />
+                }
+            </Pills>
+        </FilterBar>
+    </ComponentDemo>
+
+    <!-- Demo 3: Filters with multi-select -->
+    <ComponentDemo Title="Filters with multi-select" Code="@_demo3Code">
+        <FilterBar>
+            <ChildContent>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4 text-muted-foreground" />
+
+                    <DropdownMenu @bind-IsOpen="_demo3DropdownOpen">
+                        <DropdownMenuTrigger>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">
+                                @if (_demo3Categories.Count == 0)
+                                {
+                                    <span>Category</span>
+                                }
+                                else
+                                {
+                                    <span>Category: @_demo3Categories.Count selected</span>
+                                }
+                                <DynamicIcon Name="ChevronDown" Class="h-3.5 w-3.5 ml-1.5 opacity-50" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuLabel>Categories</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            @foreach (var cat in _allCategories)
+                            {
+                                var c = cat;
+                                <div class="flex items-center gap-2 px-2 py-1.5">
+                                    <Checkbox Checked="@_demo3Categories.Contains(c)"
+                                              CheckedChanged="@(v => ToggleDemo3Category(c, v))" />
+                                    <span class="text-sm">@c</span>
+                                </div>
+                            }
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Select Value="@_demo3Status" ValueChanged="v => _demo3Status = v">
+                        <SelectTrigger Class="w-[150px] h-8 text-xs">
+                            <span class="truncate">@(_demo3Status == "" ? "Status" : $"Status: {_demo3Status}")</span>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem Value="Active">Active</SelectItem>
+                            <SelectItem Value="Inactive">Inactive</SelectItem>
+                            <SelectItem Value="Pending">Pending</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    @if (Demo3HasFilters)
+                    {
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-8 text-xs text-muted-foreground" OnClick="ClearDemo3">
+                            <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
+                            Clear
+                        </Button>
+                    }
+                </div>
+            </ChildContent>
+            <Pills>
+                @foreach (var cat in _demo3Categories.ToList())
+                {
+                    var c = cat;
+                    <FilterPill Label="Category" Value="@c" OnDismiss="@(() => _demo3Categories.Remove(c))" />
+                }
+                @if (_demo3Status != "")
+                {
+                    <FilterPill Label="Status" Value="@_demo3Status" OnDismiss="@(() => _demo3Status = "")" />
+                }
+            </Pills>
+        </FilterBar>
+    </ComponentDemo>
+
+    <!-- Demo 4: Filters with data table -->
+    <ComponentDemo Title="Filters with data table" Code="@_demo4Code">
+        <div class="space-y-4">
+            <FilterBar>
+                <ChildContent>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4 text-muted-foreground" />
+
+                        <div class="relative">
+                            <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                            <Input placeholder="Search..."
+                                   Value="@_demo4Search"
+                                   OnInput="@(e => _demo4Search = e.Value?.ToString() ?? string.Empty)"
+                                   Class="h-8 w-[180px] text-xs pl-8" />
+                        </div>
+
+                        <Select Value="@_demo4Status" ValueChanged="v => _demo4Status = v">
+                            <SelectTrigger Class="w-[150px] h-8 text-xs">
+                                <span class="truncate">@(_demo4Status == "" ? "Status" : $"Status: {_demo4Status}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Active">Active</SelectItem>
+                                <SelectItem Value="Inactive">Inactive</SelectItem>
+                                <SelectItem Value="Pending">Pending</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <Select Value="@_demo4Priority" ValueChanged="v => _demo4Priority = v">
+                            <SelectTrigger Class="w-[150px] h-8 text-xs">
+                                <span class="truncate">@(_demo4Priority == "" ? "Priority" : $"Priority: {_demo4Priority}")</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem Value="Low">Low</SelectItem>
+                                <SelectItem Value="Medium">Medium</SelectItem>
+                                <SelectItem Value="High">High</SelectItem>
+                                <SelectItem Value="Critical">Critical</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <div class="flex-1"></div>
+
+                        @if (Demo4HasFilters)
+                        {
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-8 text-xs text-muted-foreground" OnClick="ClearDemo4">
+                                <DynamicIcon Name="Trash2" Class="h-3.5 w-3.5 mr-1" />
+                                Clear
+                            </Button>
+                        }
+                    </div>
+                </ChildContent>
+                <Pills>
+                    @if (_demo4Search != "")
+                    {
+                        <FilterPill Label="Search" Value='@($"\"{_demo4Search}\"")' OnDismiss="@(() => _demo4Search = "")" />
+                    }
+                    @if (_demo4Status != "")
+                    {
+                        <FilterPill Label="Status" Value="@_demo4Status" OnDismiss="@(() => _demo4Status = "")" />
+                    }
+                    @if (_demo4Priority != "")
+                    {
+                        <FilterPill Label="Priority" Value="@_demo4Priority" OnDismiss="@(() => _demo4Priority = "")" />
+                    }
+                </Pills>
+            </FilterBar>
+
+            <div class="rounded-lg border border-border overflow-hidden">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead Class="w-[60px]">ID</TableHead>
+                            <TableHead>Task</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Priority</TableHead>
+                            <TableHead>Assignee</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        @if (Demo4Filtered.Count == 0)
+                        {
+                            <TableRow>
+                                <TableCell Class="text-center py-8 text-muted-foreground" colspan="5">
+                                    <div class="flex flex-col items-center gap-2">
+                                        <DynamicIcon Name="SearchX" Class="h-6 w-6 text-muted-foreground/50" />
+                                        <p class="text-sm">No results found</p>
+                                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ClearDemo4">
+                                            Clear Filters
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        }
+                        else
+                        {
+                            @foreach (var t in Demo4Filtered)
+                            {
+                                <TableRow>
+                                    <TableCell>
+                                        <span class="text-xs text-muted-foreground font-mono">@t.Id</span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <span class="font-medium text-foreground">@t.Title</span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge Variant="@GetStatusVariant(t.Status)" Class="text-xs">@t.Status</Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div class="flex items-center gap-1.5">
+                                            <div class="@GetPriorityDot(t.Priority)"></div>
+                                            <span class="text-sm">@t.Priority</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div class="flex items-center gap-2">
+                                            <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6">
+                                                <AvatarFallback Class="text-[10px]">@t.Initials</AvatarFallback>
+                                            </Avatar>
+                                            <span class="text-sm">@t.Assignee</span>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            }
+                        }
+                    </TableBody>
+                </Table>
+            </div>
+
+            <div class="text-xs text-muted-foreground">
+                Showing @Demo4Filtered.Count of @_tasks.Count results
+            </div>
+        </div>
+    </ComponentDemo>
+
+    <!-- Demo 5: FilterPill styles -->
+    <ComponentDemo Title="FilterPill styles" Code="@_demo5Code">
+        <div class="flex items-center gap-2 flex-wrap">
+            @foreach (var tag in _demo5Tags.ToList())
+            {
+                var t = tag;
+                <FilterPill Label="@t.Label" Value="@t.Value" OnDismiss="@(() => _demo5Tags.RemoveAll(x => x.Label == t.Label && x.Value == t.Value))" />
+            }
+            @if (_demo5Tags.Count == 0)
+            {
+                <span class="text-sm text-muted-foreground">All filters cleared.</span>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ResetDemo5">
+                    Reset
+                </Button>
+            }
+        </div>
+    </ComponentDemo>
+</div>
+
+<!-- API Reference -->
+<div class="mt-12 space-y-6">
+    <h2 class="text-2xl font-bold text-foreground">API Reference</h2>
+
+    <div class="space-y-8">
+        <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">FilterPill</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Label</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">""</td>
+                            <td class="p-3 text-muted-foreground">The filter category label displayed before the colon.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Value</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">""</td>
+                            <td class="p-3 text-muted-foreground">The active filter value displayed after the colon.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnDismiss</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Callback invoked when the dismiss button is clicked.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes to apply to the pill.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">FilterBar</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ChildContent</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Primary content area for filter controls (buttons, selects, search).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Pills</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Slot for FilterPill components showing active filters.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Actions</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Slot for action buttons like "Clear all".</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes to apply to the bar container.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // ── Demo 1: Various field types ──
+    private bool _demo1DropdownOpen;
+    private HashSet<string> _demo1Fields = new();
+    private string _demo1Status = "";
+    private string _demo1Priority = "";
+    private string _demo1Category = "";
+
+    private bool Demo1HasFilters => _demo1Status != "" || _demo1Priority != "" || _demo1Category != "";
+
+    private string Demo1Json
+    {
+        get
+        {
+            var filters = new List<string>();
+            if (_demo1Status != "") filters.Add($"  {{ \"field\": \"status\", \"operator\": \"is\", \"value\": \"{_demo1Status}\" }}");
+            if (_demo1Priority != "") filters.Add($"  {{ \"field\": \"priority\", \"operator\": \"is\", \"value\": \"{_demo1Priority}\" }}");
+            if (_demo1Category != "") filters.Add($"  {{ \"field\": \"category\", \"operator\": \"is\", \"value\": \"{_demo1Category}\" }}");
+            return "[\n" + string.Join(",\n", filters) + "\n]";
+        }
+    }
+
+    private void ToggleDemo1Field(string field)
+    {
+        if (_demo1Fields.Contains(field))
+        {
+            _demo1Fields.Remove(field);
+            switch (field)
+            {
+                case "Status": _demo1Status = ""; break;
+                case "Priority": _demo1Priority = ""; break;
+                case "Category": _demo1Category = ""; break;
+            }
+        }
+        else
+        {
+            _demo1Fields.Add(field);
+        }
+    }
+
+    private void ClearDemo1()
+    {
+        _demo1Status = "";
+        _demo1Priority = "";
+        _demo1Category = "";
+        _demo1Fields.Clear();
+    }
+
+    // ── Demo 2: Search input ──
+    private string _demo2Search = "";
+    private string _demo2Role = "";
+
+    private bool Demo2HasFilters => _demo2Search != "" || _demo2Role != "";
+
+    private void ClearDemo2()
+    {
+        _demo2Search = "";
+        _demo2Role = "";
+    }
+
+    // ── Demo 3: Multi-select ──
+    private bool _demo3DropdownOpen;
+    private List<string> _demo3Categories = new();
+    private string _demo3Status = "";
+    private readonly string[] _allCategories = { "Engineering", "Design", "Marketing", "Sales", "Support" };
+
+    private bool Demo3HasFilters => _demo3Categories.Count > 0 || _demo3Status != "";
+
+    private void ToggleDemo3Category(string cat, bool isChecked)
+    {
+        if (isChecked && !_demo3Categories.Contains(cat))
+            _demo3Categories.Add(cat);
+        else if (!isChecked)
+            _demo3Categories.Remove(cat);
+    }
+
+    private void ClearDemo3()
+    {
+        _demo3Categories.Clear();
+        _demo3Status = "";
+    }
+
+    // ── Demo 4: Data table ──
+    private string _demo4Search = "";
+    private string _demo4Status = "";
+    private string _demo4Priority = "";
+
+    private bool Demo4HasFilters => _demo4Search != "" || _demo4Status != "" || _demo4Priority != "";
+
+    private record TaskRow(int Id, string Title, string Status, string Priority, string Assignee, string Initials);
+
+    private readonly List<TaskRow> _tasks =
+    [
+        new(1001, "Migrate database to PostgreSQL 16", "Active", "High", "John Davis", "JD"),
+        new(1002, "Redesign onboarding flow", "Active", "Medium", "Sarah Chen", "SC"),
+        new(1003, "Q1 campaign landing page", "Pending", "High", "Lisa Park", "LP"),
+        new(1004, "Fix checkout timeout errors", "Active", "Critical", "Mike Torres", "MT"),
+        new(1005, "Update sales deck for Enterprise", "Inactive", "Low", "John Davis", "JD"),
+        new(1006, "Implement SSO integration", "Active", "High", "Sarah Chen", "SC"),
+        new(1007, "Customer feedback analysis", "Pending", "Medium", "Lisa Park", "LP"),
+        new(1008, "Design system color audit", "Inactive", "Low", "Mike Torres", "MT"),
+    ];
+
+    private List<TaskRow> Demo4Filtered
+    {
+        get
+        {
+            var result = _tasks.AsEnumerable();
+            if (_demo4Search != "")
+                result = result.Where(t => t.Title.Contains(_demo4Search, StringComparison.OrdinalIgnoreCase));
+            if (_demo4Status != "")
+                result = result.Where(t => t.Status == _demo4Status);
+            if (_demo4Priority != "")
+                result = result.Where(t => t.Priority == _demo4Priority);
+            return result.ToList();
+        }
+    }
+
+    private void ClearDemo4()
+    {
+        _demo4Search = "";
+        _demo4Status = "";
+        _demo4Priority = "";
+    }
+
+    private Badge.BadgeVariant GetStatusVariant(string status) => status switch
+    {
+        "Active" => Badge.BadgeVariant.Success,
+        "Pending" => Badge.BadgeVariant.Warning,
+        "Inactive" => Badge.BadgeVariant.Secondary,
+        _ => Badge.BadgeVariant.Default
+    };
+
+    private string GetPriorityDot(string priority) => priority switch
+    {
+        "Critical" => "h-2 w-2 rounded-full bg-destructive",
+        "High" => "h-2 w-2 rounded-full bg-warning-text",
+        "Medium" => "h-2 w-2 rounded-full bg-primary",
+        "Low" => "h-2 w-2 rounded-full bg-muted-foreground",
+        _ => "h-2 w-2 rounded-full bg-muted-foreground"
+    };
+
+    // ── Demo 5: Pill styles ──
+    private record TagItem(string Label, string Value);
+
+    private List<TagItem> _demo5Tags =
+    [
+        new("Status", "Active"),
+        new("Priority", "High"),
+        new("Category", "Engineering"),
+        new("Assignee", "Sarah Chen"),
+        new("Search", "\"database\""),
+    ];
+
+    private void ResetDemo5()
+    {
+        _demo5Tags =
+        [
+            new("Status", "Active"),
+            new("Priority", "High"),
+            new("Category", "Engineering"),
+            new("Assignee", "Sarah Chen"),
+            new("Search", "\"database\""),
+        ];
+    }
+
+    // ── Code snippets ──
+    private string _demo1Code = @"<FilterBar>
+    <ChildContent>
+        <div class=""flex items-center gap-2"">
+            <DropdownMenu>
+                <DropdownMenuTrigger>
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">
+                        <DynamicIcon Name=""SlidersHorizontal"" Class=""h-3.5 w-3.5 mr-1.5"" />
+                        Add Filter
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuItem OnClick=""@(() => ToggleField(""Status""))"">Status</DropdownMenuItem>
+                    <DropdownMenuItem OnClick=""@(() => ToggleField(""Priority""))"">Priority</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            @if (_fields.Contains(""Status""))
+            {
+                <Select Value=""@_status"" ValueChanged=""v => _status = v"">
+                    <SelectTrigger Class=""w-[160px] h-8 text-xs"">
+                        <span>@(_status == """" ? ""Status"" : $""Status: {_status}"")</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value=""Active"">Active</SelectItem>
+                    </SelectContent>
+                </Select>
+            }
+        </div>
+    </ChildContent>
+    <Pills>
+        @if (_status != """")
+        {
+            <FilterPill Label=""Status"" Value=""@_status"" OnDismiss=""@(() => _status = """")"" />
+        }
+    </Pills>
+</FilterBar>";
+
+    private string _demo2Code = @"<FilterBar>
+    <ChildContent>
+        <div class=""flex items-center gap-2"">
+            <Input placeholder=""Search..."" Value=""@_search""
+                   OnInput=""e => _search = e.Value?.ToString() ?? """""" Class=""h-8 w-[220px] text-xs"" />
+            <Select Value=""@_role"" ValueChanged=""v => _role = v"">
+                <SelectTrigger Class=""w-[150px] h-8 text-xs"">
+                    <span>@(_role == """" ? ""Role"" : _role)</span>
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem Value=""Admin"">Admin</SelectItem>
+                </SelectContent>
+            </Select>
+        </div>
+    </ChildContent>
+    <Pills>
+        @if (_search != """")
+        {
+            <FilterPill Label=""Search"" Value=""@_search"" OnDismiss=""@(() => _search = """")"" />
+        }
+    </Pills>
+</FilterBar>";
+
+    private string _demo3Code = @"<FilterBar>
+    <ChildContent>
+        <DropdownMenu>
+            <DropdownMenuTrigger>
+                <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">
+                    Category: @_categories.Count selected
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+                @foreach (var cat in _allCategories)
+                {
+                    <div class=""flex items-center gap-2 px-2 py-1.5"">
+                        <Checkbox Checked=""@_categories.Contains(cat)""
+                                  CheckedChanged=""@(v => Toggle(cat, v))"" />
+                        <span class=""text-sm"">@cat</span>
+                    </div>
+                }
+            </DropdownMenuContent>
+        </DropdownMenu>
+    </ChildContent>
+    <Pills>
+        @foreach (var cat in _categories)
+        {
+            <FilterPill Label=""Category"" Value=""@cat""
+                        OnDismiss=""@(() => _categories.Remove(cat))"" />
+        }
+    </Pills>
+</FilterBar>";
+
+    private string _demo4Code = @"<FilterBar>
+    <ChildContent>
+        <Input placeholder=""Search..."" />
+        <Select Value=""@_status"" ValueChanged=""v => _status = v"">...</Select>
+    </ChildContent>
+    <Pills>
+        @if (_status != """")
+        {
+            <FilterPill Label=""Status"" Value=""@_status"" OnDismiss=""..."" />
+        }
+    </Pills>
+</FilterBar>
+
+<Table>
+    @foreach (var item in FilteredItems)
+    {
+        <TableRow>...</TableRow>
+    }
+</Table>";
+
+    private string _demo5Code = @"@foreach (var tag in _tags.ToList())
+{
+    <FilterPill Label=""@tag.Label"" Value=""@tag.Value""
+                OnDismiss=""@(() => _tags.Remove(tag))"" />
+}";
+}

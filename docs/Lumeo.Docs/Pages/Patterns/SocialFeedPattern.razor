@@ -1,0 +1,372 @@
+@page "/blocks/social-feed"
+@namespace Lumeo.Docs.Pages.Patterns
+
+<PageTitle>Social Feed Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="Social Feed" Description="A social media timeline with a compose area, post cards with avatars, tooltips, like/comment actions, avatar groups, and a detail sheet." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="Social Media Timeline" Code="@_socialFeedCode">
+        <div class="w-full space-y-4">
+
+            <!-- Compose Card -->
+            <Card>
+                <CardContent Class="pt-4 pb-4">
+                    <div class="flex gap-3">
+                        <Avatar>
+                            <AvatarFallback>ME</AvatarFallback>
+                        </Avatar>
+                        <div class="flex-1 space-y-3">
+                            <Textarea AutoResize="true" MaxRows="6"
+                                      Value="@_composeText"
+                                      OnInput="@(e => _composeText = e.Value?.ToString() ?? "")"
+                                      placeholder="What's on your mind?" />
+
+                            <!-- Tag Combobox (Multiple) -->
+                            <Combobox Multiple="true"
+                                      @bind-Values="_selectedTags"
+                                      Placeholder="Add tags..."
+                                      Class="max-w-xs">
+                                <ComboboxContent>
+                                    <ComboboxItem Value="design">Design</ComboboxItem>
+                                    <ComboboxItem Value="engineering">Engineering</ComboboxItem>
+                                    <ComboboxItem Value="product">Product</ComboboxItem>
+                                    <ComboboxItem Value="announcement">Announcement</ComboboxItem>
+                                    <ComboboxItem Value="update">Update</ComboboxItem>
+                                </ComboboxContent>
+                            </Combobox>
+
+                            <div class="flex justify-end">
+                                <Button IsLoading="@_isPosting" OnClick="HandlePost">
+                                    <DynamicIcon Name="Send" Class="h-4 w-4 mr-2" />
+                                    Post
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <!-- Feed -->
+            <div class="space-y-4">
+                @foreach (var post in _posts)
+                {
+                    var p = post;
+                    <Card>
+                        <CardHeader>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <Avatar>
+                                        <AvatarFallback>@p.AuthorInitials</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <p class="text-sm font-semibold text-foreground">@p.Author</p>
+                                            @if (p.IsNew)
+                                            {
+                                                <Badge IsDot="true" Variant="Badge.BadgeVariant.Default" />
+                                                <span class="text-xs text-primary font-medium">New</span>
+                                            }
+                                        </div>
+                                        <Tooltip ShowDelay="400">
+                                            <TooltipTrigger>
+                                                <p class="text-xs text-muted-foreground cursor-default">@p.TimeAgo</p>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipContent.TooltipSide.Bottom">
+                                                Posted @p.TimeAgo
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </div>
+                                </div>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                                        OnClick="@(() => OpenSheet(p))">
+                                    <DynamicIcon Name="ExternalLink" Class="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </CardHeader>
+
+                        <CardContent Class="space-y-3">
+                            <!-- Post Content -->
+                            <p class="text-sm text-foreground leading-relaxed">@p.Content</p>
+
+                            <!-- Image Placeholder -->
+                            @if (p.HasImage)
+                            {
+                                <div class="bg-muted rounded-lg h-48 flex items-center justify-center">
+                                    <DynamicIcon Name="Image" Class="h-10 w-10 text-muted-foreground/40" />
+                                </div>
+                            }
+                        </CardContent>
+
+                        <CardFooter Class="flex items-center justify-between border-t pt-3">
+                            <!-- Action Buttons -->
+                            <div class="flex items-center gap-1">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                        Class="@(p.IsLiked ? "text-primary" : "")"
+                                        OnClick="@(() => ToggleLike(p))">
+                                    <DynamicIcon Name="Heart" Class="h-4 w-4 mr-1.5" />
+                                    @p.LikeCount
+                                </Button>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                                    <DynamicIcon Name="MessageCircle" Class="h-4 w-4 mr-1.5" />
+                                    @p.CommentCount
+                                </Button>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                                    <DynamicIcon Name="Share2" Class="h-4 w-4 mr-1.5" />
+                                    Share
+                                </Button>
+                            </div>
+
+                            <!-- Who Liked (AvatarGroup) -->
+                            @if (p.LikeCount > 0)
+                            {
+                                <div class="flex items-center gap-2">
+                                    <AvatarGroup Max="3" Total="@p.LikeCount">
+                                        @for (var i = 0; i < Math.Min(3, p.LikeCount); i++)
+                                        {
+                                            var idx = i;
+                                            <Avatar Size="Avatar.AvatarSize.Sm" Class="border-2 border-background">
+                                                <AvatarFallback Class="text-[10px]">@_likerInitials[idx % _likerInitials.Length]</AvatarFallback>
+                                            </Avatar>
+                                        }
+                                    </AvatarGroup>
+                                    <span class="text-xs text-muted-foreground">liked this</span>
+                                </div>
+                            }
+                        </CardFooter>
+                    </Card>
+                }
+            </div>
+
+            <!-- Post Detail Sheet -->
+            <Sheet @bind-IsOpen="_sheetOpen">
+                <SheetContent Size="SheetContent.SheetSize.Lg">
+                    @if (_selectedPost is not null)
+                    {
+                        <SheetHeader>
+                            <SheetTitle>Post by @_selectedPost.Author</SheetTitle>
+                            <SheetDescription>@_selectedPost.TimeAgo</SheetDescription>
+                        </SheetHeader>
+                        <div class="mt-4 space-y-4">
+                            <div class="flex items-center gap-3">
+                                <Avatar>
+                                    <AvatarFallback>@_selectedPost.AuthorInitials</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                    <p class="text-sm font-semibold text-foreground">@_selectedPost.Author</p>
+                                    <p class="text-xs text-muted-foreground">@_selectedPost.TimeAgo</p>
+                                </div>
+                            </div>
+                            <p class="text-sm text-foreground leading-relaxed">@_selectedPost.Content</p>
+                            <Separator />
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-medium text-foreground">Comments (@_selectedPost.CommentCount)</h4>
+                                @foreach (var comment in _sampleComments)
+                                {
+                                    <div class="flex gap-2">
+                                        <Avatar Size="Avatar.AvatarSize.Sm">
+                                            <AvatarFallback Class="text-[10px]">@comment.Initials</AvatarFallback>
+                                        </Avatar>
+                                        <div class="flex-1 rounded-md bg-muted px-3 py-2">
+                                            <p class="text-xs font-medium text-foreground">@comment.Author</p>
+                                            <p class="text-xs text-muted-foreground mt-0.5">@comment.Text</p>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </SheetContent>
+            </Sheet>
+
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private string _composeText = "";
+    private bool _isPosting;
+    private HashSet<string>? _selectedTags = new();
+
+    // Sheet state
+    private bool _sheetOpen;
+    private PostItem? _selectedPost;
+
+    private readonly string[] _likerInitials = { "OL", "JK", "SD", "WK", "IN" };
+
+    private class PostItem
+    {
+        public int Id { get; init; }
+        public string Author { get; init; } = "";
+        public string AuthorInitials { get; init; } = "";
+        public string Content { get; init; } = "";
+        public bool HasImage { get; init; }
+        public int LikeCount { get; set; }
+        public int CommentCount { get; init; }
+        public string TimeAgo { get; init; } = "";
+        public bool IsNew { get; init; }
+        public bool IsLiked { get; set; }
+    }
+
+    private record CommentItem(string Author, string Initials, string Text);
+
+    private readonly List<PostItem> _posts = new()
+    {
+        new() { Id = 1, Author = "Olivia Martin",   AuthorInitials = "OM", Content = "Just shipped our new design system! After 3 months of work, we've standardized colors, spacing, and typography across all products. Huge thanks to the team for pushing through.", HasImage = true,  LikeCount = 14, CommentCount = 8,  TimeAgo = "2 hours ago", IsNew = true  },
+        new() { Id = 2, Author = "Jackson Lee",     AuthorInitials = "JL", Content = "Interesting findings from our latest user research session — turns out 70% of users never scroll past the fold on mobile. Time to rethink our information architecture.",         HasImage = false, LikeCount = 22, CommentCount = 12, TimeAgo = "5 hours ago", IsNew = false },
+        new() { Id = 3, Author = "Sofia Davis",     AuthorInitials = "SD", Content = "Pro tip: use CSS container queries instead of media queries for truly component-level responsiveness. Game changer for library development.",                                     HasImage = true,  LikeCount = 9,  CommentCount = 4,  TimeAgo = "Yesterday",   IsNew = true  },
+        new() { Id = 4, Author = "Isabella Nguyen", AuthorInitials = "IN", Content = "We crossed 10,000 GitHub stars today! Thank you to everyone who has contributed, filed issues, and spread the word. This milestone means everything to us.",                   HasImage = false, LikeCount = 47, CommentCount = 21, TimeAgo = "2 days ago",  IsNew = false },
+    };
+
+    private readonly List<CommentItem> _sampleComments = new()
+    {
+        new("William Kim",    "WK", "This is incredible work! Congrats to the whole team."),
+        new("Liam Johnson",   "LJ", "How did you handle theming? Did you go with CSS variables?"),
+        new("Emma Wilson",    "EW", "Looking forward to migrating our codebase to this."),
+    };
+
+    private async Task HandlePost()
+    {
+        if (string.IsNullOrWhiteSpace(_composeText)) return;
+        _isPosting = true;
+        await Task.Delay(1500);
+        _composeText = "";
+        _selectedTags = new();
+        _isPosting = false;
+    }
+
+    private void ToggleLike(PostItem post)
+    {
+        if (post.IsLiked)
+        {
+            post.IsLiked = false;
+            post.LikeCount--;
+        }
+        else
+        {
+            post.IsLiked = true;
+            post.LikeCount++;
+        }
+    }
+
+    private void OpenSheet(PostItem post)
+    {
+        _selectedPost = post;
+        _sheetOpen = true;
+    }
+
+    private string _socialFeedCode = @"<!-- Compose Card -->
+<Card>
+    <CardContent>
+        <div class=""flex gap-3"">
+            <Avatar><AvatarFallback>ME</AvatarFallback></Avatar>
+            <div class=""flex-1 space-y-3"">
+                <Textarea AutoResize=""true"" MaxRows=""6""
+                          Value=""@_composeText""
+                          OnInput=""@(e => _composeText = e.Value?.ToString() ?? """")"" />
+
+                <!-- Tag Combobox (Multiple) -->
+                <Combobox Multiple=""true"" @bind-Values=""_selectedTags"" Placeholder=""Add tags..."" Class=""max-w-xs"">
+                    <ComboboxContent>
+                        <ComboboxItem Value=""design"">Design</ComboboxItem>
+                        <ComboboxItem Value=""engineering"">Engineering</ComboboxItem>
+                        <ComboboxItem Value=""product"">Product</ComboboxItem>
+                        <ComboboxItem Value=""announcement"">Announcement</ComboboxItem>
+                        <ComboboxItem Value=""update"">Update</ComboboxItem>
+                    </ComboboxContent>
+                </Combobox>
+
+                <Button IsLoading=""@_isPosting"" OnClick=""HandlePost"">
+                    <Blazicon Svg=""Lucide.Send"" class=""h-4 w-4 mr-2"" />
+                    Post
+                </Button>
+            </div>
+        </div>
+    </CardContent>
+</Card>
+
+<!-- Post Card -->
+@foreach (var post in _posts)
+{
+    <Card>
+        <CardHeader>
+            <div class=""flex items-center justify-between"">
+                <div class=""flex items-center gap-3"">
+                    <Avatar><AvatarFallback>@post.AuthorInitials</AvatarFallback></Avatar>
+                    <div>
+                        <div class=""flex items-center gap-2"">
+                            <p class=""text-sm font-semibold text-foreground"">@post.Author</p>
+                            @if (post.IsNew)
+                            {
+                                <Badge IsDot=""true"" />
+                                <span class=""text-xs text-primary font-medium"">New</span>
+                            }
+                        </div>
+                        <!-- Tooltip with delay -->
+                        <Tooltip ShowDelay=""400"">
+                            <TooltipTrigger>
+                                <p class=""text-xs text-muted-foreground cursor-default"">@post.TimeAgo</p>
+                            </TooltipTrigger>
+                            <TooltipContent Side=""TooltipContent.TooltipSide.Bottom"">
+                                Posted @post.TimeAgo
+                            </TooltipContent>
+                        </Tooltip>
+                    </div>
+                </div>
+                <!-- Opens Sheet -->
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" OnClick=""@(() => OpenSheet(post))"">
+                    <Blazicon Svg=""Lucide.ExternalLink"" class=""h-4 w-4"" />
+                </Button>
+            </div>
+        </CardHeader>
+        <CardContent class=""space-y-3"">
+            <p class=""text-sm text-foreground leading-relaxed"">@post.Content</p>
+            <!-- Image placeholder -->
+            <div class=""bg-muted rounded-lg h-48 flex items-center justify-center"">
+                <Blazicon Svg=""Lucide.Image"" class=""h-10 w-10 text-muted-foreground/40"" />
+            </div>
+        </CardContent>
+        <CardFooter class=""flex items-center justify-between border-t pt-3"">
+            <div class=""flex items-center gap-1"">
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" OnClick=""@(() => ToggleLike(post))"">
+                    <Blazicon Svg=""Lucide.Heart"" class=""h-4 w-4 mr-1.5"" />
+                    @post.LikeCount
+                </Button>
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
+                    <Blazicon Svg=""Lucide.MessageCircle"" class=""h-4 w-4 mr-1.5"" />
+                    @post.CommentCount
+                </Button>
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
+                    <Blazicon Svg=""Lucide.Share2"" class=""h-4 w-4 mr-1.5"" />
+                    Share
+                </Button>
+            </div>
+            <!-- AvatarGroup -->
+            <AvatarGroup Max=""3"" Total=""@post.LikeCount"">
+                <Avatar Size=""Avatar.AvatarSize.Sm"" Class=""border-2 border-background"">
+                    <AvatarFallback Class=""text-[10px]"">OL</AvatarFallback>
+                </Avatar>
+                <!-- ... more avatars -->
+            </AvatarGroup>
+        </CardFooter>
+    </Card>
+}
+
+<!-- Detail Sheet -->
+<Sheet @bind-IsOpen=""_sheetOpen"">
+    <SheetContent Size=""SheetContent.SheetSize.Lg"">
+        <SheetHeader>
+            <SheetTitle>Post Details</SheetTitle>
+            <SheetDescription>@_selectedPost?.TimeAgo</SheetDescription>
+        </SheetHeader>
+        <div class=""mt-4 space-y-4"">
+            <p class=""text-sm text-foreground"">@_selectedPost?.Content</p>
+            <Separator />
+            <h4 class=""text-sm font-medium"">Comments</h4>
+            <!-- comment items ... -->
+        </div>
+    </SheetContent>
+</Sheet>";
+}

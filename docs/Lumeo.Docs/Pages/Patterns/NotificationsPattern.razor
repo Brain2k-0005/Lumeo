@@ -1,0 +1,485 @@
+@page "/blocks/notifications"
+@namespace Lumeo.Docs.Pages.Patterns
+@using Lumeo.Services
+@inject ToastService ToastService
+
+<PageTitle>Notifications Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="Notifications" Description="A notification preferences panel with live toast demos and a notification inbox with badges, alerts, and dismissible items." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="Notification Center" Code="@_notificationsCode">
+        <div class="w-full grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Left column: Preferences + Live Demo -->
+            <div class="space-y-4">
+
+                <!-- Notification Preferences -->
+                <Card>
+                    <CardHeader>
+                        <div class="flex items-center gap-2">
+                            <DynamicIcon Name="Bell" Class="h-5 w-5 text-foreground" />
+                            <h3 class="text-base font-semibold text-foreground">Notification Preferences</h3>
+                        </div>
+                        <p class="text-sm text-muted-foreground">Manage how and when you receive notifications.</p>
+                    </CardHeader>
+                    <CardContent Class="space-y-1">
+
+                        <!-- Master toggle -->
+                        <div class="flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-3">
+                            <div class="flex items-center gap-3">
+                                <DynamicIcon Name="Smartphone" Class="h-4 w-4 text-foreground" />
+                                <div>
+                                    <p class="text-sm font-semibold text-foreground">Push Notifications</p>
+                                    <p class="text-xs text-muted-foreground">Receive push alerts on your devices</p>
+                                </div>
+                            </div>
+                            <Switch Size="Switch.SwitchSize.Lg" @bind-Checked="_pushEnabled" />
+                        </div>
+
+                        <Separator Class="my-3" />
+
+                        <!-- Standard toggles -->
+                        <div class="space-y-3 px-1">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <DynamicIcon Name="Mail" Class="h-4 w-4 text-muted-foreground" />
+                                    <div>
+                                        <p class="text-sm font-medium text-foreground">Email notifications</p>
+                                        <p class="text-xs text-muted-foreground">Get notified via email</p>
+                                    </div>
+                                </div>
+                                <Switch @bind-Checked="_emailEnabled" Disabled="@(!_pushEnabled)" />
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <DynamicIcon Name="MessageSquare" Class="h-4 w-4 text-muted-foreground" />
+                                    <div>
+                                        <p class="text-sm font-medium text-foreground">SMS alerts</p>
+                                        <p class="text-xs text-muted-foreground">Receive text message alerts</p>
+                                    </div>
+                                </div>
+                                <Switch @bind-Checked="_smsEnabled" Disabled="@(!_pushEnabled)" />
+                            </div>
+                        </div>
+
+                        <Separator Class="my-3">
+                            <span class="px-2 text-xs font-medium text-muted-foreground bg-card">Categories</span>
+                        </Separator>
+
+                        <!-- Small toggles for categories -->
+                        <div class="space-y-3 px-1">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-foreground">Marketing emails</p>
+                                    <p class="text-xs text-muted-foreground">Promotions and special offers</p>
+                                </div>
+                                <Switch Size="Switch.SwitchSize.Sm" @bind-Checked="_marketingEnabled" Disabled="@(!_pushEnabled || !_emailEnabled)" />
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-foreground">Product updates</p>
+                                    <p class="text-xs text-muted-foreground">New features and improvements</p>
+                                </div>
+                                <Switch Size="Switch.SwitchSize.Sm" @bind-Checked="_updatesEnabled" Disabled="@(!_pushEnabled || !_emailEnabled)" />
+                            </div>
+                        </div>
+
+                    </CardContent>
+                </Card>
+
+                <!-- Live Toast Demo -->
+                <Card>
+                    <CardHeader>
+                        <div class="flex items-center gap-2">
+                            <DynamicIcon Name="Zap" Class="h-5 w-5 text-foreground" />
+                            <h3 class="text-base font-semibold text-foreground">Try It</h3>
+                        </div>
+                        <p class="text-sm text-muted-foreground">Trigger different notification types to see them in action.</p>
+                    </CardHeader>
+                    <CardContent>
+                        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" @onclick="ShowInfo">
+                                <DynamicIcon Name="Info" Class="h-4 w-4 mr-1" />
+                                Info
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" @onclick="ShowSuccess">
+                                <DynamicIcon Name="CircleCheck" Class="h-4 w-4 mr-1" />
+                                Success
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" @onclick="ShowWithAction">
+                                <DynamicIcon Name="MousePointerClick" Class="h-4 w-4 mr-1" />
+                                With Action
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" @onclick="ShowPersistent">
+                                <DynamicIcon Name="Pin" Class="h-4 w-4 mr-1" />
+                                Persistent
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" @onclick="ShowPromise">
+                                <DynamicIcon Name="RefreshCw" Class="h-4 w-4 mr-1" />
+                                Promise
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" @onclick="ShowWarning">
+                                <DynamicIcon Name="TriangleAlert" Class="h-4 w-4 mr-1" />
+                                Warning
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+            </div>
+
+            <!-- Right column: Notification Inbox -->
+            <div>
+                <Card Class="h-full">
+                    <CardHeader>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <DynamicIcon Name="Inbox" Class="h-5 w-5 text-foreground" />
+                                <h3 class="text-base font-semibold text-foreground">Inbox</h3>
+                                @if (_notifications.Any(n => !n.IsRead))
+                                {
+                                    <Badge>@_notifications.Count(n => !n.IsRead) new</Badge>
+                                }
+                            </div>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" @onclick="MarkAllRead">
+                                Mark all read
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent Class="space-y-3">
+                        @foreach (var notification in _notifications)
+                        {
+                            <Alert Variant="@notification.Variant" IsDismissible="true" OnDismiss="@(() => RemoveNotification(notification))">
+                                <div class="flex items-start gap-2 pr-6">
+                                    <div class="mt-0.5 shrink-0">
+                                        @if (!notification.IsRead)
+                                        {
+                                            <Badge IsDot="true" Class="mt-1.5" />
+                                        }
+                                        else
+                                        {
+                                            <div class="h-2 w-2"></div>
+                                        }
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-start justify-between gap-2">
+                                            <p class="text-sm font-medium leading-snug">@notification.Title</p>
+                                            <span class="text-xs text-muted-foreground shrink-0">@notification.Time</span>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground mt-0.5">@notification.Description</p>
+                                        @if (notification.Tags is { Count: > 0 })
+                                        {
+                                            <div class="flex flex-wrap gap-1 mt-1.5">
+                                                @foreach (var tag in notification.Tags)
+                                                {
+                                                    <Badge Variant="Badge.BadgeVariant.Secondary" IsRemovable="true">@tag</Badge>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </Alert>
+                        }
+
+                        @if (_notifications.Count == 0)
+                        {
+                            <div class="flex flex-col items-center justify-center py-8 text-center">
+                                <DynamicIcon Name="BellOff" Class="h-8 w-8 text-muted-foreground mb-3" />
+                                <p class="text-sm text-muted-foreground">No notifications</p>
+                            </div>
+                        }
+                    </CardContent>
+                </Card>
+            </div>
+
+        </div>
+        <ToastProvider />
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private record NotificationItem(
+        string Title,
+        string Description,
+        string Time,
+        bool IsRead,
+        Alert.AlertVariant Variant,
+        List<string>? Tags = null);
+
+    private bool _pushEnabled = true;
+    private bool _emailEnabled = true;
+    private bool _smsEnabled;
+    private bool _marketingEnabled;
+    private bool _updatesEnabled = true;
+
+    private List<NotificationItem> _notifications = new()
+    {
+        new("Deployment successful",
+            "Your application was deployed to production.",
+            "2m ago",
+            false,
+            Alert.AlertVariant.Success,
+            new() { "production", "deploy" }),
+
+        new("Security alert",
+            "New sign-in detected from San Francisco, CA.",
+            "15m ago",
+            false,
+            Alert.AlertVariant.Destructive,
+            new() { "security" }),
+
+        new("Storage warning",
+            "You are using 85% of your storage quota.",
+            "1h ago",
+            false,
+            Alert.AlertVariant.Warning),
+
+        new("Team invitation",
+            "Alice invited you to join the Design team.",
+            "3h ago",
+            true,
+            Alert.AlertVariant.Info,
+            new() { "teams" }),
+
+        new("Weekly summary",
+            "Your project had 1,240 visits this week.",
+            "Yesterday",
+            true,
+            Alert.AlertVariant.Default),
+    };
+
+    private void RemoveNotification(NotificationItem notification)
+    {
+        _notifications.Remove(notification);
+    }
+
+    private void MarkAllRead()
+    {
+        _notifications = _notifications
+            .Select(n => n with { IsRead = true })
+            .ToList();
+    }
+
+    private void ShowInfo()
+        => ToastService.Info("New message", "You have a new message from the team.");
+
+    private void ShowSuccess()
+        => ToastService.Success("Changes saved", "Your preferences have been updated.");
+
+    private void ShowWarning()
+        => ToastService.Warning("Storage almost full", "You are using 85% of your quota.");
+
+    private void ShowWithAction()
+        => ToastService.Show(new ToastOptions
+        {
+            Title = "Team invitation",
+            Description = "Alice invited you to join the Design team.",
+            Variant = ToastVariant.Default,
+            ActionLabel = "Accept",
+            OnAction = () => ToastService.Success("Joined!", "You are now in the Design team."),
+        });
+
+    private void ShowPersistent()
+        => ToastService.Show(new ToastOptions
+        {
+            Title = "Background sync",
+            Description = "Syncing your files in the background...",
+            Variant = ToastVariant.Info,
+            Duration = 0,
+            Dismissible = true,
+        });
+
+    private async void ShowPromise()
+    {
+        await ToastService.Promise(
+            action: async () =>
+            {
+                await Task.Delay(2000);
+                return "done";
+            },
+            loading: new ToastOptions { Title = "Sending report...", Description = "Please wait." },
+            success: _ => new ToastOptions { Title = "Report sent!", Description = "Your report was delivered.", Variant = ToastVariant.Success },
+            error: ex => new ToastOptions { Title = "Failed to send", Description = ex.Message, Variant = ToastVariant.Destructive }
+        );
+    }
+
+    private string _notificationsCode = @"@using Lumeo.Services
+@inject ToastService ToastService
+
+<!-- Notification Preferences Card -->
+<Card>
+    <CardHeader>
+        <h3 class=""text-base font-semibold text-foreground"">Notification Preferences</h3>
+    </CardHeader>
+    <CardContent class=""space-y-4"">
+
+        <!-- Master toggle (Lg size) -->
+        <div class=""flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-3"">
+            <div class=""flex items-center gap-3"">
+                <Blazicon Svg=""Lucide.Smartphone"" class=""h-4 w-4"" />
+                <div>
+                    <p class=""text-sm font-semibold"">Push Notifications</p>
+                    <p class=""text-xs text-muted-foreground"">Receive push alerts on your devices</p>
+                </div>
+            </div>
+            <Switch Size=""Switch.SwitchSize.Lg"" @bind-Checked=""_pushEnabled"" />
+        </div>
+
+        <Separator />
+
+        <!-- Standard toggles (Default size) -->
+        <div class=""flex items-center justify-between"">
+            <p class=""text-sm font-medium"">Email notifications</p>
+            <Switch @bind-Checked=""_emailEnabled"" Disabled=""@(!_pushEnabled)"" />
+        </div>
+        <div class=""flex items-center justify-between"">
+            <p class=""text-sm font-medium"">SMS alerts</p>
+            <Switch @bind-Checked=""_smsEnabled"" Disabled=""@(!_pushEnabled)"" />
+        </div>
+
+        <Separator>
+            <span class=""px-2 text-xs font-medium text-muted-foreground bg-card"">Categories</span>
+        </Separator>
+
+        <!-- Small toggles (Sm size) -->
+        <div class=""flex items-center justify-between"">
+            <p class=""text-sm"">Marketing emails</p>
+            <Switch Size=""Switch.SwitchSize.Sm"" @bind-Checked=""_marketingEnabled"" />
+        </div>
+        <div class=""flex items-center justify-between"">
+            <p class=""text-sm"">Product updates</p>
+            <Switch Size=""Switch.SwitchSize.Sm"" @bind-Checked=""_updatesEnabled"" />
+        </div>
+
+    </CardContent>
+</Card>
+
+<!-- Live Demo Card -->
+<Card>
+    <CardHeader>
+        <h3 class=""text-base font-semibold text-foreground"">Try It</h3>
+    </CardHeader>
+    <CardContent>
+        <div class=""grid grid-cols-2 gap-2"">
+            <Button Variant=""Button.ButtonVariant.Outline"" @onclick=""ShowInfo"">
+                <Blazicon Svg=""Lucide.Info"" class=""h-4 w-4 mr-1"" /> Info
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Outline"" @onclick=""ShowSuccess"">
+                <Blazicon Svg=""Lucide.CircleCheck"" class=""h-4 w-4 mr-1"" /> Success
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Outline"" @onclick=""ShowWithAction"">
+                <Blazicon Svg=""Lucide.MousePointerClick"" class=""h-4 w-4 mr-1"" /> With Action
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Outline"" @onclick=""ShowPersistent"">
+                <Blazicon Svg=""Lucide.Pin"" class=""h-4 w-4 mr-1"" /> Persistent
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Outline"" @onclick=""ShowPromise"">
+                <Blazicon Svg=""Lucide.RefreshCw"" class=""h-4 w-4 mr-1"" /> Promise
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Outline"" @onclick=""ShowWarning"">
+                <Blazicon Svg=""Lucide.TriangleAlert"" class=""h-4 w-4 mr-1"" /> Warning
+            </Button>
+        </div>
+    </CardContent>
+</Card>
+
+<!-- Notification Inbox -->
+<Card>
+    <CardHeader>
+        <div class=""flex items-center justify-between"">
+            <div class=""flex items-center gap-2"">
+                <Blazicon Svg=""Lucide.Inbox"" class=""h-5 w-5"" />
+                <h3 class=""text-base font-semibold"">Inbox</h3>
+                <Badge>3 new</Badge>
+            </div>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" @onclick=""MarkAllRead"">
+                Mark all read
+            </Button>
+        </div>
+    </CardHeader>
+    <CardContent class=""space-y-3"">
+        @foreach (var notification in _notifications)
+        {
+            <Alert Variant=""@notification.Variant"" IsDismissible=""true"" OnDismiss=""@(() => RemoveNotification(notification))"">
+                <div class=""flex items-start gap-2 pr-6"">
+                    @if (!notification.IsRead)
+                    {
+                        <Badge IsDot=""true"" Class=""mt-1.5"" />
+                    }
+                    <div class=""flex-1"">
+                        <div class=""flex items-start justify-between gap-2"">
+                            <p class=""text-sm font-medium"">@notification.Title</p>
+                            <span class=""text-xs text-muted-foreground"">@notification.Time</span>
+                        </div>
+                        <p class=""text-xs text-muted-foreground mt-0.5"">@notification.Description</p>
+                        @foreach (var tag in notification.Tags ?? new())
+                        {
+                            <Badge Variant=""Badge.BadgeVariant.Secondary"" IsRemovable=""true"">@tag</Badge>
+                        }
+                    </div>
+                </div>
+            </Alert>
+        }
+    </CardContent>
+</Card>
+
+<ToastProvider />
+
+@code {
+    private record NotificationItem(
+        string Title, string Description, string Time,
+        bool IsRead, Alert.AlertVariant Variant, List<string>? Tags = null);
+
+    private bool _pushEnabled = true;
+    private bool _emailEnabled = true;
+    private bool _smsEnabled;
+    private bool _marketingEnabled;
+    private bool _updatesEnabled = true;
+
+    private List<NotificationItem> _notifications = new()
+    {
+        new(""Deployment successful"", ""Deployed to production."", ""2m ago"", false, Alert.AlertVariant.Success, new() { ""production"" }),
+        new(""Security alert"", ""New sign-in from San Francisco."", ""15m ago"", false, Alert.AlertVariant.Destructive, new() { ""security"" }),
+        new(""Storage warning"", ""Using 85% of quota."", ""1h ago"", false, Alert.AlertVariant.Warning),
+        new(""Team invitation"", ""Alice invited you to Design team."", ""3h ago"", true, Alert.AlertVariant.Info),
+        new(""Weekly summary"", ""1,240 visits this week."", ""Yesterday"", true, Alert.AlertVariant.Default),
+    };
+
+    private void RemoveNotification(NotificationItem n) => _notifications.Remove(n);
+    private void MarkAllRead() => _notifications = _notifications.Select(n => n with { IsRead = true }).ToList();
+
+    private void ShowInfo() => ToastService.Info(""New message"", ""You have a new message."");
+    private void ShowSuccess() => ToastService.Success(""Changes saved"", ""Your preferences were updated."");
+    private void ShowWarning() => ToastService.Warning(""Storage almost full"", ""Using 85% of your quota."");
+
+    private void ShowWithAction()
+        => ToastService.Show(new ToastOptions
+        {
+            Title = ""Team invitation"",
+            Description = ""Alice invited you to join Design."",
+            ActionLabel = ""Accept"",
+            OnAction = () => ToastService.Success(""Joined!"", ""You are now in Design team.""),
+        });
+
+    private void ShowPersistent()
+        => ToastService.Show(new ToastOptions
+        {
+            Title = ""Background sync"",
+            Description = ""Syncing files..."",
+            Variant = ToastVariant.Info,
+            Duration = 0,
+        });
+
+    private async void ShowPromise()
+        => await ToastService.Promise(
+            action: async () => { await Task.Delay(2000); return ""done""; },
+            loading: new() { Title = ""Sending report..."" },
+            success: _ => new() { Title = ""Report sent!"", Variant = ToastVariant.Success },
+            error: ex => new() { Title = ""Failed"", Variant = ToastVariant.Destructive });
+}";
+}

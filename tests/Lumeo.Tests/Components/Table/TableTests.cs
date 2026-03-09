@@ -6,7 +6,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Table;
 
-public class TableTests : IDisposable
+public class TableTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -15,7 +15,8 @@ public class TableTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     // --- Table ---
 

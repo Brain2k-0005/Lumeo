@@ -1,10 +1,64 @@
 @namespace Lumeo
 
-<div class="group relative inline-flex" @attributes="AdditionalAttributes">
-    @ChildContent
+@{
+    var context = new TooltipContext(_isOpen);
+}
+
+<div class="relative inline-flex" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int ShowDelay { get; set; } = 200;
+    [Parameter] public int HideDelay { get; set; } = 0;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isOpen;
+    private System.Threading.Timer? _timer;
+
+    private void HandleMouseEnter()
+    {
+        _timer?.Dispose();
+        if (ShowDelay <= 0)
+        {
+            _isOpen = true;
+            StateHasChanged();
+        }
+        else
+        {
+            _timer = new System.Threading.Timer(_ =>
+            {
+                _isOpen = true;
+                InvokeAsync(StateHasChanged);
+            }, null, ShowDelay, System.Threading.Timeout.Infinite);
+        }
+    }
+
+    private void HandleMouseLeave()
+    {
+        _timer?.Dispose();
+        if (HideDelay <= 0)
+        {
+            _isOpen = false;
+            StateHasChanged();
+        }
+        else
+        {
+            _timer = new System.Threading.Timer(_ =>
+            {
+                _isOpen = false;
+                InvokeAsync(StateHasChanged);
+            }, null, HideDelay, System.Threading.Timeout.Infinite);
+        }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+
+    public record TooltipContext(bool IsOpen);
 }

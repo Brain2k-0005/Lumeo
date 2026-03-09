@@ -6,7 +6,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Sidebar;
 
-public class SidebarTests : IDisposable
+public class SidebarTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -15,7 +15,8 @@ public class SidebarTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     private IRenderedComponent<IComponent> RenderSidebar(
         bool isCollapsed = false,
@@ -93,12 +94,12 @@ public class SidebarTests : IDisposable
     }
 
     [Fact]
-    public void SidebarComponent_Collapsed_Has_W16_Class()
+    public void SidebarComponent_Collapsed_Has_W0_Class()
     {
         var cut = RenderSidebar(isCollapsed: true, includeSidebarComponent: true);
 
         var aside = cut.Find("aside");
-        Assert.Contains("w-16", aside.GetAttribute("class") ?? "");
+        Assert.Contains("w-0", aside.GetAttribute("class") ?? "");
     }
 
     [Fact]

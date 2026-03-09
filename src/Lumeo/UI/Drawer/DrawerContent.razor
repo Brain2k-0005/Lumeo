@@ -4,7 +4,7 @@
 @if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="Close"></div>
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
         <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
             @ChildContent
@@ -17,6 +17,7 @@
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool PreventClose { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -24,7 +25,7 @@
     private bool _wasOpen;
 
     private string CssClass =>
-        $"fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[96vh] flex-col rounded-t-[10px] border border-border bg-background shadow-lg animate-slide-in-from-bottom {Class}".Trim();
+        $"fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[96vh] flex-col rounded-t-[10px] bg-background shadow-lg animate-slide-in-from-bottom {Class}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -32,7 +33,10 @@
         {
             await Interop.LockScroll();
             await Interop.SetupFocusTrap(_contentId);
-            await Interop.RegisterDrawerSwipe(_contentId, Close);
+            if (!PreventClose)
+            {
+                await Interop.RegisterDrawerSwipe(_contentId, Close);
+            }
             _wasOpen = true;
         }
         else if (!Context.IsOpen && _wasOpen)
@@ -44,9 +48,14 @@
 
     private async Task Close() => await Context.SetOpen.InvokeAsync(false);
 
+    private async Task HandleBackdropClick()
+    {
+        if (!PreventClose) await Close();
+    }
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") await Close();
+        if (e.Key == "Escape" && !PreventClose) await Close();
     }
 
     private async Task Cleanup()

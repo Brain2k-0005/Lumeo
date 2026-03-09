@@ -8,12 +8,34 @@
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public SwitchSize Size { get; set; } = SwitchSize.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 {(Checked ? "bg-primary" : "bg-input")} {Class}".Trim();
+    private string TrackSizeClasses => Size switch
+    {
+        SwitchSize.Sm => "h-4 w-7",
+        SwitchSize.Lg => "h-6 w-11",
+        _ => "h-5 w-9"
+    };
 
-    private string ThumbClasses => $"pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm ring-0 transition-transform {(Checked ? "translate-x-4" : "translate-x-0")}";
+    private string ThumbSizeClasses => Size switch
+    {
+        SwitchSize.Sm => "h-3 w-3",
+        SwitchSize.Lg => "h-5 w-5",
+        _ => "h-4 w-4"
+    };
+
+    private string ThumbTranslateClass => Size switch
+    {
+        SwitchSize.Sm => Checked ? "translate-x-3" : "translate-x-0",
+        SwitchSize.Lg => Checked ? "translate-x-5" : "translate-x-0",
+        _ => Checked ? "translate-x-4" : "translate-x-0"
+    };
+
+    private string CssClass => $"peer inline-flex {TrackSizeClasses} shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 {(Checked ? "bg-primary" : "bg-input")} {Class}".Trim();
+
+    private string ThumbClasses => $"pointer-events-none block {ThumbSizeClasses} rounded-full bg-background shadow-sm ring-0 transition-transform {ThumbTranslateClass}";
 
     private async Task Toggle()
     {
@@ -23,4 +45,6 @@
             await CheckedChanged.InvokeAsync(Checked);
         }
     }
+
+    public enum SwitchSize { Sm, Default, Lg }
 }

@@ -1,18 +1,37 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (!_isRemoved)
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @if (!IsDot)
+        {
+            @ChildContent
+            @if (IsRemovable)
+            {
+                <button type="button" class="ml-1 rounded-full hover:bg-foreground/20 focus:outline-none" @onclick="HandleRemove" aria-label="Remove">
+                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                </button>
+            }
+        }
+    </div>
+}
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Default;
+    [Parameter] public bool IsDot { get; set; }
+    [Parameter] public bool IsRemovable { get; set; }
+    [Parameter] public EventCallback OnRemove { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"{BaseClasses} {VariantClasses} {Class}".Trim();
+    private bool _isRemoved;
 
-    private const string BaseClasses = "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
+    private string CssClass => IsDot
+        ? $"inline-flex h-2 w-2 rounded-full p-0 {VariantClasses} {Class}".Trim()
+        : $"{BaseClasses} {VariantClasses} {Class}".Trim();
+
+    private const string BaseClasses = "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none";
 
     private string VariantClasses => Variant switch
     {
@@ -24,6 +43,12 @@
         BadgeVariant.Warning => "border-transparent bg-warning-light text-warning-text",
         _ => ""
     };
+
+    private async Task HandleRemove()
+    {
+        _isRemoved = true;
+        await OnRemove.InvokeAsync();
+    }
 
     public enum BadgeVariant { Default, Secondary, Destructive, Outline, Success, Warning }
 }

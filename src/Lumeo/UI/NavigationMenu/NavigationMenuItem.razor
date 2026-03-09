@@ -1,11 +1,12 @@
 @namespace Lumeo
+@implements IDisposable
 
 @{
     var itemContext = new NavigationMenuItemContext(_itemId, _triggerId);
 }
 
 <CascadingValue Value="itemContext" IsFixed="true">
-    <li class="@CssClass" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
+    <li class="@CssClass" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
         @ChildContent
     </li>
 </CascadingValue>
@@ -18,15 +19,39 @@
 
     private readonly string _itemId = $"nav-item-{Guid.NewGuid():N}";
     private readonly string _triggerId = $"nav-trigger-{Guid.NewGuid():N}";
+    private System.Threading.Timer? _closeTimer;
+    private const int CloseDelay = 150;
 
     private string CssClass => $"relative {Class}".Trim();
 
-    private async Task HandleMouseLeave()
+    private void HandleMouseEnter()
+    {
+        _closeTimer?.Dispose();
+        _closeTimer = null;
+    }
+
+    private void HandleMouseLeave()
     {
         if (Context.ActiveItemId == _itemId)
         {
-            await Context.SetActiveItemId.InvokeAsync(null);
+            _closeTimer?.Dispose();
+            _closeTimer = new System.Threading.Timer(_ =>
+            {
+                InvokeAsync(async () =>
+                {
+                    if (Context.ActiveItemId == _itemId)
+                    {
+                        await Context.SetActiveItemId.InvokeAsync(null);
+                        StateHasChanged();
+                    }
+                });
+            }, null, CloseDelay, System.Threading.Timeout.Infinite);
         }
+    }
+
+    public void Dispose()
+    {
+        _closeTimer?.Dispose();
     }
 
     public record NavigationMenuItemContext(string ItemId, string TriggerId);

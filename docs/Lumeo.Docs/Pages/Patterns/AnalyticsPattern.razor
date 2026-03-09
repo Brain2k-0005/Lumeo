@@ -1,0 +1,325 @@
+@page "/blocks/analytics"
+@namespace Lumeo.Docs.Pages.Patterns
+
+<PageTitle>Analytics Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="Analytics" Description="A KPI analytics dashboard with vertical tab navigation, progress indicators, date range filtering, and charts for revenue and user metrics." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="Analytics Dashboard" Code="@_analyticsCode">
+        <div class="w-full">
+
+            <Tabs @bind-ActiveValue="_activeTab" Orientation="Tabs.TabsOrientation.Vertical" Class="gap-6">
+
+                <!-- Vertical Sidebar Tabs -->
+                <TabsList Class="flex-col h-auto w-44 shrink-0 justify-start items-stretch gap-1 bg-muted/50 p-2 rounded-lg self-start">
+                    <TabsTrigger Value="overview" Class="justify-start">
+                        <DynamicIcon Name="LayoutDashboard" Class="h-4 w-4 mr-2" />
+                        Overview
+                    </TabsTrigger>
+                    <TabsTrigger Value="revenue" Class="justify-start">
+                        <DynamicIcon Name="TrendingUp" Class="h-4 w-4 mr-2" />
+                        Revenue
+                    </TabsTrigger>
+                    <TabsTrigger Value="users" Class="justify-start">
+                        <DynamicIcon Name="Users" Class="h-4 w-4 mr-2" />
+                        Users
+                    </TabsTrigger>
+                </TabsList>
+
+                <!-- Tab Content -->
+                <div class="flex-1 min-w-0">
+
+                    <!-- Overview Tab -->
+                    <TabsContent Value="overview">
+                        <div class="space-y-6">
+
+                            <!-- KPI Row -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                @foreach (var kpi in _kpis)
+                                {
+                                    <Card>
+                                        <CardHeader>
+                                            <p class="text-sm font-medium text-muted-foreground">@kpi.Label</p>
+                                        </CardHeader>
+                                        <CardContent Class="space-y-2">
+                                            <div class="text-2xl font-bold text-foreground">@kpi.Value</div>
+                                            @if (kpi.IsIndeterminate)
+                                            {
+                                                <Progress IsIndeterminate="true" />
+                                                <span class="text-xs text-muted-foreground">Processing...</span>
+                                            }
+                                            else
+                                            {
+                                                <Progress Value="@kpi.Percent" ShowLabel="true" Label="@($"{kpi.Label}: {kpi.Percent}%")" />
+                                            }
+                                        </CardContent>
+                                    </Card>
+                                }
+                            </div>
+
+                            <!-- Date Range Filter -->
+                            <Card>
+                                <CardHeader>
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <h3 class="text-base font-semibold text-foreground">Date Range Filter</h3>
+                                            <p class="text-sm text-muted-foreground mt-0.5">Day @((int)_rangeStart) – Day @((int)_rangeEnd)</p>
+                                        </div>
+                                        <Badge Variant="Badge.BadgeVariant.Secondary">@((int)_rangeEnd - (int)_rangeStart) days selected</Badge>
+                                    </div>
+                                </CardHeader>
+                                <CardContent Class="pb-6">
+                                    <Slider IsRange="true"
+                                            Min="1" Max="30" Step="1"
+                                            @bind-Value="_rangeStart"
+                                            @bind-ValueEnd="_rangeEnd" />
+                                    <div class="flex justify-between text-xs text-muted-foreground mt-2">
+                                        <span>Day 1</span>
+                                        <span>Day 30</span>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <!-- Separator with label -->
+                            <div class="flex items-center gap-3">
+                                <Separator Class="flex-1" />
+                                <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Revenue Breakdown</span>
+                                <Separator Class="flex-1" />
+                            </div>
+
+                            <!-- Area Chart -->
+                            <Card>
+                                <CardHeader>
+                                    <h3 class="text-lg font-semibold leading-none tracking-tight">6-Month Revenue</h3>
+                                    <p class="text-sm text-muted-foreground">Revenue trend over the last 6 months</p>
+                                </CardHeader>
+                                <CardContent>
+                                    <AreaChart
+                                        Categories="@_areaCategories"
+                                        Series="@_areaSeries"
+                                        Smooth="true"
+                                        Height="260px" />
+                                </CardContent>
+                            </Card>
+
+                        </div>
+                    </TabsContent>
+
+                    <!-- Revenue Tab -->
+                    <TabsContent Value="revenue">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <Card>
+                                <CardHeader>
+                                    <h3 class="text-lg font-semibold leading-none tracking-tight">Monthly Revenue</h3>
+                                    <p class="text-sm text-muted-foreground">Bar chart by month</p>
+                                </CardHeader>
+                                <CardContent>
+                                    <BarChart
+                                        Categories="@_barCategories"
+                                        Series="@_barSeries"
+                                        Height="280px" />
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader>
+                                    <h3 class="text-lg font-semibold leading-none tracking-tight">Revenue by Source</h3>
+                                    <p class="text-sm text-muted-foreground">Breakdown of revenue channels</p>
+                                </CardHeader>
+                                <CardContent>
+                                    <PieChart
+                                        Data="@_pieData"
+                                        Height="280px" />
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </TabsContent>
+
+                    <!-- Users Tab -->
+                    <TabsContent Value="users">
+                        <div class="space-y-4">
+
+                            <Card>
+                                <CardHeader>
+                                    <h3 class="text-lg font-semibold leading-none tracking-tight">User Metrics</h3>
+                                    <p class="text-sm text-muted-foreground">Progress by user segment</p>
+                                </CardHeader>
+                                <CardContent Class="space-y-5">
+
+                                    @foreach (var m in _userMetrics)
+                                    {
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-sm font-medium text-foreground">@m.Label</span>
+                                                <Badge Variant="@m.BadgeVariant">@m.StatusLabel</Badge>
+                                            </div>
+                                            <Progress Value="@m.Value" Variant="@m.ProgressVariant" ShowLabel="true" Label="@($"{m.Value}%")" />
+
+                                            @if (m != _userMetrics.Last())
+                                            {
+                                                <div class="flex items-center gap-3 pt-1">
+                                                    <Separator Class="flex-1" />
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+
+                                </CardContent>
+                            </Card>
+
+                        </div>
+                    </TabsContent>
+
+                </div>
+
+            </Tabs>
+
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private string _activeTab = "overview";
+    private double _rangeStart = 5;
+    private double _rangeEnd = 22;
+
+    private record KpiItem(string Label, string Value, int Percent, bool IsIndeterminate = false);
+    private readonly List<KpiItem> _kpis = new()
+    {
+        new("Revenue",    "$128,430", 78),
+        new("Users",      "24,812",   65),
+        new("Conversion", "3.4%",     42),
+        new("Processing", "—",        0, IsIndeterminate: true),
+    };
+
+    // Area chart — 6 months
+    private readonly List<string> _areaCategories = new() { "Sep", "Oct", "Nov", "Dec", "Jan", "Feb" };
+    private readonly List<AreaChart.ChartSeriesData> _areaSeries = new()
+    {
+        new AreaChart.ChartSeriesData
+        {
+            Name   = "Revenue",
+            Values = new List<double> { 32000, 38500, 41000, 54000, 48000, 61000 }
+        },
+        new AreaChart.ChartSeriesData
+        {
+            Name   = "Expenses",
+            Values = new List<double> { 18000, 20000, 21500, 26000, 24000, 28000 }
+        }
+    };
+
+    // Bar chart
+    private readonly List<string> _barCategories = new() { "Sep", "Oct", "Nov", "Dec", "Jan", "Feb" };
+    private readonly List<BarChart.ChartSeriesData> _barSeries = new()
+    {
+        new BarChart.ChartSeriesData
+        {
+            Name   = "Revenue",
+            Values = new List<double> { 32000, 38500, 41000, 54000, 48000, 61000 }
+        }
+    };
+
+    // Pie chart
+    private readonly List<PieChart.PieChartData> _pieData = new()
+    {
+        new PieChart.PieChartData { Name = "Direct",    Value = 34 },
+        new PieChart.PieChartData { Name = "Organic",   Value = 28 },
+        new PieChart.PieChartData { Name = "Referral",  Value = 22 },
+        new PieChart.PieChartData { Name = "Paid Ads",  Value = 16 },
+    };
+
+    private record UserMetricItem(string Label, int Value, Progress.ProgressVariant ProgressVariant, Badge.BadgeVariant BadgeVariant, string StatusLabel);
+    private readonly List<UserMetricItem> _userMetrics = new()
+    {
+        new("Active Users",    82, Progress.ProgressVariant.Success,     Badge.BadgeVariant.Success,     "On track"),
+        new("Churned Users",   18, Progress.ProgressVariant.Destructive, Badge.BadgeVariant.Destructive, "At risk"),
+        new("Trial Users",     45, Progress.ProgressVariant.Warning,     Badge.BadgeVariant.Warning,     "Needs review"),
+        new("Power Users",     63, Progress.ProgressVariant.Default,     Badge.BadgeVariant.Secondary,   "Steady"),
+    };
+
+    private string _analyticsCode = @"<Tabs @bind-ActiveValue=""_activeTab"" Orientation=""Tabs.TabsOrientation.Vertical"" Class=""gap-6"">
+
+    <TabsList Class=""flex-col h-auto w-44 shrink-0 justify-start items-stretch gap-1 bg-muted/50 p-2 rounded-lg self-start"">
+        <TabsTrigger Value=""overview"" Class=""justify-start"">
+            <Blazicon Svg=""Lucide.LayoutDashboard"" class=""h-4 w-4 mr-2"" />
+            Overview
+        </TabsTrigger>
+        <TabsTrigger Value=""revenue"" Class=""justify-start"">
+            <Blazicon Svg=""Lucide.TrendingUp"" class=""h-4 w-4 mr-2"" />
+            Revenue
+        </TabsTrigger>
+        <TabsTrigger Value=""users"" Class=""justify-start"">
+            <Blazicon Svg=""Lucide.Users"" class=""h-4 w-4 mr-2"" />
+            Users
+        </TabsTrigger>
+    </TabsList>
+
+    <div class=""flex-1 min-w-0"">
+
+        <!-- Overview Tab -->
+        <TabsContent Value=""overview"">
+            <!-- KPI Cards with Progress -->
+            <div class=""grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
+                <Card>
+                    <CardHeader><p class=""text-sm font-medium text-muted-foreground"">Revenue</p></CardHeader>
+                    <CardContent class=""space-y-2"">
+                        <div class=""text-2xl font-bold text-foreground"">$128,430</div>
+                        <Progress Value=""78"" ShowLabel=""true"" Label=""Revenue: 78%"" />
+                    </CardContent>
+                </Card>
+                <!-- ... repeat for Users, Conversion -->
+                <Card>
+                    <CardHeader><p class=""text-sm font-medium text-muted-foreground"">Processing</p></CardHeader>
+                    <CardContent class=""space-y-2"">
+                        <div class=""text-2xl font-bold text-foreground"">—</div>
+                        <Progress IsIndeterminate=""true"" />
+                        <span class=""text-xs text-muted-foreground"">Processing...</span>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <!-- Date Range Slider -->
+            <Card>
+                <CardHeader><h3>Date Range Filter</h3></CardHeader>
+                <CardContent>
+                    <Slider IsRange=""true"" Min=""1"" Max=""30"" Step=""1""
+                            @bind-Value=""_rangeStart"" @bind-ValueEnd=""_rangeEnd"" />
+                </CardContent>
+            </Card>
+
+            <!-- Separator with label -->
+            <div class=""flex items-center gap-3"">
+                <Separator Class=""flex-1"" />
+                <span class=""text-xs font-medium text-muted-foreground uppercase tracking-wider"">Revenue Breakdown</span>
+                <Separator Class=""flex-1"" />
+            </div>
+
+            <!-- Area Chart -->
+            <AreaChart Categories=""@_areaCategories"" Series=""@_areaSeries"" Smooth=""true"" Height=""260px"" />
+        </TabsContent>
+
+        <!-- Revenue Tab -->
+        <TabsContent Value=""revenue"">
+            <div class=""grid grid-cols-1 lg:grid-cols-2 gap-4"">
+                <BarChart Categories=""@_barCategories"" Series=""@_barSeries"" Height=""280px"" />
+                <PieChart Data=""@_pieData"" Height=""280px"" />
+            </div>
+        </TabsContent>
+
+        <!-- Users Tab -->
+        <TabsContent Value=""users"">
+            <Card>
+                <CardContent class=""space-y-5"">
+                    <Progress Value=""82"" Variant=""Progress.ProgressVariant.Success"" ShowLabel=""true"" Label=""82%"" />
+                    <Progress Value=""18"" Variant=""Progress.ProgressVariant.Destructive"" ShowLabel=""true"" Label=""18%"" />
+                    <Progress Value=""45"" Variant=""Progress.ProgressVariant.Warning"" ShowLabel=""true"" Label=""45%"" />
+                </CardContent>
+            </Card>
+        </TabsContent>
+
+    </div>
+
+</Tabs>";
+}

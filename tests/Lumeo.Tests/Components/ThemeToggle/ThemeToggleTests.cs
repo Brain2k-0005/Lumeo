@@ -5,7 +5,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.ThemeToggle;
 
-public class ThemeToggleTests : IDisposable
+public class ThemeToggleTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -17,7 +17,8 @@ public class ThemeToggleTests : IDisposable
         _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public void Renders_Button()

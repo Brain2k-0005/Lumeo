@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace Lumeo.Tests.Components.Input;
 
-public class InputTests : IDisposable
+public class InputTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -15,7 +15,8 @@ public class InputTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public void Renders_Input_Element()

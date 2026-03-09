@@ -1,0 +1,355 @@
+@page "/blocks/task-tracker"
+@namespace Lumeo.Docs.Pages.Patterns
+
+<PageTitle>Task Tracker Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="Task Tracker" Description="A task management interface with command search, filter dropdowns, calendar date range, sortable data table with bulk selection, and bulk action controls." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="Task Tracker" Code="@_taskTrackerCode">
+        <div class="w-full space-y-4">
+
+            <!-- Header Bar -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <h2 class="text-xl font-semibold text-foreground shrink-0">Task Tracker</h2>
+
+                <!-- Command Search -->
+                <div class="flex-1 max-w-sm">
+                    <Command Class="rounded-lg border shadow-none">
+                        <CommandInput Placeholder="Search tasks... (Ctrl+K)" />
+                        <CommandList>
+                            <CommandGroup Heading="Suggestions">
+                                <CommandItem Shortcut="Alt+S">
+                                    <DynamicIcon Name="CircleDot" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Filter by status
+                                </CommandItem>
+                                <CommandItem Shortcut="Alt+P">
+                                    <DynamicIcon Name="Flag" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Filter by priority
+                                </CommandItem>
+                                <CommandItem Shortcut="Alt+A">
+                                    <DynamicIcon Name="User" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                                    Filter by assignee
+                                </CommandItem>
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </div>
+
+                <!-- Filter Dropdown -->
+                <DropdownMenu @bind-IsOpen="_filterOpen">
+                    <DropdownMenuTrigger>
+                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                            <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4 mr-2" />
+                            Filters
+                            <DynamicIcon Name="ChevronDown" Class="h-4 w-4 ml-2 opacity-50" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent Class="w-56">
+                        <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        @foreach (var status in _allStatuses)
+                        {
+                            var s = status;
+                            <DropdownMenuCheckboxItem Checked="@_statusFilters.Contains(s)"
+                                                      CheckedChanged="@(v => ToggleStatus(s, v))">
+                                @s
+                            </DropdownMenuCheckboxItem>
+                        }
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuRadioGroup Value="@_sortField" ValueChanged="@(v => { _sortField = v; _sortDir = DataTable<object>.SortDirection.Ascending; })">
+                            <DropdownMenuRadioItem Value="Title">Title</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem Value="Priority">Priority</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem Value="DueDate">Due Date</DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button Size="Button.ButtonSize.Sm">
+                    <DynamicIcon Name="Plus" Class="h-4 w-4 mr-2" />
+                    New Task
+                </Button>
+            </div>
+
+            <!-- Calendar Range Filter -->
+            <Card>
+                <CardHeader>
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-foreground">Date Range</h3>
+                        @if (_calStart.HasValue && _calEnd.HasValue)
+                        {
+                            <span class="text-xs text-muted-foreground">
+                                @_calStart.Value.ToString("MMM d") – @_calEnd.Value.ToString("MMM d, yyyy")
+                            </span>
+                        }
+                        else if (_calStart.HasValue)
+                        {
+                            <span class="text-xs text-muted-foreground">From @_calStart.Value.ToString("MMM d, yyyy")</span>
+                        }
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <Calendar IsRange="true"
+                              @bind-RangeStart="_calStart"
+                              @bind-RangeEnd="_calEnd" />
+                </CardContent>
+            </Card>
+
+            <!-- Data Table -->
+            <Card>
+                <CardContent Class="p-0">
+                    <DataTable TItem="TaskItem"
+                               Items="@SortedTasks"
+                               Selectable="true"
+                               SelectedItems="@_selected"
+                               SelectedItemsChanged="@(v => _selected = v)">
+                        <HeaderTemplate>
+                            <DataTableSortableHeader Column="Title" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Title</DataTableSortableHeader>
+                            <DataTableSortableHeader Column="Status" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Status</DataTableSortableHeader>
+                            <DataTableSortableHeader Column="Priority" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Priority</DataTableSortableHeader>
+                            <th class="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Assignee</th>
+                            <DataTableSortableHeader Column="DueDate" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Due Date</DataTableSortableHeader>
+                        </HeaderTemplate>
+                        <RowTemplate Context="task">
+                            <td class="px-2 py-2 align-middle font-medium text-foreground text-sm">@task.Title</td>
+                            <td class="px-2 py-2 align-middle">
+                                <Badge Variant="@GetStatusVariant(task.Status)">@task.Status</Badge>
+                            </td>
+                            <td class="px-2 py-2 align-middle">
+                                <Badge Variant="@GetPriorityVariant(task.Priority)">@task.Priority</Badge>
+                            </td>
+                            <td class="px-2 py-2 align-middle">
+                                <div class="flex items-center gap-2">
+                                    <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6">
+                                        <AvatarFallback Class="text-[10px]">@task.AssigneeInitials</AvatarFallback>
+                                    </Avatar>
+                                    <span class="text-sm text-foreground">@task.Assignee</span>
+                                </div>
+                            </td>
+                            <td class="px-2 py-2 align-middle text-sm text-muted-foreground">@task.DueDate.ToString("MMM d, yyyy")</td>
+                        </RowTemplate>
+                    </DataTable>
+                </CardContent>
+
+                <!-- Bottom Bar -->
+                <CardFooter Class="border-t py-3 justify-between">
+                    <p class="text-sm text-muted-foreground">
+                        @(_selected?.Count ?? 0) of @SortedTasks.Count() tasks selected
+                    </p>
+                    @if (_selected?.Count > 0)
+                    {
+                        <div class="flex items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                                    OnClick="@(() => _selected?.Clear())">
+                                <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
+                                Clear
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Destructive" Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="Trash2" Class="h-3.5 w-3.5 mr-1" />
+                                Delete (@(_selected?.Count ?? 0))
+                            </Button>
+                            <Button Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="CheckCheck" Class="h-3.5 w-3.5 mr-1" />
+                                Mark Done
+                            </Button>
+                        </div>
+                    }
+                </CardFooter>
+            </Card>
+
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    // Enums
+    private enum TaskStatus  { Todo, InProgress, Done }
+    private enum TaskPriority { Low, Medium, High, Critical }
+
+    // Data record
+    private record TaskItem(int Id, string Title, string Status, string Priority, string Assignee, string AssigneeInitials, DateTime DueDate);
+
+    // State
+    private bool _filterOpen;
+    private string _sortField = "DueDate";
+    private DataTable<object>.SortDirection _sortDir = DataTable<object>.SortDirection.Ascending;
+    private HashSet<TaskItem> _selected = new();
+    private HashSet<string> _statusFilters = new();
+    private DateOnly? _calStart;
+    private DateOnly? _calEnd;
+
+    private readonly string[] _allStatuses = { "Todo", "In Progress", "Done" };
+
+    private readonly List<TaskItem> _allTasks = new()
+    {
+        new(1,  "Design new onboarding flow",        "Todo",        "High",     "Olivia Martin",   "OM", new DateTime(2026, 3, 5)),
+        new(2,  "Fix authentication bug",             "In Progress", "Critical", "Jackson Lee",     "JL", new DateTime(2026, 3, 3)),
+        new(3,  "Write API documentation",            "Todo",        "Medium",   "Sofia Davis",     "SD", new DateTime(2026, 3, 10)),
+        new(4,  "Migrate database to v3",             "In Progress", "High",     "William Kim",     "WK", new DateTime(2026, 3, 7)),
+        new(5,  "Create Q1 report",                   "Done",        "Low",      "Isabella Nguyen", "IN", new DateTime(2026, 2, 28)),
+        new(6,  "Set up CI/CD pipeline",              "Done",        "Medium",   "Olivia Martin",   "OM", new DateTime(2026, 2, 25)),
+        new(7,  "Implement dark mode toggle",         "Todo",        "Low",      "Jackson Lee",     "JL", new DateTime(2026, 3, 15)),
+        new(8,  "Conduct user interviews",            "In Progress", "High",     "Sofia Davis",     "SD", new DateTime(2026, 3, 8)),
+        new(9,  "Deploy staging environment",         "Todo",        "Critical", "William Kim",     "WK", new DateTime(2026, 3, 4)),
+        new(10, "Optimize image loading performance", "In Progress", "Medium",   "Isabella Nguyen", "IN", new DateTime(2026, 3, 12)),
+    };
+
+    private IEnumerable<TaskItem> FilteredTasks
+    {
+        get
+        {
+            var tasks = _allTasks.AsEnumerable();
+            if (_statusFilters.Count > 0)
+                tasks = tasks.Where(t => _statusFilters.Contains(t.Status));
+            if (_calStart.HasValue)
+                tasks = tasks.Where(t => DateOnly.FromDateTime(t.DueDate) >= _calStart.Value);
+            if (_calEnd.HasValue)
+                tasks = tasks.Where(t => DateOnly.FromDateTime(t.DueDate) <= _calEnd.Value);
+            return tasks;
+        }
+    }
+
+    private IEnumerable<TaskItem> SortedTasks
+    {
+        get
+        {
+            var tasks = FilteredTasks;
+            var asc = _sortDir == DataTable<object>.SortDirection.Ascending;
+            return _sortField switch
+            {
+                "Title"    => asc ? tasks.OrderBy(t => t.Title)    : tasks.OrderByDescending(t => t.Title),
+                "Status"   => asc ? tasks.OrderBy(t => t.Status)   : tasks.OrderByDescending(t => t.Status),
+                "Priority" => asc ? tasks.OrderBy(t => PriorityOrder(t.Priority)) : tasks.OrderByDescending(t => PriorityOrder(t.Priority)),
+                "DueDate"  => asc ? tasks.OrderBy(t => t.DueDate)  : tasks.OrderByDescending(t => t.DueDate),
+                _          => tasks
+            };
+        }
+    }
+
+    private static int PriorityOrder(string p) => p switch
+    {
+        "Critical" => 4,
+        "High"     => 3,
+        "Medium"   => 2,
+        "Low"      => 1,
+        _          => 0
+    };
+
+    private void ToggleStatus(string status, bool value)
+    {
+        if (value) _statusFilters.Add(status);
+        else _statusFilters.Remove(status);
+    }
+
+    private void HandleSort((string Column, DataTable<object>.SortDirection Direction) args)
+    {
+        _sortField = args.Column;
+        _sortDir   = args.Direction;
+    }
+
+    private static Badge.BadgeVariant GetStatusVariant(string status) => status switch
+    {
+        "Todo"        => Badge.BadgeVariant.Secondary,
+        "In Progress" => Badge.BadgeVariant.Warning,
+        "Done"        => Badge.BadgeVariant.Success,
+        _             => Badge.BadgeVariant.Default
+    };
+
+    private static Badge.BadgeVariant GetPriorityVariant(string priority) => priority switch
+    {
+        "Critical" => Badge.BadgeVariant.Destructive,
+        "High"     => Badge.BadgeVariant.Warning,
+        "Medium"   => Badge.BadgeVariant.Secondary,
+        "Low"      => Badge.BadgeVariant.Outline,
+        _          => Badge.BadgeVariant.Default
+    };
+
+    private string _taskTrackerCode = @"<!-- Header -->
+<div class=""flex items-center gap-3"">
+    <h2 class=""text-xl font-semibold text-foreground"">Task Tracker</h2>
+
+    <!-- Command Search -->
+    <Command Class=""rounded-lg border shadow-none flex-1 max-w-sm"">
+        <CommandInput Placeholder=""Search tasks... (Ctrl+K)"" />
+        <CommandList>
+            <CommandGroup Heading=""Suggestions"">
+                <CommandItem>
+                    <Blazicon Svg=""Lucide.CircleDot"" class=""h-4 w-4 mr-2 text-muted-foreground"" />
+                    Filter by status
+                    <CommandItemShortcut>Alt+S</CommandItemShortcut>
+                </CommandItem>
+                <CommandItem>
+                    <Blazicon Svg=""Lucide.Flag"" class=""h-4 w-4 mr-2 text-muted-foreground"" />
+                    Filter by priority
+                    <CommandItemShortcut>Alt+P</CommandItemShortcut>
+                </CommandItem>
+            </CommandGroup>
+        </CommandList>
+    </Command>
+
+    <!-- Filter Dropdown with Checkbox & Radio items -->
+    <DropdownMenu @bind-IsOpen=""_filterOpen"">
+        <DropdownMenuTrigger>
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Filters</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent Class=""w-56"">
+            <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+            <DropdownMenuCheckboxItem Checked=""@_todoChecked"" CheckedChanged=""@(v => _todoChecked = v)"">Todo</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem Checked=""@_inProgressChecked"" CheckedChanged=""@(v => _inProgressChecked = v)"">In Progress</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem Checked=""@_doneChecked"" CheckedChanged=""@(v => _doneChecked = v)"">Done</DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+            <DropdownMenuRadioGroup Value=""@_sortField"" ValueChanged=""@(v => _sortField = v)"">
+                <DropdownMenuRadioItem Value=""Title"">Title</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem Value=""Priority"">Priority</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem Value=""DueDate"">Due Date</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+    </DropdownMenu>
+</div>
+
+<!-- Calendar Range Filter -->
+<Calendar IsRange=""true"" @bind-Value=""_calStart"" @bind-ValueEnd=""_calEnd"" />
+
+<!-- DataTable with sortable headers and selection -->
+<DataTable TItem=""TaskItem""
+           Items=""@_tasks""
+           Selectable=""true""
+           @bind-SelectedItems=""_selected""
+           SortColumn=""@_sortField""
+           SortDir=""@_sortDir""
+           OnSort=""@HandleSort"">
+    <HeaderTemplate>
+        <DataTableSortableHeader Column=""Title"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Title</DataTableSortableHeader>
+        <DataTableSortableHeader Column=""Status"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Status</DataTableSortableHeader>
+        <DataTableSortableHeader Column=""Priority"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Priority</DataTableSortableHeader>
+        <th>Assignee</th>
+        <DataTableSortableHeader Column=""DueDate"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Due Date</DataTableSortableHeader>
+    </HeaderTemplate>
+    <RowTemplate Context=""task"">
+        <td class=""px-2 py-2 font-medium"">@task.Title</td>
+        <td class=""px-2 py-2""><Badge Variant=""@GetStatusVariant(task.Status)"">@task.Status</Badge></td>
+        <td class=""px-2 py-2""><Badge Variant=""@GetPriorityVariant(task.Priority)"">@task.Priority</Badge></td>
+        <td class=""px-2 py-2"">
+            <div class=""flex items-center gap-2"">
+                <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>@task.AssigneeInitials</AvatarFallback></Avatar>
+                @task.Assignee
+            </div>
+        </td>
+        <td class=""px-2 py-2 text-muted-foreground"">@task.DueDate.ToString(""MMM d, yyyy"")</td>
+    </RowTemplate>
+</DataTable>
+
+<!-- Bottom Bar -->
+<div class=""flex items-center justify-between border-t pt-3"">
+    <p class=""text-sm text-muted-foreground"">@selectedCount of @totalCount tasks selected</p>
+    <div class=""flex gap-2"">
+        <Button Variant=""Button.ButtonVariant.Destructive"" Size=""Button.ButtonSize.Sm"">Delete (@selectedCount)</Button>
+        <Button Size=""Button.ButtonSize.Sm"">Mark Done</Button>
+    </div>
+</div>";
+}

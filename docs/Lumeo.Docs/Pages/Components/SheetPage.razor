@@ -83,6 +83,45 @@
         </div>
     </ComponentDemo>
 
+    <ComponentDemo Title="Sizes" Code="@_sizesCode">
+        <div class="flex flex-wrap gap-2">
+            @foreach (var size in Enum.GetValues<SheetContent.SheetSize>())
+            {
+                <Sheet @bind-IsOpen="@_sheetSizeOpen[size]">
+                    <SheetTrigger>
+                        <Button Variant="Button.ButtonVariant.Outline">@size</Button>
+                    </SheetTrigger>
+                    <SheetContent Size="@size">
+                        <SheetHeader>
+                            <SheetTitle>@size Sheet</SheetTitle>
+                            <SheetDescription>This sheet uses Size="SheetContent.SheetSize.@size"</SheetDescription>
+                        </SheetHeader>
+                        <div class="py-4">
+                            <p class="text-sm text-muted-foreground">Sheet content goes here.</p>
+                        </div>
+                    </SheetContent>
+                </Sheet>
+            }
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Prevent Close" Code="@_preventCloseCode">
+        <Sheet @bind-IsOpen="_preventSheetOpen">
+            <SheetTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Open Protected Sheet</Button>
+            </SheetTrigger>
+            <SheetContent PreventClose="true">
+                <SheetHeader>
+                    <SheetTitle>Protected Sheet</SheetTitle>
+                    <SheetDescription>This sheet cannot be dismissed by clicking outside.</SheetDescription>
+                </SheetHeader>
+                <div class="py-4">
+                    <Button OnClick="@(() => _preventSheetOpen = false)">Close Sheet</Button>
+                </div>
+            </SheetContent>
+        </Sheet>
+    </ComponentDemo>
+
     <ComponentDemo Title="Navigation Sheet" Code="@_navCode">
         <Sheet @bind-IsOpen="_isNavOpen">
             <SheetTrigger>
@@ -168,6 +207,18 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">Right</td>
                             <td class="p-3 text-muted-foreground">Which edge the sheet slides in from. Values: Top, Right, Bottom, Left.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Size</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">SheetSize</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
+                            <td class="p-3 text-muted-foreground">Width of the sheet panel. Values: Sm, Default, Lg, Xl, Full.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">PreventClose</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Prevents closing via backdrop click or Escape key.</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -203,6 +254,51 @@
     private bool _isBottomOpen;
     private bool _isLeftOpen;
     private bool _isNavOpen;
+    private bool _preventSheetOpen;
+    private Dictionary<SheetContent.SheetSize, bool> _sheetSizeOpen = Enum.GetValues<SheetContent.SheetSize>()
+        .ToDictionary(s => s, _ => false);
+
+    private string _sizesCode = @"@foreach (var size in Enum.GetValues<SheetContent.SheetSize>())
+{
+    <Sheet @bind-IsOpen=""@_sheetSizeOpen[size]"">
+        <SheetTrigger>
+            <Button Variant=""Button.ButtonVariant.Outline"">@size</Button>
+        </SheetTrigger>
+        <SheetContent Size=""@size"">
+            <SheetHeader>
+                <SheetTitle>@size Sheet</SheetTitle>
+                <SheetDescription>This sheet uses Size=""SheetContent.SheetSize.@size""</SheetDescription>
+            </SheetHeader>
+            <div class=""py-4"">
+                <p class=""text-sm text-muted-foreground"">Sheet content goes here.</p>
+            </div>
+        </SheetContent>
+    </Sheet>
+}
+
+@code {
+    private Dictionary<SheetContent.SheetSize, bool> _sheetSizeOpen =
+        Enum.GetValues<SheetContent.SheetSize>().ToDictionary(s => s, _ => false);
+}";
+
+    private string _preventCloseCode = @"<Sheet @bind-IsOpen=""_preventSheetOpen"">
+    <SheetTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Protected Sheet</Button>
+    </SheetTrigger>
+    <SheetContent PreventClose=""true"">
+        <SheetHeader>
+            <SheetTitle>Protected Sheet</SheetTitle>
+            <SheetDescription>This sheet cannot be dismissed by clicking outside.</SheetDescription>
+        </SheetHeader>
+        <div class=""py-4"">
+            <Button OnClick=""@(() => _preventSheetOpen = false)"">Close Sheet</Button>
+        </div>
+    </SheetContent>
+</Sheet>
+
+@code {
+    private bool _preventSheetOpen;
+}";
 
     private string _defaultCode = @"<Sheet @bind-IsOpen=""_isOpen"">
     <SheetTrigger>

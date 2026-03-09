@@ -5,7 +5,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Breadcrumb;
 
-public class BreadcrumbTests : IDisposable
+public class BreadcrumbTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -14,7 +14,8 @@ public class BreadcrumbTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     // Breadcrumb (nav) tests
 

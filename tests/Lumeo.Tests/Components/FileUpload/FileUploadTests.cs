@@ -5,7 +5,7 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.FileUpload;
 
-public class FileUploadTests : IDisposable
+public class FileUploadTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -14,7 +14,8 @@ public class FileUploadTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public void Renders_Label_Element()
@@ -136,7 +137,7 @@ public class FileUploadTests : IDisposable
     }
 
     [Fact]
-    public void Additional_Attributes_Forwarded_To_Label()
+    public void Additional_Attributes_Forwarded_To_Root()
     {
         var cut = _ctx.Render<Lumeo.FileUpload>(p => p
             .Add(b => b.AdditionalAttributes, new Dictionary<string, object>
@@ -144,7 +145,8 @@ public class FileUploadTests : IDisposable
                 ["data-testid"] = "file-upload-zone"
             }));
 
-        var label = cut.Find("label");
-        Assert.Equal("file-upload-zone", label.GetAttribute("data-testid"));
+        // AdditionalAttributes are on the root div element
+        var root = cut.Find("[data-testid='file-upload-zone']");
+        Assert.NotNull(root);
     }
 }

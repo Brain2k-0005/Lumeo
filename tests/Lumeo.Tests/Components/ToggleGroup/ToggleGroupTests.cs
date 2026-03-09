@@ -6,7 +6,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.ToggleGroup;
 
-public class ToggleGroupTests : IDisposable
+public class ToggleGroupTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -15,7 +15,8 @@ public class ToggleGroupTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     private IRenderedComponent<IComponent> RenderToggleGroup(
         L.ToggleGroup.ToggleGroupType type = L.ToggleGroup.ToggleGroupType.Single,

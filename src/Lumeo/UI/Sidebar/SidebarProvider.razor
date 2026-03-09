@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new SidebarState(IsCollapsed, EventCallback.Factory.Create(this, Toggle));
+    var context = new SidebarState(IsCollapsed, EventCallback.Factory.Create(this, Toggle), Variant);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -14,10 +14,18 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool IsCollapsed { get; set; }
     [Parameter] public EventCallback<bool> IsCollapsedChanged { get; set; }
+    [Parameter] public SidebarVariant Variant { get; set; } = SidebarVariant.Push;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"flex h-full w-full {Class}".Trim();
+    private string CssClass
+    {
+        get
+        {
+            var variant = Variant == SidebarVariant.Overlay ? "relative overflow-hidden" : "";
+            return $"flex h-full w-full {variant} {Class}".Trim();
+        }
+    }
 
     private async Task Toggle()
     {
@@ -25,5 +33,6 @@
         await IsCollapsedChanged.InvokeAsync(IsCollapsed);
     }
 
-    public record SidebarState(bool IsCollapsed, EventCallback Toggle);
+    public record SidebarState(bool IsCollapsed, EventCallback Toggle, SidebarVariant Variant);
+    public enum SidebarVariant { Push, Overlay, Icon }
 }

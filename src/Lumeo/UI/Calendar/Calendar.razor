@@ -2,11 +2,11 @@
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     <div class="flex items-center justify-between px-1 mb-2">
-        <button type="button" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousMonth">
+        <button type="button" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30" disabled="@IsPrevMonthDisabled" @onclick="PreviousMonth">
             <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
         </button>
         <span class="text-sm font-medium">@DisplayDate.ToString("MMMM yyyy")</span>
-        <button type="button" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextMonth">
+        <button type="button" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30" disabled="@IsNextMonthDisabled" @onclick="NextMonth">
             <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
         </button>
     </div>
@@ -20,7 +20,7 @@
         @foreach (var day in GetCalendarDays())
         {
             var d = day;
-            <button type="button" class="@DayClasses(d)" @onclick="() => SelectDay(d)">
+            <button type="button" class="@DayClasses(d)" disabled="@IsDisabled(d)" @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)">
                 @d.Day
             </button>
         }
@@ -30,17 +30,34 @@
 @code {
     [Parameter] public DateOnly? Value { get; set; }
     [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+    [Parameter] public DateOnly? MinDate { get; set; }
+    [Parameter] public DateOnly? MaxDate { get; set; }
+    [Parameter] public bool IsRange { get; set; }
+    [Parameter] public DateOnly? RangeStart { get; set; }
+    [Parameter] public EventCallback<DateOnly?> RangeStartChanged { get; set; }
+    [Parameter] public DateOnly? RangeEnd { get; set; }
+    [Parameter] public EventCallback<DateOnly?> RangeEndChanged { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private DateOnly DisplayDate { get; set; }
+    private DateOnly? _hoverDate;
 
     private string CssClass => $"p-3 {Class}".Trim();
 
     protected override void OnInitialized()
     {
-        DisplayDate = Value ?? DateOnly.FromDateTime(DateTime.Today);
+        DisplayDate = (IsRange ? RangeStart : Value) ?? DateOnly.FromDateTime(DateTime.Today);
     }
+
+    private bool IsPrevMonthDisabled =>
+        MinDate.HasValue && new DateOnly(DisplayDate.Year, DisplayDate.Month, 1) <= new DateOnly(MinDate.Value.Year, MinDate.Value.Month, 1);
+
+    private bool IsNextMonthDisabled =>
+        MaxDate.HasValue && new DateOnly(DisplayDate.Year, DisplayDate.Month, 1) >= new DateOnly(MaxDate.Value.Year, MaxDate.Value.Month, 1);
+
+    private bool IsDisabled(DateOnly day) =>
+        (MinDate.HasValue && day < MinDate.Value) || (MaxDate.HasValue && day > MaxDate.Value);
 
     private List<DateOnly> GetCalendarDays()
     {
@@ -59,10 +76,41 @@
     private string DayClasses(DateOnly day)
     {
         var isCurrentMonth = day.Month == DisplayDate.Month;
-        var isSelected = Value.HasValue && day == Value.Value;
+        var isDisabled = IsDisabled(day);
+        var isSelected = !IsRange && Value.HasValue && day == Value.Value;
         var isToday = day == DateOnly.FromDateTime(DateTime.Today);
 
         var baseClass = "inline-flex items-center justify-center rounded-md h-8 w-8 text-sm transition-colors";
+
+        if (isDisabled)
+            return $"{baseClass} pointer-events-none opacity-30";
+
+        if (IsRange)
+        {
+            var isRangeStart = RangeStart.HasValue && day == RangeStart.Value;
+            var isRangeEnd = RangeEnd.HasValue && day == RangeEnd.Value;
+
+            // Determine preview range end (when only start is selected and hovering)
+            var effectiveEnd = RangeEnd ?? (RangeStart.HasValue && _hoverDate.HasValue ? _hoverDate : null);
+            var rangeFrom = RangeStart;
+            var rangeTo = effectiveEnd;
+            if (rangeFrom.HasValue && rangeTo.HasValue && rangeTo < rangeFrom)
+            {
+                (rangeFrom, rangeTo) = (rangeTo, rangeFrom);
+            }
+
+            var inRange = rangeFrom.HasValue && rangeTo.HasValue && day > rangeFrom.Value && day < rangeTo.Value;
+
+            if (isRangeStart || isRangeEnd)
+                return $"{baseClass} bg-primary text-primary-foreground font-medium";
+            if (inRange)
+                return $"{baseClass} bg-accent text-accent-foreground";
+            if (isToday)
+                return $"{baseClass} bg-accent text-accent-foreground font-medium";
+            if (!isCurrentMonth)
+                return $"{baseClass} text-muted-foreground/50 hover:bg-accent hover:text-accent-foreground";
+            return $"{baseClass} hover:bg-accent hover:text-accent-foreground";
+        }
 
         if (isSelected)
             return $"{baseClass} bg-primary text-primary-foreground font-medium";
@@ -75,9 +123,48 @@
 
     private async Task SelectDay(DateOnly day)
     {
-        DisplayDate = new DateOnly(day.Year, day.Month, 1);
-        Value = day;
-        await ValueChanged.InvokeAsync(day);
+        if (IsDisabled(day)) return;
+
+        if (IsRange)
+        {
+            if (!RangeStart.HasValue || (RangeStart.HasValue && RangeEnd.HasValue))
+            {
+                // Start new range
+                await RangeStartChanged.InvokeAsync(day);
+                await RangeEndChanged.InvokeAsync(null);
+                _hoverDate = null;
+            }
+            else
+            {
+                // Complete range
+                var start = RangeStart.Value;
+                if (day < start)
+                {
+                    await RangeStartChanged.InvokeAsync(day);
+                    await RangeEndChanged.InvokeAsync(start);
+                }
+                else
+                {
+                    await RangeEndChanged.InvokeAsync(day);
+                }
+                _hoverDate = null;
+            }
+            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+        }
+        else
+        {
+            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            Value = day;
+            await ValueChanged.InvokeAsync(day);
+        }
+    }
+
+    private void OnDayHover(DateOnly day)
+    {
+        if (IsRange && RangeStart.HasValue && !RangeEnd.HasValue)
+        {
+            _hoverDate = day;
+        }
     }
 
     private void PreviousMonth() => DisplayDate = DisplayDate.AddMonths(-1);

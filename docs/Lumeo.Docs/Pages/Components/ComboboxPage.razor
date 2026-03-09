@@ -59,6 +59,34 @@
             </Combobox>
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Multiple Selection" Code="@_multipleCode">
+        <div class="w-full max-w-sm space-y-2">
+            <Combobox Multiple="true" @bind-Values="_selectedFrameworks" Placeholder="Select frameworks...">
+                <ComboboxContent>
+                    <ComboboxItem Value="react">React</ComboboxItem>
+                    <ComboboxItem Value="vue">Vue</ComboboxItem>
+                    <ComboboxItem Value="angular">Angular</ComboboxItem>
+                    <ComboboxItem Value="svelte">Svelte</ComboboxItem>
+                    <ComboboxItem Value="blazor">Blazor</ComboboxItem>
+                </ComboboxContent>
+            </Combobox>
+            <p class="text-sm text-muted-foreground">Selected: @string.Join(", ", _selectedFrameworks)</p>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Async Search" Code="@_asyncCode">
+        <div class="w-full max-w-sm">
+            <Combobox Placeholder="Search users..." OnSearchAsync="@HandleSearchAsync" IsSearchLoading="@_isSearching">
+                <ComboboxContent>
+                    @foreach (var user in _searchResults)
+                    {
+                        <ComboboxItem Value="@user">@user</ComboboxItem>
+                    }
+                </ComboboxContent>
+            </Combobox>
+        </div>
+    </ComponentDemo>
 </div>
 
 @code {
@@ -69,6 +97,9 @@
     private bool _isOpen2;
     private bool _isOpen3;
     private string _searchText1 = "";
+    private HashSet<string> _selectedFrameworks = new();
+    private bool _isSearching;
+    private List<string> _searchResults = new();
 
     private readonly string[] _countries = ["Australia", "Canada", "France", "Germany", "India", "Japan", "Netherlands", "United Kingdom", "United States"];
 
@@ -117,6 +148,52 @@
         <ComboboxEmpty>No language found.</ComboboxEmpty>
     </ComboboxContent>
 </Combobox>";
+
+    private async Task HandleSearchAsync(string query)
+    {
+        _isSearching = true;
+        await Task.Delay(500);
+        var allUsers = new[] { "alice@example.com", "bob@example.com", "carol@example.com", "dave@example.com", "eve@example.com" };
+        _searchResults = allUsers.Where(u => u.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        _isSearching = false;
+    }
+
+    private string _multipleCode = @"<Combobox Multiple=""true"" @bind-Values=""_selectedFrameworks"" Placeholder=""Select frameworks..."">
+    <ComboboxContent>
+        <ComboboxItem Value=""react"">React</ComboboxItem>
+        <ComboboxItem Value=""vue"">Vue</ComboboxItem>
+        <ComboboxItem Value=""angular"">Angular</ComboboxItem>
+        <ComboboxItem Value=""svelte"">Svelte</ComboboxItem>
+        <ComboboxItem Value=""blazor"">Blazor</ComboboxItem>
+    </ComboboxContent>
+</Combobox>
+<p class=""text-sm text-muted-foreground"">Selected: @string.Join("", "", _selectedFrameworks)</p>
+
+@code {
+    private HashSet<string> _selectedFrameworks = new();
+}";
+
+    private string _asyncCode = @"<Combobox Placeholder=""Search users..."" OnSearchAsync=""@HandleSearchAsync"" IsSearchLoading=""@_isSearching"">
+    <ComboboxContent>
+        @foreach (var user in _searchResults)
+        {
+            <ComboboxItem Value=""@user"">@user</ComboboxItem>
+        }
+    </ComboboxContent>
+</Combobox>
+
+@code {
+    private bool _isSearching;
+    private List<string> _searchResults = new();
+
+    private async Task HandleSearchAsync(string query)
+    {
+        _isSearching = true;
+        await Task.Delay(500); // simulate API call
+        _searchResults = /* filter results */;
+        _isSearching = false;
+    }
+}";
 }
 
 <!-- API Reference -->
@@ -208,6 +285,54 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">""</td>
                             <td class="p-3 text-muted-foreground">The value this item represents when selected. Required. Also used for filtering against the search text.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">Combobox — Additional Props</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Multiple</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, allows selecting multiple values at once.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Values</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">HashSet&lt;string&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">new()</td>
+                            <td class="p-3 text-muted-foreground">The set of selected values when Multiple is true. Use with @@bind-Values.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnSearchAsync</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Callback invoked (debounced) when the search query changes, enabling server-side filtering.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DebounceMs</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">300</td>
+                            <td class="p-3 text-muted-foreground">Milliseconds to debounce the OnSearchAsync callback.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsSearchLoading</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, shows a loading indicator inside the dropdown.</td>
                         </tr>
                     </tbody>
                 </table>

@@ -44,12 +44,111 @@
             </div>
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Min & Max Date" Code="@_minMaxCode">
+        <div class="flex justify-center">
+            <div class="rounded-md border bg-card p-1">
+                <Calendar @bind-Value="_constrainedDate" MinDate="@_minDate" MaxDate="@_maxDate" />
+            </div>
+        </div>
+        <p class="text-sm text-muted-foreground text-center mt-2">Selectable range: @_minDate.ToString("MMM d") — @_maxDate.ToString("MMM d, yyyy")</p>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Date Range" Code="@_dateRangeCode">
+        <div class="space-y-2">
+            <div class="flex justify-center">
+                <div class="rounded-md border bg-card p-1">
+                    <Calendar IsRange="true" @bind-RangeStart="_rangeStart" @bind-RangeEnd="_rangeEnd" />
+                </div>
+            </div>
+            <p class="text-sm text-muted-foreground text-center">
+                @if (_rangeStart.HasValue && _rangeEnd.HasValue)
+                {
+                    @($"Selected: {_rangeStart:MMM dd} — {_rangeEnd:MMM dd}")
+                }
+                else if (_rangeStart.HasValue)
+                {
+                    @($"Start: {_rangeStart:MMM dd} — pick end date")
+                }
+                else
+                {
+                    <span>Pick a start date</span>
+                }
+            </p>
+        </div>
+    </ComponentDemo>
+</div>
+
+<!-- API Reference -->
+<div class="mt-12 space-y-6">
+    <h2 class="text-2xl font-bold text-foreground">API Reference</h2>
+
+    <div class="space-y-8">
+        <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">Calendar</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Value</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The currently selected date. Use with @@bind-Value for two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">MinDate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The earliest selectable date. Dates before this are disabled.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">MaxDate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The latest selectable date. Dates after this are disabled.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsRange</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, enables date range selection mode.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RangeStart</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The start of the selected date range. Use with @@bind-RangeStart.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RangeEnd</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The end of the selected date range. Use with @@bind-RangeEnd.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {
     private DateOnly? _selectedDate;
     private DateOnly? _preselectedDate = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly? _checkIn;
+    private DateOnly? _constrainedDate;
+    private DateOnly _minDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-7));
+    private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+    private DateOnly? _rangeStart;
+    private DateOnly? _rangeEnd;
 
     private string _defaultCode = @"<Calendar @bind-Value=""_selectedDate"" />";
 
@@ -71,5 +170,25 @@
 
 @code {
     private DateOnly? _date = DateOnly.FromDateTime(DateTime.Today);
+}";
+
+    private string _minMaxCode = @"<Calendar @bind-Value=""_date"" MinDate=""@_minDate"" MaxDate=""@_maxDate"" />
+
+@code {
+    private DateOnly? _date;
+    private DateOnly _minDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-7));
+    private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+}";
+
+    private string _dateRangeCode = @"<Calendar IsRange=""true"" @bind-RangeStart=""_rangeStart"" @bind-RangeEnd=""_rangeEnd"" />
+
+@if (_rangeStart.HasValue && _rangeEnd.HasValue)
+{
+    <p>Selected: @($""{_rangeStart:MMM dd} — {_rangeEnd:MMM dd}"")</p>
+}
+
+@code {
+    private DateOnly? _rangeStart;
+    private DateOnly? _rangeEnd;
 }";
 }

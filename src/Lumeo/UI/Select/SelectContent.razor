@@ -4,6 +4,16 @@
 @if (Context.IsOpen)
 {
     <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        @if (Context.Searchable)
+        {
+            <div class="px-1 pb-1">
+                <input type="text" class="w-full rounded-sm border border-border bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+                    placeholder="Search..."
+                    value="@Context.SearchText"
+                    @oninput="OnInput"
+                    @onclick:stopPropagation="true" />
+            </div>
+        }
         @ChildContent
     </div>
 }
@@ -45,6 +55,11 @@
         {
             await Context.SetOpen.InvokeAsync(false);
         }
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        await Context.OnSearch.InvokeAsync(e.Value?.ToString() ?? "");
     }
 
     private async Task Cleanup()

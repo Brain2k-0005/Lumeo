@@ -1,18 +1,32 @@
 @namespace Lumeo
-@implements IDisposable
+@implements IAsyncDisposable
 
 <ToastViewport Position="Position">
     @foreach (var toast in _toasts)
     {
-        <Toast Variant="@toast.Variant" @key="@toast.Id">
-            <div class="grid gap-1">
-                <ToastTitle>@toast.Title</ToastTitle>
-                @if (toast.Description is not null)
-                {
-                    <ToastDescription>@toast.Description</ToastDescription>
-                }
-            </div>
-            <ToastClose OnClose="@(() => Remove(toast.Id))" />
+        <Toast Variant="@toast.Options.Variant" Class="@toast.Options.Class" @key="@toast.Id">
+            @if (toast.Options.CustomContent is not null)
+            {
+                @toast.Options.CustomContent
+            }
+            else
+            {
+                <div class="grid gap-1">
+                    <ToastTitle>@toast.Options.Title</ToastTitle>
+                    @if (toast.Options.Description is not null)
+                    {
+                        <ToastDescription>@toast.Options.Description</ToastDescription>
+                    }
+                    @if (toast.Options.ActionLabel is not null)
+                    {
+                        <ToastAction OnClick="@(() => InvokeAction(toast))" Label="@toast.Options.ActionLabel" />
+                    }
+                </div>
+            }
+            @if (toast.Options.Dismissible)
+            {
+                <ToastClose OnClose="@(() => Remove(toast.Id))" />
+            }
         </Toast>
     }
 </ToastViewport>
@@ -21,37 +35,144 @@
 
 @code {
     private readonly List<ToastItem> _toasts = new();
+    private readonly Dictionary<string, CancellationTokenSource> _timers = new();
 
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
+    [Parameter] public int DefaultDuration { get; set; } = 5000;
+    [Parameter] public int MaxToasts { get; set; } = 5;
 
     protected override void OnInitialized()
     {
         ToastService.OnShow += HandleShow;
+        ToastService.OnDismiss += HandleDismiss;
+        ToastService.OnUpdate += HandleUpdate;
     }
 
     private async void HandleShow(ToastMessage message)
     {
-        var item = new ToastItem(Guid.NewGuid().ToString(), message.Title, message.Description, message.Variant);
+        var item = new ToastItem(message.Id, message.Options);
+
+        // Enforce MaxToasts: evict oldest non-persistent toasts
+        while (_toasts.Count >= MaxToasts)
+        {
+            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0);
+            if (oldest is null) break;
+            await RemoveItemAsync(oldest.Id);
+        }
+
         _toasts.Add(item);
         await InvokeAsync(StateHasChanged);
 
-        _ = Task.Delay(5000).ContinueWith(async _ =>
+        var duration = message.Options.Duration ?? DefaultDuration;
+        if (duration > 0)
         {
-            _toasts.Remove(item);
-            await InvokeAsync(StateHasChanged);
-        });
+            var cts = new CancellationTokenSource();
+            _timers[message.Id] = cts;
+            _ = Task.Delay(duration, cts.Token).ContinueWith(async t =>
+            {
+                if (!t.IsCanceled)
+                {
+                    await InvokeAsync(() => RemoveItem(message.Id));
+                }
+            }, TaskScheduler.Default);
+        }
+    }
+
+    private async void HandleDismiss(string toastId)
+    {
+        if (toastId == "*")
+        {
+            var ids = _toasts.Select(t => t.Id).ToList();
+            foreach (var id in ids)
+            {
+                CancelTimer(id);
+                _toasts.RemoveAll(t => t.Id == id);
+            }
+        }
+        else
+        {
+            await RemoveItemAsync(toastId);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void HandleUpdate(string toastId, ToastOptions options)
+    {
+        var index = _toasts.FindIndex(t => t.Id == toastId);
+        if (index < 0) return;
+
+        var updated = new ToastItem(toastId, options);
+        _toasts[index] = updated;
+
+        // Reset timer
+        CancelTimer(toastId);
+        var duration = options.Duration ?? DefaultDuration;
+        if (duration > 0)
+        {
+            var cts = new CancellationTokenSource();
+            _timers[toastId] = cts;
+            _ = Task.Delay(duration, cts.Token).ContinueWith(async t =>
+            {
+                if (!t.IsCanceled)
+                {
+                    await InvokeAsync(() => RemoveItem(toastId));
+                }
+            }, TaskScheduler.Default);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void InvokeAction(ToastItem toast)
+    {
+        toast.Options.OnAction?.Invoke();
     }
 
     private void Remove(string id)
     {
-        _toasts.RemoveAll(t => t.Id == id);
+        var toast = _toasts.FirstOrDefault(t => t.Id == id);
+        toast?.Options.OnDismiss?.Invoke();
+        RemoveItem(id);
         StateHasChanged();
     }
 
-    public void Dispose()
+    private void RemoveItem(string id)
     {
-        ToastService.OnShow -= HandleShow;
+        CancelTimer(id);
+        _toasts.RemoveAll(t => t.Id == id);
     }
 
-    private record ToastItem(string Id, string Title, string? Description, ToastVariant Variant);
+    private async Task RemoveItemAsync(string id)
+    {
+        CancelTimer(id);
+        _toasts.RemoveAll(t => t.Id == id);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelTimer(string id)
+    {
+        if (_timers.TryGetValue(id, out var cts))
+        {
+            cts.Cancel();
+            cts.Dispose();
+            _timers.Remove(id);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ToastService.OnShow -= HandleShow;
+        ToastService.OnDismiss -= HandleDismiss;
+        ToastService.OnUpdate -= HandleUpdate;
+
+        foreach (var cts in _timers.Values)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _timers.Clear();
+        await Task.CompletedTask;
+    }
+
+    private record ToastItem(string Id, ToastOptions Options);
 }

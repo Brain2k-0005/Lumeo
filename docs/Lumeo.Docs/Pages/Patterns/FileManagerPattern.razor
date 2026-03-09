@@ -1,0 +1,410 @@
+@page "/blocks/file-manager"
+@namespace Lumeo.Docs.Pages.Patterns
+
+<PageTitle>File Manager Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="File Manager" Description="A file browser interface with breadcrumb navigation, sortable data table, context menus, and drag-and-drop upload." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="File Browser" Code="@_fileManagerCode">
+        <div class="w-full space-y-4">
+
+            <!-- Top Bar -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <Breadcrumb>
+                    <BreadcrumbList>
+                        <BreadcrumbItem>
+                            <BreadcrumbLink href="#">
+                                <DynamicIcon Name="House" Class="h-4 w-4" />
+                            </BreadcrumbLink>
+                        </BreadcrumbItem>
+                        <BreadcrumbSeparator />
+                        @if (_currentPath.Count > 2)
+                        {
+                            <BreadcrumbEllipsis />
+                            <BreadcrumbSeparator />
+                        }
+                        @for (int i = Math.Max(0, _currentPath.Count - 2); i < _currentPath.Count; i++)
+                        {
+                            var idx = i;
+                            @if (idx < _currentPath.Count - 1)
+                            {
+                                <BreadcrumbItem>
+                                    <BreadcrumbLink @onclick="@(() => NavigateTo(idx))" style="cursor:pointer">
+                                        @_currentPath[idx]
+                                    </BreadcrumbLink>
+                                </BreadcrumbItem>
+                                <BreadcrumbSeparator />
+                            }
+                            else
+                            {
+                                <BreadcrumbItem>
+                                    <BreadcrumbPage>@_currentPath[idx]</BreadcrumbPage>
+                                </BreadcrumbItem>
+                            }
+                        }
+                    </BreadcrumbList>
+                </Breadcrumb>
+
+                <div class="flex items-center gap-2">
+                    <div class="flex rounded-md border overflow-hidden">
+                        <button type="button"
+                                class="px-3 py-1.5 text-sm transition-colors @(_viewMode == "grid" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted")"
+                                @onclick="@(() => _viewMode = "grid")">
+                            <DynamicIcon Name="LayoutGrid" Class="h-4 w-4" />
+                        </button>
+                        <button type="button"
+                                class="px-3 py-1.5 text-sm transition-colors @(_viewMode == "list" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted")"
+                                @onclick="@(() => _viewMode = "list")">
+                            <DynamicIcon Name="List" Class="h-4 w-4" />
+                        </button>
+                    </div>
+                    <Button Size="Button.ButtonSize.Sm" @onclick="@(() => _showUpload = !_showUpload)">
+                        <DynamicIcon Name="Upload" Class="h-4 w-4 mr-1" />
+                        Upload
+                    </Button>
+                </div>
+            </div>
+
+            <!-- Selection info bar -->
+            @if (_selectedFiles.Count > 0)
+            {
+                <div class="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
+                    <span class="text-sm text-foreground font-medium">@_selectedFiles.Count selected</span>
+                    <div class="flex items-center gap-2 ml-auto">
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                            <DynamicIcon Name="Copy" Class="h-4 w-4 mr-1" />
+                            Copy
+                        </Button>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                            <DynamicIcon Name="Trash2" Class="h-4 w-4 mr-1" />
+                            Delete
+                        </Button>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" @onclick="@(() => _selectedFiles.Clear())">
+                            <DynamicIcon Name="X" Class="h-4 w-4 mr-1" />
+                            Clear
+                        </Button>
+                    </div>
+                </div>
+            }
+
+            <!-- File Table -->
+            <Card>
+                <CardContent Class="p-0">
+                    <DataTable TItem="FileItem"
+                               Items="@SortedFiles"
+                               Selectable="true"
+                               SelectedItems="@_selectedFiles"
+                               SelectedItemsChanged="@(s => _selectedFiles = s)">
+                        <HeaderTemplate>
+                            <DataTableSortableHeader Column="Name" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Name</DataTableSortableHeader>
+                            <DataTableSortableHeader Column="Type" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Type</DataTableSortableHeader>
+                            <DataTableSortableHeader Column="Size" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Size</DataTableSortableHeader>
+                            <DataTableSortableHeader Column="Modified" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Modified</DataTableSortableHeader>
+                            <th class="h-10 px-2 text-left align-middle font-medium text-muted-foreground w-10"></th>
+                        </HeaderTemplate>
+                        <RowTemplate Context="file">
+                            <ContextMenu>
+                                <ContextMenuTrigger>
+                                    <TableCell>
+                                        <div class="flex items-center gap-2 cursor-pointer" @ondblclick="@(() => OpenFile(file))">
+                                            <DynamicIcon Name="@file.Icon" Class="h-4 w-4 text-muted-foreground shrink-0" />
+                                            <span class="font-medium text-foreground">@file.Name</span>
+                                        </div>
+                                    </TableCell>
+                                </ContextMenuTrigger>
+                                <TableCell><Badge Variant="Badge.BadgeVariant.Secondary">@file.Type</Badge></TableCell>
+                                <TableCell Class="text-muted-foreground">@file.Size</TableCell>
+                                <TableCell Class="text-muted-foreground">@file.Modified</TableCell>
+                                <TableCell>
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                                        <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
+                                    </Button>
+                                </TableCell>
+                                <ContextMenuContent>
+                                    <ContextMenuItem @onclick="@(() => OpenFile(file))">
+                                        <DynamicIcon Name="FolderOpen" Class="h-4 w-4" />
+                                        Open
+                                    </ContextMenuItem>
+                                    <ContextMenuItem>
+                                        <DynamicIcon Name="Pencil" Class="h-4 w-4" />
+                                        Rename
+                                    </ContextMenuItem>
+                                    <ContextMenuItem>
+                                        <DynamicIcon Name="Copy" Class="h-4 w-4" />
+                                        Copy
+                                    </ContextMenuItem>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuCheckboxItem @bind-Checked="_showHidden">
+                                        Show hidden files
+                                    </ContextMenuCheckboxItem>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuLabel>Sort by</ContextMenuLabel>
+                                    <ContextMenuRadioGroup Value="@_sortColumn" ValueChanged="@(v => _sortColumn = v)">
+                                        <ContextMenuRadioItem Value="Name">Name</ContextMenuRadioItem>
+                                        <ContextMenuRadioItem Value="Modified">Date modified</ContextMenuRadioItem>
+                                        <ContextMenuRadioItem Value="Size">Size</ContextMenuRadioItem>
+                                    </ContextMenuRadioGroup>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem Class="text-destructive hover:text-destructive">
+                                        <DynamicIcon Name="Trash2" Class="h-4 w-4" />
+                                        Delete
+                                    </ContextMenuItem>
+                                </ContextMenuContent>
+                            </ContextMenu>
+                        </RowTemplate>
+                    </DataTable>
+                </CardContent>
+            </Card>
+
+            <!-- Upload Area -->
+            @if (_showUpload)
+            {
+                <Card>
+                    <CardHeader>
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold text-foreground">Upload Files</h3>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" @onclick="@(() => _showUpload = false)">
+                                <DynamicIcon Name="X" Class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <FileUpload
+                            Multiple="true"
+                            ShowProgress="@(_uploadProgress > 0)"
+                            Progress="@_uploadProgress"
+                            Description="PDF, DOCX, PNG, JPG up to 50MB"
+                            OnFilesSelected="@HandleFilesSelected" />
+                        @if (_uploadProgress > 0 && _uploadProgress < 100)
+                        {
+                            <p class="text-xs text-muted-foreground mt-2 text-center">Uploading... @_uploadProgress%</p>
+                        }
+                        @if (_uploadProgress == 100)
+                        {
+                            <div class="flex items-center gap-2 mt-2 text-sm text-success-text">
+                                <DynamicIcon Name="CircleCheck" Class="h-4 w-4" />
+                                Upload complete
+                            </div>
+                        }
+                    </CardContent>
+                </Card>
+            }
+
+        </div>
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private record FileItem(string Name, string Type, string Size, string Modified, string Icon);
+
+    private List<FileItem> _files = new()
+    {
+        new("Projects",         "Folder",  "—",         "Feb 28, 2026", "Folder"),
+        new("Assets",           "Folder",  "—",         "Feb 25, 2026", "Folder"),
+        new("Archive",          "Folder",  "—",         "Jan 12, 2026", "Folder"),
+        new("Q1 Report.pdf",    "PDF",     "2.4 MB",    "Feb 28, 2026", "FileText"),
+        new("Budget 2026.xlsx", "Excel",   "840 KB",    "Feb 26, 2026", "FileSpreadsheet"),
+        new("Presentation.pptx","PowerPoint","18.2 MB", "Feb 22, 2026", "Presentation"),
+        new("logo.png",         "Image",   "156 KB",    "Feb 20, 2026", "Image"),
+        new("banner.jpg",       "Image",   "1.1 MB",    "Feb 18, 2026", "Image"),
+        new("notes.txt",        "Text",    "12 KB",     "Feb 15, 2026", "FileText"),
+        new("backup.zip",       "Archive", "95.3 MB",   "Feb 10, 2026", "FileArchive"),
+        new("README.md",        "Markdown","8 KB",      "Feb 5, 2026",  "FileText"),
+        new("data.csv",         "CSV",     "340 KB",    "Jan 30, 2026", "FileSpreadsheet"),
+    };
+
+    private HashSet<FileItem> _selectedFiles = new();
+    private string _sortColumn = "Name";
+    private DataTable<object>.SortDirection _sortDir = DataTable<object>.SortDirection.Ascending;
+    private string _viewMode = "list";
+    private bool _showHidden;
+    private bool _showUpload;
+    private int _uploadProgress;
+    private List<string> _currentPath = new() { "Home", "Documents", "Projects" };
+
+    private IEnumerable<FileItem> SortedFiles => (_sortColumn, _sortDir) switch
+    {
+        ("Name",     DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Name),
+        ("Name",     DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Name),
+        ("Type",     DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Type),
+        ("Type",     DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Type),
+        ("Size",     DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Size),
+        ("Size",     DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Size),
+        ("Modified", DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Modified),
+        ("Modified", DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Modified),
+        _                                                          => _files,
+    };
+
+    private void HandleSort((string Column, DataTable<object>.SortDirection Direction) args)
+    {
+        _sortColumn = args.Column;
+        _sortDir = args.Direction;
+    }
+
+    private void OpenFile(FileItem file)
+    {
+        if (file.Type == "Folder")
+            _currentPath.Add(file.Name);
+    }
+
+    private void NavigateTo(int index)
+    {
+        _currentPath = _currentPath.Take(index + 1).ToList();
+    }
+
+    private async Task HandleFilesSelected(InputFileChangeEventArgs e)
+    {
+        _uploadProgress = 0;
+        for (int i = 0; i <= 100; i += 10)
+        {
+            _uploadProgress = i;
+            StateHasChanged();
+            await Task.Delay(150);
+        }
+    }
+
+    private string _fileManagerCode = @"<!-- File Manager Layout -->
+<div class=""space-y-4"">
+
+    <!-- Top Bar with Breadcrumb + Upload -->
+    <div class=""flex flex-wrap items-center justify-between gap-3"">
+        <Breadcrumb>
+            <BreadcrumbList>
+                <BreadcrumbItem>
+                    <BreadcrumbLink href=""#"">
+                        <Blazicon Svg=""Lucide.House"" class=""h-4 w-4"" />
+                    </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbEllipsis />
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                    <BreadcrumbLink href=""#"">Documents</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                    <BreadcrumbPage>Projects</BreadcrumbPage>
+                </BreadcrumbItem>
+            </BreadcrumbList>
+        </Breadcrumb>
+
+        <div class=""flex items-center gap-2"">
+            <div class=""flex rounded-md border overflow-hidden"">
+                <button class=""px-3 py-1.5 bg-primary text-primary-foreground"">
+                    <Blazicon Svg=""Lucide.LayoutGrid"" class=""h-4 w-4"" />
+                </button>
+                <button class=""px-3 py-1.5 bg-background text-muted-foreground hover:bg-muted"">
+                    <Blazicon Svg=""Lucide.List"" class=""h-4 w-4"" />
+                </button>
+            </div>
+            <Button Size=""Button.ButtonSize.Sm"">
+                <Blazicon Svg=""Lucide.Upload"" class=""h-4 w-4 mr-1"" /> Upload
+            </Button>
+        </div>
+    </div>
+
+    <!-- Sortable Data Table with Context Menu -->
+    <Card>
+        <CardContent Class=""p-0"">
+            <DataTable TItem=""FileItem""
+                       Items=""@_files""
+                       Selectable=""true""
+                       @bind-SelectedItems=""_selectedFiles""
+                       @bind-SortColumn=""_sortColumn""
+                       @bind-SortDir=""_sortDir""
+                       OnSort=""HandleSort"">
+                <HeaderTemplate>
+                    <DataTableSortableHeader Column=""Name"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Name</DataTableSortableHeader>
+                    <DataTableSortableHeader Column=""Type"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Type</DataTableSortableHeader>
+                    <DataTableSortableHeader Column=""Size"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Size</DataTableSortableHeader>
+                    <DataTableSortableHeader Column=""Modified"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Modified</DataTableSortableHeader>
+                </HeaderTemplate>
+                <RowTemplate Context=""file"">
+                    <ContextMenu>
+                        <ContextMenuTrigger>
+                            <TableCell>
+                                <div class=""flex items-center gap-2"">
+                                    <Blazicon Svg=""Lucide.FileText"" class=""h-4 w-4 text-muted-foreground"" />
+                                    <span class=""font-medium"">@file.Name</span>
+                                </div>
+                            </TableCell>
+                        </ContextMenuTrigger>
+                        <TableCell><Badge Variant=""Badge.BadgeVariant.Secondary"">@file.Type</Badge></TableCell>
+                        <TableCell Class=""text-muted-foreground"">@file.Size</TableCell>
+                        <TableCell Class=""text-muted-foreground"">@file.Modified</TableCell>
+                        <ContextMenuContent>
+                            <ContextMenuItem>
+                                <Blazicon Svg=""Lucide.FolderOpen"" class=""h-4 w-4"" /> Open
+                            </ContextMenuItem>
+                            <ContextMenuItem>
+                                <Blazicon Svg=""Lucide.Pencil"" class=""h-4 w-4"" /> Rename
+                            </ContextMenuItem>
+                            <ContextMenuItem>
+                                <Blazicon Svg=""Lucide.Copy"" class=""h-4 w-4"" /> Copy
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuCheckboxItem @bind-Checked=""_showHidden"">
+                                Show hidden files
+                            </ContextMenuCheckboxItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuLabel>Sort by</ContextMenuLabel>
+                            <ContextMenuRadioGroup Value=""@_sortColumn"" ValueChanged=""@(v => _sortColumn = v)"">
+                                <ContextMenuRadioItem Value=""Name"">Name</ContextMenuRadioItem>
+                                <ContextMenuRadioItem Value=""Modified"">Date modified</ContextMenuRadioItem>
+                                <ContextMenuRadioItem Value=""Size"">Size</ContextMenuRadioItem>
+                            </ContextMenuRadioGroup>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem Class=""text-destructive"">
+                                <Blazicon Svg=""Lucide.Trash2"" class=""h-4 w-4"" /> Delete
+                            </ContextMenuItem>
+                        </ContextMenuContent>
+                    </ContextMenu>
+                </RowTemplate>
+            </DataTable>
+        </CardContent>
+    </Card>
+
+    <!-- Upload Area -->
+    <Card>
+        <CardContent>
+            <FileUpload
+                Multiple=""true""
+                ShowProgress=""true""
+                Progress=""@_uploadProgress""
+                Description=""PDF, DOCX, PNG, JPG up to 50MB""
+                OnFilesSelected=""HandleFilesSelected"" />
+        </CardContent>
+    </Card>
+
+</div>
+
+@code {
+    private record FileItem(string Name, string Type, string Size, string Modified, string Icon);
+
+    private List<FileItem> _files = new() { /* ... 12 file records ... */ };
+    private HashSet<FileItem> _selectedFiles = new();
+    private string _sortColumn = ""Name"";
+    private DataTable<object>.SortDirection _sortDir = DataTable<object>.SortDirection.Ascending;
+    private bool _showHidden;
+    private int _uploadProgress;
+
+    private void HandleSort((string Column, DataTable<object>.SortDirection Direction) args)
+    {
+        _sortColumn = args.Column;
+        _sortDir = args.Direction;
+    }
+
+    private async Task HandleFilesSelected(InputFileChangeEventArgs e)
+    {
+        for (int i = 0; i <= 100; i += 10)
+        {
+            _uploadProgress = i;
+            StateHasChanged();
+            await Task.Delay(150);
+        }
+    }
+}";
+}

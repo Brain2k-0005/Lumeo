@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue));
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -14,10 +14,13 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string ActiveValue { get; set; } = "";
     [Parameter] public EventCallback<string> ActiveValueChanged { get; set; }
+    [Parameter] public TabsOrientation Orientation { get; set; } = TabsOrientation.Horizontal;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"{Class}".Trim();
+    private string CssClass => Orientation == TabsOrientation.Vertical
+        ? $"flex flex-row {Class}".Trim()
+        : $"{Class}".Trim();
 
     private async Task SetValue(string value)
     {
@@ -25,5 +28,7 @@
         await ActiveValueChanged.InvokeAsync(value);
     }
 
-    public record TabsContext(string ActiveValue, EventCallback<string> SetValue);
+    public record TabsContext(string ActiveValue, EventCallback<string> SetValue, TabsOrientation Orientation = TabsOrientation.Horizontal);
+
+    public enum TabsOrientation { Horizontal, Vertical }
 }

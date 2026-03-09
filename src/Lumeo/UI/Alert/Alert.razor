@@ -1,14 +1,27 @@
 @namespace Lumeo
 
-<div role="alert" class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (!_isDismissed)
+{
+    <div role="alert" class="@CssClass" @attributes="AdditionalAttributes">
+        @if (IsDismissible)
+        {
+            <button type="button" class="absolute top-3 right-3 rounded-md hover:bg-foreground/10 focus:outline-none focus:ring-1 focus:ring-ring p-0.5" @onclick="Dismiss" aria-label="Dismiss">
+                <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+            </button>
+        }
+        @ChildContent
+    </div>
+}
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public AlertVariant Variant { get; set; } = AlertVariant.Default;
+    [Parameter] public bool IsDismissible { get; set; }
+    [Parameter] public EventCallback OnDismiss { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isDismissed;
 
     private string CssClass => $"relative w-full rounded-lg border border-border px-4 py-3 text-sm {VariantClasses} {Class}".Trim();
 
@@ -16,8 +29,17 @@
     {
         AlertVariant.Default => "bg-background text-foreground",
         AlertVariant.Destructive => "border-destructive text-destructive",
+        AlertVariant.Success => "border-success bg-success-light text-success-text",
+        AlertVariant.Warning => "border-warning bg-warning-light text-warning-text",
+        AlertVariant.Info => "border-primary bg-primary/10 text-primary",
         _ => ""
     };
 
-    public enum AlertVariant { Default, Destructive }
+    private async Task Dismiss()
+    {
+        _isDismissed = true;
+        await OnDismiss.InvokeAsync();
+    }
+
+    public enum AlertVariant { Default, Destructive, Success, Warning, Info }
 }
