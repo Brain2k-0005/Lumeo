@@ -1,21 +1,68 @@
 @namespace Lumeo
 
-<div class="@CssClass" role="progressbar" aria-valuenow="@Value" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
-    <div class="@IndicatorClasses" style="width: @(Percentage)%"></div>
-</div>
+@if (IsIndeterminate)
+{
+    <style>
+        @@keyframes progress-indeterminate {
+            0% { left: -35%; right: 100%; }
+            60% { left: 100%; right: -90%; }
+            100% { left: 100%; right: -90%; }
+        }
+        .animate-progress-indeterminate {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 30%;
+            animation: progress-indeterminate 1.5s ease-in-out infinite;
+        }
+    </style>
+}
+
+@if (ShowLabel)
+{
+    <div class="flex items-center gap-2">
+        <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
+            @if (IsIndeterminate)
+            {
+                <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
+            }
+            else
+            {
+                <div class="@IndicatorClasses" style="width: @(Percentage)%"></div>
+            }
+        </div>
+        <span class="text-sm text-muted-foreground whitespace-nowrap">@(Label ?? $"{Percentage}%")</span>
+    </div>
+}
+else
+{
+    <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
+        @if (IsIndeterminate)
+        {
+            <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
+        }
+        else
+        {
+            <div class="@IndicatorClasses" style="width: @(Percentage)%"></div>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public int Value { get; set; }
     [Parameter] public int Max { get; set; } = 100;
     [Parameter] public ProgressVariant Variant { get; set; } = ProgressVariant.Default;
+    [Parameter] public bool IsIndeterminate { get; set; }
+    [Parameter] public bool ShowLabel { get; set; }
+    [Parameter] public string? Label { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int Percentage => Max > 0 ? Math.Min(100, (int)((double)Value / Max * 100)) : 0;
 
-    private string CssClass => $"relative h-2 w-full overflow-hidden rounded-full bg-primary/20 {Class}".Trim();
+    private string CssClass => $"relative h-2 w-full overflow-hidden rounded-[var(--radius)] bg-primary/20 {Class}".Trim();
 
-    private string IndicatorClasses => $"h-full rounded-full transition-all duration-300 {VariantClasses}";
+    private string IndicatorClasses => $"h-full rounded-[var(--radius)] transition-all duration-300 {VariantClasses}";
 
     private string VariantClasses => Variant switch
     {

@@ -6,7 +6,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.ThemeSwitcher;
 
-public class ThemeSwitcherTests : IDisposable
+public class ThemeSwitcherTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -21,7 +21,8 @@ public class ThemeSwitcherTests : IDisposable
         _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public void Renders_Root_Div()

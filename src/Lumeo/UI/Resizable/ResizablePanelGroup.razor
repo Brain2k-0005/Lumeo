@@ -7,7 +7,8 @@
         Direction,
         EventCallback.Factory.Create<(int PanelIndex, double Delta)>(this, HandleDrag),
         GetPanelSize,
-        _sizes.Count
+        _sizes.Count,
+        RegisterPanel
     );
 }
 
@@ -32,6 +33,7 @@
     private readonly string _groupId = $"resizable-group-{Guid.NewGuid():N}";
     private List<double> _sizes = new();
     private int _panelCount;
+    private readonly Dictionary<int, (double MinSize, double MaxSize)> _panelConstraints = new();
 
     private string DirectionString => Direction == ResizableDirection.Horizontal ? "horizontal" : "vertical";
 
@@ -64,6 +66,11 @@
         return 100.0 / count;
     }
 
+    private void RegisterPanel(int order, double minSize, double maxSize)
+    {
+        _panelConstraints[order] = (minSize, maxSize);
+    }
+
     private async Task HandleDrag((int PanelIndex, double Delta) args)
     {
         var (panelIndex, deltaPx) = args;
@@ -83,10 +90,12 @@
         var newLeft = _sizes[panelIndex] + deltaPercent;
         var newRight = _sizes[panelIndex + 1] - deltaPercent;
 
-        // Enforce minimum sizes (clamp at 0 to avoid negatives)
-        const double minSize = 0;
-        if (newLeft < minSize || newRight < minSize)
-            return;
+        // Enforce per-panel min/max constraints
+        var leftConstraints = _panelConstraints.TryGetValue(panelIndex, out var lc) ? lc : (MinSize: 0.0, MaxSize: 100.0);
+        var rightConstraints = _panelConstraints.TryGetValue(panelIndex + 1, out var rc) ? rc : (MinSize: 0.0, MaxSize: 100.0);
+
+        if (newLeft < leftConstraints.MinSize || newLeft > leftConstraints.MaxSize) return;
+        if (newRight < rightConstraints.MinSize || newRight > rightConstraints.MaxSize) return;
 
         _sizes[panelIndex] = newLeft;
         _sizes[panelIndex + 1] = newRight;
@@ -106,6 +115,7 @@
         ResizableDirection Direction,
         EventCallback<(int PanelIndex, double Delta)> OnHandleDrag,
         Func<int, double> GetPanelSize,
-        int PanelCount
+        int PanelCount,
+        Action<int, double, double> RegisterPanel
     );
 }

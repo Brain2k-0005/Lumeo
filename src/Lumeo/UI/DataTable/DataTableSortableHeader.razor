@@ -1,0 +1,52 @@
+@namespace Lumeo
+
+<th class="@CssClass" @attributes="AdditionalAttributes">
+    <button type="button" class="inline-flex items-center gap-1 -ml-3 h-8 px-3 rounded-md hover:bg-accent hover:text-accent-foreground" @onclick="HandleSort">
+        @ChildContent
+        @if (SortColumn == Column)
+        {
+            @if (SortDirection == DataTable<object>.SortDirection.Ascending)
+            {
+                <Blazicon Svg="Lucide.ArrowUp" class="h-3.5 w-3.5" />
+            }
+            else if (SortDirection == DataTable<object>.SortDirection.Descending)
+            {
+                <Blazicon Svg="Lucide.ArrowDown" class="h-3.5 w-3.5" />
+            }
+            else
+            {
+                <Blazicon Svg="Lucide.ArrowUpDown" class="h-3.5 w-3.5 opacity-50" />
+            }
+        }
+        else
+        {
+            <Blazicon Svg="Lucide.ArrowUpDown" class="h-3.5 w-3.5 opacity-50" />
+        }
+    </button>
+</th>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter, EditorRequired] public string Column { get; set; } = "";
+    [Parameter] public string? SortColumn { get; set; }
+    [Parameter] public DataTable<object>.SortDirection SortDirection { get; set; }
+    [Parameter] public EventCallback<(string Column, DataTable<object>.SortDirection Direction)> OnSort { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"h-10 px-2 text-left align-middle font-medium text-muted-foreground {Class}".Trim();
+
+    private async Task HandleSort()
+    {
+        var newDirection = SortColumn == Column
+            ? SortDirection switch
+            {
+                DataTable<object>.SortDirection.Ascending => DataTable<object>.SortDirection.Descending,
+                DataTable<object>.SortDirection.Descending => DataTable<object>.SortDirection.None,
+                _ => DataTable<object>.SortDirection.Ascending
+            }
+            : DataTable<object>.SortDirection.Ascending;
+
+        await OnSort.InvokeAsync((Column, newDirection));
+    }
+}

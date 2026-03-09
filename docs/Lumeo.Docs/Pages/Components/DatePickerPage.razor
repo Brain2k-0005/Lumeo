@@ -28,12 +28,98 @@
             <DatePicker @bind-Value="_eventDate" Format="yyyy-MM-dd" Placeholder="YYYY-MM-DD" />
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Min & Max Date" Code="@_minMaxCode">
+        <div class="w-full max-w-xs space-y-2">
+            <Label>Appointment date</Label>
+            <DatePicker @bind-Value="_constrainedDate" MinDate="@_minDate" MaxDate="@_maxDate" Placeholder="Select within range" />
+            <p class="text-sm text-muted-foreground">Available: @_minDate.ToString("MMM d") — @_maxDate.ToString("MMM d, yyyy")</p>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Presets" Code="@_presetsCode">
+        <div class="w-full max-w-sm">
+            <DatePicker @bind-Value="_presetDate" Presets="@_presets" Placeholder="Pick a date" />
+        </div>
+    </ComponentDemo>
+</div>
+
+<!-- API Reference -->
+<div class="mt-12 space-y-6">
+    <h2 class="text-2xl font-bold text-foreground">API Reference</h2>
+
+    <div class="space-y-8">
+        <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">DatePicker</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Value</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The currently selected date. Use with @@bind-Value for two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Placeholder</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">"Pick a date"</td>
+                            <td class="p-3 text-muted-foreground">Text shown in the trigger button when no date is selected.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Format</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">"dd.MM.yyyy"</td>
+                            <td class="p-3 text-muted-foreground">The date format string used to display the selected date.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">MinDate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The earliest selectable date. Dates before this are disabled.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">MaxDate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateOnly?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The latest selectable date. Dates after this are disabled.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Presets</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;DatePickerPreset&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">A list of quick-select preset dates shown above the calendar.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {
     private DateOnly? _selectedDate;
     private DateOnly? _birthDate;
     private DateOnly? _eventDate;
+    private DateOnly? _constrainedDate;
+    private DateOnly _minDate = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+    private DateOnly? _presetDate;
+    private List<DatePicker.DatePickerPreset> _presets =
+    [
+        new("Today", DateOnly.FromDateTime(DateTime.Today)),
+        new("Tomorrow", DateOnly.FromDateTime(DateTime.Today.AddDays(1))),
+        new("Next Week", DateOnly.FromDateTime(DateTime.Today.AddDays(7))),
+        new("Next Month", DateOnly.FromDateTime(DateTime.Today.AddMonths(1))),
+    ];
 
     private string _defaultCode = @"<DatePicker @bind-Value=""_selectedDate"" />";
 
@@ -41,4 +127,25 @@
 <DatePicker @bind-Value=""_date"" Placeholder=""Pick your date of birth"" />";
 
     private string _formatCode = @"<DatePicker @bind-Value=""_date"" Format=""yyyy-MM-dd"" Placeholder=""YYYY-MM-DD"" />";
+
+    private string _minMaxCode = @"<DatePicker @bind-Value=""_date"" MinDate=""@_minDate"" MaxDate=""@_maxDate"" Placeholder=""Select within range"" />
+
+@code {
+    private DateOnly? _date;
+    private DateOnly _minDate = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+}";
+
+    private string _presetsCode = @"<DatePicker @bind-Value=""_date"" Presets=""@_presets"" Placeholder=""Pick a date"" />
+
+@code {
+    private DateOnly? _date;
+    private List<DatePicker.DatePickerPreset> _presets =
+    [
+        new(""Today"", DateOnly.FromDateTime(DateTime.Today)),
+        new(""Tomorrow"", DateOnly.FromDateTime(DateTime.Today.AddDays(1))),
+        new(""Next Week"", DateOnly.FromDateTime(DateTime.Today.AddDays(7))),
+        new(""Next Month"", DateOnly.FromDateTime(DateTime.Today.AddMonths(1))),
+    ];
+}";
 }

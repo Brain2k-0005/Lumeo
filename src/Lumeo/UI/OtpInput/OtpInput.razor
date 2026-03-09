@@ -9,7 +9,7 @@
                inputmode="numeric"
                maxlength="1"
                autocomplete="one-time-code"
-               class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none"
                value="@GetChar(index)"
                @oninput="@(e => HandleInput(index, e))"
                @onkeydown="@(e => HandleKeyDown(index, e))" />
@@ -32,6 +32,30 @@
     private string CssClass => $"flex items-center gap-2 {Class}".Trim();
 
     private string GetChar(int index) => index < Value.Length ? Value[index].ToString() : "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Interop.RegisterOtpPaste(_baseId, Length, HandlePaste);
+        }
+    }
+
+    private async Task HandlePaste(string digits)
+    {
+        var padded = digits.PadRight(Length).Substring(0, Length);
+        Value = padded.TrimEnd();
+        await ValueChanged.InvokeAsync(Value);
+
+        if (Value.Length == Length)
+        {
+            await OnComplete.InvokeAsync(Value);
+        }
+        else if (Value.Length > 0)
+        {
+            await Interop.FocusElement($"{_baseId}-{Value.Length}");
+        }
+    }
 
     private async Task HandleInput(int index, ChangeEventArgs e)
     {
@@ -67,5 +91,12 @@
         }
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.UnregisterOtpPaste(_baseId, Length);
+        }
+        catch (JSDisconnectedException) { }
+    }
 }

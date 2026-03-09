@@ -223,7 +223,7 @@ public class ToastServiceTests
     [Fact]
     public void ToastMessage_Record_Properties_Match()
     {
-        var msg = new ToastMessage("Title", "Desc", ToastVariant.Info);
+        var msg = new ToastMessage("test-id", new ToastOptions { Title = "Title", Description = "Desc", Variant = ToastVariant.Info });
 
         Assert.Equal("Title", msg.Title);
         Assert.Equal("Desc", msg.Description);

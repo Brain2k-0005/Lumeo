@@ -1,0 +1,455 @@
+@page "/blocks/authentication"
+@namespace Lumeo.Docs.Pages.Patterns
+@using Lumeo.Services
+@inject ToastService ToastService
+
+<PageTitle>Authentication Pattern — Lumeo</PageTitle>
+
+<PageHeader Title="Authentication" Description="A multi-step authentication flow with login, OTP verification, and success state." />
+
+<div class="space-y-6">
+
+    <ComponentDemo Title="Multi-Step Authentication" Code="@_authCode">
+        <div class="flex items-center justify-center py-8">
+            <div class="w-full max-w-md">
+                <Card>
+                    <CardHeader>
+                        <div class="flex items-center gap-3 mb-1">
+                            <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                                <DynamicIcon Name="Shield" Class="h-4 w-4 text-primary-foreground" />
+                            </div>
+                            <h2 class="text-xl font-semibold text-foreground">
+                                @(_currentStep == 1 ? "Sign In" : _currentStep == 2 ? "Verify Identity" : "Welcome Back!")
+                            </h2>
+                        </div>
+                        <p class="text-sm text-muted-foreground">
+                            @(_currentStep == 1 ? "Enter your credentials to access your account." : _currentStep == 2 ? "Enter the 6-digit code sent to your email." : "You have successfully signed in.")
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+
+                        @if (_currentStep == 1)
+                        {
+                            <!-- Step 1: Login -->
+                            <div class="space-y-4">
+                                @if (_loginError is not null)
+                                {
+                                    <Alert Variant="Alert.AlertVariant.Destructive">
+                                        <div class="flex items-center gap-2">
+                                            <DynamicIcon Name="CircleAlert" Class="h-4 w-4 shrink-0" />
+                                            <p class="text-sm font-medium">@_loginError</p>
+                                        </div>
+                                    </Alert>
+                                }
+
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground" for="auth-email">Email</label>
+                                    <Lumeo.Input id="auth-email"
+                                           type="email"
+                                           placeholder="you@example.com"
+                                           Value="@_email"
+                                           OnInput="@(e => _email = e.Value?.ToString() ?? "")">
+                                        <Prefix><DynamicIcon Name="Mail" Class="h-4 w-4 text-muted-foreground" /></Prefix>
+                                    </Lumeo.Input>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground" for="auth-password">Password</label>
+                                    <Lumeo.Input id="auth-password"
+                                           type="@(_showPassword ? "text" : "password")"
+                                           placeholder="••••••••"
+                                           Value="@_password"
+                                           OnInput="@(e => _password = e.Value?.ToString() ?? "")">
+                                        <Prefix><DynamicIcon Name="Lock" Class="h-4 w-4 text-muted-foreground" /></Prefix>
+                                        <Suffix>
+                                            <button type="button" class="text-muted-foreground hover:text-foreground transition-colors" @onclick="TogglePasswordVisibility">
+                                                <DynamicIcon Name="@(_showPassword ? "EyeOff" : "Eye")" Class="h-4 w-4" />
+                                            </button>
+                                        </Suffix>
+                                    </Lumeo.Input>
+                                </div>
+
+                                <div class="flex items-center justify-end">
+                                    <button type="button" class="text-sm text-primary hover:underline">Forgot password?</button>
+                                </div>
+
+                                <Button Class="w-full" IsLoading="_isLoading" @onclick="HandleLogin">
+                                    @if (!_isLoading)
+                                    {
+                                        <DynamicIcon Name="LogIn" Class="h-4 w-4 mr-2" />
+                                    }
+                                    Sign In
+                                </Button>
+
+                                <div class="relative">
+                                    <div class="absolute inset-0 flex items-center">
+                                        <Separator />
+                                    </div>
+                                    <div class="relative flex justify-center text-xs uppercase">
+                                        <span class="bg-card px-2 text-muted-foreground">Or continue with</span>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-3">
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="w-full">
+                                        <DynamicIcon Name="Chrome" Class="h-4 w-4 mr-2" />
+                                        Google
+                                    </Button>
+                                    <Button Variant="Button.ButtonVariant.Outline" Class="w-full">
+                                        <DynamicIcon Name="Github" Class="h-4 w-4 mr-2" />
+                                        GitHub
+                                    </Button>
+                                </div>
+                            </div>
+                        }
+
+                        @if (_currentStep == 2)
+                        {
+                            <!-- Step 2: OTP Verification -->
+                            <div class="space-y-4">
+                                <div class="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
+                                    <p>Code sent to <span class="font-medium text-foreground">@_email</span></p>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-foreground">Verification Code</label>
+                                    <div class="flex justify-center">
+                                        <OtpInput Length="6" @bind-Value="_otp" OnComplete="@HandleOtpComplete" />
+                                    </div>
+                                </div>
+
+                                <Button Class="w-full" IsLoading="_isLoading" @onclick="HandleVerify">
+                                    @if (!_isLoading)
+                                    {
+                                        <DynamicIcon Name="ShieldCheck" Class="h-4 w-4 mr-2" />
+                                    }
+                                    Verify Code
+                                </Button>
+
+                                <div class="flex items-center justify-between text-sm">
+                                    <button type="button" class="text-muted-foreground hover:text-foreground transition-colors" @onclick="GoBack">
+                                        Back to login
+                                    </button>
+                                    <button type="button" class="text-primary hover:underline" @onclick="ResendCode">
+                                        Resend code
+                                    </button>
+                                </div>
+                            </div>
+                        }
+
+                        @if (_currentStep == 3)
+                        {
+                            <!-- Step 3: Success -->
+                            <div class="space-y-4">
+                                <Alert Variant="Alert.AlertVariant.Success">
+                                    <div class="flex items-center gap-2">
+                                        <DynamicIcon Name="CircleCheck" Class="h-4 w-4 shrink-0" />
+                                        <div>
+                                            <p class="font-medium">Welcome back!</p>
+                                            <p class="text-sm mt-0.5">You have successfully signed in to your account.</p>
+                                        </div>
+                                    </div>
+                                </Alert>
+
+                                <div class="flex items-center gap-3 rounded-lg border bg-muted/50 p-4">
+                                    <Avatar>
+                                        <AvatarFallback>@(_email.Length > 0 ? _email[0].ToString().ToUpper() : "U")</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <p class="text-sm font-medium text-foreground">@_email</p>
+                                        <p class="text-xs text-muted-foreground">Authenticated successfully</p>
+                                    </div>
+                                    <Badge Variant="Badge.BadgeVariant.Success" Class="ml-auto">Active</Badge>
+                                </div>
+
+                                <Button Class="w-full" @onclick="Reset">
+                                    <DynamicIcon Name="RefreshCw" Class="h-4 w-4 mr-2" />
+                                    Start Over
+                                </Button>
+                            </div>
+                        }
+
+                    </CardContent>
+                </Card>
+
+                @if (_currentStep > 1 && _currentStep < 3)
+                {
+                    <div class="mt-4 flex justify-center gap-2">
+                        @for (int i = 1; i <= 2; i++)
+                        {
+                            var step = i;
+                            <div class="h-1.5 w-12 rounded-full @(step <= _currentStep ? "bg-primary" : "bg-muted")"></div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+        <ToastProvider />
+    </ComponentDemo>
+
+</div>
+
+@code {
+    private int _currentStep = 1;
+    private string _email = "";
+    private string _password = "";
+    private bool _showPassword;
+    private bool _isLoading;
+    private string _otp = "";
+    private string? _loginError;
+
+    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
+
+    private async Task HandleLogin()
+    {
+        _loginError = null;
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _loginError = "Please enter your email and password.";
+            return;
+        }
+
+        _isLoading = true;
+        await Task.Delay(1500);
+        _isLoading = false;
+
+        if (_password == "wrong")
+        {
+            _loginError = "Invalid credentials. Please try again.";
+            return;
+        }
+
+        _currentStep = 2;
+    }
+
+    private async Task HandleOtpComplete(string otp)
+    {
+        if (otp.Length == 6)
+        {
+            await HandleVerify();
+        }
+    }
+
+    private async Task HandleVerify()
+    {
+        if (_otp.Length < 6)
+        {
+            ToastService.Warning("Incomplete code", "Please enter all 6 digits.");
+            return;
+        }
+
+        _isLoading = true;
+        await Task.Delay(1500);
+        _isLoading = false;
+
+        _currentStep = 3;
+        ToastService.Success("Signed in", "Welcome back to your account!");
+    }
+
+    private async Task ResendCode()
+    {
+        ToastService.Show("Code resent", "A new verification code has been sent to your email.", ToastVariant.Info);
+        _otp = "";
+        await Task.CompletedTask;
+    }
+
+    private void GoBack()
+    {
+        _currentStep = 1;
+        _otp = "";
+        _loginError = null;
+    }
+
+    private void Reset()
+    {
+        _currentStep = 1;
+        _email = "";
+        _password = "";
+        _otp = "";
+        _loginError = null;
+        _showPassword = false;
+    }
+
+    private string _authCode = @"<!-- Multi-step authentication wrapped in a centered Card -->
+<div class=""flex items-center justify-center py-8"">
+    <div class=""w-full max-w-md"">
+        <Card>
+            <CardHeader>
+                <div class=""flex items-center gap-3 mb-1"">
+                    <div class=""flex h-8 w-8 items-center justify-center rounded-md bg-primary"">
+                        <Blazicon Svg=""Lucide.Shield"" class=""h-4 w-4 text-primary-foreground"" />
+                    </div>
+                    <h2 class=""text-xl font-semibold text-foreground"">Sign In</h2>
+                </div>
+                <p class=""text-sm text-muted-foreground"">Enter your credentials to access your account.</p>
+            </CardHeader>
+            <CardContent>
+
+                @* Step 1 — Login *@
+                @if (_currentStep == 1)
+                {
+                    <div class=""space-y-4"">
+                        @if (_loginError is not null)
+                        {
+                            <Alert Variant=""Alert.AlertVariant.Destructive"">
+                                <div class=""flex items-center gap-2"">
+                                    <Blazicon Svg=""Lucide.CircleAlert"" class=""h-4 w-4"" />
+                                    <p class=""text-sm font-medium"">@_loginError</p>
+                                </div>
+                            </Alert>
+                        }
+
+                        <Input type=""email"" Placeholder=""you@example.com"" @bind-Value=""_email"">
+                            <Prefix><Blazicon Svg=""Lucide.Mail"" class=""h-4 w-4 text-muted-foreground"" /></Prefix>
+                        </Input>
+
+                        <Input type=""@(_showPassword ? """" text"""" : """" password"""")"" Placeholder=""••••••••"" @bind-Value=""_password"">
+                            <Prefix><Blazicon Svg=""Lucide.Lock"" class=""h-4 w-4 text-muted-foreground"" /></Prefix>
+                            <Suffix>
+                                <button type=""button"" @onclick=""TogglePasswordVisibility"" class=""text-muted-foreground hover:text-foreground"">
+                                    <Blazicon Svg=""@(_showPassword ? Lucide.EyeOff : Lucide.Eye)"" class=""h-4 w-4"" />
+                                </button>
+                            </Suffix>
+                        </Input>
+
+                        <div class=""flex justify-end"">
+                            <button class=""text-sm text-primary hover:underline"">Forgot password?</button>
+                        </div>
+
+                        <Button Class=""w-full"" IsLoading=""_isLoading"" @onclick=""HandleLogin"">
+                            <Blazicon Svg=""Lucide.LogIn"" class=""h-4 w-4 mr-2"" /> Sign In
+                        </Button>
+
+                        <div class=""relative"">
+                            <div class=""absolute inset-0 flex items-center""><Separator /></div>
+                            <div class=""relative flex justify-center text-xs uppercase"">
+                                <span class=""bg-card px-2 text-muted-foreground"">Or continue with</span>
+                            </div>
+                        </div>
+
+                        <div class=""grid grid-cols-2 gap-3"">
+                            <Button Variant=""Button.ButtonVariant.Outline"" Class=""w-full"">
+                                <Blazicon Svg=""Lucide.Chrome"" class=""h-4 w-4 mr-2"" /> Google
+                            </Button>
+                            <Button Variant=""Button.ButtonVariant.Outline"" Class=""w-full"">
+                                <Blazicon Svg=""Lucide.Github"" class=""h-4 w-4 mr-2"" /> GitHub
+                            </Button>
+                        </div>
+                    </div>
+                }
+
+                @* Step 2 — OTP Verification *@
+                @if (_currentStep == 2)
+                {
+                    <div class=""space-y-4"">
+                        <div class=""rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground"">
+                            Code sent to <span class=""font-medium text-foreground"">@_email</span>
+                        </div>
+
+                        <div class=""flex justify-center"">
+                            <OtpInput Length=""6"" @bind-Value=""_otp"" OnComplete=""HandleOtpComplete"" />
+                        </div>
+
+                        <Button Class=""w-full"" IsLoading=""_isLoading"" @onclick=""HandleVerify"">
+                            <Blazicon Svg=""Lucide.ShieldCheck"" class=""h-4 w-4 mr-2"" /> Verify Code
+                        </Button>
+
+                        <div class=""flex items-center justify-between text-sm"">
+                            <button @onclick=""GoBack"" class=""text-muted-foreground hover:text-foreground"">Back to login</button>
+                            <button @onclick=""ResendCode"" class=""text-primary hover:underline"">Resend code</button>
+                        </div>
+                    </div>
+                }
+
+                @* Step 3 — Success *@
+                @if (_currentStep == 3)
+                {
+                    <div class=""space-y-4"">
+                        <Alert Variant=""Alert.AlertVariant.Success"">
+                            <div class=""flex items-center gap-2"">
+                                <Blazicon Svg=""Lucide.CircleCheck"" class=""h-4 w-4"" />
+                                <div>
+                                    <p class=""font-medium"">Welcome back!</p>
+                                    <p class=""text-sm mt-0.5"">You have successfully signed in.</p>
+                                </div>
+                            </div>
+                        </Alert>
+
+                        <div class=""flex items-center gap-3 rounded-lg border bg-muted/50 p-4"">
+                            <Avatar>
+                                <AvatarFallback>@(_email[0].ToString().ToUpper())</AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <p class=""text-sm font-medium text-foreground"">@_email</p>
+                                <p class=""text-xs text-muted-foreground"">Authenticated successfully</p>
+                            </div>
+                            <Badge Variant=""Badge.BadgeVariant.Success"" Class=""ml-auto"">Active</Badge>
+                        </div>
+
+                        <Button Class=""w-full"" @onclick=""Reset"">
+                            <Blazicon Svg=""Lucide.RefreshCw"" class=""h-4 w-4 mr-2"" /> Start Over
+                        </Button>
+                    </div>
+                }
+
+            </CardContent>
+        </Card>
+    </div>
+</div>
+
+@code {
+    private int _currentStep = 1;
+    private string _email = """";
+    private string _password = """";
+    private bool _showPassword;
+    private bool _isLoading;
+    private string _otp = """";
+    private string? _loginError;
+
+    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
+
+    private async Task HandleLogin()
+    {
+        _loginError = null;
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _loginError = ""Please enter your email and password."";
+            return;
+        }
+        _isLoading = true;
+        await Task.Delay(1500);
+        _isLoading = false;
+        _currentStep = 2;
+    }
+
+    private async Task HandleOtpComplete(string otp)
+    {
+        if (otp.Length == 6) await HandleVerify();
+    }
+
+    private async Task HandleVerify()
+    {
+        if (_otp.Length < 6) { ToastService.Warning(""Incomplete"", ""Enter all 6 digits.""); return; }
+        _isLoading = true;
+        await Task.Delay(1500);
+        _isLoading = false;
+        _currentStep = 3;
+        ToastService.Success(""Signed in"", ""Welcome back!"");
+    }
+
+    private void ResendCode()
+    {
+        ToastService.Info(""Code resent"", ""A new code was sent to your email."");
+        _otp = """";
+    }
+
+    private void GoBack() { _currentStep = 1; _otp = """"; _loginError = null; }
+
+    private void Reset()
+    {
+        _currentStep = 1; _email = """"; _password = """"; _otp = """";
+        _loginError = null; _showPassword = false;
+    }
+}";
+}

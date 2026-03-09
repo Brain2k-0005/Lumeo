@@ -8,7 +8,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Toast;
 
-public class ToastTests : IDisposable
+public class ToastTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -17,7 +17,8 @@ public class ToastTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     // ─── Toast component rendering ───────────────────────────────────────────
 

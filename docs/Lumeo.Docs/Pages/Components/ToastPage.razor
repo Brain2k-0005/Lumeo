@@ -40,6 +40,18 @@
             </Button>
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Toast with Actions" Code="@_actionsCode">
+        <Button OnClick="@ShowWithAction">Show with Action</Button>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Persistent Toast" Code="@_persistentCode">
+        <Button OnClick="@ShowPersistent">Show Persistent</Button>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Promise Toast" Code="@_promiseCode">
+        <Button OnClick="@ShowPromise">Save Changes</Button>
+    </ComponentDemo>
 </div>
 
 <ToastProvider />
@@ -74,6 +86,60 @@
         </div>
 
         <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">ToastOptions</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Title</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">The main heading text of the toast.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Description</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Optional secondary text displayed below the title.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Duration</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">5000</td>
+                            <td class="p-3 text-muted-foreground">Auto-dismiss duration in milliseconds. Set to 0 to disable auto-dismiss.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Dismissible</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Whether the toast can be manually dismissed by the user.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ActionLabel</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Label text for the optional action button.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnAction</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Action?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Callback invoked when the action button is clicked.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
             <h3 class="text-lg font-semibold text-foreground mb-3">ToastService</h3>
             <div class="rounded-lg border border-border overflow-hidden">
                 <table class="w-full text-sm">
@@ -91,6 +157,11 @@
                             <td class="p-3 text-muted-foreground">Shows a default toast with optional description.</td>
                         </tr>
                         <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Show</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Show(ToastOptions)</td>
+                            <td class="p-3 text-muted-foreground">Shows a toast with full options including action button and duration.</td>
+                        </tr>
+                        <tr>
                             <td class="p-3 font-mono text-xs text-primary">Success</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">Success(title, description?)</td>
                             <td class="p-3 text-muted-foreground">Shows a success-styled toast.</td>
@@ -99,6 +170,11 @@
                             <td class="p-3 font-mono text-xs text-primary">Error</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">Error(title, description?)</td>
                             <td class="p-3 text-muted-foreground">Shows a destructive-styled error toast.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Promise</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Promise(task, loading, success, error)</td>
+                            <td class="p-3 text-muted-foreground">Shows loading state while the async task runs, then transitions to success or error.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -182,4 +258,92 @@ ToastService.Show(""Link copied"", ""The link has been copied to your clipboard.
 
 // Error with description
 ToastService.Error(""Item deleted"", ""The item has been removed from your list."");";
+
+    private void ShowWithAction()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Event Created",
+            Description = "Friday, February 28, 2026 at 5:00 PM",
+            ActionLabel = "Undo",
+            OnAction = () => ToastService.Show("Undo", "Event creation undone")
+        });
+    }
+
+    private void ShowPersistent()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Upload in progress",
+            Description = "Uploading file...",
+            Duration = 0,
+            Dismissible = true
+        });
+    }
+
+    private async Task ShowPromise()
+    {
+        await ToastService.Promise(
+            async () => { await Task.Delay(2000); return true; },
+            new ToastOptions { Title = "Saving changes...", Variant = ToastVariant.Default },
+            result => new ToastOptions { Title = "Changes saved successfully!", Variant = ToastVariant.Success },
+            ex => new ToastOptions { Title = "Failed to save changes", Variant = ToastVariant.Destructive }
+        );
+    }
+
+    private string _actionsCode = @"@inject ToastService ToastService
+
+<Button OnClick=""@ShowWithAction"">Show with Action</Button>
+
+<ToastProvider />
+
+@code {
+    private void ShowWithAction()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = ""Event Created"",
+            Description = ""Friday, February 28, 2026 at 5:00 PM"",
+            ActionLabel = ""Undo"",
+            OnAction = () => ToastService.Show(""Undo"", ""Event creation undone"")
+        });
+    }
+}";
+
+    private string _persistentCode = @"@inject ToastService ToastService
+
+<Button OnClick=""@ShowPersistent"">Show Persistent</Button>
+
+<ToastProvider />
+
+@code {
+    private void ShowPersistent()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = ""Upload in progress"",
+            Description = ""Uploading file..."",
+            Duration = 0,
+            Dismissible = true
+        });
+    }
+}";
+
+    private string _promiseCode = @"@inject ToastService ToastService
+
+<Button OnClick=""@ShowPromise"">Save Changes</Button>
+
+<ToastProvider />
+
+@code {
+    private async Task ShowPromise()
+    {
+        await ToastService.Promise(
+            async () => { await Task.Delay(2000); return true; },
+            ""Saving changes..."",
+            ""Changes saved successfully!"",
+            ""Failed to save changes""
+        );
+    }
+}";
 }

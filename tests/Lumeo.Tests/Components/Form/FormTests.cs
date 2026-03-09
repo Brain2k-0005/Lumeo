@@ -6,7 +6,7 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Form;
 
-public class FormTests : IDisposable
+public class FormTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -15,7 +15,8 @@ public class FormTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     // Helper to render FormField with optional children
     private IRenderedComponent<IComponent> RenderFormField(

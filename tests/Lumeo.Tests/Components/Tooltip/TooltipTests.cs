@@ -76,12 +76,14 @@ public class TooltipTests : IAsyncLifetime
     }
 
     [Fact]
-    public void TooltipContent_Has_Group_Hover_Visible_Class()
+    public void TooltipContent_Has_Invisible_When_Closed()
     {
         var cut = RenderTooltip();
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.Contains("group-hover:visible", cls);
+        // Timer-based tooltip: starts invisible when not hovered
+        Assert.Contains("invisible", cls);
+        Assert.Contains("opacity-0", cls);
     }
 
     // --- Side variants ---
@@ -147,12 +149,12 @@ public class TooltipTests : IAsyncLifetime
     // --- Wrapper has group class ---
 
     [Fact]
-    public void Tooltip_Wrapper_Has_Group_Class()
+    public void Tooltip_Wrapper_Has_Relative_Inline_Flex_Class()
     {
         var cut = RenderTooltip();
-        // Tooltip wraps in a div with class "group relative inline-flex"
+        // Tooltip wraps in a div with class "relative inline-flex"
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("group")));
+        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("relative inline-flex")));
     }
 
     // --- TooltipTrigger class ---

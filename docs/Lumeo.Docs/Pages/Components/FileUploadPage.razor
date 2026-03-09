@@ -34,12 +34,92 @@
             }
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="With Progress" Code="@_progressCode">
+        <div class="w-full max-w-md space-y-4">
+            <FileUpload ShowProgress="true" Progress="@_uploadProgress" OnFilesSelected="@HandleFileUpload" Accept="image/*" Multiple="true"
+                        Label="Upload Images" Description="PNG, JPG up to 10MB" />
+            @if (_isUploading)
+            {
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" disabled>Uploading...</Button>
+            }
+        </div>
+    </ComponentDemo>
+</div>
+
+<!-- API Reference -->
+<div class="mt-12 space-y-6">
+    <h2 class="text-2xl font-bold text-foreground">API Reference</h2>
+
+    <div class="space-y-8">
+        <div>
+            <h3 class="text-lg font-semibold text-foreground mb-3">FileUpload</h3>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnFilesSelected</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;InputFileChangeEventArgs&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Callback invoked when the user selects or drops files.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Accept</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">File types accepted by the input (e.g. "image/*", ".pdf,.docx").</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Multiple</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, allows selecting multiple files at once.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Label</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">"Click to upload"</td>
+                            <td class="p-3 text-muted-foreground">Primary label text shown in the drop zone.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Description</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Secondary description text shown below the label.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowProgress</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, displays a progress bar inside the drop zone.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Progress</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">0</td>
+                            <td class="p-3 text-muted-foreground">Upload progress percentage (0–100), used when ShowProgress is true.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {
     private string? _fileName;
     private string? _imageName;
     private int _fileCount;
+    private int _uploadProgress;
+    private bool _isUploading;
 
     private void HandleFiles(InputFileChangeEventArgs e)
     {
@@ -56,6 +136,20 @@
         _fileCount = e.FileCount;
     }
 
+    private async void HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        _isUploading = true;
+        _uploadProgress = 0;
+        for (int i = 0; i <= 100; i += 20)
+        {
+            _uploadProgress = i;
+            StateHasChanged();
+            await Task.Delay(300);
+        }
+        _isUploading = false;
+        StateHasChanged();
+    }
+
     private string _defaultCode = @"<FileUpload OnFilesSelected=""HandleFiles"" />";
 
     private string _imageCode = @"<FileUpload
@@ -69,4 +163,32 @@
     Description=""Select one or more files""
     Multiple=""true""
     OnFilesSelected=""HandleFiles"" />";
+
+    private string _progressCode = @"<FileUpload
+    ShowProgress=""true""
+    Progress=""@_uploadProgress""
+    OnFilesSelected=""@HandleFileUpload""
+    Accept=""image/*""
+    Multiple=""true""
+    Label=""Upload Images""
+    Description=""PNG, JPG up to 10MB"" />
+
+@code {
+    private int _uploadProgress;
+    private bool _isUploading;
+
+    private async void HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        _isUploading = true;
+        _uploadProgress = 0;
+        for (int i = 0; i <= 100; i += 20)
+        {
+            _uploadProgress = i;
+            StateHasChanged();
+            await Task.Delay(300);
+        }
+        _isUploading = false;
+        StateHasChanged();
+    }
+}";
 }

@@ -45,6 +45,10 @@ function registerLumeoTheme() {
     const chart4 = getCssVar('--color-chart-4') || '#d4a843';
     const chart5 = getCssVar('--color-chart-5') || '#e08844';
 
+    const radiusRaw = getCssVar('--radius') || '0.75rem';
+    const radiusPx = parseFloat(radiusRaw) * (radiusRaw.includes('rem') ? 16 : 1);
+    const barRadius = [radiusPx, radiusPx, 0, 0];
+
     window.echarts.registerTheme('lumeo', {
         color: [chart1, chart2, chart3, chart4, chart5],
         backgroundColor: 'transparent',
@@ -59,7 +63,7 @@ function registerLumeoTheme() {
         },
         legend: {
             textStyle: { color: mutedFg, fontSize: 11 },
-            icon: 'roundRect',
+            icon: radiusPx > 0 ? 'roundRect' : 'rect',
             itemWidth: 12,
             itemHeight: 8,
             itemGap: 16
@@ -69,7 +73,7 @@ function registerLumeoTheme() {
             borderColor: border,
             borderWidth: 1,
             textStyle: { color: fg, fontSize: 12 },
-            extraCssText: 'border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 8px 12px;'
+            extraCssText: `border-radius: ${radiusPx}px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 8px 12px;`
         },
         categoryAxis: {
             axisLine: { show: false },
@@ -93,7 +97,7 @@ function registerLumeoTheme() {
         },
         bar: {
             barMaxWidth: 32,
-            itemStyle: { borderRadius: [4, 4, 0, 0] }
+            itemStyle: { borderRadius: barRadius }
         },
         pie: {
             itemStyle: { borderColor: card, borderWidth: 2 },

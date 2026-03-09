@@ -1,0 +1,26 @@
+@namespace Lumeo
+
+@{
+    var context = new DropdownMenuRadioGroupContext(Value, EventCallback.Factory.Create<string>(this, OnValueSelected));
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div role="group" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task OnValueSelected(string value)
+    {
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    public record DropdownMenuRadioGroupContext(string? Value, EventCallback<string> OnSelect);
+}

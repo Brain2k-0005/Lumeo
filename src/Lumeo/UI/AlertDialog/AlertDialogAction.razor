@@ -1,6 +1,10 @@
 @namespace Lumeo
 
-<button class="@CssClass" @onclick="DoAction" @attributes="AdditionalAttributes">
+<button class="@CssClass" disabled="@IsLoading" @onclick="DoAction" @attributes="AdditionalAttributes">
+    @if (IsLoading)
+    {
+        <Spinner Class="h-4 w-4 mr-2" />
+    }
     @ChildContent
 </button>
 
@@ -8,14 +12,18 @@
     [CascadingParameter] public AlertDialog.AlertDialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public EventCallback OnAction { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 h-9 px-4 py-2 {Class}".Trim();
+    private string CssClass => $"inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 h-9 px-4 py-2 disabled:pointer-events-none disabled:opacity-50 {Class}".Trim();
 
     private async Task DoAction()
     {
         await OnAction.InvokeAsync();
-        await Context.SetOpen.InvokeAsync(false);
+        if (!IsLoading)
+        {
+            await Context.SetOpen.InvokeAsync(false);
+        }
     }
 }

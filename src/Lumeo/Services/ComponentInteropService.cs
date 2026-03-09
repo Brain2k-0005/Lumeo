@@ -14,6 +14,7 @@ public sealed class ComponentInteropService : IAsyncDisposable
     private readonly Dictionary<string, Func<double, Task>> _resizeHandlers = new();
     private readonly Dictionary<string, Func<Task>> _resizeEndHandlers = new();
     private readonly Dictionary<string, Func<string?, Task>> _scrollspyHandlers = new();
+    private readonly Dictionary<string, Func<string, Task>> _toastSwipeHandlers = new();
 
     public ComponentInteropService(IJSRuntime jsRuntime)
     {
@@ -62,6 +63,18 @@ public sealed class ComponentInteropService : IAsyncDisposable
         await module.InvokeVoidAsync("focusElementById", elementId);
     }
 
+    public async ValueTask FocusMenuItemByIndex(string containerId, int index)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("focusMenuItemByIndex", containerId, index);
+    }
+
+    public async ValueTask<int> GetMenuItemCount(string containerId)
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<int>("getMenuItemCount", containerId);
+    }
+
     public async ValueTask LockScroll()
     {
         var module = await GetModuleAsync();
@@ -88,10 +101,10 @@ public sealed class ComponentInteropService : IAsyncDisposable
 
     // --- Floating Position ---
 
-    public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false)
+    public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth);
+        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth, side);
     }
 
     // --- Element Rect ---
@@ -242,6 +255,66 @@ public sealed class ComponentInteropService : IAsyncDisposable
         }
     }
 
+    // --- Toast Swipe ---
+
+    public async ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)
+    {
+        _toastSwipeHandlers[elementId] = handler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerToastSwipe", elementId, toastId, GetSelfRef());
+    }
+
+    public async ValueTask UnregisterToastSwipe(string elementId)
+    {
+        _toastSwipeHandlers.Remove(elementId);
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unregisterToastSwipe", elementId);
+    }
+
+    [JSInvokable]
+    public async Task OnToastSwipeDismiss(string toastId)
+    {
+        if (_toastSwipeHandlers.TryGetValue(toastId, out var handler))
+        {
+            await handler(toastId);
+        }
+    }
+
+    // --- Auto Resize ---
+
+    public async ValueTask SetupAutoResize(string elementId, int maxRows)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setupAutoResize", elementId, maxRows);
+    }
+
+    // --- OTP Paste ---
+
+    private readonly Dictionary<string, Func<string, Task>> _otpPasteHandlers = new();
+
+    public async ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)
+    {
+        _otpPasteHandlers[baseId] = handler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerOtpPaste", baseId, length, GetSelfRef());
+    }
+
+    public async ValueTask UnregisterOtpPaste(string baseId, int length)
+    {
+        _otpPasteHandlers.Remove(baseId);
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unregisterOtpPaste", baseId, length);
+    }
+
+    [JSInvokable]
+    public async Task OnOtpPaste(string digits)
+    {
+        foreach (var handler in _otpPasteHandlers.Values)
+        {
+            await handler(digits);
+        }
+    }
+
     public record ElementRect(double X, double Y, double Width, double Height);
 
     public async ValueTask DisposeAsync()
@@ -268,6 +341,8 @@ public sealed class ComponentInteropService : IAsyncDisposable
         _resizeHandlers.Clear();
         _resizeEndHandlers.Clear();
         _scrollspyHandlers.Clear();
+        _toastSwipeHandlers.Clear();
+        _otpPasteHandlers.Clear();
 
         if (_module is not null)
         {

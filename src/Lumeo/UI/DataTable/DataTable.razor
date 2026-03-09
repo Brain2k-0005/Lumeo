@@ -5,6 +5,12 @@
     <table class="@CssClass">
         <thead class="[&_tr]:border-b">
             <tr class="border-b transition-colors hover:bg-muted/50">
+                @if (Selectable)
+                {
+                    <th class="h-10 w-10 px-2 text-left align-middle font-medium text-muted-foreground">
+                        <Checkbox Checked="@IsAllSelected" IsIndeterminate="@IsSomeSelected" CheckedChanged="@ToggleSelectAll" />
+                    </th>
+                }
                 @HeaderTemplate
             </tr>
         </thead>
@@ -35,11 +41,32 @@
                     </td>
                 </tr>
             }
+            else if (Virtualize)
+            {
+                @foreach (var item in ItemsList)
+                {
+                    <tr class="border-b transition-colors hover:bg-muted/50">
+                        @if (Selectable)
+                        {
+                            <td class="w-10 px-2 py-2 align-middle">
+                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" />
+                            </td>
+                        }
+                        @RowTemplate!(item)
+                    </tr>
+                }
+            }
             else
             {
                 @foreach (var item in Items)
                 {
                     <tr class="border-b transition-colors hover:bg-muted/50">
+                        @if (Selectable)
+                        {
+                            <td class="w-10 px-2 py-2 align-middle">
+                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" />
+                            </td>
+                        }
                         @RowTemplate!(item)
                     </tr>
                 }
@@ -59,5 +86,52 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Sorting
+    [Parameter] public string? SortColumn { get; set; }
+    [Parameter] public EventCallback<string?> SortColumnChanged { get; set; }
+    [Parameter] public SortDirection SortDir { get; set; } = SortDirection.Ascending;
+    [Parameter] public EventCallback<SortDirection> SortDirChanged { get; set; }
+    [Parameter] public EventCallback<(string Column, SortDirection Direction)> OnSort { get; set; }
+
+    // Selection
+    [Parameter] public bool Selectable { get; set; }
+    [Parameter] public HashSet<TItem>? SelectedItems { get; set; }
+    [Parameter] public EventCallback<HashSet<TItem>> SelectedItemsChanged { get; set; }
+
+    // Virtualization
+    [Parameter] public bool Virtualize { get; set; }
+    [Parameter] public float ItemSize { get; set; } = 48;
+
     private string CssClass => $"w-full caption-bottom text-sm {Class}".Trim();
+
+    private List<TItem> ItemsList => Items?.ToList() ?? [];
+
+    private bool IsAllSelected => Items is not null && Items.Any() && SelectedItems is not null && Items.All(i => SelectedItems.Contains(i));
+
+    private bool IsSomeSelected => SelectedItems is not null && SelectedItems.Count > 0 && !IsAllSelected;
+
+    private async Task ToggleSelectAll(bool select)
+    {
+        if (Items is null) return;
+        SelectedItems ??= [];
+        if (select)
+        {
+            foreach (var item in Items) SelectedItems.Add(item);
+        }
+        else
+        {
+            SelectedItems.Clear();
+        }
+        await SelectedItemsChanged.InvokeAsync(SelectedItems);
+    }
+
+    private async Task ToggleItem(TItem item, bool selected)
+    {
+        SelectedItems ??= [];
+        if (selected) SelectedItems.Add(item);
+        else SelectedItems.Remove(item);
+        await SelectedItemsChanged.InvokeAsync(SelectedItems);
+    }
+
+    public enum SortDirection { None, Ascending, Descending }
 }

@@ -1,7 +1,22 @@
 @namespace Lumeo
 
-<button class="@CssClass" @attributes="AdditionalAttributes" @onclick="OnClick">
-    @ChildContent
+<button class="@CssClass" disabled="@(IsLoading || (AdditionalAttributes?.ContainsKey("disabled") == true))" @attributes="AdditionalAttributes" @onclick="OnClick">
+    @if (IsLoading)
+    {
+        <Spinner Class="h-4 w-4" />
+        @if (LoadingText != null)
+        {
+            <span>@LoadingText</span>
+        }
+        else
+        {
+            @ChildContent
+        }
+    }
+    else
+    {
+        @ChildContent
+    }
 </button>
 
 @code {
@@ -10,9 +25,11 @@
     [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? LoadingText { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"{VariantClasses} {SizeClasses} {BaseClasses} {Class}".Trim();
+    private string CssClass => $"{VariantClasses} {SizeClasses} {BaseClasses} {(IsLoading ? "pointer-events-none opacity-70" : "")} {Class}".Trim();
 
     private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 

@@ -14,6 +14,7 @@
     [CascadingParameter] public Popover.PopoverContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public PopoverAlign Align { get; set; } = PopoverAlign.Center;
+    [Parameter] public PopoverSide Side { get; set; } = PopoverSide.Bottom;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -30,11 +31,19 @@
         _ => "center"
     };
 
+    private string SideStr => Side switch
+    {
+        PopoverSide.Top => "top",
+        PopoverSide.Left => "left",
+        PopoverSide.Right => "right",
+        _ => "bottom"
+    };
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
             await Interop.RegisterClickOutside(_contentId, null, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
@@ -65,4 +74,5 @@
     }
 
     public enum PopoverAlign { Start, Center, End }
+    public enum PopoverSide { Top, Bottom, Left, Right }
 }

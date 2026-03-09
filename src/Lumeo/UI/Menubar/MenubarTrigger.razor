@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<button class="@CssClass" @onclick="HandleClick" @onmouseenter="HandleMouseEnter" @attributes="AdditionalAttributes">
+<button class="@CssClass" @onclick="HandleClick" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
 </button>
 
@@ -34,6 +34,33 @@
         if (Context.AnyOpen)
         {
             await Context.SetOpenMenuId.InvokeAsync(MenuContext.MenuId);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+            case "Enter":
+            case " ":
+                if (!IsOpen)
+                {
+                    await Context.SetOpenMenuId.InvokeAsync(MenuContext.MenuId);
+                }
+                break;
+            case "ArrowLeft":
+                Context.NavigateMenus(-1);
+                break;
+            case "ArrowRight":
+                Context.NavigateMenus(1);
+                break;
+            case "Escape":
+                if (IsOpen)
+                {
+                    await Context.SetOpenMenuId.InvokeAsync(null);
+                }
+                break;
         }
     }
 }

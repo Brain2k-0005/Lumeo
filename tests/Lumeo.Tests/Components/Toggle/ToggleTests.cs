@@ -5,7 +5,7 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.Toggle;
 
-public class ToggleTests : IDisposable
+public class ToggleTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
@@ -14,7 +14,8 @@ public class ToggleTests : IDisposable
         _ctx.AddLumeoServices();
     }
 
-    public void Dispose() => _ctx.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public void Renders_Button_Element()

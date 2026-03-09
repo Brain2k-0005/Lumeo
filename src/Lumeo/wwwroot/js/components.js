@@ -94,42 +94,105 @@ export function removeFocusTrap(elementId) {
 
 // --- Floating Position ---
 
-export function positionFixed(contentId, referenceId, align, matchWidth) {
+export function positionFixed(contentId, referenceId, align, matchWidth, side) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
     if (!content || !reference) return;
 
     const refRect = reference.getBoundingClientRect();
     const gap = 4;
+    const resolvedSide = side || 'bottom';
 
     content.style.position = 'fixed';
     content.style.zIndex = '50';
-    content.style.top = `${refRect.bottom + gap}px`;
+    content.style.top = '';
+    content.style.bottom = '';
+    content.style.left = '';
+    content.style.right = '';
+    content.style.transform = '';
 
     if (matchWidth) {
         content.style.width = `${refRect.width}px`;
     }
 
-    switch (align) {
-        case 'center':
-            content.style.left = `${refRect.left + refRect.width / 2}px`;
-            content.style.transform = 'translateX(-50%)';
-            break;
-        case 'end':
-            content.style.left = 'auto';
-            content.style.right = `${window.innerWidth - refRect.right}px`;
-            break;
-        default:
-            content.style.left = `${refRect.left}px`;
-            break;
+    if (resolvedSide === 'top') {
+        // Position above reference; horizontal align same as bottom
+        content.style.top = `${refRect.top - gap}px`; // will be corrected after measuring in rAF
+        switch (align) {
+            case 'center':
+                content.style.left = `${refRect.left + refRect.width / 2}px`;
+                content.style.transform = 'translateX(-50%) translateY(-100%)';
+                break;
+            case 'end':
+                content.style.right = `${window.innerWidth - refRect.right}px`;
+                content.style.transform = 'translateY(-100%)';
+                break;
+            default:
+                content.style.left = `${refRect.left}px`;
+                content.style.transform = 'translateY(-100%)';
+                break;
+        }
+    } else if (resolvedSide === 'left') {
+        content.style.left = `${refRect.left - gap}px`;
+        content.style.transform = 'translateX(-100%)';
+        switch (align) {
+            case 'center':
+                content.style.top = `${refRect.top + refRect.height / 2}px`;
+                content.style.transform = 'translateX(-100%) translateY(-50%)';
+                break;
+            case 'end':
+                content.style.top = `${refRect.bottom}px`;
+                content.style.transform = 'translateX(-100%) translateY(-100%)';
+                break;
+            default:
+                content.style.top = `${refRect.top}px`;
+                content.style.transform = 'translateX(-100%)';
+                break;
+        }
+    } else if (resolvedSide === 'right') {
+        content.style.left = `${refRect.right + gap}px`;
+        switch (align) {
+            case 'center':
+                content.style.top = `${refRect.top + refRect.height / 2}px`;
+                content.style.transform = 'translateY(-50%)';
+                break;
+            case 'end':
+                content.style.top = `${refRect.bottom}px`;
+                content.style.transform = 'translateY(-100%)';
+                break;
+            default:
+                content.style.top = `${refRect.top}px`;
+                break;
+        }
+    } else {
+        // bottom (default)
+        content.style.top = `${refRect.bottom + gap}px`;
+        switch (align) {
+            case 'center':
+                content.style.left = `${refRect.left + refRect.width / 2}px`;
+                content.style.transform = 'translateX(-50%)';
+                break;
+            case 'end':
+                content.style.left = 'auto';
+                content.style.right = `${window.innerWidth - refRect.right}px`;
+                break;
+            default:
+                content.style.left = `${refRect.left}px`;
+                break;
+        }
     }
 
     // Viewport bounds check
     requestAnimationFrame(() => {
         if (!content.isConnected) return;
         const cr = content.getBoundingClientRect();
-        if (cr.bottom > window.innerHeight) {
+        if (resolvedSide === 'bottom' && cr.bottom > window.innerHeight) {
             content.style.top = `${refRect.top - cr.height - gap}px`;
+            content.style.transform = content.style.transform.replace('translateY(-100%)', '').trim() || '';
+        }
+        if (resolvedSide === 'top' && cr.top < 0) {
+            content.style.top = `${refRect.bottom + gap}px`;
+            content.style.transform = content.style.transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
         }
         if (cr.right > window.innerWidth) {
             content.style.left = `${window.innerWidth - cr.width - 8}px`;
@@ -486,4 +549,157 @@ export function scrollspyScrollTo(containerId, sectionId, smooth) {
         top: section.offsetTop,
         behavior: smooth ? 'smooth' : 'auto'
     });
+}
+
+// --- Toast Swipe ---
+
+const toastSwipeHandlers = new Map();
+
+export function registerToastSwipe(elementId, toastId, dotnetRef) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    let startX = 0;
+    let currentX = 0;
+    let isDragging = false;
+
+    const onTouchStart = (e) => {
+        startX = e.touches[0].clientX;
+        currentX = startX;
+        isDragging = true;
+        el.style.transition = 'none';
+    };
+
+    const onTouchMove = (e) => {
+        if (!isDragging) return;
+        currentX = e.touches[0].clientX;
+        const deltaX = currentX - startX;
+        el.style.transform = `translateX(${deltaX}px)`;
+        el.style.opacity = String(Math.max(0, 1 - Math.abs(deltaX) / 200));
+    };
+
+    const onTouchEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        el.style.transition = '';
+        const deltaX = currentX - startX;
+        if (Math.abs(deltaX) > 80) {
+            dotnetRef.invokeMethodAsync('OnToastSwipeDismiss', toastId);
+        } else {
+            el.style.transform = '';
+            el.style.opacity = '';
+        }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd);
+
+    toastSwipeHandlers.set(elementId, { onTouchStart, onTouchMove, onTouchEnd });
+}
+
+// --- Auto Resize ---
+
+export function setupAutoResize(elementId, maxRows) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.style.overflow = 'hidden';
+    el.style.resize = 'none';
+    const lineHeight = parseInt(window.getComputedStyle(el).lineHeight) || 20;
+    const maxHeight = lineHeight * maxRows;
+
+    const resize = () => {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px';
+        if (el.scrollHeight > maxHeight) {
+            el.style.overflow = 'auto';
+        } else {
+            el.style.overflow = 'hidden';
+        }
+    };
+
+    el.addEventListener('input', resize);
+    resize(); // initial
+}
+
+export function unregisterToastSwipe(elementId) {
+    const handlers = toastSwipeHandlers.get(elementId);
+    if (handlers) {
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.removeEventListener('touchstart', handlers.onTouchStart);
+            el.removeEventListener('touchmove', handlers.onTouchMove);
+            el.removeEventListener('touchend', handlers.onTouchEnd);
+            el.style.transform = '';
+            el.style.opacity = '';
+        }
+        toastSwipeHandlers.delete(elementId);
+    }
+}
+
+// --- Menu Keyboard Navigation ---
+
+function getMenuItems(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled]), [role="menuitemradio"]:not([disabled]), button:not([disabled]):not([data-no-focus])'));
+}
+
+export function focusMenuItemByIndex(containerId, index) {
+    const items = getMenuItems(containerId);
+    if (index >= 0 && index < items.length) {
+        items[index].focus();
+        return index;
+    }
+    return -1;
+}
+
+export function getMenuItemCount(containerId) {
+    return getMenuItems(containerId).length;
+}
+
+// --- OTP Paste ---
+
+const otpPasteHandlers = new Map();
+
+export function registerOtpPaste(baseId, length, dotnetRef) {
+    // Clean up any previous handlers for this baseId
+    const existing = otpPasteHandlers.get(baseId);
+    if (existing) {
+        for (let i = 0; i < existing.length; i++) {
+            const el = document.getElementById(`${baseId}-${i}`);
+            if (el) el.removeEventListener('paste', existing[i]);
+        }
+    }
+
+    const handlers = [];
+    for (let i = 0; i < length; i++) {
+        const el = document.getElementById(`${baseId}-${i}`);
+        if (el) {
+            const handler = (e) => {
+                e.preventDefault();
+                const text = (e.clipboardData || window.clipboardData).getData('text');
+                const digits = text.replace(/\D/g, '').slice(0, length);
+                dotnetRef.invokeMethodAsync('OnOtpPaste', digits);
+            };
+            el.addEventListener('paste', handler);
+            handlers.push(handler);
+        } else {
+            handlers.push(null);
+        }
+    }
+    otpPasteHandlers.set(baseId, handlers);
+}
+
+export function unregisterOtpPaste(baseId, length) {
+    const handlers = otpPasteHandlers.get(baseId);
+    if (handlers) {
+        for (let i = 0; i < handlers.length; i++) {
+            if (handlers[i]) {
+                const el = document.getElementById(`${baseId}-${i}`);
+                if (el) el.removeEventListener('paste', handlers[i]);
+            }
+        }
+        otpPasteHandlers.delete(baseId);
+    }
 }

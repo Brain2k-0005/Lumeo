@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null);
+    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null, _menuIds, RegisterMenuId, NavigateMenus);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -16,6 +16,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string? _openMenuId;
+    private readonly List<string> _menuIds = [];
 
     private string CssClass => $"flex h-9 items-center space-x-1 rounded-md border border-border bg-background p-1 shadow-sm {Class}".Trim();
 
@@ -25,5 +26,37 @@
         StateHasChanged();
     }
 
-    public record MenubarContext(string? OpenMenuId, EventCallback<string?> SetOpenMenuId, bool AnyOpen);
+    private void RegisterMenuId(string menuId)
+    {
+        if (!_menuIds.Contains(menuId))
+        {
+            _menuIds.Add(menuId);
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateMenus(int direction)
+    {
+        if (_menuIds.Count == 0) return;
+        if (_openMenuId is null)
+        {
+            _openMenuId = direction > 0 ? _menuIds[0] : _menuIds[^1];
+        }
+        else
+        {
+            var currentIndex = _menuIds.IndexOf(_openMenuId);
+            if (currentIndex < 0) return;
+            var nextIndex = (currentIndex + direction + _menuIds.Count) % _menuIds.Count;
+            _openMenuId = _menuIds[nextIndex];
+        }
+        StateHasChanged();
+    }
+
+    public record MenubarContext(
+        string? OpenMenuId,
+        EventCallback<string?> SetOpenMenuId,
+        bool AnyOpen,
+        List<string> MenuIds,
+        Action<string> RegisterMenuId,
+        Action<int> NavigateMenus);
 }

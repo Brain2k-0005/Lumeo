@@ -1,5 +1,9 @@
 @namespace Lumeo
 
+@if (Variant == SidebarProvider.SidebarVariant.Overlay && !IsCollapsed)
+{
+    <div class="absolute inset-0 z-30 bg-black/50 transition-opacity" @onclick="DismissOverlay"></div>
+}
 <aside class="@CssClass" @attributes="AdditionalAttributes">
     @ChildContent
 </aside>
@@ -12,8 +16,33 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsCollapsed => State?.IsCollapsed ?? false;
+    private SidebarProvider.SidebarVariant Variant => State?.Variant ?? SidebarProvider.SidebarVariant.Push;
 
-    private string CssClass => $"flex h-full shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground overflow-y-auto overflow-x-hidden transition-all duration-300 {(IsCollapsed ? "w-16" : "w-64")} {(Side == SidebarSide.Right ? "order-last border-l border-r-0" : "")} {Class}".Trim();
+    private string CssClass
+    {
+        get
+        {
+            var baseCss = "flex h-full flex-col border-r bg-sidebar text-sidebar-foreground overflow-y-auto overflow-x-hidden transition-all duration-300";
+
+            var variantCss = Variant switch
+            {
+                SidebarProvider.SidebarVariant.Overlay =>
+                    $"absolute z-40 top-0 {(Side == SidebarSide.Right ? "right-0" : "left-0")} w-64 shadow-xl {(IsCollapsed ? (Side == SidebarSide.Right ? "translate-x-full" : "-translate-x-full") : "translate-x-0")}",
+                SidebarProvider.SidebarVariant.Icon => $"shrink-0 {(IsCollapsed ? "w-16" : "w-64")}",
+                _ => $"shrink-0 {(IsCollapsed ? "w-0 border-r-0" : "w-64")}"
+            };
+
+            var sideCss = Side == SidebarSide.Right ? "order-last border-l border-r-0" : "";
+
+            return $"{baseCss} {variantCss} {sideCss} {Class}".Trim();
+        }
+    }
+
+    private async Task DismissOverlay()
+    {
+        if (State is not null)
+            await State.Toggle.InvokeAsync();
+    }
 
     public enum SidebarSide { Left, Right }
 }

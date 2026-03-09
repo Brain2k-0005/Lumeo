@@ -1,7 +1,8 @@
 @namespace Lumeo
+@implements IDisposable
 
 @{
-    var context = new ComboboxContext(Value, SearchText, IsOpen,
+    var context = new ComboboxContext(Value, Values, SearchText, IsOpen, Multiple, IsSearchLoading,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
@@ -22,29 +23,69 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Multi-select
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public HashSet<string>? Values { get; set; }
+    [Parameter] public EventCallback<HashSet<string>> ValuesChanged { get; set; }
+
+    // Async search
+    [Parameter] public EventCallback<string> OnSearchAsync { get; set; }
+    [Parameter] public int DebounceMs { get; set; } = 300;
+    [Parameter] public bool IsSearchLoading { get; set; }
+
     private readonly string _wrapperId = $"combobox-{Guid.NewGuid():N}";
     private string SearchText { get; set; } = "";
+    private System.Threading.Timer? _debounceTimer;
 
     private async Task OnValueSelected(string value)
     {
-        Value = value;
-        await ValueChanged.InvokeAsync(value);
-        await SetOpen(false);
+        if (Multiple)
+        {
+            Values ??= [];
+            if (Values.Contains(value))
+                Values.Remove(value);
+            else
+                Values.Add(value);
+            await ValuesChanged.InvokeAsync(Values);
+        }
+        else
+        {
+            Value = value;
+            await ValueChanged.InvokeAsync(value);
+            await SetOpen(false);
+        }
     }
 
     private async Task SetOpen(bool value)
     {
         IsOpen = value;
-        if (!value) SearchText = "";
+        if (!value && !Multiple) SearchText = "";
         await IsOpenChanged.InvokeAsync(value);
     }
 
-    private Task OnSearchChanged(string text)
+    private async Task OnSearchChanged(string text)
     {
         SearchText = text;
-        return Task.CompletedTask;
+
+        if (OnSearchAsync.HasDelegate)
+        {
+            _debounceTimer?.Dispose();
+            _debounceTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await OnSearchAsync.InvokeAsync(text);
+                    StateHasChanged();
+                });
+            }, null, DebounceMs, System.Threading.Timeout.Infinite);
+        }
     }
 
-    public record ComboboxContext(string? Value, string SearchText, bool IsOpen,
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+
+    public record ComboboxContext(string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading,
         EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch, string WrapperId);
 }

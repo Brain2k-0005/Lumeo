@@ -1,0 +1,25 @@
+@namespace Lumeo
+
+<button type="button" role="menuitemradio" aria-checked="@IsSelected.ToString().ToLower()" class="@CssClass" @onclick="Select" @attributes="AdditionalAttributes">
+    <span class="flex h-3.5 w-3.5 items-center justify-center">
+        @if (IsSelected)
+        {
+            <Blazicon Svg="Lucide.Circle" class="h-2 w-2 fill-current" />
+        }
+    </span>
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public ContextMenuRadioGroup.ContextMenuRadioGroupContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsSelected => Context.Value == Value;
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground {Class}".Trim();
+
+    private async Task Select() => await Context.OnSelect.InvokeAsync(Value);
+}

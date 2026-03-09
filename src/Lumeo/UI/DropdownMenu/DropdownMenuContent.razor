@@ -14,11 +14,13 @@
     [CascadingParameter] public DropdownMenu.DropdownMenuContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public DropdownMenuAlign Align { get; set; } = DropdownMenuAlign.Start;
+    [Parameter] public DropdownMenuSide Side { get; set; } = DropdownMenuSide.Bottom;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"dropdown-content-{Guid.NewGuid():N}";
     private bool _registered;
+    private int _focusedIndex = -1;
 
     private string CssClass => $"fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
 
@@ -30,17 +32,26 @@
         _ => "start"
     };
 
+    private string SideStr => Side switch
+    {
+        DropdownMenuSide.Top => "top",
+        DropdownMenuSide.Left => "left",
+        DropdownMenuSide.Right => "right",
+        _ => "bottom"
+    };
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
             await Interop.RegisterClickOutside(_contentId, null, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
             });
             _registered = true;
+            _focusedIndex = -1;
         }
         else if (!Context.IsOpen && _registered)
         {
@@ -50,9 +61,51 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape")
+        switch (e.Key)
         {
-            await Context.SetOpen.InvokeAsync(false);
+            case "Escape":
+                await Context.SetOpen.InvokeAsync(false);
+                break;
+            case "ArrowDown":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = (_focusedIndex + 1) % count;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
+            case "ArrowUp":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = _focusedIndex <= 0 ? count - 1 : _focusedIndex - 1;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
+            case "Home":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = 0;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
+            case "End":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = count - 1;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
         }
     }
 
@@ -72,4 +125,5 @@
     }
 
     public enum DropdownMenuAlign { Start, Center, End }
+    public enum DropdownMenuSide { Top, Bottom, Left, Right }
 }

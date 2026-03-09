@@ -15,7 +15,25 @@
         </button>
     </PopoverTrigger>
     <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
-        <Calendar Value="@Value" ValueChanged="HandleDateSelected" />
+        @if (Presets != null && Presets.Count > 0)
+        {
+            <div class="flex">
+                <div class="flex flex-col gap-1 border-r border-border p-2 min-w-[120px]">
+                    @foreach (var preset in Presets)
+                    {
+                        var p = preset;
+                        <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors" @onclick="() => HandlePresetSelected(p)">
+                            @p.Label
+                        </button>
+                    }
+                </div>
+                <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" />
+            </div>
+        }
+        else
+        {
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" />
+        }
     </PopoverContent>
 </Popover>
 
@@ -24,12 +42,15 @@
     [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Pick a date";
     [Parameter] public string Format { get; set; } = "dd.MM.yyyy";
+    [Parameter] public DateOnly? MinDate { get; set; }
+    [Parameter] public DateOnly? MaxDate { get; set; }
+    [Parameter] public List<DatePickerPreset>? Presets { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
 
-    private string CssClass => $"flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background hover:bg-accent hover:text-accent-foreground {Class}".Trim();
+    private string CssClass => $"flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground {Class}".Trim();
 
     private async Task HandleDateSelected(DateOnly? date)
     {
@@ -37,4 +58,13 @@
         await ValueChanged.InvokeAsync(date);
         _isOpen = false;
     }
+
+    private async Task HandlePresetSelected(DatePickerPreset preset)
+    {
+        Value = preset.Date;
+        await ValueChanged.InvokeAsync(preset.Date);
+        _isOpen = false;
+    }
+
+    public record DatePickerPreset(string Label, DateOnly Date);
 }

@@ -5,12 +5,16 @@
 </div>
 
 @code {
+    [CascadingParameter] public Tooltip.TooltipContext? Context { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public TooltipSide Side { get; set; } = TooltipSide.Top;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"invisible group-hover:visible absolute z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground opacity-0 group-hover:opacity-100 transition-opacity {SideClasses} {Class}".Trim();
+    private bool IsOpen => Context?.IsOpen ?? false;
+
+    private string CssClass => $"absolute z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-opacity {(IsOpen ? "opacity-100 visible" : "opacity-0 invisible")} {SideClasses} {Class}".Trim();
 
     private string SideClasses => Side switch
     {

@@ -1,12 +1,33 @@
 @namespace Lumeo
 
-<textarea class="@CssClass" value="@Value" @oninput="OnInput" @attributes="AdditionalAttributes"></textarea>
+<textarea id="@_elementId" class="@CssClass" value="@Value" @oninput="HandleInput" @attributes="AdditionalAttributes"></textarea>
+
+@inject ComponentInteropService Interop
 
 @code {
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnInput { get; set; }
+    [Parameter] public bool AutoResize { get; set; }
+    [Parameter] public int MaxRows { get; set; } = 10;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _elementId = $"textarea-{Guid.NewGuid():N}";
+    private bool _autoResizeSetup;
+
     private string CssClass => $"flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoResize && !_autoResizeSetup)
+        {
+            await Interop.SetupAutoResize(_elementId, MaxRows);
+            _autoResizeSetup = true;
+        }
+    }
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        await OnInput.InvokeAsync(e);
+    }
 }

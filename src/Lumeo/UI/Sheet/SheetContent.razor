@@ -4,13 +4,16 @@
 @if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="Close"></div>
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
         <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
-            <button class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" @onclick="Close">
-                <Blazicon Svg="Lucide.X" class="h-4 w-4" />
-                <span class="sr-only">Close</span>
-            </button>
+            @if (!PreventClose)
+            {
+                <button class="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none" @onclick="Close">
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                    <span class="sr-only">Close</span>
+                </button>
+            }
         </div>
     </div>
 }
@@ -21,6 +24,8 @@
     [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public SheetSide Side { get; set; } = SheetSide.Right;
+    [Parameter] public SheetSize Size { get; set; } = SheetSize.Default;
+    [Parameter] public bool PreventClose { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -29,13 +34,24 @@
 
     private string CssClass => $"fixed z-50 gap-4 bg-background p-6 shadow-lg {SideClasses} {Class}".Trim();
 
+    private string SizeClass => Side is SheetSide.Left or SheetSide.Right
+        ? Size switch
+        {
+            SheetSize.Sm => "sm:max-w-xs",
+            SheetSize.Lg => "sm:max-w-lg",
+            SheetSize.Xl => "sm:max-w-xl",
+            SheetSize.Full => "sm:max-w-full",
+            _ => "sm:max-w-sm"
+        }
+        : "";
+
     private string SideClasses => Side switch
     {
-        SheetSide.Top => "inset-x-0 top-0 border-b animate-slide-in-from-top",
-        SheetSide.Bottom => "inset-x-0 bottom-0 border-t animate-slide-in-from-bottom",
-        SheetSide.Left => "inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm animate-slide-in-from-left",
-        SheetSide.Right => "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm animate-slide-in-from-right",
-        _ => "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm animate-slide-in-from-right"
+        SheetSide.Top => "inset-x-0 top-0 animate-slide-in-from-top",
+        SheetSide.Bottom => "inset-x-0 bottom-0 animate-slide-in-from-bottom",
+        SheetSide.Left => $"inset-y-0 left-0 h-full w-3/4 {SizeClass} animate-slide-in-from-left",
+        SheetSide.Right => $"inset-y-0 right-0 h-full w-3/4 {SizeClass} animate-slide-in-from-right",
+        _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass} animate-slide-in-from-right"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -55,9 +71,14 @@
 
     private async Task Close() => await Context.SetOpen.InvokeAsync(false);
 
+    private async Task HandleBackdropClick()
+    {
+        if (!PreventClose) await Close();
+    }
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") await Close();
+        if (e.Key == "Escape" && !PreventClose) await Close();
     }
 
     private async Task Cleanup()
@@ -76,4 +97,5 @@
     }
 
     public enum SheetSide { Top, Right, Bottom, Left }
+    public enum SheetSize { Sm, Default, Lg, Xl, Full }
 }
