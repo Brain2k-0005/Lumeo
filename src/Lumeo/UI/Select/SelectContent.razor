@@ -14,7 +14,26 @@
                     @onclick:stopPropagation="true" />
             </div>
         }
-        @ChildContent
+
+        @if (Context.IsLoading)
+        {
+            <div class="flex items-center justify-center py-4">
+                <Spinner Size="Spinner.SpinnerSize.Sm" class="text-muted-foreground" />
+            </div>
+        }
+        else
+        {
+            @ChildContent
+
+            @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText))
+            {
+                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                        @onclick="HandleCreate">
+                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                    <span>Create "@Context.SearchText"</span>
+                </button>
+            }
+        }
     </div>
 }
 
@@ -60,6 +79,11 @@
     private async Task OnInput(ChangeEventArgs e)
     {
         await Context.OnSearch.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+
+    private async Task HandleCreate()
+    {
+        await Context.OnCreateItem.InvokeAsync(Context.SearchText);
     }
 
     private async Task Cleanup()

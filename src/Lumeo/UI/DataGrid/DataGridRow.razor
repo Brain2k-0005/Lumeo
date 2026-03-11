@@ -1,0 +1,120 @@
+@namespace Lumeo
+@typeparam TItem
+
+<tr class="@CssClass" @onclick="HandleClick" @ondblclick="HandleDoubleClick" @attributes="AdditionalAttributes">
+    @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
+    {
+        <td class="px-3 py-2 w-10">
+            <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" />
+        </td>
+    }
+    else if (Context?.SelectionMode == DataGridSelectionMode.Single)
+    {
+        <td class="px-3 py-2 w-10">
+            <button type="button"
+                    class="h-4 w-4 rounded-full border border-primary @(IsSelected ? "bg-primary" : "bg-background")"
+                    @onclick="@(() => Context?.ToggleSelection(Item))"
+                    @onclick:stopPropagation="true">
+                @if (IsSelected)
+                {
+                    <span class="block h-2 w-2 mx-auto rounded-full bg-primary-foreground"></span>
+                }
+            </button>
+        </td>
+    }
+
+    @if (HasDetailTemplate)
+    {
+        <td class="px-1 py-2 w-8">
+            <button type="button"
+                    class="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors"
+                    @onclick="ToggleExpand"
+                    @onclick:stopPropagation="true">
+                @if (IsExpanded)
+                {
+                    <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 text-muted-foreground" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4 text-muted-foreground" />
+                }
+            </button>
+        </td>
+    }
+
+    @if (Context is not null)
+    {
+        @foreach (var column in Context.Columns.Where(c => c.Visible))
+        {
+            <DataGridCell TItem="TItem" Item="Item" Column="column" />
+        }
+    }
+</tr>
+
+@if (IsExpanded && DetailTemplate is not null)
+{
+    <DataGridDetailRow TItem="TItem" Item="Item" DetailTemplate="DetailTemplate" ColSpan="@ColSpan" />
+}
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Parameter] public TItem Item { get; set; } = default!;
+    [Parameter] public int RowIndex { get; set; }
+    [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsSelected => Context?.IsRowSelected(Item) ?? false;
+    private bool IsExpanded => Context?.IsRowExpanded(Item) ?? false;
+    private bool HasDetailTemplate => DetailTemplate is not null;
+
+    private int ColSpan
+    {
+        get
+        {
+            var count = Context?.Columns.Count(c => c.Visible) ?? 0;
+            if (Context?.SelectionMode != DataGridSelectionMode.None) count++;
+            if (HasDetailTemplate) count++;
+            return count;
+        }
+    }
+
+    private string CssClass
+    {
+        get
+        {
+            var selected = IsSelected ? "bg-primary/5" : "";
+            return $"border-b border-border/40 transition-colors hover:bg-muted/50 {selected} {Class}".Trim();
+        }
+    }
+
+    private async Task HandleClick()
+    {
+        if (Context is not null)
+        {
+            if (Context.SelectionMode != DataGridSelectionMode.None)
+            {
+                Context.ToggleSelection(Item);
+            }
+            await Context.OnRowClick.InvokeAsync(Item);
+        }
+    }
+
+    private async Task HandleDoubleClick()
+    {
+        if (Context is not null)
+        {
+            await Context.OnRowDoubleClick.InvokeAsync(Item);
+        }
+    }
+
+    private void ToggleExpand()
+    {
+        Context?.ToggleRowExpand(Item);
+    }
+
+    private async Task OnCheckChanged(bool value)
+    {
+        Context?.ToggleSelection(Item);
+    }
+}

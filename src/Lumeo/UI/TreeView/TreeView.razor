@@ -1,0 +1,78 @@
+@namespace Lumeo
+@typeparam T
+
+<div class="@CssClass" role="tree" @attributes="AdditionalAttributes">
+    @if (ShowSearch)
+    {
+        <div class="mb-2">
+            <input type="text" placeholder="Search..."
+                   class="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                   value="@_searchText"
+                   @oninput="OnSearchInput" />
+        </div>
+    }
+
+    @if (Items is { Count: > 0 })
+    {
+        @foreach (var item in FilteredItems)
+        {
+            <TreeViewNode T="T" Item="item" Level="0"
+                          ShowCheckboxes="ShowCheckboxes"
+                          Expandable="Expandable"
+                          OnItemClick="OnItemClick"
+                          OnItemCheck="OnItemCheck" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public List<TreeViewItem<T>>? Items { get; set; }
+    [Parameter] public bool ShowCheckboxes { get; set; }
+    [Parameter] public bool Expandable { get; set; } = true;
+    [Parameter] public EventCallback<TreeViewItem<T>> OnItemClick { get; set; }
+    [Parameter] public EventCallback<TreeViewItem<T>> OnItemCheck { get; set; }
+    [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _searchText = "";
+
+    private string CssClass => $"text-sm {Class}".Trim();
+
+    private List<TreeViewItem<T>> FilteredItems =>
+        string.IsNullOrWhiteSpace(_searchText)
+            ? Items ?? []
+            : FilterItems(Items ?? [], _searchText);
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? "";
+    }
+
+    private static List<TreeViewItem<T>> FilterItems(List<TreeViewItem<T>> items, string filter)
+    {
+        var result = new List<TreeViewItem<T>>();
+        foreach (var item in items)
+        {
+            var childMatches = item.Children is { Count: > 0 }
+                ? FilterItems(item.Children, filter)
+                : [];
+
+            if (item.Text.Contains(filter, StringComparison.OrdinalIgnoreCase) || childMatches.Count > 0)
+            {
+                result.Add(item with { Children = childMatches.Count > 0 ? childMatches : item.Children, IsExpanded = childMatches.Count > 0 || item.IsExpanded });
+            }
+        }
+        return result;
+    }
+
+    public record TreeViewItem<TValue>
+    {
+        public string Text { get; init; } = "";
+        public TValue? Value { get; init; }
+        public List<TreeViewItem<TValue>>? Children { get; init; }
+        public bool IsExpanded { get; set; }
+        public bool IsChecked { get; set; }
+        public SvgIcon? Icon { get; init; }
+    }
+}

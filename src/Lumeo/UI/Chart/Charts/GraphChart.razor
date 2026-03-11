@@ -17,25 +17,30 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "right";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
     {
         var nodes = Nodes.Select(n => new EChartGraphNode
         {
-            Name = n.Name,
-            X = n.X,
-            Y = n.Y,
-            Value = n.Value,
-            Category = n.Category,
+            Name = n.Name, X = n.X, Y = n.Y,
+            Value = n.Value, Category = n.Category,
             SymbolSize = n.SymbolSize ?? 20
         }).ToList();
 
         var links = Links.Select(l => new EChartGraphLink
         {
-            Source = l.Source,
-            Target = l.Target,
-            Value = l.Value
+            Source = l.Source, Target = l.Target, Value = l.Value
         }).ToList();
 
         var categories = Categories.Select(c => new EChartGraphCategory { Name = c.Name }).ToList();
@@ -48,28 +53,34 @@
             Nodes = nodes,
             Links = links,
             Categories = categories,
-            Label = new EChartLabel { Show = true, Position = "right" },
+            Label = new EChartLabel
+            {
+                Show = true,
+                Position = ShowDataLabels ? LabelPosition : "right",
+                Formatter = ShowDataLabels ? LabelFormat : null
+            },
             Emphasis = new EChartEmphasis { Focus = "adjacency" }
         };
 
         _option = new EChartOption
         {
             Series = new List<EChartSeries> { series },
-            Color = Colors
+            Color = ColorPalette ?? Colors
         };
 
         if (ShowTooltip)
-        {
             _option.Tooltip = new EChartTooltip { Trigger = "item" };
-        }
 
         if (ShowLegend && Categories.Count > 0)
-        {
-            _option.Legend = new EChartLegend
-            {
-                Data = Categories.Select(c => c.Name).ToList()
-            };
-        }
+            _option.Legend = new EChartLegend { Data = Categories.Select(c => c.Name).ToList() };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 
     public class GraphNode

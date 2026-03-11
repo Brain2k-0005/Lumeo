@@ -1,0 +1,230 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@if (IsOpen && _currentStepConfig is not null)
+{
+    <!-- Spotlight overlay -->
+    <div class="fixed inset-0 z-[60]" @onclick="HandleOverlayClick">
+        <svg class="absolute inset-0 w-full h-full" style="pointer-events: none;">
+            <defs>
+                <mask id="@_maskId">
+                    <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                    @if (_targetRect is not null)
+                    {
+                        <rect x="@(_targetRect.X - 4)" y="@(_targetRect.Y - 4)"
+                              width="@(_targetRect.Width + 8)" height="@(_targetRect.Height + 8)"
+                              rx="6" ry="6" fill="black" />
+                    }
+                </mask>
+            </defs>
+            <rect x="0" y="0" width="100%" height="100%" fill="rgba(0,0,0,0.5)"
+                  mask="url(#@_maskId)" style="pointer-events: all;" />
+        </svg>
+
+        @if (_targetRect is not null)
+        {
+            <!-- Highlight ring around target -->
+            <div class="absolute rounded-md ring-2 ring-primary" style="pointer-events: none;
+                left: @(_targetRect.X - 4)px; top: @(_targetRect.Y - 4)px;
+                width: @(_targetRect.Width + 8)px; height: @(_targetRect.Height + 8)px;" />
+        }
+    </div>
+
+    <!-- Tooltip -->
+    <div id="@_tooltipId" class="@TooltipCssClass" style="@TooltipStyle" @attributes="AdditionalAttributes">
+        <div class="flex flex-col gap-2">
+            @if (!string.IsNullOrEmpty(_currentStepConfig.Title))
+            {
+                <h4 class="text-sm font-semibold text-foreground">@_currentStepConfig.Title</h4>
+            }
+            @if (!string.IsNullOrEmpty(_currentStepConfig.Description))
+            {
+                <p class="text-sm text-muted-foreground">@_currentStepConfig.Description</p>
+            }
+
+            <div class="flex items-center justify-between pt-2">
+                <span class="text-xs text-muted-foreground">@(CurrentStep + 1) / @Steps.Count</span>
+                <div class="flex items-center gap-2">
+                    <button class="inline-flex items-center justify-center rounded-md text-xs font-medium h-7 px-2
+                                   text-muted-foreground hover:text-foreground transition-colors"
+                            @onclick="HandleSkip">
+                        Skip
+                    </button>
+                    @if (CurrentStep > 0)
+                    {
+                        <button class="inline-flex items-center justify-center rounded-md text-xs font-medium h-7 px-3
+                                       border border-border/60 bg-background text-foreground hover:bg-accent transition-colors"
+                                @onclick="HandlePrevious">
+                            Previous
+                        </button>
+                    }
+                    @if (CurrentStep < Steps.Count - 1)
+                    {
+                        <button class="inline-flex items-center justify-center rounded-md text-xs font-medium h-7 px-3
+                                       bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                                @onclick="HandleNext">
+                            Next
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="inline-flex items-center justify-center rounded-md text-xs font-medium h-7 px-3
+                                       bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                                @onclick="HandleComplete">
+                            Finish
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public List<TourStepConfig> Steps { get; set; } = [];
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public int CurrentStep { get; set; }
+    [Parameter] public EventCallback<int> CurrentStepChanged { get; set; }
+    [Parameter] public EventCallback OnComplete { get; set; }
+    [Parameter] public EventCallback OnSkip { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _tooltipId = $"tour-tooltip-{Guid.NewGuid():N}";
+    private readonly string _maskId = $"tour-mask-{Guid.NewGuid():N}";
+    private ComponentInteropService.ElementRect? _targetRect;
+    private TourStepConfig? _currentStepConfig;
+    private bool _scrollLocked;
+
+    private string TooltipCssClass => $"fixed z-[61] w-80 rounded-lg border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
+
+    private string TooltipStyle
+    {
+        get
+        {
+            if (_targetRect is null) return "left: 50%; top: 50%; transform: translate(-50%, -50%);";
+            var placement = _currentStepConfig?.Placement ?? TourPlacement.Bottom;
+            return placement switch
+            {
+                TourPlacement.Top => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y - 12}px; transform: translateX(-50%) translateY(-100%);",
+                TourPlacement.Bottom => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y + _targetRect.Height + 12}px; transform: translateX(-50%);",
+                TourPlacement.Left => $"left: {_targetRect.X - 12}px; top: {_targetRect.Y + _targetRect.Height / 2}px; transform: translateX(-100%) translateY(-50%);",
+                TourPlacement.Right => $"left: {_targetRect.X + _targetRect.Width + 12}px; top: {_targetRect.Y + _targetRect.Height / 2}px; transform: translateY(-50%);",
+                _ => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y + _targetRect.Height + 12}px; transform: translateX(-50%);"
+            };
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && Steps.Count > 0 && CurrentStep >= 0 && CurrentStep < Steps.Count)
+        {
+            _currentStepConfig = Steps[CurrentStep];
+        }
+        else
+        {
+            _currentStepConfig = null;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && _currentStepConfig is not null)
+        {
+            if (!_scrollLocked)
+            {
+                await Interop.LockScroll();
+                _scrollLocked = true;
+            }
+            await UpdateTargetRect();
+        }
+        else if (_scrollLocked)
+        {
+            try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+            _scrollLocked = false;
+        }
+    }
+
+    private async Task UpdateTargetRect()
+    {
+        if (_currentStepConfig?.TargetSelector is not null)
+        {
+            _targetRect = await Interop.GetElementRectBySelector(_currentStepConfig.TargetSelector);
+            StateHasChanged();
+        }
+        else
+        {
+            _targetRect = null;
+        }
+    }
+
+    private async Task HandleNext()
+    {
+        if (CurrentStep < Steps.Count - 1)
+        {
+            CurrentStep++;
+            _currentStepConfig = Steps[CurrentStep];
+            await CurrentStepChanged.InvokeAsync(CurrentStep);
+            await UpdateTargetRect();
+        }
+    }
+
+    private async Task HandlePrevious()
+    {
+        if (CurrentStep > 0)
+        {
+            CurrentStep--;
+            _currentStepConfig = Steps[CurrentStep];
+            await CurrentStepChanged.InvokeAsync(CurrentStep);
+            await UpdateTargetRect();
+        }
+    }
+
+    private async Task HandleSkip()
+    {
+        await Close();
+        await OnSkip.InvokeAsync();
+    }
+
+    private async Task HandleComplete()
+    {
+        await Close();
+        await OnComplete.InvokeAsync();
+    }
+
+    private async Task HandleOverlayClick()
+    {
+        // Click on overlay (outside target) - skip tour
+        await HandleSkip();
+    }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        CurrentStep = 0;
+        _currentStepConfig = null;
+        _targetRect = null;
+        await IsOpenChanged.InvokeAsync(false);
+        await CurrentStepChanged.InvokeAsync(0);
+        if (_scrollLocked)
+        {
+            try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+            _scrollLocked = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_scrollLocked)
+        {
+            try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+        }
+    }
+
+    public record TourStepConfig(string? TargetSelector, string Title, string? Description = null, TourPlacement Placement = TourPlacement.Bottom);
+
+    public enum TourPlacement { Top, Bottom, Left, Right }
+}

@@ -1,7 +1,15 @@
 @namespace Lumeo
 
 <button type="button" role="tab" aria-selected="@IsActive.ToString().ToLower()" class="@CssClass" @onclick="Activate" @attributes="AdditionalAttributes">
+    @if (Icon is not null)
+    {
+        <span class="inline-flex shrink-0">@Icon</span>
+    }
     @ChildContent
+    @if (TrailingContent is not null)
+    {
+        <span class="inline-flex shrink-0">@TrailingContent</span>
+    }
     @if (IsClosable)
     {
         <span class="ml-1 inline-flex items-center justify-center rounded-sm opacity-70 hover:opacity-100 transition-opacity"
@@ -14,6 +22,8 @@
 @code {
     [CascadingParameter] public Tabs.TabsContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Icon { get; set; }
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter, EditorRequired] public string Value { get; set; } = "";
     [Parameter] public bool IsClosable { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
@@ -21,8 +31,27 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsActive => Context.ActiveValue == Value;
+    private string CurrentVariant => Context.Variant;
 
-    private string CssClass => $"inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 {(IsActive ? "bg-background text-foreground shadow" : "")} {Class}".Trim();
+    private string CssClass
+    {
+        get
+        {
+            var variantClasses = CurrentVariant switch
+            {
+                "Card" => IsActive
+                    ? "rounded-t-lg border border-b-0 border-border/40 bg-card text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                "Pill" => IsActive
+                    ? "rounded-full bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted/50 rounded-full",
+                _ => IsActive
+                    ? "bg-background text-foreground shadow"
+                    : ""
+            };
+            return $"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 {variantClasses} {Class}".Trim();
+        }
+    }
 
     private async Task Activate()
     {

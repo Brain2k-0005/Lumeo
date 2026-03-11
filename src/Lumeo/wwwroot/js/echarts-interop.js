@@ -27,7 +27,21 @@ function loadECharts(src) {
 }
 
 function getCssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!raw) return '';
+    // Convert oklch/hsl/etc to hex so ECharts can use it
+    try {
+        const el = document.createElement('div');
+        el.style.color = raw;
+        document.body.appendChild(el);
+        const computed = getComputedStyle(el).color;
+        document.body.removeChild(el);
+        if (computed) {
+            const m = computed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (m) return '#' + ((1 << 24) + (+m[1] << 16) + (+m[2] << 8) + +m[3]).toString(16).slice(1);
+        }
+    } catch {}
+    return raw;
 }
 
 function registerLumeoTheme() {
@@ -49,20 +63,24 @@ function registerLumeoTheme() {
     const radiusPx = parseFloat(radiusRaw) * (radiusRaw.includes('rem') ? 16 : 1);
     const barRadius = [radiusPx, radiusPx, 0, 0];
 
+    const noStroke = { textBorderWidth: 0, textBorderColor: 'transparent', textShadowBlur: 0, textShadowColor: 'transparent' };
+    const labelNoStroke = { ...noStroke, color: mutedFg, fontSize: 11 };
+
     window.echarts.registerTheme('lumeo', {
         color: [chart1, chart2, chart3, chart4, chart5],
         backgroundColor: 'transparent',
         textStyle: {
             color: mutedFg,
             fontFamily: getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif',
-            fontSize: 12
+            fontSize: 12,
+            ...noStroke
         },
         title: {
             textStyle: { color: fg, fontWeight: 600, fontSize: 14 },
             subtextStyle: { color: mutedFg, fontSize: 12 }
         },
         legend: {
-            textStyle: { color: mutedFg, fontSize: 11 },
+            textStyle: { color: mutedFg, fontSize: 11, ...noStroke },
             icon: radiusPx > 0 ? 'roundRect' : 'rect',
             itemWidth: 12,
             itemHeight: 8,
@@ -78,51 +96,87 @@ function registerLumeoTheme() {
         categoryAxis: {
             axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: mutedFg, fontSize: 11 },
+            axisLabel: { color: mutedFg, fontSize: 11, ...noStroke },
             splitLine: { show: false }
         },
         valueAxis: {
             axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: mutedFg, fontSize: 11 },
+            axisLabel: { color: mutedFg, fontSize: 11, ...noStroke },
             splitLine: {
                 show: true,
                 lineStyle: { color: border, type: 'dashed', opacity: 0.5 }
             }
         },
+        label: labelNoStroke,
         line: {
             smooth: true,
             symbolSize: 0,
-            lineStyle: { width: 2 }
+            lineStyle: { width: 2 },
+            label: labelNoStroke
         },
         bar: {
             barMaxWidth: 32,
-            itemStyle: { borderRadius: barRadius }
+            itemStyle: { borderRadius: barRadius },
+            label: labelNoStroke
         },
         pie: {
             itemStyle: { borderColor: card, borderWidth: 2 },
-            label: { color: mutedFg, fontSize: 11 }
+            label: labelNoStroke
         },
         radar: {
             axisName: { color: mutedFg, fontSize: 11 },
             splitLine: { lineStyle: { color: border, opacity: 0.4 } },
             splitArea: { areaStyle: { color: ['transparent', 'transparent'] } },
-            axisLine: { lineStyle: { color: border, opacity: 0.3 } }
+            axisLine: { lineStyle: { color: border, opacity: 0.3 } },
+            label: labelNoStroke
         },
         scatter: {
             symbolSize: 8,
-            itemStyle: { opacity: 0.75 }
+            itemStyle: { opacity: 0.75 },
+            label: labelNoStroke
         },
         graph: {
-            lineStyle: { color: border, opacity: 0.6 }
+            lineStyle: { color: border, opacity: 0.6 },
+            label: labelNoStroke
+        },
+        sankey: {
+            label: labelNoStroke
+        },
+        funnel: {
+            label: labelNoStroke
+        },
+        treemap: {
+            label: labelNoStroke
+        },
+        sunburst: {
+            label: labelNoStroke
+        },
+        tree: {
+            label: labelNoStroke
+        },
+        themeRiver: {
+            label: labelNoStroke
+        },
+        heatmap: {
+            label: labelNoStroke
+        },
+        boxplot: {
+            label: labelNoStroke
+        },
+        candlestick: {
+            label: labelNoStroke
+        },
+        parallel: {
+            label: labelNoStroke
         },
         gauge: {
             axisLine: { lineStyle: { color: [[1, border]] } },
             axisTick: { show: false },
             splitLine: { show: false },
-            axisLabel: { color: mutedFg },
-            detail: { color: fg, fontWeight: 600 },
-            title: { color: mutedFg }
+            axisLabel: { color: mutedFg, ...noStroke },
+            detail: { color: fg, fontWeight: 600, ...noStroke },
+            title: { color: mutedFg, ...noStroke }
         }
     });
 
@@ -146,6 +200,25 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
 
     const chart = window.echarts.init(el, effectiveTheme, { renderer: 'canvas' });
     const options = JSON.parse(optionsJson);
+
+    // Force remove text stroke/border from all series labels (ECharts adds white stroke by default)
+    if (options.series) {
+        for (const s of options.series) {
+            if (s.label) {
+                s.label.textBorderWidth = 0;
+                s.label.textBorderColor = 'transparent';
+                s.label.textShadowBlur = 0;
+                s.label.textShadowColor = 'transparent';
+            }
+            if (s.emphasis?.label) {
+                s.emphasis.label.textBorderWidth = 0;
+                s.emphasis.label.textBorderColor = 'transparent';
+                s.emphasis.label.textShadowBlur = 0;
+                s.emphasis.label.textShadowColor = 'transparent';
+            }
+        }
+    }
+
     chart.setOption(options);
     charts.set(elementId, chart);
 
@@ -209,4 +282,70 @@ export function registerChartEvent(elementId, eventName, dotnetRef) {
         };
         dotnetRef.invokeMethodAsync('OnChartEvent', eventName, JSON.stringify(data));
     });
+}
+
+export function showLoading(elementId, opts) {
+    const chart = charts.get(elementId);
+    if (chart) chart.showLoading('default', opts || { text: '', maskColor: 'rgba(255,255,255,0.7)', spinnerRadius: 14, lineWidth: 2 });
+}
+
+export function hideLoading(elementId) {
+    const chart = charts.get(elementId);
+    if (chart) chart.hideLoading();
+}
+
+export function getDataURL(elementId, opts) {
+    const chart = charts.get(elementId);
+    if (!chart) return null;
+    return chart.getDataURL(opts || { type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+}
+
+export function connectCharts(groupId, elementIds) {
+    if (!window.echarts) return;
+    const instances = elementIds.map(id => charts.get(id)).filter(Boolean);
+    instances.forEach(c => c.group = groupId);
+    window.echarts.connect(groupId);
+}
+
+export function disconnectCharts(groupId) {
+    if (!window.echarts) return;
+    window.echarts.disconnect(groupId);
+}
+
+export function appendData(elementId, seriesIndex, newData) {
+    const chart = charts.get(elementId);
+    if (!chart) return;
+    const opt = chart.getOption();
+    if (opt.series && opt.series[seriesIndex]) {
+        const existingData = opt.series[seriesIndex].data || [];
+        const parsed = typeof newData === 'string' ? JSON.parse(newData) : newData;
+        opt.series[seriesIndex].data = [...existingData, ...parsed];
+        chart.setOption(opt);
+    }
+}
+
+export function dispatchAction(elementId, actionJson) {
+    const chart = charts.get(elementId);
+    if (!chart) return;
+    const action = typeof actionJson === 'string' ? JSON.parse(actionJson) : actionJson;
+    chart.dispatchAction(action);
+}
+
+export async function loadExtension(url) {
+    if (document.querySelector(`script[src="${url}"]`)) return;
+    await loadECharts(); // ensure echarts is loaded first
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = url;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Failed to load extension: ${url}`));
+        document.head.appendChild(script);
+    });
+}
+
+export async function registerMap(mapName, geoJson) {
+    await loadECharts();
+    if (!window.echarts) return;
+    const json = typeof geoJson === 'string' ? JSON.parse(geoJson) : geoJson;
+    window.echarts.registerMap(mapName, json);
 }

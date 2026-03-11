@@ -1,0 +1,242 @@
+@namespace Lumeo
+@typeparam TItem
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="p-3 space-y-3">
+        <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Filter: @Column?.Title
+        </div>
+
+        @if (Column?.FilterType == DataGridFilterType.Boolean)
+        {
+            <label class="flex items-center gap-2 text-sm">
+                <Checkbox Checked="@_boolValue" CheckedChanged="@OnBoolChanged" />
+                <span>@(Column?.Title ?? "Value")</span>
+            </label>
+        }
+        else
+        {
+            <Select Value="@_selectedOperator.ToString()" ValueChanged="@OnOperatorSelected">
+                <SelectTrigger Class="h-8 w-full">
+                    <span class="truncate text-sm">@GetOperatorLabel(_selectedOperator)</span>
+                </SelectTrigger>
+                <SelectContent>
+                    @foreach (var op in GetAvailableOperators())
+                    {
+                        <SelectItem Value="@op.ToString()">@GetOperatorLabel(op)</SelectItem>
+                    }
+                </SelectContent>
+            </Select>
+
+            @if (Column?.FilterType == DataGridFilterType.Number)
+            {
+                <input type="number"
+                       class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       placeholder="Value..."
+                       value="@_filterValue"
+                       @oninput="OnValueInput" />
+                @if (_selectedOperator == FilterOperator.Between)
+                {
+                    <input type="number"
+                           class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                           placeholder="To value..."
+                           value="@_filterValueTo"
+                           @oninput="OnValueToInput" />
+                }
+            }
+            else if (Column?.FilterType == DataGridFilterType.Date)
+            {
+                <input type="date"
+                       class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       value="@_filterValue"
+                       @oninput="OnValueInput" />
+                @if (_selectedOperator == FilterOperator.Between)
+                {
+                    <input type="date"
+                           class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                           value="@_filterValueTo"
+                           @oninput="OnValueToInput" />
+                }
+            }
+            else if (Column?.FilterType == DataGridFilterType.Select)
+            {
+                <div class="max-h-40 overflow-auto space-y-1">
+                    @if (FilterOptions is not null)
+                    {
+                        @foreach (var option in FilterOptions)
+                        {
+                            <label class="flex items-center gap-2 text-sm py-0.5">
+                                <Checkbox Checked="@(_selectedOptions.Contains(option.Value?.ToString() ?? ""))"
+                                          CheckedChanged="@(v => ToggleOption(option.Value?.ToString() ?? "", v))" />
+                                <span>@option.Label</span>
+                            </label>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <input type="text"
+                       class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       placeholder="Filter value..."
+                       value="@_filterValue"
+                       @oninput="OnValueInput" />
+            }
+        }
+
+        <div class="flex items-center gap-2 pt-1">
+            <button type="button"
+                    class="flex-1 h-8 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                    @onclick="Apply">
+                Apply
+            </button>
+            <button type="button"
+                    class="flex-1 h-8 rounded-md border border-input bg-background text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                    @onclick="Clear">
+                Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public DataGridColumn<TItem>? Column { get; set; }
+    [Parameter] public List<FilterOption>? FilterOptions { get; set; }
+    [Parameter] public EventCallback<FilterDescriptor?> OnApply { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"w-64 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md {Class}".Trim();
+
+    private FilterOperator _selectedOperator = FilterOperator.Contains;
+    private string? _filterValue;
+    private string? _filterValueTo;
+    private bool _boolValue;
+    private HashSet<string> _selectedOptions = new();
+
+    protected override void OnParametersSet()
+    {
+        if (Column?.FilterType == DataGridFilterType.Number)
+            _selectedOperator = FilterOperator.Equals;
+        else if (Column?.FilterType == DataGridFilterType.Date)
+            _selectedOperator = FilterOperator.Equals;
+    }
+
+    private void OnOperatorSelected(string value)
+    {
+        if (Enum.TryParse<FilterOperator>(value, out var op))
+        {
+            _selectedOperator = op;
+        }
+    }
+
+    private void OnValueInput(ChangeEventArgs e)
+    {
+        _filterValue = e.Value?.ToString();
+    }
+
+    private void OnValueToInput(ChangeEventArgs e)
+    {
+        _filterValueTo = e.Value?.ToString();
+    }
+
+    private void OnBoolChanged(bool value)
+    {
+        _boolValue = value;
+    }
+
+    private void ToggleOption(string value, bool isChecked)
+    {
+        if (isChecked)
+            _selectedOptions.Add(value);
+        else
+            _selectedOptions.Remove(value);
+    }
+
+    private async Task Apply()
+    {
+        if (Column?.Field is null) return;
+
+        object? filterValue;
+        if (Column.FilterType == DataGridFilterType.Boolean)
+        {
+            filterValue = _boolValue;
+            _selectedOperator = FilterOperator.Equals;
+        }
+        else if (Column.FilterType == DataGridFilterType.Select)
+        {
+            filterValue = string.Join(",", _selectedOptions);
+            _selectedOperator = FilterOperator.Contains;
+        }
+        else
+        {
+            filterValue = _filterValue;
+        }
+
+        var descriptor = new FilterDescriptor(
+            Column.Field,
+            _selectedOperator,
+            filterValue,
+            _filterValueTo,
+            Column.FilterType
+        );
+
+        await OnApply.InvokeAsync(descriptor);
+    }
+
+    private async Task Clear()
+    {
+        _filterValue = null;
+        _filterValueTo = null;
+        _boolValue = false;
+        _selectedOptions.Clear();
+        await OnApply.InvokeAsync(null);
+    }
+
+    private List<FilterOperator> GetAvailableOperators() => Column?.FilterType switch
+    {
+        DataGridFilterType.Number => new()
+        {
+            FilterOperator.Equals, FilterOperator.NotEquals,
+            FilterOperator.GreaterThan, FilterOperator.GreaterThanOrEqual,
+            FilterOperator.LessThan, FilterOperator.LessThanOrEqual,
+            FilterOperator.Between, FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+        },
+        DataGridFilterType.Date => new()
+        {
+            FilterOperator.Equals, FilterOperator.NotEquals,
+            FilterOperator.GreaterThan, FilterOperator.GreaterThanOrEqual,
+            FilterOperator.LessThan, FilterOperator.LessThanOrEqual,
+            FilterOperator.Between, FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+        },
+        DataGridFilterType.Select => new()
+        {
+            FilterOperator.Contains, FilterOperator.Equals
+        },
+        _ => new()
+        {
+            FilterOperator.Contains, FilterOperator.NotContains,
+            FilterOperator.Equals, FilterOperator.NotEquals,
+            FilterOperator.StartsWith, FilterOperator.EndsWith,
+            FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+        }
+    };
+
+    private static string GetOperatorLabel(FilterOperator op) => op switch
+    {
+        FilterOperator.Contains => "Contains",
+        FilterOperator.NotContains => "Does not contain",
+        FilterOperator.Equals => "Equals",
+        FilterOperator.NotEquals => "Not equals",
+        FilterOperator.StartsWith => "Starts with",
+        FilterOperator.EndsWith => "Ends with",
+        FilterOperator.GreaterThan => "Greater than",
+        FilterOperator.GreaterThanOrEqual => "Greater or equal",
+        FilterOperator.LessThan => "Less than",
+        FilterOperator.LessThanOrEqual => "Less or equal",
+        FilterOperator.IsEmpty => "Is empty",
+        FilterOperator.IsNotEmpty => "Is not empty",
+        FilterOperator.Between => "Between",
+        _ => op.ToString()
+    };
+}

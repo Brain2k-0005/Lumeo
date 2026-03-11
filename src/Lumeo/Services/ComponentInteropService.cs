@@ -315,6 +315,135 @@ public sealed class ComponentInteropService : IAsyncDisposable
         }
     }
 
+    // --- DataGrid Column Resize ---
+
+    private readonly Dictionary<string, Func<double, Task>> _columnResizeHandlers = new();
+    private readonly Dictionary<string, Func<Task>> _columnResizeEndHandlers = new();
+
+    public async ValueTask RegisterColumnResize(string handleId, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler)
+    {
+        _columnResizeHandlers[handleId] = resizeHandler;
+        _columnResizeEndHandlers[handleId] = resizeEndHandler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerColumnResize", handleId, GetSelfRef());
+    }
+
+    public async ValueTask UnregisterColumnResize(string handleId)
+    {
+        _columnResizeHandlers.Remove(handleId);
+        _columnResizeEndHandlers.Remove(handleId);
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unregisterColumnResize", handleId);
+    }
+
+    [JSInvokable]
+    public async Task OnColumnResize(double delta)
+    {
+        foreach (var handler in _columnResizeHandlers.Values)
+            await handler(delta);
+    }
+
+    [JSInvokable]
+    public async Task OnColumnResizeEnd()
+    {
+        foreach (var handler in _columnResizeEndHandlers.Values)
+            await handler();
+    }
+
+    // --- Tour: Element Rect By Selector ---
+
+    public async ValueTask<ElementRect?> GetElementRectBySelector(string selector)
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<ElementRect?>("getElementRectBySelector", selector);
+    }
+
+    // --- Affix ---
+
+    private readonly Dictionary<string, Func<bool, Task>> _affixHandlers = new();
+
+    public async ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
+    {
+        _affixHandlers[elementId] = handler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerAffix", elementId, offsetTop, offsetBottom, target, GetSelfRef());
+    }
+
+    public async ValueTask UnregisterAffix(string elementId)
+    {
+        _affixHandlers.Remove(elementId);
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unregisterAffix", elementId);
+    }
+
+    [JSInvokable]
+    public async Task OnAffixChanged(string elementId, bool isFixed)
+    {
+        if (_affixHandlers.TryGetValue(elementId, out var handler))
+        {
+            await handler(isFixed);
+        }
+    }
+
+    // --- Mention: Textarea Caret Position ---
+
+    public async ValueTask<TextareaCaretInfo> GetTextareaCaretPosition(string elementId)
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<TextareaCaretInfo>("getTextareaCaretPosition", elementId);
+    }
+
+    public record TextareaCaretInfo(double Top, double Left, int SelectionStart);
+
+    // --- BackToTop ---
+
+    private readonly Dictionary<string, Func<bool, Task>> _backToTopHandlers = new();
+
+    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+    {
+        _backToTopHandlers[id] = handler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerBackToTop", GetSelfRef(), threshold);
+    }
+
+    public async ValueTask UnregisterBackToTop(string id)
+    {
+        _backToTopHandlers.Remove(id);
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unregisterBackToTop");
+    }
+
+    public async ValueTask ScrollToTop()
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("scrollToTop");
+    }
+
+    [JSInvokable]
+    public async Task OnScrollVisibilityChanged(bool visible)
+    {
+        foreach (var handler in _backToTopHandlers.Values)
+        {
+            await handler(visible);
+        }
+    }
+
+    // --- File Download ---
+
+    public async ValueTask DownloadFile(string fileName, string contentBase64, string mimeType = "application/octet-stream")
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("downloadFile", fileName, contentBase64, mimeType);
+    }
+
+    // --- Clipboard ---
+
+    public async ValueTask CopyToClipboard(string text)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("copyToClipboard", text);
+    }
+
     public record ElementRect(double X, double Y, double Width, double Height);
 
     public async ValueTask DisposeAsync()
@@ -343,6 +472,10 @@ public sealed class ComponentInteropService : IAsyncDisposable
         _scrollspyHandlers.Clear();
         _toastSwipeHandlers.Clear();
         _otpPasteHandlers.Clear();
+        _columnResizeHandlers.Clear();
+        _columnResizeEndHandlers.Clear();
+        _affixHandlers.Clear();
+        _backToTopHandlers.Clear();
 
         if (_module is not null)
         {

@@ -1,0 +1,150 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @if (Images is { Count: > 0 })
+    {
+        @foreach (var (image, index) in Images.Select((img, i) => (img, i)))
+        {
+            <div class="overflow-hidden rounded-md cursor-pointer group" @onclick="() => OpenPreview(index)">
+                <img src="@image.Src" alt="@image.Alt" loading="lazy"
+                     class="w-full h-full object-cover transition-transform group-hover:scale-105" />
+            </div>
+        }
+    }
+</div>
+
+@if (_showPreview && Images is { Count: > 0 })
+{
+    <div class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center animate-fade-in" @onkeydown="HandleKeyDown" tabindex="-1" id="@_previewId">
+        <button type="button" class="absolute top-4 right-4 text-white/80 hover:text-white transition-colors z-10" @onclick="ClosePreview">
+            <Blazicon Svg="Lucide.X" class="h-6 w-6" />
+        </button>
+
+        @if (Images.Count > 1)
+        {
+            <button type="button" class="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                    @onclick="PrevImage" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ChevronLeft" class="h-6 w-6" />
+            </button>
+            <button type="button" class="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                    @onclick="NextImage" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ChevronRight" class="h-6 w-6" />
+            </button>
+        }
+
+        <div class="flex items-center gap-2 absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+            <button type="button" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors" @onclick="ZoomOut" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ZoomOut" class="h-5 w-5" />
+            </button>
+            <span class="text-white/80 text-sm min-w-[3rem] text-center">@($"{_zoom}%")</span>
+            <button type="button" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors" @onclick="ZoomIn" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ZoomIn" class="h-5 w-5" />
+            </button>
+            @if (Images.Count > 1)
+            {
+                <span class="text-white/60 text-sm ml-2">@(_currentIndex + 1) / @Images.Count</span>
+            }
+        </div>
+
+        <img src="@Images[_currentIndex].Src" alt="@Images[_currentIndex].Alt"
+             class="max-h-[85vh] max-w-[90vw] object-contain transition-transform"
+             style="transform: scale(@(_zoom / 100.0))"
+             @onclick:stopPropagation="true" />
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public List<ImageItem>? Images { get; set; }
+    [Parameter] public int Columns { get; set; } = 3;
+    [Parameter] public string? Gap { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _showPreview;
+    private int _currentIndex;
+    private int _zoom = 100;
+    private readonly string _previewId = $"gallery-preview-{Guid.NewGuid():N}";
+
+    private string CssClass
+    {
+        get
+        {
+            var cols = Columns switch
+            {
+                1 => "grid-cols-1",
+                2 => "grid-cols-2",
+                3 => "grid-cols-3",
+                4 => "grid-cols-4",
+                5 => "grid-cols-5",
+                6 => "grid-cols-6",
+                _ => "grid-cols-3"
+            };
+            var gap = Gap ?? "gap-2";
+            return $"grid {cols} {gap} {Class}".Trim();
+        }
+    }
+
+    private async Task OpenPreview(int index)
+    {
+        _currentIndex = index;
+        _zoom = 100;
+        _showPreview = true;
+        await Interop.LockScroll();
+    }
+
+    private async Task ClosePreview()
+    {
+        _showPreview = false;
+        try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+    }
+
+    private void PrevImage()
+    {
+        if (Images is null) return;
+        _currentIndex = (_currentIndex - 1 + Images.Count) % Images.Count;
+        _zoom = 100;
+    }
+
+    private void NextImage()
+    {
+        if (Images is null) return;
+        _currentIndex = (_currentIndex + 1) % Images.Count;
+        _zoom = 100;
+    }
+
+    private void ZoomIn()
+    {
+        if (_zoom < 300) _zoom += 25;
+    }
+
+    private void ZoomOut()
+    {
+        if (_zoom > 25) _zoom -= 25;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape": await ClosePreview(); break;
+            case "ArrowLeft": PrevImage(); break;
+            case "ArrowRight": NextImage(); break;
+            case "+":
+            case "=": ZoomIn(); break;
+            case "-": ZoomOut(); break;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_showPreview)
+        {
+            try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+        }
+    }
+
+    public record ImageItem(string Src, string? Alt = null);
+}

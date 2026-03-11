@@ -1,0 +1,127 @@
+@namespace Lumeo
+@typeparam TItem
+
+<td class="@CssClass" @onclick="HandleClick" @ondblclick="HandleDoubleClick" @attributes="AdditionalAttributes">
+    @if (_isEditing && Column.EditTemplate is not null)
+    {
+        @Column.EditTemplate(_editContext!)
+    }
+    else if (_isEditing)
+    {
+        <input class="w-full bg-transparent border-none outline-none text-sm"
+               value="@_editValue"
+               @oninput="OnEditInput"
+               @onblur="CommitEdit"
+               @onkeydown="OnEditKeyDown" />
+    }
+    else if (Column.CellTemplate is not null)
+    {
+        @Column.CellTemplate(Item)
+    }
+    else
+    {
+        @Column.GetFormattedValue(Item)
+    }
+</td>
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Parameter] public TItem Item { get; set; } = default!;
+    [Parameter] public DataGridColumn<TItem> Column { get; set; } = default!;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isEditing;
+    private string? _editValue;
+    private object? _originalValue;
+    private CellEditContext<TItem>? _editContext;
+
+    private string CssClass
+    {
+        get
+        {
+            var cellClass = Column.CellClass?.Invoke(Item);
+            // TODO: Calculate cumulative left/right offsets when multiple columns are pinned
+            var pinClass = Column.Pin switch
+            {
+                PinDirection.Left => "sticky left-0 z-10 bg-inherit",
+                PinDirection.Right => "sticky right-0 z-10 bg-inherit",
+                _ => ""
+            };
+            return $"px-3 py-2 text-sm {pinClass} {Column.CssClass} {cellClass} {Class}".Trim();
+        }
+    }
+
+    private void HandleClick()
+    {
+        if (Context?.EditMode == DataGridEditMode.Cell && !_isEditing)
+        {
+            StartEdit();
+        }
+    }
+
+    private void HandleDoubleClick()
+    {
+        if (Context?.EditMode == DataGridEditMode.Cell && !_isEditing)
+        {
+            StartEdit();
+        }
+    }
+
+    private void StartEdit()
+    {
+        _originalValue = Column.GetValue(Item);
+        _editValue = _originalValue?.ToString() ?? "";
+        _editContext = new CellEditContext<TItem>
+        {
+            Item = Item,
+            Column = Column,
+            Value = _originalValue,
+            ValueChanged = () =>
+            {
+                _editValue = _editContext?.Value?.ToString();
+                StateHasChanged();
+            }
+        };
+        _isEditing = true;
+    }
+
+    private void OnEditInput(ChangeEventArgs e)
+    {
+        _editValue = e.Value?.ToString();
+        if (_editContext is not null)
+        {
+            _editContext.Value = _editValue;
+        }
+    }
+
+    private async Task OnEditKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await CommitEdit();
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEdit();
+        }
+    }
+
+    private async Task CommitEdit()
+    {
+        if (!_isEditing) return;
+        _isEditing = false;
+
+        if (_editValue != _originalValue?.ToString() && Context is not null && Column.Field is not null)
+        {
+            var args = new CellEditEventArgs<TItem>(Item, Column.Field, _originalValue, _editValue);
+            await Context.OnCellEdit.InvokeAsync(args);
+        }
+    }
+
+    private void CancelEdit()
+    {
+        _isEditing = false;
+        _editValue = null;
+    }
+}

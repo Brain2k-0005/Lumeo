@@ -1,0 +1,114 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@inject IJSRuntime JSRuntime
+
+@code {
+    [Parameter] public string MapName { get; set; } = "world";
+    [Parameter] public string? MapJson { get; set; }
+    [Parameter] public object? Data { get; set; }
+    [Parameter] public double VisualMapMin { get; set; } = 0;
+    [Parameter] public double VisualMapMax { get; set; } = 100;
+    [Parameter] public bool Roam { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "inside";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
+    private EChartOption _option = new();
+    private IJSObjectReference? _module;
+    private bool _mapRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_mapRegistered && !string.IsNullOrEmpty(MapJson))
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./_content/Lumeo/js/echarts-interop.js");
+            await _module.InvokeVoidAsync("registerMap", MapName, MapJson);
+            _mapRegistered = true;
+            BuildOption();
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_mapRegistered)
+            BuildOption();
+    }
+
+    private void BuildOption()
+    {
+        var visualColors = Colors is { Count: > 0 }
+            ? Colors
+            : new List<string> { "#e0f3f8", "#abd9e9", "#74add1", "#4575b4", "#313695" };
+
+        var series = new EChartSeries
+        {
+            Type = "map",
+            Data = Data,
+            Roam = Roam
+        };
+
+        series.ExtensionData = new Dictionary<string, System.Text.Json.JsonElement>
+        {
+            ["map"] = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+                System.Text.Json.JsonSerializer.Serialize(MapName))
+        };
+
+        if (ShowDataLabels)
+            series.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
+
+        _option = new EChartOption
+        {
+            VisualMap = new EChartVisualMap
+            {
+                Min = VisualMapMin,
+                Max = VisualMapMax,
+                Calculable = true,
+                Orient = "horizontal",
+                Left = "center",
+                Bottom = "5%",
+                InRange = new EChartVisualMapInRange { Color = visualColors }
+            },
+            Series = new List<EChartSeries> { series },
+            Color = ColorPalette
+        };
+
+        if (ShowTooltip)
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

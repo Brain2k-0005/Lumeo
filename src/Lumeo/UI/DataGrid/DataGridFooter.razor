@@ -1,0 +1,92 @@
+@namespace Lumeo
+@typeparam TItem
+
+@if (Context is not null && HasAggregates)
+{
+    <tfoot class="@CssClass" @attributes="AdditionalAttributes">
+        <tr class="border-t border-border/40">
+            @if (Context.SelectionMode != DataGridSelectionMode.None)
+            {
+                <td class="px-3 py-2 w-10"></td>
+            }
+            @if (HasDetailTemplate)
+            {
+                <td class="px-1 py-2 w-8"></td>
+            }
+            @foreach (var column in Context.Columns.Where(c => c.Visible))
+            {
+                <td class="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted/30">
+                    @if (column.Aggregate != AggregateType.None)
+                    {
+                        <span>@GetAggregateLabel(column.Aggregate): @ComputeAggregate(column)</span>
+                    }
+                </td>
+            }
+        </tr>
+    </tfoot>
+}
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Parameter] public IReadOnlyList<TItem>? AllItems { get; set; }
+    [Parameter] public bool HasDetailTemplate { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"{Class}".Trim();
+
+    private bool HasAggregates => Context?.Columns.Any(c => c.Visible && c.Aggregate != AggregateType.None) ?? false;
+
+    private IEnumerable<TItem> ItemsForAggregate => AllItems ?? Context?.DisplayedItems ?? Enumerable.Empty<TItem>();
+
+    private string ComputeAggregate(DataGridColumn<TItem> column)
+    {
+        var items = ItemsForAggregate.ToList();
+        if (items.Count == 0) return "-";
+
+        var values = items.Select(i => column.GetValue(i)).Where(v => v is not null).ToList();
+
+        return column.Aggregate switch
+        {
+            AggregateType.Count => values.Count.ToString(),
+            AggregateType.Sum => ComputeNumeric(values, vals => vals.Sum()),
+            AggregateType.Average => ComputeNumeric(values, vals => vals.Average()),
+            AggregateType.Min => ComputeNumeric(values, vals => vals.Min()),
+            AggregateType.Max => ComputeNumeric(values, vals => vals.Max()),
+            _ => ""
+        };
+    }
+
+    private string ComputeNumeric(List<object?> values, Func<IEnumerable<double>, double> aggregator)
+    {
+        var numericValues = new List<double>();
+        foreach (var v in values)
+        {
+            if (v is IConvertible conv)
+            {
+                try
+                {
+                    numericValues.Add(conv.ToDouble(System.Globalization.CultureInfo.InvariantCulture));
+                }
+                catch
+                {
+                    // Skip non-numeric values
+                }
+            }
+        }
+
+        if (numericValues.Count == 0) return "-";
+        var result = aggregator(numericValues);
+        return result.ToString("N2");
+    }
+
+    private static string GetAggregateLabel(AggregateType aggregate) => aggregate switch
+    {
+        AggregateType.Sum => "Sum",
+        AggregateType.Average => "Avg",
+        AggregateType.Count => "Count",
+        AggregateType.Min => "Min",
+        AggregateType.Max => "Max",
+        _ => ""
+    };
+}

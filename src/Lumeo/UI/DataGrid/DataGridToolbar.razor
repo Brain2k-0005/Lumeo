@@ -1,0 +1,106 @@
+@namespace Lumeo
+@typeparam TItem
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="flex items-center gap-2 flex-1">
+        <div class="relative">
+            <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input type="text"
+                   placeholder="Search..."
+                   class="h-8 w-56 rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                   value="@SearchText"
+                   @oninput="OnSearchInput" />
+        </div>
+
+        @if (Context is not null)
+        {
+            @foreach (var filter in Context.Filters)
+            {
+                <div class="flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
+                    <span class="font-medium">@filter.Field</span>
+                    <span class="text-muted-foreground">@GetOperatorLabel(filter.Operator)</span>
+                    <span>@filter.Value</span>
+                    <button type="button"
+                            class="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full hover:bg-muted-foreground/20"
+                            @onclick="@(() => RemoveFilter(filter))">
+                        <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                    </button>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="flex items-center gap-2">
+        @if (ToolbarContent is not null)
+        {
+            @ToolbarContent
+        }
+
+        <button type="button"
+                class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                @onclick="ToggleColumnVisibility">
+            <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
+            <span>Columns</span>
+        </button>
+
+        <button type="button"
+                class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                @onclick="Export">
+            <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
+            <span>Export</span>
+        </button>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Parameter] public string? SearchText { get; set; }
+    [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+    [Parameter] public EventCallback OnColumnVisibilityToggle { get; set; }
+    [Parameter] public EventCallback OnExport { get; set; }
+    [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"flex items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        await SearchTextChanged.InvokeAsync(value);
+    }
+
+    private async Task RemoveFilter(FilterDescriptor filter)
+    {
+        await OnRemoveFilter.InvokeAsync(filter);
+    }
+
+    private async Task ToggleColumnVisibility()
+    {
+        await OnColumnVisibilityToggle.InvokeAsync();
+    }
+
+    private async Task Export()
+    {
+        await OnExport.InvokeAsync();
+    }
+
+    private static string GetOperatorLabel(FilterOperator op) => op switch
+    {
+        FilterOperator.Contains => "contains",
+        FilterOperator.NotContains => "not contains",
+        FilterOperator.Equals => "=",
+        FilterOperator.NotEquals => "!=",
+        FilterOperator.StartsWith => "starts with",
+        FilterOperator.EndsWith => "ends with",
+        FilterOperator.GreaterThan => ">",
+        FilterOperator.GreaterThanOrEqual => ">=",
+        FilterOperator.LessThan => "<",
+        FilterOperator.LessThanOrEqual => "<=",
+        FilterOperator.IsEmpty => "is empty",
+        FilterOperator.IsNotEmpty => "is not empty",
+        FilterOperator.Between => "between",
+        _ => op.ToString()
+    };
+}

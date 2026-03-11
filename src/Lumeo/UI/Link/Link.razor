@@ -1,0 +1,54 @@
+@namespace Lumeo
+
+<a href="@Href" class="@CssClass" @attributes="AllAttributes">@ChildContent</a>
+
+@code {
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public bool External { get; set; }
+    [Parameter] public string Variant { get; set; } = "default";
+    [Parameter] public string? Size { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private Dictionary<string, object>? AllAttributes
+    {
+        get
+        {
+            if (!External)
+                return AdditionalAttributes;
+
+            var attrs = AdditionalAttributes != null
+                ? new Dictionary<string, object>(AdditionalAttributes)
+                : new Dictionary<string, object>();
+
+            attrs["target"] = "_blank";
+            attrs["rel"] = "noopener noreferrer";
+
+            return attrs;
+        }
+    }
+
+    private string VariantClasses => Variant switch
+    {
+        "muted" => "text-muted-foreground hover:text-foreground",
+        "underline" => "underline underline-offset-4",
+        _ => "text-primary underline-offset-4 hover:underline"
+    };
+
+    private string CssClass
+    {
+        get
+        {
+            var classes = new List<string> { VariantClasses };
+
+            if (!string.IsNullOrEmpty(Size))
+                classes.Add($"text-{Size}");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+}

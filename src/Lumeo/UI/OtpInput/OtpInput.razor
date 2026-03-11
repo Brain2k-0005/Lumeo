@@ -1,18 +1,31 @@
 @namespace Lumeo
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
-    @for (var i = 0; i < Length; i++)
-    {
-        var index = i;
-        <input id="@($"{_baseId}-{index}")"
-               type="text"
-               inputmode="numeric"
-               maxlength="1"
-               autocomplete="one-time-code"
-               class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none"
-               value="@GetChar(index)"
-               @oninput="@(e => HandleInput(index, e))"
-               @onkeydown="@(e => HandleKeyDown(index, e))" />
+    @{
+        var groups = GetGroups();
+        for (var g = 0; g < groups.Count; g++)
+        {
+            var group = groups[g];
+            <div class="flex items-center gap-2">
+                @foreach (var idx in group)
+                {
+                    var index = idx;
+                    <input id="@($"{_baseId}-{index}")"
+                           type="@(Masked ? "password" : "text")"
+                           inputmode="@InputModeAttr"
+                           maxlength="1"
+                           autocomplete="one-time-code"
+                           class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none"
+                           value="@GetChar(index)"
+                           @oninput="@(e => HandleInput(index, e))"
+                           @onkeydown="@(e => HandleKeyDown(index, e))" />
+                }
+            </div>
+            @if (g < groups.Count - 1 && Separator is not null)
+            {
+                <span class="text-muted-foreground text-lg font-medium px-1">@Separator</span>
+            }
+        }
     }
 </div>
 
@@ -24,12 +37,55 @@
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public EventCallback<string> OnComplete { get; set; }
+    [Parameter] public string InputMode { get; set; } = "Numeric";
+    [Parameter] public bool Masked { get; set; }
+    [Parameter] public string? Separator { get; set; }
+    [Parameter] public int[]? GroupSizes { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _baseId = $"otp-{Guid.NewGuid():N}";
 
     private string CssClass => $"flex items-center gap-2 {Class}".Trim();
+
+    private string InputModeAttr => InputMode switch
+    {
+        "Alphanumeric" => "text",
+        "Password" => "text",
+        _ => "numeric"
+    };
+
+    private List<List<int>> GetGroups()
+    {
+        var groups = new List<List<int>>();
+        if (GroupSizes is not null && GroupSizes.Length > 0)
+        {
+            var idx = 0;
+            foreach (var size in GroupSizes)
+            {
+                var group = new List<int>();
+                for (var i = 0; i < size && idx < Length; i++, idx++)
+                {
+                    group.Add(idx);
+                }
+                if (group.Count > 0) groups.Add(group);
+            }
+            // Handle any remaining inputs not covered by GroupSizes
+            if (idx < Length)
+            {
+                var remaining = new List<int>();
+                for (; idx < Length; idx++) remaining.Add(idx);
+                groups.Add(remaining);
+            }
+        }
+        else
+        {
+            var all = new List<int>();
+            for (var i = 0; i < Length; i++) all.Add(i);
+            groups.Add(all);
+        }
+        return groups;
+    }
 
     private string GetChar(int index) => index < Value.Length ? Value[index].ToString() : "";
 
@@ -41,9 +97,10 @@
         }
     }
 
-    private async Task HandlePaste(string digits)
+    private async Task HandlePaste(string text)
     {
-        var padded = digits.PadRight(Length).Substring(0, Length);
+        var filtered = FilterInput(text);
+        var padded = filtered.PadRight(Length).Substring(0, Length);
         Value = padded.TrimEnd();
         await ValueChanged.InvokeAsync(Value);
 
@@ -57,13 +114,28 @@
         }
     }
 
+    private bool IsValidChar(char c) => InputMode switch
+    {
+        "Numeric" => char.IsDigit(c),
+        "Alphanumeric" => char.IsLetterOrDigit(c),
+        _ => true // Password mode allows any character
+    };
+
+    private string FilterInput(string input)
+    {
+        return new string(input.Where(IsValidChar).ToArray());
+    }
+
     private async Task HandleInput(int index, ChangeEventArgs e)
     {
         var input = e.Value?.ToString() ?? "";
         if (input.Length > 0)
         {
+            var lastChar = input[^1];
+            if (!IsValidChar(lastChar)) return;
+
             var chars = Value.PadRight(Length).ToCharArray();
-            chars[index] = input[^1];
+            chars[index] = lastChar;
             Value = new string(chars).TrimEnd();
             await ValueChanged.InvokeAsync(Value);
 

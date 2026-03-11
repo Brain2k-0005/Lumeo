@@ -1,0 +1,45 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <h3 class="mb-4 text-base font-semibold text-foreground">@Title</h3>
+    }
+    @if (Bordered)
+    {
+        <div class="overflow-hidden rounded-lg border border-border/60">
+            <div class="@GridClasses">
+                @ChildContent
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="@GridClasses">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Bordered { get; set; }
+    [Parameter] public int Column { get; set; } = 3;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"{Class}".Trim();
+
+    private string GridClasses => Bordered
+        ? $"grid {ColumnClasses} divide-x divide-y divide-border/60"
+        : $"grid {ColumnClasses} gap-4";
+
+    private string ColumnClasses => Column switch
+    {
+        1 => "grid-cols-1",
+        2 => "grid-cols-2",
+        4 => "grid-cols-4",
+        _ => "grid-cols-3"
+    };
+}

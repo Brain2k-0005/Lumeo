@@ -16,6 +16,16 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
@@ -33,6 +43,9 @@
             Data = radarData
         };
 
+        if (ShowDataLabels)
+            series.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
+
         _option = new EChartOption
         {
             Radar = new EChartRadar
@@ -45,24 +58,22 @@
                 Shape = Shape
             },
             Series = new List<EChartSeries> { series },
-            Color = Colors
+            Color = ColorPalette ?? Colors
         };
 
         if (ShowTooltip)
-        {
-            _option.Tooltip = new EChartTooltip
-            {
-                Trigger = "item"
-            };
-        }
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
 
         if (ShowLegend && Series.Count > 0)
-        {
-            _option.Legend = new EChartLegend
-            {
-                Data = Series.Select(s => s.Name).ToList()
-            };
-        }
+            _option.Legend = new EChartLegend { Data = Series.Select(s => s.Name).ToList() };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 
     public class RadarIndicator

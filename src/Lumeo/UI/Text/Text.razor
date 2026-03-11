@@ -1,0 +1,73 @@
+@namespace Lumeo
+
+@switch (As)
+{
+    case "span":
+        <span class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</span>
+        break;
+    case "div":
+        <div class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</div>
+        break;
+    case "small":
+        <small class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</small>
+        break;
+    case "strong":
+        <strong class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</strong>
+        break;
+    default:
+        <p class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</p>
+        break;
+}
+
+@code {
+    [Parameter] public string? Size { get; set; }
+    [Parameter] public string? Weight { get; set; }
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string As { get; set; } = "p";
+    [Parameter] public string? Leading { get; set; }
+    [Parameter] public bool Truncate { get; set; }
+    [Parameter] public string? Align { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass
+    {
+        get
+        {
+            var classes = new List<string>();
+
+            if (!string.IsNullOrEmpty(Size))
+                classes.Add($"text-{Size}");
+
+            if (!string.IsNullOrEmpty(Weight))
+                classes.Add($"font-{Weight}");
+
+            if (!string.IsNullOrEmpty(Color))
+            {
+                classes.Add(Color switch
+                {
+                    "muted" => "text-muted-foreground",
+                    "primary" => "text-primary",
+                    "destructive" => "text-destructive",
+                    "foreground" => "text-foreground",
+                    _ => $"text-{Color}"
+                });
+            }
+
+            if (!string.IsNullOrEmpty(Leading))
+                classes.Add($"leading-{Leading}");
+
+            if (Truncate)
+                classes.Add("truncate");
+
+            if (!string.IsNullOrEmpty(Align))
+                classes.Add($"text-{Align}");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+}

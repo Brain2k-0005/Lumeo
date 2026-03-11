@@ -15,6 +15,19 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "inside";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public EChartMarkLine? MarkLine { get; set; }
+    [Parameter] public EChartMarkPoint? MarkPoint { get; set; }
+    [Parameter] public EChartMarkArea? MarkArea { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
@@ -25,18 +38,19 @@
         {
             Type = "heatmap",
             Data = Data,
-            Label = new EChartLabel
-            {
-                Show = true
-            },
+            Label = new EChartLabel { Show = true },
             Emphasis = new EChartEmphasis
             {
-                ItemStyle = new EChartItemStyle
-                {
-                    ShadowBlur = 10
-                }
+                ItemStyle = new EChartItemStyle { ShadowBlur = 10 }
             }
         };
+
+        if (ShowDataLabels)
+            series.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
+
+        if (MarkLine is not null) series.MarkLine = MarkLine;
+        if (MarkPoint is not null) series.MarkPoint = MarkPoint;
+        if (MarkArea is not null) series.MarkArea = MarkArea;
 
         _option = new EChartOption
         {
@@ -45,10 +59,9 @@
             Series = new List<EChartSeries> { series },
             Grid = new EChartGrid
             {
-                Left = "3%",
-                Right = "10%",
+                Left = "3%", Right = "10%",
                 Top = "5%",
-                Bottom = "3%",
+                Bottom = DataZoom ? "15%" : "3%",
                 ContainLabel = true
             },
             VisualMap = new EChartVisualMap
@@ -63,20 +76,24 @@
                     ? new EChartVisualMapInRange { Color = Colors }
                     : new EChartVisualMapInRange { Color = new List<string> { "#313695", "#4575b4", "#74add1", "#abd9e9", "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026" } }
             },
-            Color = Colors
+            Color = ColorPalette ?? Colors
         };
 
         if (ShowTooltip)
-        {
-            _option.Tooltip = new EChartTooltip
-            {
-                Trigger = "item"
-            };
-        }
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
 
         if (ShowLegend)
-        {
             _option.Legend = new EChartLegend();
-        }
+
+        if (DataZoom)
+            _option.DataZoom = new List<EChartDataZoom> { new() { Type = "slider", Show = true }, new() { Type = "inside" } };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true }, DataZoom = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 }

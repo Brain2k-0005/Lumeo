@@ -1,0 +1,594 @@
+@page "/components/datagrid"
+
+<PageTitle>DataGrid — Lumeo</PageTitle>
+
+<PageHeader Title="DataGrid" Description="A powerful data grid with sorting, filtering, pagination, selection, inline editing, column pinning, resizable columns, and CSV export." />
+
+<Stack Gap="8">
+    <ComponentDemo Title="Basic DataGrid" Description="A simple data grid with sortable columns and pagination." Code="@_basicCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" />
+            <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Sortable="true" Format="yyyy-MM-dd" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Toolbar, Search & Filtering" Description="Enable the toolbar for global search, column visibility, and CSV export. Column filters appear as inline popovers." Code="@_toolbarCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ShowToolbar="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" Filterable="true" FilterType="DataGridFilterType.Number" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Sortable="true" Format="yyyy-MM-dd" Filterable="true" FilterType="DataGridFilterType.Date" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multi-Select with Checkboxes" Description="Select multiple rows with checkboxes. The header checkbox toggles select all." Code="@_multiSelectCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
+                  SelectionMode="DataGridSelectionMode.Multiple"
+                  SelectedItemsChanged="@OnMultiSelectionChanged">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+        @if (_multiSelectedCount > 0)
+        {
+            <Alert Class="mt-4">
+                <AlertTitle>Selection</AlertTitle>
+                <AlertDescription>@_multiSelectedCount row(s) selected.</AlertDescription>
+            </Alert>
+        }
+    </ComponentDemo>
+
+    <ComponentDemo Title="Single Row Selection" Description="Click a row to select it. Useful for master-detail views." Code="@_singleSelectCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
+                  SelectionMode="DataGridSelectionMode.Single"
+                  SelectedItemsChanged="@OnSelectionChanged">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" />
+        </DataGrid>
+        @if (_selectedEmployee is not null)
+        {
+            <Alert Class="mt-4">
+                <AlertTitle>Selected</AlertTitle>
+                <AlertDescription>@_selectedEmployee.Name — @_selectedEmployee.Department — @_selectedEmployee.Salary.ToString("C0")</AlertDescription>
+            </Alert>
+        }
+    </ComponentDemo>
+
+    <ComponentDemo Title="Striped, Bordered & Compact" Description="Visual variants for different density needs." Code="@_styledCode">
+        <DataGrid TItem="Employee" Items="@_employees" Striped="true" Bordered="true" Compact="true" PageSize="5" ShowPagination="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+            <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Format="yyyy-MM-dd" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom Cell Templates" Description="Use CellTemplate to render custom content like avatars, badges, and action buttons." Code="@_templateCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
+            <DataGridColumnDef TItem="Employee" Title="Employee" Field="Name" Sortable="true">
+                <CellTemplate>
+                    <Flex Align="center" Gap="2">
+                        <Avatar Size="Avatar.AvatarSize.Sm">
+                            <AvatarFallback>@context.Name[..2].ToUpper()</AvatarFallback>
+                        </Avatar>
+                        <Stack Gap="0">
+                            <Lumeo.Text As="span" Weight="medium">@context.Name</Lumeo.Text>
+                            <Lumeo.Text As="div" Size="xs" Color="muted">@context.Department</Lumeo.Text>
+                        </Stack>
+                    </Flex>
+                </CellTemplate>
+            </DataGridColumnDef>
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status">
+                <CellTemplate>
+                    <Badge Variant="@(context.Status == "Active" ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)">
+                        @context.Status
+                    </Badge>
+                </CellTemplate>
+            </DataGridColumnDef>
+            <DataGridColumnDef TItem="Employee" Title="Actions" Field="Name">
+                <CellTemplate>
+                    <Flex Align="center" Gap="1">
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                            <Blazicon Svg="Lucide.Pencil" class="h-3.5 w-3.5" />
+                        </Button>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                            <Blazicon Svg="Lucide.Trash2" class="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                    </Flex>
+                </CellTemplate>
+            </DataGridColumnDef>
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Expandable Detail Rows" Description="Use DetailTemplate to show additional information when a row is expanded." Code="@_detailCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
+            <DetailTemplate>
+                <Stack Gap="2" Class="p-4">
+                    <Lumeo.Text Size="sm"><Lumeo.Text As="span" Weight="medium">Full Name:</Lumeo.Text> @context.Name</Lumeo.Text>
+                    <Lumeo.Text Size="sm"><Lumeo.Text As="span" Weight="medium">Department:</Lumeo.Text> @context.Department</Lumeo.Text>
+                    <Lumeo.Text Size="sm"><Lumeo.Text As="span" Weight="medium">Annual Salary:</Lumeo.Text> @context.Salary.ToString("C0")</Lumeo.Text>
+                    <Lumeo.Text Size="sm"><Lumeo.Text As="span" Weight="medium">Start Date:</Lumeo.Text> @context.StartDate.ToString("MMMM dd, yyyy")</Lumeo.Text>
+                    <Lumeo.Text Size="sm"><Lumeo.Text As="span" Weight="medium">Status:</Lumeo.Text> @context.Status</Lumeo.Text>
+                </Stack>
+            </DetailTemplate>
+            <ChildContent>
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+                <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+            </ChildContent>
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Column Pinning" Description="Pin columns to the left or right edge so they stay visible while scrolling horizontally." Code="@_pinCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Pin="PinDirection.Left" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Width="150" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Width="120" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Width="120" />
+            <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Format="yyyy-MM-dd" Width="150" />
+            <DataGridColumnDef TItem="Employee" Title="Actions" Field="Name" Pin="PinDirection.Right" Width="100">
+                <CellTemplate>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                        <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
+                    </Button>
+                </CellTemplate>
+            </DataGridColumnDef>
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Resizable Columns" Description="Drag the column border to resize. All columns are resizable by default." Code="@_resizeCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Width="200" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Width="150" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Width="120" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Width="100" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Inline Cell Editing" Description="Click a cell to edit it inline. Press Enter to commit, Escape to cancel." Code="@_editCode">
+        <DataGrid TItem="Employee" Items="@_editableEmployees" PageSize="5" ShowPagination="true"
+                  EditMode="DataGridEditMode.Cell" OnCellEdit="@HandleCellEdit">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+        @if (_lastEditInfo is not null)
+        {
+            <Alert Class="mt-4">
+                <AlertTitle>Cell Edited</AlertTitle>
+                <AlertDescription>@_lastEditInfo</AlertDescription>
+            </Alert>
+        }
+    </ComponentDemo>
+
+    <ComponentDemo Title="Footer Aggregation" Description="Show computed summaries (Sum, Average, Count, Min, Max) in the table footer." Code="@_aggregateCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="20">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Aggregate="AggregateType.Count" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Average" />
+            <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Format="yyyy-MM-dd" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Loading State" Description="Show skeleton rows while data is loading." Code="@_loadingCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" IsLoading="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Empty State" Description="Custom content when the grid has no data." Code="@_emptyCode">
+        <DataGrid TItem="Employee" Items="@(new List<Employee>())" PageSize="5">
+            <EmptyContent>
+                <Stack Gap="3" Align="center" Class="py-4">
+                    <Blazicon Svg="Lucide.SearchX" class="h-10 w-10 text-muted-foreground/40" />
+                    <Lumeo.Text Size="sm" Color="muted">No employees found. Try adjusting your filters.</Lumeo.Text>
+                </Stack>
+            </EmptyContent>
+            <ChildContent>
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            </ChildContent>
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Full-Featured DataGrid" Description="All features combined: toolbar, search, filtering, sorting, selection, column visibility, export, and aggregation." Code="@_fullCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
+                  ShowToolbar="true" SelectionMode="DataGridSelectionMode.Multiple"
+                  Striped="true" Hoverable="true">
+            <DataGridColumnDef TItem="Employee" Title="Employee" Field="Name" Sortable="true" Filterable="true" Pin="PinDirection.Left" Width="200">
+                <CellTemplate>
+                    <Flex Align="center" Gap="2">
+                        <Avatar Size="Avatar.AvatarSize.Sm">
+                            <AvatarFallback>@context.Name[..2].ToUpper()</AvatarFallback>
+                        </Avatar>
+                        <Lumeo.Text As="span" Weight="medium">@context.Name</Lumeo.Text>
+                    </Flex>
+                </CellTemplate>
+            </DataGridColumnDef>
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Filterable="true" Width="140" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Filterable="true" FilterType="DataGridFilterType.Number" Format="C0" Width="120" Aggregate="AggregateType.Average" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Filterable="true" Width="100">
+                <CellTemplate>
+                    <Badge Variant="@(context.Status == "Active" ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)">
+                        @context.Status
+                    </Badge>
+                </CellTemplate>
+            </DataGridColumnDef>
+            <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Sortable="true" Format="yyyy-MM-dd" Width="130" />
+        </DataGrid>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Gap="8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">DataGrid&lt;TItem&gt;</Heading>
+            <div class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/30">
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Property</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Type</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Default</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Items</td><td class="px-4 py-2 font-mono text-xs">IEnumerable&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Data source for the grid.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Columns</td><td class="px-4 py-2 font-mono text-xs">List&lt;DataGridColumn&lt;TItem&gt;&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Programmatic column definitions (alternative to DataGridColumnDef).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">PageSize</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">10</td><td class="px-4 py-2 text-muted-foreground">Number of rows per page.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowPagination</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Show pagination controls.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowToolbar</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show toolbar with search, export, and column visibility.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">SelectionMode</td><td class="px-4 py-2 font-mono text-xs">DataGridSelectionMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Row selection: None, Single, or Multiple.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditMode</td><td class="px-4 py-2 font-mono text-xs">DataGridEditMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Inline editing: None, Cell, or Row.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Striped</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Alternate row background colors.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Bordered</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show cell borders.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Compact</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Smaller row height and text.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Hoverable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Highlight rows on hover.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Height</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fixed height with scrollable body.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ServerMode</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable server-side data handling.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">IsLoading</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show loading skeleton.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">VirtualizeThreshold</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">500</td><td class="px-4 py-2 text-muted-foreground">Item count threshold to enable virtualization.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">DetailTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Template for expandable row details.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom content when no data.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ToolbarContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom toolbar content.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRowClick</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;TItem&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when a row is clicked.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRowDoubleClick</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;TItem&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when a row is double-clicked.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnCellEdit</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;CellEditEventArgs&lt;TItem&gt;&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when a cell is edited.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">SelectedItemsChanged</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;IReadOnlyList&lt;TItem&gt;&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when selection changes.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnServerRequest</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;DataGridServerRequest&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Server-side data request callback.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">DataGridColumnDef&lt;TItem&gt;</Heading>
+            <div class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/30">
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Property</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Type</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Default</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Title</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Column header text.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Field</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Property name to bind to on TItem.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">FieldSelector</td><td class="px-4 py-2 font-mono text-xs">Func&lt;TItem, object?&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom value accessor (alternative to Field).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Width</td><td class="px-4 py-2 font-mono text-xs">double?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Column width in pixels.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Sortable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable sorting for this column.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Filterable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable filtering for this column.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Resizable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Allow column resizing via drag handle.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Pin</td><td class="px-4 py-2 font-mono text-xs">PinDirection</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Pin column: None, Left, or Right.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilterType</td><td class="px-4 py-2 font-mono text-xs">DataGridFilterType</td><td class="px-4 py-2 text-xs">Text</td><td class="px-4 py-2 text-muted-foreground">Filter input type: Text, Number, Date, Select, Boolean.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Format</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Format string (e.g., "C0", "yyyy-MM-dd").</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Aggregate</td><td class="px-4 py-2 font-mono text-xs">AggregateType</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Footer aggregate: None, Sum, Average, Count, Min, Max.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">CellTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom render template for cell content.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">HeaderTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom render template for header.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;CellEditContext&lt;TItem&gt;&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom template for inline editing.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">Enums</Heading>
+            <Grid Columns="2" Gap="4">
+                <div class="overflow-x-auto rounded-lg border border-border/40">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-border/40 bg-muted/30">
+                                <th class="px-4 py-2 text-left font-medium text-foreground" colspan="2">DataGridSelectionMode</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">None</td><td class="px-4 py-2 text-muted-foreground">No selection.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Single</td><td class="px-4 py-2 text-muted-foreground">Select one row at a time.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Multiple</td><td class="px-4 py-2 text-muted-foreground">Select multiple rows with checkboxes.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-border/40">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-border/40 bg-muted/30">
+                                <th class="px-4 py-2 text-left font-medium text-foreground" colspan="2">PinDirection</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">None</td><td class="px-4 py-2 text-muted-foreground">Column scrolls normally.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Left</td><td class="px-4 py-2 text-muted-foreground">Sticky to left edge.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Right</td><td class="px-4 py-2 text-muted-foreground">Sticky to right edge.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-border/40">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-border/40 bg-muted/30">
+                                <th class="px-4 py-2 text-left font-medium text-foreground" colspan="2">DataGridEditMode</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">None</td><td class="px-4 py-2 text-muted-foreground">No editing.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Cell</td><td class="px-4 py-2 text-muted-foreground">Click a cell to edit inline.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Row</td><td class="px-4 py-2 text-muted-foreground">Edit entire row at once.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-border/40">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-border/40 bg-muted/30">
+                                <th class="px-4 py-2 text-left font-medium text-foreground" colspan="2">AggregateType</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">None</td><td class="px-4 py-2 text-muted-foreground">No aggregation.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Sum</td><td class="px-4 py-2 text-muted-foreground">Sum of numeric values.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Average</td><td class="px-4 py-2 text-muted-foreground">Average of numeric values.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Count</td><td class="px-4 py-2 text-muted-foreground">Count of non-null values.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Min</td><td class="px-4 py-2 text-muted-foreground">Minimum value.</td></tr>
+                            <tr><td class="px-4 py-2 font-mono text-xs text-primary">Max</td><td class="px-4 py-2 text-muted-foreground">Maximum value.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Grid>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">DataGridFilterType</Heading>
+            <div class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/30">
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Value</th>
+                            <th class="px-4 py-2 text-left font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Text</td><td class="px-4 py-2 text-muted-foreground">Text filter with contains, starts with, equals operators.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Number</td><td class="px-4 py-2 text-muted-foreground">Numeric filter with comparison and between operators.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Date</td><td class="px-4 py-2 text-muted-foreground">Date filter with date picker and comparison operators.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Select</td><td class="px-4 py-2 text-muted-foreground">Multi-select checkbox filter from predefined options.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Boolean</td><td class="px-4 py-2 text-muted-foreground">True/false toggle filter.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </Stack>
+    </Stack>
+</Stack>
+
+@code {
+    private Employee? _selectedEmployee;
+    private int _multiSelectedCount;
+    private string? _lastEditInfo;
+
+    private List<Employee> _employees = new()
+    {
+        new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
+        new("Bob Smith", "Marketing", 72000, "Active", new DateTime(2020, 7, 1)),
+        new("Carol White", "Engineering", 105000, "Active", new DateTime(2019, 11, 20)),
+        new("David Brown", "Sales", 68000, "Inactive", new DateTime(2022, 1, 10)),
+        new("Eve Davis", "Engineering", 98000, "Active", new DateTime(2020, 5, 5)),
+        new("Frank Wilson", "Marketing", 75000, "Active", new DateTime(2021, 8, 22)),
+        new("Grace Lee", "Sales", 82000, "Active", new DateTime(2019, 6, 30)),
+        new("Henry Taylor", "Engineering", 110000, "Active", new DateTime(2018, 9, 12)),
+        new("Ivy Martinez", "Marketing", 71000, "Inactive", new DateTime(2022, 4, 18)),
+        new("Jack Anderson", "Sales", 88000, "Active", new DateTime(2020, 12, 3)),
+        new("Kate Thomas", "Engineering", 102000, "Active", new DateTime(2021, 2, 14)),
+        new("Leo Jackson", "Sales", 79000, "Active", new DateTime(2019, 10, 8)),
+    };
+
+    private List<Employee> _editableEmployees = new()
+    {
+        new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
+        new("Bob Smith", "Marketing", 72000, "Active", new DateTime(2020, 7, 1)),
+        new("Carol White", "Engineering", 105000, "Active", new DateTime(2019, 11, 20)),
+        new("David Brown", "Sales", 68000, "Inactive", new DateTime(2022, 1, 10)),
+        new("Eve Davis", "Engineering", 98000, "Active", new DateTime(2020, 5, 5)),
+    };
+
+    private void OnSelectionChanged(IReadOnlyList<Employee> items)
+    {
+        _selectedEmployee = items.FirstOrDefault();
+    }
+
+    private void OnMultiSelectionChanged(IReadOnlyList<Employee> items)
+    {
+        _multiSelectedCount = items.Count;
+    }
+
+    private Task HandleCellEdit(CellEditEventArgs<Employee> args)
+    {
+        _lastEditInfo = $"Edited {args.Field} on {args.Item.Name}: \"{args.OldValue}\" -> \"{args.NewValue}\"";
+        return Task.CompletedTask;
+    }
+
+    private record Employee(string Name, string Department, double Salary, string Status, DateTime StartDate);
+
+    private string _basicCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
+</DataGrid>";
+
+    private string _toolbarCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          ShowToolbar=""true"" ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
+                       Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
+                       Filterable=""true"" FilterType=""DataGridFilterType.Number"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
+                       Filterable=""true"" />
+</DataGrid>";
+
+    private string _multiSelectCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          SelectionMode=""DataGridSelectionMode.Multiple""
+          SelectedItemsChanged=""@OnSelectionChanged"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+</DataGrid>";
+
+    private string _singleSelectCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
+          SelectionMode=""DataGridSelectionMode.Single""
+          SelectedItemsChanged=""@OnSelectionChanged"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+</DataGrid>";
+
+    private string _styledCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
+          Striped=""true"" Bordered=""true"" Compact=""true"" PageSize=""5"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>";
+
+    private string _templateCode = @"<DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name"">
+    <CellTemplate>
+        <Flex Align=""center"" Gap=""2"">
+            <Avatar Size=""Avatar.AvatarSize.Sm"">
+                <AvatarFallback>@context.Name[..2]</AvatarFallback>
+            </Avatar>
+            <Stack Gap=""0"">
+                <Lumeo.Text As=""span"" Weight=""medium"">@context.Name</Lumeo.Text>
+                <Lumeo.Text As=""div"" Size=""xs"" Color=""muted"">@context.Department</Lumeo.Text>
+            </Stack>
+        </Flex>
+    </CellTemplate>
+</DataGridColumnDef>";
+
+    private string _detailCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
+    <DetailTemplate>
+        <Stack Gap=""2"" Class=""p-4"">
+            <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Full Name:</Lumeo.Text> @context.Name</Lumeo.Text>
+            <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Department:</Lumeo.Text> @context.Department</Lumeo.Text>
+        </Stack>
+    </DetailTemplate>
+    <ChildContent>
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    </ChildContent>
+</DataGrid>";
+
+    private string _pinCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
+                       Pin=""PinDirection.Left"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""150"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Width=""120"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Actions"" Field=""Name""
+                       Pin=""PinDirection.Right"" Width=""100"">
+        <CellTemplate>...</CellTemplate>
+    </DataGridColumnDef>
+</DataGrid>";
+
+    private string _resizeCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""200"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""150"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Width=""120"" />
+</DataGrid>";
+
+    private string _editCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          EditMode=""DataGridEditMode.Cell"" OnCellEdit=""@HandleCellEdit"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>";
+
+    private string _aggregateCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""20"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
+                       Aggregate=""AggregateType.Count"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
+                       Format=""C0"" Aggregate=""AggregateType.Average"" />
+</DataGrid>";
+
+    private string _loadingCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" IsLoading=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+</DataGrid>";
+
+    private string _emptyCode = @"<DataGrid TItem=""Employee"" Items=""@(new List<Employee>())"" PageSize=""5"">
+    <EmptyContent>
+        <Stack Gap=""3"" Align=""center"" Class=""py-4"">
+            <Blazicon Svg=""Lucide.SearchX"" class=""h-10 w-10 text-muted-foreground/40"" />
+            <Lumeo.Text Size=""sm"" Color=""muted"">No employees found.</Lumeo.Text>
+        </Stack>
+    </EmptyContent>
+    <ChildContent>
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    </ChildContent>
+</DataGrid>";
+
+    private string _fullCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          ShowToolbar=""true"" SelectionMode=""DataGridSelectionMode.Multiple""
+          Striped=""true"" Hoverable=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name""
+                       Sortable=""true"" Filterable=""true""
+                       Pin=""PinDirection.Left"" Width=""200"">
+        <CellTemplate>
+            <Flex Align=""center"" Gap=""2"">
+                <Avatar Size=""Avatar.AvatarSize.Sm"">
+                    <AvatarFallback>@context.Name[..2]</AvatarFallback>
+                </Avatar>
+                <Lumeo.Text As=""span"" Weight=""medium"">@context.Name</Lumeo.Text>
+            </Flex>
+        </CellTemplate>
+    </DataGridColumnDef>
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
+                       Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
+                       Sortable=""true"" Filterable=""true""
+                       FilterType=""DataGridFilterType.Number""
+                       Format=""C0"" Aggregate=""AggregateType.Average"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
+                       Filterable=""true"">
+        <CellTemplate>
+            <Badge Variant=""@(context.Status == ""Active"" ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)"">
+                @context.Status
+            </Badge>
+        </CellTemplate>
+    </DataGridColumnDef>
+</DataGrid>";
+}

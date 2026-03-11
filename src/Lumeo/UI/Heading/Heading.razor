@@ -1,0 +1,77 @@
+@namespace Lumeo
+
+@switch (Level)
+{
+    case 1:
+        <h1 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h1>
+        break;
+    case 2:
+        <h2 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h2>
+        break;
+    case 3:
+        <h3 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h3>
+        break;
+    case 4:
+        <h4 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h4>
+        break;
+    case 5:
+        <h5 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h5>
+        break;
+    default:
+        <h6 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h6>
+        break;
+}
+
+@code {
+    [Parameter] public int Level { get; set; } = 2;
+    [Parameter] public string? Size { get; set; }
+    [Parameter] public string? Weight { get; set; }
+    [Parameter] public string? Tracking { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string ResolvedSize => Size ?? Level switch
+    {
+        1 => "4xl",
+        2 => "3xl",
+        3 => "2xl",
+        4 => "xl",
+        5 => "lg",
+        _ => "base"
+    };
+
+    private string ResolvedWeight => Weight ?? Level switch
+    {
+        1 or 2 => "bold",
+        3 or 4 => "semibold",
+        _ => "medium"
+    };
+
+    private string? ResolvedTracking => Tracking ?? Level switch
+    {
+        1 or 2 => "tight",
+        _ => null
+    };
+
+    private string CssClass
+    {
+        get
+        {
+            var classes = new List<string>
+            {
+                $"text-{ResolvedSize}",
+                $"font-{ResolvedWeight}",
+                "text-foreground"
+            };
+
+            if (!string.IsNullOrEmpty(ResolvedTracking))
+                classes.Add($"tracking-{ResolvedTracking}");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+}

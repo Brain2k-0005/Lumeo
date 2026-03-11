@@ -1,0 +1,52 @@
+@namespace Lumeo
+
+<div class="@CssClass" role="radiogroup" @attributes="AdditionalAttributes">
+    @if (Options is not null)
+    {
+        @foreach (var option in Options)
+        {
+            var isActive = option.Value == Value;
+            <button type="button"
+                    role="radio"
+                    aria-checked="@isActive.ToString().ToLower()"
+                    class="@GetItemClasses(isActive)"
+                    disabled="@option.Disabled"
+                    @onclick="() => SelectOption(option.Value)">
+                @if (option.Icon is not null)
+                {
+                    <span class="mr-1.5">@option.Icon</span>
+                }
+                @option.Label
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public List<SegmentedOption>? Options { get; set; }
+    [Parameter] public bool Block { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"inline-flex items-center rounded-lg bg-muted p-1 {(Block ? "w-full" : "")} {Class}".Trim();
+
+    private string GetItemClasses(bool isActive) => isActive
+        ? $"inline-flex items-center justify-center rounded-md bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm transition-all {(Block ? "flex-1" : "")}"
+        : $"inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-all hover:text-foreground disabled:pointer-events-none disabled:opacity-50 {(Block ? "flex-1" : "")}";
+
+    private async Task SelectOption(string value)
+    {
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    public class SegmentedOption
+    {
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public RenderFragment? Icon { get; set; }
+        public bool Disabled { get; set; }
+    }
+}

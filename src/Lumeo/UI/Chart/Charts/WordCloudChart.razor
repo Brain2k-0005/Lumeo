@@ -1,0 +1,126 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<Chart OptionJson="@_optionJson" Width="@Width" Height="@Height" Theme="@Theme"
+       EChartsSource="@EChartsSource" Class="@Class" @attributes="AdditionalAttributes" />
+
+@inject IJSRuntime JSRuntime
+
+@code {
+    [Parameter] public List<WordCloudItem>? Words { get; set; }
+    [Parameter] public string Shape { get; set; } = "circle";
+    [Parameter] public int[] SizeRange { get; set; } = new[] { 12, 60 };
+    [Parameter] public int[] RotationRange { get; set; } = new[] { -90, 90 };
+    [Parameter] public string? EChartsSource { get; set; }
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "center";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
+    private string _optionJson = "{}";
+    private IJSObjectReference? _module;
+    private bool _extensionLoaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_extensionLoaded)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./_content/Lumeo/js/echarts-interop.js");
+            await _module.InvokeVoidAsync("loadExtension",
+                "https://cdn.jsdelivr.net/npm/echarts-wordcloud@2/dist/echarts-wordcloud.min.js");
+            _extensionLoaded = true;
+            BuildOptionJson();
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_extensionLoaded)
+            BuildOptionJson();
+    }
+
+    private void BuildOptionJson()
+    {
+        var option = new Dictionary<string, object?>();
+
+        var wordData = Words?.Select(w => new Dictionary<string, object?>
+        {
+            ["name"] = w.Text,
+            ["value"] = w.Weight
+        }).ToList() ?? new List<Dictionary<string, object?>>();
+
+        var series = new Dictionary<string, object?>
+        {
+            ["type"] = "wordCloud",
+            ["shape"] = Shape,
+            ["sizeRange"] = SizeRange,
+            ["rotationRange"] = RotationRange,
+            ["rotationStep"] = 45,
+            ["gridSize"] = 8,
+            ["drawOutOfBound"] = false,
+            ["data"] = wordData,
+            ["textStyle"] = new Dictionary<string, object?>
+            {
+                ["fontFamily"] = "sans-serif",
+                ["fontWeight"] = "bold"
+            }
+        };
+
+        option["series"] = new[] { series };
+
+        if (ShowTooltip)
+            option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" };
+
+        if (ColorPalette is { Count: > 0 })
+            option["color"] = ColorPalette;
+
+        if (AnimationDuration.HasValue)
+            option["animationDuration"] = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing))
+            option["animationEasing"] = AnimationEasing;
+
+        if (Toolbox)
+            option["toolbox"] = new Dictionary<string, object?>
+            {
+                ["show"] = true,
+                ["feature"] = new Dictionary<string, object?>
+                {
+                    ["saveAsImage"] = new Dictionary<string, object?> { ["show"] = true }
+                }
+            };
+
+        if (OptionOverride is { Count: > 0 })
+            foreach (var kvp in OptionOverride)
+                option[kvp.Key] = kvp.Value;
+
+        _optionJson = System.Text.Json.JsonSerializer.Serialize(option);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public class WordCloudItem
+    {
+        public string Text { get; set; } = "";
+        public double Weight { get; set; }
+    }
+}

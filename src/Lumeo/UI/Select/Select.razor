@@ -1,10 +1,12 @@
 @namespace Lumeo
 
 @{
-    var context = new SelectContext(Value, IsOpen, Searchable, SearchText,
+    var context = new SelectContext(Value, IsOpen, Searchable, SearchText, Multiple, Values, IsLoading, Clearable, Creatable, MaxDisplayTags,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
+        EventCallback.Factory.Create(this, OnClear),
+        EventCallback.Factory.Create<string>(this, OnCreateItem),
         _wrapperId);
 }
 
@@ -21,6 +23,14 @@
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter] public bool Searchable { get; set; }
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public List<string>? Values { get; set; }
+    [Parameter] public EventCallback<List<string>?> ValuesChanged { get; set; }
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public bool Creatable { get; set; }
+    [Parameter] public EventCallback<string> OnCreate { get; set; }
+    [Parameter] public int MaxDisplayTags { get; set; } = 3;
+    [Parameter] public bool IsLoading { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _wrapperId = $"select-{Guid.NewGuid():N}";
@@ -28,9 +38,26 @@
 
     private async Task OnValueSelected(string value)
     {
-        Value = value;
-        await ValueChanged.InvokeAsync(value);
-        await SetOpen(false);
+        if (Multiple)
+        {
+            var current = Values ?? new List<string>();
+            if (current.Contains(value))
+            {
+                current = current.Where(v => v != value).ToList();
+            }
+            else
+            {
+                current = new List<string>(current) { value };
+            }
+            Values = current.Count > 0 ? current : null;
+            await ValuesChanged.InvokeAsync(Values);
+        }
+        else
+        {
+            Value = value;
+            await ValueChanged.InvokeAsync(value);
+            await SetOpen(false);
+        }
     }
 
     private async Task SetOpen(bool value)
@@ -46,6 +73,43 @@
         return Task.CompletedTask;
     }
 
-    public record SelectContext(string? Value, bool IsOpen, bool Searchable, string SearchText,
-        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch, string WrapperId);
+    private async Task OnClear()
+    {
+        if (Multiple)
+        {
+            Values = null;
+            await ValuesChanged.InvokeAsync(null);
+        }
+        else
+        {
+            Value = null;
+            await ValueChanged.InvokeAsync(null!);
+        }
+    }
+
+    private async Task OnCreateItem(string value)
+    {
+        await OnCreate.InvokeAsync(value);
+        if (Multiple)
+        {
+            var current = Values ?? new List<string>();
+            current = new List<string>(current) { value };
+            Values = current;
+            await ValuesChanged.InvokeAsync(Values);
+        }
+        else
+        {
+            Value = value;
+            await ValueChanged.InvokeAsync(value);
+            await SetOpen(false);
+        }
+        SearchText = "";
+    }
+
+    public record SelectContext(
+        string? Value, bool IsOpen, bool Searchable, string SearchText,
+        bool Multiple, List<string>? Values, bool IsLoading, bool Clearable, bool Creatable, int MaxDisplayTags,
+        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,
+        EventCallback OnClear, EventCallback<string> OnCreateItem,
+        string WrapperId);
 }

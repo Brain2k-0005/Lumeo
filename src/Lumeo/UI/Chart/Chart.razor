@@ -14,6 +14,12 @@
     [Parameter] public string Height { get; set; } = "350px";
     [Parameter] public EventCallback<ChartEventArgs> OnClick { get; set; }
     [Parameter] public EventCallback<ChartEventArgs> OnMouseOver { get; set; }
+    [Parameter] public bool ShowLoading { get; set; }
+    [Parameter] public string? Group { get; set; }
+    [Parameter] public string? AspectRatio { get; set; }
+    [Parameter] public EventCallback<ChartEventArgs> OnDoubleClick { get; set; }
+    [Parameter] public EventCallback<ChartEventArgs> OnBrushSelected { get; set; }
+    [Parameter] public EventCallback<ChartEventArgs> OnDataZoom { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -22,9 +28,12 @@
     private DotNetObjectReference<Chart>? _selfRef;
     private bool _initialized;
     private string? _lastJson;
+    private bool _lastShowLoading;
 
     private string CssClass => $"{Class}".Trim();
-    private string StyleStr => $"width: {Width}; height: {Height};";
+    private string StyleStr => AspectRatio is not null
+        ? $"width: {Width}; aspect-ratio: {AspectRatio};"
+        : $"width: {Width}; height: {Height};";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -39,13 +48,28 @@
             await _module.InvokeVoidAsync("initChart", _chartId, json, Theme, EChartsSource);
             _initialized = true;
 
-            if (OnClick.HasDelegate || OnMouseOver.HasDelegate)
+            if (OnClick.HasDelegate || OnMouseOver.HasDelegate || OnDoubleClick.HasDelegate || OnBrushSelected.HasDelegate || OnDataZoom.HasDelegate)
             {
                 _selfRef = DotNetObjectReference.Create(this);
                 if (OnClick.HasDelegate)
                     await _module.InvokeVoidAsync("registerChartEvent", _chartId, "click", _selfRef);
                 if (OnMouseOver.HasDelegate)
                     await _module.InvokeVoidAsync("registerChartEvent", _chartId, "mouseover", _selfRef);
+                if (OnDoubleClick.HasDelegate)
+                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dblclick", _selfRef);
+                if (OnBrushSelected.HasDelegate)
+                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "brushSelected", _selfRef);
+                if (OnDataZoom.HasDelegate)
+                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dataZoom", _selfRef);
+            }
+
+            if (!string.IsNullOrEmpty(Group))
+                await _module.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
+
+            if (ShowLoading)
+            {
+                _lastShowLoading = true;
+                await _module.InvokeVoidAsync("showLoading", _chartId, null);
             }
         }
         else if (_initialized)
@@ -55,6 +79,15 @@
             {
                 _lastJson = json;
                 await _module!.InvokeVoidAsync("updateChart", _chartId, json, false);
+            }
+
+            if (ShowLoading != _lastShowLoading)
+            {
+                _lastShowLoading = ShowLoading;
+                if (ShowLoading)
+                    await _module!.InvokeVoidAsync("showLoading", _chartId, null);
+                else
+                    await _module!.InvokeVoidAsync("hideLoading", _chartId);
             }
         }
     }
@@ -71,6 +104,34 @@
         var args = System.Text.Json.JsonSerializer.Deserialize<ChartEventArgs>(dataJson) ?? new();
         if (eventName == "click") await OnClick.InvokeAsync(args);
         else if (eventName == "mouseover") await OnMouseOver.InvokeAsync(args);
+        else if (eventName == "dblclick") await OnDoubleClick.InvokeAsync(args);
+        else if (eventName == "brushSelected") await OnBrushSelected.InvokeAsync(args);
+        else if (eventName == "dataZoom") await OnDataZoom.InvokeAsync(args);
+    }
+
+    public async Task<string?> GetImageAsync(string type = "png", int pixelRatio = 2)
+    {
+        if (_module is null || !_initialized) return null;
+        return await _module.InvokeAsync<string?>("getDataURL", _chartId,
+            new { type, pixelRatio, backgroundColor = "#fff" });
+    }
+
+    public async Task AppendDataAsync(int seriesIndex, string dataJson)
+    {
+        if (_module is null || !_initialized) return;
+        await _module.InvokeVoidAsync("appendData", _chartId, seriesIndex, dataJson);
+    }
+
+    public async Task DispatchActionAsync(string actionJson)
+    {
+        if (_module is null || !_initialized) return;
+        await _module.InvokeVoidAsync("dispatchAction", _chartId, actionJson);
+    }
+
+    public async Task ResizeAsync()
+    {
+        if (_module is null || !_initialized) return;
+        await _module.InvokeVoidAsync("resizeChart", _chartId);
     }
 
     public async ValueTask DisposeAsync()

@@ -3,36 +3,133 @@
 <Popover @bind-IsOpen="_isOpen">
     <PopoverTrigger>
         <button type="button" class="@CssClass" @attributes="AdditionalAttributes">
-            <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4" />
-            @if (Value.HasValue)
+            <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4 shrink-0" />
+            @if (TriggerContent != null)
             {
-                <span>@Value.Value.ToString(Format)</span>
+                @TriggerContent
+            }
+            else if (Mode == "Range")
+            {
+                @if (RangeStart.HasValue && RangeEnd.HasValue)
+                {
+                    <span>@RangeStart.Value.ToString(Format) - @RangeEnd.Value.ToString(Format)</span>
+                }
+                else if (RangeStart.HasValue)
+                {
+                    <span>@RangeStart.Value.ToString(Format) - ...</span>
+                }
+                else
+                {
+                    <span class="text-muted-foreground">@Placeholder</span>
+                }
+            }
+            else if (Mode == "Month")
+            {
+                @if (Value.HasValue)
+                {
+                    <span>@Value.Value.ToString("MMMM yyyy")</span>
+                }
+                else
+                {
+                    <span class="text-muted-foreground">@Placeholder</span>
+                }
+            }
+            else if (Mode == "Year")
+            {
+                @if (Value.HasValue)
+                {
+                    <span>@Value.Value.Year</span>
+                }
+                else
+                {
+                    <span class="text-muted-foreground">@Placeholder</span>
+                }
             }
             else
             {
-                <span class="text-muted-foreground">@Placeholder</span>
+                @if (Value.HasValue)
+                {
+                    <span>@Value.Value.ToString(Format)</span>
+                }
+                else
+                {
+                    <span class="text-muted-foreground">@Placeholder</span>
+                }
+            }
+
+            @if (Clearable && HasValue)
+            {
+                <button type="button" class="ml-auto pl-1 hover:text-foreground" @onclick="HandleClear" @onclick:stopPropagation="true">
+                    <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                </button>
             }
         </button>
     </PopoverTrigger>
     <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
-        @if (Presets != null && Presets.Count > 0)
+        @if (Mode == "Month")
         {
-            <div class="flex">
-                <div class="flex flex-col gap-1 border-r border-border p-2 min-w-[120px]">
-                    @foreach (var preset in Presets)
-                    {
-                        var p = preset;
-                        <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors" @onclick="() => HandlePresetSelected(p)">
-                            @p.Label
-                        </button>
-                    }
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" InitialView="Months" />
+        }
+        else if (Mode == "Year")
+        {
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" InitialView="Years" />
+        }
+        else if (Mode == "Range")
+        {
+            @if (Presets != null && Presets.Count > 0)
+            {
+                <div class="flex">
+                    <div class="flex flex-col gap-1 border-r border-border/40 p-2 min-w-[120px]">
+                        @foreach (var preset in Presets)
+                        {
+                            var p = preset;
+                            <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors" @onclick="() => HandlePresetSelected(p)">
+                                @p.Label
+                            </button>
+                        }
+                    </div>
+                    <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
+                              RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
+                              MinDate="@MinDate" MaxDate="@MaxDate" NumberOfMonths="@EffectiveNumberOfMonths" />
                 </div>
-                <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" />
-            </div>
+            }
+            else
+            {
+                <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
+                          RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
+                          MinDate="@MinDate" MaxDate="@MaxDate" NumberOfMonths="@EffectiveNumberOfMonths" />
+            }
         }
         else
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" />
+            <div>
+                @if (Presets != null && Presets.Count > 0)
+                {
+                    <div class="flex">
+                        <div class="flex flex-col gap-1 border-r border-border/40 p-2 min-w-[120px]">
+                            @foreach (var preset in Presets)
+                            {
+                                var p = preset;
+                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors" @onclick="() => HandlePresetSelected(p)">
+                                    @p.Label
+                                </button>
+                            }
+                        </div>
+                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" NumberOfMonths="@EffectiveNumberOfMonths" />
+                    </div>
+                }
+                else
+                {
+                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" NumberOfMonths="@EffectiveNumberOfMonths" />
+                }
+
+                @if (ShowTimePicker)
+                {
+                    <div class="border-t border-border/40 p-3">
+                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Use24Hour="true" />
+                    </div>
+                }
+            </div>
         }
     </PopoverContent>
 </Popover>
@@ -45,18 +142,73 @@
     [Parameter] public DateOnly? MinDate { get; set; }
     [Parameter] public DateOnly? MaxDate { get; set; }
     [Parameter] public List<DatePickerPreset>? Presets { get; set; }
+    [Parameter] public string Mode { get; set; } = "Single";
+    [Parameter] public DateOnly? RangeStart { get; set; }
+    [Parameter] public EventCallback<DateOnly?> RangeStartChanged { get; set; }
+    [Parameter] public DateOnly? RangeEnd { get; set; }
+    [Parameter] public EventCallback<DateOnly?> RangeEndChanged { get; set; }
+    [Parameter] public bool ShowTimePicker { get; set; }
+    [Parameter] public TimeSpan? Time { get; set; }
+    [Parameter] public EventCallback<TimeSpan?> TimeChanged { get; set; }
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public RenderFragment? TriggerContent { get; set; }
+    [Parameter] public int NumberOfMonths { get; set; } = 1;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
 
+    private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == "Range" ? 2 : 1);
+
+    private bool HasValue => Mode == "Range" ? RangeStart.HasValue : Value.HasValue;
+
     private string CssClass => $"flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground {Class}".Trim();
 
     private async Task HandleDateSelected(DateOnly? date)
     {
-        Value = date;
-        await ValueChanged.InvokeAsync(date);
-        _isOpen = false;
+        if (Mode == "Month" && date.HasValue)
+        {
+            Value = new DateOnly(date.Value.Year, date.Value.Month, 1);
+            await ValueChanged.InvokeAsync(Value);
+            _isOpen = false;
+        }
+        else if (Mode == "Year" && date.HasValue)
+        {
+            Value = new DateOnly(date.Value.Year, 1, 1);
+            await ValueChanged.InvokeAsync(Value);
+            _isOpen = false;
+        }
+        else
+        {
+            Value = date;
+            await ValueChanged.InvokeAsync(date);
+            if (!ShowTimePicker)
+            {
+                _isOpen = false;
+            }
+        }
+    }
+
+    private async Task HandleRangeStartChanged(DateOnly? date)
+    {
+        RangeStart = date;
+        await RangeStartChanged.InvokeAsync(date);
+    }
+
+    private async Task HandleRangeEndChanged(DateOnly? date)
+    {
+        RangeEnd = date;
+        await RangeEndChanged.InvokeAsync(date);
+        if (date.HasValue)
+        {
+            _isOpen = false;
+        }
+    }
+
+    private async Task HandleTimeChanged(TimeSpan? time)
+    {
+        Time = time;
+        await TimeChanged.InvokeAsync(time);
     }
 
     private async Task HandlePresetSelected(DatePickerPreset preset)
@@ -64,6 +216,27 @@
         Value = preset.Date;
         await ValueChanged.InvokeAsync(preset.Date);
         _isOpen = false;
+    }
+
+    private async Task HandleClear()
+    {
+        if (Mode == "Range")
+        {
+            RangeStart = null;
+            RangeEnd = null;
+            await RangeStartChanged.InvokeAsync(null);
+            await RangeEndChanged.InvokeAsync(null);
+        }
+        else
+        {
+            Value = null;
+            await ValueChanged.InvokeAsync(null);
+        }
+        if (ShowTimePicker)
+        {
+            Time = null;
+            await TimeChanged.InvokeAsync(null);
+        }
     }
 
     public record DatePickerPreset(string Label, DateOnly Date);

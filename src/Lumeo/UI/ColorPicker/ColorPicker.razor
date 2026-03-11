@@ -1,0 +1,269 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@{
+    var context = new ColorPickerContext(Value ?? "#000000", IsOpen,
+        EventCallback.Factory.Create<string>(this, OnColorChanged),
+        EventCallback.Factory.Create<bool>(this, SetOpen),
+        _wrapperId);
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
+        <button type="button" class="@TriggerClass" @onclick="ToggleOpen" disabled="@Disabled" aria-label="Pick a color">
+            <span class="h-5 w-5 rounded-sm border border-border/40" style="background-color: @(Value ?? "#000000")"></span>
+            <span class="text-sm text-foreground">@(Value ?? "#000000")</span>
+            <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 text-muted-foreground ml-auto" />
+        </button>
+
+        @if (IsOpen)
+        {
+            <div id="@_contentId" class="@ContentClass" @onkeydown="HandleKeyDown" tabindex="-1">
+                @* Color grid *@
+                <div class="grid grid-cols-8 gap-1 mb-3">
+                    @foreach (var color in _colorGrid)
+                    {
+                        <button type="button"
+                                class="@GetSwatchClass(color)"
+                                style="background-color: @color"
+                                @onclick="() => SelectColor(color)"
+                                title="@color"
+                                aria-label="@color">
+                            @if (string.Equals(Value, color, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
+                            }
+                        </button>
+                    }
+                </div>
+
+                @* Hue slider *@
+                <div class="mb-3">
+                    <label class="text-xs text-muted-foreground mb-1 block">Hue</label>
+                    <input type="range" min="0" max="360" value="@_hue"
+                           class="w-full h-2 rounded-full appearance-none cursor-pointer"
+                           style="background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)"
+                           @oninput="OnHueChanged" />
+                </div>
+
+                @* Lightness slider *@
+                <div class="mb-3">
+                    <label class="text-xs text-muted-foreground mb-1 block">Lightness</label>
+                    <input type="range" min="0" max="100" value="@_lightness"
+                           class="w-full h-2 rounded-full appearance-none cursor-pointer"
+                           style="background: linear-gradient(to right, #000, hsl(@_hue, @(_saturation)%, 50%), #fff)" />
+                </div>
+
+                @if (ShowAlpha)
+                {
+                    <div class="mb-3">
+                        <label class="text-xs text-muted-foreground mb-1 block">Opacity</label>
+                        <input type="range" min="0" max="100" value="@_alpha"
+                               class="w-full h-2 rounded-full appearance-none cursor-pointer"
+                               @oninput="OnAlphaChanged" />
+                    </div>
+                }
+
+                @* Hex input *@
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-muted-foreground shrink-0">Hex</label>
+                    <input type="text" value="@(Value ?? "#000000")"
+                           class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                           @onchange="OnHexInput" maxlength="9" />
+                </div>
+
+                @if (Presets is { Count: > 0 })
+                {
+                    <div class="mt-3 pt-3 border-t border-border/40">
+                        <label class="text-xs text-muted-foreground mb-1.5 block">Presets</label>
+                        <div class="flex flex-wrap gap-1">
+                            @foreach (var preset in Presets)
+                            {
+                                <button type="button"
+                                        class="@GetSwatchClass(preset)"
+                                        style="background-color: @preset"
+                                        @onclick="() => SelectColor(preset)"
+                                        title="@preset"
+                                        aria-label="@preset">
+                                    @if (string.Equals(Value, preset, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</CascadingValue>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public bool ShowAlpha { get; set; }
+    [Parameter] public List<string>? Presets { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _wrapperId = $"colorpicker-{Guid.NewGuid():N}";
+    private readonly string _contentId = $"colorpicker-content-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private int _hue = 0;
+    private int _saturation = 100;
+    private int _lightness = 50;
+    private int _alpha = 100;
+
+    private string ContainerClass => $"relative inline-block {Class}".Trim();
+
+    private const string TriggerClass = "flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm hover:bg-accent hover:text-accent-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+
+    private const string ContentClass = "fixed z-50 w-64 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-lg animate-fade-in";
+
+    private static string GetSwatchClass(string color) =>
+        "h-6 w-6 rounded-sm border border-border/40 cursor-pointer hover:scale-110 transition-transform flex items-center justify-center";
+
+    private static readonly string[] _colorGrid =
+    [
+        "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6",
+        "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+        "#f43f5e", "#fb923c", "#fbbf24", "#facc15", "#a3e635", "#4ade80", "#34d399", "#2dd4bf",
+        "#22d3ee", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa", "#c084fc", "#e879f9", "#f472b6",
+        "#fca5a5", "#fdba74", "#fde047", "#fef08a", "#d9f99d", "#86efac", "#6ee7b7", "#99f6e4",
+        "#67e8f9", "#7dd3fc", "#93c5fd", "#a5b4fc", "#c4b5fd", "#d8b4fe", "#f0abfc", "#f9a8d4",
+        "#000000", "#171717", "#404040", "#525252", "#737373", "#a3a3a3", "#d4d4d4", "#ffffff"
+    ];
+
+    private async Task ToggleOpen()
+    {
+        if (!Disabled) await SetOpen(!IsOpen);
+    }
+
+    private async Task SetOpen(bool value)
+    {
+        IsOpen = value;
+        await IsOpenChanged.InvokeAsync(value);
+    }
+
+    private async Task SelectColor(string color)
+    {
+        Value = color;
+        await ValueChanged.InvokeAsync(color);
+    }
+
+    private async Task OnColorChanged(string color)
+    {
+        Value = color;
+        await ValueChanged.InvokeAsync(color);
+    }
+
+    private void OnHueChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var h))
+        {
+            _hue = h;
+            UpdateFromHsl();
+        }
+    }
+
+    private void OnAlphaChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var a))
+        {
+            _alpha = a;
+        }
+    }
+
+    private void UpdateFromHsl()
+    {
+        var (r, g, b) = HslToRgb(_hue, _saturation, _lightness);
+        Value = $"#{r:X2}{g:X2}{b:X2}";
+        ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task OnHexInput(ChangeEventArgs e)
+    {
+        var hex = e.Value?.ToString()?.Trim() ?? "";
+        if (!hex.StartsWith('#')) hex = "#" + hex;
+        if (hex.Length is 4 or 7 or 9)
+        {
+            Value = hex;
+            await ValueChanged.InvokeAsync(hex);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await SetOpen(false);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && !_registered)
+        {
+            await Interop.PositionFixed(_contentId, _wrapperId, "start", false, "bottom");
+            await Interop.RegisterClickOutside(_contentId, _wrapperId, async () =>
+            {
+                await SetOpen(false);
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
+        }
+        else if (!IsOpen && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+
+    private static (int r, int g, int b) HslToRgb(int h, int s, int l)
+    {
+        double hue = h / 360.0;
+        double sat = s / 100.0;
+        double light = l / 100.0;
+
+        double r, g, b;
+        if (Math.Abs(sat) < 0.001)
+        {
+            r = g = b = light;
+        }
+        else
+        {
+            var q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+            var p = 2 * light - q;
+            r = HueToRgb(p, q, hue + 1.0 / 3);
+            g = HueToRgb(p, q, hue);
+            b = HueToRgb(p, q, hue - 1.0 / 3);
+        }
+        return ((int)(r * 255), (int)(g * 255), (int)(b * 255));
+    }
+
+    private static double HueToRgb(double p, double q, double t)
+    {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+        if (t < 1.0 / 2) return q;
+        if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+        return p;
+    }
+
+    public record ColorPickerContext(string Value, bool IsOpen, EventCallback<string> OnColorChanged, EventCallback<bool> SetOpen, string WrapperId);
+}

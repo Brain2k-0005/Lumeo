@@ -1,19 +1,48 @@
 @namespace Lumeo
 
-<div role="tablist" class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (Scrollable)
+{
+    <div class="overflow-hidden">
+        <div role="tablist" class="@CssClass overflow-x-auto scrollbar-none" @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    </div>
+}
+else
+{
+    <div role="tablist" class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public Tabs.TabsContext? Context { get; set; }
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Scrollable { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsVertical => Context?.Orientation == Tabs.TabsOrientation.Vertical;
+    private string CurrentVariant => Context?.Variant ?? "Default";
 
-    private string CssClass => IsVertical
-        ? $"flex flex-col h-auto w-auto items-stretch justify-start rounded-lg bg-muted p-1 text-muted-foreground {Class}".Trim()
-        : $"inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground {Class}".Trim();
+    private string CssClass
+    {
+        get
+        {
+            var baseClasses = CurrentVariant switch
+            {
+                "Card" => IsVertical
+                    ? "flex flex-col h-auto w-auto items-stretch justify-start text-muted-foreground"
+                    : "inline-flex h-10 items-center justify-center text-muted-foreground",
+                "Pill" => IsVertical
+                    ? "flex flex-col h-auto w-auto items-stretch justify-start gap-1 text-muted-foreground"
+                    : "inline-flex h-10 items-center justify-center gap-1 text-muted-foreground",
+                _ => IsVertical
+                    ? "flex flex-col h-auto w-auto items-stretch justify-start rounded-lg bg-muted p-1 text-muted-foreground"
+                    : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+            };
+            return $"{baseClasses} {Class}".Trim();
+        }
+    }
 }

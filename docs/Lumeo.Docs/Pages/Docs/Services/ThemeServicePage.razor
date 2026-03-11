@@ -1,0 +1,241 @@
+@page "/docs/services/theme"
+@namespace Lumeo.Docs.Pages.Docs.Services
+
+@using Lumeo.Services
+
+<PageTitle>Theme Service — Lumeo</PageTitle>
+
+<PageHeader Title="Theme Service" Description="Switch between light, dark, and system mode, change color schemes at runtime, and react to theme changes." />
+
+<Stack Gap="10">
+
+    <!-- Quick Start -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Quick Start</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ThemeService</code> manages light/dark mode and color schemes.
+                It persists the user's preference via JS interop with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">localStorage</code>.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject ThemeService ThemeService
+
+@@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ThemeService.InitializeAsync();
+            StateHasChanged();
+        }
+    }
+}</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Dark Mode -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Dark Mode</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Toggle between light, dark, and system-preferred mode:</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Toggle between light and dark
+await ThemeService.ToggleModeAsync();
+
+// Set explicitly
+await ThemeService.SetModeAsync(ThemeMode.Dark);
+await ThemeService.SetModeAsync(ThemeMode.Light);
+await ThemeService.SetModeAsync(ThemeMode.System);
+
+// Read current state
+bool isDark = ThemeService.IsDark;
+ThemeMode mode = ThemeService.CurrentMode;  // System, Light, or Dark</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Color Schemes -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Color Schemes</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Switch the entire color palette at runtime:</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Change color scheme
+await ThemeService.SetSchemeAsync("blue");
+
+// Available built-in schemes
+string current = ThemeService.CurrentScheme;  // e.g. "orange"
+
+// List all schemes with preview colors
+foreach (var scheme in ThemeService.AvailableSchemes)
+{
+    // scheme.Id           → "orange"
+    // scheme.DisplayName  → "Orange"
+    // scheme.PreviewColor → "hsl(14 70% 50%)"
+}</div>
+            <Stack Gap="2">
+                <Heading Level="3">Built-in Schemes</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">ID</th>
+                                <th class="text-left p-3 font-medium text-foreground">Name</th>
+                                <th class="text-left p-3 font-medium text-foreground">Preview</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            @foreach (var scheme in ThemeService.AvailableSchemes)
+                            {
+                                <tr>
+                                    <td class="p-3 font-mono text-xs text-primary">@scheme.Id</td>
+                                    <td class="p-3 text-muted-foreground">@scheme.DisplayName</td>
+                                    <td class="p-3"><span class="inline-block h-4 w-4 rounded-full" style="background: @scheme.PreviewColor"></span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Listening for Changes -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Listening for Changes</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Subscribe to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnThemeChanged</code> to react when the user switches themes:
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+@@inject ThemeService ThemeService
+
+@@code {
+    protected override void OnInitialized()
+    {
+        ThemeService.OnThemeChanged += HandleThemeChanged;
+    }
+
+    private async void HandleThemeChanged()
+    {
+        // ThemeService.IsDark, CurrentMode, CurrentScheme are updated
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= HandleThemeChanged;
+    }
+}</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- API Reference -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">API Reference</Heading>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">Properties</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Property</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">CurrentMode</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ThemeMode</td>
+                                <td class="p-3 text-muted-foreground">Current mode: System, Light, or Dark.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">CurrentScheme</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Current color scheme ID (e.g. "orange").</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">IsDark</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                                <td class="p-3 text-muted-foreground">Whether dark mode is currently active.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">AvailableSchemes</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;ThemeSchemeInfo&gt;</td>
+                                <td class="p-3 text-muted-foreground">List of built-in color schemes (static).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">Methods</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Method</th>
+                                <th class="text-left p-3 font-medium text-foreground">Returns</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">InitializeAsync()</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task</td>
+                                <td class="p-3 text-muted-foreground">Reads persisted theme from localStorage. Call once on first render.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">SetModeAsync(ThemeMode)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task</td>
+                                <td class="p-3 text-muted-foreground">Sets mode to System, Light, or Dark.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ToggleModeAsync()</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task</td>
+                                <td class="p-3 text-muted-foreground">Toggles between light and dark.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">SetSchemeAsync(string)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task</td>
+                                <td class="p-3 text-muted-foreground">Changes the active color scheme by ID.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">Events</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Event</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">OnThemeChanged</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Action?</td>
+                                <td class="p-3 text-muted-foreground">Fired after mode or scheme changes. Unsubscribe in Dispose().</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+        </Stack>
+    </section>
+
+</Stack>

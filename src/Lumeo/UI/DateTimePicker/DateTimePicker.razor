@@ -1,0 +1,229 @@
+@namespace Lumeo
+
+<Popover @bind-IsOpen="_isOpen">
+    <PopoverTrigger>
+        <button type="button" class="@CssClass" disabled="@Disabled" @attributes="AdditionalAttributes">
+            <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4 shrink-0" />
+            @if (Value.HasValue)
+            {
+                <span>@FormatDateTime(Value.Value)</span>
+            }
+            else
+            {
+                <span class="text-muted-foreground">@Placeholder</span>
+            }
+            @if (Clearable && Value.HasValue)
+            {
+                <button type="button" class="ml-auto pl-1 hover:text-foreground" @onclick="HandleClear" @onclick:stopPropagation="true">
+                    <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                </button>
+            }
+        </button>
+    </PopoverTrigger>
+    <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
+        <div class="flex">
+            <div>
+                <Calendar Value="@_dateValue" ValueChanged="HandleDateChanged" />
+            </div>
+            <div class="border-l border-border/40">
+                <div class="p-3 pb-1">
+                    <span class="text-xs font-medium text-muted-foreground">Time</span>
+                </div>
+                <div class="flex divide-x divide-border/40">
+                    @* Hours column *@
+                    <div class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                        @foreach (var hour in GetHours())
+                        {
+                            var h = hour;
+                            var isSelected = _timeValue.HasValue && GetDisplayHour(_timeValue.Value) == h;
+                            <button type="button"
+                                    class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                                    @onclick="() => SelectHour(h)">
+                                @h.ToString("D2")
+                            </button>
+                        }
+                    </div>
+
+                    @* Minutes column *@
+                    <div class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                        @for (var i = 0; i < 60; i++)
+                        {
+                            var m = i;
+                            var isSelected = _timeValue.HasValue && _timeValue.Value.Minutes == m;
+                            <button type="button"
+                                    class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                                    @onclick="() => SelectMinute(m)">
+                                @m.ToString("D2")
+                            </button>
+                        }
+                    </div>
+
+                    @* Seconds column *@
+                    @if (ShowSeconds)
+                    {
+                        <div class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                            @for (var i = 0; i < 60; i++)
+                            {
+                                var s = i;
+                                var isSelected = _timeValue.HasValue && _timeValue.Value.Seconds == s;
+                                <button type="button"
+                                        class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                                        @onclick="() => SelectSecond(s)">
+                                    @s.ToString("D2")
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    @* AM/PM column *@
+                    @if (!Use24Hour)
+                    {
+                        <div class="flex flex-col py-1">
+                            @{
+                                var isAm = !_timeValue.HasValue || _timeValue.Value.Hours < 12;
+                            }
+                            <button type="button"
+                                    class="@(isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                                    @onclick="() => SelectAmPm(true)">
+                                AM
+                            </button>
+                            <button type="button"
+                                    class="@(!isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                                    @onclick="() => SelectAmPm(false)">
+                                PM
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </PopoverContent>
+</Popover>
+
+@code {
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+    [Parameter] public bool Use24Hour { get; set; } = true;
+    [Parameter] public bool ShowSeconds { get; set; }
+    [Parameter] public string? DateFormat { get; set; } = "yyyy-MM-dd";
+    [Parameter] public string? Placeholder { get; set; } = "Select date and time";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isOpen;
+    private DateOnly? _dateValue;
+    private TimeSpan? _timeValue;
+
+    private string CssClass => $"flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    protected override void OnParametersSet()
+    {
+        if (Value.HasValue)
+        {
+            _dateValue = DateOnly.FromDateTime(Value.Value);
+            _timeValue = Value.Value.TimeOfDay;
+        }
+        else
+        {
+            _dateValue = null;
+            _timeValue = null;
+        }
+    }
+
+    private string FormatDateTime(DateTime dt)
+    {
+        var timeFormat = Use24Hour
+            ? (ShowSeconds ? "HH:mm:ss" : "HH:mm")
+            : (ShowSeconds ? "hh:mm:ss tt" : "hh:mm tt");
+        return $"{dt.ToString(DateFormat)} {dt.ToString(timeFormat)}";
+    }
+
+    private List<int> GetHours()
+    {
+        var hours = new List<int>();
+        if (Use24Hour)
+        {
+            for (var i = 0; i < 24; i++) hours.Add(i);
+        }
+        else
+        {
+            for (var i = 1; i <= 12; i++) hours.Add(i);
+        }
+        return hours;
+    }
+
+    private int GetDisplayHour(TimeSpan time)
+    {
+        if (Use24Hour) return time.Hours;
+        var h = time.Hours % 12;
+        return h == 0 ? 12 : h;
+    }
+
+    private async Task HandleDateChanged(DateOnly? date)
+    {
+        _dateValue = date;
+        await UpdateValue();
+    }
+
+    private async Task SelectHour(int hour)
+    {
+        var current = _timeValue ?? TimeSpan.Zero;
+        int actualHour;
+        if (Use24Hour)
+        {
+            actualHour = hour;
+        }
+        else
+        {
+            var isPm = current.Hours >= 12;
+            actualHour = hour % 12;
+            if (isPm) actualHour += 12;
+        }
+        _timeValue = new TimeSpan(actualHour, current.Minutes, current.Seconds);
+        await UpdateValue();
+    }
+
+    private async Task SelectMinute(int minute)
+    {
+        var current = _timeValue ?? TimeSpan.Zero;
+        _timeValue = new TimeSpan(current.Hours, minute, current.Seconds);
+        await UpdateValue();
+    }
+
+    private async Task SelectSecond(int second)
+    {
+        var current = _timeValue ?? TimeSpan.Zero;
+        _timeValue = new TimeSpan(current.Hours, current.Minutes, second);
+        await UpdateValue();
+    }
+
+    private async Task SelectAmPm(bool isAm)
+    {
+        var current = _timeValue ?? TimeSpan.Zero;
+        var hour = current.Hours % 12;
+        if (!isAm) hour += 12;
+        _timeValue = new TimeSpan(hour, current.Minutes, current.Seconds);
+        await UpdateValue();
+    }
+
+    private async Task UpdateValue()
+    {
+        if (_dateValue.HasValue)
+        {
+            var time = _timeValue ?? TimeSpan.Zero;
+            var dt = _dateValue.Value.ToDateTime(new TimeOnly(time.Hours, time.Minutes, time.Seconds));
+            Value = dt;
+            await ValueChanged.InvokeAsync(dt);
+        }
+    }
+
+    private async Task HandleClear()
+    {
+        Value = null;
+        _dateValue = null;
+        _timeValue = null;
+        await ValueChanged.InvokeAsync(null);
+    }
+}

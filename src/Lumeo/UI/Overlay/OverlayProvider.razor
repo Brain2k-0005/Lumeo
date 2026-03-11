@@ -1,0 +1,169 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@foreach (var overlay in _overlays)
+{
+    @switch (overlay.Type)
+    {
+        case OverlayType.Dialog:
+            <Dialog IsOpen="true" IsOpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+                <DialogContent PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                    @if (overlay.Title is not null)
+                    {
+                        <DialogHeader>
+                            <DialogTitle>@overlay.Title</DialogTitle>
+                        </DialogHeader>
+                    }
+                    <CascadingValue Value="@CreateReference(overlay)">
+                        <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
+                    </CascadingValue>
+                </DialogContent>
+            </Dialog>
+            break;
+
+        case OverlayType.Sheet:
+            <Sheet IsOpen="true" IsOpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+                <SheetContent Side="@MapSheetSide(overlay.Options.SheetSide)" Size="@MapSheetSize(overlay.Options.SheetSize)" PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                    @if (overlay.Title is not null)
+                    {
+                        <SheetHeader>
+                            <SheetTitle>@overlay.Title</SheetTitle>
+                        </SheetHeader>
+                    }
+                    <CascadingValue Value="@CreateReference(overlay)">
+                        <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
+                    </CascadingValue>
+                </SheetContent>
+            </Sheet>
+            break;
+
+        case OverlayType.Drawer:
+            <Drawer IsOpen="true" IsOpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+                <DrawerContent PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                    @if (overlay.Title is not null)
+                    {
+                        <DrawerHeader>
+                            <DrawerTitle>@overlay.Title</DrawerTitle>
+                        </DrawerHeader>
+                    }
+                    <CascadingValue Value="@CreateReference(overlay)">
+                        <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
+                    </CascadingValue>
+                </DrawerContent>
+            </Drawer>
+            break;
+
+        case OverlayType.AlertDialog:
+            <AlertDialog IsOpen="true">
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>@(overlay.AlertOptions?.Title ?? "Are you sure?")</AlertDialogTitle>
+                        @if (overlay.AlertOptions?.Description is not null)
+                        {
+                            <AlertDialogDescription>@overlay.AlertOptions.Description</AlertDialogDescription>
+                        }
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel @onclick="() => HandleCancel(overlay.Id)">@(overlay.AlertOptions?.CancelText ?? "Cancel")</AlertDialogCancel>
+                        @if (overlay.AlertOptions?.IsDestructive == true)
+                        {
+                            <AlertDialogAction OnAction="() => HandleConfirm(overlay.Id)">@(overlay.AlertOptions?.ConfirmText ?? "Continue")</AlertDialogAction>
+                        }
+                        else
+                        {
+                            <Button OnClick="() => HandleConfirm(overlay.Id)">@(overlay.AlertOptions?.ConfirmText ?? "Continue")</Button>
+                        }
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            break;
+    }
+}
+
+@inject OverlayService OverlayService
+
+@code {
+    private readonly List<OverlayInstance> _overlays = new();
+
+    protected override void OnInitialized()
+    {
+        OverlayService.OnShow += HandleShow;
+        OverlayService.OnClose += HandleClose;
+    }
+
+    private async void HandleShow(OverlayInstance instance)
+    {
+        _overlays.Add(instance);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void HandleClose(string id, object? result)
+    {
+        var overlay = _overlays.FirstOrDefault(o => o.Id == id);
+        if (overlay is null) return;
+
+        _overlays.Remove(overlay);
+
+        if (result is not null)
+            overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
+        else
+            overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnOverlayClosed(bool isOpen, string id)
+    {
+        if (!isOpen) OverlayService.Cancel(id);
+    }
+
+    private void HandleConfirm(string id)
+    {
+        OverlayService.Close(id, true);
+    }
+
+    private void HandleCancel(string id)
+    {
+        OverlayService.Cancel(id);
+    }
+
+    private static Type GetComponentType(OverlayInstance overlay) => overlay.ComponentType ?? typeof(Fallback);
+    private static Dictionary<string, object>? GetParameters(OverlayInstance overlay) => overlay.Parameters?.ToDictionary();
+
+    private class Fallback : Microsoft.AspNetCore.Components.ComponentBase { }
+
+    private OverlayReference CreateReference(OverlayInstance overlay)
+    {
+        return new OverlayReference(overlay.Id, overlay.Parameters, OverlayService);
+    }
+
+    private static SheetContent.SheetSide MapSheetSide(SheetSide side) => side switch
+    {
+        SheetSide.Top => SheetContent.SheetSide.Top,
+        SheetSide.Bottom => SheetContent.SheetSide.Bottom,
+        SheetSide.Left => SheetContent.SheetSide.Left,
+        _ => SheetContent.SheetSide.Right
+    };
+
+    private static SheetContent.SheetSize MapSheetSize(SheetSize size) => size switch
+    {
+        SheetSize.Sm => SheetContent.SheetSize.Sm,
+        SheetSize.Lg => SheetContent.SheetSize.Lg,
+        SheetSize.Xl => SheetContent.SheetSize.Xl,
+        SheetSize.Full => SheetContent.SheetSize.Full,
+        _ => SheetContent.SheetSize.Default
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        OverlayService.OnShow -= HandleShow;
+        OverlayService.OnClose -= HandleClose;
+
+        foreach (var overlay in _overlays)
+        {
+            overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
+        }
+        _overlays.Clear();
+        await Task.CompletedTask;
+    }
+}

@@ -1,8 +1,42 @@
 @namespace Lumeo
 
 <button type="button" id="@_triggerId" class="@CssClass" @onclick="Toggle" @attributes="AdditionalAttributes">
-    @ChildContent
-    <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 shrink-0 opacity-50" />
+    @if (Context.Multiple && Context.Values != null && Context.Values.Count > 0)
+    {
+        <div class="flex flex-wrap gap-1 items-center flex-1 min-w-0">
+            @{
+                var displayed = Context.Values.Take(Context.MaxDisplayTags).ToList();
+                var remaining = Context.Values.Count - Context.MaxDisplayTags;
+            }
+            @foreach (var val in displayed)
+            {
+                <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                    @val
+                    <button type="button" class="rounded-full hover:bg-foreground/20" @onclick="() => RemoveValue(val)" @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                    </button>
+                </span>
+            }
+            @if (remaining > 0)
+            {
+                <span class="text-xs text-muted-foreground">+@remaining more</span>
+            }
+        </div>
+    }
+    else
+    {
+        @ChildContent
+    }
+
+    <div class="flex items-center gap-1 ml-auto shrink-0">
+        @if (Context.Clearable && HasValue)
+        {
+            <span class="hover:text-foreground" @onclick="HandleClear" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 opacity-50 hover:opacity-100" />
+            </span>
+        }
+        <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 shrink-0 opacity-50" />
+    </div>
 </button>
 
 @code {
@@ -13,7 +47,21 @@
 
     private readonly string _triggerId = $"select-trigger-{Guid.NewGuid():N}";
 
+    private bool HasValue => Context.Multiple
+        ? Context.Values != null && Context.Values.Count > 0
+        : !string.IsNullOrEmpty(Context.Value);
+
     private string CssClass => $"flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);
+
+    private async Task RemoveValue(string value)
+    {
+        await Context.OnSelect.InvokeAsync(value);
+    }
+
+    private async Task HandleClear()
+    {
+        await Context.OnClear.InvokeAsync();
+    }
 }

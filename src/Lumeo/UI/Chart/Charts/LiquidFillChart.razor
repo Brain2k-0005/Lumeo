@@ -1,0 +1,120 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<Chart OptionJson="@_optionJson" Width="@Width" Height="@Height" Theme="@Theme"
+       EChartsSource="@EChartsSource" Class="@Class" @attributes="AdditionalAttributes" />
+
+@inject IJSRuntime JSRuntime
+
+@code {
+    [Parameter] public double Value { get; set; } = 0.5;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string Shape { get; set; } = "circle";
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? BackgroundColor { get; set; }
+    [Parameter] public bool WaveAnimation { get; set; } = true;
+    [Parameter] public string? EChartsSource { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "center";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
+    private string _optionJson = "{}";
+    private IJSObjectReference? _module;
+    private bool _extensionLoaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_extensionLoaded)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./_content/Lumeo/js/echarts-interop.js");
+            await _module.InvokeVoidAsync("loadExtension",
+                "https://cdn.jsdelivr.net/npm/echarts-liquidfill@3/dist/echarts-liquidfill.min.js");
+            _extensionLoaded = true;
+            BuildOptionJson();
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_extensionLoaded)
+            BuildOptionJson();
+    }
+
+    private void BuildOptionJson()
+    {
+        var option = new Dictionary<string, object?>();
+
+        var seriesData = new List<object> { Value };
+        var series = new Dictionary<string, object?>
+        {
+            ["type"] = "liquidFill",
+            ["data"] = seriesData,
+            ["shape"] = Shape,
+            ["waveAnimation"] = WaveAnimation
+        };
+
+        if (!string.IsNullOrEmpty(Color))
+            series["color"] = new[] { Color };
+
+        if (!string.IsNullOrEmpty(BackgroundColor))
+            series["backgroundStyle"] = new Dictionary<string, object?> { ["color"] = BackgroundColor };
+
+        if (ShowDataLabels || !string.IsNullOrEmpty(Title))
+        {
+            var label = new Dictionary<string, object?> { ["show"] = true };
+            if (LabelFormat is not null) label["formatter"] = LabelFormat;
+            series["label"] = label;
+        }
+
+        if (!string.IsNullOrEmpty(Title))
+            option["title"] = new Dictionary<string, object?> { ["text"] = Title, ["left"] = "center", ["top"] = "5%" };
+
+        option["series"] = new[] { series };
+
+        if (ColorPalette is { Count: > 0 })
+            option["color"] = ColorPalette;
+
+        if (AnimationDuration.HasValue)
+            option["animationDuration"] = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing))
+            option["animationEasing"] = AnimationEasing;
+
+        if (Toolbox)
+            option["toolbox"] = new Dictionary<string, object?>
+            {
+                ["show"] = true,
+                ["feature"] = new Dictionary<string, object?>
+                {
+                    ["saveAsImage"] = new Dictionary<string, object?> { ["show"] = true }
+                }
+            };
+
+        if (OptionOverride is { Count: > 0 })
+            foreach (var kvp in OptionOverride)
+                option[kvp.Key] = kvp.Value;
+
+        _optionJson = System.Text.Json.JsonSerializer.Serialize(option);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

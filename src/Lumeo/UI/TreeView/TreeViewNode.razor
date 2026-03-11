@@ -1,0 +1,74 @@
+@namespace Lumeo
+@typeparam T
+
+<div class="group" role="treeitem" aria-expanded="@(HasChildren && Item.IsExpanded)">
+    <div class="@NodeClass" style="padding-left: @(Level * 16)px" @onclick="HandleClick">
+        @if (HasChildren && Expandable)
+        {
+            <button type="button" class="shrink-0 p-0.5 rounded hover:bg-accent transition-colors" @onclick="ToggleExpand" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ChevronRight" class="@ChevronClass" />
+            </button>
+        }
+        else
+        {
+            <span class="w-5"></span>
+        }
+
+        @if (ShowCheckboxes)
+        {
+            <Checkbox Checked="@Item.IsChecked" CheckedChanged="HandleCheck" Class="mr-1" />
+        }
+
+        @if (Item.Icon is { } icon)
+        {
+            <Blazicon Svg="icon" class="h-4 w-4 text-muted-foreground shrink-0" />
+        }
+
+        <span class="truncate">@Item.Text</span>
+    </div>
+
+    @if (HasChildren && Item.IsExpanded)
+    {
+        <div role="group">
+            @foreach (var child in Item.Children!)
+            {
+                <TreeViewNode T="T" Item="child" Level="@(Level + 1)"
+                              ShowCheckboxes="ShowCheckboxes"
+                              Expandable="Expandable"
+                              OnItemClick="OnItemClick"
+                              OnItemCheck="OnItemCheck" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public TreeView<T>.TreeViewItem<T> Item { get; set; } = default!;
+    [Parameter] public int Level { get; set; }
+    [Parameter] public bool ShowCheckboxes { get; set; }
+    [Parameter] public bool Expandable { get; set; }
+    [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnItemClick { get; set; }
+    [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnItemCheck { get; set; }
+
+    private bool HasChildren => Item.Children is { Count: > 0 };
+
+    private const string NodeClass = "flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm";
+
+    private string ChevronClass => $"h-4 w-4 text-muted-foreground transition-transform {(Item.IsExpanded ? "rotate-90" : "")}";
+
+    private void ToggleExpand()
+    {
+        Item.IsExpanded = !Item.IsExpanded;
+    }
+
+    private async Task HandleClick()
+    {
+        await OnItemClick.InvokeAsync(Item);
+    }
+
+    private async Task HandleCheck(bool value)
+    {
+        Item.IsChecked = value;
+        await OnItemCheck.InvokeAsync(Item);
+    }
+}

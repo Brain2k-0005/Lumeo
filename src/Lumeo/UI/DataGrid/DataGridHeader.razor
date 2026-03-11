@@ -1,0 +1,85 @@
+@namespace Lumeo
+@typeparam TItem
+
+<thead class="@CssClass" @attributes="AdditionalAttributes">
+    <tr>
+        @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
+        {
+            <th class="px-3 py-2 w-10 bg-muted/30">
+                <Checkbox Checked="@AllSelected"
+                          IsIndeterminate="@SomeSelected"
+                          CheckedChanged="@OnSelectAllChanged" />
+            </th>
+        }
+        else if (Context?.SelectionMode == DataGridSelectionMode.Single)
+        {
+            <th class="px-3 py-2 w-10 bg-muted/30"></th>
+        }
+
+        @if (HasDetailTemplate)
+        {
+            <th class="px-1 py-2 w-8 bg-muted/30"></th>
+        }
+
+        @if (Context is not null)
+        {
+            @foreach (var column in Context.Columns.Where(c => c.Visible))
+            {
+                var sortDir = GetSortDirection(column);
+                var hasFilter = HasFilter(column);
+                var isFilterOpen = ActiveFilterColumn == column.Field;
+                <DataGridHeaderCell TItem="TItem"
+                                    Column="column"
+                                    SortDirection="sortDir"
+                                    HasActiveFilter="hasFilter"
+                                    IsFilterOpen="isFilterOpen"
+                                    OnFilterToggle="@(() => OnFilterToggle.InvokeAsync(column.Field))"
+                                    OnFilterApply="OnFilterApply" />
+            }
+        }
+    </tr>
+</thead>
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Parameter] public bool HasDetailTemplate { get; set; }
+    [Parameter] public string? ActiveFilterColumn { get; set; }
+    [Parameter] public EventCallback<string?> OnFilterToggle { get; set; }
+    [Parameter] public EventCallback<FilterApplyEventArgs> OnFilterApply { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"[&_tr]:border-b [&_tr]:border-border/40 {Class}".Trim();
+
+    private bool AllSelected =>
+        Context is not null &&
+        Context.DisplayedItems.Count > 0 &&
+        Context.SelectedItems.Count >= Context.DisplayedItems.Count;
+
+    private bool SomeSelected =>
+        Context is not null &&
+        Context.SelectedItems.Count > 0 &&
+        Context.SelectedItems.Count < Context.DisplayedItems.Count;
+
+    private SortDirection GetSortDirection(DataGridColumn<TItem> column)
+    {
+        if (Context is null || column.Field is null) return SortDirection.None;
+        var sort = Context.Sorts.FirstOrDefault(s => s.Field == column.Field);
+        return sort?.Direction ?? SortDirection.None;
+    }
+
+    private bool HasFilter(DataGridColumn<TItem> column)
+    {
+        if (Context is null || column.Field is null) return false;
+        return Context.Filters.Any(f => f.Field == column.Field);
+    }
+
+    private void OnSelectAllChanged(bool value)
+    {
+        if (Context is null) return;
+        if (value)
+            Context.SelectAll();
+        else
+            Context.ClearSelection();
+    }
+}
