@@ -968,12 +968,12 @@ public class EChartGeo
 
 public class EChartCalendar
 {
+    /// <summary>
+    /// Calendar range — set a string like "2024" for a single year,
+    /// or a List&lt;string&gt; like ["2024-01-01","2024-06-30"] for a date range.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Range { get; set; }
-
-    [JsonPropertyName("range")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<string>? RangeList { get; set; }
+    public object? Range { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Left { get; set; }

@@ -45,7 +45,15 @@
             var json = GetOptionsJson();
             _lastJson = json;
 
-            await _module.InvokeVoidAsync("initChart", _chartId, json, Theme, EChartsSource);
+            try
+            {
+                await _module.InvokeVoidAsync("initChart", _chartId, json, Theme, EChartsSource);
+            }
+            catch (JSException ex)
+            {
+                Console.Error.WriteLine($"[Lumeo Chart] Init failed: {ex.Message}");
+                return;
+            }
             _initialized = true;
 
             if (OnClick.HasDelegate || OnMouseOver.HasDelegate || OnDoubleClick.HasDelegate || OnBrushSelected.HasDelegate || OnDataZoom.HasDelegate)
@@ -95,7 +103,15 @@
     private string GetOptionsJson()
     {
         if (!string.IsNullOrEmpty(OptionJson)) return OptionJson;
-        return Option?.ToJson() ?? "{}";
+        try
+        {
+            return Option?.ToJson() ?? "{}";
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo Chart] Serialization failed: {ex.Message}");
+            return "{}";
+        }
     }
 
     [JSInvokable]
