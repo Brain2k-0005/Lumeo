@@ -2,6 +2,7 @@
 @namespace Lumeo.Docs.Pages.Docs.Services
 
 @using Lumeo.Services
+@implements IAsyncDisposable
 @inject ComponentInteropService Interop
 
 <PageTitle>Component Interop — Lumeo</PageTitle>
@@ -16,15 +17,115 @@
             <Heading Level="2">Overview</Heading>
             <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
                 The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ComponentInteropService</code> is the shared JS interop layer
-                used by all Lumeo components internally. If you're building custom overlay components, dropdown menus, or anything that needs
+                used by all Lumeo components internally. If you are building custom overlay components, dropdown menus, or anything that needs
                 DOM interaction from C#, inject this service instead of calling <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IJSRuntime</code> directly.
             </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject ComponentInteropService Interop</div>
 
             <Alert>
                 This service implements <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code>.
-                Always handle <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> in cleanup methods.
+                Always handle <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> in cleanup methods
+                to avoid errors when the Blazor circuit disconnects.
             </Alert>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Copy to Clipboard - LIVE DEMO -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Copy to Clipboard</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Copy arbitrary text to the user's clipboard. Useful for code snippets, share links, API keys, and similar.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Try it: type something and copy it</Lumeo.Text>
+                    <Flex Gap="2" Align="end">
+                        <div class="flex-1">
+                            <Input @bind-Value="_clipboardText" Placeholder="Type text to copy..." />
+                        </div>
+                        <Button OnClick="CopyToClipboard" Variant="Button.ButtonVariant.Secondary">
+                            @if (_copySuccess)
+                            {
+                                <span>Copied!</span>
+                            }
+                            else
+                            {
+                                <span>Copy</span>
+                            }
+                        </Button>
+                    </Flex>
+                    @if (_copySuccess)
+                    {
+                        <Alert Variant="Alert.AlertVariant.Success">
+                            Text copied to clipboard. Paste it anywhere to verify.
+                        </Alert>
+                    }
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.CopyToClipboard("Hello, world!");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Scroll to Top - LIVE DEMO -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Scroll to Top</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Smooth-scroll the page back to the top. Useful for long pages, back-to-top buttons, or after navigation.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Try it: scroll down the page first, then click the button</Lumeo.Text>
+                    <Flex Gap="2">
+                        <Button OnClick="ScrollToTop" Variant="Button.ButtonVariant.Outline">
+                            Scroll to Top
+                        </Button>
+                    </Flex>
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.ScrollToTop();</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- File Download - LIVE DEMO -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">File Download</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Trigger a browser file download from a base64-encoded string. Works for any file type -- text, CSV, JSON, images, PDFs, etc.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Try it: download a sample file</Lumeo.Text>
+                    <Flex Gap="2" Wrap="true">
+                        <Button OnClick="DownloadTextFile" Variant="Button.ButtonVariant.Secondary">
+                            Download .txt
+                        </Button>
+                        <Button OnClick="DownloadCsvFile" Variant="Button.ButtonVariant.Outline">
+                            Download .csv
+                        </Button>
+                        <Button OnClick="DownloadJsonFile" Variant="Button.ButtonVariant.Outline">
+                            Download .json
+                        </Button>
+                    </Flex>
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var bytes = System.Text.Encoding.UTF8.GetBytes("Hello from Lumeo!");
+var base64 = Convert.ToBase64String(bytes);
+await Interop.DownloadFile("hello.txt", base64, "text/plain");</div>
         </Stack>
     </section>
 
@@ -35,106 +136,145 @@
         <Stack Gap="4">
             <Heading Level="2">Scroll Locking</Heading>
             <Lumeo.Text Size="sm" Color="muted">
-                Prevent background scrolling when a modal/overlay is open. Used by Dialog, Sheet, Drawer, and AlertDialog.
+                Prevent background scrolling when a modal or overlay is open. Used internally by Dialog, Sheet, Drawer, and AlertDialog.
             </Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Lock scrolling (e.g. when opening a modal)
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Lock scrolling when opening a modal
 await Interop.LockScroll();
 
-// Unlock scrolling (e.g. when closing)
+// Unlock scrolling when closing
 await Interop.UnlockScroll();</div>
+            <Alert>
+                Calls are reference-counted internally. If you call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">LockScroll()</code>
+                twice, you must call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UnlockScroll()</code> twice to fully
+                restore scrolling. This prevents issues when multiple overlays are stacked.
+            </Alert>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Focus Trapping -->
+    <!-- Focus Management -->
     <section>
         <Stack Gap="4">
-            <Heading Level="2">Focus Trapping</Heading>
+            <Heading Level="2">Focus Management</Heading>
             <Lumeo.Text Size="sm" Color="muted">
-                Trap keyboard focus within a container element. Tab and Shift+Tab cycle within the trap. Essential for accessible overlays.
+                Control keyboard focus for accessible overlay components. Focus trapping ensures that Tab and Shift+Tab cycle
+                within a container element, which is required by WCAG for modal dialogs.
             </Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Set up a focus trap on an element
+
+            <Heading Level="3">Focus Trapping</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Set up a focus trap on a dialog element
 await Interop.SetupFocusTrap("my-dialog-id");
 
-// Remove the focus trap when done
+// Remove the trap when the dialog closes
 await Interop.RemoveFocusTrap("my-dialog-id");</div>
+
+            <Heading Level="3">Focus a Specific Element</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Focus a specific element by ID
+await Interop.FocusElement("search-input");
+
+// Focus a menu item by index (used for keyboard navigation in menus)
+await Interop.FocusMenuItemByIndex("menu-container-id", 0);
+
+// Count focusable menu items in a container
+int count = await Interop.GetMenuItemCount("menu-container-id");</div>
+
+            <Lumeo.Text Size="xs" Color="muted">
+                Used internally by: Dialog, AlertDialog, Sheet, Drawer, DropdownMenu, ContextMenu, Command, Select, Combobox.
+            </Lumeo.Text>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Click Outside -->
+    <!-- Click Outside Detection -->
     <section>
         <Stack Gap="4">
             <Heading Level="2">Click Outside Detection</Heading>
             <Lumeo.Text Size="sm" Color="muted">
-                Detect clicks outside a specific element — used by dropdowns, popovers, and comboboxes to auto-close.
+                Detect clicks outside a specific element to auto-close dropdowns, popovers, and similar floating UI.
+                Optionally exclude a trigger element so that clicking the trigger does not fire the handler.
             </Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Register — handler fires when user clicks outside the element
-await Interop.RegisterClickOutside("dropdown-id", "trigger-button-id", async () =>
-{
-    _isOpen = false;
-    await InvokeAsync(StateHasChanged);
-});
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Register handler -- fires when user clicks outside the element
+await Interop.RegisterClickOutside(
+    elementId: "dropdown-content",
+    triggerElementId: "dropdown-trigger",  // clicks on trigger are excluded
+    handler: async () =>
+    {
+        _isOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
+);
 
 // Unregister when component disposes
-await Interop.UnregisterClickOutside("dropdown-id");</div>
+await Interop.UnregisterClickOutside("dropdown-content");</div>
+
+            <Lumeo.Text Size="xs" Color="muted">
+                Used internally by: Popover, DropdownMenu, Combobox, Select, DatePicker, NavigationMenu, HoverCard.
+            </Lumeo.Text>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Floating Position -->
+    <!-- Element Positioning -->
     <section>
         <Stack Gap="4">
             <Heading Level="2">Element Positioning</Heading>
             <Lumeo.Text Size="sm" Color="muted">
-                Position a floating element (dropdown, tooltip, popover) relative to a reference element.
+                Position a floating element (dropdown, tooltip, popover) relative to a reference element. Handles viewport
+                boundaries, alignment, and optional width matching.
             </Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Position content below the reference element, aligned to start
-await Interop.PositionFixed(
-    contentId: "popover-content",
-    referenceId: "popover-trigger",
-    align: "start",          // "start", "center", "end"
-    matchWidth: false,       // match the reference element's width
-    side: "bottom"           // "top", "bottom", "left", "right"
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.PositionFixed(
+    contentId: "popover-content",    // the floating element
+    referenceId: "popover-trigger",  // the anchor element
+    align: "start",                  // "start", "center", "end"
+    matchWidth: false,               // true = match reference element's width
+    side: "bottom"                   // "top", "bottom", "left", "right"
 );</div>
-        </Stack>
-    </section>
 
-    <Separator />
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Parameter</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">contentId</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">ID of the floating element to position</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">referenceId</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">ID of the anchor/trigger element</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">align</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">"start", "center", or "end" alignment</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">matchWidth</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 text-muted-foreground">Whether to match the reference element's width</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">side</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">"top", "bottom", "left", or "right"</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-    <!-- Clipboard -->
-    <section>
-        <Stack Gap="4">
-            <Heading Level="2">Clipboard</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Copy text to the user's clipboard.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.CopyToClipboard("Hello, world!");</div>
-            <Flex Gap="2" Align="center">
-                <Input @bind-Value="_clipboardText" Placeholder="Type something..." Class="max-w-xs" />
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="CopyToClipboard">
-                    <Blazicon Svg="@(_copied ? Lucide.Check : Lucide.Copy)" class="h-4 w-4 mr-2" />
-                    @(_copied ? "Copied!" : "Copy")
-                </Button>
-            </Flex>
-        </Stack>
-    </section>
-
-    <Separator />
-
-    <!-- File Download -->
-    <section>
-        <Stack Gap="4">
-            <Heading Level="2">File Download</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Trigger a file download from a base64-encoded string.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var bytes = System.Text.Encoding.UTF8.GetBytes("file content");
-var base64 = Convert.ToBase64String(bytes);
-await Interop.DownloadFile("report.txt", base64, "text/plain");</div>
-            <Button Variant="Button.ButtonVariant.Outline" OnClick="DownloadSample">
-                <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-2" />
-                Download sample.txt
-            </Button>
+            <Lumeo.Text Size="xs" Color="muted">
+                Used internally by: Tooltip, Popover, DropdownMenu, Select, Combobox, DatePicker, HoverCard, Menubar, NavigationMenu.
+            </Lumeo.Text>
         </Stack>
     </section>
 
@@ -144,33 +284,160 @@ await Interop.DownloadFile("report.txt", base64, "text/plain");</div>
     <section>
         <Stack Gap="4">
             <Heading Level="2">Element Measurement</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Get element dimensions and positions.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Get full bounding rect
+            <Lumeo.Text Size="sm" Color="muted">
+                Read element dimensions and positions from the DOM. Returns an
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ElementRect</code> record with X, Y, Width, and Height.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Get full bounding rect by element ID
 var rect = await Interop.GetElementRect("element-id");
 // rect?.X, rect?.Y, rect?.Width, rect?.Height
 
-// Get a single dimension
+// Get a single dimension value
 double width = await Interop.GetElementDimension("element-id", "width");
 
-// Get rect by CSS selector (useful for Tour component)
-var rect2 = await Interop.GetElementRectBySelector(".my-class");</div>
+// Get rect by CSS selector (useful for Tour, Scrollspy)
+var rect2 = await Interop.GetElementRectBySelector(".highlight-target");</div>
+
+            <Lumeo.Text Size="xs" Color="muted">
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">GetElementRect</code> returns
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">null</code> if the element is not found.
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dimension</code> parameter accepts
+                "width", "height", "offsetWidth", "offsetHeight", "scrollWidth", "scrollHeight".
+            </Lumeo.Text>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Focus -->
+    <!-- Advanced -->
     <section>
-        <Stack Gap="4">
-            <Heading Level="2">Focus Management</Heading>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Focus a specific element
-await Interop.FocusElement("input-id");
+        <Stack Gap="6">
+            <Heading Level="2">Advanced</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                These methods are used internally by specific Lumeo components. You typically do not need them unless building
+                custom components with similar behavior.
+            </Lumeo.Text>
 
-// Focus a menu item by index (for keyboard navigation)
-await Interop.FocusMenuItemByIndex("menu-container-id", 0);
+            <!-- Gestures -->
+            <Stack Gap="3">
+                <Heading Level="3">Gestures</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Touch and swipe gesture handling for mobile-friendly interactions.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Drawer: detect swipe-to-dismiss
+await Interop.RegisterDrawerSwipe("drawer-id", async () =>
+{
+    _isOpen = false;
+    await InvokeAsync(StateHasChanged);
+});
+await Interop.UnregisterDrawerSwipe("drawer-id");
 
-// Count focusable menu items
-int count = await Interop.GetMenuItemCount("menu-container-id");</div>
+// Carousel: handle swipe and scroll
+await Interop.RegisterCarouselSwipe("carousel-id", "horizontal",
+    swipeHandler: async (direction) => { /* "left" or "right" */ },
+    scrollHandler: async (scrollPos, maxScroll) => { /* track position */ }
+);
+await Interop.UnregisterCarouselSwipe("carousel-id");
+await Interop.CarouselScrollTo("carousel-id", index: 2, behavior: "smooth");</div>
+            </Stack>
+
+            <!-- Resize Handles -->
+            <Stack Gap="3">
+                <Heading Level="3">Resize Handles</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Drag-to-resize for resizable panel layouts. Used by the Resizable component.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.RegisterResizeHandle("handle-id", "horizontal",
+    resizeHandler: async (delta) => { /* update panel size */ },
+    resizeEndHandler: async () => { /* save final size */ }
+);
+await Interop.UnregisterResizeHandle("handle-id");</div>
+            </Stack>
+
+            <!-- Scrollspy -->
+            <Stack Gap="3">
+                <Heading Level="3">Scrollspy</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Track which section is currently visible during scroll for navigation highlighting.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.RegisterScrollspy("container-id", offset: 100, smooth: true,
+    handler: async (activeId) => { /* highlight the active nav item */ }
+);
+await Interop.ScrollspyScrollTo("container-id", "section-3", smooth: true);
+await Interop.UnregisterScrollspy("container-id");</div>
+            </Stack>
+
+            <!-- Textarea Auto-Resize -->
+            <Stack Gap="3">
+                <Heading Level="3">Textarea Auto-Resize</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Automatically grow a textarea element as the user types, up to a maximum number of rows.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.SetupAutoResize("textarea-id", maxRows: 10);</div>
+            </Stack>
+
+            <!-- OTP Paste -->
+            <Stack Gap="3">
+                <Heading Level="3">OTP Paste Handling</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Handle clipboard paste events on OTP (one-time password) input groups. Distributes pasted digits across individual input fields.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.RegisterOtpPaste("otp-base-id", length: 6,
+    handler: async (digits) => { /* fill OTP fields with pasted digits */ }
+);
+await Interop.UnregisterOtpPaste("otp-base-id", length: 6);</div>
+            </Stack>
+
+            <!-- Affix -->
+            <Stack Gap="3">
+                <Heading Level="3">Affix (Sticky Elements)</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Stick an element to the viewport when it would scroll out of view. Similar to CSS
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">position: sticky</code> but with callback notifications.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.RegisterAffix("header-id",
+    offsetTop: 0,
+    offsetBottom: null,
+    target: null,  // or a CSS selector for the scroll container
+    handler: async (isFixed) => { /* update shadow or styling */ }
+);
+await Interop.UnregisterAffix("header-id");</div>
+            </Stack>
+
+            <!-- Back to Top -->
+            <Stack Gap="3">
+                <Heading Level="3">Back to Top</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Register a scroll listener that fires when the user scrolls past a threshold. Used to show/hide a back-to-top button.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.RegisterBackToTop("back-to-top-id", threshold: 300,
+    handler: async (visible) => { _showButton = visible; }
+);
+await Interop.UnregisterBackToTop("back-to-top-id");</div>
+            </Stack>
+
+            <!-- Mention Caret Position -->
+            <Stack Gap="3">
+                <Heading Level="3">Mention Caret Position</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Get the visual caret position inside a textarea for positioning mention/autocomplete dropdowns.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var caret = await Interop.GetTextareaCaretPosition("textarea-id");
+// caret.Top, caret.Left, caret.SelectionStart</div>
+            </Stack>
+
+            <!-- DataGrid Column Resize -->
+            <Stack Gap="3">
+                <Heading Level="3">DataGrid Column Resize</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Drag-to-resize columns in a data grid. Similar to resize handles but specialized for table column headers.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.RegisterColumnResize("col-handle-id",
+    resizeHandler: async (delta) => { /* adjust column width */ },
+    resizeEndHandler: async () => { /* persist final widths */ }
+);
+await Interop.UnregisterColumnResize("col-handle-id");</div>
+            </Stack>
         </Stack>
     </section>
 
@@ -187,161 +454,301 @@ int count = await Interop.GetMenuItemCount("menu-container-id");</div>
                         <tr class="border-b bg-muted/40">
                             <th class="text-left p-3 font-medium text-foreground">Method</th>
                             <th class="text-left p-3 font-medium text-foreground">Category</th>
+                            <th class="text-left p-3 font-medium text-foreground">Returns</th>
                             <th class="text-left p-3 font-medium text-foreground">Description</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border/40">
+                        <!-- Scroll -->
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">LockScroll()</td>
-                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Prevent page scrolling.</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Prevent page scrolling</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">UnlockScroll()</td>
-                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Re-enable page scrolling.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">SetupFocusTrap(elementId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
-                            <td class="p-3 text-muted-foreground">Trap Tab focus within element.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RemoveFocusTrap(elementId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
-                            <td class="p-3 text-muted-foreground">Remove focus trap.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">FocusElement(elementId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
-                            <td class="p-3 text-muted-foreground">Focus a specific element by ID.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">FocusMenuItemByIndex(containerId, index)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
-                            <td class="p-3 text-muted-foreground">Focus the nth menu item in a container.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">GetMenuItemCount(containerId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
-                            <td class="p-3 text-muted-foreground">Count focusable menu items.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RegisterClickOutside(elementId, triggerId, handler)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Click</td>
-                            <td class="p-3 text-muted-foreground">Detect clicks outside an element.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">UnregisterClickOutside(elementId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Click</td>
-                            <td class="p-3 text-muted-foreground">Stop detecting outside clicks.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">PositionFixed(contentId, refId, align, matchWidth, side)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Position</td>
-                            <td class="p-3 text-muted-foreground">Position floating element relative to reference.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">GetElementRect(elementId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Measure</td>
-                            <td class="p-3 text-muted-foreground">Get bounding rect (X, Y, Width, Height).</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">GetElementRectBySelector(selector)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Measure</td>
-                            <td class="p-3 text-muted-foreground">Get rect by CSS selector.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">GetElementDimension(elementId, dimension)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Measure</td>
-                            <td class="p-3 text-muted-foreground">Get a single dimension value.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">CopyToClipboard(text)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Clipboard</td>
-                            <td class="p-3 text-muted-foreground">Copy text to clipboard.</td>
-                        </tr>
-                        <tr>
-                            <td class="p-3 font-mono text-xs text-primary">DownloadFile(fileName, base64, mimeType)</td>
-                            <td class="p-3 text-xs text-muted-foreground">File</td>
-                            <td class="p-3 text-muted-foreground">Trigger browser file download.</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Re-enable page scrolling</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">ScrollToTop()</td>
-                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Smooth-scroll to the top of the page.</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Smooth scroll to page top</td>
+                        </tr>
+
+                        <!-- Focus -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SetupFocusTrap(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Focus</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Trap Tab focus within an element</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RegisterBackToTop(id, threshold, handler)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Show/hide a back-to-top button based on scroll position.</td>
+                            <td class="p-3 font-mono text-xs text-primary">RemoveFocusTrap(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Focus</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove focus trap from element</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RegisterColumnResize(handleId, resizeHandler, resizeEndHandler)</td>
-                            <td class="p-3 text-xs text-muted-foreground">DataGrid</td>
-                            <td class="p-3 text-muted-foreground">Handle column drag-to-resize for DataGrid.</td>
+                            <td class="p-3 font-mono text-xs text-primary">FocusElement(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Focus</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Focus a specific element by ID</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">GetTextareaCaretPosition(elementId)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Input</td>
-                            <td class="p-3 text-muted-foreground">Get caret position for mention/autocomplete positioning.</td>
+                            <td class="p-3 font-mono text-xs text-primary">FocusMenuItemByIndex(containerId, index)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Focus</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Focus the nth menu item in a container</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">SetupAutoResize(elementId, maxRows)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Textarea</td>
-                            <td class="p-3 text-muted-foreground">Auto-resize textarea as user types.</td>
+                            <td class="p-3 font-mono text-xs text-primary">GetMenuItemCount(containerId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Focus</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;int&gt;</td>
+                            <td class="p-3 text-muted-foreground">Count focusable menu items</td>
                         </tr>
+
+                        <!-- Click Outside -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterClickOutside(elementId, triggerId?, handler)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Click</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Detect clicks outside an element</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterClickOutside(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Click</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Stop detecting outside clicks</td>
+                        </tr>
+
+                        <!-- Position -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">PositionFixed(contentId, refId, align, matchWidth, side)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Position</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Position floating element relative to reference</td>
+                        </tr>
+
+                        <!-- Measure -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetElementRect(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Measure</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;ElementRect?&gt;</td>
+                            <td class="p-3 text-muted-foreground">Get bounding rect (X, Y, Width, Height)</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetElementRectBySelector(selector)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Measure</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;ElementRect?&gt;</td>
+                            <td class="p-3 text-muted-foreground">Get rect by CSS selector</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetElementDimension(elementId, dimension)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Measure</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;double&gt;</td>
+                            <td class="p-3 text-muted-foreground">Get a single dimension value</td>
+                        </tr>
+
+                        <!-- Clipboard & File -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">CopyToClipboard(text)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Clipboard</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Copy text to clipboard</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DownloadFile(fileName, base64, mimeType?)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">File</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Trigger browser file download</td>
+                        </tr>
+
+                        <!-- Gesture -->
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">RegisterDrawerSwipe(elementId, handler)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Gesture</td>
-                            <td class="p-3 text-muted-foreground">Detect swipe-to-dismiss on a drawer.</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Detect swipe-to-dismiss on drawer</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RegisterCarouselSwipe(elementId, orientation, ...)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Gesture</td>
-                            <td class="p-3 text-muted-foreground">Handle swipe/scroll for carousel.</td>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterDrawerSwipe(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove drawer swipe handler</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RegisterResizeHandle(elementId, direction, ...)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Resize</td>
-                            <td class="p-3 text-muted-foreground">Drag-to-resize for resizable panels.</td>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterCarouselSwipe(elementId, orientation, swipe, scroll)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Handle swipe/scroll for carousel</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterCarouselSwipe(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove carousel swipe handler</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">CarouselScrollTo(elementId, index, behavior?)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Scroll carousel to specific slide</td>
+                        </tr>
+
+                        <!-- Resize -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterResizeHandle(elementId, direction, resize, resizeEnd)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Resize</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Drag-to-resize for panels</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterResizeHandle(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Resize</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove resize handler</td>
+                        </tr>
+
+                        <!-- Scrollspy -->
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">RegisterScrollspy(containerId, offset, smooth, handler)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Track active section during scroll.</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Track active section during scroll</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">RegisterAffix(elementId, offsetTop, ...)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Stick element to viewport on scroll.</td>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterScrollspy(containerId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove scrollspy listener</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ScrollspyScrollTo(containerId, sectionId, smooth)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Scroll to a specific section</td>
+                        </tr>
+
+                        <!-- Textarea -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SetupAutoResize(elementId, maxRows)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Textarea</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Auto-resize textarea as user types</td>
+                        </tr>
+
+                        <!-- OTP -->
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">RegisterOtpPaste(baseId, length, handler)</td>
-                            <td class="p-3 text-xs text-muted-foreground">Input</td>
-                            <td class="p-3 text-muted-foreground">Handle paste event for OTP inputs.</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Input</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Handle paste for OTP inputs</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterOtpPaste(baseId, length)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Input</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove OTP paste handler</td>
+                        </tr>
+
+                        <!-- Affix -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterAffix(elementId, offsetTop, offsetBottom?, target?, handler)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Stick element to viewport on scroll</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterAffix(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove affix handler</td>
+                        </tr>
+
+                        <!-- Back to Top -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterBackToTop(id, threshold, handler)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Track scroll position for back-to-top</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterBackToTop(id)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Scroll</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove back-to-top listener</td>
+                        </tr>
+
+                        <!-- Mention -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetTextareaCaretPosition(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Input</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;TextareaCaretInfo&gt;</td>
+                            <td class="p-3 text-muted-foreground">Get caret position for mention dropdowns</td>
+                        </tr>
+
+                        <!-- DataGrid -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterColumnResize(handleId, resizeHandler, resizeEndHandler)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Resize</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Drag-to-resize for data grid columns</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterColumnResize(handleId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Resize</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove column resize handler</td>
+                        </tr>
+
+                        <!-- Toast Swipe -->
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterToastSwipe(elementId, toastId, handler)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Swipe-to-dismiss for toast notifications</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterToastSwipe(elementId)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">Gesture</Badge></td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                            <td class="p-3 text-muted-foreground">Remove toast swipe handler</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-        </Stack>
-    </section>
+            <Stack>
+                <Heading Level="3" Class="mb-3">Types</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Properties</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ElementRect</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">double X, Y, Width, Height</td>
+                                <td class="p-3 text-muted-foreground">Bounding rectangle returned by GetElementRect</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">TextareaCaretInfo</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">double Top, Left; int SelectionStart</td>
+                                <td class="p-3 text-muted-foreground">Caret position info returned by GetTextareaCaretPosition</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
 
-    <Separator />
-
-    <!-- Scroll to Top Demo -->
-    <section>
-        <Stack Gap="4">
-            <Heading Level="2">Scroll to Top</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Smooth-scroll the page back to the top.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.ScrollToTop();</div>
-            <div>
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="() => Interop.ScrollToTop()">
-                    <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4 mr-2" />
-                    Scroll to Top
-                </Button>
-            </div>
         </Stack>
     </section>
 
@@ -349,21 +756,77 @@ int count = await Interop.GetMenuItemCount("menu-container-id");</div>
 
 @code {
     private string _clipboardText = "Hello from Lumeo!";
-    private bool _copied;
+    private bool _copySuccess;
+    private System.Timers.Timer? _copyTimer;
 
     private async Task CopyToClipboard()
     {
-        await Interop.CopyToClipboard(_clipboardText);
-        _copied = true;
-        StateHasChanged();
-        await Task.Delay(2000);
-        _copied = false;
+        try
+        {
+            await Interop.CopyToClipboard(_clipboardText);
+            _copySuccess = true;
+            StateHasChanged();
+
+            _copyTimer?.Dispose();
+            _copyTimer = new System.Timers.Timer(2000);
+            _copyTimer.Elapsed += (_, _) =>
+            {
+                _copySuccess = false;
+                InvokeAsync(StateHasChanged);
+                _copyTimer?.Dispose();
+            };
+            _copyTimer.AutoReset = false;
+            _copyTimer.Start();
+        }
+        catch (JSDisconnectedException) { }
     }
 
-    private async Task DownloadSample()
+    private async Task ScrollToTop()
     {
-        var content = "This file was generated by Lumeo's ComponentInteropService.\nTimestamp: " + DateTime.Now;
-        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content));
-        await Interop.DownloadFile("sample.txt", base64, "text/plain");
+        try
+        {
+            await Interop.ScrollToTop();
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task DownloadTextFile()
+    {
+        try
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes("Hello from Lumeo!\nThis file was generated by ComponentInteropService.DownloadFile().");
+            var base64 = Convert.ToBase64String(bytes);
+            await Interop.DownloadFile("lumeo-demo.txt", base64, "text/plain");
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task DownloadCsvFile()
+    {
+        try
+        {
+            var csv = "Name,Role,Status\nAlice,Developer,Active\nBob,Designer,Active\nCarol,PM,On Leave";
+            var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+            var base64 = Convert.ToBase64String(bytes);
+            await Interop.DownloadFile("lumeo-demo.csv", base64, "text/csv");
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task DownloadJsonFile()
+    {
+        try
+        {
+            var json = "{\n  \"framework\": \"Blazor\",\n  \"library\": \"Lumeo\",\n  \"version\": \"0.1.0\",\n  \"features\": [\"components\", \"interop\", \"themes\"]\n}";
+            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+            var base64 = Convert.ToBase64String(bytes);
+            await Interop.DownloadFile("lumeo-demo.json", base64, "application/json");
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _copyTimer?.Dispose();
     }
 }
