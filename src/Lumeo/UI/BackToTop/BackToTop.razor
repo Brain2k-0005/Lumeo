@@ -1,0 +1,65 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.ComponentInteropService Interop
+
+@if (_visible)
+{
+    <button type="button"
+            class="@CssClass"
+            @onclick="ScrollToTop"
+            aria-label="Back to top"
+            @attributes="AdditionalAttributes">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            <Blazicon Svg="Lucide.ArrowUp" class="h-5 w-5" />
+        }
+    </button>
+}
+
+@code {
+    [Parameter] public int VisibilityThreshold { get; set; } = 300;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _visible;
+    private readonly string _id = $"backtotop-{Guid.NewGuid():N}";
+
+    private string CssClass => $"fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Interop.RegisterBackToTop(_id, VisibilityThreshold, async (visible) =>
+            {
+                if (_visible != visible)
+                {
+                    _visible = visible;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+        }
+    }
+
+    private async Task ScrollToTop()
+    {
+        await Interop.ScrollToTop();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.UnregisterBackToTop(_id);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected, safe to ignore
+        }
+    }
+}

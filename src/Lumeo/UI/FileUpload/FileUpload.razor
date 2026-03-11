@@ -1,40 +1,132 @@
 @namespace Lumeo
 
-<div class="flex flex-col gap-2" @attributes="AdditionalAttributes">
-    <label class="@CssClass"
-           @ondragenter="HandleDragEnter"
-           @ondragleave="HandleDragLeave"
-           @ondragover:preventDefault="true"
-           @ondrop="HandleDrop">
-        <div class="flex flex-col items-center justify-center gap-2 py-4">
-            <Blazicon Svg="Lucide.Upload" class="h-8 w-8 text-muted-foreground" />
-            <div class="text-center">
-                <p class="text-sm font-medium">
-                    @if (Label is not null)
+@if (Variant == "Button")
+{
+    <div class="@($"inline-flex flex-col gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
+        <label class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+            <Blazicon Svg="Lucide.Upload" class="h-4 w-4" />
+            <span>@(Label ?? "Choose file")</span>
+            <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+        </label>
+        @if (_errorMessage is not null)
+        {
+            <p class="text-xs text-destructive">@_errorMessage</p>
+        }
+        @if (_selectedFiles.Count > 0)
+        {
+            <div class="flex flex-col gap-1">
+                @foreach (var file in _selectedFiles)
+                {
+                    @if (FileTemplate is not null)
                     {
-                        @Label
+                        @FileTemplate(file)
                     }
                     else
                     {
-                        <span>Click to upload or drag and drop</span>
+                        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Blazicon Svg="Lucide.File" class="h-4 w-4" />
+                            <span class="truncate">@file.Name</span>
+                            <span class="text-xs">(@FormatSize(file.Size))</span>
+                        </div>
                     }
-                </p>
-                @if (Description is not null)
-                {
-                    <p class="text-xs text-muted-foreground mt-1">@Description</p>
                 }
             </div>
-        </div>
-        <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
-    </label>
-    @if (ShowProgress)
-    {
-        <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div class="h-full rounded-full bg-primary transition-all duration-300"
-                 style="width: @(Math.Clamp(Progress, 0, 100))%"></div>
-        </div>
-    }
-</div>
+        }
+    </div>
+}
+else if (Variant == "Avatar")
+{
+    <div class="@($"inline-flex flex-col items-center gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
+        <label class="flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-input bg-muted transition-colors hover:border-primary hover:bg-muted/80">
+            @if (ShowThumbnails && _thumbnailUrl is not null)
+            {
+                <img src="@_thumbnailUrl" alt="Avatar preview" class="h-full w-full object-cover" />
+            }
+            else
+            {
+                <Blazicon Svg="Lucide.User" class="h-8 w-8 text-muted-foreground" />
+            }
+            <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="false" accept="@(Accept ?? "image/*")" />
+        </label>
+        @if (_errorMessage is not null)
+        {
+            <p class="text-xs text-destructive">@_errorMessage</p>
+        }
+    </div>
+}
+else
+{
+    <div class="@($"flex flex-col gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
+        <label class="@DropzoneCssClass"
+               @ondragenter="HandleDragEnter"
+               @ondragleave="HandleDragLeave"
+               @ondragover:preventDefault="true"
+               @ondrop="HandleDrop">
+            <div class="flex flex-col items-center justify-center gap-2 py-4">
+                <Blazicon Svg="Lucide.Upload" class="h-8 w-8 text-muted-foreground" />
+                <div class="text-center">
+                    <p class="text-sm font-medium">
+                        @if (Label is not null)
+                        {
+                            @Label
+                        }
+                        else
+                        {
+                            <span>Click to upload or drag and drop</span>
+                        }
+                    </p>
+                    @if (Description is not null)
+                    {
+                        <p class="text-xs text-muted-foreground mt-1">@Description</p>
+                    }
+                </div>
+            </div>
+            <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+        </label>
+        @if (_errorMessage is not null)
+        {
+            <p class="text-xs text-destructive">@_errorMessage</p>
+        }
+        @if (ShowProgress)
+        {
+            <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div class="h-full rounded-full bg-primary transition-all duration-300"
+                     style="width: @(Math.Clamp(Progress, 0, 100))%"></div>
+            </div>
+        }
+        @if (_selectedFiles.Count > 0)
+        {
+            <div class="flex flex-col gap-2">
+                @foreach (var file in _selectedFiles)
+                {
+                    @if (FileTemplate is not null)
+                    {
+                        @FileTemplate(file)
+                    }
+                    else
+                    {
+                        <div class="flex items-center gap-2 rounded-md border border-border/40 bg-card p-2">
+                            @if (ShowThumbnails && IsImageFile(file))
+                            {
+                                <div class="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+                                    <img src="@GetThumbnailUrl(file)" alt="@file.Name" class="h-full w-full object-cover" />
+                                </div>
+                            }
+                            else
+                            {
+                                <Blazicon Svg="Lucide.File" class="h-5 w-5 shrink-0 text-muted-foreground" />
+                            }
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium truncate">@file.Name</p>
+                                <p class="text-xs text-muted-foreground">@FormatSize(file.Size)</p>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public string? Label { get; set; }
@@ -44,12 +136,21 @@
     [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
     [Parameter] public bool ShowProgress { get; set; }
     [Parameter] public int Progress { get; set; }
+    [Parameter] public long MaxFileSize { get; set; } = 10 * 1024 * 1024;
+    [Parameter] public int MaxFiles { get; set; } = 10;
+    [Parameter] public bool ShowThumbnails { get; set; }
+    [Parameter] public RenderFragment<IBrowserFile>? FileTemplate { get; set; }
+    [Parameter] public string Variant { get; set; } = "Dropzone";
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isDragOver;
+    private string? _errorMessage;
+    private string? _thumbnailUrl;
+    private List<IBrowserFile> _selectedFiles = new();
+    private Dictionary<string, string> _thumbnailUrls = new();
 
-    private string CssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6 {Class}".Trim();
+    private string DropzoneCssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : _errorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
 
     private void HandleDragEnter(DragEventArgs e) => _isDragOver = true;
 
@@ -62,6 +163,77 @@
 
     private async Task HandleFileSelected(InputFileChangeEventArgs e)
     {
+        _errorMessage = null;
+
+        var files = Multiple ? e.GetMultipleFiles(MaxFiles + 1).ToList() : new List<IBrowserFile> { e.File };
+
+        if (files.Count > MaxFiles)
+        {
+            _errorMessage = $"Maximum {MaxFiles} file{(MaxFiles != 1 ? "s" : "")} allowed.";
+            return;
+        }
+
+        foreach (var file in files)
+        {
+            if (file.Size > MaxFileSize)
+            {
+                _errorMessage = $"File \"{file.Name}\" exceeds the maximum size of {FormatSize(MaxFileSize)}.";
+                return;
+            }
+        }
+
+        _selectedFiles = files;
+
+        if (ShowThumbnails && Variant == "Avatar" && files.Count > 0 && IsImageFile(files[0]))
+        {
+            try
+            {
+                var imageFile = files[0].OpenReadStream(MaxFileSize);
+                using var ms = new MemoryStream();
+                await imageFile.CopyToAsync(ms);
+                var base64 = Convert.ToBase64String(ms.ToArray());
+                _thumbnailUrl = $"data:{files[0].ContentType};base64,{base64}";
+            }
+            catch
+            {
+                _thumbnailUrl = null;
+            }
+        }
+
+        if (ShowThumbnails && Variant == "Dropzone")
+        {
+            _thumbnailUrls.Clear();
+            foreach (var file in files.Where(IsImageFile))
+            {
+                try
+                {
+                    var imageFile = file.OpenReadStream(MaxFileSize);
+                    using var ms = new MemoryStream();
+                    await imageFile.CopyToAsync(ms);
+                    var base64 = Convert.ToBase64String(ms.ToArray());
+                    _thumbnailUrls[file.Name] = $"data:{file.ContentType};base64,{base64}";
+                }
+                catch
+                {
+                    // Skip thumbnails that fail to load
+                }
+            }
+        }
+
         await OnFilesSelected.InvokeAsync(e);
+    }
+
+    private bool IsImageFile(IBrowserFile file) =>
+        file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+    private string? GetThumbnailUrl(IBrowserFile file) =>
+        _thumbnailUrls.TryGetValue(file.Name, out var url) ? url : null;
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
     }
 }

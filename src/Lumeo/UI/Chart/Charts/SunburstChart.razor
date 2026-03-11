@@ -13,6 +13,16 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "inside";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
@@ -26,28 +36,31 @@
             RadiusList = new List<string> { "0%", "90%" },
             Label = new EChartLabel
             {
-                Show = true
+                Show = true,
+                Position = ShowDataLabels ? LabelPosition : null,
+                Formatter = ShowDataLabels ? LabelFormat : null
             }
         };
 
         _option = new EChartOption
         {
             Series = new List<EChartSeries> { series },
-            Color = Colors
+            Color = ColorPalette ?? Colors
         };
 
         if (ShowTooltip)
-        {
-            _option.Tooltip = new EChartTooltip
-            {
-                Trigger = "item"
-            };
-        }
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
 
         if (ShowLegend)
-        {
             _option.Legend = new EChartLegend();
-        }
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 
     private static EChartTreemapData MapSunburstData(SunburstData d) => new()

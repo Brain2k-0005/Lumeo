@@ -1,0 +1,203 @@
+@namespace Lumeo
+
+<Popover @bind-IsOpen="_isOpen">
+    <PopoverTrigger>
+        <button type="button" class="@CssClass" disabled="@Disabled" @attributes="AdditionalAttributes">
+            <Blazicon Svg="Lucide.Clock" class="mr-2 h-4 w-4 shrink-0" />
+            @if (Value.HasValue)
+            {
+                <span>@FormatTime(Value.Value)</span>
+            }
+            else
+            {
+                <span class="text-muted-foreground">@Placeholder</span>
+            }
+        </button>
+    </PopoverTrigger>
+    <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
+        <div class="flex divide-x divide-border/40">
+            @* Hours column *@
+            <div class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
+                @foreach (var hour in GetHours())
+                {
+                    var h = hour;
+                    var isSelected = Value.HasValue && GetDisplayHour(Value.Value) == h;
+                    <button type="button"
+                            class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                            @onclick="() => SelectHour(h)">
+                        @h.ToString("D2")
+                    </button>
+                }
+            </div>
+
+            @* Minutes column *@
+            <div class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
+                @foreach (var minute in GetMinutes())
+                {
+                    var m = minute;
+                    var isSelected = Value.HasValue && Value.Value.Minutes == m;
+                    <button type="button"
+                            class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                            @onclick="() => SelectMinute(m)">
+                        @m.ToString("D2")
+                    </button>
+                }
+            </div>
+
+            @* Seconds column *@
+            @if (ShowSeconds)
+            {
+                <div class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
+                    @foreach (var second in GetSeconds())
+                    {
+                        var s = second;
+                        var isSelected = Value.HasValue && Value.Value.Seconds == s;
+                        <button type="button"
+                                class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                                @onclick="() => SelectSecond(s)">
+                            @s.ToString("D2")
+                        </button>
+                    }
+                </div>
+            }
+
+            @* AM/PM column *@
+            @if (!Use24Hour)
+            {
+                <div class="flex flex-col py-1">
+                    @{
+                        var isAm = !Value.HasValue || Value.Value.Hours < 12;
+                    }
+                    <button type="button"
+                            class="@(isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                            @onclick="() => SelectAmPm(true)">
+                        AM
+                    </button>
+                    <button type="button"
+                            class="@(!isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
+                            @onclick="() => SelectAmPm(false)">
+                        PM
+                    </button>
+                </div>
+            }
+        </div>
+    </PopoverContent>
+</Popover>
+
+@code {
+    [Parameter] public TimeSpan? Value { get; set; }
+    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
+    [Parameter] public bool Use24Hour { get; set; } = true;
+    [Parameter] public bool ShowSeconds { get; set; }
+    [Parameter] public int MinuteStep { get; set; } = 1;
+    [Parameter] public int SecondStep { get; set; } = 1;
+    [Parameter] public string? Placeholder { get; set; } = "Select time";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isOpen;
+
+    private string CssClass => $"flex h-9 items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    private string FormatTime(TimeSpan time)
+    {
+        if (Use24Hour)
+        {
+            return ShowSeconds
+                ? $"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}"
+                : $"{time.Hours:D2}:{time.Minutes:D2}";
+        }
+        else
+        {
+            var hour12 = time.Hours % 12;
+            if (hour12 == 0) hour12 = 12;
+            var ampm = time.Hours < 12 ? "AM" : "PM";
+            return ShowSeconds
+                ? $"{hour12:D2}:{time.Minutes:D2}:{time.Seconds:D2} {ampm}"
+                : $"{hour12:D2}:{time.Minutes:D2} {ampm}";
+        }
+    }
+
+    private List<int> GetHours()
+    {
+        var hours = new List<int>();
+        if (Use24Hour)
+        {
+            for (var i = 0; i < 24; i++) hours.Add(i);
+        }
+        else
+        {
+            for (var i = 1; i <= 12; i++) hours.Add(i);
+        }
+        return hours;
+    }
+
+    private int GetDisplayHour(TimeSpan time)
+    {
+        if (Use24Hour) return time.Hours;
+        var h = time.Hours % 12;
+        return h == 0 ? 12 : h;
+    }
+
+    private List<int> GetMinutes()
+    {
+        var minutes = new List<int>();
+        var step = Math.Max(1, MinuteStep);
+        for (var i = 0; i < 60; i += step) minutes.Add(i);
+        return minutes;
+    }
+
+    private List<int> GetSeconds()
+    {
+        var seconds = new List<int>();
+        var step = Math.Max(1, SecondStep);
+        for (var i = 0; i < 60; i += step) seconds.Add(i);
+        return seconds;
+    }
+
+    private async Task SelectHour(int hour)
+    {
+        var current = Value ?? TimeSpan.Zero;
+        int actualHour;
+        if (Use24Hour)
+        {
+            actualHour = hour;
+        }
+        else
+        {
+            var isPm = current.Hours >= 12;
+            actualHour = hour % 12;
+            if (isPm) actualHour += 12;
+        }
+        var newValue = new TimeSpan(actualHour, current.Minutes, current.Seconds);
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private async Task SelectMinute(int minute)
+    {
+        var current = Value ?? TimeSpan.Zero;
+        var newValue = new TimeSpan(current.Hours, minute, current.Seconds);
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private async Task SelectSecond(int second)
+    {
+        var current = Value ?? TimeSpan.Zero;
+        var newValue = new TimeSpan(current.Hours, current.Minutes, second);
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private async Task SelectAmPm(bool isAm)
+    {
+        var current = Value ?? TimeSpan.Zero;
+        var hour = current.Hours % 12;
+        if (!isAm) hour += 12;
+        var newValue = new TimeSpan(hour, current.Minutes, current.Seconds);
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+}

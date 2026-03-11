@@ -1,0 +1,88 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <button type="button"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-l-md border border-r-0 border-border/60 bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50"
+            disabled="@(Disabled || IsAtMin)"
+            @onclick="Decrement"
+            aria-label="Decrease">
+        <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
+    </button>
+    <input type="number"
+           class="h-9 w-20 border border-border/60 bg-background px-3 text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+           value="@DisplayValue"
+           disabled="@Disabled"
+           min="@Min"
+           max="@Max"
+           step="@Step"
+           @onchange="OnInputChange" />
+    <button type="button"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-r-md border border-l-0 border-border/60 bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50"
+            disabled="@(Disabled || IsAtMax)"
+            @onclick="Increment"
+            aria-label="Increase">
+        <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
+    </button>
+</div>
+
+@code {
+    [Parameter] public double? Value { get; set; }
+    [Parameter] public EventCallback<double?> ValueChanged { get; set; }
+    [Parameter] public double? Min { get; set; }
+    [Parameter] public double? Max { get; set; }
+    [Parameter] public double Step { get; set; } = 1;
+    [Parameter] public int? Precision { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"inline-flex items-center {Class}".Trim();
+
+    private bool IsAtMin => Min.HasValue && Value.HasValue && Value.Value <= Min.Value;
+    private bool IsAtMax => Max.HasValue && Value.HasValue && Value.Value >= Max.Value;
+
+    private string DisplayValue
+    {
+        get
+        {
+            if (Value is null) return "";
+            if (Precision.HasValue)
+                return Value.Value.ToString($"F{Precision.Value}", System.Globalization.CultureInfo.InvariantCulture);
+            return Value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    private async Task Increment()
+    {
+        var newValue = (Value ?? 0) + Step;
+        await SetValue(newValue);
+    }
+
+    private async Task Decrement()
+    {
+        var newValue = (Value ?? 0) - Step;
+        await SetValue(newValue);
+    }
+
+    private async Task OnInputChange(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+        {
+            await SetValue(parsed);
+        }
+    }
+
+    private async Task SetValue(double newValue)
+    {
+        if (Min.HasValue && newValue < Min.Value) newValue = Min.Value;
+        if (Max.HasValue && newValue > Max.Value) newValue = Max.Value;
+
+        if (Precision.HasValue)
+        {
+            newValue = Math.Round(newValue, Precision.Value);
+        }
+
+        Value = newValue;
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

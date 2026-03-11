@@ -1,0 +1,125 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@ContainerClass" @attributes="AdditionalAttributes">
+    @if (!_hasError)
+    {
+        <img src="@Src" alt="@Alt"
+             width="@Width" height="@Height"
+             loading="@(Lazy ? "lazy" : null)"
+             class="@ImageClass"
+             @onclick="HandleClick"
+             @onerror="HandleError" />
+    }
+    else if (Fallback is not null)
+    {
+        <img src="@Fallback" alt="@Alt"
+             width="@Width" height="@Height"
+             class="@ImageClass" />
+    }
+    else
+    {
+        <div class="@FallbackClass">
+            <Blazicon Svg="Lucide.ImageOff" class="h-8 w-8 text-muted-foreground" />
+        </div>
+    }
+
+    @if (Preview)
+    {
+        <div class="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors cursor-pointer opacity-0 hover:opacity-100"
+             @onclick="HandleClick">
+            <Blazicon Svg="Lucide.ZoomIn" class="h-6 w-6 text-white drop-shadow-lg" />
+        </div>
+    }
+</div>
+
+@if (_showPreview && Preview)
+{
+    <div class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center animate-fade-in" @onclick="ClosePreview" @onkeydown="HandlePreviewKeyDown" tabindex="-1" id="@_previewId">
+        <button type="button" class="absolute top-4 right-4 text-white/80 hover:text-white transition-colors" @onclick="ClosePreview">
+            <Blazicon Svg="Lucide.X" class="h-6 w-6" />
+        </button>
+
+        <div class="flex items-center gap-2 absolute bottom-4 left-1/2 -translate-x-1/2">
+            <button type="button" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors" @onclick="ZoomOut" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ZoomOut" class="h-5 w-5" />
+            </button>
+            <span class="text-white/80 text-sm min-w-[3rem] text-center">@($"{_zoom}%")</span>
+            <button type="button" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors" @onclick="ZoomIn" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ZoomIn" class="h-5 w-5" />
+            </button>
+        </div>
+
+        <img src="@Src" alt="@Alt" class="max-h-[85vh] max-w-[90vw] object-contain transition-transform" style="transform: scale(@(_zoom / 100.0))" @onclick:stopPropagation="true" />
+    </div>
+}
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public string? Src { get; set; }
+    [Parameter] public string? Alt { get; set; }
+    [Parameter] public string? Width { get; set; }
+    [Parameter] public string? Height { get; set; }
+    [Parameter] public bool Lazy { get; set; }
+    [Parameter] public string? Fallback { get; set; }
+    [Parameter] public bool Preview { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _hasError;
+    private bool _showPreview;
+    private int _zoom = 100;
+    private readonly string _previewId = $"image-preview-{Guid.NewGuid():N}";
+
+    private string ContainerClass => $"relative inline-block overflow-hidden {Class}".Trim();
+    private string ImageClass => $"object-cover {(Preview ? "cursor-pointer" : "")}".Trim();
+    private string FallbackClass => $"flex items-center justify-center bg-muted rounded-md" + (Width is not null ? $" w-[{Width}]" : " w-full") + (Height is not null ? $" h-[{Height}]" : " h-32");
+
+    private void HandleError() => _hasError = true;
+
+    private async Task HandleClick()
+    {
+        if (Preview && !_hasError)
+        {
+            _showPreview = true;
+            _zoom = 100;
+            await Interop.LockScroll();
+        }
+    }
+
+    private async Task ClosePreview()
+    {
+        _showPreview = false;
+        try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+    }
+
+    private void ZoomIn()
+    {
+        if (_zoom < 300) _zoom += 25;
+    }
+
+    private void ZoomOut()
+    {
+        if (_zoom > 25) _zoom -= 25;
+    }
+
+    private async Task HandlePreviewKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape": await ClosePreview(); break;
+            case "+":
+            case "=": ZoomIn(); break;
+            case "-": ZoomOut(); break;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_showPreview)
+        {
+            try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+        }
+    }
+}

@@ -15,6 +15,16 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
@@ -44,18 +54,26 @@
         };
 
         if (!string.IsNullOrEmpty(Color))
-        {
             series.ItemStyle = new EChartItemStyle { Color = Color };
-        }
 
         if (!string.IsNullOrEmpty(Label))
-        {
             series.Title = new EChartTitle { Text = Label };
-        }
+
+        if (ShowDataLabels)
+            series.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
 
         _option = new EChartOption
         {
-            Series = new List<EChartSeries> { series }
+            Series = new List<EChartSeries> { series },
+            Color = ColorPalette
         };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 }

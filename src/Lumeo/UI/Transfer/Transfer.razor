@@ -1,0 +1,167 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @* Source panel *@
+    <div class="flex-1 border border-border/40 rounded-lg overflow-hidden">
+        <div class="px-3 py-2 border-b border-border/40 bg-muted/30">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium">@(SourceTitle ?? "Source")</span>
+                <span class="text-xs text-muted-foreground">@_selectedSource.Count / @(SourceItems?.Count ?? 0)</span>
+            </div>
+        </div>
+        @if (ShowSearch)
+        {
+            <div class="px-2 py-1.5 border-b border-border/40">
+                <input type="text" placeholder="Search..."
+                       class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       value="@_sourceSearch"
+                       @oninput="OnSourceSearch" />
+            </div>
+        }
+        <div class="max-h-64 overflow-y-auto p-1">
+            @if (FilteredSourceItems is { Count: > 0 })
+            {
+                @foreach (var item in FilteredSourceItems)
+                {
+                    <label class="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm">
+                        <Checkbox Checked="@_selectedSource.Contains(item.Value)" CheckedChanged="b => ToggleSourceItem(item.Value, b)" />
+                        <span class="truncate">@item.Label</span>
+                    </label>
+                }
+            }
+            else
+            {
+                <div class="text-center text-xs text-muted-foreground py-4">No items</div>
+            }
+        </div>
+    </div>
+
+    @* Transfer buttons *@
+    <div class="flex flex-col items-center justify-center gap-1.5">
+        <button type="button" class="@ButtonClass" @onclick="MoveToTarget" disabled="@(_selectedSource.Count == 0)">
+            <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+        </button>
+        <button type="button" class="@ButtonClass" @onclick="MoveToSource" disabled="@(_selectedTarget.Count == 0)">
+            <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+        </button>
+    </div>
+
+    @* Target panel *@
+    <div class="flex-1 border border-border/40 rounded-lg overflow-hidden">
+        <div class="px-3 py-2 border-b border-border/40 bg-muted/30">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium">@(TargetTitle ?? "Target")</span>
+                <span class="text-xs text-muted-foreground">@_selectedTarget.Count / @(TargetItems?.Count ?? 0)</span>
+            </div>
+        </div>
+        @if (ShowSearch)
+        {
+            <div class="px-2 py-1.5 border-b border-border/40">
+                <input type="text" placeholder="Search..."
+                       class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       value="@_targetSearch"
+                       @oninput="OnTargetSearch" />
+            </div>
+        }
+        <div class="max-h-64 overflow-y-auto p-1">
+            @if (FilteredTargetItems is { Count: > 0 })
+            {
+                @foreach (var item in FilteredTargetItems)
+                {
+                    <label class="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm">
+                        <Checkbox Checked="@_selectedTarget.Contains(item.Value)" CheckedChanged="b => ToggleTargetItem(item.Value, b)" />
+                        <span class="truncate">@item.Label</span>
+                    </label>
+                }
+            }
+            else
+            {
+                <div class="text-center text-xs text-muted-foreground py-4">No items</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<TransferItem>? SourceItems { get; set; }
+    [Parameter] public EventCallback<List<TransferItem>> SourceItemsChanged { get; set; }
+    [Parameter] public List<TransferItem>? TargetItems { get; set; }
+    [Parameter] public EventCallback<List<TransferItem>> TargetItemsChanged { get; set; }
+    [Parameter] public string? SourceTitle { get; set; }
+    [Parameter] public string? TargetTitle { get; set; }
+    [Parameter] public EventCallback<TransferChangeEventArgs> OnChange { get; set; }
+    [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly HashSet<string> _selectedSource = [];
+    private readonly HashSet<string> _selectedTarget = [];
+    private string _sourceSearch = "";
+    private string _targetSearch = "";
+
+    private string CssClass => $"flex items-start gap-3 {Class}".Trim();
+
+    private const string ButtonClass = "inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+
+    private List<TransferItem> FilteredSourceItems =>
+        string.IsNullOrWhiteSpace(_sourceSearch)
+            ? SourceItems ?? []
+            : (SourceItems ?? []).Where(i => i.Label.Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private List<TransferItem> FilteredTargetItems =>
+        string.IsNullOrWhiteSpace(_targetSearch)
+            ? TargetItems ?? []
+            : (TargetItems ?? []).Where(i => i.Label.Contains(_targetSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? "";
+    private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? "";
+
+    private void ToggleSourceItem(string value, bool selected)
+    {
+        if (selected) _selectedSource.Add(value);
+        else _selectedSource.Remove(value);
+    }
+
+    private void ToggleTargetItem(string value, bool selected)
+    {
+        if (selected) _selectedTarget.Add(value);
+        else _selectedTarget.Remove(value);
+    }
+
+    private async Task MoveToTarget()
+    {
+        var source = SourceItems ?? [];
+        var target = TargetItems ?? [];
+        var moved = source.Where(i => _selectedSource.Contains(i.Value)).ToList();
+        var remaining = source.Where(i => !_selectedSource.Contains(i.Value)).ToList();
+        target = [..target, ..moved];
+
+        SourceItems = remaining;
+        TargetItems = target;
+        _selectedSource.Clear();
+
+        await SourceItemsChanged.InvokeAsync(SourceItems);
+        await TargetItemsChanged.InvokeAsync(TargetItems);
+        await OnChange.InvokeAsync(new TransferChangeEventArgs("right", moved));
+    }
+
+    private async Task MoveToSource()
+    {
+        var source = SourceItems ?? [];
+        var target = TargetItems ?? [];
+        var moved = target.Where(i => _selectedTarget.Contains(i.Value)).ToList();
+        var remaining = target.Where(i => !_selectedTarget.Contains(i.Value)).ToList();
+        source = [..source, ..moved];
+
+        SourceItems = source;
+        TargetItems = remaining;
+        _selectedTarget.Clear();
+
+        await SourceItemsChanged.InvokeAsync(SourceItems);
+        await TargetItemsChanged.InvokeAsync(TargetItems);
+        await OnChange.InvokeAsync(new TransferChangeEventArgs("left", moved));
+    }
+
+    public record TransferItem(string Label, string Value);
+    public record TransferChangeEventArgs(string Direction, List<TransferItem> MovedItems);
+}

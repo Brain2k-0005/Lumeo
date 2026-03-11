@@ -1,0 +1,105 @@
+@namespace Lumeo
+
+<Chart Option="@_option" Width="@Width" Height="@Height" Theme="@Theme" Class="@Class" @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Min { get; set; } = 0;
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Unit { get; set; }
+    [Parameter] public bool ShowPointer { get; set; } = true;
+    [Parameter] public List<GaugeRange>? Ranges { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Theme { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
+    private EChartOption _option = new();
+
+    protected override void OnParametersSet()
+    {
+        var formatter = Unit is not null ? $"{{value}} {Unit}" : "{value}";
+
+        var series = new EChartSeries
+        {
+            Type = "gauge",
+            Min = Min,
+            Max = Max,
+            Pointer = new EChartPointer { Show = ShowPointer },
+            Detail = new EChartSeriesDetail
+            {
+                FontSize = 24,
+                Formatter = formatter
+            },
+            Data = new List<Dictionary<string, object>>
+            {
+                new() { ["value"] = Value, ["name"] = Title ?? "" }
+            }
+        };
+
+        if (!string.IsNullOrEmpty(Title))
+            series.Title = new EChartTitle { Text = Title };
+
+        if (Ranges is { Count: > 0 })
+        {
+            // Build axis line color stops from ranges
+            var colorStops = new List<object>();
+            foreach (var range in Ranges.OrderBy(r => r.Threshold))
+            {
+                var normalizedPos = (range.Threshold - Min) / (Max - Min);
+                colorStops.Add(new object[] { normalizedPos, range.Color });
+            }
+            // Ensure we reach 1.0
+            var maxThreshold = Ranges.Max(r => r.Threshold);
+            if (maxThreshold < Max)
+            {
+                var lastColor = Ranges.OrderBy(r => r.Threshold).Last().Color;
+                colorStops.Add(new object[] { 1.0, lastColor });
+            }
+
+            series.ExtensionData = new Dictionary<string, System.Text.Json.JsonElement>
+            {
+                ["axisLine"] = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        lineStyle = new { width = 15, color = colorStops }
+                    }))
+            };
+        }
+
+        if (ShowDataLabels)
+            series.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
+
+        _option = new EChartOption
+        {
+            Series = new List<EChartSeries> { series },
+            Color = ColorPalette
+        };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
+    }
+
+    public class GaugeRange
+    {
+        public double Threshold { get; set; }
+        public string Color { get; set; } = "";
+    }
+}

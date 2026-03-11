@@ -1,0 +1,79 @@
+@namespace Lumeo.Docs.Shared.Patterns
+
+<Stack Gap="3">
+<PatternCard Label="Basic Table" Code="@_codeTableBasic">
+    <DataTable TItem="InvoiceRow" Items="_invoices">
+        <HeaderTemplate>
+            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Invoice</th>
+            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Status</th>
+            <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground text-xs">Amount</th>
+        </HeaderTemplate>
+        <RowTemplate Context="row">
+            <td class="p-4 align-middle text-sm text-foreground">@row.Id</td>
+            <td class="p-4 align-middle">
+                <Badge Variant="@(row.Status == "Paid" ? Badge.BadgeVariant.Success : row.Status == "Pending" ? Badge.BadgeVariant.Warning : Badge.BadgeVariant.Secondary)">
+                    @row.Status
+                </Badge>
+            </td>
+            <td class="p-4 align-middle text-sm text-right font-medium text-foreground">@row.Amount</td>
+        </RowTemplate>
+    </DataTable>
+</PatternCard>
+
+<PatternCard Label="Loading State" Code="@_codeTableLoading">
+    <DataTable TItem="InvoiceRow" Items="@(new List<InvoiceRow>())" IsLoading="true" SkeletonRows="3">
+        <HeaderTemplate>
+            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Name</th>
+            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground text-xs">Email</th>
+            <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground text-xs">Role</th>
+        </HeaderTemplate>
+        <RowTemplate Context="row">
+            <td class="p-4">@row.Id</td>
+        </RowTemplate>
+        <LoadingTemplate>
+            <td class="p-4"><Skeleton Class="h-4 w-24" /></td>
+            <td class="p-4"><Skeleton Class="h-4 w-36" /></td>
+            <td class="p-4 text-right"><Skeleton Class="h-4 w-16 ml-auto" /></td>
+        </LoadingTemplate>
+    </DataTable>
+</PatternCard>
+</Stack>
+
+@code {
+    private record InvoiceRow(string Id, string Status, string Amount);
+
+    private readonly List<InvoiceRow> _invoices =
+    [
+        new("INV-001", "Paid", "$250.00"),
+        new("INV-002", "Pending", "$150.00"),
+        new("INV-003", "Paid", "$350.00"),
+        new("INV-004", "Draft", "$450.00"),
+    ];
+
+        private string _codeTableBasic = @"<DataTable TItem=""InvoiceRow"" Items=""_invoices"">
+        <HeaderTemplate>
+            <th>Invoice</th>
+            <th>Status</th>
+            <th>Amount</th>
+        </HeaderTemplate>
+        <RowTemplate Context=""row"">
+            <td>@row.Id</td>
+            <td><Badge>@row.Status</Badge></td>
+            <td>@row.Amount</td>
+        </RowTemplate>
+    </DataTable>";
+
+        private string _codeTableLoading = @"<DataTable TItem=""MyRow"" Items=""_items"" IsLoading=""true"" SkeletonRows=""3"">
+        <HeaderTemplate>
+            <th>Name</th><th>Email</th><th>Role</th>
+        </HeaderTemplate>
+        <RowTemplate Context=""row"">
+            <td>@row.Name</td>
+        </RowTemplate>
+        <LoadingTemplate>
+            <td><Skeleton Class=""h-4 w-24"" /></td>
+            <td><Skeleton Class=""h-4 w-36"" /></td>
+            <td><Skeleton Class=""h-4 w-16 ml-auto"" /></td>
+        </LoadingTemplate>
+    </DataTable>";
+}

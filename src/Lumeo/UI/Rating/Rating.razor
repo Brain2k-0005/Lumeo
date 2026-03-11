@@ -1,0 +1,107 @@
+@namespace Lumeo
+
+<div class="@CssClass" role="radiogroup" aria-label="Rating" @attributes="AdditionalAttributes">
+    @for (int i = 1; i <= Max; i++)
+    {
+        var starIndex = i;
+        var isFull = Value >= starIndex;
+        var isHalf = AllowHalf && !isFull && Value >= starIndex - 0.5;
+
+        @if (Icon is not null)
+        {
+            <button type="button"
+                    class="@GetStarClasses(isFull || isHalf) @SizeClasses"
+                    disabled="@ReadOnly"
+                    aria-label="@starIndex star"
+                    @onclick="() => HandleClick(starIndex)"
+                    @onmouseover="() => HandleHover(starIndex)"
+                    @onmouseout="HandleMouseLeave">
+                @Icon
+            </button>
+        }
+        else
+        {
+            <button type="button"
+                    class="@SizeClasses relative"
+                    disabled="@ReadOnly"
+                    aria-label="@starIndex star"
+                    @onclick="() => HandleClick(starIndex)"
+                    @onmouseover="() => HandleHover(starIndex)"
+                    @onmouseout="HandleMouseLeave">
+                @if (isHalf)
+                {
+                    <span class="relative inline-block">
+                        <Blazicon Svg="Lucide.Star" class="text-muted-foreground/30 fill-muted-foreground/10" />
+                        <span class="absolute inset-0 overflow-hidden" style="width: 50%;">
+                            <Blazicon Svg="Lucide.Star" class="text-yellow-400 fill-yellow-400" />
+                        </span>
+                    </span>
+                }
+                else if (isFull || (_hoverValue > 0 && starIndex <= _hoverValue))
+                {
+                    <Blazicon Svg="Lucide.Star" class="text-yellow-400 fill-yellow-400" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Star" class="text-muted-foreground/30 fill-muted-foreground/10" />
+                }
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public EventCallback<double> ValueChanged { get; set; }
+    [Parameter] public int Max { get; set; } = 5;
+    [Parameter] public bool AllowHalf { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public RenderFragment? Icon { get; set; }
+    [Parameter] public RatingSize Size { get; set; } = RatingSize.Default;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private int _hoverValue;
+
+    private string CssClass => $"inline-flex items-center gap-0.5 {Class}".Trim();
+
+    private string SizeClasses => Size switch
+    {
+        RatingSize.Small => "[&_svg]:h-4 [&_svg]:w-4",
+        RatingSize.Large => "[&_svg]:h-8 [&_svg]:w-8",
+        _ => "[&_svg]:h-5 [&_svg]:w-5"
+    };
+
+    private string GetStarClasses(bool isActive) => isActive
+        ? "text-yellow-400"
+        : "text-muted-foreground/30";
+
+    private async Task HandleClick(int index)
+    {
+        if (ReadOnly) return;
+
+        var newValue = (double)index;
+        if (AllowHalf && Value == index)
+        {
+            newValue = index - 0.5;
+        }
+
+        Value = newValue;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private void HandleHover(int index)
+    {
+        if (!ReadOnly)
+        {
+            _hoverValue = index;
+        }
+    }
+
+    private void HandleMouseLeave()
+    {
+        _hoverValue = 0;
+    }
+
+    public enum RatingSize { Small, Default, Large }
+}

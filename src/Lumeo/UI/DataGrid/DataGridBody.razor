@@ -1,0 +1,113 @@
+@namespace Lumeo
+@typeparam TItem
+
+@if (Context is not null && Context.IsLoading)
+{
+    <tbody class="@CssClass" @attributes="AdditionalAttributes">
+        @for (var i = 0; i < 5; i++)
+        {
+            <tr class="border-b border-border/40">
+                @if (Context.SelectionMode != DataGridSelectionMode.None)
+                {
+                    <td class="px-3 py-2 w-10">
+                        <Skeleton Class="h-4 w-4 rounded" />
+                    </td>
+                }
+                @if (HasDetailTemplate)
+                {
+                    <td class="px-1 py-2 w-8">
+                        <Skeleton Class="h-4 w-4 rounded" />
+                    </td>
+                }
+                @foreach (var column in Context.Columns.Where(c => c.Visible))
+                {
+                    <td class="px-3 py-2">
+                        <Skeleton Class="h-4 w-full rounded" />
+                    </td>
+                }
+            </tr>
+        }
+    </tbody>
+}
+else if (Context is not null && Context.DisplayedItems.Count == 0)
+{
+    <tbody class="@CssClass" @attributes="AdditionalAttributes">
+        <tr>
+            <td colspan="@ColSpan" class="px-3 py-8 text-center text-muted-foreground">
+                @if (EmptyContent is not null)
+                {
+                    @EmptyContent
+                }
+                else
+                {
+                    <div class="flex flex-col items-center gap-2">
+                        <Blazicon Svg="Lucide.Inbox" class="h-8 w-8 text-muted-foreground/50" />
+                        <span class="text-sm">No data available</span>
+                    </div>
+                }
+            </td>
+        </tr>
+    </tbody>
+}
+else if (Context is not null && UseVirtualization)
+{
+    <tbody class="@CssClass" @attributes="AdditionalAttributes">
+        <Virtualize Items="@_indexedItems" Context="entry">
+            <DataGridRow TItem="TItem"
+                         Item="entry.Item"
+                         RowIndex="entry.Index"
+                         DetailTemplate="DetailTemplate" />
+        </Virtualize>
+    </tbody>
+}
+else if (Context is not null)
+{
+    <tbody class="@CssClass" @attributes="AdditionalAttributes">
+        @{ var index = 0; }
+        @foreach (var item in Context.DisplayedItems)
+        {
+            <DataGridRow TItem="TItem"
+                         Item="item"
+                         RowIndex="index"
+                         DetailTemplate="DetailTemplate" />
+            index++;
+        }
+    </tbody>
+}
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public bool UseVirtualization { get; set; }
+    [Parameter] public bool HasDetailTemplate { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"{Class}".Trim();
+
+    private List<IndexedItem<TItem>> _indexedItems = new();
+
+    protected override void OnParametersSet()
+    {
+        if (UseVirtualization && Context is not null)
+        {
+            _indexedItems = Context.DisplayedItems
+                .Select((item, idx) => new IndexedItem<TItem>(item, idx))
+                .ToList();
+        }
+    }
+
+    private int ColSpan
+    {
+        get
+        {
+            var count = Context?.Columns.Count(c => c.Visible) ?? 1;
+            if (Context?.SelectionMode != DataGridSelectionMode.None) count++;
+            if (HasDetailTemplate) count++;
+            return count;
+        }
+    }
+
+    private record IndexedItem<T>(T Item, int Index);
+}

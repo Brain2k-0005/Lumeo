@@ -1,0 +1,32 @@
+@namespace Lumeo
+@typeparam TItem
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="p-3 space-y-2">
+        <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Toggle Columns
+        </div>
+        @foreach (var column in Columns)
+        {
+            <label class="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                <Checkbox Checked="@column.Visible" CheckedChanged="@(v => ToggleColumn(column, v))" />
+                <span>@(column.Title ?? column.Field ?? "Column")</span>
+            </label>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<DataGridColumn<TItem>> Columns { get; set; } = Array.Empty<DataGridColumn<TItem>>();
+    [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"w-56 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md {Class}".Trim();
+
+    private async Task ToggleColumn(DataGridColumn<TItem> column, bool visible)
+    {
+        column.Visible = visible;
+        await OnColumnToggle.InvokeAsync(column);
+    }
+}

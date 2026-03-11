@@ -1,0 +1,409 @@
+@page "/docs/services/toast"
+@namespace Lumeo.Docs.Pages.Docs.Services
+
+@using Lumeo.Services
+
+<PageTitle>Toast Service — Lumeo</PageTitle>
+
+<PageHeader Title="Toast Service" Description="Show, dismiss, and update toast notifications programmatically from C# code." />
+
+<Stack Gap="10">
+
+    <!-- Quick Start -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Quick Start</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastService</code> is registered automatically by
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AddLumeo()</code>. Inject it into any component and call
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show()</code> to display a toast.
+            </Lumeo.Text>
+
+            <Heading Level="3">1. Add the provider to your layout</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Place <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;ToastProvider /&gt;</code> once in your
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MainLayout.razor</code>. This renders toast notifications.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;!-- MainLayout.razor --&gt;
+&lt;div class="min-h-screen"&gt;
+    @@Body
+    &lt;ToastProvider Position="ToastViewport.ToastPosition.BottomRight"
+                   DefaultDuration="5000"
+                   MaxToasts="5" /&gt;
+&lt;/div&gt;</div>
+
+            <Heading Level="3">2. Inject and use</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject ToastService ToastService
+
+&lt;Button OnClick="HandleSave"&gt;Save&lt;/Button&gt;
+
+@@code {
+    private void HandleSave()
+    {
+        ToastService.Success("Saved", "Your changes have been saved.");
+    }
+}</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Examples -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">Examples</Heading>
+
+            <Stack Gap="4">
+                <Heading Level="3">Variants</Heading>
+                <Lumeo.Text Size="sm" Color="muted">Convenience methods for common toast types:</Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Default toast
+ToastService.Show("Event created", "Monday, January 1st at 5:00 PM");
+
+// Success
+ToastService.Success("Saved", "Your profile has been updated.");
+
+// Error
+ToastService.Error("Error", "Something went wrong. Please try again.");
+
+// Warning
+ToastService.Warning("Warning", "Your session will expire in 5 minutes.");
+
+// Info
+ToastService.Info("Tip", "You can drag items to reorder them.");</div>
+                <Flex Gap="2" Wrap="true">
+                    <Button OnClick='() => ToastService.Show("Event created", "Monday, January 1st")'>Default</Button>
+                    <Button Variant="Button.ButtonVariant.Secondary" OnClick='() => ToastService.Success("Saved", "Profile updated.")'>Success</Button>
+                    <Button Variant="Button.ButtonVariant.Destructive" OnClick='() => ToastService.Error("Error", "Something went wrong.")'>Error</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='() => ToastService.Warning("Warning", "Session expiring.")'>Warning</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='() => ToastService.Info("Tip", "Drag to reorder.")'>Info</Button>
+                </Flex>
+            </Stack>
+
+            <Stack Gap="4">
+                <Heading Level="3">With Options</Heading>
+                <Lumeo.Text Size="sm" Color="muted">Full control with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastOptions</code>:</Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Toast with action button
+ToastService.Show(new ToastOptions
+{
+    Title = "Message sent",
+    Description = "Your message has been delivered.",
+    ActionLabel = "Undo",
+    OnAction = () => UndoSend(),
+    Duration = 8000
+});
+
+// Non-dismissible persistent toast
+ToastService.Show(new ToastOptions
+{
+    Title = "Uploading...",
+    Description = "Please wait while your file uploads.",
+    Dismissible = false,
+    Duration = 0  // stays until dismissed programmatically
+});</div>
+                <Flex Gap="2" Wrap="true">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowWithAction">With Action</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowPersistent">Persistent</Button>
+                </Flex>
+            </Stack>
+
+            <Stack Gap="4">
+                <Heading Level="3">Dismiss and Update</Heading>
+                <Lumeo.Text Size="sm" Color="muted">Control toasts after showing them:</Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Show returns an ID you can use later
+var id = ToastService.Show("Processing...");
+
+// Update an existing toast
+ToastService.Update(id, new ToastOptions
+{
+    Title = "Done!",
+    Variant = ToastVariant.Success,
+    Duration = 3000
+});
+
+// Dismiss a specific toast
+ToastService.Dismiss(id);
+
+// Dismiss all toasts
+ToastService.DismissAll();</div>
+            </Stack>
+
+            <Stack Gap="4">
+                <Heading Level="3">Promise Toast</Heading>
+                <Lumeo.Text Size="sm" Color="muted">Show loading, success, or error states automatically for async operations:</Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await ToastService.Promise(
+    action: () => SaveDataAsync(),
+    loading: new ToastOptions { Title = "Saving...", Description = "Please wait." },
+    success: result => new ToastOptions
+    {
+        Title = "Saved!",
+        Description = $"Created record #{result.Id}",
+        Variant = ToastVariant.Success
+    },
+    error: ex => new ToastOptions
+    {
+        Title = "Failed",
+        Description = ex.Message,
+        Variant = ToastVariant.Destructive
+    }
+);</div>
+                <Button OnClick="ShowPromise">Try Promise Toast</Button>
+            </Stack>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- API Reference -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">API Reference</Heading>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">ToastService Methods</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Method</th>
+                                <th class="text-left p-3 font-medium text-foreground">Returns</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Show(title, description?, variant?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shows a toast and returns its ID.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Show(ToastOptions)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shows a toast with full options control.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Show(RenderFragment, variant?, duration?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shows a toast with custom Razor content.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Success(title, description?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for a success variant toast.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Error(title, description?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for a destructive variant toast.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Warning(title, description?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for a warning variant toast.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Info(title, description?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for an info variant toast.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Dismiss(toastId)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                                <td class="p-3 text-muted-foreground">Removes a specific toast by its ID.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">DismissAll()</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                                <td class="p-3 text-muted-foreground">Removes all active toasts.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Update(toastId, ToastOptions)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                                <td class="p-3 text-muted-foreground">Updates an existing toast with new options.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Promise&lt;T&gt;(action, loading, success, error)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;string&gt;</td>
+                                <td class="p-3 text-muted-foreground">Shows loading toast, then success or error based on async result.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">ToastOptions</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Property</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Default</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Title</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">The toast heading.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Description</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Body text below the title.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Variant</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ToastVariant</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
+                                <td class="p-3 text-muted-foreground">Visual style: Default, Success, Destructive, Warning, Info.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Duration</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">int?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">5000</td>
+                                <td class="p-3 text-muted-foreground">Auto-dismiss time in ms. Set to 0 for persistent.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Dismissible</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                                <td class="p-3 text-muted-foreground">Whether the close button is shown.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ActionLabel</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Text for an action button inside the toast.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">OnAction</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Action?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Callback when the action button is clicked.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">OnDismiss</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Action?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Callback when the toast is dismissed.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">CustomContent</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Custom Razor content instead of title/description.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Class</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Additional CSS classes for the toast element.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">ToastProvider Parameters</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Parameter</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Default</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Position</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ToastPosition</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">BottomRight</td>
+                                <td class="p-3 text-muted-foreground">Screen corner for toasts: TopLeft, TopRight, BottomLeft, BottomRight, TopCenter, BottomCenter.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">DefaultDuration</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">5000</td>
+                                <td class="p-3 text-muted-foreground">Default auto-dismiss time in milliseconds.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">MaxToasts</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">5</td>
+                                <td class="p-3 text-muted-foreground">Maximum visible toasts. Oldest are evicted first.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+        </Stack>
+    </section>
+
+</Stack>
+
+<ToastProvider />
+
+@inject ToastService ToastService
+
+@code {
+    private void ShowWithAction()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Message sent",
+            Description = "Your message has been delivered.",
+            ActionLabel = "Undo",
+            OnAction = () => ToastService.Info("Undone", "Message recalled."),
+            Duration = 8000
+        });
+    }
+
+    private void ShowPersistent()
+    {
+        var id = ToastService.Show(new ToastOptions
+        {
+            Title = "Uploading...",
+            Description = "Please wait.",
+            Dismissible = false,
+            Duration = 0
+        });
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            ToastService.Update(id, new ToastOptions
+            {
+                Title = "Upload complete!",
+                Variant = ToastVariant.Success,
+                Duration = 3000,
+                Dismissible = true
+            });
+        });
+    }
+
+    private async Task ShowPromise()
+    {
+        await ToastService.Promise(
+            action: async () => { await Task.Delay(2000); return new { Id = 42 }; },
+            loading: new ToastOptions { Title = "Saving...", Description = "Please wait." },
+            success: result => new ToastOptions
+            {
+                Title = "Saved!",
+                Description = $"Created record #{result.Id}",
+                Variant = ToastVariant.Success
+            },
+            error: ex => new ToastOptions
+            {
+                Title = "Failed",
+                Description = ex.Message,
+                Variant = ToastVariant.Destructive
+            }
+        );
+    }
+}

@@ -1,0 +1,302 @@
+@page "/docs/services/component-interop"
+@namespace Lumeo.Docs.Pages.Docs.Services
+
+<PageTitle>Component Interop — Lumeo</PageTitle>
+
+<PageHeader Title="Component Interop Service" Description="Low-level JS interop helpers for building custom components — scroll locking, focus traps, positioning, clipboard, and more." />
+
+<Stack Gap="10">
+
+    <!-- Overview -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Overview</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ComponentInteropService</code> is the shared JS interop layer
+                used by all Lumeo components internally. If you're building custom overlay components, dropdown menus, or anything that needs
+                DOM interaction from C#, inject this service instead of calling <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IJSRuntime</code> directly.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject ComponentInteropService Interop</div>
+
+            <Alert>
+                This service implements <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code>.
+                Always handle <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> in cleanup methods.
+            </Alert>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Scroll Locking -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Scroll Locking</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Prevent background scrolling when a modal/overlay is open. Used by Dialog, Sheet, Drawer, and AlertDialog.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Lock scrolling (e.g. when opening a modal)
+await Interop.LockScroll();
+
+// Unlock scrolling (e.g. when closing)
+await Interop.UnlockScroll();</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Focus Trapping -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Focus Trapping</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Trap keyboard focus within a container element. Tab and Shift+Tab cycle within the trap. Essential for accessible overlays.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Set up a focus trap on an element
+await Interop.SetupFocusTrap("my-dialog-id");
+
+// Remove the focus trap when done
+await Interop.RemoveFocusTrap("my-dialog-id");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Click Outside -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Click Outside Detection</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Detect clicks outside a specific element — used by dropdowns, popovers, and comboboxes to auto-close.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Register — handler fires when user clicks outside the element
+await Interop.RegisterClickOutside("dropdown-id", "trigger-button-id", async () =>
+{
+    _isOpen = false;
+    await InvokeAsync(StateHasChanged);
+});
+
+// Unregister when component disposes
+await Interop.UnregisterClickOutside("dropdown-id");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Floating Position -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Element Positioning</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Position a floating element (dropdown, tooltip, popover) relative to a reference element.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Position content below the reference element, aligned to start
+await Interop.PositionFixed(
+    contentId: "popover-content",
+    referenceId: "popover-trigger",
+    align: "start",          // "start", "center", "end"
+    matchWidth: false,       // match the reference element's width
+    side: "bottom"           // "top", "bottom", "left", "right"
+);</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Clipboard -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Clipboard</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Copy text to the user's clipboard.</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.CopyToClipboard("Hello, world!");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- File Download -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">File Download</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Trigger a file download from a base64-encoded string.</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var bytes = System.Text.Encoding.UTF8.GetBytes("file content");
+var base64 = Convert.ToBase64String(bytes);
+await Interop.DownloadFile("report.txt", base64, "text/plain");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Element Measurement -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Element Measurement</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Get element dimensions and positions.</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Get full bounding rect
+var rect = await Interop.GetElementRect("element-id");
+// rect?.X, rect?.Y, rect?.Width, rect?.Height
+
+// Get a single dimension
+double width = await Interop.GetElementDimension("element-id", "width");
+
+// Get rect by CSS selector (useful for Tour component)
+var rect2 = await Interop.GetElementRectBySelector(".my-class");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Focus -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Focus Management</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Focus a specific element
+await Interop.FocusElement("input-id");
+
+// Focus a menu item by index (for keyboard navigation)
+await Interop.FocusMenuItemByIndex("menu-container-id", 0);
+
+// Count focusable menu items
+int count = await Interop.GetMenuItemCount("menu-container-id");</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Full API Reference -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">Full API Reference</Heading>
+
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Method</th>
+                            <th class="text-left p-3 font-medium text-foreground">Category</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">LockScroll()</td>
+                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
+                            <td class="p-3 text-muted-foreground">Prevent page scrolling.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnlockScroll()</td>
+                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
+                            <td class="p-3 text-muted-foreground">Re-enable page scrolling.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SetupFocusTrap(elementId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
+                            <td class="p-3 text-muted-foreground">Trap Tab focus within element.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RemoveFocusTrap(elementId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
+                            <td class="p-3 text-muted-foreground">Remove focus trap.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">FocusElement(elementId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
+                            <td class="p-3 text-muted-foreground">Focus a specific element by ID.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">FocusMenuItemByIndex(containerId, index)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
+                            <td class="p-3 text-muted-foreground">Focus the nth menu item in a container.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetMenuItemCount(containerId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Focus</td>
+                            <td class="p-3 text-muted-foreground">Count focusable menu items.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterClickOutside(elementId, triggerId, handler)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Click</td>
+                            <td class="p-3 text-muted-foreground">Detect clicks outside an element.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">UnregisterClickOutside(elementId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Click</td>
+                            <td class="p-3 text-muted-foreground">Stop detecting outside clicks.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">PositionFixed(contentId, refId, align, matchWidth, side)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Position</td>
+                            <td class="p-3 text-muted-foreground">Position floating element relative to reference.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetElementRect(elementId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Measure</td>
+                            <td class="p-3 text-muted-foreground">Get bounding rect (X, Y, Width, Height).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetElementRectBySelector(selector)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Measure</td>
+                            <td class="p-3 text-muted-foreground">Get rect by CSS selector.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetElementDimension(elementId, dimension)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Measure</td>
+                            <td class="p-3 text-muted-foreground">Get a single dimension value.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">CopyToClipboard(text)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Clipboard</td>
+                            <td class="p-3 text-muted-foreground">Copy text to clipboard.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DownloadFile(fileName, base64, mimeType)</td>
+                            <td class="p-3 text-xs text-muted-foreground">File</td>
+                            <td class="p-3 text-muted-foreground">Trigger browser file download.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ScrollToTop()</td>
+                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
+                            <td class="p-3 text-muted-foreground">Smooth scroll to page top.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SetupAutoResize(elementId, maxRows)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Textarea</td>
+                            <td class="p-3 text-muted-foreground">Auto-resize textarea as user types.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterDrawerSwipe(elementId, handler)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Gesture</td>
+                            <td class="p-3 text-muted-foreground">Detect swipe-to-dismiss on a drawer.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterCarouselSwipe(elementId, orientation, ...)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Gesture</td>
+                            <td class="p-3 text-muted-foreground">Handle swipe/scroll for carousel.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterResizeHandle(elementId, direction, ...)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Resize</td>
+                            <td class="p-3 text-muted-foreground">Drag-to-resize for resizable panels.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterScrollspy(containerId, offset, smooth, handler)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
+                            <td class="p-3 text-muted-foreground">Track active section during scroll.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterAffix(elementId, offsetTop, ...)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
+                            <td class="p-3 text-muted-foreground">Stick element to viewport on scroll.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterOtpPaste(baseId, length, handler)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Input</td>
+                            <td class="p-3 text-muted-foreground">Handle paste event for OTP inputs.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </Stack>
+    </section>
+
+</Stack>
