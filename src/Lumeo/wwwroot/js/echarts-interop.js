@@ -30,21 +30,38 @@ function resolveCssVars(obj) {
     if (!obj || typeof obj !== 'object') return;
     if (Array.isArray(obj)) {
         for (let i = 0; i < obj.length; i++) {
-            if (typeof obj[i] === 'string' && obj[i].startsWith('var(')) {
-                obj[i] = resolveCssVarValue(obj[i]);
+            if (typeof obj[i] === 'string') {
+                if (obj[i].startsWith('var(')) {
+                    obj[i] = resolveCssVarValue(obj[i]);
+                } else if (isColorValue(obj[i])) {
+                    obj[i] = colorToHex(obj[i]);
+                }
             } else if (typeof obj[i] === 'object') {
                 resolveCssVars(obj[i]);
             }
         }
     } else {
         for (const key of Object.keys(obj)) {
-            if (typeof obj[key] === 'string' && obj[key].startsWith('var(')) {
-                obj[key] = resolveCssVarValue(obj[key]);
+            if (typeof obj[key] === 'string') {
+                if (obj[key].startsWith('var(')) {
+                    obj[key] = resolveCssVarValue(obj[key]);
+                } else if (isColorProperty(key) && isColorValue(obj[key])) {
+                    obj[key] = colorToHex(obj[key]);
+                }
             } else if (typeof obj[key] === 'object') {
                 resolveCssVars(obj[key]);
             }
         }
     }
+}
+
+function isColorValue(str) {
+    return str.startsWith('oklch(') || str.startsWith('hsl(') || str.startsWith('color(') || str.startsWith('lab(') || str.startsWith('lch(');
+}
+
+function isColorProperty(key) {
+    const colorKeys = ['color', 'backgroundColor', 'borderColor', 'shadowColor', 'textBorderColor', 'textShadowColor'];
+    return colorKeys.includes(key);
 }
 
 function resolveCssVarValue(str) {
@@ -57,19 +74,84 @@ function resolveCssVarValue(str) {
 function getCssVar(name) {
     const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     if (!raw) return '';
-    // Convert oklch/hsl/etc to hex so ECharts can use it
+    // Only convert color-like values to hex; leave non-color values (e.g. --radius) as-is
+    if (raw.startsWith('#') || raw.startsWith('rgb') || raw.startsWith('hsl') ||
+        raw.startsWith('oklch') || raw.startsWith('color(') || raw.startsWith('lab(') ||
+        raw.startsWith('lch(') || raw.startsWith('hwb(')) {
+        return colorToHex(raw);
+    }
+    return raw;
+}
+
+function colorToHex(color) {
+    if (!color || color === 'transparent') return color;
+    if (color.startsWith('#')) return color;
+
+    // Step 1: Use DOM to resolve any CSS color (oklch, hsl, color(), etc.) to computed value
+    const el = document.createElement('div');
+    el.style.display = 'none';
+    el.style.color = color;
+    document.body.appendChild(el);
+    const computed = getComputedStyle(el).color;
+    document.body.removeChild(el);
+
+    if (!computed) return color;
+
+    // Step 2: Try to parse rgb/rgba (works in most cases)
+    let m = computed.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/);
+    if (m) {
+        return rgbToHex(Math.round(+m[1]), Math.round(+m[2]), Math.round(+m[3]));
+    }
+
+    // Step 3: Parse color(srgb r g b) — values are 0-1 floats
+    m = computed.match(/color\(srgb\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)/);
+    if (m) {
+        return rgbToHex(
+            Math.round(Math.max(0, Math.min(1, +m[1])) * 255),
+            Math.round(Math.max(0, Math.min(1, +m[2])) * 255),
+            Math.round(Math.max(0, Math.min(1, +m[3])) * 255)
+        );
+    }
+
+    // Step 4: Parse color(display-p3 r g b) — approximate to sRGB
+    m = computed.match(/color\(display-p3\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)/);
+    if (m) {
+        return rgbToHex(
+            Math.round(Math.max(0, Math.min(1, +m[1])) * 255),
+            Math.round(Math.max(0, Math.min(1, +m[2])) * 255),
+            Math.round(Math.max(0, Math.min(1, +m[3])) * 255)
+        );
+    }
+
+    // Step 5: Pixel-reading fallback — draw the computed color on canvas and read the pixel
     try {
-        const el = document.createElement('div');
-        el.style.color = raw;
-        document.body.appendChild(el);
-        const computed = getComputedStyle(el).color;
-        document.body.removeChild(el);
-        if (computed) {
-            const m = computed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-            if (m) return '#' + ((1 << 24) + (+m[1] << 16) + (+m[2] << 8) + +m[3]).toString(16).slice(1);
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        // Try with the computed value first, then the original
+        ctx.fillStyle = computed;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+        // Check if canvas actually understood the color (not default black)
+        if (r !== 0 || g !== 0 || b !== 0) {
+            return rgbToHex(r, g, b);
+        }
+        // Try original color value
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const px = ctx.getImageData(0, 0, 1, 1).data;
+        if (px[0] !== 0 || px[1] !== 0 || px[2] !== 0) {
+            return rgbToHex(px[0], px[1], px[2]);
         }
     } catch {}
-    return raw;
+
+    return color;
+}
+
+function rgbToHex(r, g, b) {
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 function registerLumeoTheme() {
@@ -225,7 +307,8 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
         charts.delete(elementId);
     }
 
-    // Register and use Lumeo theme unless a specific theme is requested
+    // Always re-register theme to pick up current CSS variable values (dark/light mode)
+    lumeoThemeRegistered = false;
     registerLumeoTheme();
     const effectiveTheme = theme || 'lumeo';
 
