@@ -160,6 +160,16 @@
                     </thead>
                     <tbody class="divide-y divide-border/40">
                         <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Id</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Unique identifier for this overlay instance.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Parameters</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">OverlayParameters?</td>
+                            <td class="p-3 text-muted-foreground">The parameters passed when the overlay was opened.</td>
+                        </tr>
+                        <tr>
                             <td class="p-3 font-mono text-xs text-primary">Close(result?)</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
                             <td class="p-3 text-muted-foreground">Closes the overlay and resolves with optional result data.</td>
@@ -169,10 +179,37 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
                             <td class="p-3 text-muted-foreground">Cancels the overlay, setting Cancelled = true on the result.</td>
                         </tr>
+                    </tbody>
+                </table>
+            </div>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">OverlayParameters</Heading>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Method</th>
+                            <th class="text-left p-3 font-medium text-foreground">Signature</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">Parameters</td>
-                            <td class="p-3 font-mono text-xs text-muted-foreground">OverlayParameters?</td>
-                            <td class="p-3 text-muted-foreground">The parameters passed when the overlay was opened.</td>
+                            <td class="p-3 font-mono text-xs text-primary">Add</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Add(name, value) → OverlayParameters</td>
+                            <td class="p-3 text-muted-foreground">Adds a named parameter. Returns itself for chaining.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Get&lt;T&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Get&lt;T&gt;(name) → T?</td>
+                            <td class="p-3 text-muted-foreground">Retrieves a parameter by name cast to type T.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ToDictionary</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ToDictionary() → Dictionary&lt;string, object&gt;</td>
+                            <td class="p-3 text-muted-foreground">Returns all parameters as a dictionary for DynamicComponent use.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -285,21 +322,21 @@
     {
         _dialogResult = null;
         var result = await OverlayService.ShowDialogAsync<OverlayDemoContent>("Edit Profile");
-        _dialogResult = result.Cancelled ? "Cancelled" : $"Name: {result.Data}";
+        _dialogResult = result.Cancelled ? "Cancelled" : (result.Data?.ToString() ?? "Submitted");
     }
 
     private async Task ShowSheet(SheetSide side)
     {
         _sheetResult = null;
         var result = await OverlayService.ShowSheetAsync<OverlayDemoContent>("Edit Profile", side);
-        _sheetResult = result.Cancelled ? "Cancelled" : $"Name: {result.Data}";
+        _sheetResult = result.Cancelled ? "Cancelled" : (result.Data?.ToString() ?? "Submitted");
     }
 
     private async Task ShowDrawer()
     {
         _drawerResult = null;
         var result = await OverlayService.ShowDrawerAsync<OverlayDemoContent>("Edit Profile");
-        _drawerResult = result.Cancelled ? "Cancelled" : $"Name: {result.Data}";
+        _drawerResult = result.Cancelled ? "Cancelled" : (result.Data?.ToString() ?? "Submitted");
     }
 
     private async Task ShowConfirm()
@@ -335,25 +372,50 @@
         """
         @inject OverlayService OverlayService
 
-        <Button OnClick="OpenDialog">Open Dialog</Button>
+        <Stack Gap="3">
+            <Button OnClick="OpenDialog">Open Dialog</Button>
+            @if (_result is not null)
+            {
+                <Alert>Result: @_result</Alert>
+            }
+        </Stack>
 
         @code {
+            private string? _result;
+
             private async Task OpenDialog()
             {
-                var result = await OverlayService.ShowDialogAsync<MyFormComponent>("Edit Profile");
-                if (!result.Cancelled)
-                {
-                    var data = result.GetData<MyFormData>();
-                }
+                _result = null;
+                var overlayResult = await OverlayService.ShowDialogAsync<ProfileFormContent>("Edit Profile");
+                _result = overlayResult.Cancelled ? "Cancelled" : $"Submitted: {overlayResult.Data}";
             }
         }
 
-        // Inside MyFormComponent.razor:
+        // ProfileFormContent.razor — receives OverlayReference as a CascadingParameter
+        @namespace YourApp
+
+        <Stack Gap="4" Class="py-4">
+            <Stack Gap="2">
+                <Label>Name</Label>
+                <Input @bind-Value="_name" Placeholder="Enter your name..." />
+            </Stack>
+            <Stack Gap="2">
+                <Label>Email</Label>
+                <Input @bind-Value="_email" Placeholder="Enter your email..." />
+            </Stack>
+            <Flex Justify="end" Gap="2" Class="pt-2">
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="() => Overlay.Cancel()">Cancel</Button>
+                <Button OnClick="Submit">Submit</Button>
+            </Flex>
+        </Stack>
+
         @code {
             [CascadingParameter] public OverlayReference Overlay { get; set; } = default!;
 
-            private void Submit() => Overlay.Close(new MyFormData { Name = _name });
-            private void Cancel() => Overlay.Cancel();
+            private string _name = "";
+            private string _email = "";
+
+            private void Submit() => Overlay.Close(new { Name = _name, Email = _email });
         }
         """;
 
@@ -361,15 +423,27 @@
         """
         @inject OverlayService OverlayService
 
-        <Button OnClick="OpenSheet">Open Sheet</Button>
+        <Flex Gap="2" Wrap="true">
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="() => OpenSheet(SheetSide.Right)">Right</Button>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="() => OpenSheet(SheetSide.Left)">Left</Button>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="() => OpenSheet(SheetSide.Bottom)">Bottom</Button>
+        </Flex>
+        @if (_result is not null)
+        {
+            <Alert>Result: @_result</Alert>
+        }
 
         @code {
-            private async Task OpenSheet()
+            private string? _result;
+
+            private async Task OpenSheet(SheetSide side)
             {
-                var result = await OverlayService.ShowSheetAsync<MyFormComponent>(
+                _result = null;
+                var overlayResult = await OverlayService.ShowSheetAsync<ProfileFormContent>(
                     title: "Edit Profile",
-                    side: SheetSide.Right,
+                    side: side,
                     size: SheetSize.Default);
+                _result = overlayResult.Cancelled ? "Cancelled" : $"Submitted: {overlayResult.Data}";
             }
         }
         """;
@@ -378,12 +452,22 @@
         """
         @inject OverlayService OverlayService
 
-        <Button OnClick="OpenDrawer">Open Drawer</Button>
+        <Stack Gap="3">
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="OpenDrawer">Open Drawer</Button>
+            @if (_result is not null)
+            {
+                <Alert>Result: @_result</Alert>
+            }
+        </Stack>
 
         @code {
+            private string? _result;
+
             private async Task OpenDrawer()
             {
-                var result = await OverlayService.ShowDrawerAsync<MyFormComponent>("Edit Profile");
+                _result = null;
+                var overlayResult = await OverlayService.ShowDrawerAsync<ProfileFormContent>("Edit Profile");
+                _result = overlayResult.Cancelled ? "Cancelled" : $"Submitted: {overlayResult.Data}";
             }
         }
         """;
