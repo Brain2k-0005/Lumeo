@@ -96,9 +96,15 @@ public class EChartOption
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     public string ToJson()
     {
-        return JsonSerializer.Serialize(this, EChartJsonContext.Default.EChartOption);
+        return JsonSerializer.Serialize(this, _jsonOptions);
     }
 }
 
