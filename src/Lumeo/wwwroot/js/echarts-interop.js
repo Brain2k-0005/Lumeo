@@ -191,7 +191,10 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
 
     // Dispose existing instance if any
     if (charts.has(elementId)) {
-        charts.get(elementId).dispose();
+        const prev = charts.get(elementId);
+        if (prev._lumeoObserver) prev._lumeoObserver.disconnect();
+        prev.dispose();
+        charts.delete(elementId);
     }
 
     // Register and use Lumeo theme unless a specific theme is requested
@@ -219,7 +222,17 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
         }
     }
 
-    chart.setOption(options);
+    try {
+        chart.setOption(options);
+    } catch (e) {
+        console.warn(`[Lumeo Chart] setOption failed for "${elementId}":`, e.message);
+        // Retry once after a frame (helps wordcloud/extension race conditions)
+        await new Promise(r => requestAnimationFrame(r));
+        try { chart.setOption(options); } catch (e2) {
+            console.error(`[Lumeo Chart] setOption retry failed for "${elementId}":`, e2.message);
+        }
+    }
+
     charts.set(elementId, chart);
 
     // Auto-resize on container resize
