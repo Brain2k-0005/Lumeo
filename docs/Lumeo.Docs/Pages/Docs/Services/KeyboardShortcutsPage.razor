@@ -2,6 +2,8 @@
 @namespace Lumeo.Docs.Pages.Docs.Services
 
 @using Lumeo.Services
+@implements IDisposable
+@inject KeyboardShortcutService Shortcuts
 
 <PageTitle>Keyboard Shortcuts — Lumeo</PageTitle>
 
@@ -15,7 +17,8 @@
             <Heading Level="2">Quick Start</Heading>
             <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
                 The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">KeyboardShortcutService</code> lets you register
-                keyboard shortcuts that work globally across the page. It handles modifier keys, normalization, and cleanup automatically.
+                keyboard shortcuts that work globally across the page. Inject it, register shortcuts in
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync</code>, and dispose them when the component unmounts.
             </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
 @@inject KeyboardShortcutService Shortcuts
@@ -40,6 +43,106 @@
         _shortcut?.Dispose();
     }
 }</div>
+            <Alert>
+                Always register shortcuts inside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync(firstRender)</code>
+                because JS interop is not available during server-side prerendering. The returned
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDisposable</code> handle automatically unregisters the shortcut when disposed.
+            </Alert>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Live Demo -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Live Demo</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                A keyboard shortcut is registered on this page right now. Try pressing the key combination below to see it in action.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="5">
+                    <Flex Align="center" Gap="3">
+                        <Lumeo.Text Size="sm" Color="muted">Press</Lumeo.Text>
+                        <Flex Align="center" Gap="1">
+                            <Kbd>Ctrl</Kbd>
+                            <Lumeo.Text Size="xs" Color="muted">+</Lumeo.Text>
+                            <Kbd>M</Kbd>
+                        </Flex>
+                        <Lumeo.Text Size="sm" Color="muted">to trigger the shortcut</Lumeo.Text>
+                    </Flex>
+
+                    <Separator />
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <Stack Gap="1">
+                            <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wide">Hit count</Lumeo.Text>
+                            <Flex Align="center" Gap="2">
+                                <span class="text-2xl font-bold text-foreground tabular-nums">@_hitCount</span>
+                                @if (_hitCount > 0)
+                                {
+                                    <Badge Variant="Badge.BadgeVariant.Secondary">active</Badge>
+                                }
+                            </Flex>
+                        </Stack>
+                        <Stack Gap="1">
+                            <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wide">Last triggered</Lumeo.Text>
+                            <Lumeo.Text Size="sm" Class="tabular-nums">
+                                @if (_lastTriggered is not null)
+                                {
+                                    @_lastTriggered.Value.ToString("HH:mm:ss.fff")
+                                }
+                                else
+                                {
+                                    <span class="text-muted-foreground">Never</span>
+                                }
+                            </Lumeo.Text>
+                        </Stack>
+                    </div>
+
+                    @if (_hitCount > 0)
+                    {
+                        <Alert Variant="Alert.AlertVariant.Success">
+                            Shortcut triggered! The handler ran and updated the UI via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">StateHasChanged</code>.
+                        </Alert>
+                    }
+
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ResetDemo">Reset counter</Button>
+                </Stack>
+            </Card>
+
+            <Lumeo.Text Size="xs" Color="muted">
+                The code behind this demo registers <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ctrl+m</code> in
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync</code> and disposes it when you navigate away.
+            </Lumeo.Text>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+@@inject KeyboardShortcutService Shortcuts
+
+&lt;Lumeo.Text&gt;Hit count: @@_hitCount&lt;/Lumeo.Text&gt;
+&lt;Lumeo.Text&gt;Last triggered: @@_lastTriggered&lt;/Lumeo.Text&gt;
+
+@@code {
+    private IDisposable? _shortcut;
+    private int _hitCount;
+    private DateTime? _lastTriggered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _shortcut = await Shortcuts.RegisterAsync("ctrl+m", async () =>
+            {
+                _hitCount++;
+                _lastTriggered = DateTime.Now;
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    public void Dispose() => _shortcut?.Dispose();
+}</div>
         </Stack>
     </section>
 
@@ -59,33 +162,40 @@
                     <thead>
                         <tr class="border-b bg-muted/40">
                             <th class="text-left p-3 font-medium text-foreground">Combo</th>
+                            <th class="text-left p-3 font-medium text-foreground">Keys</th>
                             <th class="text-left p-3 font-medium text-foreground">Description</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border/40">
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">ctrl+k</td>
-                            <td class="p-3 text-muted-foreground">Ctrl + K</td>
+                            <td class="p-3"><Flex Gap="1" Align="center"><Kbd>Ctrl</Kbd><Kbd>K</Kbd></Flex></td>
+                            <td class="p-3 text-muted-foreground">Common for search / command palette</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">ctrl+shift+p</td>
-                            <td class="p-3 text-muted-foreground">Ctrl + Shift + P</td>
+                            <td class="p-3"><Flex Gap="1" Align="center"><Kbd>Ctrl</Kbd><Kbd>Shift</Kbd><Kbd>P</Kbd></Flex></td>
+                            <td class="p-3 text-muted-foreground">Multi-modifier combo</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">alt+n</td>
-                            <td class="p-3 text-muted-foreground">Alt + N</td>
+                            <td class="p-3"><Flex Gap="1" Align="center"><Kbd>Alt</Kbd><Kbd>N</Kbd></Flex></td>
+                            <td class="p-3 text-muted-foreground">Alt modifier</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">meta+enter</td>
-                            <td class="p-3 text-muted-foreground">Cmd/Win + Enter</td>
+                            <td class="p-3"><Flex Gap="1" Align="center"><Kbd>Cmd</Kbd><Kbd>Enter</Kbd></Flex></td>
+                            <td class="p-3 text-muted-foreground">Cmd (Mac) or Win (Windows)</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">escape</td>
-                            <td class="p-3 text-muted-foreground">Escape key (no modifier)</td>
+                            <td class="p-3"><Kbd>Esc</Kbd></td>
+                            <td class="p-3 text-muted-foreground">No modifier needed</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">f1</td>
-                            <td class="p-3 text-muted-foreground">F1 function key</td>
+                            <td class="p-3"><Kbd>F1</Kbd></td>
+                            <td class="p-3 text-muted-foreground">Function keys</td>
                         </tr>
                     </tbody>
                 </table>
@@ -95,8 +205,9 @@
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">shift</code>,
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">alt</code>,
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">meta</code>.
-                Order doesn't matter — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">shift+ctrl+k</code> and
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ctrl+shift+k</code> are identical.
+                Order does not matter -- <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">shift+ctrl+k</code> and
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ctrl+shift+k</code> are identical. The service normalizes
+                the combo internally.
             </Lumeo.Text>
         </Stack>
     </section>
@@ -110,14 +221,21 @@
 
             <Stack Gap="4">
                 <Heading Level="3">Async Handler</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Use an async lambda when your handler needs to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">await</code> operations like API calls or navigation.
+                </Lumeo.Text>
                 <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">_shortcut = await Shortcuts.RegisterAsync("ctrl+s", async () =>
 {
     await SaveAsync();
+    await InvokeAsync(StateHasChanged);
 });</div>
             </Stack>
 
             <Stack Gap="4">
                 <Heading Level="3">Sync Handler</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Use a synchronous <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Action</code> for simple state changes.
+                </Lumeo.Text>
                 <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">_shortcut = await Shortcuts.RegisterAsync("escape", () =>
 {
     _isOpen = false;
@@ -128,14 +246,25 @@
             <Stack Gap="4">
                 <Heading Level="3">Disable preventDefault</Heading>
                 <Lumeo.Text Size="sm" Color="muted">
-                    By default, the browser's native action is prevented. Pass <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">false</code> to allow it:
+                    By default, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">preventDefault</code> is
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">true</code>, which stops the browser's native behavior for
+                    that key combo. Pass <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">false</code> to let the browser action
+                    proceed alongside your handler.
                 </Lumeo.Text>
-                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Browser's ctrl+p (print) still works, but your handler also fires
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Browser's ctrl+p (print dialog) still opens, but your handler also fires
 _shortcut = await Shortcuts.RegisterAsync("ctrl+p", HandlePrint, preventDefault: false);</div>
+                <Alert Variant="Alert.AlertVariant.Warning">
+                    Be careful when overriding common browser shortcuts like
+                    <Kbd>Ctrl</Kbd>+<Kbd>C</Kbd>, <Kbd>Ctrl</Kbd>+<Kbd>V</Kbd>, or <Kbd>Ctrl</Kbd>+<Kbd>T</Kbd>.
+                    Always consider whether blocking the native behavior is appropriate for your users.
+                </Alert>
             </Stack>
 
             <Stack Gap="4">
                 <Heading Level="3">Multiple Shortcuts</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Register several shortcuts and dispose them all at once using a list.
+                </Lumeo.Text>
                 <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">private List&lt;IDisposable&gt; _shortcuts = new();
 
 protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -158,7 +287,65 @@ public void Dispose()
 
     <Separator />
 
-    <!-- API Reference -->
+    <!-- Cleanup Pattern -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Cleanup Pattern</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Shortcut registrations are cleaned up by disposing the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDisposable</code>
+                handle returned from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RegisterAsync</code>. This is the recommended pattern.
+                Alternatively, you can call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UnregisterAsync(id)</code> manually.
+            </Lumeo.Text>
+
+            <Heading Level="3">Single shortcut</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+
+@@code {
+    private IDisposable? _shortcut;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            _shortcut = await Shortcuts.RegisterAsync("ctrl+k", HandleSearch);
+    }
+
+    public void Dispose() => _shortcut?.Dispose();
+}</div>
+
+            <Heading Level="3">Multiple shortcuts with List</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+
+@@code {
+    private readonly List&lt;IDisposable&gt; _shortcuts = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+k", OpenSearch));
+            _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+n", CreateNew));
+            _shortcuts.Add(await Shortcuts.RegisterAsync("escape", CloseAll));
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var s in _shortcuts) s.Dispose();
+    }
+}</div>
+
+            <Alert>
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDisposable</code> handle calls
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UnregisterAsync</code> internally and handles
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> gracefully, so it is safe
+                to dispose even when the circuit has disconnected.
+            </Alert>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Full API Reference -->
     <section>
         <Stack Gap="6">
             <Heading Level="2">API Reference</Heading>
@@ -176,19 +363,19 @@ public void Dispose()
                         </thead>
                         <tbody class="divide-y divide-border/40">
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, handler, preventDefault?)</td>
+                                <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, Func&lt;Task&gt;, preventDefault?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IDisposable&gt;</td>
-                                <td class="p-3 text-muted-foreground">Registers a shortcut with an async handler. Dispose the return value to unregister.</td>
+                                <td class="p-3 text-muted-foreground">Registers a shortcut with an async handler. Dispose the returned handle to unregister.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, Action, preventDefault?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IDisposable&gt;</td>
-                                <td class="p-3 text-muted-foreground">Registers a shortcut with a synchronous handler.</td>
+                                <td class="p-3 text-muted-foreground">Registers a shortcut with a synchronous handler. Wraps the Action internally.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">UnregisterAsync(id)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
-                                <td class="p-3 text-muted-foreground">Manually unregister by ID (prefer disposing the handle instead).</td>
+                                <td class="p-3 text-muted-foreground">Manually unregister by ID. Prefer disposing the handle instead.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -211,20 +398,20 @@ public void Dispose()
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">keyCombo</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
-                                <td class="p-3 text-muted-foreground">Key combo string like "ctrl+k", "escape", "ctrl+shift+p".</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">--</td>
+                                <td class="p-3 text-muted-foreground">Key combination string, e.g. "ctrl+k", "escape", "ctrl+shift+p". Modifier order does not matter.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">handler</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;Task&gt; or Action</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
-                                <td class="p-3 text-muted-foreground">Callback invoked when the shortcut is triggered.</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;Task&gt; | Action</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">--</td>
+                                <td class="p-3 text-muted-foreground">Callback invoked when the shortcut is triggered. Call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync(StateHasChanged)</code> inside async handlers to update the UI.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">preventDefault</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
-                                <td class="p-3 text-muted-foreground">Whether to call e.preventDefault() on the browser event.</td>
+                                <td class="p-3 text-muted-foreground">Whether to call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">e.preventDefault()</code> on the browser keyboard event. Set to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">false</code> to allow the native browser action.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -235,3 +422,33 @@ public void Dispose()
     </section>
 
 </Stack>
+
+@code {
+    private IDisposable? _shortcut;
+    private int _hitCount;
+    private DateTime? _lastTriggered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _shortcut = await Shortcuts.RegisterAsync("ctrl+m", async () =>
+            {
+                _hitCount++;
+                _lastTriggered = DateTime.Now;
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    private void ResetDemo()
+    {
+        _hitCount = 0;
+        _lastTriggered = null;
+    }
+
+    public void Dispose()
+    {
+        _shortcut?.Dispose();
+    }
+}

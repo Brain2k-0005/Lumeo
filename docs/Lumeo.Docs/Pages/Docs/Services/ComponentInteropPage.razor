@@ -1,6 +1,9 @@
 @page "/docs/services/component-interop"
 @namespace Lumeo.Docs.Pages.Docs.Services
 
+@using Lumeo.Services
+@inject ComponentInteropService Interop
+
 <PageTitle>Component Interop — Lumeo</PageTitle>
 
 <PageHeader Title="Component Interop Service" Description="Low-level JS interop helpers for building custom components — scroll locking, focus traps, positioning, clipboard, and more." />
@@ -108,6 +111,13 @@ await Interop.PositionFixed(
             <Heading Level="2">Clipboard</Heading>
             <Lumeo.Text Size="sm" Color="muted">Copy text to the user's clipboard.</Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.CopyToClipboard("Hello, world!");</div>
+            <Flex Gap="2" Align="center">
+                <Input @bind-Value="_clipboardText" Placeholder="Type something..." Class="max-w-xs" />
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="CopyToClipboard">
+                    <Blazicon Svg="@(_copied ? Lucide.Check : Lucide.Copy)" class="h-4 w-4 mr-2" />
+                    @(_copied ? "Copied!" : "Copy")
+                </Button>
+            </Flex>
         </Stack>
     </section>
 
@@ -121,6 +131,10 @@ await Interop.PositionFixed(
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var bytes = System.Text.Encoding.UTF8.GetBytes("file content");
 var base64 = Convert.ToBase64String(bytes);
 await Interop.DownloadFile("report.txt", base64, "text/plain");</div>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="DownloadSample">
+                <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-2" />
+                Download sample.txt
+            </Button>
         </Stack>
     </section>
 
@@ -255,7 +269,22 @@ int count = await Interop.GetMenuItemCount("menu-container-id");</div>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">ScrollToTop()</td>
                             <td class="p-3 text-xs text-muted-foreground">Scroll</td>
-                            <td class="p-3 text-muted-foreground">Smooth scroll to page top.</td>
+                            <td class="p-3 text-muted-foreground">Smooth-scroll to the top of the page.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterBackToTop(id, threshold, handler)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Scroll</td>
+                            <td class="p-3 text-muted-foreground">Show/hide a back-to-top button based on scroll position.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RegisterColumnResize(handleId, resizeHandler, resizeEndHandler)</td>
+                            <td class="p-3 text-xs text-muted-foreground">DataGrid</td>
+                            <td class="p-3 text-muted-foreground">Handle column drag-to-resize for DataGrid.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetTextareaCaretPosition(elementId)</td>
+                            <td class="p-3 text-xs text-muted-foreground">Input</td>
+                            <td class="p-3 text-muted-foreground">Get caret position for mention/autocomplete positioning.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">SetupAutoResize(elementId, maxRows)</td>
@@ -299,4 +328,42 @@ int count = await Interop.GetMenuItemCount("menu-container-id");</div>
         </Stack>
     </section>
 
+    <Separator />
+
+    <!-- Scroll to Top Demo -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Scroll to Top</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Smooth-scroll the page back to the top.</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await Interop.ScrollToTop();</div>
+            <div>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="() => Interop.ScrollToTop()">
+                    <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4 mr-2" />
+                    Scroll to Top
+                </Button>
+            </div>
+        </Stack>
+    </section>
+
 </Stack>
+
+@code {
+    private string _clipboardText = "Hello from Lumeo!";
+    private bool _copied;
+
+    private async Task CopyToClipboard()
+    {
+        await Interop.CopyToClipboard(_clipboardText);
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false;
+    }
+
+    private async Task DownloadSample()
+    {
+        var content = "This file was generated by Lumeo's ComponentInteropService.\nTimestamp: " + DateTime.Now;
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content));
+        await Interop.DownloadFile("sample.txt", base64, "text/plain");
+    }
+}

@@ -9,35 +9,55 @@
 
 <Stack Gap="10">
 
-    <!-- Quick Start -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 1. Quick Start                               *@
+    @* ──────────────────────────────────────────── *@
+    <section id="quick-start">
         <Stack Gap="4">
             <Heading Level="2">Quick Start</Heading>
             <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
                 The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayService</code> lets you open overlays imperatively
-                (like MudBlazor's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DialogService</code>) instead of declaring them in markup.
-                Each method returns a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task&lt;OverlayResult&gt;</code> so you can
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">await</code> the user's response.
+                instead of declaring them in markup. Every method returns a
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task&lt;OverlayResult&gt;</code> so you can
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">await</code> the user's response and read back data they entered.
             </Lumeo.Text>
 
-            <Heading Level="3">1. Add the provider to your layout</Heading>
+            <Alert>
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayProvider</code> is already included in the default Lumeo layout.
+                If you are using a custom layout, make sure to add it as shown in step 1.
+            </Alert>
+
+            @* Step 1 *@
+            <Heading Level="3">Step 1 — Add the provider to your layout</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Place <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;OverlayProvider /&gt;</code> once in your root layout.
+                It renders all active overlays.
+            </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;!-- MainLayout.razor --&gt;
 &lt;div class="min-h-screen"&gt;
     @@Body
     &lt;OverlayProvider /&gt;
 &lt;/div&gt;</div>
 
-            <Heading Level="3">2. Create a content component</Heading>
+            @* Step 2 *@
+            <Heading Level="3">Step 2 — Create a content component</Heading>
             <Lumeo.Text Size="sm" Color="muted">
                 Your content component receives an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayReference</code> via
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CascadingParameter</code>. Call
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Close(data)</code> to return a result or
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Cancel()</code> to dismiss.
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[CascadingParameter]</code>.
+                Call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Close(data)</code> to return a result, or
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Cancel()</code> to dismiss without returning data.
             </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;!-- EditProfileForm.razor --&gt;
 &lt;Stack Gap="4"&gt;
-    &lt;Input @@bind-Value="_name" Placeholder="Name" /&gt;
-    &lt;Flex Justify="end" Gap="2"&gt;
+    &lt;Stack Gap="2"&gt;
+        &lt;Label&gt;Name&lt;/Label&gt;
+        &lt;Input @@bind-Value="_name" Placeholder="Enter your name..." /&gt;
+    &lt;/Stack&gt;
+    &lt;Stack Gap="2"&gt;
+        &lt;Label&gt;Email&lt;/Label&gt;
+        &lt;Input @@bind-Value="_email" Placeholder="Enter your email..." /&gt;
+    &lt;/Stack&gt;
+    &lt;Flex Justify="end" Gap="2" Class="pt-2"&gt;
         &lt;Button Variant="Button.ButtonVariant.Outline"
                 OnClick="() =&gt; Overlay.Cancel()"&gt;Cancel&lt;/Button&gt;
         &lt;Button OnClick="Submit"&gt;Save&lt;/Button&gt;
@@ -49,15 +69,23 @@
     public OverlayReference Overlay { get; set; } = default!;
 
     private string _name = "";
+    private string _email = "";
 
     private void Submit()
     {
-        Overlay.Close(new { Name = _name });
+        Overlay.Close(new { Name = _name, Email = _email });
     }
 }</div>
 
-            <Heading Level="3">3. Open from code</Heading>
+            @* Step 3 *@
+            <Heading Level="3">Step 3 — Open from code</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Inject <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayService</code> and call one of its
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show*Async</code> methods. The call awaits until
+                the user closes or cancels the overlay.
+            </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject OverlayService OverlayService
+@@using Lumeo.Services
 
 @@code {
     private async Task EditProfile()
@@ -66,8 +94,8 @@
 
         if (!result.Cancelled)
         {
-            // result.Data contains what you passed to Close()
-            var name = result.GetData&lt;dynamic&gt;()?.Name;
+            var data = result.GetData&lt;dynamic&gt;();
+            Console.WriteLine($"Name: {data?.Name}, Email: {data?.Email}");
         }
     }
 }</div>
@@ -76,130 +104,619 @@
 
     <Separator />
 
-    <!-- Dialog -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 2. Dialog                                    *@
+    @* ──────────────────────────────────────────── *@
+    <section id="dialog">
         <Stack Gap="4">
             <Heading Level="2">Dialog</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Opens a centered modal dialog with your component inside.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowDialogAsync&lt;MyComponent&gt;(
+            <Lumeo.Text Size="sm" Color="muted">
+                Opens a centered modal dialog with your component as the body content.
+                The dialog includes a title bar and close button by default.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Live Demo</Lumeo.Text>
+                    <Flex Gap="2" Wrap="true">
+                        <Button OnClick="ShowDialog">Open Dialog</Button>
+                        <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowDialogWide">Open Wide Dialog (max-w-2xl)</Button>
+                    </Flex>
+                    @if (_dialogResult is not null)
+                    {
+                        <Alert Variant="@(_dialogCancelled ? Alert.AlertVariant.Destructive : Alert.AlertVariant.Default)">
+                            @_dialogResult
+                        </Alert>
+                    }
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Basic dialog
+var result = await OverlayService.ShowDialogAsync&lt;OverlayDemoContent&gt;("Edit Profile");
+
+if (!result.Cancelled)
+{
+    // The user submitted — result.Data contains the object passed to Close()
+    var data = result.GetData&lt;dynamic&gt;();
+}
+
+// Dialog with custom width
+var result = await OverlayService.ShowDialogAsync&lt;OverlayDemoContent&gt;(
     title: "Edit Profile",
-    parameters: new OverlayParameters()
-        .Add("UserId", 42)
-        .Add("Mode", "edit"),
-    options: new OverlayOptions
-    {
-        PreventClose = false,
-        Class = "max-w-2xl"
-    }
+    options: new OverlayOptions { Class = "max-w-2xl" }
 );</div>
-            <Button OnClick="ShowDialog">Try Dialog</Button>
-            @if (_dialogResult is not null)
-            {
-                <Alert>@_dialogResult</Alert>
-            }
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Sheet -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 3. Sheet                                     *@
+    @* ──────────────────────────────────────────── *@
+    <section id="sheet">
         <Stack Gap="4">
             <Heading Level="2">Sheet</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Opens a panel that slides in from any edge of the screen.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowSheetAsync&lt;MyComponent&gt;(
+            <Lumeo.Text Size="sm" Color="muted">
+                Opens a panel that slides in from any edge of the screen. Use sheets for
+                secondary navigation, settings panels, detail views, or any content that should
+                overlay from a specific direction.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Slide from any side</Lumeo.Text>
+                    <Flex Gap="2" Wrap="true">
+                        <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Right)">Right</Button>
+                        <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Left)">Left</Button>
+                        <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Top)">Top</Button>
+                        <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Bottom)">Bottom</Button>
+                    </Flex>
+                    @if (_sheetResult is not null)
+                    {
+                        <Alert Variant="@(_sheetCancelled ? Alert.AlertVariant.Destructive : Alert.AlertVariant.Default)">
+                            @_sheetResult
+                        </Alert>
+                    }
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Sheet from the right (default side)
+var result = await OverlayService.ShowSheetAsync&lt;OverlayDemoContent&gt;(
     title: "Settings",
-    side: SheetSide.Right,   // Top, Right, Bottom, Left
-    size: SheetSize.Lg       // Sm, Default, Lg, Xl, Full
+    side: SheetSide.Right,
+    size: SheetSize.Default
+);
+
+// Sheet from the left, large size
+var result = await OverlayService.ShowSheetAsync&lt;OverlayDemoContent&gt;(
+    title: "Navigation",
+    side: SheetSide.Left,
+    size: SheetSize.Lg
+);
+
+// Full-width sheet from the bottom
+var result = await OverlayService.ShowSheetAsync&lt;OverlayDemoContent&gt;(
+    title: "Details",
+    side: SheetSide.Bottom,
+    size: SheetSize.Full
 );</div>
-            <Flex Gap="2" Wrap="true">
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Right)">Right</Button>
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Left)">Left</Button>
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="() => ShowSheet(SheetSide.Bottom)">Bottom</Button>
-            </Flex>
+
+            <Lumeo.Text Size="sm" Weight="medium">Sheet sizes</Lumeo.Text>
+            <Lumeo.Text Size="sm" Color="muted">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetSize</code> enum controls the width (for left/right) or
+                height (for top/bottom) of the sheet panel.
+            </Lumeo.Text>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Size</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Sm</td>
+                            <td class="p-3 text-muted-foreground">Small — narrow panel for simple content</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Default</td>
+                            <td class="p-3 text-muted-foreground">Standard width — good for forms and settings</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Lg</td>
+                            <td class="p-3 text-muted-foreground">Large — for detail views and complex content</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Xl</td>
+                            <td class="p-3 text-muted-foreground">Extra large — for data tables or wide layouts</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Full</td>
+                            <td class="p-3 text-muted-foreground">Full width/height — covers the entire edge</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Drawer -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 4. Drawer                                    *@
+    @* ──────────────────────────────────────────── *@
+    <section id="drawer">
         <Stack Gap="4">
             <Heading Level="2">Drawer</Heading>
-            <Lumeo.Text Size="sm" Color="muted">Opens a bottom drawer, ideal for mobile-friendly interactions.</Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowDrawerAsync&lt;MyComponent&gt;("Pick a date");</div>
-            <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowDrawer">Open Drawer</Button>
+            <Lumeo.Text Size="sm" Color="muted">
+                Opens a bottom drawer, ideal for mobile-friendly interactions. Drawers slide up
+                from the bottom of the viewport and are commonly used for action menus,
+                date pickers, or compact forms.
+            </Lumeo.Text>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Live Demo</Lumeo.Text>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowDrawer">Open Drawer</Button>
+                    @if (_drawerResult is not null)
+                    {
+                        <Alert Variant="@(_drawerCancelled ? Alert.AlertVariant.Destructive : Alert.AlertVariant.Default)">
+                            @_drawerResult
+                        </Alert>
+                    }
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowDrawerAsync&lt;OverlayDemoContent&gt;("Edit Profile");
+
+if (!result.Cancelled)
+{
+    var data = result.GetData&lt;dynamic&gt;();
+    Console.WriteLine($"Name: {data?.Name}");
+}</div>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Alert Dialog -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 5. Alert Dialog                              *@
+    @* ──────────────────────────────────────────── *@
+    <section id="alert-dialog">
         <Stack Gap="4">
             <Heading Level="2">Alert Dialog</Heading>
-            <Lumeo.Text Size="sm" Color="muted">A simple confirm/cancel dialog — no custom component needed.</Lumeo.Text>
+            <Lumeo.Text Size="sm" Color="muted">
+                A simple confirm/cancel dialog that requires no custom component. Pass an
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AlertDialogOptions</code> object to configure the title,
+                description, button text, and whether the action is destructive.
+            </Lumeo.Text>
+
+            @* Confirm demo *@
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Confirm action (non-destructive)</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Color="muted">
+                        Standard confirmation before saving or performing a significant action.
+                    </Lumeo.Text>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowConfirm">Save Changes</Button>
+                    @if (_confirmResult is not null)
+                    {
+                        <Alert Variant="@(_confirmCancelled ? Alert.AlertVariant.Destructive : Alert.AlertVariant.Default)">
+                            @_confirmResult
+                        </Alert>
+                    }
+                </Stack>
+            </Card>
+
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowAlertDialogAsync(new AlertDialogOptions
 {
-    Title = "Delete this item?",
-    Description = "This action cannot be undone.",
-    ConfirmText = "Delete",
-    CancelText = "Cancel",
+    Title = "Save changes?",
+    Description = "This will overwrite your existing data.",
+    ConfirmText = "Save",
+    CancelText = "Cancel"
+});
+
+if (!result.Cancelled)
+{
+    await SaveAsync();
+}</div>
+
+            @* Destructive demo *@
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Destructive action (red confirm button)</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Color="muted">
+                        Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsDestructive = true</code> to render the confirm button
+                        with destructive styling, signaling an irreversible action.
+                    </Lumeo.Text>
+                    <Button Variant="Button.ButtonVariant.Destructive" OnClick="ShowDestructive">Delete Account</Button>
+                    @if (_destructiveResult is not null)
+                    {
+                        <Alert Variant="@(_destructiveCancelled ? Alert.AlertVariant.Destructive : Alert.AlertVariant.Default)">
+                            @_destructiveResult
+                        </Alert>
+                    }
+                </Stack>
+            </Card>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowAlertDialogAsync(new AlertDialogOptions
+{
+    Title = "Delete your account?",
+    Description = "This action cannot be undone. All of your data will be permanently removed.",
+    ConfirmText = "Delete Account",
+    CancelText = "Keep Account",
     IsDestructive = true
 });
 
 if (!result.Cancelled)
 {
-    await DeleteItemAsync();
+    await DeleteAccountAsync();
 }</div>
-            <Flex Gap="2" Wrap="true">
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowConfirm">Confirm</Button>
-                <Button Variant="Button.ButtonVariant.Destructive" OnClick="ShowDestructive">Delete</Button>
-            </Flex>
-            @if (_alertResult is not null)
-            {
-                <Alert Variant="@(_alertCancelled ? Alert.AlertVariant.Destructive : Alert.AlertVariant.Default)">@_alertResult</Alert>
-            }
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Passing Parameters -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 6. Passing Parameters                        *@
+    @* ──────────────────────────────────────────── *@
+    <section id="passing-parameters">
         <Stack Gap="4">
             <Heading Level="2">Passing Parameters</Heading>
             <Lumeo.Text Size="sm" Color="muted">
-                Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayParameters</code> to pass data to your content component.
-                Parameters are fed to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DynamicComponent</code>, so they map to
+                Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayParameters</code> to pass data into your content
+                component. The fluent <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.Add()</code> API chains
+                cleanly and parameters are fed to Blazor's
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DynamicComponent</code>, so they map directly to
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[Parameter]</code> properties on your component.
             </Lumeo.Text>
-            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Caller
+
+            <Heading Level="3">Building parameters (caller side)</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var parameters = new OverlayParameters()
+    .Add("UserId", 42)
+    .Add("Mode", "edit")
+    .Add("ReadOnly", false);
+
 var result = await OverlayService.ShowDialogAsync&lt;EditUserForm&gt;(
     "Edit User",
-    parameters: new OverlayParameters()
-        .Add("UserId", 42)
-        .Add("ReadOnly", false)
-);
+    parameters: parameters
+);</div>
 
-// Content component
-@@code {
+            <Heading Level="3">Receiving parameters (content component)</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Each key in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayParameters</code> maps to a
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[Parameter]</code> property with the same name. You can also
+                access raw parameters through the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayReference.Parameters</code> property.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@code {
+    // Option A: Blazor [Parameter] binding (recommended)
     [Parameter] public int UserId { get; set; }
+    [Parameter] public string Mode { get; set; } = "";
     [Parameter] public bool ReadOnly { get; set; }
+
+    // Always available via cascading parameter
     [CascadingParameter] public OverlayReference Overlay { get; set; } = default!;
+
+    // Option B: Read from OverlayReference.Parameters directly
+    protected override void OnInitialized()
+    {
+        var userId = Overlay.Parameters?.Get&lt;int&gt;("UserId");
+    }
 }</div>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- API Reference -->
-    <section>
+    @* ──────────────────────────────────────────── *@
+    @* 7. Getting Results                           *@
+    @* ──────────────────────────────────────────── *@
+    <section id="getting-results">
+        <Stack Gap="4">
+            <Heading Level="2">Getting Results</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Every <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show*Async</code> method returns a
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task&lt;OverlayResult&gt;</code>. The task completes when the
+                user closes or cancels the overlay. Check
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">result.Cancelled</code> to determine which action was taken.
+            </Lumeo.Text>
+
+            <Heading Level="3">Returning data from Close()</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Inside your content component, call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Close(data)</code>
+                to pass any object back to the caller. The data is available on
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">result.Data</code> (as
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">object?</code>) or via the typed helper
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">result.GetData&lt;T&gt;()</code>.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Inside content component — close with data
+Overlay.Close(new { Name = _name, Email = _email });
+
+// Close without data (just confirms)
+Overlay.Close();
+
+// Cancel (result.Cancelled will be true)
+Overlay.Cancel();</div>
+
+            <Heading Level="3">Reading the result (caller side)</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowDialogAsync&lt;EditProfileForm&gt;("Edit Profile");
+
+// Check if cancelled
+if (result.Cancelled)
+{
+    // User clicked Cancel or dismissed the overlay
+    return;
+}
+
+// Read raw data
+object? raw = result.Data;
+
+// Read typed data — returns default if cast fails
+var profile = result.GetData&lt;ProfileModel&gt;();
+if (profile is not null)
+{
+    await SaveProfileAsync(profile);
+}</div>
+
+            <Heading Level="3">Full round-trip example</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                This shows the complete flow: open an overlay, let the user fill a form, close it, and read the result.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Page.razor
+@@inject OverlayService OverlayService
+@@using Lumeo.Services
+
+&lt;Button OnClick="OpenEditor"&gt;Edit User&lt;/Button&gt;
+
+@@if (_lastSaved is not null)
+{
+    &lt;Alert&gt;Saved: @@_lastSaved&lt;/Alert&gt;
+}
+
+@@code {
+    private string? _lastSaved;
+
+    private async Task OpenEditor()
+    {
+        var result = await OverlayService.ShowDialogAsync&lt;UserEditorForm&gt;(
+            "Edit User",
+            parameters: new OverlayParameters()
+                .Add("UserId", 42)
+                .Add("CurrentName", "Jane Doe")
+        );
+
+        if (result.Cancelled) return;
+
+        var data = result.GetData&lt;dynamic&gt;();
+        _lastSaved = $"Name={data?.Name}, Email={data?.Email}";
+    }
+}
+
+// UserEditorForm.razor
+&lt;Stack Gap="4"&gt;
+    &lt;Input @@bind-Value="_name" Placeholder="Name" /&gt;
+    &lt;Input @@bind-Value="_email" Placeholder="Email" /&gt;
+    &lt;Flex Justify="end" Gap="2"&gt;
+        &lt;Button Variant="Button.ButtonVariant.Outline"
+                OnClick="() =&gt; Overlay.Cancel()"&gt;Cancel&lt;/Button&gt;
+        &lt;Button OnClick="Save"&gt;Save&lt;/Button&gt;
+    &lt;/Flex&gt;
+&lt;/Stack&gt;
+
+@@code {
+    [CascadingParameter] public OverlayReference Overlay { get; set; } = default!;
+    [Parameter] public int UserId { get; set; }
+    [Parameter] public string CurrentName { get; set; } = "";
+
+    private string _name = "";
+    private string _email = "";
+
+    protected override void OnInitialized()
+    {
+        _name = CurrentName;
+    }
+
+    private void Save() =&gt; Overlay.Close(new { Name = _name, Email = _email });
+}</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    @* ──────────────────────────────────────────── *@
+    @* 8. Options & Customization                  *@
+    @* ──────────────────────────────────────────── *@
+    <section id="options">
+        <Stack Gap="4">
+            <Heading Level="2">Options &amp; Customization</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                All overlay methods accept an optional <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayOptions</code> record
+                to control behavior and appearance.
+            </Lumeo.Text>
+
+            <Heading Level="3">PreventClose</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PreventClose = true</code> to prevent the overlay from
+                being dismissed by clicking outside or pressing Escape. The user must explicitly click a button
+                inside your content component to close the overlay.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var result = await OverlayService.ShowDialogAsync&lt;ImportantForm&gt;(
+    "Required Information",
+    options: new OverlayOptions { PreventClose = true }
+);</div>
+
+            <Card Class="p-6">
+                <Stack Gap="4">
+                    <Lumeo.Text Size="sm" Weight="medium">Live Demo — PreventClose</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Color="muted">
+                        Try clicking outside the dialog or pressing Escape. It won't close until you use a button.
+                    </Lumeo.Text>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowPreventClose">Open Non-Dismissible Dialog</Button>
+                    @if (_preventCloseResult is not null)
+                    {
+                        <Alert>@_preventCloseResult</Alert>
+                    }
+                </Stack>
+            </Card>
+
+            <Heading Level="3">Custom CSS Class</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Use the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Class</code> property to add Tailwind utility classes
+                to the overlay container. This is especially useful for controlling width.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Make the dialog wider
+options: new OverlayOptions { Class = "max-w-2xl" }
+
+// Extra wide for data-heavy content
+options: new OverlayOptions { Class = "max-w-4xl" }
+
+// Combine options
+options: new OverlayOptions
+{
+    Class = "max-w-3xl",
+    PreventClose = true
+}</div>
+
+            <Heading Level="3">SheetSide and SheetSize</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                For sheets, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetSide</code> and
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetSize</code> are passed as direct parameters to
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShowSheetAsync</code>. They are also available on
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayOptions</code> for advanced scenarios.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Side and size are method parameters (recommended)
+await OverlayService.ShowSheetAsync&lt;MyComponent&gt;(
+    title: "Settings",
+    side: SheetSide.Left,
+    size: SheetSize.Lg
+);
+
+// Can also be set via options (they will be overridden by method parameters)
+await OverlayService.ShowSheetAsync&lt;MyComponent&gt;(
+    title: "Settings",
+    side: SheetSide.Right,
+    size: SheetSize.Xl,
+    options: new OverlayOptions { PreventClose = true }
+);</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    @* ──────────────────────────────────────────── *@
+    @* 9. Content Component Pattern                 *@
+    @* ──────────────────────────────────────────── *@
+    <section id="content-component">
+        <Stack Gap="4">
+            <Heading Level="2">Content Component Pattern</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Every component rendered inside an overlay receives an
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayReference</code> as a
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[CascadingParameter]</code>.
+                This is the component's handle to control the overlay it lives in.
+            </Lumeo.Text>
+
+            <Lumeo.Text Size="sm" Weight="medium">Complete content component example</Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;!-- CreateUserForm.razor --&gt;
+@@namespace MyApp.Components
+@@using Lumeo.Services
+
+&lt;Stack Gap="4" Class="py-2"&gt;
+    &lt;Stack Gap="2"&gt;
+        &lt;Label&gt;Full Name&lt;/Label&gt;
+        &lt;Input @@bind-Value="_name" Placeholder="Enter name..." /&gt;
+    &lt;/Stack&gt;
+
+    &lt;Stack Gap="2"&gt;
+        &lt;Label&gt;Email&lt;/Label&gt;
+        &lt;Input @@bind-Value="_email" Placeholder="user@@example.com" /&gt;
+    &lt;/Stack&gt;
+
+    &lt;Stack Gap="2"&gt;
+        &lt;Label&gt;Role&lt;/Label&gt;
+        &lt;Select @@bind-Value="_role"&gt;
+            &lt;SelectTrigger&gt;
+                &lt;SelectValue Placeholder="Select a role" /&gt;
+            &lt;/SelectTrigger&gt;
+            &lt;SelectContent&gt;
+                &lt;SelectItem Value="@@("admin")"&gt;Admin&lt;/SelectItem&gt;
+                &lt;SelectItem Value="@@("editor")"&gt;Editor&lt;/SelectItem&gt;
+                &lt;SelectItem Value="@@("viewer")"&gt;Viewer&lt;/SelectItem&gt;
+            &lt;/SelectContent&gt;
+        &lt;/Select&gt;
+    &lt;/Stack&gt;
+
+    &lt;Flex Justify="end" Gap="2" Class="pt-4"&gt;
+        &lt;Button Variant="Button.ButtonVariant.Outline"
+                OnClick="HandleCancel"&gt;Cancel&lt;/Button&gt;
+        &lt;Button OnClick="HandleSubmit" disabled="@@(!IsValid)"&gt;Create User&lt;/Button&gt;
+    &lt;/Flex&gt;
+&lt;/Stack&gt;
+
+@@code {
+    // Cascading parameter — always available in overlay content
+    [CascadingParameter]
+    public OverlayReference Overlay { get; set; } = default!;
+
+    // Parameters passed via OverlayParameters.Add()
+    [Parameter] public string DefaultRole { get; set; } = "viewer";
+    [Parameter] public int TeamId { get; set; }
+
+    private string _name = "";
+    private string _email = "";
+    private string _role = "";
+
+    private bool IsValid =&gt; !string.IsNullOrWhiteSpace(_name)
+                         &amp;&amp; !string.IsNullOrWhiteSpace(_email);
+
+    protected override void OnInitialized()
+    {
+        _role = DefaultRole;
+    }
+
+    private void HandleSubmit()
+    {
+        // Close with data — caller receives this in OverlayResult.Data
+        Overlay.Close(new
+        {
+            Name = _name,
+            Email = _email,
+            Role = _role,
+            TeamId
+        });
+    }
+
+    private void HandleCancel()
+    {
+        // Cancel — caller sees OverlayResult.Cancelled = true
+        Overlay.Cancel();
+    }
+}</div>
+
+            <Alert>
+                Tip: You can also read parameters dynamically via
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Parameters?.Get&lt;int&gt;("TeamId")</code>
+                if you prefer not to declare <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[Parameter]</code> properties.
+            </Alert>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    @* ──────────────────────────────────────────── *@
+    @* 10. Full API Reference                       *@
+    @* ──────────────────────────────────────────── *@
+    <section id="api-reference">
         <Stack Gap="6">
             <Heading Level="2">API Reference</Heading>
 
+            @* OverlayService Methods *@
             <Stack>
-                <Heading Level="3" Class="mb-3">OverlayService Methods</Heading>
+                <Heading Level="3" Class="mb-3">
+                    OverlayService Methods
+                    <Badge Variant="Badge.BadgeVariant.Secondary" Class="ml-2">6 methods</Badge>
+                </Heading>
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
@@ -211,42 +728,46 @@ var result = await OverlayService.ShowDialogAsync&lt;EditUserForm&gt;(
                         </thead>
                         <tbody class="divide-y divide-border/40">
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">ShowDialogAsync&lt;T&gt;(title?, params?, options?)</td>
+                                <td class="p-3 font-mono text-xs text-primary">ShowDialogAsync&lt;T&gt;(title?, parameters?, options?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
-                                <td class="p-3 text-muted-foreground">Opens a dialog with component T.</td>
+                                <td class="p-3 text-muted-foreground">Opens a centered modal dialog with component <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">T</code> as the body.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">ShowSheetAsync&lt;T&gt;(title?, side, size, params?, options?)</td>
+                                <td class="p-3 font-mono text-xs text-primary">ShowSheetAsync&lt;T&gt;(title?, side, size, parameters?, options?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
-                                <td class="p-3 text-muted-foreground">Opens a sheet panel with component T.</td>
+                                <td class="p-3 text-muted-foreground">Opens a slide-in panel from the specified edge with component <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">T</code>.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">ShowDrawerAsync&lt;T&gt;(title?, params?, options?)</td>
+                                <td class="p-3 font-mono text-xs text-primary">ShowDrawerAsync&lt;T&gt;(title?, parameters?, options?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
-                                <td class="p-3 text-muted-foreground">Opens a drawer with component T.</td>
+                                <td class="p-3 text-muted-foreground">Opens a bottom drawer with component <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">T</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">ShowAlertDialogAsync(AlertDialogOptions)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
-                                <td class="p-3 text-muted-foreground">Shows a confirm/cancel alert.</td>
+                                <td class="p-3 text-muted-foreground">Shows a built-in confirm/cancel alert dialog. No custom component needed.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Close(overlayId, result?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
-                                <td class="p-3 text-muted-foreground">Closes an overlay with a result.</td>
+                                <td class="p-3 text-muted-foreground">Closes a specific overlay by ID and returns data. Typically called internally via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayReference.Close()</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Cancel(overlayId)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
-                                <td class="p-3 text-muted-foreground">Cancels an overlay.</td>
+                                <td class="p-3 text-muted-foreground">Cancels a specific overlay by ID. Typically called internally via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayReference.Cancel()</code>.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </Stack>
 
+            @* OverlayResult *@
             <Stack>
                 <Heading Level="3" Class="mb-3">OverlayResult</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2">
+                    Returned by all <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show*Async</code> methods when the overlay closes.
+                </Lumeo.Text>
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
@@ -260,45 +781,267 @@ var result = await OverlayService.ShowDialogAsync&lt;EditUserForm&gt;(
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Cancelled</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
-                                <td class="p-3 text-muted-foreground">True when dismissed without confirming.</td>
+                                <td class="p-3 text-muted-foreground"><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">true</code> when the user dismissed the overlay without confirming (clicked Cancel, backdrop, or pressed Escape).</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Data</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">object?</td>
-                                <td class="p-3 text-muted-foreground">The value passed to Close().</td>
+                                <td class="p-3 text-muted-foreground">The raw value passed to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overlay.Close(data)</code>. Null when cancelled or closed without data.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">GetData&lt;T&gt;()</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">T?</td>
-                                <td class="p-3 text-muted-foreground">Casts Data to T.</td>
+                                <td class="p-3 text-muted-foreground">Attempts to cast <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Data</code> to type <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">T</code>. Returns <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">default</code> if the cast fails.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <Lumeo.Text Size="sm" Color="muted" Class="mt-2">
+                    Static factory methods:
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayResult.Ok(data?)</code> and
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayResult.CancelResult()</code>.
+                </Lumeo.Text>
+            </Stack>
+
+            @* OverlayReference *@
+            <Stack>
+                <Heading Level="3" Class="mb-3">OverlayReference</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2">
+                    Cascaded into every content component. This is how your component communicates with the overlay it lives in.
+                </Lumeo.Text>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Member</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Id</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Unique identifier for this overlay instance.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Parameters</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">OverlayParameters?</td>
+                                <td class="p-3 text-muted-foreground">The parameters passed when the overlay was opened. Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.Get&lt;T&gt;(name)</code> to read values.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Close(result?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                                <td class="p-3 text-muted-foreground">Close the overlay and return data to the caller. Pass any object as the result.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Cancel()</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                                <td class="p-3 text-muted-foreground">Dismiss the overlay without returning data. Sets <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Cancelled = true</code> on the result.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </Stack>
 
+            @* OverlayParameters *@
             <Stack>
-                <Heading Level="3" Class="mb-3">OverlayReference (cascaded to content)</Heading>
+                <Heading Level="3" Class="mb-3">OverlayParameters</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2">
+                    Fluent builder for passing named values to content components.
+                </Lumeo.Text>
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b bg-muted/40">
-                                <th class="text-left p-3 font-medium text-foreground">Member</th>
+                                <th class="text-left p-3 font-medium text-foreground">Method</th>
+                                <th class="text-left p-3 font-medium text-foreground">Returns</th>
                                 <th class="text-left p-3 font-medium text-foreground">Description</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-border/40">
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">Close(result?)</td>
-                                <td class="p-3 text-muted-foreground">Close the overlay and return data to the caller.</td>
+                                <td class="p-3 font-mono text-xs text-primary">Add(string name, object value)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">OverlayParameters</td>
+                                <td class="p-3 text-muted-foreground">Adds a named parameter. Returns <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">this</code> for chaining.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">Cancel()</td>
-                                <td class="p-3 text-muted-foreground">Dismiss the overlay (Cancelled = true).</td>
+                                <td class="p-3 font-mono text-xs text-primary">Get&lt;T&gt;(string name)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">T?</td>
+                                <td class="p-3 text-muted-foreground">Retrieves a parameter by name, cast to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">T</code>. Returns <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">default</code> if not found or wrong type.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono text-xs text-primary">Parameters</td>
-                                <td class="p-3 text-muted-foreground">Access the OverlayParameters passed at open time.</td>
+                                <td class="p-3 font-mono text-xs text-primary">ToDictionary()</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Dictionary&lt;string, object&gt;</td>
+                                <td class="p-3 text-muted-foreground">Converts all parameters to a dictionary. Used internally by the overlay provider.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            @* OverlayOptions *@
+            <Stack>
+                <Heading Level="3" Class="mb-3">OverlayOptions</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2">
+                    Record type that controls overlay appearance and behavior.
+                </Lumeo.Text>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Property</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Default</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Class</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Additional CSS classes applied to the overlay container (e.g., <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">max-w-2xl</code>).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">PreventClose</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                                <td class="p-3 text-muted-foreground">When <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">true</code>, prevents dismissal via backdrop click or Escape key.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">SheetSide</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">SheetSide</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Right</td>
+                                <td class="p-3 text-muted-foreground">Which edge the sheet slides in from. Set automatically by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShowSheetAsync</code>.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">SheetSize</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">SheetSize</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
+                                <td class="p-3 text-muted-foreground">Width (left/right) or height (top/bottom) of the sheet. Set automatically by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShowSheetAsync</code>.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            @* AlertDialogOptions *@
+            <Stack>
+                <Heading Level="3" Class="mb-3">AlertDialogOptions</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2">
+                    Record type that configures the built-in alert dialog.
+                </Lumeo.Text>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Property</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Default</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Title</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">"Are you sure?"</td>
+                                <td class="p-3 text-muted-foreground">The heading text displayed at the top of the alert dialog.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Description</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                                <td class="p-3 text-muted-foreground">Optional body text explaining the action or its consequences.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ConfirmText</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">"Continue"</td>
+                                <td class="p-3 text-muted-foreground">Label for the confirm/action button.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">CancelText</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">"Cancel"</td>
+                                <td class="p-3 text-muted-foreground">Label for the cancel/dismiss button.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">IsDestructive</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                                <td class="p-3 text-muted-foreground">When <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">true</code>, the confirm button renders with destructive styling (red).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            @* SheetSide Enum *@
+            <Stack>
+                <Heading Level="3" Class="mb-3">SheetSide Enum</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Value</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Top</td>
+                                <td class="p-3 text-muted-foreground">Slides down from the top of the viewport.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Right</td>
+                                <td class="p-3 text-muted-foreground">Slides in from the right edge. Default value.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Bottom</td>
+                                <td class="p-3 text-muted-foreground">Slides up from the bottom of the viewport.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Left</td>
+                                <td class="p-3 text-muted-foreground">Slides in from the left edge.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            @* SheetSize Enum *@
+            <Stack>
+                <Heading Level="3" Class="mb-3">SheetSize Enum</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Value</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Sm</td>
+                                <td class="p-3 text-muted-foreground">Small — compact panel for simple content.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Default</td>
+                                <td class="p-3 text-muted-foreground">Standard size — suitable for most forms and settings panels.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Lg</td>
+                                <td class="p-3 text-muted-foreground">Large — for detail views and complex content.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Xl</td>
+                                <td class="p-3 text-muted-foreground">Extra large — for data tables or wide layouts.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Full</td>
+                                <td class="p-3 text-muted-foreground">Full width or height — covers the entire edge of the viewport.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -313,51 +1056,130 @@ var result = await OverlayService.ShowDialogAsync&lt;EditUserForm&gt;(
 @inject OverlayService OverlayService
 
 @code {
+    // Dialog state
     private string? _dialogResult;
-    private string? _alertResult;
-    private bool _alertCancelled;
+    private bool _dialogCancelled;
+
+    // Sheet state
+    private string? _sheetResult;
+    private bool _sheetCancelled;
+
+    // Drawer state
+    private string? _drawerResult;
+    private bool _drawerCancelled;
+
+    // Alert — confirm
+    private string? _confirmResult;
+    private bool _confirmCancelled;
+
+    // Alert — destructive
+    private string? _destructiveResult;
+    private bool _destructiveCancelled;
+
+    // PreventClose
+    private string? _preventCloseResult;
+
+    // ─── Dialog demos ───────────────────────────
 
     private async Task ShowDialog()
     {
         _dialogResult = null;
         var result = await OverlayService.ShowDialogAsync<OverlayDemoContent>("Edit Profile");
-        _dialogResult = result.Cancelled ? "Cancelled" : $"Result: {result.Data}";
+        _dialogCancelled = result.Cancelled;
+        _dialogResult = result.Cancelled
+            ? "User cancelled"
+            : $"Result: {result.Data}";
     }
+
+    private async Task ShowDialogWide()
+    {
+        _dialogResult = null;
+        var result = await OverlayService.ShowDialogAsync<OverlayDemoContent>(
+            "Edit Profile",
+            options: new OverlayOptions { Class = "max-w-2xl" }
+        );
+        _dialogCancelled = result.Cancelled;
+        _dialogResult = result.Cancelled
+            ? "User cancelled"
+            : $"Result: {result.Data}";
+    }
+
+    // ─── Sheet demos ────────────────────────────
 
     private async Task ShowSheet(SheetSide side)
     {
-        await OverlayService.ShowSheetAsync<OverlayDemoContent>("Settings", side);
+        _sheetResult = null;
+        var result = await OverlayService.ShowSheetAsync<OverlayDemoContent>(
+            "Settings",
+            side: side,
+            size: SheetSize.Default
+        );
+        _sheetCancelled = result.Cancelled;
+        _sheetResult = result.Cancelled
+            ? $"User cancelled (side: {side})"
+            : $"Result from {side} sheet: {result.Data}";
     }
+
+    // ─── Drawer demo ────────────────────────────
 
     private async Task ShowDrawer()
     {
-        await OverlayService.ShowDrawerAsync<OverlayDemoContent>("Edit Profile");
+        _drawerResult = null;
+        var result = await OverlayService.ShowDrawerAsync<OverlayDemoContent>("Edit Profile");
+        _drawerCancelled = result.Cancelled;
+        _drawerResult = result.Cancelled
+            ? "User cancelled"
+            : $"Result: {result.Data}";
     }
+
+    // ─── Alert confirm demo ─────────────────────
 
     private async Task ShowConfirm()
     {
-        _alertResult = null;
+        _confirmResult = null;
         var result = await OverlayService.ShowAlertDialogAsync(new AlertDialogOptions
         {
             Title = "Save changes?",
             Description = "This will overwrite your existing data.",
-            ConfirmText = "Save"
+            ConfirmText = "Save",
+            CancelText = "Cancel"
         });
-        _alertCancelled = result.Cancelled;
-        _alertResult = result.Cancelled ? "Cancelled" : "Confirmed";
+        _confirmCancelled = result.Cancelled;
+        _confirmResult = result.Cancelled
+            ? "User cancelled -- changes were not saved"
+            : "User confirmed -- changes saved";
     }
+
+    // ─── Alert destructive demo ─────────────────
 
     private async Task ShowDestructive()
     {
-        _alertResult = null;
+        _destructiveResult = null;
         var result = await OverlayService.ShowAlertDialogAsync(new AlertDialogOptions
         {
-            Title = "Delete this item?",
-            Description = "This action cannot be undone.",
-            ConfirmText = "Delete",
+            Title = "Delete your account?",
+            Description = "This action cannot be undone. All of your data will be permanently removed.",
+            ConfirmText = "Delete Account",
+            CancelText = "Keep Account",
             IsDestructive = true
         });
-        _alertCancelled = result.Cancelled;
-        _alertResult = result.Cancelled ? "Cancelled" : "Deleted";
+        _destructiveCancelled = result.Cancelled;
+        _destructiveResult = result.Cancelled
+            ? "User cancelled -- account kept"
+            : "User confirmed -- account deleted";
+    }
+
+    // ─── PreventClose demo ──────────────────────
+
+    private async Task ShowPreventClose()
+    {
+        _preventCloseResult = null;
+        var result = await OverlayService.ShowDialogAsync<OverlayDemoContent>(
+            "Required Information",
+            options: new OverlayOptions { PreventClose = true }
+        );
+        _preventCloseResult = result.Cancelled
+            ? "User cancelled via button"
+            : $"Result: {result.Data}";
     }
 }
