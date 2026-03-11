@@ -139,6 +139,7 @@ public class OtpInputTests : IAsyncLifetime
         var cut = _ctx.Render<L.OtpInput>(p => p
             .Add(c => c.Length, 4)
             .Add(c => c.Value, "")
+            .Add(c => c.InputMode, "Alphanumeric")
             .Add(c => c.ValueChanged, v => changedValue = v));
 
         cut.FindAll("input")[0].Input(new ChangeEventArgs { Value = "abc" });
