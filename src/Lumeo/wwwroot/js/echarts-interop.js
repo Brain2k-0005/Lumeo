@@ -26,6 +26,34 @@ function loadECharts(src) {
     return echartsLoadPromise;
 }
 
+function resolveCssVars(obj) {
+    if (!obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+            if (typeof obj[i] === 'string' && obj[i].startsWith('var(')) {
+                obj[i] = resolveCssVarValue(obj[i]);
+            } else if (typeof obj[i] === 'object') {
+                resolveCssVars(obj[i]);
+            }
+        }
+    } else {
+        for (const key of Object.keys(obj)) {
+            if (typeof obj[key] === 'string' && obj[key].startsWith('var(')) {
+                obj[key] = resolveCssVarValue(obj[key]);
+            } else if (typeof obj[key] === 'object') {
+                resolveCssVars(obj[key]);
+            }
+        }
+    }
+}
+
+function resolveCssVarValue(str) {
+    const match = str.match(/^var\(\s*(--[^,)]+)\s*(?:,\s*(.+))?\s*\)$/);
+    if (!match) return str;
+    const resolved = getCssVar(match[1]);
+    return resolved || match[2] || str;
+}
+
 function getCssVar(name) {
     const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     if (!raw) return '';
@@ -222,6 +250,9 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
         }
     }
 
+    // Resolve CSS var() references in options since ECharts renders on Canvas
+    resolveCssVars(options);
+
     try {
         chart.setOption(options);
     } catch (e) {
@@ -247,6 +278,7 @@ export function updateChart(elementId, optionsJson, notMerge) {
     const chart = charts.get(elementId);
     if (!chart) return;
     const options = JSON.parse(optionsJson);
+    resolveCssVars(options);
     chart.setOption(options, { notMerge: notMerge || false });
 }
 
