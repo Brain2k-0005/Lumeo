@@ -1,16 +1,32 @@
 @page "/components/charts/geo-map"
+@inject HttpClient Http
 
 <PageTitle>Geo Map Chart — Lumeo</PageTitle>
 
-<PageHeader Title="Geo Map Chart" Description="Display data on a geographic map with color-coded regions. Requires GeoJSON map data to be provided. Supports pan, zoom, and tooltips." />
+<PageHeader Title="Geo Map Chart" Description="Display data on a geographic map with color-coded regions. Supports pan, zoom, tooltips, and custom color scales." />
 
 <Stack Gap="8">
-    <ComponentDemo Title="Geographic Data Visualization" Code="@_basicCode">
+    <ComponentDemo Title="World Population Density" Code="@_basicCode">
         <Container>
-            <Lumeo.Text Size="sm" Color="muted" Class="mb-3">The GeoMapChart requires GeoJSON map data to render. Provide your map data via the MapJson parameter and region values via the Data parameter.</Lumeo.Text>
-            <Flex Align="center" Justify="center" Class="rounded-lg border border-border/40 p-8 bg-muted/20">
-                <Lumeo.Text Size="sm" Color="muted">Supply MapJson to render a geographic visualization.</Lumeo.Text>
-            </Flex>
+            @if (_loading)
+            {
+                <Flex Align="center" Justify="center" Class="rounded-lg border border-border/40 p-12 bg-muted/20">
+                    <Spinner />
+                    <Lumeo.Text Size="sm" Color="muted" Class="ml-3">Loading world map data...</Lumeo.Text>
+                </Flex>
+            }
+            else if (_mapJson is not null)
+            {
+                <GeoMapChart MapName="world" MapJson="@_mapJson" Data="_mapData"
+                             VisualMapMin="0" VisualMapMax="500" Height="450px"
+                             ShowTooltip="true" Roam="true" ShowDataLabels="false" />
+            }
+            else
+            {
+                <Flex Align="center" Justify="center" Class="rounded-lg border border-border/40 p-8 bg-muted/20">
+                    <Lumeo.Text Size="sm" Color="muted">Failed to load map data. Provide GeoJSON via the MapJson parameter.</Lumeo.Text>
+                </Flex>
+            }
         </Container>
     </ComponentDemo>
 </Stack>
@@ -42,31 +58,37 @@
                             <td class="p-3 font-mono text-xs text-primary">MapJson</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                            <td class="p-3 text-muted-foreground">GeoJSON string for the map geometry.</td>
+                            <td class="p-3 text-muted-foreground">GeoJSON string for the map geometry. Required.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">Data</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">object?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                            <td class="p-3 text-muted-foreground">Data points with region name and value.</td>
+                            <td class="p-3 text-muted-foreground">List of objects with Name and Value for each region.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">VisualMapMin</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">double</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">0</td>
-                            <td class="p-3 text-muted-foreground">Minimum value for color mapping.</td>
+                            <td class="p-3 text-muted-foreground">Minimum value for the color scale.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">VisualMapMax</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">double</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">100</td>
-                            <td class="p-3 text-muted-foreground">Maximum value for color mapping.</td>
+                            <td class="p-3 text-muted-foreground">Maximum value for the color scale.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">Roam</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
-                            <td class="p-3 text-muted-foreground">Enables pan and zoom on the map.</td>
+                            <td class="p-3 text-muted-foreground">Enable pan and zoom interaction on the map.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Colors</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;string&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Blue gradient</td>
+                            <td class="p-3 text-muted-foreground">Color range for the visual map (low to high).</td>
                         </tr>
                     </tbody>
                 </table>
@@ -76,6 +98,67 @@
 </Stack>
 
 @code {
-    private string _basicCode = @"<GeoMapChart MapName=""usa"" MapJson=""@_geoJson"" Data=""_data""
-            VisualMapMin=""0"" VisualMapMax=""100"" />";
+    private string? _mapJson;
+    private bool _loading = true;
+
+    private List<Dictionary<string, object>> _mapData = new()
+    {
+        new() { ["name"] = "China", ["value"] = 450 },
+        new() { ["name"] = "India", ["value"] = 420 },
+        new() { ["name"] = "United States", ["value"] = 95 },
+        new() { ["name"] = "Indonesia", ["value"] = 140 },
+        new() { ["name"] = "Brazil", ["value"] = 75 },
+        new() { ["name"] = "Russia", ["value"] = 25 },
+        new() { ["name"] = "Japan", ["value"] = 340 },
+        new() { ["name"] = "Germany", ["value"] = 230 },
+        new() { ["name"] = "United Kingdom", ["value"] = 275 },
+        new() { ["name"] = "France", ["value"] = 120 },
+        new() { ["name"] = "Nigeria", ["value"] = 215 },
+        new() { ["name"] = "Mexico", ["value"] = 65 },
+        new() { ["name"] = "Egypt", ["value"] = 100 },
+        new() { ["name"] = "Australia", ["value"] = 10 },
+        new() { ["name"] = "Canada", ["value"] = 12 },
+        new() { ["name"] = "South Korea", ["value"] = 500 },
+        new() { ["name"] = "Italy", ["value"] = 200 },
+        new() { ["name"] = "Spain", ["value"] = 95 },
+        new() { ["name"] = "Turkey", ["value"] = 110 },
+        new() { ["name"] = "Poland", ["value"] = 125 },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _mapJson = await Http.GetStringAsync(
+                "https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/world.json");
+        }
+        catch
+        {
+            _mapJson = null;
+        }
+        _loading = false;
+    }
+
+    private string _basicCode = @"@inject HttpClient Http
+
+<GeoMapChart MapName=""world"" MapJson=""@_mapJson""
+             Data=""_mapData"" VisualMapMin=""0"" VisualMapMax=""500""
+             Height=""450px"" Roam=""true"" />
+
+@code {
+    private string? _mapJson;
+    private List<Dictionary<string, object>> _mapData = new()
+    {
+        new() { [""name""] = ""China"", [""value""] = 450 },
+        new() { [""name""] = ""United States"", [""value""] = 95 },
+        new() { [""name""] = ""Germany"", [""value""] = 230 },
+        // ... more countries
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mapJson = await Http.GetStringAsync(
+            ""https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/world.json"");
+    }
+}";
 }
