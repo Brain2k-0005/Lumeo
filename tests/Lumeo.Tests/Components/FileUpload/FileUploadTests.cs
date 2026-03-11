@@ -127,13 +127,14 @@ public class FileUploadTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Custom_Class_Appended_To_Label()
+    public void Custom_Class_Appended_To_Root_Div()
     {
         var cut = _ctx.Render<Lumeo.FileUpload>(p => p
             .Add(b => b.Class, "my-uploader"));
 
-        var label = cut.Find("label");
-        Assert.Contains("my-uploader", label.GetAttribute("class"));
+        // Class is applied to the root wrapper div, not the label
+        var root = cut.Find("div");
+        Assert.Contains("my-uploader", root.GetAttribute("class"));
     }
 
     [Fact]

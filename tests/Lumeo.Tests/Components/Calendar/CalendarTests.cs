@@ -49,8 +49,9 @@ public class CalendarTests : IAsyncLifetime
         var today = DateOnly.FromDateTime(DateTime.Today);
         var cut = RenderCalendar();
 
-        var expectedHeader = today.ToString("MMMM yyyy");
-        Assert.Contains(expectedHeader, cut.Markup);
+        // Month and year are in separate buttons
+        Assert.Contains(today.ToString("MMMM"), cut.Markup);
+        Assert.Contains(today.Year.ToString(), cut.Markup);
     }
 
     [Fact]
@@ -71,9 +72,9 @@ public class CalendarTests : IAsyncLifetime
     public void Calendar_Renders_42_Day_Buttons()
     {
         var cut = RenderCalendar();
-        // There are 2 nav buttons (prev/next) + 42 day buttons
+        // There are 2 nav buttons + 2 header buttons (month, year) + 42 day buttons
         var buttons = cut.FindAll("button[type='button']");
-        Assert.Equal(44, buttons.Count); // 2 nav + 42 days
+        Assert.Equal(46, buttons.Count); // 2 nav + 2 header + 42 days
     }
 
     [Fact]
@@ -82,7 +83,8 @@ public class CalendarTests : IAsyncLifetime
         var date = new DateOnly(2024, 6, 15);
         var cut = RenderCalendar(value: date);
 
-        Assert.Contains("June 2024", cut.Markup);
+        Assert.Contains("June", cut.Markup);
+        Assert.Contains("2024", cut.Markup);
     }
 
     // --- Navigation ---
@@ -96,8 +98,9 @@ public class CalendarTests : IAsyncLifetime
         var prevButton = cut.FindAll("button[type='button']").First();
         prevButton.Click();
 
-        var prevMonth = today.AddMonths(-1).ToString("MMMM yyyy");
-        Assert.Contains(prevMonth, cut.Markup);
+        var prevMonth = today.AddMonths(-1);
+        Assert.Contains(prevMonth.ToString("MMMM"), cut.Markup);
+        Assert.Contains(prevMonth.Year.ToString(), cut.Markup);
     }
 
     [Fact]
@@ -106,13 +109,14 @@ public class CalendarTests : IAsyncLifetime
         var today = DateOnly.FromDateTime(DateTime.Today);
         var cut = RenderCalendar();
 
-        var nextButton = cut.FindAll("button[type='button']").Last();
-        // The last button is not reliable, find by position (next is the 2nd nav button)
-        var navButtons = cut.FindAll("button[type='button']").Take(2).ToList();
-        navButtons[1].Click();
+        // Nav buttons: first is prev (chevron-left), then month button, year button, then next (chevron-right)
+        // The next button is the 4th button (index 3): prev, month-name, year, next
+        var allButtons = cut.FindAll("button[type='button']");
+        allButtons[3].Click();
 
-        var nextMonth = today.AddMonths(1).ToString("MMMM yyyy");
-        Assert.Contains(nextMonth, cut.Markup);
+        var nextMonth = today.AddMonths(1);
+        Assert.Contains(nextMonth.ToString("MMMM"), cut.Markup);
+        Assert.Contains(nextMonth.Year.ToString(), cut.Markup);
     }
 
     [Fact]
@@ -121,12 +125,13 @@ public class CalendarTests : IAsyncLifetime
         var today = DateOnly.FromDateTime(DateTime.Today);
         var cut = RenderCalendar();
 
-        var navButtons = cut.FindAll("button[type='button']").Take(2).ToList();
-        navButtons[0].Click(); // prev
-        navButtons = cut.FindAll("button[type='button']").Take(2).ToList();
-        navButtons[1].Click(); // next
+        // Click prev (index 0)
+        cut.FindAll("button[type='button']")[0].Click();
+        // Click next (index 3: prev, month-name, year, next)
+        cut.FindAll("button[type='button']")[3].Click();
 
-        Assert.Contains(today.ToString("MMMM yyyy"), cut.Markup);
+        Assert.Contains(today.ToString("MMMM"), cut.Markup);
+        Assert.Contains(today.Year.ToString(), cut.Markup);
     }
 
     // --- Selection ---
@@ -138,8 +143,8 @@ public class CalendarTests : IAsyncLifetime
         var callback = EventCallback.Factory.Create<DateOnly?>(_ctx, (DateOnly? d) => selectedDate = d);
         var cut = RenderCalendar(valueChanged: callback);
 
-        // All day buttons start after the 2 nav buttons
-        var dayButtons = cut.FindAll("button[type='button']").Skip(2).ToList();
+        // Day buttons start after 4 non-day buttons: prev, month-name, year, next
+        var dayButtons = cut.FindAll("button[type='button']").Skip(4).ToList();
         dayButtons[0].Click();
 
         Assert.NotNull(selectedDate);
