@@ -23,9 +23,9 @@ public class ThemeServiceTests
     }
 
     [Fact]
-    public void DefaultScheme_Is_Orange()
+    public void DefaultScheme_Is_Zinc()
     {
-        Assert.Equal("orange", _service.CurrentScheme);
+        Assert.Equal("zinc", _service.CurrentScheme);
     }
 
     [Fact]
@@ -111,9 +111,9 @@ public class ThemeServiceTests
     }
 
     [Fact]
-    public void AvailableSchemes_Has_Five_Entries()
+    public void AvailableSchemes_Has_Eight_Entries()
     {
-        Assert.Equal(5, ThemeService.AvailableSchemes.Count);
+        Assert.Equal(8, ThemeService.AvailableSchemes.Count);
     }
 
     [Fact]

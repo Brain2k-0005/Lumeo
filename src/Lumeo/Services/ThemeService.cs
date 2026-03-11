@@ -8,16 +8,19 @@ public sealed class ThemeService
 
     public event Action? OnThemeChanged;
     public ThemeMode CurrentMode { get; private set; } = ThemeMode.System;
-    public string CurrentScheme { get; private set; } = "orange";
+    public string CurrentScheme { get; private set; } = "zinc";
     public bool IsDark { get; private set; }
 
     public static readonly IReadOnlyList<ThemeSchemeInfo> AvailableSchemes =
     [
-        new("orange", "Orange", "hsl(14 70% 50%)"),
-        new("zinc", "Zinc", "hsl(240 5% 26%)"),
+        new("zinc", "Zinc", "hsl(240 5.9% 10%)"),
         new("blue", "Blue", "hsl(221 83% 53%)"),
         new("green", "Green", "hsl(142 71% 45%)"),
         new("rose", "Rose", "hsl(347 77% 50%)"),
+        new("orange", "Orange", "hsl(14 70% 50%)"),
+        new("violet", "Violet", "hsl(263 70% 50%)"),
+        new("amber", "Amber", "hsl(38 92% 50%)"),
+        new("teal", "Teal", "hsl(173 80% 40%)"),
     ];
 
     public ThemeService(IJSRuntime jsRuntime)

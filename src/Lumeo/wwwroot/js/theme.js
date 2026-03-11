@@ -7,7 +7,7 @@ window.themeManager = {
             document.documentElement.classList.remove('dark');
         }
         const scheme = localStorage.getItem('theme-scheme');
-        if (scheme && scheme !== 'orange') {
+        if (scheme && scheme !== 'zinc') {
             document.documentElement.setAttribute('data-theme', scheme);
         }
     },
@@ -45,7 +45,7 @@ window.themeManager = {
         localStorage.setItem('theme', isDark ? 'dark' : 'light');
     },
     setScheme: function (scheme) {
-        if (!scheme || scheme === 'orange') {
+        if (!scheme || scheme === 'zinc') {
             localStorage.removeItem('theme-scheme');
             document.documentElement.removeAttribute('data-theme');
         } else {
@@ -54,7 +54,7 @@ window.themeManager = {
         }
     },
     getScheme: function () {
-        return localStorage.getItem('theme-scheme') || 'orange';
+        return localStorage.getItem('theme-scheme') || 'zinc';
     }
 };
 themeManager.init();
