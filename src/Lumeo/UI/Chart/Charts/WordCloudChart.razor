@@ -1,8 +1,15 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
-<Chart OptionJson="@_optionJson" Width="@Width" Height="@Height" Theme="@Theme"
-       EChartsSource="@EChartsSource" Class="@Class" @attributes="AdditionalAttributes" />
+@if (_extensionLoaded)
+{
+    <Chart OptionJson="@_optionJson" Width="@Width" Height="@Height" Theme="@Theme"
+           EChartsSource="@EChartsSource" Class="@Class" @attributes="AdditionalAttributes" />
+}
+else
+{
+    <div style="width: @Width; height: @Height;" class="@Class"></div>
+}
 
 @inject IJSRuntime JSRuntime
 
@@ -40,8 +47,8 @@
                 "import", "./_content/Lumeo/js/echarts-interop.js");
             await _module.InvokeVoidAsync("loadExtension",
                 "https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js");
-            // Small delay to ensure the extension registers its series type with echarts
-            await Task.Delay(100);
+            // Wait for the extension to fully register its series type and renderers
+            await Task.Delay(200);
             _extensionLoaded = true;
             BuildOptionJson();
             StateHasChanged();
