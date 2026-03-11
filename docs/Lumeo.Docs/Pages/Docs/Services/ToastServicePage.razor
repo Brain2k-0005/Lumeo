@@ -9,20 +9,26 @@
 
 <Stack Gap="10">
 
-    <!-- Quick Start -->
+    <!-- ================================================================ -->
+    <!-- 1. Quick Start -->
+    <!-- ================================================================ -->
     <section>
         <Stack Gap="4">
             <Heading Level="2">Quick Start</Heading>
             <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastService</code> is registered automatically by
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AddLumeo()</code>. Inject it into any component and call
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show()</code> to display a toast.
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastService</code> is registered automatically when you call
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AddLumeo()</code> in your <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Program.cs</code>.
+                You only need to place a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;ToastProvider /&gt;</code> in your layout and then inject the service wherever you need it.
             </Lumeo.Text>
 
-            <Heading Level="3">1. Add the provider to your layout</Heading>
+            <Heading Level="3">1. Register services</Heading>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Program.cs
+builder.Services.AddLumeo();   // registers ToastService (and all other Lumeo services)</div>
+
+            <Heading Level="3">2. Add the provider to your layout</Heading>
             <Lumeo.Text Size="sm" Color="muted">
                 Place <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;ToastProvider /&gt;</code> once in your
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MainLayout.razor</code>. This renders toast notifications.
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MainLayout.razor</code>. This is the container that renders all toast notifications.
             </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;!-- MainLayout.razor --&gt;
 &lt;div class="min-h-screen"&gt;
@@ -32,7 +38,11 @@
                    MaxToasts="5" /&gt;
 &lt;/div&gt;</div>
 
-            <Heading Level="3">2. Inject and use</Heading>
+            <Heading Level="3">3. Inject and use</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Inject <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastService</code> into any component and call one of its methods to show a toast.
+                Every method returns a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">string</code> toast ID you can use to dismiss or update it later.
+            </Lumeo.Text>
             <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject ToastService ToastService
 
 &lt;Button OnClick="HandleSave"&gt;Save&lt;/Button&gt;
@@ -43,123 +53,480 @@
         ToastService.Success("Saved", "Your changes have been saved.");
     }
 }</div>
+            <Flex Gap="2">
+                <Button OnClick='() => ToastService.Success("Saved", "Your changes have been saved.")'>Try it</Button>
+            </Flex>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- Examples -->
+    <!-- ================================================================ -->
+    <!-- 2. Variants -->
+    <!-- ================================================================ -->
     <section>
-        <Stack Gap="6">
-            <Heading Level="2">Examples</Heading>
+        <Stack Gap="4">
+            <Heading Level="2">Variants</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Five built-in variants cover the most common notification types. Each has a convenience method that sets the
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastVariant</code> for you.
+            </Lumeo.Text>
 
-            <Stack Gap="4">
-                <Heading Level="3">Variants</Heading>
-                <Lumeo.Text Size="sm" Color="muted">Convenience methods for common toast types:</Lumeo.Text>
-                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Default toast
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Default — neutral notification
 ToastService.Show("Event created", "Monday, January 1st at 5:00 PM");
 
-// Success
+// Success — operation completed
 ToastService.Success("Saved", "Your profile has been updated.");
 
-// Error
-ToastService.Error("Error", "Something went wrong. Please try again.");
+// Error (Destructive) — something went wrong
+ToastService.Error("Error", "Could not connect to the server.");
 
-// Warning
+// Warning — heads up
 ToastService.Warning("Warning", "Your session will expire in 5 minutes.");
 
-// Info
+// Info — helpful tip
 ToastService.Info("Tip", "You can drag items to reorder them.");</div>
-                <Flex Gap="2" Wrap="true">
-                    <Button OnClick='() => ToastService.Show("Event created", "Monday, January 1st")'>Default</Button>
-                    <Button Variant="Button.ButtonVariant.Secondary" OnClick='() => ToastService.Success("Saved", "Profile updated.")'>Success</Button>
-                    <Button Variant="Button.ButtonVariant.Destructive" OnClick='() => ToastService.Error("Error", "Something went wrong.")'>Error</Button>
-                    <Button Variant="Button.ButtonVariant.Outline" OnClick='() => ToastService.Warning("Warning", "Session expiring.")'>Warning</Button>
-                    <Button Variant="Button.ButtonVariant.Outline" OnClick='() => ToastService.Info("Tip", "Drag to reorder.")'>Info</Button>
+
+            <Lumeo.Text Size="sm" Color="muted">Click each button to see the variant in action:</Lumeo.Text>
+            <Flex Gap="2" Wrap="true">
+                <Button OnClick='() => ToastService.Show("Event created", "Monday, January 1st at 5:00 PM")'>Default</Button>
+                <Button Variant="Button.ButtonVariant.Secondary" OnClick='() => ToastService.Success("Saved", "Your profile has been updated.")'>Success</Button>
+                <Button Variant="Button.ButtonVariant.Destructive" OnClick='() => ToastService.Error("Error", "Could not connect to the server.")'>Error</Button>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick='() => ToastService.Warning("Warning", "Your session will expire in 5 minutes.")'>Warning</Button>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick='() => ToastService.Info("Tip", "You can drag items to reorder them.")'>Info</Button>
+            </Flex>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- ================================================================ -->
+    <!-- 3. With Options -->
+    <!-- ================================================================ -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">With Options</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                For full control, pass a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastOptions</code> object. This lets you set action buttons, durations, dismiss behavior, callbacks, and custom CSS.
+            </Lumeo.Text>
+
+            <!-- Action Button -->
+            <Stack Gap="3">
+                <Heading Level="3">Action Button</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Add an action button to the toast with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ActionLabel</code> and
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAction</code>. Common use case: undo a destructive operation.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">ToastService.Show(new ToastOptions
+{
+    Title = "Message archived",
+    Description = "1 conversation moved to archive.",
+    ActionLabel = "Undo",
+    OnAction = () => RestoreMessage(),
+    Duration = 8000
+});</div>
+                <Flex Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowWithAction">Show with Action</Button>
                 </Flex>
             </Stack>
 
-            <Stack Gap="4">
-                <Heading Level="3">With Options</Heading>
-                <Lumeo.Text Size="sm" Color="muted">Full control with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastOptions</code>:</Lumeo.Text>
-                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Toast with action button
-ToastService.Show(new ToastOptions
+            <!-- Non-dismissible -->
+            <Stack Gap="3">
+                <Heading Level="3">Non-dismissible (Persistent)</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Dismissible = false</code> to hide the close button and
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Duration = 0</code> to prevent auto-dismiss. The toast stays until you call
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Dismiss(id)</code> or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Update(id, ...)</code> programmatically.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var id = ToastService.Show(new ToastOptions
 {
-    Title = "Message sent",
-    Description = "Your message has been delivered.",
-    ActionLabel = "Undo",
-    OnAction = () => UndoSend(),
-    Duration = 8000
+    Title = "Processing payment...",
+    Description = "Please do not close this page.",
+    Variant = ToastVariant.Info,
+    Dismissible = false,
+    Duration = 0
 });
 
-// Non-dismissible persistent toast
-ToastService.Show(new ToastOptions
-{
-    Title = "Uploading...",
-    Description = "Please wait while your file uploads.",
-    Dismissible = false,
-    Duration = 0  // stays until dismissed programmatically
-});</div>
-                <Flex Gap="2" Wrap="true">
-                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowWithAction">With Action</Button>
-                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowPersistent">Persistent</Button>
+// Later, dismiss it when the operation completes
+ToastService.Dismiss(id);</div>
+                <Flex Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowPersistent">Show Persistent (auto-resolves in 4s)</Button>
                 </Flex>
             </Stack>
 
-            <Stack Gap="4">
-                <Heading Level="3">Dismiss and Update</Heading>
-                <Lumeo.Text Size="sm" Color="muted">Control toasts after showing them:</Lumeo.Text>
-                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Show returns an ID you can use later
-var id = ToastService.Show("Processing...");
+            <!-- Custom Duration -->
+            <Stack Gap="3">
+                <Heading Level="3">Custom Duration</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Override the default 5-second duration. Set any value in milliseconds, or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">0</code> for no auto-dismiss.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// This toast stays visible for 10 seconds
+ToastService.Show(new ToastOptions
+{
+    Title = "Deployment started",
+    Description = "Building and deploying to production...",
+    Variant = ToastVariant.Info,
+    Duration = 10000
+});</div>
+                <Flex Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowLongDuration">Show 10s Toast</Button>
+                </Flex>
+            </Stack>
 
-// Update an existing toast
+            <!-- Custom CSS -->
+            <Stack Gap="3">
+                <Heading Level="3">Custom CSS Class</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Apply additional CSS classes to the toast element with the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Class</code> property.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">ToastService.Show(new ToastOptions
+{
+    Title = "Styled toast",
+    Description = "This toast has a custom border.",
+    Class = "border-2 border-primary"
+});</div>
+                <Flex Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowCustomClass">Show Styled Toast</Button>
+                </Flex>
+            </Stack>
+
+            <!-- OnDismiss callback -->
+            <Stack Gap="3">
+                <Heading Level="3">OnDismiss Callback</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Run code when a toast is dismissed (by the user or by timeout) using the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnDismiss</code> callback.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">ToastService.Show(new ToastOptions
+{
+    Title = "Feedback requested",
+    Description = "Rate your experience before this disappears.",
+    OnDismiss = () => LogDismissal(),
+    Duration = 6000
+});</div>
+                <Flex Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowWithDismissCallback">Show with OnDismiss</Button>
+                </Flex>
+            </Stack>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- ================================================================ -->
+    <!-- 4. Dismiss & Update -->
+    <!-- ================================================================ -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">Dismiss &amp; Update</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Every <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show()</code> call returns a unique toast ID. Use it to dismiss or update that toast later.
+            </Lumeo.Text>
+
+            <!-- Dismiss by ID -->
+            <Stack Gap="3">
+                <Heading Level="3">Dismiss by ID</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Store the ID returned by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show()</code> and pass it to
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Dismiss(id)</code> to remove a specific toast.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var id = ToastService.Show("Processing...", "This may take a moment.");
+
+// Later...
+ToastService.Dismiss(id);</div>
+                <Flex Gap="2" Wrap="true">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowDismissable">1. Show Toast</Button>
+                    <Button Variant="Button.ButtonVariant.Secondary" OnClick="DismissLast" disabled="@(_lastDismissableId is null)">2. Dismiss It</Button>
+                </Flex>
+                @if (_lastDismissableId is not null)
+                {
+                    <Lumeo.Text Size="xs" Color="muted">
+                        Active toast ID: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@_lastDismissableId</code>
+                    </Lumeo.Text>
+                }
+            </Stack>
+
+            <!-- Dismiss All -->
+            <Stack Gap="3">
+                <Heading Level="3">Dismiss All</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Clear every active toast at once. Useful when navigating away from a page or resetting state.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">ToastService.DismissAll();</div>
+                <Flex Gap="2" Wrap="true">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowMultipleToasts">Show 3 Toasts</Button>
+                    <Button Variant="Button.ButtonVariant.Destructive" OnClick="() => ToastService.DismissAll()">Dismiss All</Button>
+                </Flex>
+            </Stack>
+
+            <!-- Update -->
+            <Stack Gap="3">
+                <Heading Level="3">Update an Existing Toast</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Change the title, description, variant, or any other property of an active toast. The toast stays in place and its timer resets.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var id = ToastService.Show("Connecting...", "Establishing connection.");
+
+// After connection succeeds:
 ToastService.Update(id, new ToastOptions
 {
-    Title = "Done!",
+    Title = "Connected!",
+    Description = "You are now online.",
     Variant = ToastVariant.Success,
     Duration = 3000
-});
-
-// Dismiss a specific toast
-ToastService.Dismiss(id);
-
-// Dismiss all toasts
-ToastService.DismissAll();</div>
+});</div>
+                <Flex Gap="2" Wrap="true">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowUpdatable">1. Show Toast</Button>
+                    <Button Variant="Button.ButtonVariant.Secondary" OnClick="UpdateToast" disabled="@(_updatableId is null)">2. Update It</Button>
+                </Flex>
+                @if (_updatableId is not null)
+                {
+                    <Lumeo.Text Size="xs" Color="muted">
+                        Active toast ID: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@_updatableId</code>
+                    </Lumeo.Text>
+                }
             </Stack>
 
-            <Stack Gap="4">
-                <Heading Level="3">Promise Toast</Heading>
-                <Lumeo.Text Size="sm" Color="muted">Show loading, success, or error states automatically for async operations:</Lumeo.Text>
+            <!-- Upload Progress Pattern -->
+            <Stack Gap="3">
+                <Heading Level="3">Real-world Pattern: Upload Progress</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    A common pattern: show a persistent loading toast, then update it to success or error when the operation completes.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">var id = ToastService.Show(new ToastOptions
+{
+    Title = "Uploading file...",
+    Description = "report-q4.pdf (2.3 MB)",
+    Dismissible = false,
+    Duration = 0     // stays until we update it
+});
+
+// Simulate upload completion after 3 seconds
+await Task.Delay(3000);
+
+ToastService.Update(id, new ToastOptions
+{
+    Title = "Upload complete!",
+    Description = "report-q4.pdf uploaded successfully.",
+    Variant = ToastVariant.Success,
+    Dismissible = true,
+    Duration = 4000
+});</div>
+                <Flex Gap="2">
+                    <Button OnClick="ShowUploadProgress">Simulate Upload</Button>
+                </Flex>
+            </Stack>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- ================================================================ -->
+    <!-- 5. Promise Toast -->
+    <!-- ================================================================ -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">Promise Toast</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Promise&lt;T&gt;</code> method wraps an async operation.
+                It shows a loading toast, then automatically transitions to success or error based on the result. No manual ID tracking needed.
+            </Lumeo.Text>
+
+            <!-- Success path -->
+            <Stack Gap="3">
+                <Heading Level="3">Async Success</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    The action returns a value, which you can use in the success toast options.
+                </Lumeo.Text>
                 <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await ToastService.Promise(
-    action: () => SaveDataAsync(),
-    loading: new ToastOptions { Title = "Saving...", Description = "Please wait." },
+    action: async () =>
+    {
+        await Http.PostAsync("/api/orders", content);
+        return new { OrderId = 1042 };
+    },
+    loading: new ToastOptions
+    {
+        Title = "Placing order...",
+        Description = "Processing your payment."
+    },
     success: result => new ToastOptions
     {
-        Title = "Saved!",
-        Description = $"Created record #{result.Id}",
-        Variant = ToastVariant.Success
+        Title = "Order confirmed!",
+        Description = $"Order #{result.OrderId} is on its way.",
+        Variant = ToastVariant.Success,
+        Duration = 5000
     },
     error: ex => new ToastOptions
     {
-        Title = "Failed",
+        Title = "Order failed",
         Description = ex.Message,
         Variant = ToastVariant.Destructive
     }
 );</div>
-                <Button OnClick="ShowPromise">Try Promise Toast</Button>
+                <Flex Gap="2">
+                    <Button OnClick="ShowPromiseSuccess">Try Promise (Success)</Button>
+                </Flex>
+            </Stack>
+
+            <!-- Error path -->
+            <Stack Gap="3">
+                <Heading Level="3">Async Error</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    If the action throws, the error callback receives the exception and displays a destructive toast.
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">await ToastService.Promise(
+    action: async () =>
+    {
+        await Http.DeleteAsync("/api/resource/99");
+        throw new HttpRequestException("403 Forbidden");
+        return true;   // unreachable, needed for type inference
+    },
+    loading: new ToastOptions { Title = "Deleting resource..." },
+    success: _ => new ToastOptions
+    {
+        Title = "Deleted",
+        Variant = ToastVariant.Success
+    },
+    error: ex => new ToastOptions
+    {
+        Title = "Delete failed",
+        Description = $"Server returned: {ex.Message}",
+        Variant = ToastVariant.Destructive,
+        Duration = 8000
+    }
+);</div>
+                <Flex Gap="2">
+                    <Button Variant="Button.ButtonVariant.Destructive" OnClick="ShowPromiseError">Try Promise (Error)</Button>
+                </Flex>
             </Stack>
         </Stack>
     </section>
 
     <Separator />
 
-    <!-- API Reference -->
+    <!-- ================================================================ -->
+    <!-- 6. Custom Content -->
+    <!-- ================================================================ -->
     <section>
-        <Stack Gap="6">
+        <Stack Gap="4">
+            <Heading Level="2">Custom Content</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                When the built-in title/description layout isn't enough, pass a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RenderFragment</code> as
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CustomContent</code> to render arbitrary Razor markup inside the toast.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">ToastService.Show(new ToastOptions
+{
+    CustomContent = @@&lt;div class="flex items-center gap-3"&gt;
+        &lt;Avatar Src="/img/user.jpg" Fallback="JD" Size="sm" /&gt;
+        &lt;div&gt;
+            &lt;p class="font-medium text-sm"&gt;Jane Doe&lt;/p&gt;
+            &lt;p class="text-xs text-muted-foreground"&gt;Sent you a message&lt;/p&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;,
+    Duration = 6000
+});</div>
+            <Flex Gap="2">
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowCustomContent">Show Custom Content Toast</Button>
+            </Flex>
+
+            <Lumeo.Text Size="sm" Color="muted">
+                You can also use the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show(RenderFragment, variant?, duration?)</code> overload for a shorter syntax:
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">ToastService.Show(
+    @@&lt;Flex Gap="2" Align="center"&gt;
+        &lt;Badge Variant="Badge.BadgeVariant.Success"&gt;New&lt;/Badge&gt;
+        &lt;span class="text-sm"&gt;Version 2.1 is available&lt;/span&gt;
+    &lt;/Flex&gt;,
+    variant: ToastVariant.Default,
+    duration: 7000
+);</div>
+            <Flex Gap="2">
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowCustomFragment">Show RenderFragment Toast</Button>
+            </Flex>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- ================================================================ -->
+    <!-- 7. Toast Positions -->
+    <!-- ================================================================ -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Toast Positions</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastProvider</code> accepts a
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Position</code> parameter that determines where toasts appear on screen.
+                This is set once in your layout and applies to all toasts.
+            </Lumeo.Text>
+
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Position</th>
+                            <th class="text-left p-3 font-medium text-foreground">CSS Placement</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TopLeft</td>
+                            <td class="p-3 text-muted-foreground">Fixed to top-left corner</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TopCenter</td>
+                            <td class="p-3 text-muted-foreground">Fixed to top-center</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TopRight</td>
+                            <td class="p-3 text-muted-foreground">Fixed to top-right corner</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">BottomLeft</td>
+                            <td class="p-3 text-muted-foreground">Fixed to bottom-left corner</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">BottomCenter</td>
+                            <td class="p-3 text-muted-foreground">Fixed to bottom-center</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">BottomRight</td>
+                            <td class="p-3 text-muted-foreground">Fixed to bottom-right corner (default)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;!-- Top-right positioning --&gt;
+&lt;ToastProvider Position="ToastViewport.ToastPosition.TopRight" /&gt;
+
+&lt;!-- Bottom-center positioning --&gt;
+&lt;ToastProvider Position="ToastViewport.ToastPosition.BottomCenter" /&gt;</div>
+
+            <Alert Variant="Alert.AlertVariant.Info">
+                <Lumeo.Text Size="sm">
+                    Position is set on the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastProvider</code> in your layout, not on individual toasts.
+                    All toasts share the same position. If you need multiple positions, add multiple providers (not recommended).
+                </Lumeo.Text>
+            </Alert>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- ================================================================ -->
+    <!-- 8. Full API Reference -->
+    <!-- ================================================================ -->
+    <section>
+        <Stack Gap="8">
             <Heading Level="2">API Reference</Heading>
 
+            <!-- ToastService Methods -->
             <Stack>
                 <Heading Level="3" Class="mb-3">ToastService Methods</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-3">
+                    All <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show</code> methods return a
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">string</code> toast ID.
+                </Lumeo.Text>
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
@@ -173,65 +540,66 @@ ToastService.DismissAll();</div>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Show(title, description?, variant?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shows a toast and returns its ID.</td>
+                                <td class="p-3 text-muted-foreground">Show a toast with a title, optional description, and optional variant.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Show(ToastOptions)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shows a toast with full options control.</td>
+                                <td class="p-3 text-muted-foreground">Show a toast with full control over all options.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Show(RenderFragment, variant?, duration?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shows a toast with custom Razor content.</td>
+                                <td class="p-3 text-muted-foreground">Show a toast with custom Razor content instead of title/description.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Success(title, description?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shorthand for a success variant toast.</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Show(title, description, ToastVariant.Success)</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Error(title, description?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shorthand for a destructive variant toast.</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Show(title, description, ToastVariant.Destructive)</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Warning(title, description?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shorthand for a warning variant toast.</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Show(title, description, ToastVariant.Warning)</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Info(title, description?)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
-                                <td class="p-3 text-muted-foreground">Shorthand for an info variant toast.</td>
+                                <td class="p-3 text-muted-foreground">Shorthand for <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Show(title, description, ToastVariant.Info)</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Dismiss(toastId)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
-                                <td class="p-3 text-muted-foreground">Removes a specific toast by its ID.</td>
+                                <td class="p-3 text-muted-foreground">Remove a specific toast by its ID.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">DismissAll()</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
-                                <td class="p-3 text-muted-foreground">Removes all active toasts.</td>
+                                <td class="p-3 text-muted-foreground">Remove all active toasts at once.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Update(toastId, ToastOptions)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
-                                <td class="p-3 text-muted-foreground">Updates an existing toast with new options.</td>
+                                <td class="p-3 text-muted-foreground">Replace all options on an existing toast. Resets the auto-dismiss timer.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Promise&lt;T&gt;(action, loading, success, error)</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;string&gt;</td>
-                                <td class="p-3 text-muted-foreground">Shows loading toast, then success or error based on async result.</td>
+                                <td class="p-3 text-muted-foreground">Show a loading toast, run the async action, then update to success or error. Returns the toast ID.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </Stack>
 
+            <!-- ToastOptions -->
             <Stack>
-                <Heading Level="3" Class="mb-3">ToastOptions</Heading>
+                <Heading Level="3" Class="mb-3">ToastOptions Properties</Heading>
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
@@ -247,67 +615,111 @@ ToastService.DismissAll();</div>
                                 <td class="p-3 font-mono text-xs text-primary">Title</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">The toast heading.</td>
+                                <td class="p-3 text-muted-foreground">The main heading text displayed in the toast.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Description</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">Body text below the title.</td>
+                                <td class="p-3 text-muted-foreground">Secondary text displayed below the title.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Variant</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">ToastVariant</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
-                                <td class="p-3 text-muted-foreground">Visual style: Default, Success, Destructive, Warning, Info.</td>
+                                <td class="p-3 text-muted-foreground">Visual style of the toast. Determines border and background color.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Duration</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">int?</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">5000</td>
-                                <td class="p-3 text-muted-foreground">Auto-dismiss time in ms. Set to 0 for persistent.</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">null (uses provider default)</td>
+                                <td class="p-3 text-muted-foreground">Auto-dismiss time in milliseconds. Set to <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">0</code> for no auto-dismiss. When null, falls back to the provider's <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">DefaultDuration</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Dismissible</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
-                                <td class="p-3 text-muted-foreground">Whether the close button is shown.</td>
+                                <td class="p-3 text-muted-foreground">Whether the close (X) button is rendered. Set to <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">false</code> for toasts that must be dismissed programmatically.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">ActionLabel</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">Text for an action button inside the toast.</td>
+                                <td class="p-3 text-muted-foreground">Text for an action button rendered inside the toast (e.g., "Undo", "Retry").</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">OnAction</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Action?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">Callback when the action button is clicked.</td>
+                                <td class="p-3 text-muted-foreground">Callback invoked when the action button is clicked.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">OnDismiss</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">Action?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">Callback when the toast is dismissed.</td>
+                                <td class="p-3 text-muted-foreground">Callback invoked when the toast is dismissed (by user click or programmatically).</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">CustomContent</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">Custom Razor content instead of title/description.</td>
+                                <td class="p-3 text-muted-foreground">Custom Razor content that replaces the default title/description layout. When set, <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Title</code> and <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Description</code> are ignored.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Class</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                                <td class="p-3 text-muted-foreground">Additional CSS classes for the toast element.</td>
+                                <td class="p-3 text-muted-foreground">Additional CSS classes appended to the toast element.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </Stack>
 
+            <!-- ToastVariant enum -->
+            <Stack>
+                <Heading Level="3" Class="mb-3">ToastVariant Enum</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Value</th>
+                                <th class="text-left p-3 font-medium text-foreground">Convenience Method</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Default</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Show()</td>
+                                <td class="p-3 text-muted-foreground">Neutral notification with card background and border.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Success</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Success()</td>
+                                <td class="p-3 text-muted-foreground">Green-tinted background indicating a successful operation.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Destructive</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Error()</td>
+                                <td class="p-3 text-muted-foreground">Red-tinted background indicating a failure or error.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Warning</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Warning()</td>
+                                <td class="p-3 text-muted-foreground">Amber/yellow-tinted background for cautionary messages.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Info</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Info()</td>
+                                <td class="p-3 text-muted-foreground">Blue-tinted background for informational messages and tips.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            <!-- ToastProvider Parameters -->
             <Stack>
                 <Heading Level="3" Class="mb-3">ToastProvider Parameters</Heading>
                 <div class="rounded-lg border border-border overflow-hidden">
@@ -323,21 +735,21 @@ ToastService.DismissAll();</div>
                         <tbody class="divide-y divide-border/40">
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">Position</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">ToastPosition</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ToastViewport.ToastPosition</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">BottomRight</td>
-                                <td class="p-3 text-muted-foreground">Screen corner for toasts: TopLeft, TopRight, BottomLeft, BottomRight, TopCenter, BottomCenter.</td>
+                                <td class="p-3 text-muted-foreground">Screen position where toasts appear. One of: TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">DefaultDuration</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">5000</td>
-                                <td class="p-3 text-muted-foreground">Default auto-dismiss time in milliseconds.</td>
+                                <td class="p-3 text-muted-foreground">Default auto-dismiss duration in milliseconds for toasts that don't specify their own <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Duration</code>.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">MaxToasts</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
                                 <td class="p-3 font-mono text-xs text-muted-foreground">5</td>
-                                <td class="p-3 text-muted-foreground">Maximum visible toasts. Oldest are evicted first.</td>
+                                <td class="p-3 text-muted-foreground">Maximum number of toasts visible at once. When exceeded, the oldest non-persistent toast is evicted.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -349,19 +761,25 @@ ToastService.DismissAll();</div>
 
 </Stack>
 
-<ToastProvider />
-
 @inject ToastService ToastService
 
 @code {
+    // -- Dismiss & Update state --
+    private string? _lastDismissableId;
+    private string? _updatableId;
+
+    // ==============================
+    // Section 3: With Options
+    // ==============================
+
     private void ShowWithAction()
     {
         ToastService.Show(new ToastOptions
         {
-            Title = "Message sent",
-            Description = "Your message has been delivered.",
+            Title = "Message archived",
+            Description = "1 conversation moved to archive.",
             ActionLabel = "Undo",
-            OnAction = () => ToastService.Info("Undone", "Message recalled."),
+            OnAction = () => ToastService.Info("Restored", "Message moved back to inbox."),
             Duration = 8000
         });
     }
@@ -370,40 +788,230 @@ ToastService.DismissAll();</div>
     {
         var id = ToastService.Show(new ToastOptions
         {
-            Title = "Uploading...",
-            Description = "Please wait.",
+            Title = "Processing payment...",
+            Description = "Please do not close this page.",
+            Variant = ToastVariant.Info,
             Dismissible = false,
             Duration = 0
         });
+
+        // Auto-resolve after 4 seconds for the demo
+        _ = Task.Delay(4000).ContinueWith(_ =>
+        {
+            ToastService.Update(id, new ToastOptions
+            {
+                Title = "Payment processed!",
+                Description = "Your receipt has been emailed.",
+                Variant = ToastVariant.Success,
+                Dismissible = true,
+                Duration = 4000
+            });
+        });
+    }
+
+    private void ShowLongDuration()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Deployment started",
+            Description = "Building and deploying to production...",
+            Variant = ToastVariant.Info,
+            Duration = 10000
+        });
+    }
+
+    private void ShowCustomClass()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Styled toast",
+            Description = "This toast has a custom border style.",
+            Class = "border-2 border-primary"
+        });
+    }
+
+    private void ShowWithDismissCallback()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Feedback requested",
+            Description = "Rate your experience before this disappears.",
+            OnDismiss = () => ToastService.Info("Callback fired", "OnDismiss was invoked."),
+            Duration = 6000
+        });
+    }
+
+    // ==============================
+    // Section 4: Dismiss & Update
+    // ==============================
+
+    private void ShowDismissable()
+    {
+        _lastDismissableId = ToastService.Show(new ToastOptions
+        {
+            Title = "Persistent notification",
+            Description = "Click 'Dismiss It' to remove this toast.",
+            Duration = 0
+        });
+    }
+
+    private void DismissLast()
+    {
+        if (_lastDismissableId is not null)
+        {
+            ToastService.Dismiss(_lastDismissableId);
+            _lastDismissableId = null;
+        }
+    }
+
+    private void ShowMultipleToasts()
+    {
+        ToastService.Show("First toast", "This is toast #1.");
+        ToastService.Success("Second toast", "This is toast #2.");
+        ToastService.Info("Third toast", "This is toast #3.");
+    }
+
+    private void ShowUpdatable()
+    {
+        _updatableId = ToastService.Show(new ToastOptions
+        {
+            Title = "Connecting...",
+            Description = "Establishing connection to server.",
+            Variant = ToastVariant.Default,
+            Duration = 0
+        });
+    }
+
+    private void UpdateToast()
+    {
+        if (_updatableId is not null)
+        {
+            ToastService.Update(_updatableId, new ToastOptions
+            {
+                Title = "Connected!",
+                Description = "You are now online.",
+                Variant = ToastVariant.Success,
+                Duration = 4000
+            });
+            _updatableId = null;
+        }
+    }
+
+    private void ShowUploadProgress()
+    {
+        var id = ToastService.Show(new ToastOptions
+        {
+            Title = "Uploading file...",
+            Description = "report-q4.pdf (2.3 MB)",
+            Dismissible = false,
+            Duration = 0
+        });
+
         _ = Task.Delay(3000).ContinueWith(_ =>
         {
             ToastService.Update(id, new ToastOptions
             {
                 Title = "Upload complete!",
+                Description = "report-q4.pdf uploaded successfully.",
                 Variant = ToastVariant.Success,
-                Duration = 3000,
-                Dismissible = true
+                Dismissible = true,
+                Duration = 4000
             });
         });
     }
 
-    private async Task ShowPromise()
+    // ==============================
+    // Section 5: Promise Toast
+    // ==============================
+
+    private async Task ShowPromiseSuccess()
     {
         await ToastService.Promise(
-            action: async () => { await Task.Delay(2000); return new { Id = 42 }; },
-            loading: new ToastOptions { Title = "Saving...", Description = "Please wait." },
+            action: async () =>
+            {
+                await Task.Delay(2500);
+                return new { OrderId = 1042 };
+            },
+            loading: new ToastOptions
+            {
+                Title = "Placing order...",
+                Description = "Processing your payment."
+            },
             success: result => new ToastOptions
             {
-                Title = "Saved!",
-                Description = $"Created record #{result.Id}",
+                Title = "Order confirmed!",
+                Description = $"Order #{result.OrderId} is on its way.",
+                Variant = ToastVariant.Success,
+                Duration = 5000
+            },
+            error: ex => new ToastOptions
+            {
+                Title = "Order failed",
+                Description = ex.Message,
+                Variant = ToastVariant.Destructive
+            }
+        );
+    }
+
+    private async Task ShowPromiseError()
+    {
+        await ToastService.Promise(
+            action: async () =>
+            {
+                await Task.Delay(2000);
+                throw new InvalidOperationException("403 Forbidden — insufficient permissions");
+#pragma warning disable CS0162
+                return false;
+#pragma warning restore CS0162
+            },
+            loading: new ToastOptions
+            {
+                Title = "Deleting resource...",
+                Description = "Removing item from server."
+            },
+            success: _ => new ToastOptions
+            {
+                Title = "Deleted",
                 Variant = ToastVariant.Success
             },
             error: ex => new ToastOptions
             {
-                Title = "Failed",
-                Description = ex.Message,
-                Variant = ToastVariant.Destructive
+                Title = "Delete failed",
+                Description = $"Server returned: {ex.Message}",
+                Variant = ToastVariant.Destructive,
+                Duration = 8000
             }
+        );
+    }
+
+    // ==============================
+    // Section 6: Custom Content
+    // ==============================
+
+    private void ShowCustomContent()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            CustomContent = @<div class="flex items-center gap-3">
+                <Avatar Fallback="JD" Size="Avatar.AvatarSize.Sm" />
+                <div>
+                    <p class="font-medium text-sm">Jane Doe</p>
+                    <p class="text-xs text-muted-foreground">Sent you a message: "Hey, are we still on for lunch?"</p>
+                </div>
+            </div>,
+            Duration = 6000
+        });
+    }
+
+    private void ShowCustomFragment()
+    {
+        ToastService.Show(
+            @<Flex Gap="2" Align="center">
+                <Badge Variant="Badge.BadgeVariant.Success">New</Badge>
+                <span class="text-sm">Version 2.1 is now available</span>
+            </Flex>,
+            variant: ToastVariant.Default,
+            duration: 7000
         );
     }
 }
