@@ -1,8 +1,40 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @if (IsRange)
-    {
+@if (Orientation == "Vertical")
+{
+    <div class="@VerticalCssClass" @attributes="AdditionalAttributes">
+        <div class="relative flex h-full flex-col items-center">
+            @if (Marks is not null || ShowTicks)
+            {
+                <div class="absolute left-6 top-0 flex h-full flex-col justify-between">
+                    @foreach (var mark in GetTickValues())
+                    {
+                        var pos = GetPercent(mark);
+                        <span class="text-xs text-muted-foreground whitespace-nowrap" style="position: absolute; top: @(pos)%; transform: translateY(-50%);">@FormatValue(mark)</span>
+                    }
+                </div>
+            }
+            <div class="relative h-full w-2 rounded-[var(--radius)] bg-primary/20">
+                <div class="absolute bottom-0 w-full rounded-[var(--radius)] bg-primary" style="height: @(GetPercent(Value))%"></div>
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                       class="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]"
+                       @oninput="OnInput"
+                       @onmouseenter="() => _showTooltipThumb = true"
+                       @onmouseleave="() => _showTooltipThumb = false" />
+            </div>
+            @if (ShowTooltip && _showTooltipThumb)
+            {
+                <div class="absolute -left-10 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+                     style="top: @(100 - GetPercent(Value))%; transform: translateY(-50%);">
+                    @FormatValue(Value)
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (IsRange)
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
         <div class="relative w-full">
             <div class="absolute inset-0 flex items-center">
                 <div class="h-2 w-full rounded-[var(--radius)] bg-primary/20"></div>
@@ -20,13 +52,62 @@
                        style="pointer-events: auto; position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
             </div>
+            @if (Marks is not null || ShowTicks)
+            {
+                <div class="relative mt-2 w-full">
+                    @foreach (var mark in GetTickValues())
+                    {
+                        var pos = GetPercent(mark);
+                        <div class="absolute flex flex-col items-center" style="left: @(pos)%; transform: translateX(-50%);">
+                            @if (ShowTicks)
+                            {
+                                <div class="h-1 w-px bg-muted-foreground/50"></div>
+                            }
+                            <span class="mt-1 text-xs text-muted-foreground">@FormatValue(mark)</span>
+                        </div>
+                    }
+                </div>
+            }
         </div>
-    }
-    else
-    {
-        <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled" class="@InputClasses" @oninput="OnInput" />
-    }
-</div>
+    </div>
+}
+else
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        <div class="relative w-full">
+            <div class="relative">
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                       class="@InputClasses"
+                       @oninput="OnInput"
+                       @onmouseenter="() => _showTooltipThumb = true"
+                       @onmouseleave="() => _showTooltipThumb = false" />
+                @if (ShowTooltip && _showTooltipThumb)
+                {
+                    <div class="absolute -top-8 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+                         style="left: @(GetPercent(Value))%; transform: translateX(-50%);">
+                        @FormatValue(Value)
+                    </div>
+                }
+            </div>
+            @if (Marks is not null || ShowTicks)
+            {
+                <div class="relative mt-1 w-full">
+                    @foreach (var mark in GetTickValues())
+                    {
+                        var pos = GetPercent(mark);
+                        <div class="absolute flex flex-col items-center" style="left: @(pos)%; transform: translateX(-50%);">
+                            @if (ShowTicks)
+                            {
+                                <div class="h-1 w-px bg-muted-foreground/50"></div>
+                            }
+                            <span class="mt-1 text-xs text-muted-foreground">@FormatValue(mark)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public double Value { get; set; }
@@ -38,10 +119,18 @@
     [Parameter] public double Max { get; set; } = 100;
     [Parameter] public double Step { get; set; } = 1;
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string Orientation { get; set; } = "Horizontal";
+    [Parameter] public bool ShowTooltip { get; set; }
+    [Parameter] public List<double>? Marks { get; set; }
+    [Parameter] public bool ShowTicks { get; set; }
+    [Parameter] public Func<double, string>? FormatTooltip { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private bool _showTooltipThumb;
+
     private string CssClass => $"relative flex w-full touch-none select-none items-center {Class}".Trim();
+    private string VerticalCssClass => $"relative flex h-full min-h-[200px] touch-none select-none justify-center {Class}".Trim();
 
     private const string InputClasses = "w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] bg-primary/20 accent-primary disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -49,6 +138,16 @@
 
     private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
     private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;
+
+    private double GetPercent(double value) => Max > Min ? ((value - Min) / (Max - Min)) * 100 : 0;
+
+    private string FormatValue(double value) => FormatTooltip is not null ? FormatTooltip(value) : value.ToString("G");
+
+    private List<double> GetTickValues()
+    {
+        if (Marks is not null) return Marks;
+        return new List<double> { Min, Max };
+    }
 
     private async Task OnInput(ChangeEventArgs e)
     {

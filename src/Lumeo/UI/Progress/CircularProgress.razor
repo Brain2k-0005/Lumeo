@@ -1,0 +1,59 @@
+@namespace Lumeo
+
+<div class="@($"inline-flex items-center justify-center {Class}".Trim())" @attributes="AdditionalAttributes">
+    <svg width="@Size" height="@Size" viewBox="0 0 @Size @Size" class="transform -rotate-90">
+        <circle
+            cx="@Center"
+            cy="@Center"
+            r="@Radius"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="@StrokeWidth"
+            class="text-muted/20" />
+        <circle
+            cx="@Center"
+            cy="@Center"
+            r="@Radius"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="@StrokeWidth"
+            stroke-dasharray="@Circumference"
+            stroke-dashoffset="@DashOffset"
+            stroke-linecap="round"
+            class="text-primary transition-all duration-300" />
+    </svg>
+    @if (ChildContent is not null)
+    {
+        <div class="absolute flex items-center justify-center" style="width: @(Size)px; height: @(Size)px;">
+            @ChildContent
+        </div>
+    }
+    else if (ShowValue)
+    {
+        <div class="absolute flex items-center justify-center" style="width: @(Size)px; height: @(Size)px;">
+            <span class="text-sm font-medium text-foreground">@DisplayValue</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public int Size { get; set; } = 64;
+    [Parameter] public int StrokeWidth { get; set; } = 4;
+    [Parameter] public bool ShowValue { get; set; } = true;
+    [Parameter] public string? Format { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private double Center => Size / 2.0;
+    private double Radius => (Size - StrokeWidth) / 2.0;
+    private double Circumference => 2 * Math.PI * Radius;
+    private double Percentage => Max > 0 ? Math.Clamp(Value / Max, 0, 1) : 0;
+    private double DashOffset => Circumference * (1 - Percentage);
+
+    private string DisplayValue => Format is not null
+        ? string.Format(Format, Value)
+        : $"{(int)(Percentage * 100)}%";
+}

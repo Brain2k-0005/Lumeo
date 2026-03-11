@@ -1,0 +1,41 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @ChildContent
+    <div class="pointer-events-none absolute inset-0 z-10"
+         style="background-image: url('data:image/svg+xml,@(EncodedSvg)'); background-repeat: repeat;">
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int Rotation { get; set; } = -22;
+    [Parameter] public int Gap { get; set; } = 100;
+    [Parameter] public int FontSize { get; set; } = 14;
+    [Parameter] public double Opacity { get; set; } = 0.1;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"relative {Class}".Trim();
+
+    private string EncodedSvg
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Text)) return "";
+
+            var textLength = Text.Length * FontSize * 0.6;
+            var svgWidth = Math.Max(Gap + textLength, 200);
+            var svgHeight = Math.Max(Gap + FontSize * 2, 100);
+
+            var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svgWidth}\" height=\"{svgHeight}\">" +
+                      $"<text x=\"50%\" y=\"50%\" text-anchor=\"middle\" dominant-baseline=\"middle\" " +
+                      $"font-size=\"{FontSize}\" fill=\"currentColor\" opacity=\"{Opacity.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" " +
+                      $"transform=\"rotate({Rotation} {svgWidth / 2} {svgHeight / 2})\">" +
+                      $"{System.Net.WebUtility.HtmlEncode(Text)}</text></svg>";
+
+            return Uri.EscapeDataString(svg);
+        }
+    }
+}

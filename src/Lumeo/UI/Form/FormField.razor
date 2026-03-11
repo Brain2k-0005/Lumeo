@@ -6,18 +6,78 @@
 
 <CascadingValue Value="context" IsFixed="false">
     <div class="@CssClass" @attributes="AdditionalAttributes">
-        @ChildContent
+        @if (Orientation == FormFieldOrientation.Vertical)
+        {
+            @if (Label is not null)
+            {
+                <Label>
+                    @Label
+                    @if (Required)
+                    {
+                        <span class="text-destructive ml-0.5">*</span>
+                    }
+                </Label>
+            }
+            @ChildContent
+            @if (HelpText is not null && Error is null)
+            {
+                <p class="text-xs text-muted-foreground">@HelpText</p>
+            }
+            @if (Error is not null)
+            {
+                <p class="text-xs text-destructive">@Error</p>
+            }
+        }
+        else
+        {
+            <div class="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1">
+                @if (Label is not null)
+                {
+                    <Label Class="@($"text-right {(LabelWidth is not null ? $"w-[{LabelWidth}]" : "")}")">
+                        @Label
+                        @if (Required)
+                        {
+                            <span class="text-destructive ml-0.5">*</span>
+                        }
+                    </Label>
+                }
+                <div>
+                    @ChildContent
+                    @if (HelpText is not null && Error is null)
+                    {
+                        <p class="text-xs text-muted-foreground mt-1">@HelpText</p>
+                    }
+                    @if (Error is not null)
+                    {
+                        <p class="text-xs text-destructive mt-1">@Error</p>
+                    }
+                </div>
+            </div>
+        }
     </div>
 </CascadingValue>
 
 @code {
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? HelpText { get; set; }
     [Parameter] public string? Error { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public FormFieldOrientation Orientation { get; set; } = FormFieldOrientation.Vertical;
+    [Parameter] public string? LabelWidth { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"space-y-2 {Class}".Trim();
+    private string CssClass => Orientation == FormFieldOrientation.Vertical
+        ? $"space-y-2 {Class}".Trim()
+        : $"{Class}".Trim();
+
+    public enum FormFieldOrientation
+    {
+        Vertical,
+        Horizontal
+    }
 
     public record FormFieldContext(string? Name, string? Error)
     {

@@ -1,0 +1,70 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="flex flex-col items-center text-center">
+        <div class="@IconContainerClasses">
+            @if (Icon is not null)
+            {
+                @Icon
+            }
+            else
+            {
+                @DefaultIcon
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(Title))
+        {
+            <h3 class="mt-4 text-xl font-semibold text-foreground">@Title</h3>
+        }
+        @if (!string.IsNullOrEmpty(SubTitle))
+        {
+            <p class="mt-2 text-sm text-muted-foreground">@SubTitle</p>
+        }
+        @if (Extra is not null)
+        {
+            <div class="mt-6 flex items-center gap-2">
+                @Extra
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public ResultStatus Status { get; set; } = ResultStatus.Info;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? SubTitle { get; set; }
+    [Parameter] public RenderFragment? Icon { get; set; }
+    [Parameter] public RenderFragment? Extra { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"py-12 px-6 {Class}".Trim();
+
+    private string IconContainerClasses => $"flex h-16 w-16 items-center justify-center rounded-full {StatusBgClasses}";
+
+    private string StatusBgClasses => Status switch
+    {
+        ResultStatus.Success => "bg-emerald-500/10 text-emerald-500",
+        ResultStatus.Error => "bg-destructive/10 text-destructive",
+        ResultStatus.Warning => "bg-yellow-500/10 text-yellow-500",
+        ResultStatus.Info => "bg-primary/10 text-primary",
+        ResultStatus.NotFound => "bg-muted text-muted-foreground",
+        ResultStatus.Forbidden => "bg-destructive/10 text-destructive",
+        ResultStatus.ServerError => "bg-destructive/10 text-destructive",
+        _ => "bg-primary/10 text-primary"
+    };
+
+    private RenderFragment DefaultIcon => Status switch
+    {
+        ResultStatus.Success => @<Blazicon Svg="Lucide.CircleCheck" class="h-8 w-8" />,
+        ResultStatus.Error => @<Blazicon Svg="Lucide.CircleAlert" class="h-8 w-8" />,
+        ResultStatus.Warning => @<Blazicon Svg="Lucide.TriangleAlert" class="h-8 w-8" />,
+        ResultStatus.Info => @<Blazicon Svg="Lucide.Info" class="h-8 w-8" />,
+        ResultStatus.NotFound => @<Blazicon Svg="Lucide.Search" class="h-8 w-8" />,
+        ResultStatus.Forbidden => @<Blazicon Svg="Lucide.Lock" class="h-8 w-8" />,
+        ResultStatus.ServerError => @<Blazicon Svg="Lucide.CircleAlert" class="h-8 w-8" />,
+        _ => @<Blazicon Svg="Lucide.Info" class="h-8 w-8" />
+    };
+
+    public enum ResultStatus { Success, Error, Warning, Info, NotFound, Forbidden, ServerError }
+}

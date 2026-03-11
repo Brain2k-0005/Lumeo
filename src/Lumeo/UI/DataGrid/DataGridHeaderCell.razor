@@ -1,0 +1,179 @@
+@namespace Lumeo
+@typeparam TItem
+@implements IAsyncDisposable
+
+<th class="@CssClass" style="@StyleString" @attributes="AdditionalAttributes">
+    <div class="flex items-center gap-1">
+        @if (Column.HeaderTemplate is not null)
+        {
+            @Column.HeaderTemplate
+        }
+        else
+        {
+            <button type="button"
+                    class="flex items-center gap-1 select-none @(Column.Sortable ? "cursor-pointer hover:text-foreground" : "cursor-default")"
+                    @onclick="HandleSort"
+                    disabled="@(!Column.Sortable)">
+                <span>@(Column.Title ?? Column.Field ?? "")</span>
+                @if (Column.Sortable && SortDirection != SortDirection.None)
+                {
+                    @if (SortDirection == SortDirection.Ascending)
+                    {
+                        <Blazicon Svg="Lucide.ArrowUp" class="h-3.5 w-3.5" />
+                    }
+                    else
+                    {
+                        <Blazicon Svg="Lucide.ArrowDown" class="h-3.5 w-3.5" />
+                    }
+                }
+                else if (Column.Sortable)
+                {
+                    <Blazicon Svg="Lucide.ArrowUpDown" class="h-3.5 w-3.5 opacity-30" />
+                }
+            </button>
+        }
+
+        @if (Column.Filterable)
+        {
+            <button type="button"
+                    class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted/60 @(HasActiveFilter ? "text-primary" : "text-muted-foreground opacity-0 group-hover/th:opacity-100")"
+                    @onclick="ToggleFilter"
+                    @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.Filter" class="h-3 w-3" />
+            </button>
+        }
+    </div>
+
+    @if (IsFilterOpen && Column.Filterable)
+    {
+        <div class="absolute top-full left-0 z-50 mt-1">
+            <DataGridColumnFilter TItem="TItem"
+                                  Column="Column"
+                                  FilterOptions="Column.FilterOptions"
+                                  OnApply="HandleFilterApply" />
+        </div>
+    }
+
+    @if (Column.Resizable)
+    {
+        <div id="@_resizeHandleId"
+             class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
+             @onmousedown="OnResizeStart"
+             @onmousedown:stopPropagation="true"
+             @onmousedown:preventDefault="true"></div>
+    }
+</th>
+
+@code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
+    [Inject] private ComponentInteropService Interop { get; set; } = default!;
+
+    [Parameter] public DataGridColumn<TItem> Column { get; set; } = default!;
+    [Parameter] public SortDirection SortDirection { get; set; } = SortDirection.None;
+    [Parameter] public bool HasActiveFilter { get; set; }
+    [Parameter] public bool IsFilterOpen { get; set; }
+    [Parameter] public EventCallback OnFilterToggle { get; set; }
+    [Parameter] public EventCallback<FilterApplyEventArgs> OnFilterApply { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _resizeHandleId = $"dg-resize-{Guid.NewGuid():N}";
+    private double _startWidth;
+    private bool _resizeRegistered;
+
+    private string CssClass
+    {
+        get
+        {
+            // TODO: Calculate cumulative left/right offsets when multiple columns are pinned
+            var pinClass = Column.Pin switch
+            {
+                PinDirection.Left => "sticky left-0 z-20 bg-muted/30",
+                PinDirection.Right => "sticky right-0 z-20 bg-muted/30",
+                _ => "bg-muted/30"
+            };
+            return $"group/th relative px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider {pinClass} {Column.HeaderCssClass} {Class}".Trim();
+        }
+    }
+
+    private string? StyleString
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Column.Width.HasValue)
+            {
+                parts.Add($"width: {Column.Width.Value}px");
+                parts.Add($"min-width: {Column.Width.Value}px");
+            }
+            return parts.Count > 0 ? string.Join("; ", parts) + ";" : null;
+        }
+    }
+
+    private async Task HandleSort()
+    {
+        if (!Column.Sortable || Context is null || Column.Field is null) return;
+
+        var newDirection = SortDirection switch
+        {
+            SortDirection.None => SortDirection.Ascending,
+            SortDirection.Ascending => SortDirection.Descending,
+            SortDirection.Descending => SortDirection.None,
+            _ => SortDirection.None
+        };
+
+        await Context.OnSort.InvokeAsync(new SortDescriptor(Column.Field, newDirection));
+    }
+
+    private async Task ToggleFilter()
+    {
+        await OnFilterToggle.InvokeAsync();
+    }
+
+    private async Task HandleFilterApply(FilterDescriptor? descriptor)
+    {
+        var args = new FilterApplyEventArgs(Column.Field, descriptor);
+        await OnFilterApply.InvokeAsync(args);
+    }
+
+    private async Task OnResizeStart(MouseEventArgs e)
+    {
+        if (!Column.Resizable) return;
+
+        _startWidth = Column.Width ?? 150;
+
+        if (!_resizeRegistered)
+        {
+            await Interop.RegisterColumnResize(
+                _resizeHandleId,
+                async delta =>
+                {
+                    var newWidth = _startWidth + delta;
+                    if (Column.MinWidth.HasValue) newWidth = Math.Max(Column.MinWidth.Value, newWidth);
+                    else newWidth = Math.Max(50, newWidth);
+                    if (Column.MaxWidth.HasValue) newWidth = Math.Min(Column.MaxWidth.Value, newWidth);
+
+                    ParentGrid?.UpdateColumnWidth(Column.Id, newWidth);
+                },
+                async () =>
+                {
+                    _startWidth = Column.Width ?? 150;
+                    await InvokeAsync(StateHasChanged);
+                });
+            _resizeRegistered = true;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_resizeRegistered)
+        {
+            try
+            {
+                await Interop.UnregisterColumnResize(_resizeHandleId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

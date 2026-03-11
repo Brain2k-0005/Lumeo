@@ -13,6 +13,16 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
@@ -22,6 +32,9 @@
             Type = "themeRiver",
             Data = Data
         };
+
+        if (ShowDataLabels)
+            series.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
 
         var legendNames = Data
             .Where(d => d.Length >= 3)
@@ -35,27 +48,25 @@
             SingleAxis = new EChartSingleAxis
             {
                 Type = "time",
-                Left = "5%",
-                Right = "5%",
+                Left = "5%", Right = "5%",
                 Top = ShowLegend ? "15%" : "5%",
-                Bottom = "10%",
-                Height = "60%"
+                Bottom = "10%", Height = "60%"
             },
-            Color = Colors
+            Color = ColorPalette ?? Colors
         };
 
         if (ShowTooltip)
-        {
             _option.Tooltip = new EChartTooltip { Trigger = "axis" };
-        }
 
         if (ShowLegend && legendNames.Count > 0)
-        {
-            _option.Legend = new EChartLegend
-            {
-                Data = legendNames,
-                Top = "3%"
-            };
-        }
+            _option.Legend = new EChartLegend { Data = legendNames, Top = "3%" };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 }

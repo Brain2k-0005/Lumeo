@@ -9,6 +9,7 @@ public static class LumeoServiceExtensions
     {
         services.AddScoped<ComponentInteropService>();
         services.AddScoped<ToastService>();
+        services.AddScoped<OverlayService>();
         services.AddScoped<ThemeService>();
         services.AddScoped<KeyboardShortcutService>();
         return services;

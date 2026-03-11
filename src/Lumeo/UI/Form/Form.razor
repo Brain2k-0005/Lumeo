@@ -1,0 +1,67 @@
+@namespace Lumeo
+@typeparam TModel
+
+<CascadingValue Value="_context" IsFixed="false">
+    <form @onsubmit="HandleSubmit" class="@($"space-y-4 {Class}".Trim())" @attributes="AdditionalAttributes">
+        @ChildContent
+    </form>
+</CascadingValue>
+
+@code {
+    [Parameter] public TModel? Model { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
+    [Parameter] public EventCallback<TModel> OnInvalidSubmit { get; set; }
+    [Parameter] public IFormValidator? Validator { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private FormContext _context = new();
+
+    private async Task HandleSubmit()
+    {
+        if (Model is null) return;
+
+        _context.IsSubmitting = true;
+        StateHasChanged();
+
+        try
+        {
+            if (Validator is not null)
+            {
+                _context.Errors = Validator.Validate(Model);
+            }
+
+            if (_context.IsValid)
+            {
+                await OnValidSubmit.InvokeAsync(Model);
+            }
+            else
+            {
+                await OnInvalidSubmit.InvokeAsync(Model);
+            }
+        }
+        finally
+        {
+            _context.IsSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    public void ValidateField(string fieldName)
+    {
+        if (Model is null || Validator is null) return;
+        var errors = Validator.ValidateField(Model, fieldName);
+        if (errors.Count > 0)
+            _context.Errors[fieldName] = errors;
+        else
+            _context.Errors.Remove(fieldName);
+        StateHasChanged();
+    }
+
+    public void Reset()
+    {
+        _context.Reset();
+        StateHasChanged();
+    }
+}

@@ -17,6 +17,16 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "outside";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
@@ -35,24 +45,21 @@
             Data = pieData,
             Label = new EChartLabel
             {
-                Show = ShowLabels,
-                Position = "outside",
-                Formatter = "{b}: {d}%"
+                Show = ShowLabels || ShowDataLabels,
+                Position = ShowDataLabels ? LabelPosition : "outside",
+                Formatter = ShowDataLabels && LabelFormat is not null ? LabelFormat : "{b}: {d}%"
             },
             Emphasis = new EChartEmphasis
             {
                 Focus = "self",
-                ItemStyle = new EChartItemStyle
-                {
-                    ShadowBlur = 10
-                }
+                ItemStyle = new EChartItemStyle { ShadowBlur = 10 }
             }
         };
 
         _option = new EChartOption
         {
             Series = new List<EChartSeries> { series },
-            Color = Colors
+            Color = ColorPalette ?? Colors
         };
 
         if (!string.IsNullOrEmpty(CenterLabel))
@@ -62,31 +69,23 @@
                 Text = CenterLabel,
                 Left = "center",
                 Top = "center",
-                TextStyle = new EChartTextStyle
-                {
-                    FontSize = 18,
-                    FontWeight = "bold"
-                }
+                TextStyle = new EChartTextStyle { FontSize = 18, FontWeight = "bold" }
             };
         }
 
         if (ShowTooltip)
-        {
-            _option.Tooltip = new EChartTooltip
-            {
-                Trigger = "item"
-            };
-        }
+            _option.Tooltip = new EChartTooltip { Trigger = "item" };
 
         if (ShowLegend)
-        {
-            _option.Legend = new EChartLegend
-            {
-                Orient = "horizontal",
-                Bottom = "0%",
-                Data = Data.Select(d => d.Name).ToList()
-            };
-        }
+            _option.Legend = new EChartLegend { Orient = "horizontal", Bottom = "0%", Data = Data.Select(d => d.Name).ToList() };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 
     public class DonutChartData

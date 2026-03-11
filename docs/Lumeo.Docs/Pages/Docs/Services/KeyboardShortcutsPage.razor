@@ -1,0 +1,237 @@
+@page "/docs/services/keyboard-shortcuts"
+@namespace Lumeo.Docs.Pages.Docs.Services
+
+@using Lumeo.Services
+
+<PageTitle>Keyboard Shortcuts — Lumeo</PageTitle>
+
+<PageHeader Title="Keyboard Shortcut Service" Description="Register global keyboard shortcuts from C# code with automatic cleanup." />
+
+<Stack Gap="10">
+
+    <!-- Quick Start -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Quick Start</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">KeyboardShortcutService</code> lets you register
+                keyboard shortcuts that work globally across the page. It handles modifier keys, normalization, and cleanup automatically.
+            </Lumeo.Text>
+            <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+@@inject KeyboardShortcutService Shortcuts
+
+@@code {
+    private IDisposable? _shortcut;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _shortcut = await Shortcuts.RegisterAsync("ctrl+k", async () =>
+            {
+                // Open search, show command palette, etc.
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    public void Dispose()
+    {
+        _shortcut?.Dispose();
+    }
+}</div>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Key Combo Format -->
+    <section>
+        <Stack Gap="4">
+            <Heading Level="2">Key Combo Format</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Key combos use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">modifier+key</code> format, separated by
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">+</code>. Key names use
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">KeyboardEvent.key</code> values.
+            </Lumeo.Text>
+            <div class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Combo</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ctrl+k</td>
+                            <td class="p-3 text-muted-foreground">Ctrl + K</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ctrl+shift+p</td>
+                            <td class="p-3 text-muted-foreground">Ctrl + Shift + P</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">alt+n</td>
+                            <td class="p-3 text-muted-foreground">Alt + N</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">meta+enter</td>
+                            <td class="p-3 text-muted-foreground">Cmd/Win + Enter</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">escape</td>
+                            <td class="p-3 text-muted-foreground">Escape key (no modifier)</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">f1</td>
+                            <td class="p-3 text-muted-foreground">F1 function key</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <Lumeo.Text Size="sm" Color="muted">
+                Available modifiers: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ctrl</code>,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">shift</code>,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">alt</code>,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">meta</code>.
+                Order doesn't matter — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">shift+ctrl+k</code> and
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ctrl+shift+k</code> are identical.
+            </Lumeo.Text>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- Examples -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">Examples</Heading>
+
+            <Stack Gap="4">
+                <Heading Level="3">Async Handler</Heading>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">_shortcut = await Shortcuts.RegisterAsync("ctrl+s", async () =>
+{
+    await SaveAsync();
+});</div>
+            </Stack>
+
+            <Stack Gap="4">
+                <Heading Level="3">Sync Handler</Heading>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">_shortcut = await Shortcuts.RegisterAsync("escape", () =>
+{
+    _isOpen = false;
+    StateHasChanged();
+});</div>
+            </Stack>
+
+            <Stack Gap="4">
+                <Heading Level="3">Disable preventDefault</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    By default, the browser's native action is prevented. Pass <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">false</code> to allow it:
+                </Lumeo.Text>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">// Browser's ctrl+p (print) still works, but your handler also fires
+_shortcut = await Shortcuts.RegisterAsync("ctrl+p", HandlePrint, preventDefault: false);</div>
+            </Stack>
+
+            <Stack Gap="4">
+                <Heading Level="3">Multiple Shortcuts</Heading>
+                <div class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">private List&lt;IDisposable&gt; _shortcuts = new();
+
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (firstRender)
+    {
+        _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+k", OpenSearch));
+        _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+shift+p", OpenCommandPalette));
+        _shortcuts.Add(await Shortcuts.RegisterAsync("escape", CloseOverlays));
+    }
+}
+
+public void Dispose()
+{
+    foreach (var s in _shortcuts) s.Dispose();
+}</div>
+            </Stack>
+        </Stack>
+    </section>
+
+    <Separator />
+
+    <!-- API Reference -->
+    <section>
+        <Stack Gap="6">
+            <Heading Level="2">API Reference</Heading>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">Methods</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Method</th>
+                                <th class="text-left p-3 font-medium text-foreground">Returns</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, handler, preventDefault?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IDisposable&gt;</td>
+                                <td class="p-3 text-muted-foreground">Registers a shortcut with an async handler. Dispose the return value to unregister.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, Action, preventDefault?)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IDisposable&gt;</td>
+                                <td class="p-3 text-muted-foreground">Registers a shortcut with a synchronous handler.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">UnregisterAsync(id)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask</td>
+                                <td class="p-3 text-muted-foreground">Manually unregister by ID (prefer disposing the handle instead).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">Parameters</Heading>
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Parameter</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Default</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">keyCombo</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                                <td class="p-3 text-muted-foreground">Key combo string like "ctrl+k", "escape", "ctrl+shift+p".</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">handler</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;Task&gt; or Action</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                                <td class="p-3 text-muted-foreground">Callback invoked when the shortcut is triggered.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">preventDefault</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                                <td class="p-3 text-muted-foreground">Whether to call e.preventDefault() on the browser event.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </Stack>
+
+        </Stack>
+    </section>
+
+</Stack>

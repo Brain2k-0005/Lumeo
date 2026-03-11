@@ -703,3 +703,234 @@ export function unregisterOtpPaste(baseId, length) {
         otpPasteHandlers.delete(baseId);
     }
 }
+
+// --- DataGrid Column Resize ---
+
+const columnResizeHandlers = new Map();
+
+export function registerColumnResize(handleId, dotnetRef) {
+    const handle = document.getElementById(handleId);
+    if (!handle) return;
+    let startX = 0;
+    let isDragging = false;
+
+    const onMouseDown = (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+        e.stopPropagation();
+    };
+    const onMouseMove = (e) => {
+        if (!isDragging) return;
+        const delta = e.clientX - startX;
+        startX = e.clientX;
+        dotnetRef.invokeMethodAsync('OnColumnResize', delta);
+    };
+    const onMouseUp = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        dotnetRef.invokeMethodAsync('OnColumnResizeEnd');
+    };
+    handle.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    columnResizeHandlers.set(handleId, { onMouseDown, onMouseMove, onMouseUp });
+}
+
+export function unregisterColumnResize(handleId) {
+    const h = columnResizeHandlers.get(handleId);
+    if (h) {
+        const el = document.getElementById(handleId);
+        if (el) el.removeEventListener('mousedown', h.onMouseDown);
+        document.removeEventListener('mousemove', h.onMouseMove);
+        document.removeEventListener('mouseup', h.onMouseUp);
+        columnResizeHandlers.delete(handleId);
+    }
+}
+
+// --- File Download ---
+
+export function downloadFile(fileName, contentBase64, mimeType) {
+    const a = document.createElement('a');
+    a.href = `data:${mimeType || 'application/octet-stream'};base64,${contentBase64}`;
+    a.download = fileName;
+    a.click();
+}
+
+// --- Clipboard ---
+
+export async function copyToClipboard(text) {
+    await navigator.clipboard.writeText(text);
+}
+
+// --- Tour: get element rect by CSS selector ---
+
+export function getElementRectBySelector(selector) {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+}
+
+// --- Affix: scroll-based sticky positioning ---
+
+const affixHandlers = new Map();
+
+export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector, dotnetRef) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    const scrollTarget = targetSelector ? document.querySelector(targetSelector) : window;
+    if (!scrollTarget) return;
+
+    const placeholder = document.createElement('div');
+    placeholder.style.display = 'none';
+    let isFixed = false;
+
+    const onScroll = () => {
+        const rect = (isFixed ? placeholder : el).getBoundingClientRect();
+
+        if (offsetBottom != null) {
+            const viewportHeight = window.innerHeight;
+            if (!isFixed && rect.bottom >= viewportHeight - offsetBottom) {
+                isFixed = true;
+                const elRect = el.getBoundingClientRect();
+                el.parentNode.insertBefore(placeholder, el);
+                placeholder.style.display = 'block';
+                placeholder.style.height = elRect.height + 'px';
+                placeholder.style.width = elRect.width + 'px';
+                el.style.position = 'fixed';
+                el.style.bottom = offsetBottom + 'px';
+                el.style.width = elRect.width + 'px';
+                el.style.zIndex = '40';
+                dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, true);
+            } else if (isFixed) {
+                const placeholderRect = placeholder.getBoundingClientRect();
+                if (placeholderRect.bottom < viewportHeight - offsetBottom) {
+                    isFixed = false;
+                    el.style.position = '';
+                    el.style.bottom = '';
+                    el.style.width = '';
+                    el.style.zIndex = '';
+                    placeholder.style.display = 'none';
+                    dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, false);
+                }
+            }
+        } else {
+            if (!isFixed && rect.top <= offsetTop) {
+                isFixed = true;
+                const elRect = el.getBoundingClientRect();
+                el.parentNode.insertBefore(placeholder, el);
+                placeholder.style.display = 'block';
+                placeholder.style.height = elRect.height + 'px';
+                placeholder.style.width = elRect.width + 'px';
+                el.style.position = 'fixed';
+                el.style.top = offsetTop + 'px';
+                el.style.width = elRect.width + 'px';
+                el.style.zIndex = '40';
+                dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, true);
+            } else if (isFixed && placeholder.getBoundingClientRect().top > offsetTop) {
+                isFixed = false;
+                el.style.position = '';
+                el.style.top = '';
+                el.style.width = '';
+                el.style.zIndex = '';
+                placeholder.style.display = 'none';
+                dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, false);
+            }
+        }
+    };
+
+    const eventTarget = scrollTarget === window ? window : scrollTarget;
+    eventTarget.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    affixHandlers.set(elementId, { onScroll, placeholder, eventTarget });
+
+    // Initial check
+    requestAnimationFrame(onScroll);
+}
+
+export function unregisterAffix(elementId) {
+    const handler = affixHandlers.get(elementId);
+    if (handler) {
+        handler.eventTarget.removeEventListener('scroll', handler.onScroll);
+        window.removeEventListener('resize', handler.onScroll);
+        if (handler.placeholder.parentNode) handler.placeholder.remove();
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.style.position = '';
+            el.style.top = '';
+            el.style.bottom = '';
+            el.style.width = '';
+            el.style.zIndex = '';
+        }
+        affixHandlers.delete(elementId);
+    }
+}
+
+// --- BackToTop: scroll detection ---
+
+let backToTopRef = null;
+let backToTopThreshold = 300;
+let backToTopScrollHandler = null;
+
+export function registerBackToTop(dotnetRef, threshold) {
+    backToTopRef = dotnetRef;
+    backToTopThreshold = threshold || 300;
+
+    backToTopScrollHandler = () => {
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        const visible = scrollY > backToTopThreshold;
+        backToTopRef.invokeMethodAsync('OnScrollVisibilityChanged', visible);
+    };
+
+    window.addEventListener('scroll', backToTopScrollHandler, { passive: true });
+    backToTopScrollHandler(); // initial check
+}
+
+export function unregisterBackToTop() {
+    if (backToTopScrollHandler) {
+        window.removeEventListener('scroll', backToTopScrollHandler);
+        backToTopScrollHandler = null;
+    }
+    backToTopRef = null;
+}
+
+export function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// --- Mention: get textarea caret coordinates ---
+
+export function getTextareaCaretPosition(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return { top: 0, left: 0, selectionStart: 0 };
+
+    const { selectionStart } = el;
+    const elRect = el.getBoundingClientRect();
+
+    // Create mirror div to measure caret position
+    const div = document.createElement('div');
+    const style = getComputedStyle(el);
+    div.style.cssText = [
+        'position:absolute', 'visibility:hidden', 'white-space:pre-wrap', 'word-wrap:break-word',
+        `width:${style.width}`, `font:${style.font}`, `padding:${style.padding}`,
+        `border:${style.border}`, `line-height:${style.lineHeight}`,
+        `letter-spacing:${style.letterSpacing}`, `box-sizing:${style.boxSizing}`
+    ].join(';');
+    div.textContent = el.value.substring(0, selectionStart);
+    const span = document.createElement('span');
+    span.textContent = '\u200b';
+    div.appendChild(span);
+    document.body.appendChild(div);
+
+    const top = elRect.top + span.offsetTop - el.scrollTop;
+    const left = elRect.left + span.offsetLeft - el.scrollLeft;
+    document.body.removeChild(div);
+
+    return { top, left, selectionStart };
+}

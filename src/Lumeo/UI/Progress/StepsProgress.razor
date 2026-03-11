@@ -1,0 +1,97 @@
+@namespace Lumeo
+
+@if (Steps is not null && Steps.Count > 0)
+{
+    @if (Orientation == "Vertical")
+    {
+        <div class="@($"flex flex-col {Class}".Trim())" @attributes="AdditionalAttributes">
+            @for (var i = 0; i < Steps.Count; i++)
+            {
+                var index = i;
+                var isCompleted = index < CurrentStep;
+                var isCurrent = index == CurrentStep;
+                <div class="flex items-start gap-3">
+                    <div class="flex flex-col items-center">
+                        <div class="@StepCircleClasses(isCompleted, isCurrent)">
+                            @if (isCompleted)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                            }
+                            else
+                            {
+                                <span class="text-xs font-medium">@(index + 1)</span>
+                            }
+                        </div>
+                        @if (index < Steps.Count - 1)
+                        {
+                            <div class="@($"w-0.5 min-h-[2rem] flex-1 {(isCompleted ? "bg-primary" : "bg-muted")}")"></div>
+                        }
+                    </div>
+                    <div class="pb-6">
+                        <p class="@($"text-sm font-medium {(isCompleted || isCurrent ? "text-foreground" : "text-muted-foreground")}")">@Steps[index]</p>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="@($"flex w-full items-center {Class}".Trim())" @attributes="AdditionalAttributes">
+            @for (var i = 0; i < Steps.Count; i++)
+            {
+                var index = i;
+                var isCompleted = index < CurrentStep;
+                var isCurrent = index == CurrentStep;
+                <div class="flex flex-1 flex-col items-center gap-2">
+                    <div class="flex w-full items-center">
+                        @if (index > 0)
+                        {
+                            <div class="@($"h-0.5 flex-1 {(index <= CurrentStep ? "bg-primary" : "bg-muted")}")"></div>
+                        }
+                        else
+                        {
+                            <div class="flex-1"></div>
+                        }
+                        <div class="@StepCircleClasses(isCompleted, isCurrent)">
+                            @if (isCompleted)
+                            {
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                            }
+                            else
+                            {
+                                <span class="text-xs font-medium">@(index + 1)</span>
+                            }
+                        </div>
+                        @if (index < Steps.Count - 1)
+                        {
+                            <div class="@($"h-0.5 flex-1 {(isCompleted ? "bg-primary" : "bg-muted")}")"></div>
+                        }
+                        else
+                        {
+                            <div class="flex-1"></div>
+                        }
+                    </div>
+                    <span class="@($"text-xs text-center {(isCompleted || isCurrent ? "text-foreground font-medium" : "text-muted-foreground")}")">@Steps[index]</span>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int CurrentStep { get; set; }
+    [Parameter] public List<string>? Steps { get; set; }
+    [Parameter] public string Orientation { get; set; } = "Horizontal";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string StepCircleClasses(bool isCompleted, bool isCurrent)
+    {
+        var baseClasses = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm transition-colors";
+        if (isCompleted)
+            return $"{baseClasses} bg-primary text-primary-foreground";
+        if (isCurrent)
+            return $"{baseClasses} border-2 border-primary text-primary";
+        return $"{baseClasses} bg-muted text-muted-foreground";
+    }
+}

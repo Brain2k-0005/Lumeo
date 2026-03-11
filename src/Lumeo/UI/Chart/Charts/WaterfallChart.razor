@@ -16,11 +16,23 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public bool Toolbox { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+    [Parameter] public EChartMarkLine? MarkLine { get; set; }
+    [Parameter] public EChartMarkPoint? MarkPoint { get; set; }
+    [Parameter] public EChartMarkArea? MarkArea { get; set; }
+    [Parameter] public Dictionary<string, object>? OptionOverride { get; set; }
+
     private EChartOption _option = new();
 
     protected override void OnParametersSet()
     {
-        // Build stacked helper (transparent base) and colored actual bar
         var baseData = new List<double>();
         var barData = new List<object>();
         double running = 0;
@@ -53,6 +65,13 @@
             Data = barData
         };
 
+        if (ShowDataLabels)
+            barSeries.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
+
+        if (MarkLine is not null) barSeries.MarkLine = MarkLine;
+        if (MarkPoint is not null) barSeries.MarkPoint = MarkPoint;
+        if (MarkArea is not null) barSeries.MarkArea = MarkArea;
+
         _option = new EChartOption
         {
             XAxis = new List<EChartAxis>
@@ -66,21 +85,26 @@
             Series = new List<EChartSeries> { transparentSeries, barSeries },
             Grid = new EChartGrid
             {
-                Left = "3%",
-                Right = "4%",
+                Left = "3%", Right = "4%",
                 Top = "5%",
-                Bottom = "3%",
+                Bottom = DataZoom ? "15%" : "3%",
                 ContainLabel = true
-            }
+            },
+            Color = ColorPalette ?? Colors
         };
 
         if (ShowTooltip)
-        {
-            _option.Tooltip = new EChartTooltip
-            {
-                Trigger = "axis",
-                AxisPointer = new EChartAxisPointer { Type = "shadow" }
-            };
-        }
+            _option.Tooltip = new EChartTooltip { Trigger = "axis", AxisPointer = new EChartAxisPointer { Type = "shadow" } };
+
+        if (DataZoom)
+            _option.DataZoom = new List<EChartDataZoom> { new() { Type = "slider", Show = true }, new() { Type = "inside" } };
+
+        if (Toolbox)
+            _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true }, DataZoom = new() { Show = true } } };
+
+        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
+        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+
+        ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
 }

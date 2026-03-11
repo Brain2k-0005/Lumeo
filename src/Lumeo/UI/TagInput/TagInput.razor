@@ -1,0 +1,190 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@ContainerClass" @onclick="FocusInput" @attributes="AdditionalAttributes">
+    @if (Tags is { Count: > 0 })
+    {
+        @foreach (var tag in Tags)
+        {
+            <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                @tag
+                @if (!Disabled)
+                {
+                    <button type="button" class="rounded-full hover:bg-foreground/20 focus:outline-none" @onclick="() => RemoveTag(tag)" @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                    </button>
+                }
+            </span>
+        }
+    }
+
+    <div class="relative flex-1 min-w-[80px]">
+        <input id="@_inputId"
+               type="text"
+               class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+               placeholder="@(Tags is { Count: > 0 } ? "" : Placeholder)"
+               value="@_inputValue"
+               @oninput="OnInput"
+               @onkeydown="OnKeyDown"
+               @onfocus="() => _showSuggestions = FilteredSuggestions.Count > 0"
+               disabled="@IsAtMax"
+               autocomplete="off" />
+
+        @if (_showSuggestions && FilteredSuggestions.Count > 0)
+        {
+            <div id="@_suggestionsId" class="fixed z-50 min-w-[150px] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in">
+                @foreach (var suggestion in FilteredSuggestions)
+                {
+                    <button type="button"
+                            class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
+                            @onclick="() => SelectSuggestion(suggestion)">
+                        @suggestion
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public List<string>? Tags { get; set; }
+    [Parameter] public EventCallback<List<string>> TagsChanged { get; set; }
+    [Parameter] public int MaxTags { get; set; }
+    [Parameter] public bool AllowDuplicates { get; set; }
+    [Parameter] public string? Placeholder { get; set; } = "Add tag...";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public List<string>? Suggestions { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _inputValue = "";
+    private bool _showSuggestions;
+    private readonly string _inputId = $"taginput-{Guid.NewGuid():N}";
+    private readonly string _suggestionsId = $"taginput-suggestions-{Guid.NewGuid():N}";
+    private bool _suggestionsRegistered;
+
+    private bool IsAtMax => MaxTags > 0 && (Tags?.Count ?? 0) >= MaxTags;
+
+    private string ContainerClass => $"flex flex-wrap items-center gap-1.5 min-h-9 w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm transition-colors focus-within:ring-[1.5px] focus-within:ring-ring {(Disabled ? "cursor-not-allowed opacity-50" : "cursor-text")} {Class}".Trim();
+
+    private List<string> FilteredSuggestions
+    {
+        get
+        {
+            if (Suggestions is null || string.IsNullOrWhiteSpace(_inputValue)) return [];
+            var tags = Tags ?? [];
+            return Suggestions
+                .Where(s => s.Contains(_inputValue, StringComparison.OrdinalIgnoreCase) && (AllowDuplicates || !tags.Contains(s)))
+                .Take(8)
+                .ToList();
+        }
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        _inputValue = e.Value?.ToString() ?? "";
+
+        if (_inputValue.Contains(','))
+        {
+            var parts = _inputValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in parts)
+            {
+                await AddTag(part);
+            }
+            _inputValue = "";
+        }
+
+        _showSuggestions = FilteredSuggestions.Count > 0;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                if (!string.IsNullOrWhiteSpace(_inputValue))
+                {
+                    await AddTag(_inputValue.Trim());
+                    _inputValue = "";
+                    _showSuggestions = false;
+                }
+                break;
+            case "Backspace":
+                if (string.IsNullOrEmpty(_inputValue) && Tags is { Count: > 0 })
+                {
+                    await RemoveTag(Tags[^1]);
+                }
+                break;
+            case "Escape":
+                _showSuggestions = false;
+                break;
+        }
+    }
+
+    private async Task AddTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return;
+        if (IsAtMax) return;
+
+        Tags ??= [];
+        if (!AllowDuplicates && Tags.Contains(tag)) return;
+
+        Tags = [..Tags, tag];
+        await TagsChanged.InvokeAsync(Tags);
+    }
+
+    private async Task RemoveTag(string tag)
+    {
+        if (Tags is null) return;
+        Tags = Tags.Where(t => t != tag).ToList();
+        await TagsChanged.InvokeAsync(Tags);
+    }
+
+    private async Task SelectSuggestion(string suggestion)
+    {
+        await AddTag(suggestion);
+        _inputValue = "";
+        _showSuggestions = false;
+        await Interop.FocusElement(_inputId);
+    }
+
+    private async Task FocusInput()
+    {
+        if (!Disabled) await Interop.FocusElement(_inputId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_showSuggestions && !_suggestionsRegistered)
+        {
+            try
+            {
+                await Interop.PositionFixed(_suggestionsId, _inputId, "start", false, "bottom");
+                await Interop.RegisterClickOutside(_suggestionsId, _inputId, async () =>
+                {
+                    _showSuggestions = false;
+                    await InvokeAsync(StateHasChanged);
+                });
+                _suggestionsRegistered = true;
+            }
+            catch { /* element may not exist yet */ }
+        }
+        else if (!_showSuggestions && _suggestionsRegistered)
+        {
+            await CleanupSuggestions();
+        }
+    }
+
+    private async Task CleanupSuggestions()
+    {
+        try { await Interop.UnregisterClickOutside(_suggestionsId); } catch (JSDisconnectedException) { }
+        _suggestionsRegistered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_suggestionsRegistered) await CleanupSuggestions();
+    }
+}

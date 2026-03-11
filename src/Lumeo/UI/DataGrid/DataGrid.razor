@@ -1,0 +1,520 @@
+@namespace Lumeo
+@typeparam TItem
+
+@{
+    var context = new DataGridContext<TItem>(
+        Columns: EffectiveColumns.AsReadOnly(),
+        DisplayedItems: _displayedItems.AsReadOnly(),
+        SelectedItems: _selectedItems.AsReadOnly(),
+        Sorts: _sorts,
+        Filters: _filters,
+        GlobalSearch: _globalSearch,
+        CurrentPage: _currentPage,
+        PageSize: PageSize,
+        TotalCount: EffectiveTotalCount,
+        SelectionMode: SelectionMode,
+        EditMode: EditMode,
+        IsLoading: IsLoading,
+        OnRowClick: OnRowClick,
+        OnRowDoubleClick: OnRowDoubleClick,
+        OnSort: EventCallback.Factory.Create<SortDescriptor>(this, HandleSort),
+        OnFilter: EventCallback.Factory.Create<FilterDescriptor>(this, HandleFilter),
+        OnSelectionChanged: EventCallback.Factory.Create<TItem>(this, HandleSelectionChanged),
+        OnCellEdit: OnCellEdit,
+        IsRowSelected: IsRowSelected,
+        IsRowExpanded: IsRowExpanded,
+        ToggleSelection: ToggleSelection,
+        SelectAll: SelectAll,
+        ClearSelection: ClearSelection,
+        ToggleRowExpand: ToggleRowExpand
+    );
+}
+
+<CascadingValue Value="this" IsFixed="true">
+<CascadingValue Value="context" IsFixed="false">
+    <div class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
+
+        @* Declarative column definitions *@
+        <div class="hidden">@ChildContent</div>
+
+        @if (ShowToolbar)
+        {
+            <DataGridToolbar TItem="TItem"
+                             SearchText="@_globalSearch"
+                             SearchTextChanged="HandleGlobalSearch"
+                             ToolbarContent="ToolbarContent"
+                             OnColumnVisibilityToggle="ToggleColumnVisibilityPanel"
+                             OnExport="HandleExport"
+                             OnRemoveFilter="RemoveFilter" />
+        }
+
+        @if (_showColumnVisibility)
+        {
+            <DataGridColumnVisibility TItem="TItem"
+                                      Columns="EffectiveColumns.AsReadOnly()"
+                                      OnColumnToggle="HandleColumnVisibilityChanged" />
+        }
+
+        <div class="overflow-auto flex-1">
+            <table class="w-full caption-bottom text-sm">
+                <DataGridHeader TItem="TItem"
+                                HasDetailTemplate="@(DetailTemplate is not null)"
+                                ActiveFilterColumn="@_activeFilterColumn"
+                                OnFilterToggle="HandleFilterToggle"
+                                OnFilterApply="HandleFilterApply" />
+
+                <DataGridBody TItem="TItem"
+                              DetailTemplate="DetailTemplate"
+                              EmptyContent="EmptyContent"
+                              UseVirtualization="@UseVirtualization"
+                              HasDetailTemplate="@(DetailTemplate is not null)" />
+
+                <DataGridFooter TItem="TItem"
+                                AllItems="@_processedItems"
+                                HasDetailTemplate="@(DetailTemplate is not null)" />
+            </table>
+        </div>
+
+        @if (ShowPagination && !IsLoading)
+        {
+            <DataGridPagination TItem="TItem"
+                                PageChanged="HandlePageChanged"
+                                PageSizeChanged="HandlePageSizeChanged" />
+        }
+    </div>
+</CascadingValue>
+</CascadingValue>
+
+@code {
+    // --- Data ---
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public List<DataGridColumn<TItem>>? Columns { get; set; }
+
+    // --- Appearance ---
+    [Parameter] public bool Striped { get; set; }
+    [Parameter] public bool Bordered { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool Hoverable { get; set; } = true;
+    [Parameter] public string? Height { get; set; }
+
+    // --- Features ---
+    [Parameter] public DataGridSelectionMode SelectionMode { get; set; } = DataGridSelectionMode.None;
+    [Parameter] public DataGridEditMode EditMode { get; set; } = DataGridEditMode.None;
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public bool ShowPagination { get; set; } = true;
+    [Parameter] public bool ShowToolbar { get; set; }
+    [Parameter] public int VirtualizeThreshold { get; set; } = 500;
+
+    // --- Server mode ---
+    [Parameter] public bool ServerMode { get; set; }
+    [Parameter] public EventCallback<DataGridServerRequest> OnServerRequest { get; set; }
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+
+    // --- Templates ---
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+    [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    // --- Events ---
+    [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+    [Parameter] public EventCallback<TItem> OnRowDoubleClick { get; set; }
+    [Parameter] public EventCallback<CellEditEventArgs<TItem>> OnCellEdit { get; set; }
+    [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<TItem>> SelectedItemsChanged { get; set; }
+
+    // --- Standard ---
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // --- Inject ---
+    [Inject] private ComponentInteropService Interop { get; set; } = default!;
+
+    // --- Internal state ---
+    private List<DataGridColumn<TItem>> _columnDefs = new();
+    private List<TItem> _processedItems = new();
+    private List<TItem> _displayedItems = new();
+    private List<TItem> _selectedItems = new();
+    private HashSet<TItem> _selectedSet = new();
+    private HashSet<TItem> _expandedRows = new();
+    private List<SortDescriptor> _sorts = new();
+    private List<FilterDescriptor> _filters = new();
+    private string? _globalSearch;
+    private int _currentPage = 1;
+    private bool _showColumnVisibility;
+    private string? _activeFilterColumn;
+
+    private List<DataGridColumn<TItem>> EffectiveColumns =>
+        Columns is not null && Columns.Count > 0 ? Columns : _columnDefs;
+
+    private int EffectiveTotalCount => ServerMode ? TotalCount : _processedItems.Count;
+
+    private bool UseVirtualization => _displayedItems.Count > VirtualizeThreshold;
+
+    private string? HeightStyle => Height is not null ? $"height: {Height};" : null;
+
+    private string RootCssClass
+    {
+        get
+        {
+            var classes = "w-full overflow-auto border border-border/40 rounded-lg bg-card text-card-foreground flex flex-col";
+            if (Compact) classes += " text-sm";
+            if (Bordered) classes += " [&_td]:border [&_td]:border-border/40 [&_th]:border [&_th]:border-border/40";
+            if (Striped) classes += " [&_tbody>tr:nth-child(even)]:bg-muted/30";
+            return $"{classes} {Class}".Trim();
+        }
+    }
+
+    public void AddColumnDef(DataGridColumn<TItem> column)
+    {
+        _columnDefs.Add(column);
+    }
+
+    public void UpdateColumnWidth(string columnId, double width)
+    {
+        var column = EffectiveColumns.FirstOrDefault(c => c.Id == columnId);
+        if (column is not null)
+        {
+            column.Width = Math.Max(column.MinWidth ?? 50, width);
+            if (column.MaxWidth.HasValue)
+                column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ServerMode)
+        {
+            _displayedItems = Items?.ToList() ?? new List<TItem>();
+        }
+        else
+        {
+            ProcessClientData();
+        }
+
+        if (SelectedItems is not null)
+        {
+            _selectedItems = SelectedItems.ToList();
+            _selectedSet = new HashSet<TItem>(_selectedItems);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+    }
+
+    private void ProcessClientData()
+    {
+        if (Items is null)
+        {
+            _processedItems = new List<TItem>();
+            _displayedItems = new List<TItem>();
+            return;
+        }
+
+        // Clean stale selections that reference items no longer in the data source
+        if (_selectedItems.Count > 0)
+        {
+            var currentItems = new HashSet<TItem>(Items);
+            var staleCount = _selectedItems.RemoveAll(item => !currentItems.Contains(item));
+            if (staleCount > 0)
+            {
+                _selectedSet = new HashSet<TItem>(_selectedItems);
+                SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+            }
+        }
+
+        var query = Items.AsEnumerable();
+
+        // Global search
+        if (!string.IsNullOrWhiteSpace(_globalSearch))
+        {
+            var search = _globalSearch;
+            query = query.Where(item =>
+                EffectiveColumns.Any(col =>
+                {
+                    var value = col.GetFormattedValue(item);
+                    return value.Contains(search, StringComparison.OrdinalIgnoreCase);
+                }));
+        }
+
+        // Column filters
+        foreach (var filter in _filters)
+        {
+            var column = EffectiveColumns.FirstOrDefault(c => c.Field == filter.Field);
+            if (column is null) continue;
+
+            query = query.Where(item =>
+            {
+                var value = column.GetValue(item);
+                return DataGridFilterOperator.Evaluate(filter, value);
+            });
+        }
+
+        // Sort
+        IOrderedEnumerable<TItem>? ordered = null;
+        foreach (var sort in _sorts.Where(s => s.Direction != SortDirection.None))
+        {
+            var column = EffectiveColumns.FirstOrDefault(c => c.Field == sort.Field);
+            if (column is null) continue;
+
+            if (ordered is null)
+            {
+                ordered = sort.Direction == SortDirection.Ascending
+                    ? query.OrderBy(item => column.GetValue(item) as IComparable)
+                    : query.OrderByDescending(item => column.GetValue(item) as IComparable);
+            }
+            else
+            {
+                ordered = sort.Direction == SortDirection.Ascending
+                    ? ordered.ThenBy(item => column.GetValue(item) as IComparable)
+                    : ordered.ThenByDescending(item => column.GetValue(item) as IComparable);
+            }
+        }
+
+        _processedItems = (ordered as IEnumerable<TItem> ?? query).ToList();
+
+        // Paginate
+        if (ShowPagination && PageSize > 0)
+        {
+            var totalPages = Math.Max(1, (int)Math.Ceiling((double)_processedItems.Count / PageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+            if (_currentPage < 1) _currentPage = 1;
+
+            _displayedItems = _processedItems
+                .Skip((_currentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+        }
+        else
+        {
+            _displayedItems = _processedItems;
+        }
+    }
+
+    private async Task HandleSort(SortDescriptor sort)
+    {
+        _sorts.RemoveAll(s => s.Field == sort.Field);
+        if (sort.Direction != SortDirection.None)
+        {
+            _sorts.Add(sort);
+        }
+
+        _currentPage = 1;
+
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+        }
+    }
+
+    private async Task HandleFilter(FilterDescriptor filter)
+    {
+        _filters.RemoveAll(f => f.Field == filter.Field);
+        _filters.Add(filter);
+        _currentPage = 1;
+
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+        }
+    }
+
+    private async Task RemoveFilter(FilterDescriptor filter)
+    {
+        _filters.RemoveAll(f => f.Field == filter.Field);
+        _currentPage = 1;
+
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+        }
+    }
+
+    private async Task HandleGlobalSearch(string search)
+    {
+        _globalSearch = string.IsNullOrWhiteSpace(search) ? null : search;
+        _currentPage = 1;
+
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandlePageChanged(int page)
+    {
+        _currentPage = page;
+
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandlePageSizeChanged(int pageSize)
+    {
+        PageSize = pageSize;
+        _currentPage = 1;
+
+        if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+            StateHasChanged();
+        }
+    }
+
+    private void HandleSelectionChanged(TItem item)
+    {
+        // Handled by ToggleSelection
+    }
+
+    private bool IsRowSelected(TItem item) => _selectedSet.Contains(item);
+
+    private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
+
+    private void ToggleSelection(TItem item)
+    {
+        if (SelectionMode == DataGridSelectionMode.Single)
+        {
+            _selectedSet.Clear();
+            _selectedItems.Clear();
+
+            if (!_selectedSet.Contains(item))
+            {
+                _selectedSet.Add(item);
+                _selectedItems.Add(item);
+            }
+        }
+        else if (SelectionMode == DataGridSelectionMode.Multiple)
+        {
+            if (_selectedSet.Contains(item))
+            {
+                _selectedSet.Remove(item);
+                _selectedItems.Remove(item);
+            }
+            else
+            {
+                _selectedSet.Add(item);
+                _selectedItems.Add(item);
+            }
+        }
+
+        SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+        StateHasChanged();
+    }
+
+    private void SelectAll()
+    {
+        _selectedItems = _displayedItems.ToList();
+        _selectedSet = new HashSet<TItem>(_selectedItems);
+        SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+        StateHasChanged();
+    }
+
+    private void ClearSelection()
+    {
+        _selectedItems.Clear();
+        _selectedSet.Clear();
+        SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+        StateHasChanged();
+    }
+
+    private void ToggleRowExpand(TItem item)
+    {
+        if (_expandedRows.Contains(item))
+            _expandedRows.Remove(item);
+        else
+            _expandedRows.Add(item);
+        StateHasChanged();
+    }
+
+    private void ToggleColumnVisibilityPanel()
+    {
+        _showColumnVisibility = !_showColumnVisibility;
+    }
+
+    private void HandleColumnVisibilityChanged(DataGridColumn<TItem> column)
+    {
+        if (!ServerMode) ProcessClientData();
+        StateHasChanged();
+    }
+
+    private void HandleFilterToggle(string? field)
+    {
+        _activeFilterColumn = _activeFilterColumn == field ? null : field;
+        StateHasChanged();
+    }
+
+    private async Task HandleFilterApply(FilterApplyEventArgs args)
+    {
+        if (args.Filter is not null)
+        {
+            await HandleFilter(args.Filter);
+        }
+        else if (args.Field is not null)
+        {
+            var existing = _filters.FirstOrDefault(f => f.Field == args.Field);
+            if (existing is not null)
+            {
+                await RemoveFilter(existing);
+            }
+        }
+
+        _activeFilterColumn = null;
+        StateHasChanged();
+    }
+
+    private async Task HandleExport()
+    {
+        var items = ServerMode ? _displayedItems : _processedItems;
+        await DataGridExportService.ExportToCsvAsync(Interop, items, EffectiveColumns.AsReadOnly());
+    }
+
+    private async Task RequestServerData()
+    {
+        if (OnServerRequest.HasDelegate)
+        {
+            var request = new DataGridServerRequest(
+                _currentPage,
+                PageSize,
+                _sorts.Count > 0 ? _sorts : null,
+                _filters.Count > 0 ? _filters : null,
+                _globalSearch
+            );
+            await OnServerRequest.InvokeAsync(request);
+        }
+    }
+}

@@ -1,0 +1,130 @@
+@namespace Lumeo
+
+@{
+    var status = GetStatus();
+    var isHorizontal = Context?.Orientation != Steps.StepsOrientation.Vertical;
+}
+
+@if (isHorizontal)
+{
+    <div class="@HorizontalCssClass" role="listitem" @attributes="AdditionalAttributes">
+        <div class="flex flex-col items-center">
+            <button type="button"
+                    class="@GetIndicatorClasses(status)"
+                    disabled="@(!IsClickable)"
+                    @onclick="HandleClick">
+                @if (status == StepStatus.Completed)
+                {
+                    <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
+                }
+                else
+                {
+                    <span>@(_index + 1)</span>
+                }
+            </button>
+            <div class="mt-2 text-center">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <p class="@GetTitleClasses(status)">@Title</p>
+                }
+                @if (!string.IsNullOrEmpty(Description))
+                {
+                    <p class="text-xs text-muted-foreground">@Description</p>
+                }
+            </div>
+        </div>
+        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)"></div>
+    </div>
+}
+else
+{
+    <div class="@VerticalCssClass" role="listitem" @attributes="AdditionalAttributes">
+        <div class="flex flex-col items-center">
+            <button type="button"
+                    class="@GetIndicatorClasses(status)"
+                    disabled="@(!IsClickable)"
+                    @onclick="HandleClick">
+                @if (status == StepStatus.Completed)
+                {
+                    <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
+                }
+                else
+                {
+                    <span>@(_index + 1)</span>
+                }
+            </button>
+            <div class="my-1 w-px flex-1 @GetLineClasses(status)"></div>
+        </div>
+        <div class="ml-3 pb-6">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <p class="@GetTitleClasses(status)">@Title</p>
+            }
+            @if (!string.IsNullOrEmpty(Description))
+            {
+                <p class="text-xs text-muted-foreground">@Description</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public Steps.StepsContext? Context { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private int _index;
+
+    protected override void OnParametersSet()
+    {
+        if (Context?.Parent is not null)
+        {
+            _index = Context.Parent.GetNextIndex();
+        }
+    }
+
+    private bool IsClickable => Context?.Clickable == true;
+
+    private StepStatus GetStatus()
+    {
+        var current = Context?.CurrentStep ?? 0;
+        if (_index < current) return StepStatus.Completed;
+        if (_index == current) return StepStatus.Current;
+        return StepStatus.Future;
+    }
+
+    private string GetIndicatorClasses(StepStatus status) => status switch
+    {
+        StepStatus.Completed => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground",
+        StepStatus.Current => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-sm font-semibold text-primary",
+        _ => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground"
+    };
+
+    private string GetTitleClasses(StepStatus status) => status switch
+    {
+        StepStatus.Completed => "text-sm font-medium text-foreground",
+        StepStatus.Current => "text-sm font-semibold text-foreground",
+        _ => "text-sm text-muted-foreground"
+    };
+
+    private string GetLineClasses(StepStatus status) => status switch
+    {
+        StepStatus.Completed => "bg-primary",
+        _ => "bg-border"
+    };
+
+    private async Task HandleClick()
+    {
+        if (Context is not null && IsClickable)
+        {
+            await Context.OnStepClick.InvokeAsync(_index);
+        }
+    }
+
+    private string HorizontalCssClass => $"flex flex-1 flex-row last:flex-initial {Class}".Trim();
+    private string VerticalCssClass => $"flex flex-row {Class}".Trim();
+
+    private enum StepStatus { Completed, Current, Future }
+}

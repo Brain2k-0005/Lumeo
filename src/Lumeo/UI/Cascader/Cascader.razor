@@ -1,0 +1,259 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
+    @* Trigger *@
+    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@_triggerId">
+        @if (SelectedLabels.Count > 0)
+        {
+            <span class="truncate text-sm">@string.Join(" / ", SelectedLabels)</span>
+        }
+        else
+        {
+            <span class="text-sm text-muted-foreground">@(Placeholder ?? "Select...")</span>
+        }
+
+        <span class="ml-auto flex items-center gap-1">
+            @if (Clearable && Value is { Count: > 0 })
+            {
+                <button type="button" class="rounded-full hover:bg-foreground/20 p-0.5" @onclick="Clear" @onclick:stopPropagation="true">
+                    <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+            }
+            <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4 text-muted-foreground" />
+        </span>
+    </button>
+
+    @* Dropdown panels *@
+    @if (_isOpen)
+    {
+        <div id="@_contentId" class="@ContentClass" @onkeydown="HandleKeyDown" tabindex="-1">
+            @if (ShowSearch)
+            {
+                <div class="px-2 py-1.5 border-b border-border/40">
+                    <input type="text" placeholder="Search..."
+                           class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                           value="@_searchText"
+                           @oninput="OnSearchInput" />
+                </div>
+            }
+
+            <div class="flex">
+                @for (var levelIdx = 0; levelIdx <= _activePanels.Count; levelIdx++)
+                {
+                    var options = GetOptionsForLevel(levelIdx);
+                    if (options.Count == 0) break;
+
+                    var level = levelIdx;
+                    <div class="@PanelClass">
+                        @foreach (var option in options)
+                        {
+                            var isSelected = level < _selectedPath.Count && _selectedPath[level] == option.Value;
+                            <button type="button"
+                                    class="@GetOptionClass(isSelected)"
+                                    @onclick="() => SelectOption(option, level)">
+                                <span class="truncate">@option.Label</span>
+                                @if (option.Children is { Count: > 0 })
+                                {
+                                    <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
+                                }
+                                else if (isSelected)
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary ml-auto shrink-0" />
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public List<string>? Value { get; set; }
+    [Parameter] public EventCallback<List<string>> ValueChanged { get; set; }
+    [Parameter] public List<CascaderOption>? Options { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isOpen;
+    private bool _registered;
+    private string _searchText = "";
+    private readonly List<string> _selectedPath = [];
+    private readonly List<CascaderOption> _activePanels = [];
+    private readonly string _wrapperId = $"cascader-{Guid.NewGuid():N}";
+    private readonly string _triggerId = $"cascader-trigger-{Guid.NewGuid():N}";
+    private readonly string _contentId = $"cascader-content-{Guid.NewGuid():N}";
+
+    private string ContainerClass => $"relative inline-block {Class}".Trim();
+    private const string TriggerClass = "flex items-center w-full h-9 px-3 rounded-md border border-input bg-background text-sm hover:bg-accent/50 transition-colors";
+    private const string ContentClass = "fixed z-50 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-fade-in";
+    private const string PanelClass = "min-w-[160px] max-h-64 overflow-y-auto border-r border-border/40 last:border-r-0 p-1";
+
+    private List<string> SelectedLabels
+    {
+        get
+        {
+            if (Value is not { Count: > 0 } || Options is null) return [];
+            var labels = new List<string>();
+            var current = Options;
+            foreach (var val in Value)
+            {
+                var opt = current.FirstOrDefault(o => o.Value == val);
+                if (opt is null) break;
+                labels.Add(opt.Label);
+                current = opt.Children ?? [];
+            }
+            return labels;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Value is { Count: > 0 })
+        {
+            _selectedPath.Clear();
+            _activePanels.Clear();
+            var current = Options ?? [];
+            foreach (var val in Value)
+            {
+                var opt = current.FirstOrDefault(o => o.Value == val);
+                if (opt is null) break;
+                _selectedPath.Add(val);
+                if (opt.Children is { Count: > 0 })
+                {
+                    _activePanels.Add(opt);
+                    current = opt.Children;
+                }
+            }
+        }
+    }
+
+    private List<CascaderOption> GetOptionsForLevel(int level)
+    {
+        if (level == 0)
+        {
+            var opts = Options ?? [];
+            return string.IsNullOrWhiteSpace(_searchText)
+                ? opts
+                : SearchOptions(opts, _searchText);
+        }
+
+        if (level - 1 < _activePanels.Count)
+        {
+            return _activePanels[level - 1].Children ?? [];
+        }
+
+        return [];
+    }
+
+    private static List<CascaderOption> SearchOptions(List<CascaderOption> options, string search)
+    {
+        var result = new List<CascaderOption>();
+        foreach (var opt in options)
+        {
+            if (opt.Label.Contains(search, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(opt);
+            }
+            else if (opt.Children is { Count: > 0 })
+            {
+                var childMatches = SearchOptions(opt.Children, search);
+                if (childMatches.Count > 0) result.Add(opt);
+            }
+        }
+        return result;
+    }
+
+    private async Task SelectOption(CascaderOption option, int level)
+    {
+        // Trim path and panels to current level
+        while (_selectedPath.Count > level) _selectedPath.RemoveAt(_selectedPath.Count - 1);
+        while (_activePanels.Count > level) _activePanels.RemoveAt(_activePanels.Count - 1);
+
+        _selectedPath.Add(option.Value);
+
+        if (option.Children is { Count: > 0 })
+        {
+            _activePanels.Add(option);
+        }
+        else
+        {
+            // Leaf node — set value and close
+            Value = [.._selectedPath];
+            await ValueChanged.InvokeAsync(Value);
+            await SetOpen(false);
+        }
+    }
+
+    private async Task ToggleOpen() => await SetOpen(!_isOpen);
+
+    private async Task SetOpen(bool value)
+    {
+        _isOpen = value;
+        if (!value) _searchText = "";
+    }
+
+    private async Task Clear()
+    {
+        Value = null;
+        _selectedPath.Clear();
+        _activePanels.Clear();
+        await ValueChanged.InvokeAsync(null!);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await SetOpen(false);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? "";
+    }
+
+    private static string GetOptionClass(bool isSelected) =>
+        $"flex w-full items-center gap-1 rounded-sm px-2 py-1.5 text-sm cursor-pointer transition-colors {(isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50")}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isOpen && !_registered)
+        {
+            await Interop.PositionFixed(_contentId, _triggerId, "start", false, "bottom");
+            await Interop.RegisterClickOutside(_contentId, _triggerId, async () =>
+            {
+                await SetOpen(false);
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
+        }
+        else if (!_isOpen && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+
+    public record CascaderOption
+    {
+        public string Label { get; init; } = "";
+        public string Value { get; init; } = "";
+        public List<CascaderOption>? Children { get; init; }
+    }
+}
