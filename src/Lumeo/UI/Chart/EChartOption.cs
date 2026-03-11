@@ -1157,4 +1157,9 @@ public class EChartVisualMapPiece
 [JsonSerializable(typeof(EChartVisualMapPiece))]
 [JsonSerializable(typeof(List<EChartVisualMapPiece>))]
 [JsonSerializable(typeof(List<List<object>>))]
+[JsonSerializable(typeof(object[]))]
+[JsonSerializable(typeof(List<object[]>))]
+[JsonSerializable(typeof(int[]))]
+[JsonSerializable(typeof(List<int>))]
+[JsonSerializable(typeof(List<int[]>))]
 internal partial class EChartJsonContext : JsonSerializerContext;
