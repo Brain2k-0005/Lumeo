@@ -5,11 +5,11 @@
 <PageHeader Title="Chat" Description="A full messaging interface with contact list, conversation view, and message input." />
 
 <ComponentDemo Title="Chat Messaging Interface" Code="@_code">
-    <div class="w-full border rounded-lg overflow-hidden" style="height: 600px;">
+    <Stack Class="w-full border rounded-lg overflow-hidden" style="height: 600px;">
         <Flex Class="h-full">
 
             <!-- Contact Sidebar -->
-            <Flex Class="w-72 border-r bg-card flex-col shrink-0">
+            <Flex Direction="col" Class="w-72 border-r bg-card shrink-0">
                 <Stack Class="p-4 border-b">
                     <Flex Class="items-center justify-between mb-3">
                         <Heading Level="2" Class="text-lg font-bold text-foreground">Messages</Heading>
@@ -19,13 +19,13 @@
                     </Flex>
                     <Flex Class="items-center gap-2 rounded-md border px-3 bg-background">
                         <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground shrink-0" />
-                        <input type="text" placeholder="Search messages..." class="flex h-9 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none" />
+                        <Input type="text" placeholder="Search messages..." Class="flex h-9 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0 shadow-none p-0 focus-visible:ring-0" />
                     </Flex>
                 </Stack>
                 <Stack Class="flex-1 overflow-y-auto">
                     @foreach (var contact in _contacts)
                     {
-                        <button class="flex items-start gap-3 w-full p-3 hover:bg-accent transition-colors text-left @(contact.Id == _selectedContact?.Id ? "bg-accent" : "")"
+                        <Button Variant="Button.ButtonVariant.Ghost" Class="@($"flex items-start gap-3 w-full p-3 hover:bg-accent transition-colors text-left h-auto {(contact.Id == _selectedContact?.Id ? "bg-accent" : "")}")"
                                 @onclick="@(() => SelectContact(contact))">
                             <Stack Class="relative shrink-0">
                                 <Avatar Size="Avatar.AvatarSize.Sm">
@@ -33,7 +33,7 @@
                                 </Avatar>
                                 @if (contact.IsOnline)
                                 {
-                                    <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card"></Lumeo.Text>
+                                    <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card"></Lumeo.Text>
                                 }
                             </Stack>
                             <Stack Class="flex-1 min-w-0">
@@ -49,13 +49,13 @@
                                     }
                                 </Flex>
                             </Stack>
-                        </button>
+                        </Button>
                     }
                 </Stack>
             </Flex>
 
             <!-- Main Chat Area -->
-            <Flex Class="flex-1 flex-col overflow-hidden">
+            <Flex Direction="col" Class="flex-1 overflow-hidden">
                 @if (_selectedContact is not null)
                 {
                     <!-- Chat Header -->
@@ -66,21 +66,24 @@
                             </Avatar>
                             @if (_selectedContact.IsOnline)
                             {
-                                <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card"></Lumeo.Text>
+                                <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card"></Lumeo.Text>
                             }
                         </Stack>
                         <Stack>
                             <Lumeo.Text Class="text-sm font-semibold text-foreground">@_selectedContact.Name</Lumeo.Text>
-                            <p class="text-xs @(_selectedContact.IsOnline ? "text-green-600" : "text-muted-foreground")">
+                            <Lumeo.Text Class="@($"text-xs {(_selectedContact.IsOnline ? "text-primary" : "text-muted-foreground")}")">
                                 @(_selectedContact.IsOnline ? "Online" : "Offline")
-                            </p>
+                            </Lumeo.Text>
                         </Stack>
                         <Flex Class="ml-auto items-center gap-1">
                             <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
                                 <DynamicIcon Name="Search" Class="h-4 w-4" />
                             </Button>
                             <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                <DynamicIcon Name="Settings" Class="h-4 w-4" />
+                                <DynamicIcon Name="Phone" Class="h-4 w-4" />
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                                <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
                             </Button>
                         </Flex>
                     </Flex>
@@ -89,7 +92,7 @@
                     <Stack Gap="3" Class="flex-1 overflow-y-auto p-4">
                         @foreach (var msg in _messages)
                         {
-                            <div class="flex @(msg.IsSent ? "justify-end" : "justify-start")">
+                            <Flex Class="@(msg.IsSent ? "justify-end" : "justify-start")">
                                 @if (!msg.IsSent)
                                 {
                                     <Avatar Size="Avatar.AvatarSize.Sm" Class="mr-2 mt-1 shrink-0">
@@ -97,21 +100,30 @@
                                     </Avatar>
                                 }
                                 <Stack Class="max-w-xs lg:max-w-md">
-                                    <div class="rounded-2xl px-4 py-2 @(msg.IsSent ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted text-foreground rounded-tl-sm")">
+                                    <Stack Class="@($"rounded-2xl px-4 py-2 {(msg.IsSent ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted text-foreground rounded-tl-sm")}")">
                                         <Lumeo.Text Class="text-sm">@msg.Text</Lumeo.Text>
-                                    </div>
-                                    <p class="text-xs text-muted-foreground mt-1 @(msg.IsSent ? "text-right" : "text-left")">@msg.Time</p>
+                                    </Stack>
+                                    <Flex Class="@($"items-center gap-1 mt-1 {(msg.IsSent ? "justify-end" : "justify-start")}")">
+                                        <Lumeo.Text Class="text-xs text-muted-foreground">@msg.Time</Lumeo.Text>
+                                        @if (msg.IsSent)
+                                        {
+                                            <DynamicIcon Name="Check" Class="h-3 w-3 text-primary/60" />
+                                        }
+                                    </Flex>
                                 </Stack>
-                            </div>
+                            </Flex>
                         }
                     </Stack>
 
                     <!-- Message Input -->
                     <Stack Class="border-t bg-card px-4 py-3 shrink-0">
                         <Flex Class="items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9 flex-shrink-0">
+                                <DynamicIcon Name="Paperclip" Class="h-4 w-4" />
+                            </Button>
                             <Input placeholder="Type a message..." @bind-Value="_newMessage" Class="flex-1" />
                             <Button @onclick="SendMessage">
-                                <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
+                                <DynamicIcon Name="Send" Class="h-4 w-4" />
                                 Send
                             </Button>
                         </Flex>
@@ -129,7 +141,7 @@
             </Flex>
 
         </Flex>
-    </div>
+    </Stack>
 </ComponentDemo>
 
 @code {
@@ -185,89 +197,89 @@
     }
 
     private string _code = @"<!-- Chat Interface Layout -->
-<div class=""flex h-full border rounded-lg overflow-hidden"">
+<Flex Class=""h-full border rounded-lg overflow-hidden"">
 
     <!-- Contact Sidebar -->
-    <div class=""w-72 border-r bg-card flex flex-col"">
-        <div class=""p-4 border-b"">
-            <div class=""flex items-center justify-between mb-3"">
-                <h2 class=""text-lg font-bold"">Messages</h2>
+    <Flex Direction=""col"" Class=""w-72 border-r bg-card"">
+        <Stack Class=""p-4 border-b"" Gap=""0"">
+            <Flex Align=""center"" Justify=""between"" Class=""mb-3"">
+                <Heading Level=""2"" Class=""text-lg font-bold"">Messages</Heading>
                 <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                    <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" />
+                    <DynamicIcon Name=""Plus"" Class=""h-4 w-4"" />
                 </Button>
-            </div>
-            <div class=""flex items-center gap-2 rounded-md border px-3"">
-                <Blazicon Svg=""Lucide.Search"" class=""h-4 w-4 text-muted-foreground"" />
-                <input placeholder=""Search messages..."" class=""flex h-9 w-full bg-transparent text-sm outline-none"" />
-            </div>
-        </div>
-        <div class=""flex-1 overflow-y-auto"">
+            </Flex>
+            <Flex Align=""center"" Gap=""2"" Class=""rounded-md border px-3"">
+                <DynamicIcon Name=""Search"" Class=""h-4 w-4 text-muted-foreground"" />
+                <Input Placeholder=""Search messages..."" Class=""flex-1 h-9 bg-transparent"" />
+            </Flex>
+        </Stack>
+        <Stack Class=""flex-1 overflow-y-auto"" Gap=""0"">
             @foreach (var contact in _contacts)
             {
-                <button class=""flex items-start gap-3 w-full p-3 hover:bg-accent"" @onclick=""@(() => SelectContact(contact))"">
-                    <div class=""relative"">
+                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""flex items-start gap-3 w-full p-3 hover:bg-accent text-left h-auto"" @onclick=""@(() => SelectContact(contact))"">
+                    <Stack Class=""relative"" Gap=""0"">
                         <Avatar Size=""Avatar.AvatarSize.Sm"">
                             <AvatarFallback>@contact.Initials</AvatarFallback>
                         </Avatar>
                         @if (contact.IsOnline)
                         {
-                            <span class=""absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500""></span>
+                            <Stack Class=""absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary"" />
                         }
-                    </div>
-                    <div class=""flex-1 min-w-0"">
-                        <div class=""flex items-center justify-between"">
-                            <span class=""text-sm font-medium truncate"">@contact.Name</span>
-                            <span class=""text-xs text-muted-foreground"">@contact.Timestamp</span>
-                        </div>
-                        <div class=""flex items-center justify-between"">
-                            <p class=""text-xs text-muted-foreground truncate"">@contact.LastMessage</p>
+                    </Stack>
+                    <Stack Class=""flex-1 min-w-0"" Gap=""0"">
+                        <Flex Align=""center"" Justify=""between"">
+                            <Lumeo.Text As=""span"" Class=""text-sm font-medium truncate"">@contact.Name</Lumeo.Text>
+                            <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground"">@contact.Timestamp</Lumeo.Text>
+                        </Flex>
+                        <Flex Align=""center"" Justify=""between"">
+                            <Lumeo.Text Class=""text-xs text-muted-foreground truncate"">@contact.LastMessage</Lumeo.Text>
                             @if (contact.UnreadCount > 0)
                             {
                                 <Badge>@contact.UnreadCount</Badge>
                             }
-                        </div>
-                    </div>
-                </button>
+                        </Flex>
+                    </Stack>
+                </Button>
             }
-        </div>
-    </div>
+        </Stack>
+    </Flex>
 
     <!-- Chat Area -->
-    <div class=""flex-1 flex flex-col"">
+    <Flex Direction=""col"" Class=""flex-1"">
         <!-- Header -->
-        <div class=""flex items-center gap-3 px-4 py-3 border-b"">
+        <Flex Align=""center"" Gap=""3"" Class=""px-4 py-3 border-b"">
             <Avatar Size=""Avatar.AvatarSize.Sm"">
                 <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
             </Avatar>
-            <div>
-                <p class=""text-sm font-semibold"">@_selectedContact.Name</p>
-                <p class=""text-xs text-muted-foreground"">Online</p>
-            </div>
-        </div>
+            <Stack Gap=""0"">
+                <Lumeo.Text Class=""text-sm font-semibold"">@_selectedContact.Name</Lumeo.Text>
+                <Lumeo.Text Class=""text-xs text-primary"">Online</Lumeo.Text>
+            </Stack>
+        </Flex>
 
         <!-- Messages -->
-        <div class=""flex-1 overflow-y-auto p-4 space-y-3"">
+        <Stack Gap=""3"" Class=""flex-1 overflow-y-auto p-4"">
             @foreach (var msg in _messages)
             {
-                <div class=""flex @(msg.IsSent ? ""justify-end"" : ""justify-start"")"">
-                    <div class=""rounded-2xl px-4 py-2 max-w-xs @(msg.IsSent ? ""bg-primary text-primary-foreground"" : ""bg-muted text-foreground"")"">
-                        <p class=""text-sm"">@msg.Text</p>
-                    </div>
-                </div>
+                <Flex Class=""@(msg.IsSent ? \""justify-end\"" : \""justify-start\"")"">
+                    <Stack Class=""rounded-2xl px-4 py-2 max-w-xs @(msg.IsSent ? \""bg-primary text-primary-foreground\"" : \""bg-muted text-foreground\"")"" Gap=""0"">
+                        <Lumeo.Text Class=""text-sm"">@msg.Text</Lumeo.Text>
+                    </Stack>
+                </Flex>
             }
-        </div>
+        </Stack>
 
         <!-- Input -->
-        <div class=""border-t px-4 py-3"">
-            <div class=""flex items-center gap-2"">
-                <Input placeholder=""Type a message..."" @bind-Value=""_newMessage"" Class=""flex-1"" />
-                <Button @onclick=""SendMessage"">
-                    <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" /> Send
+        <Stack Class=""border-t px-4 py-3"" Gap=""0"">
+            <Flex Align=""center"" Gap=""2"">
+                <Input Placeholder=""Type a message..."" @bind-Value=""_newMessage"" Class=""flex-1"" />
+                <Button Variant=""Button.ButtonVariant.Default"" @onclick=""SendMessage"">
+                    <DynamicIcon Name=""Send"" Class=""h-4 w-4"" /> Send
                 </Button>
-            </div>
-        </div>
-    </div>
-</div>
+            </Flex>
+        </Stack>
+    </Flex>
+</Flex>
 
 @code {
     private record Contact(int Id, string Name, string Initials, string LastMessage, string Timestamp, bool IsOnline, int UnreadCount);

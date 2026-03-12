@@ -98,6 +98,7 @@
     private ComponentInteropService.ElementRect? _targetRect;
     private TourStepConfig? _currentStepConfig;
     private bool _scrollLocked;
+    private string? _currentTargetSelector;
 
     private string TooltipCssClass => $"fixed z-[61] w-80 rounded-lg border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
 
@@ -150,15 +151,18 @@
 
     private async Task UpdateTargetRect()
     {
-        if (_currentStepConfig?.TargetSelector is not null)
+        var selector = _currentStepConfig?.TargetSelector;
+        if (selector == _currentTargetSelector) return; // Already positioned for this step
+        _currentTargetSelector = selector;
+        if (selector is not null)
         {
-            _targetRect = await Interop.GetElementRectBySelector(_currentStepConfig.TargetSelector);
-            StateHasChanged();
+            _targetRect = await Interop.GetElementRectBySelector(selector);
         }
         else
         {
             _targetRect = null;
         }
+        StateHasChanged(); // Safe: only fires when selector changes, not on every render
     }
 
     private async Task HandleNext()
@@ -167,6 +171,7 @@
         {
             CurrentStep++;
             _currentStepConfig = Steps[CurrentStep];
+            _currentTargetSelector = null; // Force re-fetch for new step
             await CurrentStepChanged.InvokeAsync(CurrentStep);
             await UpdateTargetRect();
         }
@@ -178,6 +183,7 @@
         {
             CurrentStep--;
             _currentStepConfig = Steps[CurrentStep];
+            _currentTargetSelector = null; // Force re-fetch for new step
             await CurrentStepChanged.InvokeAsync(CurrentStep);
             await UpdateTargetRect();
         }
@@ -207,6 +213,7 @@
         CurrentStep = 0;
         _currentStepConfig = null;
         _targetRect = null;
+        _currentTargetSelector = null;
         await IsOpenChanged.InvokeAsync(false);
         await CurrentStepChanged.InvokeAsync(0);
         if (_scrollLocked)

@@ -32,6 +32,10 @@
                     {
                         <Blazicon Svg="Lucide.ArrowDown" class="h-3.5 w-3.5" />
                     }
+                    @if (TotalSortCount > 1 && SortPriority > 0)
+                    {
+                        <span class="flex items-center justify-center h-3.5 w-3.5 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none">@SortPriority</span>
+                    }
                 }
                 else if (Column.Sortable)
                 {
@@ -85,6 +89,8 @@
     [Parameter] public EventCallback OnFilterToggle { get; set; }
     [Parameter] public EventCallback<FilterApplyEventArgs> OnFilterApply { get; set; }
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+    [Parameter] public int SortPriority { get; set; }
+    [Parameter] public int TotalSortCount { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -120,6 +126,10 @@
                 parts.Add($"width: {Column.Width.Value}px");
                 parts.Add($"min-width: {Column.Width.Value}px");
             }
+            if (Column.Pin == PinDirection.Left && Context?.PinnedLeftOffsets.TryGetValue(Column.Id, out var leftOff) == true)
+                parts.Add($"left: {leftOff}px");
+            else if (Column.Pin == PinDirection.Right && Context?.PinnedRightOffsets.TryGetValue(Column.Id, out var rightOff) == true)
+                parts.Add($"right: {rightOff}px");
             return parts.Count > 0 ? string.Join("; ", parts) + ";" : null;
         }
     }

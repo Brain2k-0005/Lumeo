@@ -15,6 +15,10 @@
     [Parameter] public ToggleGroupType Type { get; set; } = ToggleGroupType.Single;
     [Parameter] public ToggleGroupVariant Variant { get; set; } = ToggleGroupVariant.Default;
     [Parameter] public ToggleGroupSize Size { get; set; } = ToggleGroupSize.Default;
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public IEnumerable<string>? SelectedValues { get; set; }
+    [Parameter] public EventCallback<IEnumerable<string>> SelectedValuesChanged { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -22,7 +26,21 @@
 
     private string CssClass => $"flex items-center gap-1 {Class}".Trim();
 
-    private Task ToggleItem(string value)
+    protected override void OnParametersSet()
+    {
+        if (Type == ToggleGroupType.Single && Value is not null)
+        {
+            _selectedItems.Clear();
+            _selectedItems.Add(Value);
+        }
+        else if (Type == ToggleGroupType.Multiple && SelectedValues is not null)
+        {
+            _selectedItems.Clear();
+            foreach (var v in SelectedValues) _selectedItems.Add(v);
+        }
+    }
+
+    private async Task ToggleItem(string value)
     {
         if (_selectedItems.Contains(value))
         {
@@ -37,7 +55,11 @@
             _selectedItems.Add(value);
         }
         StateHasChanged();
-        return Task.CompletedTask;
+
+        if (Type == ToggleGroupType.Single)
+            await ValueChanged.InvokeAsync(_selectedItems.FirstOrDefault());
+        else
+            await SelectedValuesChanged.InvokeAsync(_selectedItems.ToList());
     }
 
     public enum ToggleGroupType { Single, Multiple }

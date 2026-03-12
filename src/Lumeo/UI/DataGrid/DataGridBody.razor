@@ -64,15 +64,45 @@ else if (Context is not null && UseVirtualization)
 else if (Context is not null)
 {
     <tbody class="@CssClass" @attributes="AdditionalAttributes">
-        @{ var index = 0; }
-        @foreach (var item in Context.DisplayedItems)
+        @if (Context.IsGrouped && Context.GroupedSections is not null)
         {
-            <DataGridRow TItem="TItem"
-                         Item="item"
-                         RowIndex="index"
-                         DetailTemplate="DetailTemplate"
-                         OnContextMenu="OnContextMenu" />
-            index++;
+            @foreach (var grp in Context.GroupedSections)
+            {
+                var groupKey = grp.Key;
+                var expanded = Context.IsGroupExpanded(groupKey);
+                <DataGridGroupRow TItem="TItem"
+                                  GroupKey="@groupKey"
+                                  Count="@grp.TotalCount"
+                                  IsExpanded="@expanded"
+                                  ColSpan="@ColSpan"
+                                  OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
+                if (expanded)
+                {
+                    var grpIndex = 0;
+                    foreach (var item in grp.Items)
+                    {
+                        <DataGridRow TItem="TItem"
+                                     Item="item"
+                                     RowIndex="grpIndex"
+                                     DetailTemplate="DetailTemplate"
+                                     OnContextMenu="OnContextMenu" />
+                        grpIndex++;
+                    }
+                }
+            }
+        }
+        else
+        {
+            var idx = 0;
+            foreach (var item in Context.DisplayedItems)
+            {
+                <DataGridRow TItem="TItem"
+                             Item="item"
+                             RowIndex="idx"
+                             DetailTemplate="DetailTemplate"
+                             OnContextMenu="OnContextMenu" />
+                idx++;
+            }
         }
     </tbody>
 }

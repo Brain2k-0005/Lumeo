@@ -17,7 +17,9 @@ public record DataGridServerRequest(
     int PageSize,
     List<SortDescriptor>? Sorts,
     List<FilterDescriptor>? Filters,
-    string? GlobalSearch
+    string? GlobalSearch,
+    string? GroupBy = null,
+    CancellationToken CancellationToken = default
 );
 
 public record DataGridServerResponse<TItem>(
@@ -77,3 +79,12 @@ public class ColumnLayout
     public PinDirection Pin { get; set; } = PinDirection.None;
     public int Order { get; set; }
 }
+
+public record DataGridGroupSection<TItem>(string Key, List<TItem> Items, int TotalCount);
+
+public record DataGridNamedLayout(
+    string Id,
+    string Name,
+    string Scope,  // "Personal", "Global", "SystemDefault"
+    DataGridLayout Layout
+);

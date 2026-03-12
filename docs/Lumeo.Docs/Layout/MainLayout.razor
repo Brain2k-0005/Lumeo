@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject Lumeo.Services.ThemeService ThemeService
@@ -27,7 +28,7 @@
             <div class="flex-1"></div>
 
             <!-- Search trigger -->
-            <Button Class="hidden sm:flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-52"
+            <Button Variant="Button.ButtonVariant.Ghost" Class="hidden sm:flex h-auto items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-52"
                     data-search-trigger="true"
                     OnClick="OpenSearch">
                 <DynamicIcon Name="Search" Class="h-3.5 w-3.5 shrink-0" />
@@ -89,12 +90,14 @@
 <!-- Search Command Palette -->
 @if (_searchOpen)
 {
-    <Flex Class="fixed inset-0 z-[100] items-start justify-center pt-[15vh]">
-        <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-lg mx-4 rounded-xl border bg-card shadow-lg overflow-hidden" @onclick:stopPropagation>
-            <Flex Class="items-center border-b px-4">
-                <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground shrink-0" />
-                <input class="flex-1 bg-transparent px-3 py-3.5 text-sm outline-none placeholder:text-muted-foreground text-foreground"
+    <div class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" @onkeydown="HandleSearchKeyDown">
+        <div class="absolute inset-0 bg-background/70 backdrop-blur-sm" @onclick="CloseSearch"></div>
+        <div class="relative w-full max-w-[480px] mx-4 rounded-xl bg-card shadow-2xl border border-border/40 overflow-hidden" @onclick:stopPropagation>
+
+            @* Search input row *@
+            <div class="flex items-center gap-3 px-4 border-b border-border/30">
+                <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground/60 shrink-0" />
+                <input class="flex-1 bg-transparent py-4 text-sm outline-none placeholder:text-muted-foreground/50 text-foreground"
                        placeholder="Search components, patterns..."
                        value="@_searchQuery"
                        @oninput="OnSearchInput"
@@ -102,68 +105,53 @@
                        autofocus />
                 @if (_searchQuery.Length > 0)
                 {
-                    <Button Class="text-muted-foreground hover:text-foreground" OnClick='() => { _searchQuery = string.Empty; _searchResults = []; }'>
-                        <DynamicIcon Name="X" Class="h-4 w-4" />
-                    </Button>
+                    <button class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
+                            @onclick='() => { _searchQuery = string.Empty; _searchResults = []; }'>
+                        <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
+                    </button>
                 }
-            </Flex>
-            <div class="max-h-[400px] overflow-y-auto p-2">
+            </div>
+
+            @* Results list *@
+            <div class="max-h-[360px] overflow-y-auto">
                 @{
                     var displayItems = _searchQuery.Length == 0
-                        ? _allSearchItems.Take(6).ToList()
+                        ? _allSearchItems.Take(8).ToList()
                         : _searchResults;
                 }
                 @if (_searchQuery.Length > 0 && _searchResults.Count == 0)
                 {
-                    <div class="py-6 text-center">
-                        <Lumeo.Text Size="sm" Color="muted">No results for "<Lumeo.Text As="span">@_searchQuery</Lumeo.Text>"</Lumeo.Text>
+                    <div class="py-12 text-center">
+                        <Lumeo.Text Size="sm" Color="muted">No results for "<Lumeo.Text As="span" Class="text-foreground">@_searchQuery</Lumeo.Text>"</Lumeo.Text>
                     </div>
                 }
                 else
                 {
-                    <div class="py-1">
+                    <div class="py-1.5">
                         @if (_searchQuery.Length == 0)
                         {
-                            <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="px-3 py-1.5">Suggestions</Lumeo.Text>
-                        }
-                        else
-                        {
-                            <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="px-3 py-1.5">@_searchResults.Count result@(_searchResults.Count == 1 ? "" : "s")</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted" Class="px-4 py-1 block">Suggestions</Lumeo.Text>
                         }
                         @foreach (var item in displayItems)
                         {
-                            <Button Class="w-full flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-accent transition-colors"
-                                    OnClick="() => NavigateTo(item)">
-                                <Flex Class="h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background">
-                                    @if (item.Category == "Blocks")
-                                    {
-                                        <DynamicIcon Name="LayoutGrid" Class="h-3.5 w-3.5 text-muted-foreground" />
-                                    }
-                                    else if (item.Category == "Customization")
-                                    {
-                                        <DynamicIcon Name="Palette" Class="h-3.5 w-3.5 text-muted-foreground" />
-                                    }
-                                    else
-                                    {
-                                        <DynamicIcon Name="Box" Class="h-3.5 w-3.5 text-muted-foreground" />
-                                    }
-                                </Flex>
-                                <div class="flex-1 min-w-0">
-                                    <Lumeo.Text Size="sm" Weight="medium">@item.Label</Lumeo.Text>
-                                    <Lumeo.Text Size="xs" Color="muted">@item.Category</Lumeo.Text>
-                                </div>
-                                <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            </Button>
+                            <button class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group"
+                                    @onclick="() => NavigateTo(item)">
+                                <DynamicIcon Name="@GetSearchIcon(item.Category)" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                                <span class="flex-1 text-foreground/90">@item.Label</span>
+                                <span class="text-[11px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">@item.Category</span>
+                            </button>
                         }
                     </div>
                 }
             </div>
-            <Flex Class="border-t px-4 py-2 items-center gap-4 text-xs text-muted-foreground">
-                <Lumeo.Text As="span" Class="flex items-center gap-1.5"><kbd class="rounded border bg-muted px-1 py-0.5 text-[10px]">↵</kbd> select</Lumeo.Text>
-                <Lumeo.Text As="span" Class="flex items-center gap-1.5"><kbd class="rounded border bg-muted px-1 py-0.5 text-[10px]">Esc</kbd> close</Lumeo.Text>
-            </Flex>
+
+            @* Footer *@
+            <div class="border-t border-border/30 px-4 py-2 flex items-center gap-4 text-[11px] text-muted-foreground/50">
+                <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">↵</kbd> select</span>
+                <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Esc</kbd> close</span>
+            </div>
         </div>
-    </Flex>
+    </div>
 }
 
 @code {
@@ -344,6 +332,7 @@
         new("Table", "Components", "components/table"),
         new("Timeline", "Components", "components/timeline"),
         // Utility
+        new("Dynamic Icon", "Components", "components/dynamic-icon"),
         new("Affix", "Components", "components/affix"),
         new("Back To Top", "Components", "components/back-to-top"),
         new("Kbd", "Components", "components/kbd"),
@@ -389,6 +378,11 @@
     {
         if (firstRender)
         {
+            await ThemeService.InitializeAsync();
+            _darkMode = ThemeService.IsDark;
+            ThemeService.OnThemeChanged += OnThemeServiceChanged;
+            StateHasChanged();
+
             await JS.InvokeVoidAsync("eval", @"
                 document.addEventListener('keydown', function(e) {
                     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -423,6 +417,11 @@
         _searchResults = [];
     }
 
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") CloseSearch();
+    }
+
     private void OnSearchInput(ChangeEventArgs e)
     {
         _searchQuery = e.Value?.ToString() ?? string.Empty;
@@ -444,9 +443,26 @@
         Nav.NavigateTo(item.Href);
     }
 
+    private static string GetSearchIcon(string category) => category switch
+    {
+        "Blocks" => "LayoutGrid",
+        "Charts" => "TrendingUp",
+        "Services" => "Wrench",
+        "Customization" => "Palette",
+        _ => "Box"
+    };
+
+    private void OnThemeServiceChanged()
+    {
+        _darkMode = ThemeService.IsDark;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => ThemeService.OnThemeChanged -= OnThemeServiceChanged;
+
     private async Task ToggleDarkMode()
     {
         await ThemeService.ToggleModeAsync();
-        _darkMode = !_darkMode;
+        _darkMode = ThemeService.IsDark;
     }
 }

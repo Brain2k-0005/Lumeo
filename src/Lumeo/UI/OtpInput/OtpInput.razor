@@ -15,7 +15,8 @@
                            inputmode="@InputModeAttr"
                            maxlength="1"
                            autocomplete="one-time-code"
-                           class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none"
+                           class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                           disabled="@Disabled"
                            value="@GetChar(index)"
                            @oninput="@(e => HandleInput(index, e))"
                            @onkeydown="@(e => HandleKeyDown(index, e))" />
@@ -38,6 +39,7 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public EventCallback<string> OnComplete { get; set; }
     [Parameter] public string InputMode { get; set; } = "Numeric";
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Masked { get; set; }
     [Parameter] public string? Separator { get; set; }
     [Parameter] public int[]? GroupSizes { get; set; }
@@ -153,13 +155,24 @@
 
     private async Task HandleKeyDown(int index, KeyboardEventArgs e)
     {
-        if (e.Key == "Backspace" && GetChar(index) == "" && index > 0)
+        if (e.Key == "Backspace" || e.Key == "Delete")
         {
             var chars = Value.PadRight(Length).ToCharArray();
-            chars[index - 1] = ' ';
-            Value = new string(chars).TrimEnd();
-            await ValueChanged.InvokeAsync(Value);
-            await Interop.FocusElement($"{_baseId}-{index - 1}");
+            if (GetChar(index) != "")
+            {
+                chars[index] = ' ';
+                Value = new string(chars).TrimEnd();
+                await ValueChanged.InvokeAsync(Value);
+                if (index > 0)
+                    await Interop.FocusElement($"{_baseId}-{index - 1}");
+            }
+            else if (index > 0)
+            {
+                chars[index - 1] = ' ';
+                Value = new string(chars).TrimEnd();
+                await ValueChanged.InvokeAsync(Value);
+                await Interop.FocusElement($"{_baseId}-{index - 1}");
+            }
         }
     }
 

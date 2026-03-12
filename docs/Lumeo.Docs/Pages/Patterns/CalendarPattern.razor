@@ -73,25 +73,49 @@
                                 var cellDay = dayNum;
                                 var cellDate = date;
 
-                                <div class="@($"bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent transition-colors {(isSelected ? "bg-accent" : "")}")"
+                                <Stack Class="@($"bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent transition-colors {(isSelected ? "bg-accent" : "")}")"
                                      @onclick="@(() => { if (cellDate.HasValue) _selectedDate = cellDate.Value; })">
-                                    <Flex Class="flex-col h-full">
-                                        <span class="@($"text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 {(isToday ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-foreground" : "text-muted-foreground/40")}")">
+                                    <Flex Direction="col" Class="h-full">
+                                        <Lumeo.Text As="span" Class="@($"text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 {(isToday ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-foreground" : "text-muted-foreground/40")}")">
                                             @(isCurrentMonth ? dayNum.ToString() : "")
-                                        </span>
+                                        </Lumeo.Text>
                                         @if (hasEvents)
                                         {
                                             <Flex Class="flex-wrap gap-0.5">
                                                 @foreach (var ev in dayEvents.Take(3))
                                                 {
-                                                    <span class="@($"inline-block w-1.5 h-1.5 rounded-full {ev.ColorClass}")"></span>
+                                                    <Lumeo.Text As="span" Class="@($"inline-block w-1.5 h-1.5 rounded-full {ev.ColorClass}")"></Lumeo.Text>
                                                 }
                                             </Flex>
                                         }
                                     </Flex>
-                                </div>
+                                </Stack>
                             }
                         </Grid>
+
+                        <!-- Color Legend -->
+                        <Flex Class="gap-3 flex-wrap mt-4 pt-3 border-t border-border/40">
+                            <Flex Class="items-center gap-1.5">
+                                <Stack Class="h-2.5 w-2.5 rounded-full bg-primary" />
+                                <Text Size="xs" Class="text-muted-foreground">Work</Text>
+                            </Flex>
+                            <Flex Class="items-center gap-1.5">
+                                <Stack Class="h-2.5 w-2.5 rounded-full bg-chart-1" />
+                                <Text Size="xs" Class="text-muted-foreground">Health</Text>
+                            </Flex>
+                            <Flex Class="items-center gap-1.5">
+                                <Stack Class="h-2.5 w-2.5 rounded-full bg-destructive" />
+                                <Text Size="xs" Class="text-muted-foreground">Urgent</Text>
+                            </Flex>
+                            <Flex Class="items-center gap-1.5">
+                                <Stack Class="h-2.5 w-2.5 rounded-full bg-chart-2" />
+                                <Text Size="xs" Class="text-muted-foreground">Meeting</Text>
+                            </Flex>
+                            <Flex Class="items-center gap-1.5">
+                                <Stack Class="h-2.5 w-2.5 rounded-full bg-chart-3" />
+                                <Text Size="xs" Class="text-muted-foreground">Personal</Text>
+                            </Flex>
+                        </Flex>
                     </CardContent>
                 </Card>
             </Stack>
@@ -116,18 +140,22 @@
                         }
                         else
                         {
-                            <div class="divide-y divide-border">
+                            <Stack Class="divide-y divide-border">
                                 @foreach (var ev in selectedEvents)
                                 {
-                                    <Flex Align="start" Gap="3" Class="px-4 py-3">
-                                        <span class="@($"mt-1 w-2 h-2 rounded-full shrink-0 {ev.ColorClass}")"></span>
-                                        <Stack Gap="0" Class="min-w-0">
-                                            <Lumeo.Text Size="sm" Weight="medium" Color="foreground" Truncate="true">@ev.Title</Lumeo.Text>
-                                            <Lumeo.Text Size="xs" Color="muted">@ev.Time</Lumeo.Text>
-                                        </Stack>
-                                    </Flex>
+                                    <Stack Class="px-4 py-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                                           @onclick="@(() => _selectedEvent = ev)">
+                                        <Flex Align="start" Gap="3">
+                                            <Lumeo.Text As="span" Class="@($"mt-1 w-2 h-2 rounded-full shrink-0 {ev.ColorClass}")"></Lumeo.Text>
+                                            <Stack Gap="0" Class="min-w-0">
+                                                <Lumeo.Text Size="sm" Weight="medium" Color="foreground" Truncate="true">@ev.Title</Lumeo.Text>
+                                                <Lumeo.Text Size="xs" Color="muted">@ev.Time</Lumeo.Text>
+                                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="mt-1 w-fit text-xs">@ev.Category</Badge>
+                                            </Stack>
+                                        </Flex>
+                                    </Stack>
                                 }
-                            </div>
+                            </Stack>
                         }
                     </CardContent>
                 </Card>
@@ -158,18 +186,34 @@
                                 <Textarea placeholder="Add a description..." />
                             </Stack>
                             <Stack Gap="1.5">
+                                <Label Class="text-xs">Category</Label>
+                                <Select @bind-Value="_newEventCategory">
+                                    <SelectTrigger>
+                                        <SelectValue Placeholder="Select category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem Value="@("Work")">Work</SelectItem>
+                                        <SelectItem Value="@("Meeting")">Meeting</SelectItem>
+                                        <SelectItem Value="@("Personal")">Personal</SelectItem>
+                                        <SelectItem Value="@("Urgent")">Urgent</SelectItem>
+                                        <SelectItem Value="@("Health")">Health</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </Stack>
+                            <Stack Gap="1.5">
                                 <Label Class="text-xs">Color</Label>
                                 <Flex Gap="2">
                                     @foreach (var color in _colorOptions)
                                     {
                                         var c = color;
-                                        <button @onclick="@(() => _selectedColor = c.Key)"
-                                                class="@($"w-6 h-6 rounded-full {c.Value} ring-offset-2 ring-offset-background transition-all {(_selectedColor == c.Key ? "ring-2 ring-foreground" : "")}")">
-                                        </button>
+                                        <Button Variant="Button.ButtonVariant.Ghost"
+                                                Class="@($"w-6 h-6 p-0 rounded-full {c.Value} ring-offset-2 ring-offset-background transition-all {(_selectedColor == c.Key ? "ring-2 ring-foreground" : "")}")"
+                                                @onclick="@(() => _selectedColor = c.Key)">
+                                        </Button>
                                     }
                                 </Flex>
                             </Stack>
-                            <Button Class="w-full" OnClick="@AddEvent">
+                            <Button Variant="Button.ButtonVariant.Default" Class="w-full" OnClick="@AddEvent">
                                 <DynamicIcon Name="Plus" Class="h-4 w-4" />
                                 Create Event
                             </Button>
@@ -189,25 +233,27 @@
     private string _view = "month";
     private string _newEventTitle = "";
     private string _selectedColor = "blue";
+    private string _newEventCategory = "Work";
+    private CalendarEvent? _selectedEvent;
 
     private Dictionary<string, string> _colorOptions = new()
     {
-        { "blue", "bg-blue-500" },
-        { "green", "bg-green-500" },
-        { "red", "bg-red-500" },
-        { "purple", "bg-purple-500" },
-        { "orange", "bg-orange-500" },
+        { "blue", "bg-primary" },
+        { "green", "bg-chart-1" },
+        { "red", "bg-destructive" },
+        { "purple", "bg-chart-2" },
+        { "orange", "bg-chart-3" },
     };
 
     private List<CalendarEvent> _events = new()
     {
-        new(DateTime.Today, "Team standup", "9:00 AM", "bg-blue-500"),
-        new(DateTime.Today, "Design review", "2:00 PM", "bg-purple-500"),
-        new(DateTime.Today, "Sprint planning", "4:00 PM", "bg-green-500"),
-        new(DateTime.Today.AddDays(2), "Client call", "10:00 AM", "bg-orange-500"),
-        new(DateTime.Today.AddDays(2), "Lunch with Sarah", "12:30 PM", "bg-red-500"),
-        new(DateTime.Today.AddDays(5), "Product demo", "3:00 PM", "bg-blue-500"),
-        new(DateTime.Today.AddDays(-2), "Release v2.0", "11:00 AM", "bg-green-500"),
+        new(DateTime.Today, "Team standup", "9:00 AM", "bg-primary", "Work"),
+        new(DateTime.Today, "Design review", "2:00 PM", "bg-chart-2", "Meeting"),
+        new(DateTime.Today, "Sprint planning", "4:00 PM", "bg-chart-1", "Health"),
+        new(DateTime.Today.AddDays(2), "Client call", "10:00 AM", "bg-chart-3", "Personal"),
+        new(DateTime.Today.AddDays(2), "Lunch with Sarah", "12:30 PM", "bg-destructive", "Urgent"),
+        new(DateTime.Today.AddDays(5), "Product demo", "3:00 PM", "bg-primary", "Work"),
+        new(DateTime.Today.AddDays(-2), "Release v2.0", "11:00 AM", "bg-chart-1", "Health"),
     };
 
     private void PrevMonth() => _currentMonth = _currentMonth.AddMonths(-1);
@@ -217,96 +263,106 @@
     {
         if (!string.IsNullOrWhiteSpace(_newEventTitle))
         {
-            var colorClass = _colorOptions.GetValueOrDefault(_selectedColor, "bg-blue-500");
-            _events.Add(new CalendarEvent(_selectedDate, _newEventTitle, "12:00 PM", colorClass));
+            var colorClass = _colorOptions.GetValueOrDefault(_selectedColor, "bg-primary");
+            _events.Add(new CalendarEvent(_selectedDate, _newEventTitle, "12:00 PM", colorClass, _newEventCategory));
             _newEventTitle = "";
         }
     }
 
-    private record CalendarEvent(DateTime Date, string Title, string Time, string ColorClass);
+    private record CalendarEvent(DateTime Date, string Title, string Time, string ColorClass, string Category);
 
     private string _calendarCode = @"<!-- Calendar with month grid, event dots, side panel, and new event form -->
-<div class=""flex gap-4"">
+<Flex Gap=""4"">
     <!-- Main Calendar -->
-    <Card class=""flex-1"">
+    <Card Class=""flex-1"">
         <CardHeader>
-            <div class=""flex items-center justify-between"">
-                <div class=""flex items-center gap-2"">
+            <Flex Align=""center"" Justify=""between"">
+                <Flex Align=""center"" Gap=""2"">
                     <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"" OnClick=""PrevMonth"">
-                        <Blazicon Svg=""Lucide.ChevronLeft"" class=""h-4 w-4"" />
+                        <DynamicIcon Name=""ChevronLeft"" Class=""h-4 w-4"" />
                     </Button>
-                    <h3 class=""font-semibold"">@_currentMonth.ToString(""MMMM yyyy"")</h3>
+                    <Heading Level=""3"" Class=""font-semibold"">@_currentMonth.ToString(""MMMM yyyy"")</Heading>
                     <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"" OnClick=""NextMonth"">
-                        <Blazicon Svg=""Lucide.ChevronRight"" class=""h-4 w-4"" />
+                        <DynamicIcon Name=""ChevronRight"" Class=""h-4 w-4"" />
                     </Button>
-                </div>
-                <div class=""flex gap-1"">
-                    <Button Size=""Button.ButtonSize.Sm"">Day</Button>
-                    <Button Size=""Button.ButtonSize.Sm"">Week</Button>
-                    <Button Size=""Button.ButtonSize.Sm"">Month</Button>
-                </div>
-            </div>
+                </Flex>
+                <Flex Gap=""1"">
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Day</Button>
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Week</Button>
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Month</Button>
+                </Flex>
+            </Flex>
         </CardHeader>
         <CardContent>
             <!-- 7-column day grid -->
-            <div class=""grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden"">
+            <Grid Class=""grid-cols-7 gap-px bg-border rounded-lg overflow-hidden"">
                 @for (int i = 0; i < totalCells; i++)
                 {
-                    <div class=""bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent"">
-                        <span class=""text-xs font-medium"">@dayNum</span>
+                    <Stack Class=""bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent"" Gap=""0"">
+                        <Lumeo.Text As=""span"" Class=""text-xs font-medium"">@dayNum</Lumeo.Text>
                         <!-- Event dots -->
-                        <div class=""flex gap-0.5 mt-1"">
-                            <span class=""w-1.5 h-1.5 rounded-full bg-blue-500""></span>
-                            <span class=""w-1.5 h-1.5 rounded-full bg-green-500""></span>
-                        </div>
-                    </div>
+                        <Flex Class=""gap-0.5 mt-1"">
+                            <Stack Class=""w-1.5 h-1.5 rounded-full bg-primary"" />
+                            <Stack Class=""w-1.5 h-1.5 rounded-full bg-chart-1"" />
+                        </Flex>
+                    </Stack>
                 }
-            </div>
+            </Grid>
         </CardContent>
     </Card>
 
     <!-- Side Panel -->
-    <div class=""w-72 flex flex-col gap-4"">
+    <Stack Gap=""4"" Class=""w-72"">
         <!-- Day Events -->
         <Card>
             <CardHeader>
-                <h3 class=""text-sm font-semibold"">@_selectedDate.ToString(""dddd, MMMM d"")</h3>
+                <Heading Level=""3"" Class=""text-sm font-semibold"">@_selectedDate.ToString(""dddd, MMMM d"")</Heading>
             </CardHeader>
             <CardContent>
-                <div class=""flex items-center gap-3 py-2"">
-                    <span class=""w-2 h-2 rounded-full bg-blue-500""></span>
-                    <div>
-                        <p class=""text-sm font-medium"">Team standup</p>
-                        <p class=""text-xs text-muted-foreground"">9:00 AM</p>
-                    </div>
-                </div>
+                <Flex Align=""center"" Gap=""3"" Class=""py-2"">
+                    <Stack Class=""w-2 h-2 rounded-full bg-primary"" />
+                    <Stack Gap=""0"">
+                        <Lumeo.Text Class=""text-sm font-medium"">Team standup</Lumeo.Text>
+                        <Lumeo.Text Class=""text-xs text-muted-foreground"">9:00 AM</Lumeo.Text>
+                    </Stack>
+                </Flex>
             </CardContent>
         </Card>
 
         <!-- New Event -->
         <Card>
-            <CardHeader><h3 class=""text-sm font-semibold"">New Event</h3></CardHeader>
+            <CardHeader><Heading Level=""3"" Class=""text-sm font-semibold"">New Event</Heading></CardHeader>
             <CardContent>
-                <div class=""space-y-3"">
+                <Stack Gap=""3"">
                     <Input placeholder=""Event title"" />
-                    <div class=""grid grid-cols-2 gap-2"">
+                    <Grid Class=""grid-cols-2 gap-2"">
                         <Input type=""time"" Value=""09:00"" />
                         <Input type=""time"" Value=""10:00"" />
-                    </div>
+                    </Grid>
                     <Textarea placeholder=""Description..."" />
-                    <Button Class=""w-full"">
-                        <Blazicon Svg=""Lucide.Plus"" class=""h-4 w-4"" />
+                    <Select>
+                        <SelectTrigger><SelectValue Placeholder=""Category"" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem Value=""Work"">Work</SelectItem>
+                            <SelectItem Value=""Meeting"">Meeting</SelectItem>
+                            <SelectItem Value=""Personal"">Personal</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Button Variant=""Button.ButtonVariant.Default"" Class=""w-full"">
+                        <DynamicIcon Name=""Plus"" Class=""h-4 w-4"" />
                         Create Event
                     </Button>
-                </div>
+                </Stack>
             </CardContent>
         </Card>
-    </div>
-</div>
+    </Stack>
+</Flex>
 
 @code {
     private DateTime _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime _selectedDate = DateTime.Today;
+
+    private record CalendarEvent(DateTime Date, string Title, string Time, string ColorClass, string Category);
 
     private void PrevMonth() => _currentMonth = _currentMonth.AddMonths(-1);
     private void NextMonth() => _currentMonth = _currentMonth.AddMonths(1);

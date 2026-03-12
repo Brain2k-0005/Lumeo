@@ -25,9 +25,6 @@ public enum DataGridEditMode
 {
     None,
     Cell,
-    /// <summary>
-    /// Row-level editing. Not yet implemented; reserved for future use.
-    /// </summary>
     Row
 }
 

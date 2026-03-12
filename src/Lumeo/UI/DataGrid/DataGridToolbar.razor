@@ -48,12 +48,25 @@
             </button>
         }
 
-        <button type="button"
-                class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                @onclick="ToggleColumnVisibility">
-            <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
-            <span>Columns</span>
-        </button>
+        @* Column visibility dropdown *@
+        <div class="relative">
+            <button type="button"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                    @onclick="ToggleColumnPanel">
+                <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
+                <span>Columns</span>
+            </button>
+
+            @if (_columnPanelOpen && EffectiveColumns is not null)
+            {
+                <div class="absolute right-0 top-full mt-1 z-50">
+                    <DataGridColumnVisibility TItem="TItem"
+                                              Columns="EffectiveColumns"
+                                              OnColumnToggle="OnColumnToggle"
+                                              OnColumnReorder="OnColumnReorder" />
+                </div>
+            }
+        </div>
 
         @* Export dropdown *@
         <div class="relative">
@@ -90,34 +103,137 @@
             }
         </div>
 
-        @* Layout persistence dropdown *@
+        @* Layouts dropdown *@
         @if (EnableLayoutPersistence)
         {
             <div class="relative">
                 <button type="button"
                         class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                        @onclick="ToggleLayoutMenu">
+                        @onclick="ToggleLayoutsPanel">
                     <Blazicon Svg="Lucide.LayoutTemplate" class="h-4 w-4 mr-1.5" />
-                    <span>Layout</span>
+                    <span>Layouts</span>
                     <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
                 </button>
 
-                @if (_layoutMenuOpen)
+                @if (_layoutsPanelOpen)
                 {
-                    <div class="absolute right-0 top-full mt-1 z-50 min-w-[150px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
-                        <button type="button"
-                                class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                                @onclick="SaveLayout">
-                            <Blazicon Svg="Lucide.Save" class="h-4 w-4" />
-                            <span>Save Layout</span>
-                        </button>
-                        <div class="my-1 border-t border-border/40"></div>
-                        <button type="button"
-                                class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
-                                @onclick="ResetLayout">
-                            <Blazicon Svg="Lucide.RotateCcw" class="h-4 w-4" />
-                            <span>Reset Layout</span>
-                        </button>
+                    <div class="absolute right-0 top-full mt-1 z-50 w-72 rounded-md border border-border/40 bg-popover shadow-md overflow-hidden">
+
+                        @* Personal layouts *@
+                        <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/40 bg-muted/30">
+                            Personal
+                        </div>
+                        <div class="p-1">
+                            @if (_personalLayouts.Count == 0)
+                            {
+                                <div class="px-3 py-1.5 text-xs text-muted-foreground italic">No saved layouts yet.</div>
+                            }
+                            else
+                            {
+                                @foreach (var layout in _personalLayouts)
+                                {
+                                    var l = layout;
+                                    <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
+                                        <span class="flex-1 text-sm truncate">@l.Name</span>
+                                        <button type="button"
+                                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Apply layout"
+                                                @onclick="@(async () => await ApplyLayout(l))">
+                                            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                                        </button>
+                                        <button type="button"
+                                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Delete layout"
+                                                @onclick="@(async () => await DeletePersonalLayout(l.Id))">
+                                            <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                }
+                            }
+
+                            @* Save current layout *@
+                            @if (_showSaveInput)
+                            {
+                                <div class="flex items-center gap-1 px-2 py-1 mt-0.5">
+                                    <input type="text"
+                                           class="flex-1 h-7 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                                           placeholder="Layout name..."
+                                           @bind="_newLayoutName"
+                                           @bind:event="oninput"
+                                           @onkeydown="HandleSaveKeyDown" />
+                                    <button type="button"
+                                            class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
+                                            title="Save"
+                                            @onclick="CommitSavePersonal">
+                                        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                                    </button>
+                                    <button type="button"
+                                            class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
+                                            title="Cancel"
+                                            @onclick="@(() => { _showSaveInput = false; _newLayoutName = ""; })">
+                                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="w-full flex items-center gap-2 rounded px-3 py-1.5 mt-0.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                                        @onclick="@(() => _showSaveInput = true)">
+                                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                                    <span>Save current layout...</span>
+                                </button>
+                            }
+                        </div>
+
+                        @* Global layouts *@
+                        @if (GlobalLayouts is not null && GlobalLayouts.Count > 0)
+                        {
+                            <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
+                                Global
+                            </div>
+                            <div class="p-1">
+                                @foreach (var layout in GlobalLayouts.Where(l => l.Scope == "Global"))
+                                {
+                                    var l = layout;
+                                    <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
+                                        <span class="flex-1 text-sm truncate">@l.Name</span>
+                                        <button type="button"
+                                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Apply layout"
+                                                @onclick="@(async () => await ApplyLayout(l))">
+                                            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                                        </button>
+                                        @if (OnDeleteNamedLayout.HasDelegate)
+                                        {
+                                            <button type="button"
+                                                    class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="Delete layout"
+                                                    @onclick="@(async () => { _layoutsPanelOpen = false; await OnDeleteNamedLayout.InvokeAsync(l.Id); })">
+                                                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @* System Default *@
+                        <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
+                            System Default
+                        </div>
+                        <div class="p-1">
+                            <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
+                                <span class="flex-1 text-sm truncate">Default</span>
+                                <button type="button"
+                                        class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Reset to default"
+                                        @onclick="ResetLayout">
+                                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        </div>
+
                     </div>
                 }
             </div>
@@ -133,6 +249,8 @@
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
     [Parameter] public RenderFragment? ToolbarContent { get; set; }
     [Parameter] public EventCallback OnColumnVisibilityToggle { get; set; }
+    [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
+    [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     [Parameter] public EventCallback<string> OnExport { get; set; }
     [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }
     [Parameter] public List<TItem>? SelectedItems { get; set; }
@@ -141,12 +259,29 @@
     [Parameter] public bool EnableLayoutPersistence { get; set; }
     [Parameter] public EventCallback OnSaveLayout { get; set; }
     [Parameter] public EventCallback OnResetLayout { get; set; }
+    [Parameter] public List<DataGridNamedLayout>? GlobalLayouts { get; set; }
+    [Parameter] public EventCallback<DataGridNamedLayout> OnSaveNamedLayout { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteNamedLayout { get; set; }
+    [Parameter] public EventCallback<DataGridNamedLayout> OnApplyNamedLayout { get; set; }
+    [Parameter] public string? LayoutStorageKey { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _exportMenuOpen;
-    private bool _layoutMenuOpen;
+    private bool _columnPanelOpen;
+    private bool _layoutsPanelOpen;
+    private bool _showSaveInput;
+    private string _newLayoutName = "";
+    private List<DataGridNamedLayout> _personalLayouts = new();
     private string CssClass => $"flex items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (EnableLayoutPersistence && _layoutsPanelOpen)
+        {
+            await LoadPersonalLayouts();
+        }
+    }
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
@@ -159,15 +294,18 @@
         await OnRemoveFilter.InvokeAsync(filter);
     }
 
-    private async Task ToggleColumnVisibility()
+    private void ToggleColumnPanel()
     {
-        await OnColumnVisibilityToggle.InvokeAsync();
+        _columnPanelOpen = !_columnPanelOpen;
+        _exportMenuOpen = false;
+        _layoutsPanelOpen = false;
     }
 
     private void ToggleExportMenu()
     {
         _exportMenuOpen = !_exportMenuOpen;
-        _layoutMenuOpen = false;
+        _layoutsPanelOpen = false;
+        _columnPanelOpen = false;
     }
 
     private async Task Export(string format)
@@ -176,21 +314,89 @@
         await OnExport.InvokeAsync(format);
     }
 
-    private void ToggleLayoutMenu()
+    private async Task ToggleLayoutsPanel()
     {
-        _layoutMenuOpen = !_layoutMenuOpen;
         _exportMenuOpen = false;
+        _columnPanelOpen = false;
+        _layoutsPanelOpen = !_layoutsPanelOpen;
+        if (_layoutsPanelOpen)
+        {
+            await LoadPersonalLayouts();
+        }
+        else
+        {
+            _showSaveInput = false;
+            _newLayoutName = "";
+        }
+    }
+
+    private async Task LoadPersonalLayouts()
+    {
+        if (!EnableLayoutPersistence) return;
+        var key = (LayoutStorageKey ?? "datagrid") + "-named";
+        try
+        {
+            var json = await Interop.LoadFromLocalStorage(key);
+            if (!string.IsNullOrEmpty(json))
+                _personalLayouts = System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
+            else
+                _personalLayouts = new();
+        }
+        catch { _personalLayouts = new(); }
+    }
+
+    private async Task CommitSavePersonal()
+    {
+        var name = _newLayoutName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        _showSaveInput = false;
+        _newLayoutName = "";
+
+        await OnSaveNamedLayout.InvokeAsync(new DataGridNamedLayout(Guid.NewGuid().ToString("N"), name, "Personal", new DataGridLayout()));
+        await LoadPersonalLayouts();
+        StateHasChanged();
+    }
+
+    private async Task HandleSaveKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CommitSavePersonal();
+        else if (e.Key == "Escape") { _showSaveInput = false; _newLayoutName = ""; }
+    }
+
+    private async Task ApplyLayout(DataGridNamedLayout layout)
+    {
+        _layoutsPanelOpen = false;
+        _showSaveInput = false;
+        await OnApplyNamedLayout.InvokeAsync(layout);
+    }
+
+    private async Task DeletePersonalLayout(string id)
+    {
+        _personalLayouts.RemoveAll(l => l.Id == id);
+        var key = (LayoutStorageKey ?? "datagrid") + "-named";
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(_personalLayouts);
+            await Interop.SaveToLocalStorage(key, json);
+        }
+        catch { }
+
+        if (OnDeleteNamedLayout.HasDelegate)
+            await OnDeleteNamedLayout.InvokeAsync(id);
+
+        StateHasChanged();
     }
 
     private async Task SaveLayout()
     {
-        _layoutMenuOpen = false;
+        _layoutsPanelOpen = false;
         await OnSaveLayout.InvokeAsync();
     }
 
     private async Task ResetLayout()
     {
-        _layoutMenuOpen = false;
+        _layoutsPanelOpen = false;
         await OnResetLayout.InvokeAsync();
     }
 

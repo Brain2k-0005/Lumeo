@@ -2,15 +2,17 @@
 @using Blazicons
 @inject IJSRuntime JS
 @inject IconService _iconService
+@inject Lumeo.Services.ThemeService ThemeService
+@implements IDisposable
 
-<!-- Sidebar Toggle Button (shown when sidebar is closed) -->
+<!-- Floating open button when sidebar is closed -->
 @if (!_sidebarOpen)
 {
-    <Button Class="fixed right-4 top-16 z-40 hidden lg:flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent shadow-sm transition-colors"
-            OnClick="() => _sidebarOpen = true">
-        <Blazicon Svg="Lucide.PanelRightOpen" class="h-3.5 w-3.5" />
-        Customize
-    </Button>
+    <button class="fixed right-0 top-1/2 -translate-y-1/2 z-50 hidden lg:flex flex-col items-center justify-center gap-1 bg-card border border-border border-r-0 rounded-l-lg px-1.5 py-3 shadow-md hover:bg-accent transition-colors"
+            title="Open customizer"
+            @onclick='() => _sidebarOpen = true'>
+        <Blazicon Svg="Lucide.SlidersHorizontal" class="h-3.5 w-3.5 text-muted-foreground" />
+    </button>
 }
 
 <!-- Click-outside backdrop for popover -->
@@ -20,7 +22,9 @@
 }
 
 <!-- Customizer Sidebar -->
-<aside class="relative w-[280px] shrink-0 border-l border-border sticky top-14 h-[calc(100vh-3.5rem)] overflow-visible z-40 @(_sidebarOpen ? "hidden lg:flex" : "hidden") flex-col">
+@if (_sidebarOpen)
+{
+<aside class="relative w-[280px] shrink-0 border-l border-border sticky top-14 h-[calc(100vh-3.5rem)] overflow-visible z-40 hidden lg:flex flex-col">
 
     <!-- Popover menu (rendered at aside level, outside scroll container) -->
     @if (_expandedSection != "")
@@ -36,7 +40,7 @@
                     case "preset":
                         @foreach (var preset in _presets)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => ApplyPreset(preset)">
                                 <Lumeo.Text As="span" Class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/30">
                                     @if (preset.Name == GetActivePresetName())
@@ -59,7 +63,7 @@
                     case "style":
                         @foreach (var style in _styles)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetStyle(style.Value)">
                                 <Lumeo.Text As="span" Class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/30">
                                     @if (style.Value == _activeStyle)
@@ -82,7 +86,7 @@
                     case "baseColor":
                         @foreach (var color in _baseColors)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetBaseColor(color.Value)">
                                 <span class="h-3 w-3 rounded-full shrink-0" style="background: @color.Preview"></span>
                                 <Lumeo.Text As="span" Class="text-[13px] text-foreground flex-1">@color.Name</Lumeo.Text>
@@ -97,7 +101,7 @@
                     case "theme":
                         @foreach (var theme in _themes)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetTheme(theme.Value)">
                                 <span class="h-3 w-3 rounded-full shrink-0" style="background: @theme.Color"></span>
                                 <Lumeo.Text As="span" Class="text-[13px] text-foreground flex-1">@theme.Name</Lumeo.Text>
@@ -112,7 +116,7 @@
                     case "font":
                         @foreach (var font in _fonts)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetFont(font.Value)">
                                 <span class="text-[13px] text-foreground flex-1" style="font-family: @font.Family">@font.Name</span>
                                 <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground">@font.Label</Lumeo.Text>
@@ -147,7 +151,7 @@
                     case "radius":
                         @foreach (var radius in _radiiOptions)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetRadius(radius.Value)">
                                 <Lumeo.Text As="span" Class="inline-flex items-center justify-center h-3.5 w-3.5 shrink-0">
                                     <span class="h-3 w-3 border-t-2 border-l-2 border-muted-foreground/40" style="border-radius: @(radius.Value)rem 0 0 0"></span>
@@ -165,7 +169,7 @@
                     case "menuColor":
                         @foreach (var mc in _menuColors)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetMenuColor(mc.Value)">
                                 <Lumeo.Text As="span" Class="text-[13px] text-foreground flex-1">@mc.Name</Lumeo.Text>
                                 @if (mc.Value == _activeMenuColor)
@@ -179,7 +183,7 @@
                     case "menuAccent":
                         @foreach (var ma in _menuAccents)
                         {
-                            <Button Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+                            <Button Variant="Button.ButtonVariant.Ghost" Class="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
                                     OnClick="() => SetMenuAccent(ma.Value)">
                                 <div class="flex-1 min-w-0">
                                     <Lumeo.Text Class="text-[13px] font-medium">@ma.Name</Lumeo.Text>
@@ -207,9 +211,11 @@
                 </svg>
                 <Lumeo.Text As="span" Size="sm" Weight="semibold">/ create</Lumeo.Text>
             </Flex>
-            <Button OnClick="() => _sidebarOpen = false" class="hover:bg-accent rounded p-0.5 transition-colors">
-                <Blazicon Svg="Lucide.PanelRightClose" class="h-4 w-4 text-muted-foreground" />
-            </Button>
+            <button class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
+                    title="Close customizer"
+                    @onclick='() => _sidebarOpen = false'>
+                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+            </button>
         </Flex>
         <Lumeo.Text Size="xs" Color="muted" Class="mt-0.5">Adjust Lumeo styles</Lumeo.Text>
     </div>
@@ -220,7 +226,7 @@
         <!-- Preset -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "preset" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("preset")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Preset</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActivePresetName()</Lumeo.Text>
             </Stack>
@@ -229,7 +235,7 @@
         <!-- Style -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "style" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("style")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Style</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@(_activeStyle == "new-york" ? "New York" : "Default")</Lumeo.Text>
             </Stack>
@@ -241,7 +247,7 @@
         <!-- Base Color -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "baseColor" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("baseColor")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Base Color</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActiveBaseColorName()</Lumeo.Text>
             </Stack>
@@ -251,7 +257,7 @@
         <!-- Theme -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "theme" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("theme")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Theme</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActiveThemeName()</Lumeo.Text>
             </Stack>
@@ -261,7 +267,7 @@
         <!-- Font -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "font" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("font")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Font</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActiveFontName()</Lumeo.Text>
             </Stack>
@@ -271,7 +277,7 @@
         <!-- Icon Library -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "icons" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("icons")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Icon Library</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActiveIconLibraryName()</Lumeo.Text>
             </Stack>
@@ -286,7 +292,7 @@
         <!-- Radius -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "radius" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("radius")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Radius</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActiveRadiusName()</Lumeo.Text>
             </Stack>
@@ -298,7 +304,7 @@
         <!-- Menu Color -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "menuColor" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("menuColor")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Menu Color</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@(_activeMenuColor == "dark" ? "Dark" : _activeMenuColor == "light" ? "Light" : "Default")</Lumeo.Text>
             </Stack>
@@ -311,7 +317,7 @@
         <!-- Menu Accent -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "menuAccent" ? "bg-accent/40" : "")"
                 @onclick='() => ToggleSection("menuAccent")'>
-            <Stack>
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Menu Accent</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@(_activeMenuAccent == "bold" ? "Bold" : _activeMenuAccent == "outline" ? "Outline" : "Subtle")</Lumeo.Text>
             </Stack>
@@ -322,9 +328,9 @@
         </button>
 
         <!-- Mode -->
-        <Button Class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
-                OnClick="ToggleDarkMode">
-            <Stack>
+        <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
+                @onclick="ToggleDarkMode">
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Mode</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@(_darkMode ? "Dark" : "Light")</Lumeo.Text>
             </Stack>
@@ -336,30 +342,30 @@
             {
                 <Blazicon Svg="Lucide.Sun" class="h-4 w-4 text-muted-foreground/50" />
             }
-        </Button>
+        </button>
 
         <!-- Spacer before actions -->
-        <div class="my-1"></div>
+        <div class="my-1 border-t border-border/40"></div>
 
         <!-- Shuffle -->
-        <Button Class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
-                OnClick="ShuffleSettings">
-            <Stack>
+        <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
+                @onclick="ShuffleSettings">
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Shuffle</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">Try Random</Lumeo.Text>
             </Stack>
-            <Lumeo.Text As="span" Class="inline-flex items-center justify-center h-5 w-5 rounded bg-primary text-primary-foreground text-[11px] font-bold">R</Lumeo.Text>
-        </Button>
+            <span class="inline-flex items-center justify-center h-5 w-5 rounded bg-primary text-primary-foreground text-[11px] font-bold">R</span>
+        </button>
 
         <!-- Reset -->
-        <Button Class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
-                OnClick="ResetSettings">
-            <Stack>
+        <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left"
+                @onclick="ResetSettings">
+            <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Reset</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">Start Over</Lumeo.Text>
             </Stack>
             <Blazicon Svg="Lucide.RotateCcw" class="h-4 w-4 text-muted-foreground/50" />
-        </Button>
+        </button>
     </div>
 
     <!-- Copy Theme — pinned bottom -->
@@ -379,10 +385,11 @@
         </Button>
     </div>
 </aside>
+}
 
 @code {
-    private bool _sidebarOpen = true;
     private string _expandedSection = "";
+    private bool _sidebarOpen = true;
     private bool _darkMode;
     private bool _copied;
 
@@ -407,8 +414,9 @@
 
     private readonly ThemeOption[] _themes =
     [
-        new("Orange", "", "hsl(14 70% 50%)"),
+        new("Default", "", "hsl(240 4% 46%)"),
         new("Blue", "blue", "hsl(221 83% 53%)"),
+        new("Orange", "orange", "hsl(14 70% 50%)"),
         new("Green", "green", "hsl(142 71% 45%)"),
         new("Rose", "rose", "hsl(346 77% 50%)"),
         new("Zinc", "zinc", "hsl(240 6% 10%)"),
@@ -480,7 +488,7 @@
 
     private readonly PresetOption[] _presets =
     [
-        new("Vega", "", "default", "slate", "0.75", "system", "default", "subtle", "hsl(14 70% 50%)", "The classic shadcn/ui look. Clean, neutral, and familiar."),
+        new("Vega", "", "default", "slate", "0.75", "system", "default", "subtle", "hsl(240 4% 46%)", "The classic shadcn/ui look. Clean, neutral, and familiar."),
         new("Nova", "blue", "new-york", "slate", "0.5", "inter", "default", "subtle", "hsl(221 83% 53%)", "Sleek and compact. Blue with tight spacing."),
         new("Maia", "rose", "default", "stone", "1", "system", "default", "subtle", "hsl(346 77% 50%)", "Soft and rounded, with generous spacing."),
         new("Lyra", "zinc", "default", "zinc", "0", "jetbrains-mono", "default", "subtle", "hsl(240 6% 10%)", "Boxy and sharp. Pairs well with mono fonts."),
@@ -529,7 +537,7 @@
         return "Custom";
     }
 
-    private string GetActiveThemeName() => _themes.FirstOrDefault(t => t.Value == _activeTheme)?.Name ?? "Orange";
+    private string GetActiveThemeName() => _themes.FirstOrDefault(t => t.Value == _activeTheme)?.Name ?? "Default";
     private string GetActiveThemePreview() => _themes.FirstOrDefault(t => t.Value == _activeTheme)?.Color ?? "hsl(14 70% 50%)";
     private string GetActiveBaseColorName() => _baseColors.FirstOrDefault(c => c.Value == _activeBaseColor)?.Name ?? "Slate";
     private string GetActiveBaseColorPreview() => _baseColors.FirstOrDefault(c => c.Value == _activeBaseColor)?.Preview ?? "hsl(215 16% 47%)";
@@ -562,9 +570,7 @@
     private async Task SetTheme(string theme)
     {
         _activeTheme = theme;
-        await JS.InvokeVoidAsync("eval", string.IsNullOrEmpty(theme)
-            ? "document.documentElement.removeAttribute('data-theme')"
-            : $"document.documentElement.setAttribute('data-theme', '{theme}')");
+        await JS.InvokeVoidAsync("themeManager.setScheme", string.IsNullOrEmpty(theme) ? "zinc" : theme);
     }
 
     private async Task SetRadius(string radius)
@@ -620,12 +626,38 @@
             : $"document.documentElement.setAttribute('data-menu-accent', '{accent}')");
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ThemeService.InitializeAsync();
+            _darkMode = ThemeService.IsDark;
+            ThemeService.OnThemeChanged += OnThemeServiceChanged;
+
+            // Sync active theme from what themeManager restored from localStorage
+            try
+            {
+                var scheme = await JS.InvokeAsync<string>("themeManager.getScheme");
+                _activeTheme = (scheme == "zinc" || string.IsNullOrEmpty(scheme)) ? "" : scheme;
+            }
+            catch { }
+
+            StateHasChanged();
+        }
+    }
+
+    private void OnThemeServiceChanged()
+    {
+        _darkMode = ThemeService.IsDark;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => ThemeService.OnThemeChanged -= OnThemeServiceChanged;
+
     private async Task ToggleDarkMode()
     {
-        _darkMode = !_darkMode;
-        await JS.InvokeVoidAsync("eval", _darkMode
-            ? "document.documentElement.classList.add('dark')"
-            : "document.documentElement.classList.remove('dark')");
+        await ThemeService.ToggleModeAsync();
+        _darkMode = ThemeService.IsDark;
     }
 
     private async Task ShuffleSettings()

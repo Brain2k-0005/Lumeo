@@ -1,7 +1,7 @@
 @namespace Lumeo
 @typeparam TItem
 
-<td class="@CssClass" @onclick="HandleClick" @ondblclick="HandleDoubleClick" @attributes="AdditionalAttributes">
+<td class="@CssClass" style="@PinStyle" @onclick="HandleClick" @ondblclick="HandleDoubleClick" @attributes="AdditionalAttributes">
     @if (_isEditing && Column.EditTemplate is not null)
     {
         @Column.EditTemplate(_editContext!)
@@ -41,14 +41,25 @@
         get
         {
             var cellClass = Column.CellClass?.Invoke(Item);
-            // TODO: Calculate cumulative left/right offsets when multiple columns are pinned
             var pinClass = Column.Pin switch
             {
-                PinDirection.Left => "sticky left-0 z-10 bg-inherit",
-                PinDirection.Right => "sticky right-0 z-10 bg-inherit",
+                PinDirection.Left => "sticky z-10 bg-inherit",
+                PinDirection.Right => "sticky z-10 bg-inherit",
                 _ => ""
             };
             return $"px-3 py-2 text-sm {pinClass} {Column.CssClass} {cellClass} {Class}".Trim();
+        }
+    }
+
+    private string PinStyle
+    {
+        get
+        {
+            if (Column.Pin == PinDirection.Left && Context?.PinnedLeftOffsets.TryGetValue(Column.Id, out var leftOff) == true)
+                return $"left: {leftOff}px;";
+            if (Column.Pin == PinDirection.Right && Context?.PinnedRightOffsets.TryGetValue(Column.Id, out var rightOff) == true)
+                return $"right: {rightOff}px;";
+            return "";
         }
     }
 
@@ -104,6 +115,11 @@
         else if (e.Key == "Escape")
         {
             CancelEdit();
+        }
+        else if (e.Key == "Tab")
+        {
+            await CommitEdit();
+            // Focus is handled by browser's natural Tab order since inputs are in DOM order
         }
     }
 
