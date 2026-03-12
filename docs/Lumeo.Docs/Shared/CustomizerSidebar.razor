@@ -3,6 +3,7 @@
 @inject IJSRuntime JS
 @inject IconService _iconService
 @inject Lumeo.Services.ThemeService ThemeService
+@inject Lumeo.Services.KeyboardShortcutService Shortcuts
 @implements IDisposable
 
 <!-- Floating open button when sidebar is closed -->
@@ -354,7 +355,7 @@
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Shuffle</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">Try Random</Lumeo.Text>
             </Stack>
-            <span class="inline-flex items-center justify-center h-5 w-5 rounded bg-primary text-primary-foreground text-[11px] font-bold">R</span>
+            <Kbd>R</Kbd>
         </button>
 
         <!-- Reset -->
@@ -388,6 +389,7 @@
 }
 
 @code {
+    private readonly List<IDisposable> _kbdShortcuts = new();
     private string _expandedSection = "";
     private bool _sidebarOpen = true;
     private bool _darkMode;
@@ -642,6 +644,22 @@
             }
             catch { }
 
+            // Register keyboard shortcuts
+            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("r", async () =>
+            {
+                await ShuffleSettings();
+                await InvokeAsync(StateHasChanged);
+            }));
+            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("escape", () =>
+            {
+                if (_expandedSection != "")
+                {
+                    _expandedSection = "";
+                    InvokeAsync(StateHasChanged);
+                }
+                return Task.CompletedTask;
+            }, preventDefault: false));
+
             StateHasChanged();
         }
     }
@@ -652,7 +670,11 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => ThemeService.OnThemeChanged -= OnThemeServiceChanged;
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= OnThemeServiceChanged;
+        foreach (var s in _kbdShortcuts) s.Dispose();
+    }
 
     private async Task ToggleDarkMode()
     {

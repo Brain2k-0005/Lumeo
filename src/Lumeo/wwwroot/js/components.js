@@ -414,7 +414,14 @@ export function registerKeyboardShortcuts(dotnetRef) {
     shortcutDotnetRef = dotnetRef;
     if (!window.__lumeoKbdListener) {
         window.__lumeoKbdListener = (e) => {
+            const tag = (e.target?.tagName || '').toUpperCase();
+            const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
             for (const [id, { combo, preventDefault }] of shortcuts) {
+                // Skip modifier-less shortcuts when focus is inside an editable element
+                if (isEditable) {
+                    const hasModifier = combo.includes('ctrl') || combo.includes('alt') || combo.includes('meta');
+                    if (!hasModifier) continue;
+                }
                 if (matchesCombo(e, combo)) {
                     if (preventDefault) e.preventDefault();
                     shortcutDotnetRef?.invokeMethodAsync('OnShortcutTriggered', id);
