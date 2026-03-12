@@ -36,6 +36,18 @@
             @ToolbarContent
         }
 
+        @* Copy selected rows to clipboard *@
+        @if (SelectedItems is not null && SelectedItems.Count > 0 && EffectiveColumns is not null)
+        {
+            <button type="button"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                    title="Copy selected rows to clipboard"
+                    @onclick="CopySelected">
+                <Blazicon Svg="Lucide.Clipboard" class="h-4 w-4 mr-1.5" />
+                <span>Copy (@SelectedItems.Count)</span>
+            </button>
+        }
+
         <button type="button"
                 class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                 @onclick="ToggleColumnVisibility">
@@ -43,26 +55,97 @@
             <span>Columns</span>
         </button>
 
-        <button type="button"
-                class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                @onclick="Export">
-            <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
-            <span>Export</span>
-        </button>
+        @* Export dropdown *@
+        <div class="relative">
+            <button type="button"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                    @onclick="ToggleExportMenu">
+                <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
+                <span>Export</span>
+                <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
+            </button>
+
+            @if (_exportMenuOpen)
+            {
+                <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
+                    <button type="button"
+                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                            @onclick="@(() => Export("csv"))">
+                        <Blazicon Svg="Lucide.FileText" class="h-4 w-4" />
+                        <span>CSV</span>
+                    </button>
+                    <button type="button"
+                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                            @onclick="@(() => Export("excel"))">
+                        <Blazicon Svg="Lucide.Sheet" class="h-4 w-4" />
+                        <span>Excel</span>
+                    </button>
+                    <button type="button"
+                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                            @onclick="@(() => Export("json"))">
+                        <Blazicon Svg="Lucide.Braces" class="h-4 w-4" />
+                        <span>JSON</span>
+                    </button>
+                </div>
+            }
+        </div>
+
+        @* Layout persistence dropdown *@
+        @if (EnableLayoutPersistence)
+        {
+            <div class="relative">
+                <button type="button"
+                        class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                        @onclick="ToggleLayoutMenu">
+                    <Blazicon Svg="Lucide.LayoutTemplate" class="h-4 w-4 mr-1.5" />
+                    <span>Layout</span>
+                    <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
+                </button>
+
+                @if (_layoutMenuOpen)
+                {
+                    <div class="absolute right-0 top-full mt-1 z-50 min-w-[150px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
+                        <button type="button"
+                                class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                                @onclick="SaveLayout">
+                            <Blazicon Svg="Lucide.Save" class="h-4 w-4" />
+                            <span>Save Layout</span>
+                        </button>
+                        <div class="my-1 border-t border-border/40"></div>
+                        <button type="button"
+                                class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                                @onclick="ResetLayout">
+                            <Blazicon Svg="Lucide.RotateCcw" class="h-4 w-4" />
+                            <span>Reset Layout</span>
+                        </button>
+                    </div>
+                }
+            </div>
+        }
     </div>
 </div>
 
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [Inject] private ComponentInteropService Interop { get; set; } = default!;
+
     [Parameter] public string? SearchText { get; set; }
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
     [Parameter] public RenderFragment? ToolbarContent { get; set; }
     [Parameter] public EventCallback OnColumnVisibilityToggle { get; set; }
-    [Parameter] public EventCallback OnExport { get; set; }
+    [Parameter] public EventCallback<string> OnExport { get; set; }
     [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }
+    [Parameter] public List<TItem>? SelectedItems { get; set; }
+    [Parameter] public List<TItem>? AllItems { get; set; }
+    [Parameter] public IReadOnlyList<DataGridColumn<TItem>>? EffectiveColumns { get; set; }
+    [Parameter] public bool EnableLayoutPersistence { get; set; }
+    [Parameter] public EventCallback OnSaveLayout { get; set; }
+    [Parameter] public EventCallback OnResetLayout { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private bool _exportMenuOpen;
+    private bool _layoutMenuOpen;
     private string CssClass => $"flex items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();
 
     private async Task OnSearchInput(ChangeEventArgs e)
@@ -81,9 +164,54 @@
         await OnColumnVisibilityToggle.InvokeAsync();
     }
 
-    private async Task Export()
+    private void ToggleExportMenu()
     {
-        await OnExport.InvokeAsync();
+        _exportMenuOpen = !_exportMenuOpen;
+        _layoutMenuOpen = false;
+    }
+
+    private async Task Export(string format)
+    {
+        _exportMenuOpen = false;
+        await OnExport.InvokeAsync(format);
+    }
+
+    private void ToggleLayoutMenu()
+    {
+        _layoutMenuOpen = !_layoutMenuOpen;
+        _exportMenuOpen = false;
+    }
+
+    private async Task SaveLayout()
+    {
+        _layoutMenuOpen = false;
+        await OnSaveLayout.InvokeAsync();
+    }
+
+    private async Task ResetLayout()
+    {
+        _layoutMenuOpen = false;
+        await OnResetLayout.InvokeAsync();
+    }
+
+    private async Task CopySelected()
+    {
+        if (SelectedItems is null || SelectedItems.Count == 0 || EffectiveColumns is null) return;
+
+        var visibleColumns = EffectiveColumns.Where(c => c.Visible).ToList();
+        var lines = new List<string>();
+
+        // Header row
+        lines.Add(string.Join("\t", visibleColumns.Select(c => c.Title ?? c.Field ?? "")));
+
+        // Data rows
+        foreach (var item in SelectedItems)
+        {
+            lines.Add(string.Join("\t", visibleColumns.Select(c => c.GetFormattedValue(item))));
+        }
+
+        var text = string.Join("\n", lines);
+        await Interop.CopyToClipboard(text);
     }
 
     private static string GetOperatorLabel(FilterOperator op) => op switch

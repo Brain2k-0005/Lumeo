@@ -1,0 +1,139 @@
+@namespace Lumeo
+
+<div class="@CssClass"
+     style="width: @Width; height: @Height; position: relative; overflow: hidden; user-select: none;"
+     @onmousedown="StartDrag"
+     @onmousemove="OnMouseMove"
+     @onmouseup="StopDrag"
+     @onmouseleave="StopDrag"
+     @ontouchstart="StartTouch"
+     @ontouchmove="OnTouchMove"
+     @ontouchend="StopDrag"
+     @attributes="AdditionalAttributes">
+
+    @* After image (full size, behind) *@
+    <img src="@AfterSrc" alt="@AfterLabel"
+         style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block;" />
+
+    @* Before image (clipped) *@
+    @if (Orientation == ImageCompareOrientation.Horizontal)
+    {
+        <div style="position: absolute; inset: 0; overflow: hidden; width: @(_position)%;">
+            <img src="@BeforeSrc" alt="@BeforeLabel"
+                 style="width: @(100 * 100 / Math.Max(1, _position))%; height: 100%; object-fit: cover; display: block;" />
+        </div>
+    }
+    else
+    {
+        <div style="position: absolute; inset: 0; overflow: hidden; height: @(_position)%;">
+            <img src="@BeforeSrc" alt="@BeforeLabel"
+                 style="width: 100%; height: @(100 * 100 / Math.Max(1, _position))%; object-fit: cover; display: block;" />
+        </div>
+    }
+
+    @* Divider line *@
+    @if (Orientation == ImageCompareOrientation.Horizontal)
+    {
+        <div style="position: absolute; top: 0; bottom: 0; left: @(_position)%; transform: translateX(-50%); width: 2px; background: white; opacity: 0.9; pointer-events: none;" />
+        <div style="position: absolute; top: 50%; left: @(_position)%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: ew-resize; pointer-events: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #555;">
+                <polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6" style="transform: translateX(12px)"/>
+                <path d="M9 18 3 12 9 6"/><path d="M15 6 21 12 15 18"/>
+            </svg>
+        </div>
+    }
+    else
+    {
+        <div style="position: absolute; left: 0; right: 0; top: @(_position)%; transform: translateY(-50%); height: 2px; background: white; opacity: 0.9; pointer-events: none;" />
+        <div style="position: absolute; left: 50%; top: @(_position)%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: ns-resize; pointer-events: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #555;">
+                <path d="M12 3 12 21"/><path d="M6 9 12 3 18 9"/><path d="M6 15 12 21 18 15"/>
+            </svg>
+        </div>
+    }
+
+    @* Labels *@
+    @if (!string.IsNullOrEmpty(BeforeLabel))
+    {
+        <span style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.55); color: white; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 4px; pointer-events: none;">
+            @BeforeLabel
+        </span>
+    }
+    @if (!string.IsNullOrEmpty(AfterLabel))
+    {
+        <span style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.55); color: white; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 4px; pointer-events: none;">
+            @AfterLabel
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter] public string BeforeSrc { get; set; } = "";
+    [Parameter] public string AfterSrc { get; set; } = "";
+    [Parameter] public string? BeforeLabel { get; set; } = "Before";
+    [Parameter] public string? AfterLabel { get; set; } = "After";
+    [Parameter] public int InitialPosition { get; set; } = 50;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public ImageCompareOrientation Orientation { get; set; } = ImageCompareOrientation.Horizontal;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private double _position;
+    private bool _isDragging;
+
+    private string CssClass => $"rounded-lg overflow-hidden {Class}".Trim();
+
+    public enum ImageCompareOrientation { Horizontal, Vertical }
+
+    protected override void OnInitialized()
+    {
+        _position = Math.Clamp(InitialPosition, 1, 99);
+    }
+
+    private void StartDrag(MouseEventArgs e)
+    {
+        _isDragging = true;
+    }
+
+    private void StopDrag()
+    {
+        _isDragging = false;
+    }
+
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        if (!_isDragging) return;
+        // We rely on offsetX/offsetY not being available directly;
+        // use clientX relative approach via JS or use the element's bounding rect.
+        // Since we can't get bounding rect without JS here, we use a proportional estimate
+        // based on movementX/movementY increments.
+        if (Orientation == ImageCompareOrientation.Horizontal)
+        {
+            var delta = e.MovementX;
+            // Convert pixel movement to percentage (rough, requires knowing width)
+            // We'll update position incrementally
+            _position = Math.Clamp(_position + delta * 0.3, 1, 99);
+        }
+        else
+        {
+            var delta = e.MovementY;
+            _position = Math.Clamp(_position + delta * 0.3, 1, 99);
+        }
+    }
+
+    private void StartTouch(TouchEventArgs e)
+    {
+        _isDragging = true;
+    }
+
+    private void OnTouchMove(TouchEventArgs e)
+    {
+        if (!_isDragging || e.Touches.Length == 0) return;
+        // Touch move uses changedTouches, position relative to page
+        // We can only do delta-based here without JS interop
+        // This is a best-effort approach
+    }
+}

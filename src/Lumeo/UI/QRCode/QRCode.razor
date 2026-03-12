@@ -1,0 +1,91 @@
+@namespace Lumeo
+
+<div class="@ContainerClass" style="@ContainerStyle" @attributes="AdditionalAttributes">
+    <svg viewBox="@ViewBox" xmlns="http://www.w3.org/2000/svg" style="display: block; width: 100%; height: 100%;">
+        <rect x="0" y="0" width="@_totalSize" height="@_totalSize" fill="@BackgroundColor" />
+        @if (_darkModules is not null)
+        {
+            @foreach (var (x, y) in _darkModules)
+            {
+                <rect x="@x" y="@y" width="1" height="1" fill="@ForegroundColor" />
+            }
+        }
+        @if (!string.IsNullOrEmpty(ImageSrc) && _moduleCount > 0)
+        {
+            int center = _totalSize / 2;
+            int imgX = center - ImageSize / 2;
+            int imgY = center - ImageSize / 2;
+            <image href="@ImageSrc" x="@imgX" y="@imgY" width="@ImageSize" height="@ImageSize"
+                   preserveAspectRatio="xMidYMid meet" style="border-radius: 4px;" />
+        }
+    </svg>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public int Size { get; set; } = 200;
+    [Parameter] public QRErrorLevel ErrorCorrectionLevel { get; set; } = QRErrorLevel.Medium;
+    [Parameter] public string ForegroundColor { get; set; } = "currentColor";
+    [Parameter] public string BackgroundColor { get; set; } = "transparent";
+    [Parameter] public bool IncludeMargin { get; set; } = true;
+    [Parameter] public string? ImageSrc { get; set; }
+    [Parameter] public int ImageSize { get; set; } = 40;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private IReadOnlyList<(int x, int y)>? _darkModules;
+    private int _moduleCount;
+    private int _margin;
+    private int _totalSize;
+
+    private string ContainerClass => $"inline-block overflow-hidden {Class}".Trim();
+    private string ContainerStyle => $"width: {Size}px; height: {Size}px;";
+    private string ViewBox => $"0 0 {_totalSize} {_totalSize}";
+
+    protected override void OnParametersSet() => Rebuild();
+
+    private void Rebuild()
+    {
+        if (string.IsNullOrEmpty(Value))
+        {
+            _darkModules = null;
+            _moduleCount = 0;
+            _margin = 0;
+            _totalSize = 0;
+            return;
+        }
+
+        try
+        {
+            var ecl = ErrorCorrectionLevel switch
+            {
+                QRErrorLevel.Low => QRCodeEncoder.ErrorCorrectionLevel.Low,
+                QRErrorLevel.Quartile => QRCodeEncoder.ErrorCorrectionLevel.Quartile,
+                QRErrorLevel.High => QRCodeEncoder.ErrorCorrectionLevel.High,
+                _ => QRCodeEncoder.ErrorCorrectionLevel.Medium,
+            };
+
+            var matrix = QRCodeEncoder.Encode(Value, ecl);
+            _moduleCount = matrix.GetLength(0);
+            _margin = IncludeMargin ? 4 : 0;
+            _totalSize = _moduleCount + _margin * 2;
+
+            var modules = new List<(int x, int y)>();
+            for (int row = 0; row < _moduleCount; row++)
+            for (int col = 0; col < _moduleCount; col++)
+                if (matrix[row, col])
+                    modules.Add((col + _margin, row + _margin));
+
+            _darkModules = modules;
+        }
+        catch
+        {
+            _darkModules = null;
+            _moduleCount = 0;
+            _margin = 0;
+            _totalSize = 0;
+        }
+    }
+
+    public enum QRErrorLevel { Low, Medium, Quartile, High }
+}

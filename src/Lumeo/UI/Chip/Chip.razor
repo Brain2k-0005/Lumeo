@@ -1,0 +1,89 @@
+@namespace Lumeo
+
+<div class="@CssClass" @onclick="HandleClick" @attributes="AdditionalAttributes" role="@(Clickable ? "button" : null)" tabindex="@(Clickable ? "0" : null)">
+    @if (!string.IsNullOrEmpty(Avatar))
+    {
+        <img src="@Avatar" alt="" class="@AvatarSizeClass rounded-full object-cover shrink-0" />
+    }
+    else if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="shrink-0 text-current opacity-70">@Icon</span>
+    }
+
+    <span>@ChildContent</span>
+
+    @if (Closable)
+    {
+        <button type="button"
+                class="shrink-0 rounded-full hover:bg-foreground/20 focus:outline-none focus:ring-1 focus:ring-ring ml-0.5"
+                @onclick="HandleClose"
+                @onclick:stopPropagation="true"
+                aria-label="Remove">
+            <Blazicon Svg="Lucide.X" class="@CloseIconSize" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public ChipVariant Variant { get; set; } = ChipVariant.Default;
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public ChipSize Size { get; set; } = ChipSize.Default;
+    [Parameter] public bool Closable { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool Clickable { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Avatar { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass =>
+        $"inline-flex items-center gap-1 font-medium transition-colors {SizeClass} {VariantClass} {(Clickable ? "cursor-pointer hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-ring" : "")} {Class}".Trim();
+
+    private string SizeClass => Size switch
+    {
+        ChipSize.Sm => "text-xs px-2 py-0.5 rounded-md",
+        ChipSize.Lg => "text-sm px-3 py-1 rounded-lg",
+        _ => "text-sm px-2.5 py-0.5 rounded-md"
+    };
+
+    private string VariantClass => Variant switch
+    {
+        ChipVariant.Outline => "border border-border bg-transparent text-foreground",
+        ChipVariant.Solid => GetSolidClass(),
+        _ => "bg-secondary text-secondary-foreground"
+    };
+
+    private string GetSolidClass() => Color switch
+    {
+        "primary" => "bg-primary text-primary-foreground",
+        "destructive" => "bg-destructive text-destructive-foreground",
+        "success" => "bg-success-light text-success-text",
+        "warning" => "bg-warning-light text-warning-text",
+        _ => "bg-secondary text-secondary-foreground"
+    };
+
+    private string AvatarSizeClass => Size switch
+    {
+        ChipSize.Sm => "h-4 w-4",
+        ChipSize.Lg => "h-6 w-6",
+        _ => "h-5 w-5"
+    };
+
+    private string CloseIconSize => Size switch
+    {
+        ChipSize.Sm => "h-3 w-3",
+        _ => "h-3.5 w-3.5"
+    };
+
+    private async Task HandleClick()
+    {
+        if (Clickable) await OnClick.InvokeAsync();
+    }
+
+    private async Task HandleClose() => await OnClose.InvokeAsync();
+
+    public enum ChipVariant { Default, Outline, Solid }
+    public enum ChipSize { Sm, Default, Lg }
+}

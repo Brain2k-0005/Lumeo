@@ -1,0 +1,86 @@
+@namespace Lumeo
+
+@{
+    var paddingClass = Context?.Size switch
+    {
+        List.ListSize.Sm => "px-3 py-2",
+        List.ListSize.Lg => "px-5 py-4",
+        _ => "px-4 py-3"
+    };
+    var hoverClass = Context?.Hoverable == true ? "hover:bg-accent/50 transition-colors" : "";
+    var clickableClass = (OnClick.HasDelegate || !string.IsNullOrEmpty(Href)) ? "cursor-pointer" : "";
+    var disabledClass = Disabled ? "opacity-50 pointer-events-none" : "";
+    var liClass = $"flex items-center gap-3 {paddingClass} {hoverClass} {clickableClass} {disabledClass} {Class}".Trim();
+}
+
+@if (!string.IsNullOrEmpty(Href))
+{
+    <li class="@liClass" @attributes="AdditionalAttributes">
+        <a href="@Href" class="flex flex-1 items-center gap-3 min-w-0">
+            @if (Leading != null)
+            {
+                <div class="shrink-0">@Leading</div>
+            }
+            <div class="flex-1 min-w-0">
+                @if (Title != null)
+                {
+                    <p class="text-sm font-medium truncate">@Title</p>
+                }
+                @if (Description != null)
+                {
+                    <p class="text-xs text-muted-foreground truncate">@Description</p>
+                }
+                @ChildContent
+            </div>
+        </a>
+        @if (Trailing != null)
+        {
+            <div class="shrink-0">@Trailing</div>
+        }
+    </li>
+}
+else
+{
+    <li class="@liClass" @onclick="HandleClick" @attributes="AdditionalAttributes">
+        @if (Leading != null)
+        {
+            <div class="shrink-0">@Leading</div>
+        }
+        <div class="flex-1 min-w-0">
+            @if (Title != null)
+            {
+                <p class="text-sm font-medium truncate">@Title</p>
+            }
+            @if (Description != null)
+            {
+                <p class="text-xs text-muted-foreground truncate">@Description</p>
+            }
+            @ChildContent
+        </div>
+        @if (Trailing != null)
+        {
+            <div class="shrink-0">@Trailing</div>
+        }
+    </li>
+}
+
+@code {
+    [CascadingParameter] public List.ListContext? Context { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Leading { get; set; }
+    [Parameter] public RenderFragment? Trailing { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (!Disabled && OnClick.HasDelegate)
+            await OnClick.InvokeAsync();
+    }
+}

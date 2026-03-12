@@ -131,8 +131,8 @@ For alternate color themes:
 
 <Card>
     <CardHeader>
-        <h3 class="text-lg font-semibold">Hello Lumeo</h3>
-        <p class="text-sm text-muted-foreground">A beautiful component library.</p>
+        <Heading Level="3">Hello Lumeo</Heading>
+        <Text Size="sm" Color="muted">A beautiful component library.</Text>
     </CardHeader>
     <CardContent>
         <Button OnClick="@(() => count++)">

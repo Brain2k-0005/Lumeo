@@ -934,3 +934,29 @@ export function getTextareaCaretPosition(elementId) {
 
     return { top, left, selectionStart };
 }
+
+// --- LocalStorage ---
+
+export function saveToLocalStorage(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        // Quota exceeded or private browsing — silently ignore
+    }
+}
+
+export function loadFromLocalStorage(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        return null;
+    }
+}
+
+export function removeFromLocalStorage(key) {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {
+        // ignore
+    }
+}

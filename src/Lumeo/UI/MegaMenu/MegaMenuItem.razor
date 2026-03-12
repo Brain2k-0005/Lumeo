@@ -1,0 +1,143 @@
+@namespace Lumeo
+@implements IDisposable
+
+@{
+    var itemContext = new MegaMenuItemContext(_itemId, _triggerId);
+}
+
+<CascadingValue Value="itemContext" IsFixed="false">
+    @if (ChildContent is null && Href is not null)
+    {
+        <li role="none" class="@CssClass" @attributes="AdditionalAttributes">
+            <a href="@Href"
+               role="menuitem"
+               class="@TriggerCssClass">
+                @if (Icon is not null)
+                {
+                    <Blazicon Svg="@Icon" class="h-4 w-4" />
+                }
+                @Label
+            </a>
+        </li>
+    }
+    else
+    {
+        <li role="none"
+            class="@CssClass"
+            @onmouseenter="HandleMouseEnter"
+            @onmouseleave="HandleMouseLeave"
+            @attributes="AdditionalAttributes">
+            <button id="@_triggerId"
+                    type="button"
+                    role="menuitem"
+                    aria-haspopup="true"
+                    aria-expanded="@(_isOpen ? "true" : "false")"
+                    disabled="@Disabled"
+                    class="@TriggerCssClass"
+                    @onclick="HandleClick"
+                    @onkeydown="HandleKeyDown">
+                @if (Icon is not null)
+                {
+                    <Blazicon Svg="@Icon" class="h-4 w-4" />
+                }
+                @Label
+                <Blazicon Svg="Lucide.ChevronDown" class="@ChevronCssClass" />
+            </button>
+            @if (_isOpen)
+            {
+                @ChildContent
+            }
+        </li>
+    }
+</CascadingValue>
+
+@code {
+    [CascadingParameter] public MegaMenu.MegaMenuContext Context { get; set; } = default!;
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public SvgIcon? Icon { get; set; }
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _itemId = $"megamenu-item-{Guid.NewGuid():N}";
+    private readonly string _triggerId = $"megamenu-trigger-{Guid.NewGuid():N}";
+    private System.Threading.Timer? _closeTimer;
+    private const int CloseDelay = 150;
+
+    private bool _isOpen => Context?.ActiveItemId == _itemId;
+
+    private string CssClass => $"relative {Class}".Trim();
+
+    private string TriggerCssClass => $"inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors focus:outline-none focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 {(_isOpen ? "bg-accent/50" : "")}".Trim();
+
+    private string ChevronCssClass => $"h-3 w-3 transition-transform duration-200 {(_isOpen ? "rotate-180" : "")}";
+
+    private void HandleMouseEnter()
+    {
+        _closeTimer?.Dispose();
+        _closeTimer = null;
+
+        if (!_isOpen)
+        {
+            InvokeAsync(async () =>
+            {
+                await Context.SetActiveItemId.InvokeAsync(_itemId);
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void HandleMouseLeave()
+    {
+        if (_isOpen)
+        {
+            _closeTimer?.Dispose();
+            _closeTimer = new System.Threading.Timer(_ =>
+            {
+                InvokeAsync(async () =>
+                {
+                    if (Context.ActiveItemId == _itemId)
+                    {
+                        await Context.SetActiveItemId.InvokeAsync(null);
+                        StateHasChanged();
+                    }
+                });
+            }, null, CloseDelay, System.Threading.Timeout.Infinite);
+        }
+    }
+
+    private async Task HandleClick()
+    {
+        if (_isOpen)
+        {
+            await Context.SetActiveItemId.InvokeAsync(null);
+        }
+        else
+        {
+            await Context.SetActiveItemId.InvokeAsync(_itemId);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+            case " ":
+                await HandleClick();
+                break;
+            case "Escape":
+                await Context.SetActiveItemId.InvokeAsync(null);
+                break;
+        }
+    }
+
+    public void Dispose()
+    {
+        _closeTimer?.Dispose();
+    }
+
+    public record MegaMenuItemContext(string ItemId, string TriggerId);
+}

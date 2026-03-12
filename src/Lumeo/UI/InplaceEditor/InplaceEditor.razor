@@ -1,0 +1,170 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @if (_editing && !Disabled)
+    {
+        <div class="flex items-start gap-2 w-full">
+            <div class="flex-1 min-w-0">
+                @if (EditMode == InplaceEditMode.Textarea)
+                {
+                    <textarea class="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                              rows="3"
+                              value="@_editValue"
+                              @oninput="OnInput"
+                              @onkeydown="OnKeyDown"
+                              @onblur="OnBlur" />
+                }
+                else if (EditMode == InplaceEditMode.Select && SelectOptions is not null)
+                {
+                    <select class="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                            value="@_editValue"
+                            @onchange="OnSelectChange"
+                            @onblur="OnBlur">
+                        @foreach (var option in SelectOptions)
+                        {
+                            <option value="@option">@option</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <input type="text"
+                           class="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                           value="@_editValue"
+                           @oninput="OnInput"
+                           @onkeydown="OnKeyDown"
+                           @onblur="OnBlur" />
+                }
+            </div>
+
+            @if (ShowButtons)
+            {
+                <div class="flex gap-1 shrink-0">
+                    <button type="button"
+                            class="inline-flex items-center justify-center rounded p-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                            @onclick="Save" @onclick:stopPropagation="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="inline-flex items-center justify-center rounded p-1 text-xs bg-muted text-muted-foreground hover:bg-muted/70 transition-colors"
+                            @onclick="Cancel" @onclick:stopPropagation="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="@DisplayClass" @onclick="StartEditing">
+            <div class="flex-1 min-w-0">
+                @if (ChildContent is not null)
+                {
+                    @ChildContent
+                }
+                else if (!string.IsNullOrEmpty(Value))
+                {
+                    <span class="text-sm">@Value</span>
+                }
+                else if (!string.IsNullOrEmpty(Placeholder))
+                {
+                    <span class="text-sm text-muted-foreground/60 italic">@Placeholder</span>
+                }
+            </div>
+            @if (!Disabled)
+            {
+                <span class="ml-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public InplaceEditMode EditMode { get; set; } = InplaceEditMode.Text;
+    [Parameter] public List<string>? SelectOptions { get; set; }
+    [Parameter] public bool SaveOnBlur { get; set; } = true;
+    [Parameter] public bool SaveOnEnter { get; set; } = true;
+    [Parameter] public bool ShowButtons { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _editing;
+    private string? _editValue;
+
+    private string CssClass => $"group w-full {Class}".Trim();
+
+    private string DisplayClass => $"flex items-center w-full rounded px-2 py-1 cursor-pointer hover:bg-muted/30 transition-colors min-h-8 {(Disabled ? "cursor-default hover:bg-transparent" : "")}".Trim();
+
+    public enum InplaceEditMode { Text, Textarea, Select }
+
+    private void StartEditing()
+    {
+        if (Disabled) return;
+        _editValue = Value;
+        _editing = true;
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _editValue = e.Value?.ToString();
+    }
+
+    private void OnSelectChange(ChangeEventArgs e)
+    {
+        _editValue = e.Value?.ToString();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await Cancel();
+        }
+        else if (e.Key == "Enter" && SaveOnEnter && EditMode == InplaceEditMode.Text)
+        {
+            await Save();
+        }
+    }
+
+    private async Task OnBlur()
+    {
+        if (SaveOnBlur && _editing && !ShowButtons)
+        {
+            await Save();
+        }
+    }
+
+    private async Task Save()
+    {
+        _editing = false;
+        var saved = _editValue ?? "";
+        await ValueChanged.InvokeAsync(saved);
+        await OnSave.InvokeAsync(saved);
+    }
+
+    private async Task Cancel()
+    {
+        _editing = false;
+        _editValue = Value;
+        await OnCancel.InvokeAsync();
+    }
+}

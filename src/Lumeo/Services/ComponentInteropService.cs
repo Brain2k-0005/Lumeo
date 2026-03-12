@@ -444,6 +444,26 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
         await module.InvokeVoidAsync("copyToClipboard", text);
     }
 
+    // --- LocalStorage ---
+
+    public async ValueTask SaveToLocalStorage(string key, string value)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("saveToLocalStorage", key, value);
+    }
+
+    public async ValueTask<string?> LoadFromLocalStorage(string key)
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<string?>("loadFromLocalStorage", key);
+    }
+
+    public async ValueTask RemoveFromLocalStorage(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("removeFromLocalStorage", key);
+    }
+
     public record ElementRect(double X, double Y, double Width, double Height);
 
     public void Dispose()

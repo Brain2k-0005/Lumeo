@@ -1,0 +1,69 @@
+@namespace Lumeo
+
+<div class="@CssClass"
+     draggable="@(Draggable ? "true" : "false")"
+     @onclick="OnClick"
+     @attributes="AdditionalAttributes">
+
+    @if (Labels is not null && Labels.Count > 0)
+    {
+        <div class="flex flex-wrap gap-1 mb-2">
+            @foreach (var label in Labels)
+            {
+                <span class="@GetLabelClass(label.Color) inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium">
+                    @label.Text
+                </span>
+            }
+        </div>
+    }
+
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+    else
+    {
+        <p class="text-sm font-medium leading-snug">@Title</p>
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <p class="mt-1 text-xs text-muted-foreground line-clamp-2">@Description</p>
+        }
+    }
+
+    @if (!string.IsNullOrEmpty(Avatar))
+    {
+        <div class="mt-2 flex justify-end">
+            <img src="@Avatar" alt="Assignee" class="w-6 h-6 rounded-full object-cover border border-border/40" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public List<KanbanLabel>? Labels { get; set; }
+    [Parameter] public string? Avatar { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Draggable { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"bg-card rounded-lg border border-border/40 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow {Class}".Trim();
+
+    private static string GetLabelClass(string color) => color switch
+    {
+        "primary" => "bg-primary/10 text-primary",
+        "destructive" => "bg-destructive/10 text-destructive",
+        "warning" => "bg-yellow-500/10 text-yellow-600",
+        "success" => "bg-green-500/10 text-green-600",
+        "secondary" => "bg-secondary text-secondary-foreground",
+        _ => "bg-muted text-muted-foreground"
+    };
+
+    public class KanbanLabel
+    {
+        public string Text { get; set; } = "";
+        public string Color { get; set; } = "primary";
+    }
+}

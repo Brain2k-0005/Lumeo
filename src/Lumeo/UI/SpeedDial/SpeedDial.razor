@@ -1,0 +1,136 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div id="@_wrapperId" class="@PositionClass @Class" @attributes="AdditionalAttributes">
+    @if (_isOpen)
+    {
+        <div id="@_contentId" class="@ItemsContainerClass">
+            @foreach (var item in Items)
+            {
+                <div class="flex @(Direction == SpeedDialDirection.Left || Direction == SpeedDialDirection.Right ? "flex-col" : "") items-center gap-2 @(Direction == SpeedDialDirection.Right || Direction == SpeedDialDirection.Down ? "flex-row-reverse" : "")">
+                    <span class="whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-xs text-popover-foreground shadow-md">
+                        @item.Label
+                    </span>
+                    <button type="button"
+                            class="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-md transition-all hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                            @onclick="() => HandleItemClick(item)"
+                            disabled="@item.Disabled"
+                            title="@item.Label">
+                        @if (!string.IsNullOrEmpty(item.Icon))
+                        {
+                            <span class="text-sm">@item.Icon</span>
+                        }
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
+    <button type="button"
+            class="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            @onclick="ToggleOpen"
+            aria-expanded="@_isOpen"
+            aria-label="Actions">
+        @{ var plusClass = $"h-6 w-6 transition-transform {(_isOpen ? "rotate-45" : "")}"; }
+        <Blazicon Svg="Lucide.Plus" class="@plusClass" />
+    </button>
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public List<SpeedDialItem> Items { get; set; } = new();
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public SpeedDialPosition Position { get; set; } = SpeedDialPosition.BottomRight;
+    [Parameter] public SpeedDialDirection Direction { get; set; } = SpeedDialDirection.Up;
+    [Parameter] public string Variant { get; set; } = "Default";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _wrapperId = $"speeddial-{Guid.NewGuid():N}";
+    private readonly string _contentId = $"speeddial-content-{Guid.NewGuid():N}";
+    private bool _isOpen;
+    private bool _registered;
+
+    private string PositionClass => Position switch
+    {
+        SpeedDialPosition.BottomLeft => "fixed bottom-6 left-6 z-50 flex flex-col-reverse items-start",
+        SpeedDialPosition.TopRight => "fixed top-6 right-6 z-50 flex flex-col items-end",
+        SpeedDialPosition.TopLeft => "fixed top-6 left-6 z-50 flex flex-col items-start",
+        _ => "fixed bottom-6 right-6 z-50 flex flex-col-reverse items-end"
+    };
+
+    private string ItemsContainerClass
+    {
+        get
+        {
+            var directionClass = Direction switch
+            {
+                SpeedDialDirection.Down => "flex flex-col mt-2",
+                SpeedDialDirection.Left => "flex flex-row-reverse mr-2",
+                SpeedDialDirection.Right => "flex flex-row ml-2",
+                _ => "flex flex-col-reverse mb-2"
+            };
+            return $"{directionClass} gap-2 animate-fade-in";
+        }
+    }
+
+    private async Task ToggleOpen()
+    {
+        if (_isOpen)
+            await Close();
+        else
+            await Open();
+    }
+
+    private async Task Open()
+    {
+        _isOpen = true;
+        StateHasChanged();
+        await Task.Yield();
+        await Interop.RegisterClickOutside(_wrapperId, null, async () =>
+        {
+            await Close();
+            await InvokeAsync(StateHasChanged);
+        });
+        _registered = true;
+    }
+
+    private async Task Close()
+    {
+        _isOpen = false;
+        if (_registered)
+        {
+            try { await Interop.UnregisterClickOutside(_wrapperId); }
+            catch (JSDisconnectedException) { }
+            _registered = false;
+        }
+    }
+
+    private async Task HandleItemClick(SpeedDialItem item)
+    {
+        if (item.Disabled) return;
+        await item.OnClick.InvokeAsync();
+        await Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            try { await Interop.UnregisterClickOutside(_wrapperId); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public class SpeedDialItem
+    {
+        public string Label { get; set; } = "";
+        public string? Icon { get; set; }
+        public EventCallback OnClick { get; set; }
+        public bool Disabled { get; set; }
+    }
+
+    public enum SpeedDialPosition { BottomRight, BottomLeft, TopRight, TopLeft }
+    public enum SpeedDialDirection { Up, Down, Left, Right }
+}

@@ -1,0 +1,39 @@
+@namespace Lumeo
+
+@{
+    var context = new MegaMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId));
+}
+
+<nav class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        <ul class="@ListCssClass" role="menubar">
+            @ChildContent
+        </ul>
+    </CascadingValue>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public MegaMenuOrientation Orientation { get; set; } = MegaMenuOrientation.Horizontal;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string? _activeItemId;
+
+    private string CssClass => $"relative {Class}".Trim();
+
+    private string ListCssClass => Orientation == MegaMenuOrientation.Vertical
+        ? "flex flex-col gap-1"
+        : "flex items-center gap-1";
+
+    private Task SetActiveItemId(string? value)
+    {
+        _activeItemId = value;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public enum MegaMenuOrientation { Horizontal, Vertical }
+
+    public record MegaMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId);
+}
