@@ -3,6 +3,12 @@
 
 <thead class="@CssClass" @attributes="AdditionalAttributes">
     <tr>
+        @* Row reorder handle column *@
+        @if (Context?.RowReorderable == true)
+        {
+            <th class="px-1 py-2 w-8 bg-muted/30"></th>
+        }
+
         @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
         {
             <th class="px-3 py-2 w-10 bg-muted/30">
@@ -23,19 +29,31 @@
 
         @if (Context is not null)
         {
+            var colIndex = 0;
             @foreach (var column in Context.Columns.Where(c => c.Visible))
             {
+                var idx = colIndex;
                 var sortDir = GetSortDirection(column);
                 var hasFilter = HasFilter(column);
                 var isFilterOpen = ActiveFilterColumn == column.Field;
                 <DataGridHeaderCell TItem="TItem"
                                     Column="column"
+                                    ColumnIndex="idx"
                                     SortDirection="sortDir"
                                     HasActiveFilter="hasFilter"
                                     IsFilterOpen="isFilterOpen"
+                                    Reorderable="Reorderable"
                                     OnFilterToggle="@(() => OnFilterToggle.InvokeAsync(column.Field))"
-                                    OnFilterApply="OnFilterApply" />
+                                    OnFilterApply="OnFilterApply"
+                                    OnColumnReorder="OnColumnReorder" />
+                colIndex++;
             }
+        }
+
+        @* Row edit action column placeholder in header *@
+        @if (Context?.EditMode == DataGridEditMode.Row)
+        {
+            <th class="px-3 py-2 w-10 bg-muted/30"></th>
         }
     </tr>
 </thead>
@@ -44,8 +62,10 @@
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [Parameter] public bool HasDetailTemplate { get; set; }
     [Parameter] public string? ActiveFilterColumn { get; set; }
+    [Parameter] public bool Reorderable { get; set; }
     [Parameter] public EventCallback<string?> OnFilterToggle { get; set; }
     [Parameter] public EventCallback<FilterApplyEventArgs> OnFilterApply { get; set; }
+    [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

@@ -1,0 +1,300 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@{
+    var displayText = GetDisplayText();
+}
+
+<div id="@_wrapperId" class="relative inline-block @Class" @attributes="AdditionalAttributes">
+    <button type="button"
+            class="@TriggerClass"
+            @onclick="ToggleOpen"
+            disabled="@Disabled"
+            aria-haspopup="tree"
+            aria-expanded="@_isOpen">
+        <span class="flex-1 truncate text-left @(displayText == Placeholder ? "text-muted-foreground" : "")">@displayText</span>
+        @{ var chevronClass = $"h-4 w-4 shrink-0 opacity-50 transition-transform {(_isOpen ? "rotate-180" : "")}"; }
+        <Blazicon Svg="Lucide.ChevronDown" class="@chevronClass" />
+    </button>
+
+    @if (_isOpen)
+    {
+        <div id="@_contentId"
+             class="fixed z-50 min-w-[12rem] overflow-hidden rounded-md border border-border bg-popover shadow-lg animate-fade-in"
+             role="tree">
+            @if (Searchable)
+            {
+                <div class="p-2 border-b border-border">
+                    <input type="text"
+                           class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+                           placeholder="Search..."
+                           value="@_searchText"
+                           @oninput="OnSearchInput"
+                           @onclick:stopPropagation="true" />
+                </div>
+            }
+            <div class="max-h-60 overflow-y-auto p-1">
+                @foreach (var item in Items)
+                {
+                    @RenderTreeItem(item, 0)
+                }
+                @if (!HasVisibleItems())
+                {
+                    <div class="py-4 text-center text-sm text-muted-foreground">No results found.</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public List<TreeSelectItem> Items { get; set; } = new();
+    [Parameter] public string Placeholder { get; set; } = "Select...";
+    [Parameter] public bool Searchable { get; set; }
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public List<string>? Values { get; set; }
+    [Parameter] public EventCallback<List<string>?> ValuesChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ExpandAll { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _wrapperId = $"treeselect-{Guid.NewGuid():N}";
+    private readonly string _contentId = $"treeselect-content-{Guid.NewGuid():N}";
+    private bool _isOpen;
+    private bool _registered;
+    private string _searchText = "";
+    private readonly HashSet<string> _expandedNodes = new();
+
+    private string TriggerClass =>
+        $"flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent/50 focus:outline-none focus:ring-1 focus:ring-ring".Trim();
+
+    protected override void OnInitialized()
+    {
+        if (ExpandAll)
+        {
+            ExpandAllNodes(Items);
+        }
+    }
+
+    private void ExpandAllNodes(List<TreeSelectItem> items)
+    {
+        foreach (var item in items)
+        {
+            if (item.Children?.Count > 0)
+            {
+                _expandedNodes.Add(item.Value);
+                ExpandAllNodes(item.Children);
+            }
+        }
+    }
+
+    private string GetDisplayText()
+    {
+        if (Multiple)
+        {
+            if (Values == null || Values.Count == 0) return Placeholder;
+            var labels = Values.Select(v => FindLabel(Items, v)).Where(l => l != null).ToList();
+            return labels.Count > 0 ? string.Join(", ", labels) : Placeholder;
+        }
+        if (string.IsNullOrEmpty(Value)) return Placeholder;
+        return FindLabel(Items, Value) ?? Placeholder;
+    }
+
+    private string? FindLabel(List<TreeSelectItem> items, string value)
+    {
+        foreach (var item in items)
+        {
+            if (item.Value == value) return item.Label;
+            if (item.Children?.Count > 0)
+            {
+                var found = FindLabel(item.Children, value);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private bool HasVisibleItems() => Items.Any(i => IsVisible(i));
+
+    private bool IsVisible(TreeSelectItem item)
+    {
+        if (string.IsNullOrEmpty(_searchText)) return true;
+        if (item.Label.Contains(_searchText, StringComparison.OrdinalIgnoreCase)) return true;
+        return item.Children?.Any(IsVisible) == true;
+    }
+
+    private bool MatchesSearch(TreeSelectItem item) =>
+        string.IsNullOrEmpty(_searchText) ||
+        item.Label.Contains(_searchText, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsSelected(string value)
+    {
+        if (Multiple) return Values?.Contains(value) == true;
+        return Value == value;
+    }
+
+    private async Task SelectItem(TreeSelectItem item)
+    {
+        if (item.Disabled) return;
+
+        if (Multiple)
+        {
+            var current = Values ?? new List<string>();
+            if (current.Contains(item.Value))
+                current = current.Where(v => v != item.Value).ToList();
+            else
+                current = new List<string>(current) { item.Value };
+            Values = current.Count > 0 ? current : null;
+            await ValuesChanged.InvokeAsync(Values);
+        }
+        else
+        {
+            Value = item.Value;
+            await ValueChanged.InvokeAsync(item.Value);
+            await CloseDropdown();
+        }
+    }
+
+    private void ToggleNode(string value)
+    {
+        if (_expandedNodes.Contains(value))
+            _expandedNodes.Remove(value);
+        else
+            _expandedNodes.Add(value);
+    }
+
+    private async Task ToggleOpen()
+    {
+        if (_isOpen)
+            await CloseDropdown();
+        else
+            await OpenDropdown();
+    }
+
+    private async Task OpenDropdown()
+    {
+        _isOpen = true;
+        _searchText = "";
+        StateHasChanged();
+        await Task.Yield();
+        await Interop.PositionFixed(_contentId, _wrapperId, "start", true, "bottom");
+        await Interop.RegisterClickOutside(_contentId, _wrapperId, async () =>
+        {
+            await CloseDropdown();
+            await InvokeAsync(StateHasChanged);
+        });
+        _registered = true;
+    }
+
+    private async Task CloseDropdown()
+    {
+        _isOpen = false;
+        if (_registered)
+        {
+            try { await Interop.UnregisterClickOutside(_contentId); }
+            catch (JSDisconnectedException) { }
+            _registered = false;
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(_searchText))
+        {
+            // Auto-expand all when searching
+            ExpandAllNodes(Items);
+        }
+    }
+
+    private RenderFragment RenderTreeItem(TreeSelectItem item, int depth) => __builder =>
+    {
+        if (!IsVisible(item)) return;
+
+        var hasChildren = item.Children?.Count > 0;
+        var isExpanded = _expandedNodes.Contains(item.Value);
+        var isSelected = IsSelected(item.Value);
+        var isLeaf = !hasChildren;
+        var paddingLeft = depth * 16 + 8;
+
+        <div role="treeitem" aria-selected="@isSelected" aria-expanded="@(hasChildren ? isExpanded : null)">
+            <div class="@GetItemClass(isSelected, item.Disabled, isLeaf)"
+                 style="padding-left: @(paddingLeft)px"
+                 @onclick="() => HandleItemClick(item, hasChildren)"
+                 @onclick:stopPropagation="true">
+                @if (hasChildren)
+                {
+                    <button type="button"
+                            class="mr-1 rounded hover:bg-accent p-0.5"
+                            @onclick="() => ToggleNode(item.Value)"
+                            @onclick:stopPropagation="true">
+                        @{ var chevronRightClass = $"h-3.5 w-3.5 transition-transform {(isExpanded ? "rotate-90" : "")}"; }
+                        <Blazicon Svg="Lucide.ChevronRight" class="@chevronRightClass" />
+                    </button>
+                }
+                else
+                {
+                    <span class="mr-1 w-5 shrink-0"></span>
+                }
+
+                @if (!string.IsNullOrEmpty(item.Icon))
+                {
+                    <span class="mr-1.5 text-muted-foreground text-xs">@item.Icon</span>
+                }
+
+                <span class="flex-1 truncate text-sm">@item.Label</span>
+
+                @if (isSelected && isLeaf)
+                {
+                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary shrink-0" />
+                }
+            </div>
+
+            @if (hasChildren && isExpanded)
+            {
+                <div role="group">
+                    @foreach (var child in item.Children!)
+                    {
+                        @RenderTreeItem(child, depth + 1)
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private async Task HandleItemClick(TreeSelectItem item, bool hasChildren)
+    {
+        if (hasChildren)
+            ToggleNode(item.Value);
+        else
+            await SelectItem(item);
+    }
+
+    private string GetItemClass(bool isSelected, bool disabled, bool isLeaf) =>
+        $"flex items-center gap-1 rounded-md py-1.5 pr-2 cursor-pointer transition-colors " +
+        (disabled ? "opacity-50 cursor-not-allowed " : isSelected && isLeaf ? "bg-accent text-accent-foreground " : "hover:bg-accent/60 ") +
+        (disabled ? "" : "");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            try { await Interop.UnregisterClickOutside(_contentId); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public class TreeSelectItem
+    {
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public List<TreeSelectItem>? Children { get; set; }
+        public bool Disabled { get; set; }
+        public string? Icon { get; set; }
+    }
+}
