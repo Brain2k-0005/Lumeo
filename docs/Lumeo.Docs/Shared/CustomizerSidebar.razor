@@ -6,16 +6,6 @@
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
 @implements IDisposable
 
-<!-- Floating open button when sidebar is closed -->
-@if (!_sidebarOpen)
-{
-    <button class="fixed right-0 top-1/2 -translate-y-1/2 z-50 hidden lg:flex flex-col items-center justify-center gap-1.5 bg-card border border-border border-r-0 rounded-l-xl px-2 py-4 shadow-lg hover:bg-accent transition-colors group"
-            title="Open customizer (Ctrl+B)"
-            @onclick='() => _sidebarOpen = true'>
-        <Blazicon Svg="Lucide.SlidersHorizontal" class="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-        <span class="[writing-mode:vertical-rl] rotate-180 text-[10px] font-medium text-muted-foreground/70 group-hover:text-foreground/80 transition-colors tracking-wide leading-none">create</span>
-    </button>
-}
 
 <!-- Click-outside backdrop for popover -->
 @if (_expandedSection != "")
@@ -24,7 +14,7 @@
 }
 
 <!-- Customizer Sidebar -->
-@if (_sidebarOpen)
+@if (IsOpen)
 {
 <aside class="relative w-[280px] shrink-0 border-l border-border sticky top-14 h-[calc(100vh-3.5rem)] overflow-visible z-40 hidden lg:flex flex-col">
 
@@ -215,7 +205,7 @@
             </Flex>
             <button class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
                     title="Close customizer"
-                    @onclick='() => _sidebarOpen = false'>
+                    @onclick="() => IsOpenChanged.InvokeAsync(false)">
                 <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
             </button>
         </Flex>
@@ -390,9 +380,11 @@
 }
 
 @code {
+    [Parameter] public bool IsOpen { get; set; } = true;
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
     private readonly List<IDisposable> _kbdShortcuts = new();
     private string _expandedSection = "";
-    private bool _sidebarOpen = true;
     private bool _darkMode;
     private bool _copied;
 
@@ -646,12 +638,6 @@
             catch { }
 
             // Register keyboard shortcuts
-            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", () =>
-            {
-                _sidebarOpen = !_sidebarOpen;
-                InvokeAsync(StateHasChanged);
-                return Task.CompletedTask;
-            }));
             _kbdShortcuts.Add(await Shortcuts.RegisterAsync("r", async () =>
             {
                 await ShuffleSettings();
