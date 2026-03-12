@@ -1,15 +1,47 @@
 # Lumeo
 
-A beautiful, accessible Blazor component library inspired by [shadcn/ui](https://ui.shadcn.com). 45+ production-ready components with Tailwind CSS theming, dark mode, and multiple color schemes.
+A beautiful, accessible Blazor component library inspired by [shadcn/ui](https://ui.shadcn.com). 90+ production-ready components with Tailwind CSS theming, dark mode, and multiple color schemes.
+
+**[Live Demo](https://lumeo.nativ.sh)** | [![Live Demo](https://img.shields.io/badge/Live%20Demo-lumeo.nativ.sh-blue)](https://lumeo.nativ.sh)
 
 ## Features
 
-- **45+ Components** — Accordion, Alert, AlertDialog, Avatar, Badge, Breadcrumb, Button, Calendar, Card, Checkbox, Collapsible, Combobox, Command, DataTable, DatePicker, Dialog, DropdownMenu, EmptyState, FileUpload, Form, Input, Label, OtpInput, Pagination, Popover, Progress, RadioGroup, ScrollArea, Select, Separator, Sheet, Sidebar, Skeleton, Spinner, Switch, Table, Tabs, Textarea, ThemeSwitcher, ThemeToggle, Toast, Tooltip
-- **5 Color Themes** — Orange (default), Zinc, Blue, Green, Rose
+- **90+ Components** — Fully accessible, production-ready UI primitives
+- **7 Color Themes** — Vega (Orange), Nova (Zinc), Maia (Blue), Lyra (Green), Mira (Rose), Violet, Amber, Teal
 - **Dark Mode** — Class-based with system preference detection
 - **Tailwind CSS v4** — CSS variable architecture, zero hardcoded `dark:` overrides
+- **Programmatic OverlayService** — Open dialogs, sheets, drawers, and toasts from code
+- **30 Chart Types** — Powered by ECharts (Bar, Line, Area, Pie, Donut, Radar, Scatter, and more)
+- **DataGrid** — Sort, filter, edit, and export with built-in pagination
+- **Layout Primitives** — Stack, Flex, Grid, Container, Center, Spacer
 - **Accessible** — ARIA attributes, keyboard navigation, focus trapping
 - **Blazor WASM & Server** — Works with both hosting models
+
+## Component Categories
+
+### Layout
+Stack, Flex, Grid, Container, Center, Spacer
+
+### Typography
+Text, Heading, Link, Code
+
+### Forms
+Input, Select, Combobox, DatePicker, TimePicker, NumberInput, Checkbox, Switch, RadioGroup, Slider, Toggle, FileUpload, OtpInput, TagInput, ColorPicker, Textarea, Form
+
+### Data Display
+Table, DataGrid, Card, Badge, Avatar, Calendar, Descriptions, Statistic, Timeline, Steps, Rating, Image
+
+### Feedback
+Toast, Alert, Progress, Spinner, Skeleton, EmptyState, Result
+
+### Overlay
+Dialog, Sheet, Drawer, AlertDialog, Popover, Tooltip, HoverCard, ContextMenu, DropdownMenu, Command
+
+### Navigation
+Tabs, Breadcrumb, Pagination, Sidebar, Menubar, NavigationMenu, Accordion, Collapsible
+
+### Charts
+30 types via ECharts: Bar, Line, Area, Pie, Donut, Radar, Scatter, Heatmap, Treemap, Sankey, Funnel, Gauge, Candlestick, Boxplot, Calendar, Sunburst, Graph, Parallel, ThemeRiver, and more
 
 ## Installation
 
@@ -87,6 +119,9 @@ For alternate color themes:
 @import "./_content/Lumeo/css/themes/_blue.css" layer(base);
 @import "./_content/Lumeo/css/themes/_green.css" layer(base);
 @import "./_content/Lumeo/css/themes/_rose.css" layer(base);
+@import "./_content/Lumeo/css/themes/_violet.css" layer(base);
+@import "./_content/Lumeo/css/themes/_amber.css" layer(base);
+@import "./_content/Lumeo/css/themes/_teal.css" layer(base);
 ```
 
 ## Usage
@@ -151,11 +186,14 @@ Or programmatically via `ThemeService`:
 
 | Theme  | Primary Color            | Character         |
 |--------|--------------------------|-------------------|
-| Orange | `hsl(14 70% 50%)`       | Warm brand        |
-| Zinc   | `hsl(240 5% 26%)`       | Clean, neutral    |
-| Blue   | `hsl(221 83% 53%)`      | Corporate, trust  |
-| Green  | `hsl(142 71% 45%)`      | Growth, eco       |
-| Rose   | `hsl(347 77% 50%)`      | Warm, energetic   |
+| Vega   | `hsl(14 70% 50%)`       | Warm brand        |
+| Nova   | `hsl(240 5% 26%)`       | Clean, neutral    |
+| Maia   | `hsl(221 83% 53%)`      | Corporate, trust  |
+| Lyra   | `hsl(142 71% 45%)`      | Growth, eco       |
+| Mira   | `hsl(347 77% 50%)`      | Warm, energetic   |
+| Violet | `hsl(262 83% 58%)`      | Bold, creative    |
+| Amber  | `hsl(38 92% 50%)`       | Energy, attention |
+| Teal   | `hsl(173 80% 40%)`      | Calm, modern      |
 
 ### Dark mode
 
@@ -176,6 +214,7 @@ await Theme.ToggleModeAsync();              // Toggle current
 
 - .NET 10 / Blazor
 - Tailwind CSS v4
+- ECharts (via DnetEcharts) for charts
 - [Blazicons.Lucide](https://github.com/nickvdyck/blazicons) for icons
 
 ## License
