@@ -39,6 +39,14 @@
 
             <!-- Right actions -->
             <Flex Class="items-center gap-1">
+                @if (ShowDocsLayout)
+                {
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                            OnClick="@(() => { _customizerOpen = !_customizerOpen; })"
+                            title="Toggle customizer (Ctrl+B)">
+                        <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4" />
+                    </Button>
+                }
                 <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" OnClick="ToggleDarkMode" title="Toggle dark mode (Ctrl+D)">
                     @if (_darkMode)
                     {
@@ -75,7 +83,7 @@
                     @Body
                 </div>
             </main>
-            <CustomizerSidebar />
+            <CustomizerSidebar IsOpen="@_customizerOpen" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
         </Flex>
     }
     else
@@ -161,6 +169,7 @@
 @code {
     private readonly List<IDisposable> _kbdShortcuts = new();
     private bool _darkMode;
+    private bool _customizerOpen = true;
     private bool _searchOpen;
     private string _searchQuery = string.Empty;
     private ElementReference _searchInput;
@@ -403,6 +412,12 @@
                 });
             ");
 
+            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", () =>
+            {
+                _customizerOpen = !_customizerOpen;
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            }));
             _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+d", async () =>
             {
                 await ToggleDarkMode();
