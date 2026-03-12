@@ -5,18 +5,40 @@
 <PageHeader Title="Mail" Description="An inbox layout with a message list, email viewer, and reply composer." />
 
 <ComponentDemo Title="Mail / Inbox" Code="@_mailCode">
-    <div class="w-full border rounded-lg overflow-hidden" style="height: 560px;">
+    <Stack Class="w-full border rounded-lg overflow-hidden" style="height: 560px;">
         <Flex Class="h-full">
 
+            <!-- Folder Nav -->
+            <Stack Class="w-12 border-r border-border items-center py-3 gap-2 flex-shrink-0">
+                <Stack Class="relative" Gap="0">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                        <DynamicIcon Name="Inbox" Class="h-4 w-4" />
+                    </Button>
+                    <Badge Class="absolute -top-1 -right-1 h-4 min-w-4 text-[10px] px-1">3</Badge>
+                </Stack>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                    <DynamicIcon Name="Send" Class="h-4 w-4" />
+                </Button>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                    <DynamicIcon Name="Star" Class="h-4 w-4" />
+                </Button>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                    <DynamicIcon Name="Trash" Class="h-4 w-4" />
+                </Button>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9 mt-auto">
+                    <DynamicIcon Name="Settings" Class="h-4 w-4" />
+                </Button>
+            </Stack>
+
             <!-- Left Sidebar -->
-            <Flex Class="w-72 border-r flex-col bg-card">
+            <Flex Direction="col" Class="w-72 border-r bg-card">
                 <!-- Toolbar -->
                 <Stack Gap="2" Class="p-3 border-b">
                     <Flex Class="items-center gap-2">
-                        <div class="relative flex-1">
+                        <Flex Class="relative flex-1">
                             <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                            <Input placeholder="Search mail..." Class="pl-8 h-8 text-xs" />
-                        </div>
+                            <Input placeholder="Search mail..." Class="pl-8 h-8 text-xs w-full" />
+                        </Flex>
                     </Flex>
                     <Flex Class="items-center gap-1">
                         <Button Variant="@(_activeFilter == "all" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
@@ -36,13 +58,13 @@
                 </Stack>
 
                 <!-- Mail List -->
-                <div class="flex-1 overflow-y-auto">
+                <Stack Class="flex-1 overflow-y-auto">
                     @for (int i = 0; i < _mailItems.Count; i++)
                     {
                         var index = i;
                         var mail = _mailItems[i];
                         var isActive = _selectedIndex == index;
-                        <div class="@($"flex flex-col gap-1 px-3 py-2.5 border-b cursor-pointer transition-colors {(isActive ? "bg-accent" : "hover:bg-muted/50")}")"
+                        <Stack Class="@($"flex flex-col gap-1 px-3 py-2.5 border-b cursor-pointer transition-colors {(isActive ? "bg-accent" : "hover:bg-muted/50")}")"
                              @onclick="@(() => _selectedIndex = index)">
                             <Flex Class="items-center justify-between gap-2">
                                 <Flex Class="items-center gap-2 min-w-0">
@@ -54,25 +76,28 @@
                                     {
                                         <Lumeo.Text As="span" Class="h-2 w-2 shrink-0"></Lumeo.Text>
                                     }
+                                    <Avatar Class="h-7 w-7 flex-shrink-0">
+                                        <AvatarFallback Class="text-[10px]">@(mail.Sender.Length >= 2 ? mail.Sender.Substring(0, 2).ToUpper() : mail.Sender.ToUpper())</AvatarFallback>
+                                    </Avatar>
                                     <Lumeo.Text As="span" Class="text-sm font-medium text-foreground truncate">@mail.Sender</Lumeo.Text>
                                 </Flex>
                                 <Lumeo.Text As="span" Class="text-xs text-muted-foreground shrink-0">@mail.Time</Lumeo.Text>
                             </Flex>
                             <Lumeo.Text Class="text-xs font-medium text-foreground pl-4 truncate">@mail.Subject</Lumeo.Text>
                             <Lumeo.Text Class="text-xs text-muted-foreground pl-4 truncate">@mail.Preview</Lumeo.Text>
-                        </div>
+                        </Stack>
                     }
-                </div>
+                </Stack>
             </Flex>
 
             <!-- Main Email View -->
-            <Flex Class="flex-1 flex-col bg-card">
+            <Flex Direction="col" Class="flex-1 bg-card">
                 @{
                     var selected = _mailItems[_selectedIndex];
                 }
 
                 <!-- Email Header -->
-                <div class="p-4 border-b">
+                <Stack Class="p-4 border-b">
                     <Flex Class="items-start justify-between gap-4">
                         <Flex Class="items-start gap-3">
                             <Avatar>
@@ -84,6 +109,15 @@
                                     <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">@selected.SenderEmail</Badge>
                                 </Flex>
                                 <Lumeo.Text Class="text-base font-semibold text-foreground mt-1">@selected.Subject</Lumeo.Text>
+                                @if (selected.Tags?.Length > 0)
+                                {
+                                    <Flex Class="gap-1 flex-wrap mt-1">
+                                        @foreach (var tag in selected.Tags)
+                                        {
+                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs">@tag</Badge>
+                                        }
+                                    </Flex>
+                                }
                                 <Lumeo.Text Class="text-xs text-muted-foreground mt-0.5">@selected.Date</Lumeo.Text>
                             </Stack>
                         </Flex>
@@ -96,22 +130,25 @@
                             </Button>
                         </Flex>
                     </Flex>
-                </div>
+                </Stack>
 
                 <!-- Email Body -->
-                <div class="flex-1 overflow-y-auto p-4">
+                <Stack Class="flex-1 overflow-y-auto p-4">
                     <Lumeo.Text Class="text-sm text-foreground leading-relaxed whitespace-pre-line">@selected.Body</Lumeo.Text>
-                </div>
+                </Stack>
 
                 <Separator />
 
                 <!-- Reply Composer -->
                 <Stack Gap="2" Class="p-3">
-                    <Lumeo.Text Class="text-xs font-medium text-muted-foreground">Reply to @selected.Sender</Lumeo.Text>
+                    <Flex Class="items-center justify-between">
+                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground">Reply to @selected.Sender</Lumeo.Text>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-auto p-0 text-muted-foreground text-xs">Cc / Bcc</Button>
+                    </Flex>
                     <Textarea placeholder="Write your reply..." Class="min-h-[80px] text-sm resize-none" @bind-Value="_replyText" />
                     <Flex Class="justify-end gap-2">
                         <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                            <DynamicIcon Name="Copy" Class="h-3.5 w-3.5 mr-1.5" />
+                            <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5 mr-1.5" />
                             Forward
                         </Button>
                         <Button Size="Button.ButtonSize.Sm">
@@ -123,7 +160,7 @@
             </Flex>
 
         </Flex>
-    </div>
+    </Stack>
 </ComponentDemo>
 
 @code {
@@ -140,7 +177,8 @@
         string Time,
         string Date,
         string Body,
-        bool IsRead
+        bool IsRead,
+        string[]? Tags = null
     );
 
     private List<MailItem> _mailItems = new()
@@ -151,14 +189,16 @@
             "9:34am",
             "Feb 26, 2026, 9:34 AM",
             "Hi,\n\nJust a quick reminder about our sync tomorrow at 10am. Please review the attached agenda beforehand so we can make the most of our time.\n\nLet me know if you have any questions.\n\nBest,\nWilliam",
-            false),
+            false,
+            Tags: new[] { "meeting", "reminder" }),
         new("Sofia Davis", "SD", "sofia@email.com",
             "Q1 Report Ready for Review",
             "The Q1 financial report is now ready...",
             "8:15am",
             "Feb 26, 2026, 8:15 AM",
             "Hello,\n\nThe Q1 financial report has been finalized and is ready for your review. You can find it in the shared drive under 'Reports > 2026'.\n\nHighlights: Revenue up 18%, costs down 5%.\n\nRegards,\nSofia",
-            false),
+            false,
+            Tags: new[] { "finance", "Q1" }),
         new("Jackson Lee", "JL", "jackson@email.com",
             "Re: Project Proposal",
             "Thanks for sending over the proposal...",
@@ -214,7 +254,8 @@
             "Feb 19",
             "Feb 19, 2026, 5:55 PM",
             "Hi,\n\nI found a reproducible bug on the login page when using Safari 17. The password field autofill causes the form to submit prematurely.\n\nSteps to reproduce:\n1. Open Safari\n2. Navigate to /login\n3. Allow autofill to populate credentials\n\nAttached screenshots.\n\nNoah",
-            true),
+            true,
+            Tags: new[] { "bug", "urgent" }),
     };
 
     private string _mailCode = @"<Flex Class=""h-full border rounded-lg overflow-hidden"">

@@ -43,6 +43,8 @@
                                     HasActiveFilter="hasFilter"
                                     IsFilterOpen="isFilterOpen"
                                     Reorderable="Reorderable"
+                                    SortPriority="GetSortPriority(column)"
+                                    TotalSortCount="GetTotalSortCount()"
                                     OnFilterToggle="@(() => OnFilterToggle.InvokeAsync(column.Field))"
                                     OnFilterApply="OnFilterApply"
                                     OnColumnReorder="OnColumnReorder" />
@@ -93,6 +95,15 @@
         if (Context is null || column.Field is null) return false;
         return Context.Filters.Any(f => f.Field == column.Field);
     }
+
+    private int GetSortPriority(DataGridColumn<TItem> column)
+    {
+        if (Context is null || column.Field is null) return 0;
+        var idx = Context.Sorts.FindIndex(s => s.Field == column.Field && s.Direction != SortDirection.None);
+        return idx >= 0 ? idx + 1 : 0;
+    }
+
+    private int GetTotalSortCount() => Context?.Sorts.Count(s => s.Direction != SortDirection.None) ?? 0;
 
     private void OnSelectAllChanged(bool value)
     {

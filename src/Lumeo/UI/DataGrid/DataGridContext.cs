@@ -36,5 +36,12 @@ public record DataGridContext<TItem>(
     Func<TItem, DataGridColumn<TItem>, object?> GetEditValue,
     Action<TItem, DataGridColumn<TItem>, object?> SetEditValue,
     Func<TItem, string>? RowClass,
-    Func<TItem, string>? RowStyle
+    Func<TItem, string>? RowStyle,
+    IReadOnlyDictionary<string, double> PinnedLeftOffsets,
+    IReadOnlyDictionary<string, double> PinnedRightOffsets,
+    IReadOnlyList<DataGridGroupSection<TItem>>? GroupedSections,
+    string? GroupBy,
+    bool IsGrouped,
+    Func<string, bool> IsGroupExpanded,
+    Action<string> ToggleGroupExpand
 );
