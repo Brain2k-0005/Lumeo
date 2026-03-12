@@ -1,6 +1,8 @@
 @namespace Lumeo
+@implements IDisposable
 
-<button type="button" class="@CssClass" @onclick="HandleSelect" @attributes="AdditionalAttributes">
+<button type="button" id="@_itemId" role="option" aria-selected="@IsSelected.ToString().ToLower()"
+        class="@CssClass" @onclick="HandleSelect" @attributes="AdditionalAttributes">
     <span class="flex h-3.5 w-3.5 items-center justify-center">
         @if (IsSelected)
         {
@@ -17,11 +19,25 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _itemId = $"select-item-{Guid.NewGuid():N}";
+
     private bool IsSelected => Context.Multiple
         ? Context.Values != null && Context.Values.Contains(Value)
         : Context.Value == Value;
 
-    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground {Class}".Trim();
+    private bool IsFocused => Context.FocusedItemId == _itemId;
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground {(IsFocused ? "bg-accent text-accent-foreground" : "")} {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        Context.RegisterItem(_itemId, Value);
+    }
+
+    public void Dispose()
+    {
+        Context.UnregisterItem(_itemId);
+    }
 
     private async Task HandleSelect() => await Context.OnSelect.InvokeAsync(Value);
 }

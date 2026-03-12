@@ -1,6 +1,16 @@
 @namespace Lumeo
 
-<button type="button" role="tab" aria-selected="@IsActive.ToString().ToLower()" class="@CssClass" @onclick="Activate" @attributes="AdditionalAttributes">
+<button type="button"
+        id="@_tabId"
+        role="tab"
+        aria-selected="@IsActive.ToString().ToLower()"
+        aria-controls="@_panelId"
+        tabindex="@(IsActive ? 0 : -1)"
+        class="@CssClass"
+        @onclick="Activate"
+        @onkeydown="HandleKeyDown"
+        @onkeydown:preventDefault="@_preventKey"
+        @attributes="AdditionalAttributes">
     @if (Icon is not null)
     {
         <span class="inline-flex shrink-0">@Icon</span>
@@ -19,6 +29,8 @@
     }
 </button>
 
+@inject ComponentInteropService Interop
+
 @code {
     [CascadingParameter] public Tabs.TabsContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -30,8 +42,17 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _tabId = $"tab-{Guid.NewGuid():N}";
+    private readonly string _panelId = $"tabpanel-{Guid.NewGuid():N}";
+    private bool _preventKey;
+
     private bool IsActive => Context.ActiveValue == Value;
     private string CurrentVariant => Context.Variant;
+
+    protected override void OnInitialized()
+    {
+        Context.TabIds[Value] = (_tabId, _panelId);
+    }
 
     private string CssClass
     {
@@ -61,5 +82,31 @@
     private async Task HandleClose()
     {
         await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        var isHorizontal = Context.Orientation == Tabs.TabsOrientation.Horizontal;
+        var keys = Context.TabIds.Keys.ToList();
+        var idx = keys.IndexOf(Value);
+
+        string? nextValue = e.Key switch
+        {
+            "ArrowRight" when isHorizontal  => idx < keys.Count - 1 ? keys[idx + 1] : keys[0],
+            "ArrowLeft"  when isHorizontal  => idx > 0 ? keys[idx - 1] : keys[^1],
+            "ArrowDown"  when !isHorizontal => idx < keys.Count - 1 ? keys[idx + 1] : keys[0],
+            "ArrowUp"    when !isHorizontal => idx > 0 ? keys[idx - 1] : keys[^1],
+            "Home" => keys.Count > 0 ? keys[0] : null,
+            "End"  => keys.Count > 0 ? keys[^1] : null,
+            _ => null
+        };
+
+        _preventKey = e.Key is "ArrowRight" or "ArrowLeft" or "ArrowDown" or "ArrowUp" or "Home" or "End";
+
+        if (nextValue is not null && Context.TabIds.TryGetValue(nextValue, out var ids))
+        {
+            await Context.SetValue.InvokeAsync(nextValue);
+            await Interop.FocusElement(ids.TabId);
+        }
     }
 }

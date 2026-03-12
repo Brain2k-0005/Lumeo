@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -19,6 +19,9 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Registry: value -> (tabId, panelId) — populated by TabsTrigger on first render
+    private readonly Dictionary<string, (string TabId, string PanelId)> _tabIds = new();
+
     private string CssClass => Orientation == TabsOrientation.Vertical
         ? $"flex flex-row {Class}".Trim()
         : $"{Class}".Trim();
@@ -29,7 +32,16 @@
         await ActiveValueChanged.InvokeAsync(value);
     }
 
-    public record TabsContext(string ActiveValue, EventCallback<string> SetValue, TabsOrientation Orientation = TabsOrientation.Horizontal, string Variant = "Default");
+    public record TabsContext(
+        string ActiveValue,
+        EventCallback<string> SetValue,
+        TabsOrientation Orientation,
+        string Variant,
+        Dictionary<string, (string TabId, string PanelId)> TabIds)
+    {
+        public TabsContext(string ActiveValue, EventCallback<string> SetValue, TabsOrientation Orientation = TabsOrientation.Horizontal, string Variant = "Default")
+            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>()) { }
+    }
 
     public enum TabsOrientation { Horizontal, Vertical }
 }

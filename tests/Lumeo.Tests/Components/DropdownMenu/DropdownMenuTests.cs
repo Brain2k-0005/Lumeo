@@ -98,8 +98,8 @@ public class DropdownMenuTests : IAsyncLifetime
     {
         var cut = RenderDropdownMenu(isOpen: false);
         var trigger = cut.Find("[role='button']");
-        // When false, Blazor omits the attribute entirely
-        Assert.Null(trigger.GetAttribute("aria-expanded"));
+        // Component renders aria-expanded as a string attribute ("true"/"false")
+        Assert.Equal("false", trigger.GetAttribute("aria-expanded"));
     }
 
     [Fact]

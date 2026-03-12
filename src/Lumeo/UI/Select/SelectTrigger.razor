@@ -1,6 +1,15 @@
 @namespace Lumeo
 
-<button type="button" id="@_triggerId" class="@CssClass" @onclick="Toggle" @attributes="AdditionalAttributes">
+<button type="button" id="@_triggerId"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded="@Context.IsOpen.ToString().ToLower()"
+        aria-controls="@Context.ContentId"
+        aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+        class="@CssClass"
+        @onclick="Toggle"
+        @onkeydown="HandleKeyDown"
+        @attributes="AdditionalAttributes">
     @if (Context.Multiple && Context.Values != null && Context.Values.Count > 0)
     {
         <div class="flex flex-wrap gap-1 items-center flex-1 min-w-0">
@@ -54,6 +63,43 @@
     private string CssClass => $"flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (!Context.IsOpen)
+                    await Context.SetOpen.InvokeAsync(true);
+                else
+                    await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex + 1);
+                break;
+            case "ArrowUp":
+                if (!Context.IsOpen)
+                    await Context.SetOpen.InvokeAsync(true);
+                else
+                    await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex > 0 ? Context.FocusedIndex - 1 : 0);
+                break;
+            case "Enter":
+            case " ":
+                if (!Context.IsOpen)
+                    await Context.SetOpen.InvokeAsync(true);
+                else if (Context.FocusedItemValue is not null)
+                    await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
+                break;
+            case "Escape":
+                await Context.SetOpen.InvokeAsync(false);
+                break;
+            case "Home":
+                if (Context.IsOpen)
+                    await Context.SetFocusedIndex.InvokeAsync(0);
+                break;
+            case "End":
+                if (Context.IsOpen)
+                    await Context.SetFocusedIndex.InvokeAsync(int.MaxValue);
+                break;
+        }
+    }
 
     private async Task RemoveValue(string value)
     {

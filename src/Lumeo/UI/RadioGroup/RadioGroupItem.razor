@@ -1,11 +1,23 @@
 @namespace Lumeo
 
-<button type="button" role="radio" aria-checked="@IsSelected.ToString().ToLower()" class="@CssClass" @onclick="Select" disabled="@Disabled" @attributes="AdditionalAttributes">
+<button type="button"
+        id="@_itemId"
+        role="radio"
+        aria-checked="@IsSelected.ToString().ToLower()"
+        tabindex="@Tabindex"
+        class="@CssClass"
+        @onclick="Select"
+        @onkeydown="HandleKeyDown"
+        @onkeydown:preventDefault="@_preventKey"
+        disabled="@Disabled"
+        @attributes="AdditionalAttributes">
     @if (IsSelected)
     {
         <span class="flex h-2 w-2 rounded-full bg-current"></span>
     }
 </button>
+
+@inject ComponentInteropService Interop
 
 @code {
     [CascadingParameter] public RadioGroup.RadioGroupContext Context { get; set; } = default!;
@@ -14,15 +26,62 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _itemId = $"radio-{Guid.NewGuid():N}";
     private bool IsSelected => Context.Value == Value;
+    private bool _preventKey;
+
+    private int Tabindex
+    {
+        get
+        {
+            if (Context.Value == Value) return 0;
+            if (string.IsNullOrEmpty(Context.Value) && Context.ItemValues.FirstOrDefault() == Value) return 0;
+            return -1;
+        }
+    }
 
     private string CssClass => $"aspect-square h-4 w-4 rounded-full border border-primary text-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        if (!Context.ItemValues.Contains(Value))
+            Context.ItemValues.Add(Value);
+        Context.ItemIds[Value] = _itemId;
+    }
 
     private async Task Select()
     {
         if (!Disabled)
         {
             await Context.OnSelect.InvokeAsync(Value);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        var items = Context.ItemValues;
+        var idx = items.IndexOf(Value);
+
+        string? nextValue = e.Key switch
+        {
+            "ArrowDown" or "ArrowRight" => idx < items.Count - 1 ? items[idx + 1] : items[0],
+            "ArrowUp"   or "ArrowLeft"  => idx > 0 ? items[idx - 1] : items[^1],
+            _ => null
+        };
+
+        _preventKey = e.Key is "ArrowDown" or "ArrowRight" or "ArrowUp" or "ArrowLeft";
+
+        if (nextValue is not null && !Disabled)
+        {
+            await Context.OnSelect.InvokeAsync(nextValue);
+            if (Context.ItemIds.TryGetValue(nextValue, out var nextId))
+            {
+                await Interop.FocusElement(nextId);
+            }
+        }
+        else if (e.Key == " ")
+        {
+            await Select();
         }
     }
 }

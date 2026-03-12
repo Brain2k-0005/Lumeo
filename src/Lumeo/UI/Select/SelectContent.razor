@@ -3,7 +3,8 @@
 
 @if (Context.IsOpen)
 {
-    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@Context.ContentId" role="listbox" class="@CssClass"
+         @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         @if (Context.Searchable)
         {
             <div class="px-1 pb-1">
@@ -11,6 +12,7 @@
                     placeholder="Search..."
                     value="@Context.SearchText"
                     @oninput="OnInput"
+                    @onkeydown="HandleKeyDown"
                     @onclick:stopPropagation="true" />
             </div>
         }
@@ -45,7 +47,6 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _contentId = $"select-content-{Guid.NewGuid():N}";
     private bool _registered;
 
     private string CssClass => $"fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
@@ -54,8 +55,8 @@
     {
         if (Context.IsOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, "start", true);
-            await Interop.RegisterClickOutside(_contentId, null, async () =>
+            await Interop.PositionFixed(Context.ContentId, Context.WrapperId, "start", true);
+            await Interop.RegisterClickOutside(Context.ContentId, null, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
@@ -70,9 +71,27 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape")
+        switch (e.Key)
         {
-            await Context.SetOpen.InvokeAsync(false);
+            case "Escape":
+                await Context.SetOpen.InvokeAsync(false);
+                break;
+            case "ArrowDown":
+                await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex + 1);
+                break;
+            case "ArrowUp":
+                await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex > 0 ? Context.FocusedIndex - 1 : 0);
+                break;
+            case "Home":
+                await Context.SetFocusedIndex.InvokeAsync(0);
+                break;
+            case "End":
+                await Context.SetFocusedIndex.InvokeAsync(int.MaxValue);
+                break;
+            case "Enter":
+                if (Context.FocusedItemValue is not null)
+                    await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
+                break;
         }
     }
 
@@ -88,7 +107,7 @@
 
     private async Task Cleanup()
     {
-        try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterClickOutside(Context.ContentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
 
