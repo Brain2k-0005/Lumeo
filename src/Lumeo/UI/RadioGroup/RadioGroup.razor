@@ -1,10 +1,14 @@
 @namespace Lumeo
 
 @{
-    var context = new RadioGroupContext(Value, EventCallback.Factory.Create<string>(this, OnValueSelected));
+    var context = new RadioGroupContext(Value, EventCallback.Factory.Create<string>(this, OnValueSelected), _itemValues, _itemIds);
 }
 
-<div role="radiogroup" class="@CssClass" @attributes="AdditionalAttributes">
+<div role="radiogroup"
+     aria-label="@AriaLabel"
+     aria-labelledby="@AriaLabelledBy"
+     class="@CssClass"
+     @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -14,8 +18,13 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? AriaLabelledBy { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly List<string> _itemValues = new();
+    private readonly Dictionary<string, string> _itemIds = new();
 
     private string CssClass => $"grid gap-2 {Class}".Trim();
 
@@ -25,5 +34,9 @@
         await ValueChanged.InvokeAsync(value);
     }
 
-    public record RadioGroupContext(string? Value, EventCallback<string> OnSelect);
+    public record RadioGroupContext(
+        string? Value,
+        EventCallback<string> OnSelect,
+        List<string> ItemValues,
+        Dictionary<string, string> ItemIds);
 }

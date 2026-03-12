@@ -2,11 +2,15 @@
 @implements IDisposable
 
 @{
+    var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
+    var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Value : null;
     var context = new ComboboxContext(Value, Values, SearchText, IsOpen, Multiple, IsSearchLoading,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
-        _wrapperId);
+        _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
+        EventCallback.Factory.Create<int>(this, SetFocusedIndex),
+        RegisterItem, UnregisterItem);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -34,8 +38,33 @@
     [Parameter] public bool IsSearchLoading { get; set; }
 
     private readonly string _wrapperId = $"combobox-{Guid.NewGuid():N}";
+    private readonly string _contentId = $"combobox-content-{Guid.NewGuid():N}";
     private string SearchText { get; set; } = "";
     private System.Threading.Timer? _debounceTimer;
+    private int _focusedIndex = -1;
+    private readonly List<(string Id, string Value)> _items = new();
+
+    private void RegisterItem(string id, string value)
+    {
+        if (!_items.Any(i => i.Id == id))
+            _items.Add((id, value));
+    }
+
+    private void UnregisterItem(string id)
+    {
+        _items.RemoveAll(i => i.Id == id);
+    }
+
+    private async Task SetFocusedIndex(int index)
+    {
+        var count = _items.Count;
+        if (count == 0) return;
+        if (index < 0) index = 0;
+        if (index >= count) index = count - 1;
+        _focusedIndex = index;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
 
     private async Task OnValueSelected(string value)
     {
@@ -59,13 +88,20 @@
     private async Task SetOpen(bool value)
     {
         IsOpen = value;
-        if (!value && !Multiple) SearchText = "";
+        if (!value && !Multiple)
+        {
+            SearchText = "";
+            _focusedIndex = -1;
+            _items.Clear();
+        }
         await IsOpenChanged.InvokeAsync(value);
     }
 
     private async Task OnSearchChanged(string text)
     {
         SearchText = text;
+        _focusedIndex = -1;
+        _items.Clear();
 
         if (OnSearchAsync.HasDelegate)
         {
@@ -86,6 +122,10 @@
         _debounceTimer?.Dispose();
     }
 
-    public record ComboboxContext(string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading,
-        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch, string WrapperId);
+    public record ComboboxContext(
+        string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading,
+        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,
+        string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
+        EventCallback<int> SetFocusedIndex,
+        Action<string, string> RegisterItem, Action<string> UnregisterItem);
 }

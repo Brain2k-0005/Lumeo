@@ -3,11 +3,18 @@
 <div class="relative">
     <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
     <input type="text"
+           role="combobox"
+           aria-haspopup="listbox"
+           aria-expanded="@Context.IsOpen.ToString().ToLower()"
+           aria-controls="@Context.ContentId"
+           aria-autocomplete="list"
+           aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
            class="@CssClass"
            placeholder="@Placeholder"
            value="@Context.SearchText"
            @oninput="HandleInput"
            @onfocus="Open"
+           @onkeydown="HandleKeyDown"
            @attributes="AdditionalAttributes" />
 </div>
 
@@ -34,6 +41,38 @@
         if (!Context.IsOpen)
         {
             await Context.SetOpen.InvokeAsync(true);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (!Context.IsOpen)
+                    await Context.SetOpen.InvokeAsync(true);
+                else
+                    await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex + 1);
+                break;
+            case "ArrowUp":
+                if (Context.IsOpen)
+                    await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex > 0 ? Context.FocusedIndex - 1 : 0);
+                break;
+            case "Home":
+                if (Context.IsOpen)
+                    await Context.SetFocusedIndex.InvokeAsync(0);
+                break;
+            case "End":
+                if (Context.IsOpen)
+                    await Context.SetFocusedIndex.InvokeAsync(int.MaxValue);
+                break;
+            case "Enter":
+                if (Context.IsOpen && Context.FocusedItemValue is not null)
+                    await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
+                break;
+            case "Escape":
+                await Context.SetOpen.InvokeAsync(false);
+                break;
         }
     }
 }
