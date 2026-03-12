@@ -1,0 +1,131 @@
+@namespace Lumeo
+
+<input class="@CssClass"
+       value="@_displayValue"
+       placeholder="@EffectivePlaceholder"
+       disabled="@Disabled"
+       @oninput="HandleInput"
+       @onkeydown="HandleKeyDown"
+       @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Mask { get; set; } = "";
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public char PromptChar { get; set; } = '_';
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _displayValue = "";
+    private string _rawValue = "";
+
+    private string CssClass => $"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    private string EffectivePlaceholder => Placeholder ?? BuildMaskPlaceholder();
+
+    protected override void OnParametersSet()
+    {
+        if (Value != _rawValue)
+        {
+            _rawValue = Value ?? "";
+            _displayValue = ApplyMask(_rawValue);
+        }
+    }
+
+    private string BuildMaskPlaceholder()
+    {
+        if (string.IsNullOrEmpty(Mask)) return "";
+        return new string(Mask.Select(c => IsMaskChar(c) ? PromptChar : c).ToArray());
+    }
+
+    private bool IsMaskChar(char c) => c == '#' || c == 'A' || c == '*';
+
+    private bool MatchesMaskChar(char maskChar, char inputChar) => maskChar switch
+    {
+        '#' => char.IsDigit(inputChar),
+        'A' => char.IsLetter(inputChar),
+        '*' => true,
+        _ => false
+    };
+
+    private string ApplyMask(string raw)
+    {
+        if (string.IsNullOrEmpty(Mask)) return raw;
+
+        var result = new System.Text.StringBuilder();
+        int rawIndex = 0;
+
+        foreach (char maskChar in Mask)
+        {
+            if (rawIndex >= raw.Length) break;
+
+            if (IsMaskChar(maskChar))
+            {
+                // Find next matching raw character
+                while (rawIndex < raw.Length && !MatchesMaskChar(maskChar, raw[rawIndex]))
+                    rawIndex++;
+
+                if (rawIndex < raw.Length)
+                {
+                    result.Append(raw[rawIndex]);
+                    rawIndex++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            else
+            {
+                result.Append(maskChar);
+            }
+        }
+
+        return result.ToString();
+    }
+
+    private string ExtractRaw(string display)
+    {
+        if (string.IsNullOrEmpty(Mask)) return display;
+
+        var raw = new System.Text.StringBuilder();
+        int maskIndex = 0;
+
+        for (int i = 0; i < display.Length && maskIndex < Mask.Length; i++)
+        {
+            // Advance mask past literal chars
+            while (maskIndex < Mask.Length && !IsMaskChar(Mask[maskIndex]))
+                maskIndex++;
+
+            if (maskIndex >= Mask.Length) break;
+
+            if (MatchesMaskChar(Mask[maskIndex], display[i]))
+            {
+                raw.Append(display[i]);
+                maskIndex++;
+            }
+        }
+
+        return raw.ToString();
+    }
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        var inputVal = e.Value?.ToString() ?? "";
+        _rawValue = ExtractRaw(inputVal);
+        _displayValue = ApplyMask(_rawValue);
+        await ValueChanged.InvokeAsync(_rawValue);
+    }
+
+    private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && _rawValue.Length > 0)
+        {
+            _rawValue = _rawValue[..^1];
+            _displayValue = ApplyMask(_rawValue);
+            await ValueChanged.InvokeAsync(_rawValue);
+        }
+    }
+}

@@ -15,6 +15,8 @@ public record DataGridContext<TItem>(
     DataGridSelectionMode SelectionMode,
     DataGridEditMode EditMode,
     bool IsLoading,
+    bool RowReorderable,
+    bool RowContextMenuEnabled,
     EventCallback<TItem> OnRowClick,
     EventCallback<TItem> OnRowDoubleClick,
     EventCallback<SortDescriptor> OnSort,
@@ -23,8 +25,16 @@ public record DataGridContext<TItem>(
     EventCallback<CellEditEventArgs<TItem>> OnCellEdit,
     Func<TItem, bool> IsRowSelected,
     Func<TItem, bool> IsRowExpanded,
+    Func<TItem, bool> IsRowEditing,
     Action<TItem> ToggleSelection,
     Action SelectAll,
     Action ClearSelection,
-    Action<TItem> ToggleRowExpand
+    Action<TItem> ToggleRowExpand,
+    Action<TItem> StartRowEdit,
+    Action<TItem> CancelRowEdit,
+    Func<TItem, Task> CommitRowEdit,
+    Func<TItem, DataGridColumn<TItem>, object?> GetEditValue,
+    Action<TItem, DataGridColumn<TItem>, object?> SetEditValue,
+    Func<TItem, string>? RowClass,
+    Func<TItem, string>? RowStyle
 );

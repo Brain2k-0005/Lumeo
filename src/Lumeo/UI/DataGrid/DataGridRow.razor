@@ -1,7 +1,25 @@
 @namespace Lumeo
 @typeparam TItem
 
-<tr class="@CssClass" @onclick="HandleClick" @ondblclick="HandleDoubleClick" @attributes="AdditionalAttributes">
+<tr class="@CssClass" style="@RowStyleString"
+    @onclick="HandleClick"
+    @ondblclick="HandleDoubleClick"
+    @oncontextmenu="HandleContextMenu"
+    @oncontextmenu:preventDefault="@(Context?.RowContextMenuEnabled ?? false)"
+    draggable="@(Context?.RowReorderable == true ? "true" : "false")"
+    @ondragstart="HandleDragStart"
+    @ondragover:preventDefault="true"
+    @ondrop="HandleDrop"
+    @attributes="AdditionalAttributes">
+
+    @* Row drag handle *@
+    @if (Context?.RowReorderable == true)
+    {
+        <td class="px-1 py-2 w-8 cursor-grab active:cursor-grabbing" @onclick:stopPropagation="true">
+            <Blazicon Svg="Lucide.GripVertical" class="h-4 w-4 text-muted-foreground/60" />
+        </td>
+    }
+
     @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
     {
         <td class="px-3 py-2 w-10">
@@ -44,9 +62,68 @@
 
     @if (Context is not null)
     {
-        @foreach (var column in Context.Columns.Where(c => c.Visible))
+        @if (IsEditing)
         {
-            <DataGridCell TItem="TItem" Item="Item" Column="column" />
+            @foreach (var column in Context.Columns.Where(c => c.Visible))
+            {
+                <td class="px-3 py-2 text-sm">
+                    @if (column.EditTemplate is not null)
+                    {
+                        var editCtx = new CellEditContext<TItem>
+                        {
+                            Item = Item,
+                            Column = column,
+                            Value = Context.GetEditValue(Item, column),
+                            ValueChanged = () => StateHasChanged()
+                        };
+                        @column.EditTemplate(editCtx)
+                    }
+                    else
+                    {
+                        <input class="w-full h-7 rounded border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                               value="@(Context.GetEditValue(Item, column)?.ToString() ?? "")"
+                               @oninput="@(e => Context.SetEditValue(Item, column, e.Value?.ToString()))" />
+                    }
+                </td>
+            }
+            @* Save / Cancel buttons cell *@
+            <td class="px-3 py-2 text-sm w-24">
+                <div class="flex items-center gap-1">
+                    <button type="button"
+                            class="inline-flex items-center justify-center h-6 w-6 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+                            title="Save"
+                            @onclick="SaveRowEdit"
+                            @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                    </button>
+                    <button type="button"
+                            class="inline-flex items-center justify-center h-6 w-6 rounded border border-border hover:bg-muted"
+                            title="Cancel"
+                            @onclick="CancelRowEdit"
+                            @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            </td>
+        }
+        else
+        {
+            @foreach (var column in Context.Columns.Where(c => c.Visible))
+            {
+                <DataGridCell TItem="TItem" Item="Item" Column="column" />
+            }
+            @if (Context.EditMode == DataGridEditMode.Row)
+            {
+                <td class="px-3 py-2 text-sm w-10">
+                    <button type="button"
+                            class="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors"
+                            title="Edit row"
+                            @onclick="StartRowEdit"
+                            @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.Pencil" class="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                </td>
+            }
         }
     }
 </tr>
@@ -58,14 +135,17 @@
 
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+    [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
     [Parameter] public TItem Item { get; set; } = default!;
     [Parameter] public int RowIndex { get; set; }
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+    [Parameter] public EventCallback<(TItem, double, double)> OnContextMenu { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsSelected => Context?.IsRowSelected(Item) ?? false;
     private bool IsExpanded => Context?.IsRowExpanded(Item) ?? false;
+    private bool IsEditing => Context?.IsRowEditing(Item) ?? false;
     private bool HasDetailTemplate => DetailTemplate is not null;
 
     private int ColSpan
@@ -75,6 +155,8 @@
             var count = Context?.Columns.Count(c => c.Visible) ?? 0;
             if (Context?.SelectionMode != DataGridSelectionMode.None) count++;
             if (HasDetailTemplate) count++;
+            if (Context?.RowReorderable == true) count++;
+            if (Context?.EditMode == DataGridEditMode.Row) count++;
             return count;
         }
     }
@@ -84,9 +166,13 @@
         get
         {
             var selected = IsSelected ? "bg-primary/5" : "";
-            return $"border-b border-border/40 transition-colors hover:bg-muted/50 {selected} {Class}".Trim();
+            var editing = IsEditing ? "bg-muted/20" : "";
+            var custom = Context?.RowClass?.Invoke(Item) ?? "";
+            return $"border-b border-border/40 transition-colors hover:bg-muted/50 {selected} {editing} {custom} {Class}".Trim();
         }
     }
+
+    private string? RowStyleString => Context?.RowStyle?.Invoke(Item);
 
     private async Task HandleClick()
     {
@@ -108,6 +194,14 @@
         }
     }
 
+    private async Task HandleContextMenu(MouseEventArgs e)
+    {
+        if (Context is not null && OnContextMenu.HasDelegate)
+        {
+            await OnContextMenu.InvokeAsync((Item, e.ClientX, e.ClientY));
+        }
+    }
+
     private void ToggleExpand()
     {
         Context?.ToggleRowExpand(Item);
@@ -116,5 +210,44 @@
     private async Task OnCheckChanged(bool value)
     {
         Context?.ToggleSelection(Item);
+    }
+
+    // --- Row Editing ---
+
+    private void StartRowEdit()
+    {
+        Context?.StartRowEdit(Item);
+    }
+
+    private async Task SaveRowEdit()
+    {
+        if (Context is not null)
+            await Context.CommitRowEdit(Item);
+    }
+
+    private void CancelRowEdit()
+    {
+        Context?.CancelRowEdit(Item);
+    }
+
+    // --- Row Drag & Drop ---
+
+    private void HandleDragStart(DragEventArgs e)
+    {
+        // Store row index in a static field for cross-row communication
+        DragState.DragSourceIndex = RowIndex;
+    }
+
+    private void HandleDrop(DragEventArgs e)
+    {
+        var sourceIndex = DragState.DragSourceIndex;
+        if (sourceIndex < 0 || sourceIndex == RowIndex) return;
+        ParentGrid?.MoveRow(sourceIndex, RowIndex);
+        DragState.DragSourceIndex = -1;
+    }
+
+    private static class DragState
+    {
+        public static int DragSourceIndex = -1;
     }
 }

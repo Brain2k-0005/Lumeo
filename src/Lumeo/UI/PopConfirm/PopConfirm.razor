@@ -1,0 +1,69 @@
+@namespace Lumeo
+
+<Popover @bind-IsOpen="_isOpen" @attributes="AdditionalAttributes">
+    <PopoverTrigger>
+        <span @onclick="Open">
+            @ChildContent
+        </span>
+    </PopoverTrigger>
+    <PopoverContent Class="@($"w-72 p-4 {Class}".Trim())">
+        <div class="flex flex-col gap-3">
+            <div class="flex items-start gap-2">
+                @if (Icon != null)
+                {
+                    <span class="mt-0.5 shrink-0 text-muted-foreground">
+                        <Blazicon Svg="@Icon" class="h-4 w-4" />
+                    </span>
+                }
+                <div class="flex flex-col gap-1">
+                    <p class="text-sm font-medium leading-none">@Title</p>
+                    @if (!string.IsNullOrEmpty(Description))
+                    {
+                        <p class="text-sm text-muted-foreground">@Description</p>
+                    }
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="HandleCancel">
+                    @CancelText
+                </Button>
+                <Button Variant="@(IsDestructive ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Default)"
+                        Size="Button.ButtonSize.Sm"
+                        OnClick="HandleConfirm">
+                    @ConfirmText
+                </Button>
+            </div>
+        </div>
+    </PopoverContent>
+</Popover>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Are you sure?";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string ConfirmText { get; set; } = "Yes";
+    [Parameter] public string CancelText { get; set; } = "No";
+    [Parameter] public bool IsDestructive { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string Placement { get; set; } = "top";
+    [Parameter] public Blazicons.SvgIcon? Icon { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isOpen;
+
+    private void Open() => _isOpen = true;
+
+    private async Task HandleConfirm()
+    {
+        _isOpen = false;
+        await OnConfirm.InvokeAsync();
+    }
+
+    private async Task HandleCancel()
+    {
+        _isOpen = false;
+        await OnCancel.InvokeAsync();
+    }
+}

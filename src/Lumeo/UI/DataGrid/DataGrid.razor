@@ -1,9 +1,10 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 
 @{
     var context = new DataGridContext<TItem>(
-        Columns: EffectiveColumns.AsReadOnly(),
+        Columns: _orderedColumns.Where(c => c.Visible).ToList().AsReadOnly(),
         DisplayedItems: _displayedItems.AsReadOnly(),
         SelectedItems: _selectedItems.AsReadOnly(),
         Sorts: _sorts,
@@ -15,6 +16,8 @@
         SelectionMode: SelectionMode,
         EditMode: EditMode,
         IsLoading: IsLoading,
+        RowReorderable: RowReorderable,
+        RowContextMenuEnabled: RowContextMenu is not null,
         OnRowClick: OnRowClick,
         OnRowDoubleClick: OnRowDoubleClick,
         OnSort: EventCallback.Factory.Create<SortDescriptor>(this, HandleSort),
@@ -23,10 +26,18 @@
         OnCellEdit: OnCellEdit,
         IsRowSelected: IsRowSelected,
         IsRowExpanded: IsRowExpanded,
+        IsRowEditing: IsRowEditing,
         ToggleSelection: ToggleSelection,
         SelectAll: SelectAll,
         ClearSelection: ClearSelection,
-        ToggleRowExpand: ToggleRowExpand
+        ToggleRowExpand: ToggleRowExpand,
+        StartRowEdit: StartRowEdit,
+        CancelRowEdit: CancelRowEdit,
+        CommitRowEdit: CommitRowEditAsync,
+        GetEditValue: GetEditValue,
+        SetEditValue: SetEditValue,
+        RowClass: RowClass,
+        RowStyle: RowStyle
     );
 }
 
@@ -45,7 +56,13 @@
                              ToolbarContent="ToolbarContent"
                              OnColumnVisibilityToggle="ToggleColumnVisibilityPanel"
                              OnExport="HandleExport"
-                             OnRemoveFilter="RemoveFilter" />
+                             OnRemoveFilter="RemoveFilter"
+                             SelectedItems="_selectedItems"
+                             AllItems="@(ServerMode ? _displayedItems : _processedItems)"
+                             EffectiveColumns="EffectiveColumns.AsReadOnly()"
+                             EnableLayoutPersistence="EnableLayoutPersistence"
+                             OnSaveLayout="HandleSaveLayout"
+                             OnResetLayout="HandleResetLayout" />
         }
 
         @if (_showColumnVisibility)
@@ -55,19 +72,35 @@
                                       OnColumnToggle="HandleColumnVisibilityChanged" />
         }
 
-        <div class="overflow-auto flex-1">
+        @if (_contextMenuVisible)
+        {
+            <div id="@_contextMenuId"
+                 class="fixed z-50 min-w-[160px] rounded-md border border-border/40 bg-popover p-1 shadow-md"
+                 style="left: @(_contextMenuX)px; top: @(_contextMenuY)px;"
+                 @onclick:stopPropagation="true">
+                @if (RowContextMenu is not null && _contextMenuItem is not null)
+                {
+                    @RowContextMenu(_contextMenuItem)
+                }
+            </div>
+        }
+
+        <div class="overflow-auto flex-1" @onclick="CloseContextMenu">
             <table class="w-full caption-bottom text-sm">
                 <DataGridHeader TItem="TItem"
                                 HasDetailTemplate="@(DetailTemplate is not null)"
                                 ActiveFilterColumn="@_activeFilterColumn"
                                 OnFilterToggle="HandleFilterToggle"
-                                OnFilterApply="HandleFilterApply" />
+                                OnFilterApply="HandleFilterApply"
+                                Reorderable="Reorderable"
+                                OnColumnReorder="HandleColumnReorder" />
 
                 <DataGridBody TItem="TItem"
                               DetailTemplate="DetailTemplate"
                               EmptyContent="EmptyContent"
                               UseVirtualization="@UseVirtualization"
-                              HasDetailTemplate="@(DetailTemplate is not null)" />
+                              HasDetailTemplate="@(DetailTemplate is not null)"
+                              OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
 
                 <DataGridFooter TItem="TItem"
                                 AllItems="@_processedItems"
@@ -104,6 +137,18 @@
     [Parameter] public bool ShowPagination { get; set; } = true;
     [Parameter] public bool ShowToolbar { get; set; }
     [Parameter] public int VirtualizeThreshold { get; set; } = 500;
+    [Parameter] public bool Reorderable { get; set; }
+    [Parameter] public bool RowReorderable { get; set; }
+
+    // --- Conditional Row Styling ---
+    [Parameter] public Func<TItem, string>? RowClass { get; set; }
+    [Parameter] public Func<TItem, string>? RowStyle { get; set; }
+
+    // --- Layout Persistence ---
+    [Parameter] public bool EnableLayoutPersistence { get; set; }
+    [Parameter] public string? LayoutStorageKey { get; set; }
+    [Parameter] public EventCallback<DataGridLayout> OnLayoutSave { get; set; }
+    [Parameter] public DataGridLayout? SavedLayout { get; set; }
 
     // --- Server mode ---
     [Parameter] public bool ServerMode { get; set; }
@@ -116,11 +161,15 @@
     [Parameter] public RenderFragment? ToolbarContent { get; set; }
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
     [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public RenderFragment<TItem>? RowContextMenu { get; set; }
 
     // --- Events ---
     [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
     [Parameter] public EventCallback<TItem> OnRowDoubleClick { get; set; }
     [Parameter] public EventCallback<CellEditEventArgs<TItem>> OnCellEdit { get; set; }
+    [Parameter] public EventCallback<RowEditEventArgs<TItem>> OnRowEdit { get; set; }
+    [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+    [Parameter] public EventCallback<RowReorderEventArgs<TItem>> OnRowReorder { get; set; }
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<TItem>> SelectedItemsChanged { get; set; }
 
@@ -133,17 +182,31 @@
 
     // --- Internal state ---
     private List<DataGridColumn<TItem>> _columnDefs = new();
+    private List<DataGridColumn<TItem>> _orderedColumns = new();
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
     private List<TItem> _selectedItems = new();
     private HashSet<TItem> _selectedSet = new();
     private HashSet<TItem> _expandedRows = new();
+    private HashSet<TItem> _editingRows = new();
+#pragma warning disable CS8714
+    private Dictionary<TItem, Dictionary<string, object?>> _rowEditValues = new();
+#pragma warning restore CS8714
     private List<SortDescriptor> _sorts = new();
     private List<FilterDescriptor> _filters = new();
     private string? _globalSearch;
     private int _currentPage = 1;
     private bool _showColumnVisibility;
     private string? _activeFilterColumn;
+    private bool _contextMenuVisible;
+    private double _contextMenuX;
+    private double _contextMenuY;
+    private TItem? _contextMenuItem;
+    private string _contextMenuId = $"dg-ctx-{Guid.NewGuid():N}";
+    private string _layoutId = $"datagrid-{Guid.NewGuid():N}";
+    private System.Threading.Timer? _autoSaveTimer;
+    private bool _layoutLoaded;
+    private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
 
     private List<DataGridColumn<TItem>> EffectiveColumns =>
         Columns is not null && Columns.Count > 0 ? Columns : _columnDefs;
@@ -169,6 +232,7 @@
     public void AddColumnDef(DataGridColumn<TItem> column)
     {
         _columnDefs.Add(column);
+        SyncOrderedColumns();
     }
 
     public void UpdateColumnWidth(string columnId, double width)
@@ -179,12 +243,47 @@
             column.Width = Math.Max(column.MinWidth ?? 50, width);
             if (column.MaxWidth.HasValue)
                 column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
+            ScheduleAutoSave();
             StateHasChanged();
         }
     }
 
+    private void SyncOrderedColumns()
+    {
+        var effective = EffectiveColumns;
+
+        // If ordered columns has different column set (by ID), rebuild from effective
+        // Preserve user-reordered order for existing columns
+        var effectiveIds = effective.Select(c => c.Id).ToHashSet();
+        var orderedIds = _orderedColumns.Select(c => c.Id).ToHashSet();
+
+        if (effectiveIds.SetEquals(orderedIds)) return; // Same columns, keep user order
+
+        // Columns changed — rebuild keeping existing order for known columns, append new ones
+        var newOrder = _orderedColumns.Where(c => effectiveIds.Contains(c.Id)).ToList();
+        var added = effective.Where(c => !orderedIds.Contains(c.Id)).ToList();
+        newOrder.AddRange(added);
+        _orderedColumns = newOrder;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
+        SyncOrderedColumns();
+
+        // Snapshot default layout once (before any external SavedLayout is applied)
+        if (_defaultLayout is null && EffectiveColumns.Count > 0)
+        {
+            _defaultLayout = SnapshotCurrentLayout();
+        }
+
+        // Apply SavedLayout when provided externally and not yet applied
+        if (SavedLayout is not null && !_layoutLoaded)
+        {
+            _layoutLoaded = true;
+            await ApplyLayoutAsync(SavedLayout);
+            return; // ApplyLayoutAsync calls ProcessClientData
+        }
+
         if (ServerMode)
         {
             _displayedItems = Items?.ToList() ?? new List<TItem>();
@@ -198,6 +297,37 @@
         {
             _selectedItems = SelectedItems.ToList();
             _selectedSet = new HashSet<TItem>(_selectedItems);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Snapshot default layout now that columns are registered (via ColumnDef)
+            if (_defaultLayout is null && EffectiveColumns.Count > 0)
+            {
+                _defaultLayout = SnapshotCurrentLayout();
+            }
+
+            if (EnableLayoutPersistence && !_layoutLoaded)
+            {
+                var key = LayoutStorageKey ?? _layoutId;
+                try
+                {
+                    var json = await Interop.LoadFromLocalStorage(key);
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        var layout = System.Text.Json.JsonSerializer.Deserialize<DataGridLayout>(json);
+                        if (layout is not null)
+                        {
+                            _layoutLoaded = true;
+                            await ApplyLayoutAsync(layout);
+                        }
+                    }
+                }
+                catch { /* corrupt storage — ignore */ }
+            }
         }
     }
 
@@ -307,6 +437,7 @@
         }
 
         _currentPage = 1;
+        ScheduleAutoSave();
 
         if (ServerMode)
         {
@@ -323,6 +454,7 @@
         _filters.RemoveAll(f => f.Field == filter.Field);
         _filters.Add(filter);
         _currentPage = 1;
+        ScheduleAutoSave();
 
         if (ServerMode)
         {
@@ -338,6 +470,7 @@
     {
         _filters.RemoveAll(f => f.Field == filter.Field);
         _currentPage = 1;
+        ScheduleAutoSave();
 
         if (ServerMode)
         {
@@ -353,6 +486,7 @@
     {
         _globalSearch = string.IsNullOrWhiteSpace(search) ? null : search;
         _currentPage = 1;
+        ScheduleAutoSave();
 
         if (ServerMode)
         {
@@ -384,6 +518,7 @@
     {
         PageSize = pageSize;
         _currentPage = 1;
+        ScheduleAutoSave();
 
         if (ServerMode)
         {
@@ -404,6 +539,8 @@
     private bool IsRowSelected(TItem item) => _selectedSet.Contains(item);
 
     private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
+
+    private bool IsRowEditing(TItem item) => _editingRows.Contains(item);
 
     private void ToggleSelection(TItem item)
     {
@@ -461,6 +598,117 @@
         StateHasChanged();
     }
 
+    // --- Row Editing ---
+
+    private void StartRowEdit(TItem item)
+    {
+        if (_editingRows.Contains(item)) return;
+        _editingRows.Add(item);
+        // Snapshot current values for all editable columns
+        var editDict = new Dictionary<string, object?>();
+        foreach (var col in EffectiveColumns.Where(c => c.Field is not null))
+        {
+            editDict[col.Field!] = col.GetValue(item);
+        }
+        _rowEditValues[item] = editDict;
+        StateHasChanged();
+    }
+
+    private void CancelRowEdit(TItem item)
+    {
+        _editingRows.Remove(item);
+        _rowEditValues.Remove(item);
+        StateHasChanged();
+    }
+
+    private async Task CommitRowEditAsync(TItem item)
+    {
+        if (!_editingRows.Contains(item)) return;
+        _editingRows.Remove(item);
+
+        if (_rowEditValues.TryGetValue(item, out var editDict))
+        {
+            _rowEditValues.Remove(item);
+            if (OnRowEdit.HasDelegate)
+            {
+                await OnRowEdit.InvokeAsync(new RowEditEventArgs<TItem>(item, editDict));
+            }
+        }
+        StateHasChanged();
+    }
+
+    private object? GetEditValue(TItem item, DataGridColumn<TItem> column)
+    {
+        if (column.Field is null) return null;
+        if (_rowEditValues.TryGetValue(item, out var dict) && dict.TryGetValue(column.Field, out var val))
+            return val;
+        return column.GetValue(item);
+    }
+
+    private void SetEditValue(TItem item, DataGridColumn<TItem> column, object? value)
+    {
+        if (column.Field is null) return;
+        if (!_rowEditValues.ContainsKey(item))
+            _rowEditValues[item] = new Dictionary<string, object?>();
+        _rowEditValues[item][column.Field] = value;
+    }
+
+    // --- Column Reordering ---
+
+    private void HandleColumnReorder(ColumnReorderEventArgs args)
+    {
+        if (args.OldIndex < 0 || args.NewIndex < 0 || args.OldIndex >= _orderedColumns.Count || args.NewIndex >= _orderedColumns.Count)
+            return;
+
+        var col = _orderedColumns[args.OldIndex];
+        _orderedColumns.RemoveAt(args.OldIndex);
+        _orderedColumns.Insert(args.NewIndex, col);
+
+        if (OnColumnReorder.HasDelegate)
+            OnColumnReorder.InvokeAsync(args);
+
+        ScheduleAutoSave();
+        StateHasChanged();
+    }
+
+    // --- Row Reordering ---
+
+    public void MoveRow(int oldIndex, int newIndex)
+    {
+        if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
+            return;
+
+        var item = _displayedItems[oldIndex];
+        _displayedItems.RemoveAt(oldIndex);
+        _displayedItems.Insert(newIndex, item);
+
+        if (OnRowReorder.HasDelegate)
+            OnRowReorder.InvokeAsync(new RowReorderEventArgs<TItem>(item, oldIndex, newIndex));
+
+        StateHasChanged();
+    }
+
+    // --- Context Menu ---
+
+    private void HandleContextMenu(TItem item, double x, double y)
+    {
+        if (RowContextMenu is null) return;
+        _contextMenuItem = item;
+        _contextMenuX = x;
+        _contextMenuY = y;
+        _contextMenuVisible = true;
+        StateHasChanged();
+    }
+
+    private void CloseContextMenu()
+    {
+        if (_contextMenuVisible)
+        {
+            _contextMenuVisible = false;
+            StateHasChanged();
+        }
+    }
+
     private void ToggleColumnVisibilityPanel()
     {
         _showColumnVisibility = !_showColumnVisibility;
@@ -469,6 +717,7 @@
     private void HandleColumnVisibilityChanged(DataGridColumn<TItem> column)
     {
         if (!ServerMode) ProcessClientData();
+        ScheduleAutoSave();
         StateHasChanged();
     }
 
@@ -497,10 +746,176 @@
         StateHasChanged();
     }
 
-    private async Task HandleExport()
+    private async Task HandleExport(string format)
     {
         var items = ServerMode ? _displayedItems : _processedItems;
-        await DataGridExportService.ExportToCsvAsync(Interop, items, EffectiveColumns.AsReadOnly());
+        switch (format)
+        {
+            case "json":
+                await DataGridExportService.ExportToJsonAsync(Interop, items, EffectiveColumns.AsReadOnly());
+                break;
+            case "excel":
+                await DataGridExportService.ExportToExcelAsync(Interop, items, EffectiveColumns.AsReadOnly());
+                break;
+            default:
+                await DataGridExportService.ExportToCsvAsync(Interop, items, EffectiveColumns.AsReadOnly());
+                break;
+        }
+    }
+
+    // --- Layout Persistence ---
+
+    public DataGridLayout GetCurrentLayout() => SnapshotCurrentLayout();
+
+    private DataGridLayout SnapshotCurrentLayout()
+    {
+        var cols = _orderedColumns.Select((c, i) => new ColumnLayout
+        {
+            Field = c.Field ?? c.Id,
+            Width = c.Width,
+            Visible = c.Visible,
+            Pin = c.Pin,
+            Order = i
+        }).ToList();
+
+        return new DataGridLayout
+        {
+            Columns = cols,
+            Sorts = _sorts.Count > 0 ? new List<SortDescriptor>(_sorts) : null,
+            Filters = _filters.Count > 0 ? new List<FilterDescriptor>(_filters) : null,
+            PageSize = PageSize,
+            GlobalSearch = _globalSearch
+        };
+    }
+
+    public async Task ApplyLayoutAsync(DataGridLayout layout)
+    {
+        // Restore column order, width, visibility, pin
+        if (layout.Columns.Count > 0)
+        {
+            // Build a lookup from field → column object
+            var colByField = EffectiveColumns.ToDictionary(c => c.Field ?? c.Id);
+
+            var ordered = layout.Columns
+                .OrderBy(cl => cl.Order)
+                .Select(cl =>
+                {
+                    if (!colByField.TryGetValue(cl.Field, out var col)) return null;
+                    col.Visible = cl.Visible;
+                    col.Pin = cl.Pin;
+                    if (cl.Width.HasValue) col.Width = cl.Width;
+                    return col;
+                })
+                .Where(c => c is not null)
+                .Select(c => c!)
+                .ToList();
+
+            // Append any columns not included in layout (new columns added since last save)
+            var layoutFields = layout.Columns.Select(cl => cl.Field).ToHashSet();
+            var missing = EffectiveColumns.Where(c => !layoutFields.Contains(c.Field ?? c.Id));
+            ordered.AddRange(missing);
+
+            _orderedColumns = ordered;
+        }
+
+        // Restore sorts
+        _sorts = layout.Sorts is not null ? new List<SortDescriptor>(layout.Sorts) : new List<SortDescriptor>();
+
+        // Restore filters
+        _filters = layout.Filters is not null ? new List<FilterDescriptor>(layout.Filters) : new List<FilterDescriptor>();
+
+        // Restore page size
+        if (layout.PageSize.HasValue)
+            PageSize = layout.PageSize.Value;
+
+        // Restore global search
+        _globalSearch = layout.GlobalSearch;
+
+        _currentPage = 1;
+
+        if (ServerMode)
+            await RequestServerData();
+        else
+            ProcessClientData();
+
+        StateHasChanged();
+    }
+
+    public async Task ResetLayoutAsync()
+    {
+        if (_defaultLayout is not null)
+        {
+            await ApplyLayoutAsync(_defaultLayout);
+        }
+        else
+        {
+            // No snapshot — restore ordering from effective columns
+            _orderedColumns = new List<DataGridColumn<TItem>>(EffectiveColumns);
+            foreach (var col in _orderedColumns)
+            {
+                col.Visible = true;
+                col.Pin = PinDirection.None;
+                col.Width = null;
+            }
+            _sorts.Clear();
+            _filters.Clear();
+            _globalSearch = null;
+            PageSize = 10;
+            _currentPage = 1;
+            ProcessClientData();
+            StateHasChanged();
+        }
+
+        if (EnableLayoutPersistence)
+        {
+            var key = LayoutStorageKey ?? _layoutId;
+            try { await Interop.RemoveFromLocalStorage(key); } catch { }
+        }
+    }
+
+    private void ScheduleAutoSave()
+    {
+        if (!EnableLayoutPersistence && !OnLayoutSave.HasDelegate) return;
+
+        // Debounce: cancel any pending save and restart 500 ms timer
+        _autoSaveTimer?.Dispose();
+        _autoSaveTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(PersistLayoutAsync);
+        }, null, 500, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task PersistLayoutAsync()
+    {
+        var layout = SnapshotCurrentLayout();
+
+        if (EnableLayoutPersistence)
+        {
+            var key = LayoutStorageKey ?? _layoutId;
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(layout);
+                await Interop.SaveToLocalStorage(key, json);
+            }
+            catch { /* storage unavailable — ignore */ }
+        }
+
+        if (OnLayoutSave.HasDelegate)
+        {
+            await OnLayoutSave.InvokeAsync(layout);
+        }
+    }
+
+    // --- Toolbar layout actions ---
+
+    private async Task HandleSaveLayout()
+    {
+        await PersistLayoutAsync();
+    }
+
+    private async Task HandleResetLayout()
+    {
+        await ResetLayoutAsync();
     }
 
     private async Task RequestServerData()
@@ -516,5 +931,11 @@
             );
             await OnServerRequest.InvokeAsync(request);
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _autoSaveTimer?.Dispose();
+        return ValueTask.CompletedTask;
     }
 }
