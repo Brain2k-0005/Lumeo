@@ -5,26 +5,24 @@
 
 <PageHeader Title="Settings Page" Description="A full settings layout with sidebar navigation and multiple configuration sections." />
 
-<div class="w-full">
+<Stack Class="w-full">
     <Flex Class="gap-8 min-h-[600px]">
 
         <!-- Left Nav -->
-        <aside class="w-56 shrink-0">
-            <nav class="space-y-1">
-                @foreach (var navItem in _sections)
-                {
-                    <button type="button"
-                            class="@($"w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors {(_activeSection == navItem.Id ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}")"
-                            @onclick="@(() => _activeSection = navItem.Id)">
-                        @((MarkupString)navItem.IconSvg)
-                        @(navItem.Label)
-                    </button>
-                }
-            </nav>
-        </aside>
+        <Stack Class="w-56 shrink-0 space-y-1">
+            @foreach (var navItem in _sections)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Class="@($"w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors {(_activeSection == navItem.Id ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}")"
+                        @onclick="@(() => _activeSection = navItem.Id)">
+                    <DynamicIcon Name="@navItem.IconName" Class="h-4 w-4" />
+                    @(navItem.Label)
+                </Button>
+            }
+        </Stack>
 
         <!-- Content -->
-        <div class="flex-1 min-w-0">
+        <Stack Class="flex-1 min-w-0">
 
             <!-- Profile Section -->
             @if (_activeSection == "profile")
@@ -182,12 +180,12 @@
                                 <Flex Class="gap-3 flex-wrap">
                                     @foreach (var color in _accentColors)
                                     {
-                                        <button type="button"
-                                                class="@($"h-8 w-8 rounded-full transition-all ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {(_selectedAccent == color.Name ? "ring-2 ring-ring ring-offset-2" : "hover:scale-110")}")"
-                                                style="background-color: @color.Hex;"
+                                        <Button Variant="Button.ButtonVariant.Ghost"
+                                                Class="@($"h-8 w-8 p-0 rounded-full transition-all ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {(_selectedAccent == color.Name ? "ring-2 ring-ring ring-offset-2" : "hover:scale-110")}")"
+                                                style="@($"background-color: {color.Hex};")"
                                                 title="@color.Name"
                                                 @onclick="@(() => _selectedAccent = color.Name)">
-                                        </button>
+                                        </Button>
                                     }
                                 </Flex>
                             </Stack>
@@ -287,9 +285,9 @@
                 </Card>
             }
 
-        </div>
+        </Stack>
     </Flex>
-</div>
+</Stack>
 
 @code {
     private string _activeSection = "profile";
@@ -302,16 +300,16 @@
     private bool _showActivityFeed = true;
     private bool _keyboardShortcuts = true;
 
-    private record NavSection(string Id, string Label, string IconSvg);
+    private record NavSection(string Id, string Label, string IconName);
     private record AccentColor(string Name, string Hex);
 
     private readonly List<NavSection> _sections = new()
     {
-        new("profile", "Profile", "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"8\" r=\"5\"/><path d=\"M20 21a8 8 0 1 0-16 0\"/></svg>"),
-        new("account", "Account", "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>"),
-        new("appearance", "Appearance", "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2\"/><path d=\"M12 20v2\"/><path d=\"m4.93 4.93 1.41 1.41\"/><path d=\"m17.66 17.66 1.41 1.41\"/><path d=\"M2 12h2\"/><path d=\"M20 12h2\"/><path d=\"m6.34 17.66-1.41 1.41\"/><path d=\"m19.07 4.93-1.41 1.41\"/></svg>"),
-        new("notifications", "Notifications", "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"/><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"/></svg>"),
-        new("display", "Display", "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\"/><path d=\"M8 21h8\"/><path d=\"M12 17v4\"/></svg>"),
+        new("profile", "Profile", "User"),
+        new("account", "Account", "Settings"),
+        new("appearance", "Appearance", "Sun"),
+        new("notifications", "Notifications", "Bell"),
+        new("display", "Display", "Monitor"),
     };
 
     private readonly List<AccentColor> _accentColors = new()

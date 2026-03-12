@@ -1,0 +1,163 @@
+@page "/components/sortable-list"
+
+<PageTitle>Sortable List — Lumeo</PageTitle>
+
+<PageHeader Title="Sortable List" Description="A drag-and-drop sortable list — reorder items by dragging. Works with any item type via a generic template." />
+
+<Stack Gap="8">
+    <ComponentDemo Title="Basic Sortable List" Code="@_basicCode">
+        <Stack Class="max-w-sm">
+            <SortableList TItem="string" Items="@_tasks" ItemsChanged="@(v => _tasks = v)">
+                <ItemTemplate Context="item">
+                    <Lumeo.Text Class="text-sm">@item</Lumeo.Text>
+                </ItemTemplate>
+            </SortableList>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="No Handle (drag entire card)" Code="@_noHandleCode">
+        <Stack Class="max-w-sm">
+            <SortableList TItem="string" Items="@_items2" ItemsChanged="@(v => _items2 = v)" Handle="false">
+                <ItemTemplate Context="item">
+                    <Lumeo.Text Class="text-sm">@item</Lumeo.Text>
+                </ItemTemplate>
+            </SortableList>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Rich Item Template" Code="@_richCode">
+        <Stack Class="max-w-sm">
+            <SortableList TItem="TaskItem" Items="@_richTasks" ItemsChanged="@(v => _richTasks = v)">
+                <ItemTemplate Context="task">
+                    <Flex Class="items-center gap-3 w-full">
+                        <Flex Class="h-8 w-8 items-center justify-center rounded-full bg-primary/10 shrink-0">
+                            <DynamicIcon Name="@task.Icon" Class="h-4 w-4 text-primary" />
+                        </Flex>
+                        <Stack Gap="0" Class="flex-1 min-w-0">
+                            <Lumeo.Text Class="text-sm font-medium">@task.Title</Lumeo.Text>
+                            <Lumeo.Text Class="text-xs text-muted-foreground">@task.Assignee</Lumeo.Text>
+                        </Stack>
+                        <Badge Variant="Badge.BadgeVariant.Secondary">@task.Priority</Badge>
+                    </Flex>
+                </ItemTemplate>
+            </SortableList>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Disabled" Code="@_disabledCode">
+        <Stack Class="max-w-sm">
+            <SortableList TItem="string" Items="@_disabledItems" Disabled="true">
+                <ItemTemplate Context="item">
+                    <Lumeo.Text Class="text-sm">@item</Lumeo.Text>
+                </ItemTemplate>
+            </SortableList>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+    <Stack Gap="8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">SortableList&lt;TItem&gt;</Heading>
+            <Stack Class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Items</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;TItem&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">[]</td>
+                            <td class="p-3 text-muted-foreground">The list of items to display and reorder.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ItemsChanged</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;List&lt;TItem&gt;&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired with the new order after a drop. Use with two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ItemTemplate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;TItem&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Template for rendering each list item.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Handle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Show a drag handle icon on the left. When false, the entire card is draggable.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Disabled</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Disable drag-and-drop.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Group</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Group name for cross-list dragging between multiple SortableList instances.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+@code {
+    private List<string> _tasks = new() { "Design mockups", "Write tests", "Review PR", "Deploy to staging", "Update docs" };
+    private List<string> _items2 = new() { "Item Alpha", "Item Beta", "Item Gamma", "Item Delta" };
+    private List<string> _disabledItems = new() { "Cannot drag this", "Or this one", "Locked order" };
+
+    private List<TaskItem> _richTasks = new()
+    {
+        new("Fix login bug", "Alice", "High", "Bug"),
+        new("Build dashboard", "Bob", "Medium", "LayoutDashboard"),
+        new("Write API docs", "Carol", "Low", "FileText"),
+        new("Performance audit", "Dave", "High", "Zap"),
+    };
+
+    private record TaskItem(string Title, string Assignee, string Priority, string Icon);
+
+    private string _basicCode = @"<SortableList TItem=""string"" Items=""@_tasks"" ItemsChanged=""@(v => _tasks = v)"">
+    <ItemTemplate Context=""item"">
+        <Lumeo.Text Class=""text-sm"">@item</Lumeo.Text>
+    </ItemTemplate>
+</SortableList>";
+
+    private string _noHandleCode = @"<SortableList TItem=""string"" Items=""@_tasks"" ItemsChanged=""@(v => _tasks = v)"" Handle=""false"">
+    <ItemTemplate Context=""item"">
+        <Lumeo.Text Class=""text-sm"">@item</Lumeo.Text>
+    </ItemTemplate>
+</SortableList>";
+
+    private string _richCode = @"<SortableList TItem=""TaskItem"" Items=""@_tasks"" ItemsChanged=""@(v => _tasks = v)"">
+    <ItemTemplate Context=""task"">
+        <Flex Class=""items-center gap-3 w-full"">
+            <DynamicIcon Name=""@task.Icon"" Class=""h-4 w-4 text-primary"" />
+            <Stack Gap=""0"" Class=""flex-1"">
+                <Lumeo.Text Class=""text-sm font-medium"">@task.Title</Lumeo.Text>
+                <Lumeo.Text Class=""text-xs text-muted-foreground"">@task.Assignee</Lumeo.Text>
+            </Stack>
+            <Badge Variant=""Badge.BadgeVariant.Secondary"">@task.Priority</Badge>
+        </Flex>
+    </ItemTemplate>
+</SortableList>";
+
+    private string _disabledCode = @"<SortableList TItem=""string"" Items=""@_tasks"" Disabled=""true"">
+    <ItemTemplate Context=""item"">
+        <Lumeo.Text Class=""text-sm"">@item</Lumeo.Text>
+    </ItemTemplate>
+</SortableList>";
+}

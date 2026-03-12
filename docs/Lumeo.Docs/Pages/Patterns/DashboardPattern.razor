@@ -20,7 +20,7 @@
                 </Flex>
                 <Flex Class="flex-1 max-w-sm items-center gap-2 rounded-md border bg-background px-3">
                     <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground shrink-0" />
-                    <input type="text" placeholder="Search..." class="flex h-8 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none" />
+                    <Input type="text" placeholder="Search..." Class="flex h-8 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0 shadow-none p-0 focus-visible:ring-0" />
                 </Flex>
                 <Flex Class="items-center gap-2">
                     <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
@@ -50,7 +50,7 @@
                         <CardHeader>
                             <Flex Class="items-center justify-between">
                                 <Lumeo.Text Class="text-sm font-medium text-muted-foreground">@stat.Label</Lumeo.Text>
-                                @((MarkupString)stat.IconHtml)
+                                <DynamicIcon Name="@stat.IconName" Class="h-4 w-4 text-muted-foreground" />
                             </Flex>
                         </CardHeader>
                         <CardContent>
@@ -59,6 +59,7 @@
                                 <Badge Variant="@stat.BadgeVariant">@stat.Trend</Badge>
                                 <Lumeo.Text As="span" Class="text-xs text-muted-foreground">from last month</Lumeo.Text>
                             </Flex>
+                            <Progress Value="@stat.ProgressValue" Class="mt-3 h-1" Variant="@stat.ProgressVariant" />
                         </CardContent>
                     </Card>
                 }
@@ -99,8 +100,11 @@
                         <Stack Gap="0">
                             @foreach (var activity in _activities)
                             {
-                                <Flex Class="gap-3 py-3 border-b last:border-0">
-                                    <div class="mt-0.5 h-2 w-2 shrink-0 rounded-full @activity.DotClass"></div>
+                                <Flex Class="gap-3 py-3 border-b last:border-0 items-center">
+                                    <Avatar Class="h-6 w-6">
+                                        <AvatarFallback Class="text-[10px]">@activity.Initials</AvatarFallback>
+                                    </Avatar>
+                                    <Stack Class="@($"mt-0.5 h-2 w-2 shrink-0 rounded-full {activity.DotClass}")"></Stack>
                                     <Stack Class="flex-1 min-w-0">
                                         <Lumeo.Text Class="text-sm text-foreground leading-snug">@activity.Text</Lumeo.Text>
                                         <Lumeo.Text Class="text-xs text-muted-foreground mt-0.5">@activity.Time</Lumeo.Text>
@@ -136,6 +140,7 @@
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                <TableHead Class="w-10"></TableHead>
                                 <TableHead>Customer</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Date</TableHead>
@@ -146,6 +151,11 @@
                             @foreach (var tx in _transactions)
                             {
                                 <TableRow>
+                                    <TableCell>
+                                        <Avatar Class="h-6 w-6">
+                                            <AvatarFallback Class="text-[10px]">@tx.Initials</AvatarFallback>
+                                        </Avatar>
+                                    </TableCell>
                                     <TableCell Class="font-medium">@tx.Customer</TableCell>
                                     <TableCell>
                                         <Badge Variant="@tx.BadgeVariant">@tx.Status</Badge>
@@ -192,17 +202,13 @@
 </Stack>
 
 @code {
-    private record StatItem(string Label, string Value, string Trend, Badge.BadgeVariant BadgeVariant, string IconHtml);
+    private record StatItem(string Label, string Value, string Trend, Badge.BadgeVariant BadgeVariant, string IconName, int ProgressValue, Progress.ProgressVariant ProgressVariant);
     private List<StatItem> _stats = new()
     {
-        new StatItem("Total Revenue",    "$45,231.89", "+12.5%", Badge.BadgeVariant.Success,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"1\" x2=\"12\" y2=\"23\"/><path d=\"M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6\"/></svg>"),
-        new StatItem("Subscriptions",    "+2,350",     "+18.1%", Badge.BadgeVariant.Success,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 0 0-3-3.87\"/><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"/></svg>"),
-        new StatItem("Total Sales",      "+12,234",    "+19.0%", Badge.BadgeVariant.Success,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"23 6 13.5 15.5 8.5 10.5 1 18\"/><polyline points=\"17 6 23 6 23 12\"/></svg>"),
-        new StatItem("Active Users",     "+573",       "-4.2%",  Badge.BadgeVariant.Destructive,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-muted-foreground\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>"),
+        new StatItem("Total Revenue",    "$45,231.89", "+12.5%", Badge.BadgeVariant.Success,     "TrendingUp",    73, Progress.ProgressVariant.Success),
+        new StatItem("Subscriptions",    "+2,350",     "+18.1%", Badge.BadgeVariant.Success,     "Users",         81, Progress.ProgressVariant.Success),
+        new StatItem("Total Sales",      "+12,234",    "+19.0%", Badge.BadgeVariant.Success,     "ShoppingCart",  65, Progress.ProgressVariant.Success),
+        new StatItem("Active Users",     "+573",       "-4.2%",  Badge.BadgeVariant.Destructive, "Eye",           38, Progress.ProgressVariant.Destructive),
     };
 
     // Area chart — 12 months
@@ -226,28 +232,28 @@
     };
 
     // Recent activity feed
-    private record ActivityItem(string Text, string Time, string DotClass);
+    private record ActivityItem(string Text, string Time, string DotClass, string Initials);
     private List<ActivityItem> _activities = new()
     {
-        new ActivityItem("New subscription from Olivia M.",  "2 min ago",   "bg-primary"),
-        new ActivityItem("Payment of $1,999 completed",      "18 min ago",  "bg-primary"),
-        new ActivityItem("Server CPU spiked to 94%",         "1 hour ago",  "bg-destructive"),
-        new ActivityItem("Isabella N. upgraded to Pro plan", "3 hours ago", "bg-primary"),
-        new ActivityItem("Monthly report generated",         "Yesterday",   "bg-muted-foreground"),
+        new ActivityItem("New subscription from Olivia M.",  "2 min ago",   "bg-primary",            "OM"),
+        new ActivityItem("Payment of $1,999 completed",      "18 min ago",  "bg-primary",            "JL"),
+        new ActivityItem("Server CPU spiked to 94%",         "1 hour ago",  "bg-destructive",        "WK"),
+        new ActivityItem("Isabella N. upgraded to Pro plan", "3 hours ago", "bg-primary",            "IN"),
+        new ActivityItem("Monthly report generated",         "Yesterday",   "bg-muted-foreground",   "SD"),
     };
 
     // Transaction table — Completed / Pending / Failed
-    private record TransactionItem(string Customer, string Status, Badge.BadgeVariant BadgeVariant, string Date, string Amount);
+    private record TransactionItem(string Customer, string Status, Badge.BadgeVariant BadgeVariant, string Date, string Amount, string Initials);
     private List<TransactionItem> _transactions = new()
     {
-        new TransactionItem("Olivia Martin",   "Completed", Badge.BadgeVariant.Success,     "Feb 15, 2026", "$1,999.00"),
-        new TransactionItem("Jackson Lee",      "Completed", Badge.BadgeVariant.Success,     "Feb 14, 2026", "$39.00"),
-        new TransactionItem("Isabella Nguyen",  "Pending",   Badge.BadgeVariant.Warning,     "Feb 13, 2026", "$299.00"),
-        new TransactionItem("William Kim",      "Failed",    Badge.BadgeVariant.Destructive,  "Feb 12, 2026", "$99.00"),
-        new TransactionItem("Sofia Davis",      "Completed", Badge.BadgeVariant.Success,     "Feb 11, 2026", "$2,500.00"),
-        new TransactionItem("Liam Johnson",     "Pending",   Badge.BadgeVariant.Warning,     "Feb 10, 2026", "$750.00"),
-        new TransactionItem("Emma Wilson",      "Completed", Badge.BadgeVariant.Success,     "Feb 9, 2026",  "$1,200.00"),
-        new TransactionItem("Noah Brown",       "Failed",    Badge.BadgeVariant.Destructive,  "Feb 8, 2026",  "$450.00"),
+        new TransactionItem("Olivia Martin",   "Completed", Badge.BadgeVariant.Success,     "Feb 15, 2026", "$1,999.00",  "OM"),
+        new TransactionItem("Jackson Lee",      "Completed", Badge.BadgeVariant.Success,     "Feb 14, 2026", "$39.00",     "JL"),
+        new TransactionItem("Isabella Nguyen",  "Pending",   Badge.BadgeVariant.Warning,     "Feb 13, 2026", "$299.00",    "IN"),
+        new TransactionItem("William Kim",      "Failed",    Badge.BadgeVariant.Destructive,  "Feb 12, 2026", "$99.00",    "WK"),
+        new TransactionItem("Sofia Davis",      "Completed", Badge.BadgeVariant.Success,     "Feb 11, 2026", "$2,500.00",  "SD"),
+        new TransactionItem("Liam Johnson",     "Pending",   Badge.BadgeVariant.Warning,     "Feb 10, 2026", "$750.00",    "LJ"),
+        new TransactionItem("Emma Wilson",      "Completed", Badge.BadgeVariant.Success,     "Feb 9, 2026",  "$1,200.00",  "EW"),
+        new TransactionItem("Noah Brown",       "Failed",    Badge.BadgeVariant.Destructive,  "Feb 8, 2026",  "$450.00",   "NB"),
     };
 
     // Bar chart
@@ -271,67 +277,67 @@
     };
 
     private string _dashboardCode = @"<!-- Top Bar -->
-<div class=""flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3"">
-    <div class=""flex items-center gap-3"">
-        <div class=""flex h-8 w-8 items-center justify-center rounded-md bg-primary"">
-            <Blazicon Svg=""Lucide.Star"" class=""h-4 w-4 text-primary-foreground"" />
-        </div>
-        <span class=""text-base font-semibold text-foreground"">Acme Dashboard</span>
-    </div>
-    <div class=""flex flex-1 max-w-sm items-center gap-2 rounded-md border bg-background px-3"">
-        <Blazicon Svg=""Lucide.Search"" class=""h-4 w-4 text-muted-foreground"" />
-        <input placeholder=""Search..."" class=""flex h-8 w-full bg-transparent text-sm outline-none"" />
-    </div>
-    <div class=""flex items-center gap-2"">
+<Flex Align=""center"" Justify=""between"" Class=""gap-4 rounded-lg border bg-card px-4 py-3"">
+    <Flex Align=""center"" Gap=""3"">
+        <Flex Class=""h-8 w-8 items-center justify-center rounded-md bg-primary"">
+            <DynamicIcon Name=""Star"" Class=""h-4 w-4 text-primary-foreground"" />
+        </Flex>
+        <Lumeo.Text As=""span"" Class=""text-base font-semibold text-foreground"">Acme Dashboard</Lumeo.Text>
+    </Flex>
+    <Flex Align=""center"" Class=""flex-1 max-w-sm gap-2 rounded-md border bg-background px-3"">
+        <DynamicIcon Name=""Search"" Class=""h-4 w-4 text-muted-foreground"" />
+        <Input Placeholder=""Search..."" Class=""h-8 flex-1 bg-transparent"" />
+    </Flex>
+    <Flex Align=""center"" Gap=""2"">
         <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-            <Blazicon Svg=""Lucide.Bell"" class=""h-4 w-4"" />
+            <DynamicIcon Name=""Bell"" Class=""h-4 w-4"" />
         </Button>
         <Avatar Size=""Avatar.AvatarSize.Sm"">
             <AvatarFallback>JD</AvatarFallback>
         </Avatar>
-        <Blazicon Svg=""Lucide.ChevronDown"" class=""h-4 w-4 text-muted-foreground"" />
-    </div>
-</div>
+        <DynamicIcon Name=""ChevronDown"" Class=""h-4 w-4 text-muted-foreground"" />
+    </Flex>
+</Flex>
 
 <!-- Stats Row -->
-<div class=""grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
+<Grid Class=""grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
     <Card>
         <CardHeader>
-            <p class=""text-sm font-medium text-muted-foreground"">Total Revenue</p>
+            <Lumeo.Text Class=""text-sm font-medium text-muted-foreground"">Total Revenue</Lumeo.Text>
         </CardHeader>
         <CardContent>
-            <div class=""text-2xl font-bold text-foreground"">$45,231.89</div>
+            <Lumeo.Text Class=""text-2xl font-bold text-foreground"">$45,231.89</Lumeo.Text>
             <Badge Variant=""Badge.BadgeVariant.Success"">+12.5%</Badge>
-            <span class=""text-xs text-muted-foreground"">from last month</span>
+            <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground"">from last month</Lumeo.Text>
         </CardContent>
     </Card>
     <!-- ... repeat for other stats ... -->
-</div>
+</Grid>
 
 <!-- Main Chart + Activity -->
-<div class=""grid grid-cols-1 lg:grid-cols-7 gap-4"">
+<Grid Class=""grid-cols-1 lg:grid-cols-7 gap-4"">
     <Card Class=""lg:col-span-5"">
-        <CardHeader><h3>Revenue Overview</h3></CardHeader>
+        <CardHeader><Heading Level=""3"">Revenue Overview</Heading></CardHeader>
         <CardContent>
             <AreaChart Categories=""@_areaCategories"" Series=""@_areaSeries"" Smooth=""true"" Height=""280px"" />
         </CardContent>
     </Card>
     <Card Class=""lg:col-span-2"">
-        <CardHeader><h3>Activity</h3></CardHeader>
+        <CardHeader><Heading Level=""3"">Activity</Heading></CardHeader>
         <CardContent>
             @foreach (var a in _activities)
             {
-                <div class=""flex gap-3 py-3 border-b last:border-0"">
-                    <div class=""mt-0.5 h-2 w-2 rounded-full bg-primary""></div>
-                    <div>
-                        <p class=""text-sm text-foreground"">@a.Text</p>
-                        <p class=""text-xs text-muted-foreground"">@a.Time</p>
-                    </div>
-                </div>
+                <Flex Gap=""3"" Class=""py-3 border-b last:border-0"">
+                    <Stack Class=""mt-0.5 h-2 w-2 rounded-full bg-primary"" />
+                    <Stack Gap=""0"">
+                        <Lumeo.Text Class=""text-sm text-foreground"">@a.Text</Lumeo.Text>
+                        <Lumeo.Text Class=""text-xs text-muted-foreground"">@a.Time</Lumeo.Text>
+                    </Stack>
+                </Flex>
             }
         </CardContent>
     </Card>
-</div>
+</Grid>
 
 <!-- Transactions Table -->
 <Table>
@@ -357,18 +363,18 @@
 </Table>
 
 <!-- Mini Charts -->
-<div class=""grid grid-cols-1 lg:grid-cols-2 gap-4"">
+<Grid Class=""grid-cols-1 lg:grid-cols-2 gap-4"">
     <Card>
-        <CardHeader><h3>Monthly Sales</h3></CardHeader>
+        <CardHeader><Heading Level=""3"">Monthly Sales</Heading></CardHeader>
         <CardContent>
             <BarChart Categories=""@_barCategories"" Series=""@_barSeries"" Height=""220px"" />
         </CardContent>
     </Card>
     <Card>
-        <CardHeader><h3>Revenue by Channel</h3></CardHeader>
+        <CardHeader><Heading Level=""3"">Revenue by Channel</Heading></CardHeader>
         <CardContent>
             <PieChart Data=""@_pieData"" Height=""220px"" />
         </CardContent>
     </Card>
-</div>";
+</Grid>";
 }

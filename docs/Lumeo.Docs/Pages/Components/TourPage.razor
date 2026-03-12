@@ -2,23 +2,63 @@
 
 <PageTitle>Tour — Lumeo</PageTitle>
 
-<PageHeader Title="Tour" Description="A guided tour component that highlights elements and shows step-by-step instructions." />
+<PageHeader Title="Tour" Description="A guided product tour that highlights elements with a spotlight overlay and step-by-step tooltip popups — great for onboarding and feature introductions." />
 
 <Stack Gap="8">
     <ComponentDemo Title="Basic Tour" Code="@_basicCode">
-        <Stack Gap="4">
-            <Flex Gap="4">
-                <Button id="tour-target-1" Variant="Button.ButtonVariant.Outline">Step 1 Target</Button>
-                <Button id="tour-target-2" Variant="Button.ButtonVariant.Outline">Step 2 Target</Button>
-                <Button id="tour-target-3" Variant="Button.ButtonVariant.Outline">Step 3 Target</Button>
+        <Stack Gap="6">
+            <Flex Class="gap-3 flex-wrap">
+                <Button id="tour-feature-1" Variant="Button.ButtonVariant.Outline">
+                    <DynamicIcon Name="LayoutDashboard" Class="h-4 w-4 mr-2" />
+                    Dashboard
+                </Button>
+                <Button id="tour-feature-2" Variant="Button.ButtonVariant.Outline">
+                    <DynamicIcon Name="Users" Class="h-4 w-4 mr-2" />
+                    Team
+                </Button>
+                <Button id="tour-feature-3" Variant="Button.ButtonVariant.Outline">
+                    <DynamicIcon Name="Settings" Class="h-4 w-4 mr-2" />
+                    Settings
+                </Button>
             </Flex>
-            <Button OnClick="@(() => _tourOpen = true)">
-                <DynamicIcon Name="Play" Class="h-4 w-4" />
-                Start Tour
+            <Flex Class="gap-2">
+                <Button Variant="Button.ButtonVariant.Default" OnClick="@(() => _tourOpen = true)">
+                    <DynamicIcon Name="Play" Class="h-4 w-4 mr-2" />
+                    Start Tour
+                </Button>
+                @if (_tourCompleted)
+                {
+                    <Alert Class="flex-1">
+                        <AlertTitle>Tour complete!</AlertTitle>
+                    </Alert>
+                }
+            </Flex>
+        </Stack>
+
+        <Tour @bind-IsOpen="_tourOpen"
+              Steps="@_tourSteps"
+              OnComplete="@HandleComplete"
+              OnSkip="@HandleSkip" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom Placements" Code="@_placementsCode">
+        <Stack Gap="4">
+            <Flex Class="justify-between items-center gap-3">
+                <Button id="tour-top" Variant="Button.ButtonVariant.Outline" Class="flex-1">Top tooltip</Button>
+                <Button id="tour-right" Variant="Button.ButtonVariant.Outline" Class="flex-1">Right tooltip</Button>
+                <Button id="tour-bottom" Variant="Button.ButtonVariant.Outline" Class="flex-1">Bottom tooltip</Button>
+                <Button id="tour-left" Variant="Button.ButtonVariant.Outline" Class="flex-1">Left tooltip</Button>
+            </Flex>
+            <Button Variant="Button.ButtonVariant.Secondary" OnClick="@(() => _placementsOpen = true)">
+                <DynamicIcon Name="Navigation" Class="h-4 w-4 mr-2" />
+                Tour Placements
             </Button>
         </Stack>
 
-        <Tour @bind-IsOpen="_tourOpen" Steps="@_tourSteps" OnComplete="@(() => _tourOpen = false)" />
+        <Tour @bind-IsOpen="_placementsOpen"
+              Steps="@_placementSteps"
+              OnComplete="@(() => _placementsOpen = false)"
+              OnSkip="@(() => _placementsOpen = false)" />
     </ComponentDemo>
 </Stack>
 
@@ -28,7 +68,7 @@
     <Stack Gap="8">
         <Stack>
             <Heading Level="3" Class="mb-3">Tour</Heading>
-            <div class="rounded-lg border border-border overflow-hidden">
+            <Stack Class="rounded-lg border border-border overflow-hidden">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b bg-muted/40">
@@ -43,57 +83,157 @@
                             <td class="p-3 font-mono text-xs text-primary">Steps</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;TourStepConfig&gt;</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">[]</td>
-                            <td class="p-3 text-muted-foreground">Tour step definitions.</td>
+                            <td class="p-3 text-muted-foreground">List of step definitions with target, title, description, and placement.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">IsOpen</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
-                            <td class="p-3 text-muted-foreground">Whether the tour is active. Supports two-way binding.</td>
+                            <td class="p-3 text-muted-foreground">Whether the tour is active. Supports two-way binding (@@bind-IsOpen).</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">CurrentStep</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">0</td>
-                            <td class="p-3 text-muted-foreground">Current step index.</td>
+                            <td class="p-3 text-muted-foreground">Current step index (zero-based). Supports two-way binding.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">OnComplete</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
-                            <td class="p-3 text-muted-foreground">Fired when the last step is finished.</td>
+                            <td class="p-3 text-muted-foreground">Fired when the user reaches and completes the last step.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">OnSkip</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
-                            <td class="p-3 text-muted-foreground">Fired when the tour is skipped.</td>
+                            <td class="p-3 text-muted-foreground">Fired when the user clicks Skip or dismisses the tour.</td>
                         </tr>
                     </tbody>
                 </table>
-            </div>
+            </Stack>
+        </Stack>
+        <Stack>
+            <Heading Level="3" Class="mb-3">TourStepConfig</Heading>
+            <Stack Class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Parameter</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TargetSelector</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 text-muted-foreground">CSS selector for the element to highlight (e.g., "#my-button").</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Title</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Tooltip heading.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Description</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 text-muted-foreground">Optional body text below the title.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Placement</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">TourPlacement</td>
+                            <td class="p-3 text-muted-foreground">Where to place the tooltip: Top, Bottom, Left, Right.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
         </Stack>
     </Stack>
 </Stack>
 
 @code {
     private bool _tourOpen;
+    private bool _tourCompleted;
+    private bool _placementsOpen;
 
     private List<Tour.TourStepConfig> _tourSteps = new()
     {
-        new("#tour-target-1", "Welcome", "This is the first step.", Tour.TourPlacement.Bottom),
-        new("#tour-target-2", "Features", "Explore various features.", Tour.TourPlacement.Bottom),
-        new("#tour-target-3", "Finish", "Tour complete!", Tour.TourPlacement.Bottom),
+        new("#tour-feature-1", "Dashboard", "Get an overview of all your key metrics and recent activity.", Tour.TourPlacement.Bottom),
+        new("#tour-feature-2", "Team Management", "Invite team members and manage permissions.", Tour.TourPlacement.Bottom),
+        new("#tour-feature-3", "Settings", "Customize your workspace, notifications, and account details.", Tour.TourPlacement.Bottom),
     };
 
-    private string _basicCode = @"<Tour @bind-IsOpen=""_open"" Steps=""@_steps"" OnComplete=""@(() => _open = false)"" />
+    private List<Tour.TourStepConfig> _placementSteps = new()
+    {
+        new("#tour-top", "Top Placement", "The tooltip appears above the highlighted element.", Tour.TourPlacement.Top),
+        new("#tour-right", "Right Placement", "The tooltip appears to the right.", Tour.TourPlacement.Right),
+        new("#tour-bottom", "Bottom Placement", "The tooltip appears below the highlighted element.", Tour.TourPlacement.Bottom),
+        new("#tour-left", "Left Placement", "The tooltip appears to the left.", Tour.TourPlacement.Left),
+    };
+
+    private void HandleComplete()
+    {
+        _tourOpen = false;
+        _tourCompleted = true;
+    }
+
+    private void HandleSkip()
+    {
+        _tourOpen = false;
+    }
+
+    private string _basicCode = @"<Flex Class=""gap-3 flex-wrap"">
+    <Button id=""tour-feature-1"" Variant=""Button.ButtonVariant.Outline"">Dashboard</Button>
+    <Button id=""tour-feature-2"" Variant=""Button.ButtonVariant.Outline"">Team</Button>
+    <Button id=""tour-feature-3"" Variant=""Button.ButtonVariant.Outline"">Settings</Button>
+</Flex>
+<Button Variant=""Button.ButtonVariant.Default"" OnClick=""@(() => _tourOpen = true)"">
+    Start Tour
+</Button>
+
+<Tour @bind-IsOpen=""_tourOpen""
+      Steps=""@_tourSteps""
+      OnComplete=""@HandleComplete""
+      OnSkip=""@(() => _tourOpen = false)"" />
 
 @code {
+    private bool _tourOpen;
+
+    private List<Tour.TourStepConfig> _tourSteps = new()
+    {
+        new(""#tour-feature-1"", ""Dashboard"", ""Get an overview of your key metrics."", Tour.TourPlacement.Bottom),
+        new(""#tour-feature-2"", ""Team Management"", ""Invite members and manage permissions."", Tour.TourPlacement.Bottom),
+        new(""#tour-feature-3"", ""Settings"", ""Customize your workspace and account."", Tour.TourPlacement.Bottom),
+    };
+
+    private void HandleComplete() => _tourOpen = false;
+}";
+
+    private string _placementsCode = @"<Flex Class=""justify-between gap-3"">
+    <Button id=""tour-top""    Variant=""Button.ButtonVariant.Outline"">Top</Button>
+    <Button id=""tour-right""  Variant=""Button.ButtonVariant.Outline"">Right</Button>
+    <Button id=""tour-bottom"" Variant=""Button.ButtonVariant.Outline"">Bottom</Button>
+    <Button id=""tour-left""   Variant=""Button.ButtonVariant.Outline"">Left</Button>
+</Flex>
+<Button Variant=""Button.ButtonVariant.Secondary"" OnClick=""@(() => _open = true)"">
+    Tour Placements
+</Button>
+
+<Tour @bind-IsOpen=""_open""
+      Steps=""@_steps""
+      OnComplete=""@(() => _open = false)""
+      OnSkip=""@(() => _open = false)"" />
+
+@code {
+    private bool _open;
+
     private List<Tour.TourStepConfig> _steps = new()
     {
-        new(""#target-1"", ""Welcome"", ""First step."", Tour.TourPlacement.Bottom),
-        new(""#target-2"", ""Features"", ""Second step.""),
-        new(""#target-3"", ""Done"", ""All done!""),
+        new(""#tour-top"",    ""Top Placement"",    ""Tooltip above the element."",  Tour.TourPlacement.Top),
+        new(""#tour-right"",  ""Right Placement"",  ""Tooltip to the right."",       Tour.TourPlacement.Right),
+        new(""#tour-bottom"", ""Bottom Placement"", ""Tooltip below the element."",  Tour.TourPlacement.Bottom),
+        new(""#tour-left"",   ""Left Placement"",   ""Tooltip to the left."",        Tour.TourPlacement.Left),
     };
 }";
 }

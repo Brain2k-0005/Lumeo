@@ -1,0 +1,304 @@
+@page "/components/kanban"
+
+<PageTitle>Kanban — Lumeo</PageTitle>
+
+<PageHeader Title="Kanban" Description="A drag-and-drop kanban board for visualizing workflow stages. Organize cards into columns representing different states like To Do, In Progress, and Done." />
+
+<Stack Gap="8">
+    <ComponentDemo Title="Drag &amp; Drop Board" Code="@_basicCode">
+        <Kanban Class="min-h-64">
+            @foreach (var col in _columnOrder)
+            {
+                var colId = col;
+                var cards = _columns[colId];
+                <KanbanColumn Title="@_columnTitles[colId]" Badge="@cards.Count" OnDrop="@(() => Drop(colId))">
+                    @foreach (var card in cards)
+                    {
+                        var c = card;
+                        <KanbanCard Title="@c.Title"
+                                    Description="@c.Description"
+                                    Labels="@c.Labels"
+                                    @ondragstart="@(e => DragStart(c.Id, colId))" />
+                    }
+                </KanbanColumn>
+            }
+        </Kanban>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Add Card Button" Code="@_addCode">
+        <Kanban Class="min-h-48">
+            <KanbanColumn Title="Backlog" AllowAdd="true" OnAdd="@(() => _addCount++)">
+                @for (int i = 0; i < _addCount; i++)
+                {
+                    <KanbanCard Title="@($"New card {i + 1}")" />
+                }
+            </KanbanColumn>
+            <KanbanColumn Title="Active" AllowAdd="true" OnAdd="@(() => {})">
+                <KanbanCard Title="Existing task" Description="Already in progress." />
+            </KanbanColumn>
+        </Kanban>
+        <Lumeo.Text Class="text-sm text-muted-foreground mt-2">Cards added: @_addCount</Lumeo.Text>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom Header" Code="@_customHeaderCode">
+        <Kanban Class="min-h-40">
+            <KanbanColumn>
+                <HeaderContent>
+                    <Flex Class="items-center gap-2 w-full justify-between px-1">
+                        <Flex Class="items-center gap-2">
+                            <Stack Class="h-2 w-2 rounded-full bg-primary" Gap="0" />
+                            <Lumeo.Text Class="text-sm font-medium">Sprint 4</Lumeo.Text>
+                            <Badge Variant="Badge.BadgeVariant.Secondary">5</Badge>
+                        </Flex>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-6 w-6">
+                            <DynamicIcon Name="MoreHorizontal" Class="h-3.5 w-3.5" />
+                        </Button>
+                    </Flex>
+                </HeaderContent>
+                <ChildContent>
+                    <KanbanCard Title="Task A" Labels="@(new List<KanbanCard.KanbanLabel> { new() { Text = "UI", Color = "primary" } })" />
+                    <KanbanCard Title="Task B" Labels="@(new List<KanbanCard.KanbanLabel> { new() { Text = "API", Color = "secondary" } })" />
+                </ChildContent>
+            </KanbanColumn>
+        </Kanban>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+    <Stack Gap="8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">Kanban</Heading>
+            <Stack Class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ChildContent</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">KanbanColumn components placed inside.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+        <Stack>
+            <Heading Level="3" Class="mb-3">KanbanColumn</Heading>
+            <Stack Class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Title</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Column header title text.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Badge</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Count badge shown next to the title.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">AllowAdd</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Show an "Add card" button at the bottom of the column.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnAdd</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired when the "Add card" button is clicked.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">HeaderContent</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Custom header content (overrides Title/Badge).</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+        <Stack>
+            <Heading Level="3" Class="mb-3">KanbanCard</Heading>
+            <Stack Class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Title</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Card title text.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Description</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Card description text (truncated to 2 lines).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Labels</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;KanbanLabel&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Colored labels shown at the top of the card.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Avatar</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Assignee avatar image URL shown at bottom-right.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Draggable</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Enable HTML drag-and-drop on the card.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnClick</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired when the card is clicked.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+        <Stack>
+            <Heading Level="3" Class="mb-3">KanbanLabel</Heading>
+            <Stack Class="rounded-lg border border-border overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Text</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Label display text.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Color</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Color key: "primary", "destructive", "warning", "success", "secondary".</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+@code {
+    private int _addCount = 0;
+
+    // Drag state
+    private string? _draggedId;
+    private string? _draggedFrom;
+
+    private record CardData(string Id, string Title, string? Description, List<KanbanCard.KanbanLabel> Labels);
+
+    private readonly List<string> _columnOrder = ["todo", "inprogress", "done"];
+    private readonly Dictionary<string, string> _columnTitles = new()
+    {
+        ["todo"] = "To Do",
+        ["inprogress"] = "In Progress",
+        ["done"] = "Done"
+    };
+
+    private Dictionary<string, List<CardData>> _columns = new()
+    {
+        ["todo"] = new()
+        {
+            new("1", "Design new landing page", "Create wireframes and mockups.", new() { new() { Text = "Design", Color = "primary" } }),
+            new("2", "Write API documentation", null, new() { new() { Text = "Docs", Color = "secondary" } }),
+            new("3", "Set up CI/CD pipeline", null, new() { new() { Text = "DevOps", Color = "warning" } }),
+        },
+        ["inprogress"] = new()
+        {
+            new("4", "Build authentication flow", "Login, register, reset.", new() { new() { Text = "Frontend", Color = "primary" }, new() { Text = "High", Color = "destructive" } }),
+            new("5", "Optimize database queries", null, new() { new() { Text = "Backend", Color = "secondary" } }),
+        },
+        ["done"] = new()
+        {
+            new("6", "Project setup", null, new() { new() { Text = "Done", Color = "success" } }),
+            new("7", "User research", null, new() { new() { Text = "Research", Color = "success" } }),
+        }
+    };
+
+    private void DragStart(string cardId, string fromCol)
+    {
+        _draggedId = cardId;
+        _draggedFrom = fromCol;
+    }
+
+    private void Drop(string targetCol)
+    {
+        if (_draggedId is null || _draggedFrom is null || _draggedFrom == targetCol) return;
+        var card = _columns[_draggedFrom].FirstOrDefault(c => c.Id == _draggedId);
+        if (card is null) return;
+        _columns[_draggedFrom].Remove(card);
+        _columns[targetCol].Add(card);
+        _draggedId = null;
+        _draggedFrom = null;
+    }
+
+    private string _basicCode = @"<Kanban>
+    <KanbanColumn Title=""To Do"" Badge=""3"">
+        <KanbanCard Title=""Design landing page""
+                    Labels=""@(new List<KanbanCard.KanbanLabel> { new() { Text = ""Design"", Color = ""primary"" } })"" />
+        <KanbanCard Title=""Write API docs""
+                    Labels=""@(new List<KanbanCard.KanbanLabel> { new() { Text = ""Docs"", Color = ""secondary"" } })"" />
+    </KanbanColumn>
+    <KanbanColumn Title=""In Progress"" Badge=""1"">
+        <KanbanCard Title=""Build auth flow""
+                    Description=""Login and register flow.""
+                    Labels=""@(new List<KanbanCard.KanbanLabel> { new() { Text = ""High"", Color = ""destructive"" } })"" />
+    </KanbanColumn>
+    <KanbanColumn Title=""Done"" Badge=""1"">
+        <KanbanCard Title=""Project setup"" Labels=""@(new List<KanbanCard.KanbanLabel> { new() { Text = ""Done"", Color = ""success"" } })"" />
+    </KanbanColumn>
+</Kanban>";
+
+    private string _addCode = @"<KanbanColumn Title=""Backlog"" AllowAdd=""true"" OnAdd=""@AddCard"" />";
+    private string _customHeaderCode = @"<KanbanColumn>
+    <HeaderContent>
+        <Flex Class=""items-center gap-2"">
+            <Lumeo.Text Class=""text-sm font-medium"">Sprint 4</Lumeo.Text>
+            <Badge Variant=""Badge.BadgeVariant.Secondary"">5</Badge>
+        </Flex>
+    </HeaderContent>
+    <KanbanCard Title=""Task A"" />
+</KanbanColumn>";
+}

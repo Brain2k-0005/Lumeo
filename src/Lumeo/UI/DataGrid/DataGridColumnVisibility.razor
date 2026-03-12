@@ -2,16 +2,42 @@
 @typeparam TItem
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
-    <div class="p-3 space-y-2">
+    <div class="p-3 space-y-1">
         <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             Toggle Columns
         </div>
-        @foreach (var column in Columns)
+        @{
+            var columnList = Columns.ToList();
+        }
+        @for (int i = 0; i < columnList.Count; i++)
         {
-            <label class="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
-                <Checkbox Checked="@column.Visible" CheckedChanged="@(v => ToggleColumn(column, v))" />
-                <span>@(column.Title ?? column.Field ?? "Column")</span>
-            </label>
+            var column = columnList[i];
+            var index = i;
+            var isFirst = index == 0;
+            var isLast = index == columnList.Count - 1;
+
+            <div class="flex items-center gap-2 py-0.5">
+                <label class="flex items-center gap-2 text-sm cursor-pointer flex-1 min-w-0">
+                    <Checkbox Checked="@column.Visible" CheckedChanged="@(v => ToggleColumn(column, v))" />
+                    <span class="truncate">@(column.Title ?? column.Field ?? "Column")</span>
+                </label>
+                <div class="flex items-center gap-0.5 shrink-0">
+                    <button type="button"
+                            class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up"
+                            disabled="@isFirst"
+                            @onclick="@(async () => await MoveColumn(index, index - 1))">
+                        <Blazicon Svg="Lucide.ArrowUp" class="h-3.5 w-3.5" />
+                    </button>
+                    <button type="button"
+                            class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down"
+                            disabled="@isLast"
+                            @onclick="@(async () => await MoveColumn(index, index + 1))">
+                        <Blazicon Svg="Lucide.ArrowDown" class="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            </div>
         }
     </div>
 </div>
@@ -19,14 +45,22 @@
 @code {
     [Parameter] public IReadOnlyList<DataGridColumn<TItem>> Columns { get; set; } = Array.Empty<DataGridColumn<TItem>>();
     [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
+    [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"w-56 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md {Class}".Trim();
+    private string CssClass => $"w-64 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md {Class}".Trim();
 
     private async Task ToggleColumn(DataGridColumn<TItem> column, bool visible)
     {
         column.Visible = visible;
         await OnColumnToggle.InvokeAsync(column);
+    }
+
+    private async Task MoveColumn(int oldIndex, int newIndex)
+    {
+        var column = Columns[oldIndex];
+        var args = new ColumnReorderEventArgs(column.Id, oldIndex, newIndex);
+        await OnColumnReorder.InvokeAsync(args);
     }
 }

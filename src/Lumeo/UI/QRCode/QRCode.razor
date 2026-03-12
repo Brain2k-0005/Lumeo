@@ -38,7 +38,7 @@
     private int _margin;
     private int _totalSize;
 
-    private string ContainerClass => $"inline-block overflow-hidden {Class}".Trim();
+    private string ContainerClass => $"inline-block overflow-hidden rounded-xl {Class}".Trim();
     private string ContainerStyle => $"width: {Size}px; height: {Size}px;";
     private string ViewBox => $"0 0 {_totalSize} {_totalSize}";
 
@@ -59,21 +59,23 @@
         {
             var ecl = ErrorCorrectionLevel switch
             {
-                QRErrorLevel.Low => QRCodeEncoder.ErrorCorrectionLevel.Low,
-                QRErrorLevel.Quartile => QRCodeEncoder.ErrorCorrectionLevel.Quartile,
-                QRErrorLevel.High => QRCodeEncoder.ErrorCorrectionLevel.High,
-                _ => QRCodeEncoder.ErrorCorrectionLevel.Medium,
+                QRErrorLevel.Low => QRCoder.QRCodeGenerator.ECCLevel.L,
+                QRErrorLevel.Quartile => QRCoder.QRCodeGenerator.ECCLevel.Q,
+                QRErrorLevel.High => QRCoder.QRCodeGenerator.ECCLevel.H,
+                _ => QRCoder.QRCodeGenerator.ECCLevel.M,
             };
 
-            var matrix = QRCodeEncoder.Encode(Value, ecl);
-            _moduleCount = matrix.GetLength(0);
+            using var gen = new QRCoder.QRCodeGenerator();
+            using var data = gen.CreateQrCode(Value, ecl);
+            var pixels = data.ModuleMatrix;
+            _moduleCount = pixels.Count;
             _margin = IncludeMargin ? 4 : 0;
             _totalSize = _moduleCount + _margin * 2;
 
             var modules = new List<(int x, int y)>();
             for (int row = 0; row < _moduleCount; row++)
             for (int col = 0; col < _moduleCount; col++)
-                if (matrix[row, col])
+                if (pixels[row][col])
                     modules.Add((col + _margin, row + _margin));
 
             _darkModules = modules;

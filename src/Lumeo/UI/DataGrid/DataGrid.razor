@@ -15,7 +15,7 @@
         TotalCount: EffectiveTotalCount,
         SelectionMode: SelectionMode,
         EditMode: EditMode,
-        IsLoading: IsLoading,
+        IsLoading: IsLoading || _serverLoading,
         RowReorderable: RowReorderable,
         RowContextMenuEnabled: RowContextMenu is not null,
         OnRowClick: OnRowClick,
@@ -37,7 +37,14 @@
         GetEditValue: GetEditValue,
         SetEditValue: SetEditValue,
         RowClass: RowClass,
-        RowStyle: RowStyle
+        RowStyle: RowStyle,
+        PinnedLeftOffsets: ComputePinnedLeftOffsets(),
+        PinnedRightOffsets: ComputePinnedRightOffsets(),
+        GroupedSections: _groupedSections.Count > 0 ? _groupedSections.AsReadOnly() : null,
+        GroupBy: GroupBy,
+        IsGrouped: !string.IsNullOrEmpty(GroupBy) && _groupedSections.Count > 0,
+        IsGroupExpanded: IsGroupExpanded,
+        ToggleGroupExpand: ToggleGroupExpand
     );
 }
 
@@ -48,13 +55,27 @@
         @* Declarative column definitions *@
         <div class="hidden">@ChildContent</div>
 
+        @if (_serverError is not null)
+        {
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-destructive/30 bg-destructive/10 text-sm">
+                <Blazicon Svg="Lucide.CircleAlert" class="h-4 w-4 shrink-0 text-destructive" />
+                <span class="flex-1 text-destructive-text">Failed to load data: @_serverError</span>
+                <button type="button"
+                        class="text-xs text-destructive underline hover:no-underline"
+                        @onclick="@(async () => { _serverError = null; await RequestServerData(); })">
+                    Retry
+                </button>
+            </div>
+        }
+
         @if (ShowToolbar)
         {
             <DataGridToolbar TItem="TItem"
                              SearchText="@_globalSearch"
                              SearchTextChanged="HandleGlobalSearch"
                              ToolbarContent="ToolbarContent"
-                             OnColumnVisibilityToggle="ToggleColumnVisibilityPanel"
+                             OnColumnToggle="HandleColumnVisibilityChanged"
+                             OnColumnReorder="HandleColumnReorder"
                              OnExport="HandleExport"
                              OnRemoveFilter="RemoveFilter"
                              SelectedItems="_selectedItems"
@@ -62,14 +83,12 @@
                              EffectiveColumns="EffectiveColumns.AsReadOnly()"
                              EnableLayoutPersistence="EnableLayoutPersistence"
                              OnSaveLayout="HandleSaveLayout"
-                             OnResetLayout="HandleResetLayout" />
-        }
-
-        @if (_showColumnVisibility)
-        {
-            <DataGridColumnVisibility TItem="TItem"
-                                      Columns="EffectiveColumns.AsReadOnly()"
-                                      OnColumnToggle="HandleColumnVisibilityChanged" />
+                             OnResetLayout="HandleResetLayout"
+                             GlobalLayouts="GlobalLayouts"
+                             OnSaveNamedLayout="HandleSaveNamedLayout"
+                             OnDeleteNamedLayout="OnDeleteNamedLayout"
+                             OnApplyNamedLayout="HandleApplyNamedLayout"
+                             LayoutStorageKey="LayoutStorageKey" />
         }
 
         @if (_contextMenuVisible)
@@ -139,6 +158,7 @@
     [Parameter] public int VirtualizeThreshold { get; set; } = 500;
     [Parameter] public bool Reorderable { get; set; }
     [Parameter] public bool RowReorderable { get; set; }
+    [Parameter] public string? GroupBy { get; set; }
 
     // --- Conditional Row Styling ---
     [Parameter] public Func<TItem, string>? RowClass { get; set; }
@@ -149,6 +169,11 @@
     [Parameter] public string? LayoutStorageKey { get; set; }
     [Parameter] public EventCallback<DataGridLayout> OnLayoutSave { get; set; }
     [Parameter] public DataGridLayout? SavedLayout { get; set; }
+
+    // --- Named Layouts ---
+    [Parameter] public List<DataGridNamedLayout>? GlobalLayouts { get; set; }
+    [Parameter] public EventCallback<DataGridNamedLayout> OnSaveNamedLayout { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteNamedLayout { get; set; }
 
     // --- Server mode ---
     [Parameter] public bool ServerMode { get; set; }
@@ -170,6 +195,7 @@
     [Parameter] public EventCallback<RowEditEventArgs<TItem>> OnRowEdit { get; set; }
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     [Parameter] public EventCallback<RowReorderEventArgs<TItem>> OnRowReorder { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<TItem>> SelectedItemsChanged { get; set; }
 
@@ -196,15 +222,20 @@
     private List<FilterDescriptor> _filters = new();
     private string? _globalSearch;
     private int _currentPage = 1;
-    private bool _showColumnVisibility;
     private string? _activeFilterColumn;
     private bool _contextMenuVisible;
     private double _contextMenuX;
     private double _contextMenuY;
     private TItem? _contextMenuItem;
     private string _contextMenuId = $"dg-ctx-{Guid.NewGuid():N}";
+    private List<DataGridGroupSection<TItem>> _groupedSections = new();
+    private HashSet<string> _expandedGroups = new();
     private string _layoutId = $"datagrid-{Guid.NewGuid():N}";
     private System.Threading.Timer? _autoSaveTimer;
+    private System.Threading.Timer? _searchDebounceTimer;
+    private CancellationTokenSource? _serverRequestCts;
+    private bool _serverLoading;
+    private string? _serverError;
     private bool _layoutLoaded;
     private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
 
@@ -287,6 +318,22 @@
         if (ServerMode)
         {
             _displayedItems = Items?.ToList() ?? new List<TItem>();
+
+            // Apply client-side grouping on server-returned items when GroupBy is set
+            if (!string.IsNullOrEmpty(GroupBy) && _displayedItems.Count > 0)
+            {
+                var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == GroupBy);
+                if (groupCol is not null)
+                {
+                    _groupedSections = _displayedItems
+                        .GroupBy(item => groupCol.GetFormattedValue(item))
+                        .OrderBy(g => g.Key)
+                        .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
+                        .ToList();
+                    foreach (var section in _groupedSections)
+                        _expandedGroups.Add(section.Key);
+                }
+            }
         }
         else
         {
@@ -396,19 +443,67 @@
 
             if (ordered is null)
             {
-                ordered = sort.Direction == SortDirection.Ascending
-                    ? query.OrderBy(item => column.GetValue(item) as IComparable)
-                    : query.OrderByDescending(item => column.GetValue(item) as IComparable);
+                if (column.CustomSort is not null)
+                {
+                    var comp = column.CustomSort;
+                    ordered = sort.Direction == SortDirection.Ascending
+                        ? query.OrderBy(item => column.GetValue(item), Comparer<object?>.Create(comp))
+                        : query.OrderByDescending(item => column.GetValue(item), Comparer<object?>.Create(comp));
+                }
+                else
+                {
+                    ordered = sort.Direction == SortDirection.Ascending
+                        ? query.OrderBy(item => column.GetValue(item) as IComparable)
+                        : query.OrderByDescending(item => column.GetValue(item) as IComparable);
+                }
             }
             else
             {
-                ordered = sort.Direction == SortDirection.Ascending
-                    ? ordered.ThenBy(item => column.GetValue(item) as IComparable)
-                    : ordered.ThenByDescending(item => column.GetValue(item) as IComparable);
+                if (column.CustomSort is not null)
+                {
+                    var comp = column.CustomSort;
+                    ordered = sort.Direction == SortDirection.Ascending
+                        ? ordered.ThenBy(item => column.GetValue(item), Comparer<object?>.Create(comp))
+                        : ordered.ThenByDescending(item => column.GetValue(item), Comparer<object?>.Create(comp));
+                }
+                else
+                {
+                    ordered = sort.Direction == SortDirection.Ascending
+                        ? ordered.ThenBy(item => column.GetValue(item) as IComparable)
+                        : ordered.ThenByDescending(item => column.GetValue(item) as IComparable);
+                }
             }
         }
 
         _processedItems = (ordered as IEnumerable<TItem> ?? query).ToList();
+
+        // Row grouping
+        if (!string.IsNullOrEmpty(GroupBy))
+        {
+            var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == GroupBy);
+            if (groupCol is not null)
+            {
+                _groupedSections = _processedItems
+                    .GroupBy(item => groupCol.GetFormattedValue(item))
+                    .OrderBy(g => g.Key)
+                    .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
+                    .ToList();
+
+                // Auto-expand all groups initially
+                foreach (var section in _groupedSections)
+                {
+                    _expandedGroups.Add(section.Key);
+                }
+
+                // When grouped, show items from expanded groups (no pagination)
+                _displayedItems = _groupedSections
+                    .Where(g => _expandedGroups.Contains(g.Key))
+                    .SelectMany(g => g.Items)
+                    .ToList();
+                return; // Skip normal pagination when grouped
+            }
+        }
+        _groupedSections.Clear();
 
         // Paginate
         if (ShowPagination && PageSize > 0)
@@ -490,7 +585,16 @@
 
         if (ServerMode)
         {
-            await RequestServerData();
+            // Debounce 300ms before firing server request
+            _searchDebounceTimer?.Dispose();
+            _searchDebounceTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RequestServerData();
+                    StateHasChanged();
+                });
+            }, null, 300, System.Threading.Timeout.Infinite);
         }
         else
         {
@@ -546,10 +650,11 @@
     {
         if (SelectionMode == DataGridSelectionMode.Single)
         {
+            var wasSelected = _selectedSet.Contains(item);
             _selectedSet.Clear();
             _selectedItems.Clear();
 
-            if (!_selectedSet.Contains(item))
+            if (!wasSelected)
             {
                 _selectedSet.Add(item);
                 _selectedItems.Add(item);
@@ -588,6 +693,18 @@
         SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
         StateHasChanged();
     }
+
+    private void ToggleGroupExpand(string key)
+    {
+        if (_expandedGroups.Contains(key))
+            _expandedGroups.Remove(key);
+        else
+            _expandedGroups.Add(key);
+        ProcessClientData();
+        StateHasChanged();
+    }
+
+    private bool IsGroupExpanded(string key) => _expandedGroups.Contains(key);
 
     private void ToggleRowExpand(TItem item)
     {
@@ -707,11 +824,6 @@
             _contextMenuVisible = false;
             StateHasChanged();
         }
-    }
-
-    private void ToggleColumnVisibilityPanel()
-    {
-        _showColumnVisibility = !_showColumnVisibility;
     }
 
     private void HandleColumnVisibilityChanged(DataGridColumn<TItem> column)
@@ -918,8 +1030,63 @@
         await ResetLayoutAsync();
     }
 
+    // --- Named Layout Handlers ---
+
+    private async Task HandleSaveNamedLayout(DataGridNamedLayout namedLayout)
+    {
+        var layout = SnapshotCurrentLayout();
+        var withLayout = namedLayout with { Layout = layout };
+
+        if (namedLayout.Scope == "Personal")
+        {
+            var key = (LayoutStorageKey ?? _layoutId) + "-named";
+            try
+            {
+                var json = await Interop.LoadFromLocalStorage(key);
+                var existing = !string.IsNullOrEmpty(json)
+                    ? System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new()
+                    : new List<DataGridNamedLayout>();
+                existing.Add(withLayout);
+                await Interop.SaveToLocalStorage(key, System.Text.Json.JsonSerializer.Serialize(existing));
+            }
+            catch { }
+        }
+
+        if (OnSaveNamedLayout.HasDelegate)
+            await OnSaveNamedLayout.InvokeAsync(withLayout);
+
+        StateHasChanged();
+    }
+
+    private async Task HandleApplyNamedLayout(DataGridNamedLayout namedLayout)
+    {
+        await ApplyLayoutAsync(namedLayout.Layout);
+    }
+
+    public async Task<List<DataGridNamedLayout>> GetPersonalLayoutsAsync()
+    {
+        var key = (LayoutStorageKey ?? _layoutId) + "-named";
+        try
+        {
+            var json = await Interop.LoadFromLocalStorage(key);
+            if (!string.IsNullOrEmpty(json))
+                return System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
+        }
+        catch { }
+        return new();
+    }
+
     private async Task RequestServerData()
     {
+        // Cancel any in-flight request
+        _serverRequestCts?.Cancel();
+        _serverRequestCts?.Dispose();
+        _serverRequestCts = new CancellationTokenSource();
+
+        _serverError = null;
+        _serverLoading = true;
+        StateHasChanged();
+
         if (OnServerRequest.HasDelegate)
         {
             var request = new DataGridServerRequest(
@@ -927,15 +1094,65 @@
                 PageSize,
                 _sorts.Count > 0 ? _sorts : null,
                 _filters.Count > 0 ? _filters : null,
-                _globalSearch
+                _globalSearch,
+                GroupBy,
+                _serverRequestCts.Token
             );
-            await OnServerRequest.InvokeAsync(request);
+            try
+            {
+                await OnServerRequest.InvokeAsync(request);
+            }
+            catch (OperationCanceledException)
+            {
+                // Request was superseded — ignore
+                return;
+            }
+            catch (Exception ex)
+            {
+                _serverError = ex.Message;
+                if (OnError.HasDelegate)
+                    await OnError.InvokeAsync(ex);
+            }
         }
+
+        _serverLoading = false;
+        StateHasChanged();
+    }
+
+    private IReadOnlyDictionary<string, double> ComputePinnedLeftOffsets()
+    {
+        var offsets = new Dictionary<string, double>();
+        double offset = 0;
+        if (RowReorderable) offset += 32;
+        if (SelectionMode != DataGridSelectionMode.None) offset += 40;
+        if (DetailTemplate is not null) offset += 32;
+        foreach (var col in _orderedColumns.Where(c => c.Visible && c.Pin == PinDirection.Left))
+        {
+            offsets[col.Id] = offset;
+            offset += col.Width ?? 150;
+        }
+        return offsets;
+    }
+
+    private IReadOnlyDictionary<string, double> ComputePinnedRightOffsets()
+    {
+        var offsets = new Dictionary<string, double>();
+        double offset = 0;
+        if (EditMode == DataGridEditMode.Row) offset += 40;
+        foreach (var col in _orderedColumns.Where(c => c.Visible && c.Pin == PinDirection.Right).Reverse())
+        {
+            offsets[col.Id] = offset;
+            offset += col.Width ?? 150;
+        }
+        return offsets;
     }
 
     public ValueTask DisposeAsync()
     {
         _autoSaveTimer?.Dispose();
+        _searchDebounceTimer?.Dispose();
+        _serverRequestCts?.Cancel();
+        _serverRequestCts?.Dispose();
         return ValueTask.CompletedTask;
     }
 }

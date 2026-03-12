@@ -11,12 +11,25 @@ public static class DataGridFilterOperator
         var strValue = value.ToString() ?? "";
         var filterStr = filter.Value?.ToString() ?? "";
 
+        // Handle Select filter: value must match one of the comma-separated options
+        if (filter.FilterType == DataGridFilterType.Select)
+        {
+            var options = filter.Value?.ToString()
+                ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                ?? Array.Empty<string>();
+            return options.Length == 0 || options.Any(opt => opt.Equals(strValue, StringComparison.OrdinalIgnoreCase));
+        }
+
         return filter.Operator switch
         {
             FilterOperator.Contains => strValue.Contains(filterStr, StringComparison.OrdinalIgnoreCase),
             FilterOperator.NotContains => !strValue.Contains(filterStr, StringComparison.OrdinalIgnoreCase),
-            FilterOperator.Equals => strValue.Equals(filterStr, StringComparison.OrdinalIgnoreCase),
-            FilterOperator.NotEquals => !strValue.Equals(filterStr, StringComparison.OrdinalIgnoreCase),
+            FilterOperator.Equals => filter.FilterType is DataGridFilterType.Number or DataGridFilterType.Date
+                ? CompareValues(value, filter.Value) == 0
+                : strValue.Equals(filterStr, StringComparison.OrdinalIgnoreCase),
+            FilterOperator.NotEquals => filter.FilterType is DataGridFilterType.Number or DataGridFilterType.Date
+                ? CompareValues(value, filter.Value) != 0
+                : !strValue.Equals(filterStr, StringComparison.OrdinalIgnoreCase),
             FilterOperator.StartsWith => strValue.StartsWith(filterStr, StringComparison.OrdinalIgnoreCase),
             FilterOperator.EndsWith => strValue.EndsWith(filterStr, StringComparison.OrdinalIgnoreCase),
             FilterOperator.GreaterThan => CompareValues(value, filter.Value) > 0,
