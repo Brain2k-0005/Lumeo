@@ -1,13 +1,17 @@
 @namespace Lumeo
 
 @{
+    var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
+    var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Value : null;
     var context = new SelectContext(Value, IsOpen, Searchable, SearchText, Multiple, Values, IsLoading, Clearable, Creatable, MaxDisplayTags,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create(this, OnClear),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId);
+        _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
+        EventCallback.Factory.Create<int>(this, SetFocusedIndex),
+        RegisterItem, UnregisterItem);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -34,7 +38,32 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _wrapperId = $"select-{Guid.NewGuid():N}";
+    private readonly string _contentId = $"select-content-{Guid.NewGuid():N}";
     private string SearchText { get; set; } = "";
+    private int _focusedIndex = -1;
+    private readonly List<(string Id, string Value)> _items = new();
+
+    private void RegisterItem(string id, string value)
+    {
+        if (!_items.Any(i => i.Id == id))
+            _items.Add((id, value));
+    }
+
+    private void UnregisterItem(string id)
+    {
+        _items.RemoveAll(i => i.Id == id);
+    }
+
+    private async Task SetFocusedIndex(int index)
+    {
+        var count = _items.Count;
+        if (count == 0) return;
+        if (index < 0) index = 0;
+        if (index >= count) index = count - 1;
+        _focusedIndex = index;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
 
     private async Task OnValueSelected(string value)
     {
@@ -63,13 +92,20 @@
     private async Task SetOpen(bool value)
     {
         IsOpen = value;
-        if (!value) SearchText = "";
+        if (!value)
+        {
+            SearchText = "";
+            _focusedIndex = -1;
+            _items.Clear();
+        }
         await IsOpenChanged.InvokeAsync(value);
     }
 
     private Task OnSearchChanged(string text)
     {
         SearchText = text;
+        _focusedIndex = -1;
+        _items.Clear();
         return Task.CompletedTask;
     }
 
@@ -111,5 +147,7 @@
         bool Multiple, List<string>? Values, bool IsLoading, bool Clearable, bool Creatable, int MaxDisplayTags,
         EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,
         EventCallback OnClear, EventCallback<string> OnCreateItem,
-        string WrapperId);
+        string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
+        EventCallback<int> SetFocusedIndex,
+        Action<string, string> RegisterItem, Action<string> UnregisterItem);
 }

@@ -3,7 +3,13 @@
 
 @if (Context.IsOpen)
 {
-    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@Context.ContentId"
+         role="menu"
+         aria-orientation="vertical"
+         class="@CssClass"
+         @onkeydown="HandleKeyDown"
+         tabindex="-1"
+         @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -18,7 +24,6 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _contentId = $"dropdown-content-{Guid.NewGuid():N}";
     private bool _registered;
     private int _focusedIndex = -1;
 
@@ -44,8 +49,8 @@
     {
         if (Context.IsOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
-            await Interop.RegisterClickOutside(_contentId, null, async () =>
+            await Interop.PositionFixed(Context.ContentId, Context.WrapperId, AlignStr, false, SideStr);
+            await Interop.RegisterClickOutside(Context.ContentId, null, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
@@ -68,41 +73,41 @@
                 break;
             case "ArrowDown":
                 {
-                    var count = await Interop.GetMenuItemCount(_contentId);
+                    var count = await Interop.GetMenuItemCount(Context.ContentId);
                     if (count > 0)
                     {
                         _focusedIndex = (_focusedIndex + 1) % count;
-                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                        await Interop.FocusMenuItemByIndex(Context.ContentId, _focusedIndex);
                     }
                     break;
                 }
             case "ArrowUp":
                 {
-                    var count = await Interop.GetMenuItemCount(_contentId);
+                    var count = await Interop.GetMenuItemCount(Context.ContentId);
                     if (count > 0)
                     {
                         _focusedIndex = _focusedIndex <= 0 ? count - 1 : _focusedIndex - 1;
-                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                        await Interop.FocusMenuItemByIndex(Context.ContentId, _focusedIndex);
                     }
                     break;
                 }
             case "Home":
                 {
-                    var count = await Interop.GetMenuItemCount(_contentId);
+                    var count = await Interop.GetMenuItemCount(Context.ContentId);
                     if (count > 0)
                     {
                         _focusedIndex = 0;
-                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                        await Interop.FocusMenuItemByIndex(Context.ContentId, _focusedIndex);
                     }
                     break;
                 }
             case "End":
                 {
-                    var count = await Interop.GetMenuItemCount(_contentId);
+                    var count = await Interop.GetMenuItemCount(Context.ContentId);
                     if (count > 0)
                     {
                         _focusedIndex = count - 1;
-                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                        await Interop.FocusMenuItemByIndex(Context.ContentId, _focusedIndex);
                     }
                     break;
                 }
@@ -113,7 +118,7 @@
     {
         try
         {
-            await Interop.UnregisterClickOutside(_contentId);
+            await Interop.UnregisterClickOutside(Context.ContentId);
         }
         catch (JSDisconnectedException) { }
         _registered = false;

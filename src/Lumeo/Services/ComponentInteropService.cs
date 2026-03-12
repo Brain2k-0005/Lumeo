@@ -2,7 +2,7 @@ using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
 
-public sealed class ComponentInteropService : IAsyncDisposable
+public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
     private IJSObjectReference? _module;
@@ -445,6 +445,24 @@ public sealed class ComponentInteropService : IAsyncDisposable
     }
 
     public record ElementRect(double X, double Y, double Width, double Height);
+
+    public void Dispose()
+    {
+        _clickOutsideHandlers.Clear();
+        _drawerSwipeHandlers.Clear();
+        _carouselSwipeHandlers.Clear();
+        _carouselScrollHandlers.Clear();
+        _resizeHandlers.Clear();
+        _resizeEndHandlers.Clear();
+        _scrollspyHandlers.Clear();
+        _toastSwipeHandlers.Clear();
+        _otpPasteHandlers.Clear();
+        _columnResizeHandlers.Clear();
+        _columnResizeEndHandlers.Clear();
+        _affixHandlers.Clear();
+        _backToTopHandlers.Clear();
+        _selfRef?.Dispose();
+    }
 
     public async ValueTask DisposeAsync()
     {
