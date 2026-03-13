@@ -9,6 +9,13 @@
     <!-- Floating Navbar (outside animation wrapper — CSS transforms break fixed positioning) -->
     <div class="fixed top-3 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">
         <header class="pointer-events-auto flex h-14 w-full max-w-[1400px] items-center gap-4 rounded-[var(--radius-xl)] border border-border/50 bg-background/85 backdrop-blur-md shadow-md px-4">
+            <!-- Hamburger (mobile only) -->
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                    Class="lg:hidden mr-1"
+                    OnClick="@(() => _mobileNavOpen = !_mobileNavOpen)">
+                <DynamicIcon Name="@(_mobileNavOpen ? "X" : "Menu")" Class="h-4 w-4" />
+            </Button>
+
             <!-- Logo -->
             <Lumeo.Link Href="" Class="flex items-center space-x-2 font-bold text-lg text-foreground no-underline shrink-0">
                 <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -28,13 +35,14 @@
             <!-- Spacer -->
             <div class="flex-1"></div>
 
-            <!-- Search trigger -->
-            <Button Variant="Button.ButtonVariant.Ghost" Class="hidden sm:flex h-auto items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-52"
+            <!-- Search (icon on mobile, full bar on desktop) -->
+            <Button Variant="Button.ButtonVariant.Ghost"
+                    Class="h-auto items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sm:border sm:border-border sm:bg-muted/50 sm:px-3 sm:w-52"
                     data-search-trigger="true"
                     OnClick="OpenSearch">
-                <DynamicIcon Name="Search" Class="h-3.5 w-3.5 shrink-0" />
-                <Lumeo.Text As="span" Class="flex-1 text-left">Search docs...</Lumeo.Text>
-                <kbd class="pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
+                <DynamicIcon Name="Search" Class="h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0" />
+                <Lumeo.Text As="span" Class="hidden sm:block flex-1 text-left">Search docs...</Lumeo.Text>
+                <kbd class="hidden sm:inline-flex pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
             </Button>
 
             <!-- Right actions -->
@@ -80,11 +88,13 @@
                 <NavMenu />
             }
             <main class="flex-1 min-w-0">
-                <div class="container mx-auto px-4 sm:px-6 py-8 max-w-5xl">
+                <div class="container mx-auto px-4 sm:px-6 py-8 @(IsBlocks ? "" : "max-w-5xl")">
                     @Body
                 </div>
             </main>
-            <CustomizerSidebar IsOpen="@_customizerOpen" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
+            <div class="hidden lg:block">
+                <CustomizerSidebar IsOpen="@_customizerOpen" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
+            </div>
         </Flex>
     }
     else
@@ -168,10 +178,66 @@
     </div>
 }
 
+<!-- Mobile Nav Overlay -->
+@if (_mobileNavOpen)
+{
+    <div class="fixed inset-0 z-[80] lg:hidden" @onclick="@(() => _mobileNavOpen = false)">
+        <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
+        <div class="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border/50 shadow-2xl overflow-y-auto flex flex-col"
+             @onclick:stopPropagation>
+            <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
+                <Lumeo.Text Class="font-semibold text-sm text-foreground">Navigation</Lumeo.Text>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7"
+                        OnClick="@(() => _mobileNavOpen = false)">
+                    <DynamicIcon Name="X" Class="h-4 w-4" />
+                </Button>
+            </div>
+            <nav class="px-3 py-2 border-b border-border/30 flex gap-1 shrink-0">
+                <a href="components/button" class="@NavLinkClass("docs")">Docs</a>
+                <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
+                <a href="themes" class="@NavLinkClass("themes")">Themes</a>
+            </nav>
+            @if (ShowDocsLayout)
+            {
+                <div class="flex-1 overflow-y-auto">
+                    @if (IsBlocks)
+                    {
+                        <BlocksSidebar IsMobile="true" />
+                    }
+                    else
+                    {
+                        <NavMenu IsMobile="true" />
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Mobile Customizer Overlay -->
+@if (_customizerOpen && ShowDocsLayout)
+{
+    <div class="fixed inset-0 z-[90] lg:hidden" @onclick="@(() => _customizerOpen = false)">
+        <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
+        <div class="absolute right-0 top-0 bottom-0 w-72 bg-card border-l border-border/50 shadow-2xl flex flex-col"
+             @onclick:stopPropagation>
+            <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
+                <Lumeo.Text Class="font-semibold text-sm text-foreground">Customizer</Lumeo.Text>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7"
+                        OnClick="@(() => _customizerOpen = false)">
+                    <DynamicIcon Name="X" Class="h-4 w-4" />
+                </Button>
+            </div>
+            <CustomizerSidebar IsOpen="true" IsMobile="true" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
+        </div>
+    </div>
+}
+
 @code {
     private readonly List<IDisposable> _kbdShortcuts = new();
     private bool _darkMode;
-    private bool _customizerOpen = true;
+    private bool _customizerOpen = false;
+    private bool _mobileNavOpen;
     private bool _searchOpen;
     private string _searchQuery = string.Empty;
     private ElementReference _searchInput;
@@ -394,42 +460,37 @@
     {
         if (firstRender)
         {
-            await ThemeService.InitializeAsync();
-            _darkMode = ThemeService.IsDark;
-            ThemeService.OnThemeChanged += OnThemeServiceChanged;
-            StateHasChanged();
+            try
+            {
+                Nav.LocationChanged += OnLocationChanged;
+                await ThemeService.InitializeAsync();
+                _darkMode = ThemeService.IsDark;
+                ThemeService.OnThemeChanged += OnThemeServiceChanged;
+                StateHasChanged();
 
-            await JS.InvokeVoidAsync("eval", @"
-                document.addEventListener('keydown', function(e) {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                        e.preventDefault();
-                        document.dispatchEvent(new CustomEvent('lumeo-open-search'));
-                    }
-                });
-            ");
-            await JS.InvokeVoidAsync("eval", @"
-                document.addEventListener('lumeo-open-search', function() {
-                    var btn = document.querySelector('[data-search-trigger]');
-                    if (btn) btn.click();
-                });
-            ");
+                await JS.InvokeVoidAsync("lumeo.setupSearch");
 
-            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", () =>
+                _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", () =>
+                {
+                    _customizerOpen = !_customizerOpen;
+                    InvokeAsync(StateHasChanged);
+                    return Task.CompletedTask;
+                }));
+                _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+d", async () =>
+                {
+                    await ToggleDarkMode();
+                    await InvokeAsync(StateHasChanged);
+                }));
+                _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+/", () =>
+                {
+                    Nav.NavigateTo("docs/services/keyboard-shortcuts");
+                    return Task.CompletedTask;
+                }));
+            }
+            catch (Exception ex)
             {
-                _customizerOpen = !_customizerOpen;
-                InvokeAsync(StateHasChanged);
-                return Task.CompletedTask;
-            }));
-            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+d", async () =>
-            {
-                await ToggleDarkMode();
-                await InvokeAsync(StateHasChanged);
-            }));
-            _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+/", () =>
-            {
-                Nav.NavigateTo("docs/services/keyboard-shortcuts");
-                return Task.CompletedTask;
-            }));
+                Console.WriteLine($"[Lumeo] Init error: {ex.Message}");
+            }
         }
     }
 
@@ -491,8 +552,15 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _mobileNavOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
+        Nav.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeServiceChanged;
         foreach (var s in _kbdShortcuts) s.Dispose();
     }
