@@ -16,7 +16,7 @@
 <!-- Customizer Sidebar -->
 @if (IsOpen)
 {
-<aside class="relative w-[260px] shrink-0 m-3 rounded-[var(--radius-xl)] border border-border/60 shadow-lg bg-card sticky top-[84px] overflow-visible z-40 hidden lg:flex flex-col" style="max-height: calc(100vh - 100px)">
+<aside class="@(IsMobile ? "relative flex flex-col w-full flex-1 overflow-y-auto" : "relative w-[260px] shrink-0 m-3 rounded-[var(--radius-xl)] border border-border/60 shadow-lg bg-card sticky top-[84px] overflow-visible z-40 flex flex-col")" style="@(IsMobile ? "" : "max-height: calc(100vh - 100px)")">
 
     <!-- Popover menu (rendered at aside level, outside scroll container) -->
     @if (_expandedSection != "")
@@ -382,6 +382,7 @@
 @code {
     [Parameter] public bool IsOpen { get; set; } = true;
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public bool IsMobile { get; set; }
 
     private readonly List<IDisposable> _kbdShortcuts = new();
     private string _expandedSection = "";
@@ -557,9 +558,7 @@
     private async Task SetStyle(string style)
     {
         _activeStyle = style;
-        await JS.InvokeVoidAsync("eval", style == "new-york"
-            ? "document.documentElement.classList.add('style-new-york')"
-            : "document.documentElement.classList.remove('style-new-york')");
+        await JS.InvokeVoidAsync("themeManager.setStyle", style);
     }
 
     private async Task SetTheme(string theme)
@@ -571,15 +570,13 @@
     private async Task SetRadius(string radius)
     {
         _activeRadius = radius;
-        await JS.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--radius', '{radius}rem')");
+        await JS.InvokeVoidAsync("themeManager.setRadius", radius);
     }
 
     private async Task SetBaseColor(string baseColor)
     {
         _activeBaseColor = baseColor;
-        await JS.InvokeVoidAsync("eval", baseColor == "slate"
-            ? "document.documentElement.removeAttribute('data-base-color')"
-            : $"document.documentElement.setAttribute('data-base-color', '{baseColor}')");
+        await JS.InvokeVoidAsync("themeManager.setBaseColor", baseColor);
     }
 
     private async Task SetFont(string font)
@@ -590,8 +587,7 @@
         var css = font == "system"
             ? ""
             : $"body, body * {{ font-family: {family} !important; }} pre, pre *, code, code *, .font-mono, .font-mono * {{ font-family: revert !important; }}";
-        var escapedCss = css.Replace("\\", "\\\\").Replace("`", "\\`").Replace("$", "\\$");
-        await JS.InvokeVoidAsync("eval", $"(function(){{ var el = document.getElementById('lumeo-font-override'); if (!el) {{ el = document.createElement('style'); el.id = 'lumeo-font-override'; document.head.appendChild(el); }} el.textContent = `{escapedCss}`; }})()");
+        await JS.InvokeVoidAsync("themeManager.setFont", font, css);
     }
 
     private Task SetIconLibrary(string library)
@@ -604,21 +600,13 @@
     private async Task SetMenuColor(string menuColor)
     {
         _activeMenuColor = menuColor;
-        var js = menuColor switch
-        {
-            "dark" => "document.documentElement.style.setProperty('--color-sidebar', 'hsl(220 13% 10%)'); document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(0 0% 95%)')",
-            "light" => "document.documentElement.style.setProperty('--color-sidebar', 'hsl(0 0% 100%)'); document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)')",
-            _ => "document.documentElement.style.removeProperty('--color-sidebar'); document.documentElement.style.removeProperty('--color-sidebar-foreground')"
-        };
-        await JS.InvokeVoidAsync("eval", js);
+        await JS.InvokeVoidAsync("themeManager.setMenuColor", menuColor);
     }
 
     private async Task SetMenuAccent(string accent)
     {
         _activeMenuAccent = accent;
-        await JS.InvokeVoidAsync("eval", accent == "subtle"
-            ? "document.documentElement.removeAttribute('data-menu-accent')"
-            : $"document.documentElement.setAttribute('data-menu-accent', '{accent}')");
+        await JS.InvokeVoidAsync("themeManager.setMenuAccent", accent);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -629,11 +617,29 @@
             _darkMode = ThemeService.IsDark;
             ThemeService.OnThemeChanged += OnThemeServiceChanged;
 
-            // Sync active theme from what themeManager restored from localStorage
+            // Sync all C# state from what themeManager restored from localStorage
             try
             {
                 var scheme = await JS.InvokeAsync<string>("themeManager.getScheme");
                 _activeTheme = (scheme == "zinc" || string.IsNullOrEmpty(scheme)) ? "" : scheme;
+
+                var radius = await JS.InvokeAsync<string>("themeManager.getRadius");
+                if (!string.IsNullOrEmpty(radius)) _activeRadius = radius;
+
+                var style = await JS.InvokeAsync<string>("themeManager.getStyle");
+                if (!string.IsNullOrEmpty(style)) _activeStyle = style;
+
+                var baseColor = await JS.InvokeAsync<string>("themeManager.getBaseColor");
+                if (!string.IsNullOrEmpty(baseColor)) _activeBaseColor = baseColor;
+
+                var font = await JS.InvokeAsync<string>("themeManager.getFont");
+                if (!string.IsNullOrEmpty(font)) _activeFont = font;
+
+                var menuColor = await JS.InvokeAsync<string>("themeManager.getMenuColor");
+                if (!string.IsNullOrEmpty(menuColor)) _activeMenuColor = menuColor;
+
+                var menuAccent = await JS.InvokeAsync<string>("themeManager.getMenuAccent");
+                if (!string.IsNullOrEmpty(menuAccent)) _activeMenuAccent = menuAccent;
             }
             catch { }
 
@@ -691,13 +697,15 @@
 
     private async Task ResetSettings()
     {
-        await SetTheme("");
-        await SetRadius("0.75");
-        await SetStyle("default");
-        await SetBaseColor("slate");
-        await SetFont("system");
-        await SetMenuColor("default");
-        await SetMenuAccent("subtle");
+        _activeTheme = "";
+        _activeRadius = "0.75";
+        _activeStyle = "default";
+        _activeBaseColor = "slate";
+        _activeFont = "system";
+        _activeMenuColor = "default";
+        _activeMenuAccent = "subtle";
+        await JS.InvokeVoidAsync("themeManager.setScheme", "zinc");
+        await JS.InvokeVoidAsync("themeManager.resetAll");
         if (_darkMode) await ToggleDarkMode();
         _expandedSection = "";
     }
@@ -715,7 +723,7 @@
             parts.Add($"\n:root {{\n  font-family: {fontOption?.Family};\n}}");
         }
         var css = string.Join("\n", parts);
-        await JS.InvokeVoidAsync("eval", $"navigator.clipboard.writeText({System.Text.Json.JsonSerializer.Serialize(css)})");
+        try { await JS.InvokeVoidAsync("themeManager.copyText", css); } catch { }
         _copied = true;
         StateHasChanged();
         await Task.Delay(2000);
