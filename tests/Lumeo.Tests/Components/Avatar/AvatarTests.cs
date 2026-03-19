@@ -219,4 +219,51 @@ public class AvatarTests : IAsyncLifetime
 
         Assert.Equal("avatar-fallback", cut.Find("div").GetAttribute("data-testid"));
     }
+
+    // --- Shape: Square ---
+
+    [Fact]
+    public void Shape_Square_Applies_Rounded_Md_To_Inner_Div()
+    {
+        var cut = _ctx.Render<L.Avatar>(p => p
+            .Add(a => a.Shape, L.Avatar.AvatarShape.Square));
+
+        var inner = cut.FindAll("div")[1];
+        Assert.Contains("rounded-md", inner.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Shape_Circle_Default_Applies_Rounded_Full_To_Inner_Div()
+    {
+        var cut = _ctx.Render<L.Avatar>();
+
+        var inner = cut.FindAll("div")[1];
+        Assert.Contains("rounded-full", inner.GetAttribute("class"));
+    }
+
+    // --- Status ---
+
+    [Fact]
+    public void Status_Online_Renders_Green_Status_Dot()
+    {
+        var cut = _ctx.Render<L.Avatar>(p => p
+            .Add(a => a.Status, L.Avatar.AvatarStatus.Online));
+
+        var statusSpan = cut.FindAll("span").FirstOrDefault(s =>
+            (s.GetAttribute("class") ?? "").Contains("bg-success"));
+        Assert.NotNull(statusSpan);
+    }
+
+    [Fact]
+    public void Status_None_Does_Not_Render_Status_Dot()
+    {
+        var cut = _ctx.Render<L.Avatar>(p => p
+            .Add(a => a.Status, L.Avatar.AvatarStatus.None));
+
+        // No status span should be present
+        var statusSpans = cut.FindAll("span").Where(s =>
+            (s.GetAttribute("class") ?? "").Contains("rounded-full") &&
+            (s.GetAttribute("class") ?? "").Contains("ring-2")).ToList();
+        Assert.Empty(statusSpans);
+    }
 }

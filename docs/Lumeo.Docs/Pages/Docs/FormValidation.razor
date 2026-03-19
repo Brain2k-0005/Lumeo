@@ -1,0 +1,654 @@
+@page "/docs/form-validation"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Form Validation — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <!-- Header -->
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Form Validation</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Form</code> component
+            provides a structured way to build validated forms in Blazor. It wraps your form content in a
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;form&gt;</code> element,
+            manages validation state through a cascading context, and fires separate callbacks for valid and invalid submissions.
+        </Lumeo.Text>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Out of the box, Lumeo ships with a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataAnnotationsFormValidator</code>
+            that works with standard .NET data annotations. You can also implement the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IFormValidator</code> interface to plug in any validation strategy.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator />
+
+    <!-- How It Works -->
+    <Stack Gap="4">
+        <Heading Level="2">How it works</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The form system is made up of several components that work together:
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-none">
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">Form&lt;TModel&gt;</strong> — The top-level wrapper. Accepts a model, a validator, and submit callbacks. Cascades a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormContext</code> to all children.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">FormField</strong> — Wraps a single field. Provides a label, help text, error display, and a required indicator. Supports vertical and horizontal orientations.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">FormLabel</strong> — Renders a styled <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;label&gt;</code>. Automatically turns red when its parent FormField has an error.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">FormDescription</strong> — Displays muted helper text below the input.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">FormMessage</strong> — Displays the error message from the FormField context in red. Only renders when there is an error.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">FormItem</strong> — An optional grouping container that adds consistent spacing between label, input, and messages.</span>
+            </li>
+        </ul>
+    </Stack>
+
+    <Separator />
+
+    <!-- DataAnnotations Validation -->
+    <Stack Gap="6">
+        <Heading Level="2">DataAnnotations validation</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The simplest way to validate forms is with standard .NET data annotation attributes. Create a model class
+            with validation attributes, then pass a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataAnnotationsFormValidator</code>
+            instance to the Form component.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3">1. Define the model</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">using System.ComponentModel.DataAnnotations;
+
+public class ContactModel
+{
+    [Required(ErrorMessage = "Name is required.")]
+    [StringLength(100, ErrorMessage = "Name cannot exceed 100 characters.")]
+    public string? Name { get; set; }
+
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Please enter a valid email address.")]
+    public string? Email { get; set; }
+
+    [StringLength(500, ErrorMessage = "Message cannot exceed 500 characters.")]
+    public string? Message { get; set; }
+}</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">2. Build the form</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Form TModel="ContactModel"
+      Model="@@_model"
+      Validator="@@_validator"
+      OnValidSubmit="@@HandleValidSubmit"
+      OnInvalidSubmit="@@HandleInvalidSubmit"&gt;
+
+    &lt;FormField Label="Name"
+               Required="true"
+               Error="@@GetError("Name")"&gt;
+        &lt;Input @@bind-Value="@@_model.Name"
+               Placeholder="Your full name" /&gt;
+    &lt;/FormField&gt;
+
+    &lt;FormField Label="Email"
+               Required="true"
+               Error="@@GetError("Email")"&gt;
+        &lt;Input @@bind-Value="@@_model.Email"
+               type="email"
+               Placeholder="you@@example.com" /&gt;
+    &lt;/FormField&gt;
+
+    &lt;FormField Label="Message"
+               HelpText="Optional. Let us know how we can help."
+               Error="@@GetError("Message")"&gt;
+        &lt;Textarea @@bind-Value="@@_model.Message"
+                  Placeholder="Your message..." /&gt;
+    &lt;/FormField&gt;
+
+    &lt;Button type="submit"&gt;Send&lt;/Button&gt;
+&lt;/Form&gt;</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">3. Wire up the code</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@code {
+    private ContactModel _model = new();
+    private DataAnnotationsFormValidator _validator = new();
+
+    private string? GetError(string field)
+    {
+        // After validation, errors are populated by the Form component.
+        // You can also access them through the FormContext if needed.
+        var errors = _validator.ValidateField(_model, field);
+        return errors.FirstOrDefault();
+    }
+
+    private async Task HandleValidSubmit(ContactModel model)
+    {
+        // All validations passed — save the data
+        await SaveContactAsync(model);
+    }
+
+    private Task HandleInvalidSubmit(ContactModel model)
+    {
+        // Validation failed — errors are displayed automatically
+        return Task.CompletedTask;
+    }
+}</Stack>
+        </Stack>
+    </Stack>
+
+    <Separator />
+
+    <!-- Form Layout -->
+    <Stack Gap="6">
+        <Heading Level="2">Form layout</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormField</code> component
+            supports two layout orientations: vertical (default) and horizontal. You can also control label width in horizontal mode.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3">Vertical layout (default)</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Labels appear above the input. This is the default and works well for most forms.
+            </Lumeo.Text>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;FormField Label="Username" Required="true"&gt;
+    &lt;Input @@bind-Value="@@_model.Username" /&gt;
+&lt;/FormField&gt;</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Horizontal layout</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Labels appear to the left of the input in a grid. Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">LabelWidth</code> to
+                control the label column width.
+            </Lumeo.Text>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;FormField Label="Username"
+           Required="true"
+           Orientation="FormField.FormFieldOrientation.Horizontal"
+           LabelWidth="120px"&gt;
+    &lt;Input @@bind-Value="@@_model.Username" /&gt;
+&lt;/FormField&gt;</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Using FormItem, FormLabel, FormDescription, and FormMessage</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                For more control over form field layout, you can compose the lower-level components directly
+                instead of relying on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormField</code>.
+            </Lumeo.Text>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;FormField Name="email" Error="@@_emailError"&gt;
+    &lt;FormItem&gt;
+        &lt;FormLabel&gt;Email address&lt;/FormLabel&gt;
+        &lt;Input @@bind-Value="@@_model.Email" type="email" /&gt;
+        &lt;FormDescription&gt;We will never share your email.&lt;/FormDescription&gt;
+        &lt;FormMessage /&gt;
+    &lt;/FormItem&gt;
+&lt;/FormField&gt;</Stack>
+            <Lumeo.Text Size="sm" Color="muted">
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormLabel</code> reads the
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormFieldContext</code> from its
+                parent <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormField</code> and
+                automatically turns red when an error is present.
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormMessage</code> renders the
+                error text only when the context has an error.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+
+    <Separator />
+
+    <!-- Validation Styling -->
+    <Stack Gap="4">
+        <Heading Level="2">Validation styling</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            When a field has an error, several visual changes occur automatically:
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-none">
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">Error message.</strong> The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormField</code> displays a red error message below the input (or below the help text position). <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormMessage</code> also renders the error from context.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">Label color.</strong> The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormLabel</code> text turns to the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">text-destructive</code> color when its parent field has an error.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">Help text hidden.</strong> When an error is present, the help text is hidden and replaced by the error message.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                <span><strong class="text-foreground">Required indicator.</strong> Fields with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Required="true"</code> display a red asterisk next to the label.</span>
+            </li>
+        </ul>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            All error colors use the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--destructive</code>
+            CSS variable, so they adapt to your theme automatically.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator />
+
+    <!-- FormContext -->
+    <Stack Gap="6">
+        <Heading Level="2">FormContext</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Form</code> component cascades
+            a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormContext</code> object to all
+            child components. This context tracks errors, dirty fields, and submission state.
+        </Lumeo.Text>
+
+        <div class="overflow-x-auto rounded-lg border border-border">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-52">Member</TableHead>
+                        <TableHead Class="w-52">Type</TableHead>
+                        <TableHead>Description</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">Errors</TableCell>
+                        <TableCell Class="font-mono text-xs">Dictionary&lt;string, List&lt;string&gt;&gt;</TableCell>
+                        <TableCell>All current validation errors keyed by field name.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">DirtyFields</TableCell>
+                        <TableCell Class="font-mono text-xs">HashSet&lt;string&gt;</TableCell>
+                        <TableCell>Names of fields that have been modified.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">IsSubmitting</TableCell>
+                        <TableCell Class="font-mono text-xs">bool</TableCell>
+                        <TableCell>True while the submit handler is executing.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">IsValid</TableCell>
+                        <TableCell Class="font-mono text-xs">bool</TableCell>
+                        <TableCell>True when there are no validation errors.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">GetFieldErrors(field)</TableCell>
+                        <TableCell Class="font-mono text-xs">List&lt;string&gt;</TableCell>
+                        <TableCell>Returns all error messages for a specific field.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">HasError(field)</TableCell>
+                        <TableCell Class="font-mono text-xs">bool</TableCell>
+                        <TableCell>Returns true if a specific field has errors.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">IsDirty(field)</TableCell>
+                        <TableCell Class="font-mono text-xs">bool</TableCell>
+                        <TableCell>Returns true if a field has been modified.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">MarkDirty(field)</TableCell>
+                        <TableCell Class="font-mono text-xs">void</TableCell>
+                        <TableCell>Marks a field as dirty (modified).</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">ClearErrors()</TableCell>
+                        <TableCell Class="font-mono text-xs">void</TableCell>
+                        <TableCell>Removes all validation errors.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-mono text-xs">Reset()</TableCell>
+                        <TableCell Class="font-mono text-xs">void</TableCell>
+                        <TableCell>Clears all errors, dirty fields, and submission state.</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+    </Stack>
+
+    <Separator />
+
+    <!-- Custom Validation -->
+    <Stack Gap="6">
+        <Heading Level="2">Custom validation</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            For validation logic beyond data annotations, implement the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IFormValidator</code> interface.
+            This gives you full control over how validation is performed.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3">The IFormValidator interface</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">public interface IFormValidator
+{
+    Dictionary&lt;string, List&lt;string&gt;&gt; Validate(object model);
+    List&lt;string&gt; ValidateField(object model, string fieldName);
+}</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Example: custom validator</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">public class RegistrationValidator : IFormValidator
+{
+    public Dictionary&lt;string, List&lt;string&gt;&gt; Validate(object model)
+    {
+        var errors = new Dictionary&lt;string, List&lt;string&gt;&gt;();
+        if (model is RegistrationModel reg)
+        {
+            if (string.IsNullOrWhiteSpace(reg.Username))
+                errors["Username"] = ["Username is required."];
+
+            if (reg.Password?.Length &lt; 8)
+                errors["Password"] = ["Password must be at least 8 characters."];
+
+            if (reg.Password != reg.ConfirmPassword)
+                errors["ConfirmPassword"] = ["Passwords do not match."];
+
+            if (reg.DateOfBirth &gt; DateOnly.FromDateTime(DateTime.Today.AddYears(-13)))
+                errors["DateOfBirth"] = ["You must be at least 13 years old."];
+        }
+        return errors;
+    }
+
+    public List&lt;string&gt; ValidateField(object model, string fieldName)
+    {
+        var allErrors = Validate(model);
+        return allErrors.TryGetValue(fieldName, out var errors) ? errors : [];
+    }
+}</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Using the custom validator</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Form TModel="RegistrationModel"
+      Model="@@_model"
+      Validator="@@(new RegistrationValidator())"
+      OnValidSubmit="@@HandleRegister"&gt;
+    @@* fields here *@@
+&lt;/Form&gt;</Stack>
+        </Stack>
+    </Stack>
+
+    <Separator />
+
+    <!-- Complete Example -->
+    <Stack Gap="6">
+        <Heading Level="2">Complete example</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Here is a full registration form that uses multiple Lumeo form components together with DataAnnotations validation.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3">Model</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">using System.ComponentModel.DataAnnotations;
+
+public class RegistrationModel
+{
+    [Required(ErrorMessage = "Full name is required.")]
+    [StringLength(100)]
+    public string? FullName { get; set; }
+
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Invalid email format.")]
+    public string? Email { get; set; }
+
+    [Required(ErrorMessage = "Password is required.")]
+    [MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
+    public string? Password { get; set; }
+
+    [Required(ErrorMessage = "Please select a role.")]
+    public string? Role { get; set; }
+
+    [Range(typeof(bool), "true", "true", ErrorMessage = "You must accept the terms.")]
+    public bool AcceptTerms { get; set; }
+
+    public DateOnly? StartDate { get; set; }
+}</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Razor markup</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Form TModel="RegistrationModel"
+      Model="@@_model"
+      Validator="@@_validator"
+      OnValidSubmit="@@HandleRegister"
+      OnInvalidSubmit="@@HandleInvalid"&gt;
+
+    &lt;Stack Gap="4"&gt;
+        &lt;FormField Label="Full Name" Required="true"
+                   Error="@@GetError("FullName")"&gt;
+            &lt;Input @@bind-Value="@@_model.FullName"
+                   Placeholder="Jane Smith" /&gt;
+        &lt;/FormField&gt;
+
+        &lt;FormField Label="Email" Required="true"
+                   Error="@@GetError("Email")"&gt;
+            &lt;Input @@bind-Value="@@_model.Email"
+                   type="email"
+                   Placeholder="jane@@company.com" /&gt;
+        &lt;/FormField&gt;
+
+        &lt;FormField Label="Password" Required="true"
+                   HelpText="Must be at least 8 characters."
+                   Error="@@GetError("Password")"&gt;
+            &lt;PasswordInput @@bind-Value="@@_model.Password" /&gt;
+        &lt;/FormField&gt;
+
+        &lt;FormField Label="Role" Required="true"
+                   Error="@@GetError("Role")"&gt;
+            &lt;Select @@bind-Value="@@_model.Role"
+                    Placeholder="Select a role"&gt;
+                &lt;SelectItem Value="@@("developer")"&gt;Developer&lt;/SelectItem&gt;
+                &lt;SelectItem Value="@@("designer")"&gt;Designer&lt;/SelectItem&gt;
+                &lt;SelectItem Value="@@("manager")"&gt;Manager&lt;/SelectItem&gt;
+            &lt;/Select&gt;
+        &lt;/FormField&gt;
+
+        &lt;FormField Label="Start Date"
+                   HelpText="When would you like to start?"&gt;
+            &lt;DatePicker @@bind-Value="@@_model.StartDate" /&gt;
+        &lt;/FormField&gt;
+
+        &lt;FormField Error="@@GetError("AcceptTerms")"&gt;
+            &lt;Checkbox @@bind-Value="@@_model.AcceptTerms"
+                      Label="I accept the terms and conditions" /&gt;
+        &lt;/FormField&gt;
+
+        &lt;Flex Gap="3"&gt;
+            &lt;Button type="submit"&gt;Register&lt;/Button&gt;
+            &lt;Button type="button"
+                    Variant="Button.ButtonVariant.Outline"
+                    OnClick="@@HandleReset"&gt;Reset&lt;/Button&gt;
+        &lt;/Flex&gt;
+    &lt;/Stack&gt;
+
+&lt;/Form&gt;</Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Code-behind</Heading>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject ToastService Toast
+
+@@code {
+    private RegistrationModel _model = new();
+    private DataAnnotationsFormValidator _validator = new();
+
+    private string? GetError(string field)
+    {
+        var errors = _validator.ValidateField(_model, field);
+        return errors.FirstOrDefault();
+    }
+
+    private async Task HandleRegister(RegistrationModel model)
+    {
+        // Simulate an API call
+        await Task.Delay(1000);
+        Toast.Show(new ToastOptions
+        {
+            Title = "Success",
+            Description = $"Welcome, {model.FullName}!",
+            Variant = ToastVariant.Success
+        });
+        _model = new();
+    }
+
+    private Task HandleInvalid(RegistrationModel model)
+    {
+        Toast.Show(new ToastOptions
+        {
+            Title = "Validation Error",
+            Description = "Please fix the errors above.",
+            Variant = ToastVariant.Error
+        });
+        return Task.CompletedTask;
+    }
+
+    private void HandleReset()
+    {
+        _model = new();
+    }
+}</Stack>
+        </Stack>
+    </Stack>
+
+    <Separator />
+
+    <!-- API Reference -->
+    <Stack Gap="6">
+        <Heading Level="2">API reference</Heading>
+
+        <Stack Gap="4">
+            <Heading Level="3">Form&lt;TModel&gt;</Heading>
+            <div class="overflow-x-auto rounded-lg border border-border">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead Class="w-44">Parameter</TableHead>
+                            <TableHead Class="w-44">Type</TableHead>
+                            <TableHead Class="w-28">Default</TableHead>
+                            <TableHead>Description</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Model</TableCell>
+                            <TableCell Class="font-mono text-xs">TModel?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>The form model instance to validate.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Validator</TableCell>
+                            <TableCell Class="font-mono text-xs">IFormValidator?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>The validator to run on submit.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">OnValidSubmit</TableCell>
+                            <TableCell Class="font-mono text-xs">EventCallback&lt;TModel&gt;</TableCell>
+                            <TableCell>—</TableCell>
+                            <TableCell>Called when the form is submitted and validation passes.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">OnInvalidSubmit</TableCell>
+                            <TableCell Class="font-mono text-xs">EventCallback&lt;TModel&gt;</TableCell>
+                            <TableCell>—</TableCell>
+                            <TableCell>Called when the form is submitted and validation fails.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">ChildContent</TableCell>
+                            <TableCell Class="font-mono text-xs">RenderFragment?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>The form content.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Class</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>Additional CSS classes.</TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+            </div>
+        </Stack>
+
+        <Stack Gap="4">
+            <Heading Level="3">FormField</Heading>
+            <div class="overflow-x-auto rounded-lg border border-border">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead Class="w-44">Parameter</TableHead>
+                            <TableHead Class="w-44">Type</TableHead>
+                            <TableHead Class="w-28">Default</TableHead>
+                            <TableHead>Description</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Label</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>The field label text.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">HelpText</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>Descriptive text shown below the input. Hidden when an error is present.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Error</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>Error message to display. When set, replaces help text.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Required</TableCell>
+                            <TableCell Class="font-mono text-xs">bool</TableCell>
+                            <TableCell Class="font-mono text-xs">false</TableCell>
+                            <TableCell>Shows a red asterisk next to the label.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Name</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>Field name for context identification.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Orientation</TableCell>
+                            <TableCell Class="font-mono text-xs">FormFieldOrientation</TableCell>
+                            <TableCell Class="font-mono text-xs">Vertical</TableCell>
+                            <TableCell>Layout direction: Vertical or Horizontal.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">LabelWidth</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>Label column width in horizontal mode (e.g. "120px").</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell Class="font-mono text-xs">Class</TableCell>
+                            <TableCell Class="font-mono text-xs">string?</TableCell>
+                            <TableCell Class="font-mono text-xs">null</TableCell>
+                            <TableCell>Additional CSS classes.</TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+            </div>
+        </Stack>
+    </Stack>
+
+</Stack>
+</Container>

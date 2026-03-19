@@ -79,4 +79,38 @@ public class SkeletonTests : IAsyncLifetime
         Assert.Equal("my-skeleton", div.GetAttribute("data-testid"));
         Assert.Equal("true", div.GetAttribute("aria-hidden"));
     }
+
+    // --- Animation variants ---
+
+    [Fact]
+    public void Wave_Animation_Does_Not_Use_Animate_Pulse()
+    {
+        var cut = _ctx.Render<L.Skeleton>(p => p
+            .Add(s => s.Animation, L.Skeleton.SkeletonAnimation.Wave));
+
+        var div = cut.Find("div");
+        var cls = div.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("animate-pulse", cls);
+    }
+
+    [Fact]
+    public void None_Animation_Does_Not_Use_Animate_Pulse()
+    {
+        var cut = _ctx.Render<L.Skeleton>(p => p
+            .Add(s => s.Animation, L.Skeleton.SkeletonAnimation.None));
+
+        var div = cut.Find("div");
+        var cls = div.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("animate-pulse", cls);
+    }
+
+    [Fact]
+    public void Default_Pulse_Animation_Uses_Animate_Pulse()
+    {
+        var cut = _ctx.Render<L.Skeleton>();
+
+        var div = cut.Find("div");
+        var cls = div.GetAttribute("class") ?? "";
+        Assert.Contains("animate-pulse", cls);
+    }
 }

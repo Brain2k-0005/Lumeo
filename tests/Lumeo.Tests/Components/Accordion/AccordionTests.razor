@@ -289,4 +289,47 @@
             (d.GetAttribute("class") ?? "").Contains("border-b"));
         Assert.NotNull(itemDiv);
     }
+
+    // --- DefaultValues ---
+
+    [Fact]
+    public void DefaultValues_Opens_Specified_Items_On_First_Render()
+    {
+        var defaults = new List<string> { "item1", "item3" };
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Multiple" DefaultValues="defaults">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Item 2</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item3">
+                <AccordionTrigger>Item 3</AccordionTrigger>
+                <AccordionContent>Content 3</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.Contains("Content 1", cut.Markup);
+        Assert.DoesNotContain("Content 2", cut.Markup);
+        Assert.Contains("Content 3", cut.Markup);
+    }
+
+    // --- Disabled ---
+
+    [Fact]
+    public void Disabled_AccordionItem_Adds_Opacity_50()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1" Disabled="true">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var itemDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("opacity-50"));
+        Assert.NotNull(itemDiv);
+    }
 }

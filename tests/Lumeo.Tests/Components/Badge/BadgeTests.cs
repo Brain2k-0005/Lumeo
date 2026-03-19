@@ -157,4 +157,46 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal("my-badge", div.GetAttribute("data-testid"));
         Assert.Equal("Status badge", div.GetAttribute("aria-label"));
     }
+
+    // --- Pulse + IsDot ---
+
+    [Fact]
+    public void Pulse_IsDot_Renders_Animate_Ping_Element()
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.IsDot, true)
+            .Add(b => b.Pulse, true));
+
+        var spans = cut.FindAll("span");
+        var hasPing = spans.Any(s =>
+            (s.GetAttribute("class") ?? "").Contains("animate-ping"));
+        Assert.True(hasPing, "Pulse dot badge should render an animate-ping element");
+    }
+
+    [Fact]
+    public void IsDot_Without_Pulse_Does_Not_Render_Animate_Ping()
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.IsDot, true)
+            .Add(b => b.Pulse, false));
+
+        // IsDot without Pulse renders a simple div, no animate-ping
+        Assert.Empty(cut.FindAll("span"));
+    }
+
+    // --- Icon ---
+
+    [Fact]
+    public void Icon_Renders_Custom_Icon_Content()
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.Icon, (Microsoft.AspNetCore.Components.RenderFragment)(builder =>
+            {
+                builder.AddContent(0, "ICON");
+            }))
+            .AddChildContent("Badge Text"));
+
+        Assert.Contains("ICON", cut.Markup);
+        Assert.Contains("Badge Text", cut.Markup);
+    }
 }

@@ -195,4 +195,54 @@ public class SwitchTests : IAsyncLifetime
         Assert.Equal("my-switch", button.GetAttribute("data-testid"));
         Assert.Equal("Enable notifications", button.GetAttribute("aria-label"));
     }
+
+    // --- Loading ---
+
+    [Fact]
+    public void Loading_Prevents_Toggle()
+    {
+        bool? callbackValue = null;
+        var cut = _ctx.Render<Lumeo.Switch>(p => p
+            .Add(b => b.Checked, false)
+            .Add(b => b.Loading, true)
+            .Add(b => b.CheckedChanged, v => callbackValue = v));
+
+        cut.Find("button").Click();
+
+        Assert.Null(callbackValue);
+    }
+
+    [Fact]
+    public void Loading_Disables_Button()
+    {
+        var cut = _ctx.Render<Lumeo.Switch>(p => p
+            .Add(b => b.Loading, true));
+
+        var button = cut.Find("button");
+        Assert.NotNull(button.GetAttribute("disabled"));
+    }
+
+    // --- OnLabel / OffLabel ---
+
+    [Fact]
+    public void OnLabel_Renders_When_Checked()
+    {
+        var cut = _ctx.Render<Lumeo.Switch>(p => p
+            .Add(b => b.Checked, true)
+            .Add(b => b.OnLabel, "Enabled")
+            .Add(b => b.OffLabel, "Disabled"));
+
+        Assert.Contains("Enabled", cut.Markup);
+    }
+
+    [Fact]
+    public void OffLabel_Renders_When_Unchecked()
+    {
+        var cut = _ctx.Render<Lumeo.Switch>(p => p
+            .Add(b => b.Checked, false)
+            .Add(b => b.OnLabel, "Enabled")
+            .Add(b => b.OffLabel, "Disabled"));
+
+        Assert.Contains("Disabled", cut.Markup);
+    }
 }

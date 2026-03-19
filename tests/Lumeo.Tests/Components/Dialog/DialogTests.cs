@@ -322,4 +322,68 @@ public class DialogTests : IAsyncLifetime
         var elements = cut.FindAll("[class]");
         Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("title-custom")));
     }
+
+    // --- DialogContent Size variants ---
+
+    private IRenderedComponent<IComponent> RenderDialogWithSize(L.DialogContent.DialogSize size)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Dialog>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DialogContent>(0);
+                b.AddAttribute(1, "Size", size);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
+                {
+                    inner.AddContent(0, "Size test content");
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void DialogContent_Size_Sm_Adds_MaxW_Sm()
+    {
+        var cut = RenderDialogWithSize(L.DialogContent.DialogSize.Sm);
+        var dialog = cut.Find("[role='dialog']");
+        Assert.Contains("max-w-sm", dialog.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void DialogContent_Size_Full_Adds_Full_MaxW()
+    {
+        var cut = RenderDialogWithSize(L.DialogContent.DialogSize.Full);
+        var dialog = cut.Find("[role='dialog']");
+        Assert.Contains("max-w-[calc(100vw-2rem)]", dialog.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void DialogContent_Scrollable_Adds_OverflowY_Auto()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Dialog>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DialogContent>(0);
+                b.AddAttribute(1, "Scrollable", true);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
+                {
+                    inner.AddContent(0, "Scrollable content");
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var allDivs = cut.FindAll("div");
+        var scrollDiv = allDivs.FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("overflow-y-auto"));
+        Assert.NotNull(scrollDiv);
+    }
 }
