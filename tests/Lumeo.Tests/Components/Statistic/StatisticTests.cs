@@ -58,7 +58,7 @@ public class StatisticTests : IAsyncLifetime
             .Add(s => s.TrendDirection, Lumeo.Statistic.TrendType.Down)
             .Add(s => s.TrendValue, "-3%"));
 
-        Assert.Contains("text-red-500", cut.Markup);
+        Assert.Contains("text-destructive", cut.Markup);
     }
 
     [Fact]

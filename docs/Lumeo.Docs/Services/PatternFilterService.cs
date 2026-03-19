@@ -28,6 +28,7 @@ public class PatternFilterService
         new("Calendar", 2),
         new("Card", 3),
         new("Cascader", 1),
+        new("Charts", 8),
         new("Checkbox", 2),
         new("Collapsible", 2),
         new("ColorPicker", 2),

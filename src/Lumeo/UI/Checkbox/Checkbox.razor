@@ -1,15 +1,40 @@
 @namespace Lumeo
 
-<button type="button" role="checkbox" aria-checked="@AriaChecked" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
-    @if (IsIndeterminate)
-    {
-        <Blazicon Svg="Lucide.Minus" class="h-3.5 w-3.5 text-current" />
-    }
-    else if (Checked)
-    {
-        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-current" />
-    }
-</button>
+@if (!string.IsNullOrEmpty(Label))
+{
+    <div class="flex items-start gap-3">
+        <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+            @if (IsIndeterminate)
+            {
+                <Blazicon Svg="Lucide.Minus" class="h-3.5 w-3.5 text-current" />
+            }
+            else if (Checked)
+            {
+                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-current" />
+            }
+        </button>
+        <div class="grid gap-1.5 leading-none">
+            <label for="@_id" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">@Label</label>
+            @if (!string.IsNullOrEmpty(Description))
+            {
+                <p class="text-xs text-muted-foreground">@Description</p>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+        @if (IsIndeterminate)
+        {
+            <Blazicon Svg="Lucide.Minus" class="h-3.5 w-3.5 text-current" />
+        }
+        else if (Checked)
+        {
+            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-current" />
+        }
+    </button>
+}
 
 @code {
     [Parameter] public bool Checked { get; set; }
@@ -17,8 +42,18 @@
     [Parameter] public bool IsIndeterminate { get; set; }
     [Parameter] public EventCallback<bool> IsIndeterminateChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? Id { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _id = default!;
+
+    protected override void OnInitialized()
+    {
+        _id = Id ?? $"checkbox-{Guid.NewGuid():N}";
+    }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();
 
