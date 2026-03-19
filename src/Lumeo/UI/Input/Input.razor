@@ -1,13 +1,19 @@
 @namespace Lumeo
 
-@if (Prefix != null || Suffix != null)
+@if (Prefix != null || Suffix != null || (Clearable && !string.IsNullOrEmpty(Value)))
 {
-    <div class="flex h-9 w-full rounded-md border border-input bg-transparent text-sm transition-colors focus-within:ring-[1.5px] focus-within:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+    <div class="@WrapperClass" @attributes="AdditionalAttributes">
         @if (Prefix != null)
         {
             <div class="flex items-center px-3 text-muted-foreground">@Prefix</div>
         }
-        <input class="@WrappedInputClass" value="@Value" @oninput="OnInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+        <input class="@WrappedInputClass" value="@Value" @oninput="OnInput" disabled="@Disabled" />
+        @if (Clearable && !string.IsNullOrEmpty(Value))
+        {
+            <button type="button" class="flex items-center px-2 text-muted-foreground hover:text-foreground transition-colors" @onclick="HandleClear" tabindex="-1" aria-label="Clear">
+                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+            </button>
+        }
         @if (Suffix != null)
         {
             <div class="flex items-center px-3 text-muted-foreground">@Suffix</div>
@@ -25,10 +31,44 @@ else
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public RenderFragment? Prefix { get; set; }
     [Parameter] public RenderFragment? Suffix { get; set; }
+    [Parameter] public InputSize Size { get; set; } = InputSize.Default;
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    private string SizeClasses => Size switch
+    {
+        InputSize.Sm => "h-8 text-xs px-2.5",
+        InputSize.Lg => "h-11 text-base px-4",
+        _ => "h-9 text-sm px-3"
+    };
 
-    private string WrappedInputClass => $"flex-1 bg-transparent px-3 py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed {Class}".Trim();
+    private string WrapperSizeClasses => Size switch
+    {
+        InputSize.Sm => "h-8 text-xs",
+        InputSize.Lg => "h-11 text-base",
+        _ => "h-9 text-sm"
+    };
+
+    private string WrappedInputSizeClasses => Size switch
+    {
+        InputSize.Sm => "px-2.5 text-xs",
+        InputSize.Lg => "px-4 text-base",
+        _ => "px-3 text-sm"
+    };
+
+    private string CssClass => $"flex {SizeClasses} w-full rounded-md border border-input bg-transparent py-1 transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    private string WrapperClass => $"flex {WrapperSizeClasses} w-full rounded-md border border-input bg-transparent transition-colors focus-within:ring-[1.5px] focus-within:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+
+    private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed".Trim();
+
+    private async Task HandleClear()
+    {
+        await OnInput.InvokeAsync(new ChangeEventArgs { Value = "" });
+        await OnClear.InvokeAsync();
+    }
+
+    public enum InputSize { Sm, Default, Lg }
 }

@@ -1,16 +1,32 @@
 @namespace Lumeo
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
+    <div class="@InnerClasses">
+        @ChildContent
+    </div>
+    @if (Status != AvatarStatus.None)
+    {
+        <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background @StatusColor"></span>
+    }
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public AvatarSize Size { get; set; } = AvatarSize.Default;
+    [Parameter] public AvatarShape Shape { get; set; } = AvatarShape.Circle;
+    [Parameter] public AvatarStatus Status { get; set; } = AvatarStatus.None;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"relative flex shrink-0 overflow-hidden rounded-full {SizeClasses} {Class}".Trim();
+    private string CssClass => $"relative flex shrink-0 {SizeClasses} {Class}".Trim();
+
+    private string InnerClasses => $"flex h-full w-full overflow-hidden {ShapeClasses}";
+
+    private string ShapeClasses => Shape switch
+    {
+        AvatarShape.Square => "rounded-md",
+        _ => "rounded-full"
+    };
 
     private string SizeClasses => Size switch
     {
@@ -20,5 +36,16 @@
         _ => "h-10 w-10"
     };
 
+    private string StatusColor => Status switch
+    {
+        AvatarStatus.Online => "bg-green-500",
+        AvatarStatus.Offline => "bg-gray-400",
+        AvatarStatus.Away => "bg-yellow-500",
+        AvatarStatus.Busy => "bg-red-500",
+        _ => ""
+    };
+
     public enum AvatarSize { Sm, Default, Lg }
+    public enum AvatarShape { Circle, Square }
+    public enum AvatarStatus { None, Online, Offline, Away, Busy }
 }

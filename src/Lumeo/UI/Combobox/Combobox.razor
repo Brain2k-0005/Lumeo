@@ -4,13 +4,14 @@
 @{
     var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
     var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Value : null;
-    var context = new ComboboxContext(Value, Values, SearchText, IsOpen, Multiple, IsSearchLoading,
+    var context = new ComboboxContext(Value, Values, SearchText, IsOpen, Multiple, IsSearchLoading, Creatable,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
+        EventCallback.Factory.Create<string>(this, OnCreateItem),
         _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
-        RegisterItem, UnregisterItem);
+        RegisterItem, UnregisterItem, _items.Count);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -31,6 +32,10 @@
     [Parameter] public bool Multiple { get; set; }
     [Parameter] public HashSet<string>? Values { get; set; }
     [Parameter] public EventCallback<HashSet<string>> ValuesChanged { get; set; }
+
+    // Creatable
+    [Parameter] public bool Creatable { get; set; }
+    [Parameter] public EventCallback<string> OnCreate { get; set; }
 
     // Async search
     [Parameter] public EventCallback<string> OnSearchAsync { get; set; }
@@ -117,15 +122,34 @@
         }
     }
 
+    private async Task OnCreateItem(string value)
+    {
+        await OnCreate.InvokeAsync(value);
+        if (Multiple)
+        {
+            Values ??= [];
+            Values.Add(value);
+            await ValuesChanged.InvokeAsync(Values);
+        }
+        else
+        {
+            Value = value;
+            await ValueChanged.InvokeAsync(value);
+            await SetOpen(false);
+        }
+        SearchText = "";
+    }
+
     public void Dispose()
     {
         _debounceTimer?.Dispose();
     }
 
     public record ComboboxContext(
-        string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading,
+        string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading, bool Creatable,
         EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,
+        EventCallback<string> OnCreateItem,
         string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
-        Action<string, string> RegisterItem, Action<string> UnregisterItem);
+        Action<string, string> RegisterItem, Action<string> UnregisterItem, int ItemCount);
 }

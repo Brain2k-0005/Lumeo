@@ -4,8 +4,9 @@
         id="@_tabId"
         role="tab"
         aria-selected="@IsActive.ToString().ToLower()"
+        aria-disabled="@(Disabled ? "true" : null)"
         aria-controls="@_panelId"
-        tabindex="@(IsActive ? 0 : -1)"
+        tabindex="@(Disabled ? -1 : IsActive ? 0 : -1)"
         class="@CssClass"
         @onclick="Activate"
         @onkeydown="HandleKeyDown"
@@ -38,6 +39,7 @@
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter, EditorRequired] public string Value { get; set; } = "";
     [Parameter] public bool IsClosable { get; set; }
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -58,6 +60,7 @@
     {
         get
         {
+            var disabledClasses = Disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "";
             var variantClasses = CurrentVariant switch
             {
                 "Card" => IsActive
@@ -70,12 +73,13 @@
                     ? "bg-background text-foreground shadow"
                     : ""
             };
-            return $"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 {variantClasses} {Class}".Trim();
+            return $"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 {variantClasses} {disabledClasses} {Class}".Trim();
         }
     }
 
     private async Task Activate()
     {
+        if (Disabled) return;
         await Context.SetValue.InvokeAsync(Value);
     }
 
@@ -86,16 +90,18 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
+        if (Disabled) return;
+
         var isHorizontal = Context.Orientation == Tabs.TabsOrientation.Horizontal;
         var keys = Context.TabIds.Keys.ToList();
         var idx = keys.IndexOf(Value);
 
         string? nextValue = e.Key switch
         {
-            "ArrowRight" when isHorizontal  => idx < keys.Count - 1 ? keys[idx + 1] : keys[0],
-            "ArrowLeft"  when isHorizontal  => idx > 0 ? keys[idx - 1] : keys[^1],
-            "ArrowDown"  when !isHorizontal => idx < keys.Count - 1 ? keys[idx + 1] : keys[0],
-            "ArrowUp"    when !isHorizontal => idx > 0 ? keys[idx - 1] : keys[^1],
+            "ArrowRight" when isHorizontal  => FindNextEnabledTab(keys, idx, 1),
+            "ArrowLeft"  when isHorizontal  => FindNextEnabledTab(keys, idx, -1),
+            "ArrowDown"  when !isHorizontal => FindNextEnabledTab(keys, idx, 1),
+            "ArrowUp"    when !isHorizontal => FindNextEnabledTab(keys, idx, -1),
             "Home" => keys.Count > 0 ? keys[0] : null,
             "End"  => keys.Count > 0 ? keys[^1] : null,
             _ => null
@@ -108,5 +114,14 @@
             await Context.SetValue.InvokeAsync(nextValue);
             await Interop.FocusElement(ids.TabId);
         }
+    }
+
+    private string? FindNextEnabledTab(List<string> keys, int currentIdx, int direction)
+    {
+        if (keys.Count == 0) return null;
+        var nextIdx = currentIdx + direction;
+        if (nextIdx < 0) nextIdx = keys.Count - 1;
+        else if (nextIdx >= keys.Count) nextIdx = 0;
+        return keys[nextIdx];
     }
 }

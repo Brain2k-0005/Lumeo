@@ -123,11 +123,18 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
 
     // --- Drawer Swipe ---
 
+    public async ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
+    {
+        _drawerSwipeHandlers[elementId] = handler;
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, GetSelfRef());
+    }
+
     public async ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler)
     {
         _drawerSwipeHandlers[elementId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, GetSelfRef());
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, "down", GetSelfRef());
     }
 
     public async ValueTask UnregisterDrawerSwipe(string elementId)

@@ -1,16 +1,60 @@
 @namespace Lumeo
 
-<svg class="@CssClass" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" @attributes="AdditionalAttributes">
-    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-</svg>
+@if (Variant == SpinnerVariant.Ring)
+{
+    <div class="@WrapperClass" @attributes="AdditionalAttributes">
+        <svg class="@RingCssClass" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="text-sm text-muted-foreground">@Label</span>
+        }
+    </div>
+}
+else if (Variant == SpinnerVariant.Dots)
+{
+    <div class="@WrapperClass" @attributes="AdditionalAttributes">
+        <div class="@DotsContainerClass">
+            <div class="@DotClass" style="animation-delay: 0ms"></div>
+            <div class="@DotClass" style="animation-delay: 150ms"></div>
+            <div class="@DotClass" style="animation-delay: 300ms"></div>
+        </div>
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="text-sm text-muted-foreground">@Label</span>
+        }
+    </div>
+}
+else if (Variant == SpinnerVariant.Bars)
+{
+    <div class="@WrapperClass" @attributes="AdditionalAttributes">
+        <div class="@BarsContainerClass">
+            <div class="@BarClass" style="height: 60%; animation-delay: 0ms"></div>
+            <div class="@BarClass" style="height: 100%; animation-delay: 150ms"></div>
+            <div class="@BarClass" style="height: 60%; animation-delay: 300ms"></div>
+        </div>
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="text-sm text-muted-foreground">@Label</span>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public SpinnerSize Size { get; set; } = SpinnerSize.Default;
+    [Parameter] public SpinnerVariant Variant { get; set; } = SpinnerVariant.Ring;
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Color { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"animate-spin {SizeClasses} {Class}".Trim();
+    private string ColorClass => Color ?? "";
+
+    private string WrapperClass => $"inline-flex items-center gap-2 {ColorClass} {Class}".Trim();
+
+    private string RingCssClass => $"animate-spin {SizeClasses}".Trim();
 
     private string SizeClasses => Size switch
     {
@@ -20,5 +64,61 @@
         _ => "h-6 w-6"
     };
 
+    private string DotsContainerClass => $"flex items-center {DotGapClass}".Trim();
+
+    private string DotGapClass => Size switch
+    {
+        SpinnerSize.Sm => "gap-0.5",
+        SpinnerSize.Default => "gap-1",
+        SpinnerSize.Lg => "gap-1.5",
+        _ => "gap-1"
+    };
+
+    private string DotClass
+    {
+        get
+        {
+            var sizeClass = Size switch
+            {
+                SpinnerSize.Sm => "h-1.5 w-1.5",
+                SpinnerSize.Default => "h-2 w-2",
+                SpinnerSize.Lg => "h-3 w-3",
+                _ => "h-2 w-2"
+            };
+            return $"{sizeClass} rounded-full bg-current animate-bounce";
+        }
+    }
+
+    private string BarsContainerClass
+    {
+        get
+        {
+            var heightClass = Size switch
+            {
+                SpinnerSize.Sm => "h-3",
+                SpinnerSize.Default => "h-4",
+                SpinnerSize.Lg => "h-6",
+                _ => "h-4"
+            };
+            return $"flex items-end gap-0.5 {heightClass}";
+        }
+    }
+
+    private string BarClass
+    {
+        get
+        {
+            var widthClass = Size switch
+            {
+                SpinnerSize.Sm => "w-0.5",
+                SpinnerSize.Default => "w-1",
+                SpinnerSize.Lg => "w-1.5",
+                _ => "w-1"
+            };
+            return $"{widthClass} bg-current rounded-sm animate-pulse";
+        }
+    }
+
     public enum SpinnerSize { Sm, Default, Lg }
+    public enum SpinnerVariant { Ring, Dots, Bars }
 }

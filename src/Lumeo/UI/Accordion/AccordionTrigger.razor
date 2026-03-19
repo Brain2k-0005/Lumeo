@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<button type="button" class="@CssClass" aria-expanded="@IsOpen" @onclick="Toggle" @attributes="AdditionalAttributes">
+<button type="button" class="@CssClass" aria-expanded="@IsOpen" disabled="@IsDisabled" @onclick="Toggle" @attributes="AdditionalAttributes">
     @ChildContent
     <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
 </button>
@@ -13,10 +13,15 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsOpen => Context.IsOpen(ItemContext.Value);
+    private bool IsDisabled => ItemContext.Disabled;
 
-    private string CssClass => $"flex flex-1 w-full items-center justify-between py-4 text-sm font-medium transition-all hover:underline {Class}".Trim();
+    private string CssClass => $"flex flex-1 w-full items-center justify-between py-4 text-sm font-medium transition-all {(IsDisabled ? "cursor-not-allowed" : "hover:underline")} {Class}".Trim();
 
     private string IconClasses => $"h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 {(IsOpen ? "rotate-180" : "")}";
 
-    private async Task Toggle() => await Context.Toggle.InvokeAsync(ItemContext.Value);
+    private async Task Toggle()
+    {
+        if (IsDisabled) return;
+        await Context.Toggle.InvokeAsync(ItemContext.Value);
+    }
 }

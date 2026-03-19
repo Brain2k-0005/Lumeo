@@ -6,7 +6,10 @@
     <div class="fixed inset-0 z-50">
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
         <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
-            <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+            @if (ShowDragHandle)
+            {
+                <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+            }
             @ChildContent
         </div>
     </div>
@@ -17,6 +20,7 @@
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public DrawerSide Side { get; set; } = DrawerSide.Bottom;
     [Parameter] public bool PreventClose { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -24,8 +28,28 @@
     private readonly string _contentId = $"drawer-{Guid.NewGuid():N}";
     private bool _wasOpen;
 
+    private bool ShowDragHandle => Side is DrawerSide.Top or DrawerSide.Bottom;
+
+    private string SideClasses => Side switch
+    {
+        DrawerSide.Top => "inset-x-0 top-0 animate-slide-in-from-top rounded-b-[10px] max-h-[96vh]",
+        DrawerSide.Right => "inset-y-0 right-0 w-3/4 max-w-sm animate-slide-in-from-right rounded-l-[10px] h-full max-h-screen",
+        DrawerSide.Bottom => "inset-x-0 bottom-0 animate-slide-in-from-bottom rounded-t-[10px] max-h-[96vh]",
+        DrawerSide.Left => "inset-y-0 left-0 w-3/4 max-w-sm animate-slide-in-from-left rounded-r-[10px] h-full max-h-screen",
+        _ => "inset-x-0 bottom-0 animate-slide-in-from-bottom rounded-t-[10px] max-h-[96vh]"
+    };
+
     private string CssClass =>
-        $"fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[96vh] flex-col rounded-t-[10px] bg-background shadow-lg animate-slide-in-from-bottom {Class}".Trim();
+        $"fixed z-50 mt-24 flex h-auto flex-col bg-background shadow-lg {SideClasses} {Class}".Trim();
+
+    private string SwipeDirection => Side switch
+    {
+        DrawerSide.Top => "up",
+        DrawerSide.Right => "right",
+        DrawerSide.Bottom => "down",
+        DrawerSide.Left => "left",
+        _ => "down"
+    };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -35,7 +59,7 @@
             await Interop.SetupFocusTrap(_contentId);
             if (!PreventClose)
             {
-                await Interop.RegisterDrawerSwipe(_contentId, Close);
+                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, Close);
             }
             _wasOpen = true;
         }
@@ -73,4 +97,6 @@
     {
         if (_wasOpen) await Cleanup();
     }
+
+    public enum DrawerSide { Top, Right, Bottom, Left }
 }

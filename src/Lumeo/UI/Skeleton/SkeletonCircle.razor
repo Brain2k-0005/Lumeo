@@ -1,10 +1,33 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes"></div>
+@if (Animation == Skeleton.SkeletonAnimation.Wave)
+{
+    <style>
+        @@keyframes skeleton-wave {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+    </style>
+    <div class="@($"rounded-full bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 bg-[length:200%_100%] h-10 w-10 {Class}".Trim())"
+         style="animation: skeleton-wave 1.5s ease-in-out infinite"
+         @attributes="AdditionalAttributes"></div>
+}
+else
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes"></div>
+}
 
 @code {
+    [Parameter] public Skeleton.SkeletonAnimation Animation { get; set; } = Skeleton.SkeletonAnimation.Pulse;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"animate-pulse rounded-full bg-primary/10 h-10 w-10 {Class}".Trim();
+    private string AnimationClass => Animation switch
+    {
+        Skeleton.SkeletonAnimation.Pulse => "animate-pulse",
+        Skeleton.SkeletonAnimation.None => "",
+        _ => "animate-pulse"
+    };
+
+    private string CssClass => $"{AnimationClass} rounded-full bg-primary/10 h-10 w-10 {Class}".Trim();
 }
