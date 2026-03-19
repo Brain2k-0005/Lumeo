@@ -8,14 +8,27 @@
             aria-label="Decrease">
         <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
     </button>
-    <input type="number"
-           class="h-9 w-20 border border-border/60 bg-background px-3 text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-           value="@DisplayValue"
-           disabled="@Disabled"
-           min="@Min"
-           max="@Max"
-           step="@Step"
-           @onchange="OnInputChange" />
+    <div class="relative inline-flex items-center h-9 border border-border/60 bg-background">
+        @if (!string.IsNullOrEmpty(Prefix))
+        {
+            <span class="pl-2 text-sm text-muted-foreground select-none">@Prefix</span>
+        }
+        <input type="number"
+               class="h-9 w-20 bg-transparent @(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1") text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+               value="@DisplayValue"
+               disabled="@Disabled"
+               min="@Min"
+               max="@Max"
+               step="@Step"
+               @onchange="OnInputChange"
+               @onkeydown="HandleKeyDown"
+               @onwheel="HandleWheel"
+               @onwheel:preventDefault="@UseMouseWheel" />
+        @if (!string.IsNullOrEmpty(Suffix))
+        {
+            <span class="pr-2 text-sm text-muted-foreground select-none">@Suffix</span>
+        }
+    </div>
     <button type="button"
             class="inline-flex h-9 w-9 items-center justify-center rounded-r-md border border-l-0 border-border/60 bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50"
             disabled="@(Disabled || IsAtMax)"
@@ -33,6 +46,9 @@
     [Parameter] public double Step { get; set; } = 1;
     [Parameter] public int? Precision { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool UseMouseWheel { get; set; }
+    [Parameter] public string? Prefix { get; set; }
+    [Parameter] public string? Suffix { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -62,6 +78,29 @@
     {
         var newValue = (Value ?? 0) - Step;
         await SetValue(newValue);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        switch (e.Key)
+        {
+            case "ArrowUp":
+                await Increment();
+                break;
+            case "ArrowDown":
+                await Decrement();
+                break;
+        }
+    }
+
+    private async Task HandleWheel(WheelEventArgs e)
+    {
+        if (!UseMouseWheel || Disabled) return;
+        if (e.DeltaY < 0)
+            await Increment();
+        else if (e.DeltaY > 0)
+            await Decrement();
     }
 
     private async Task OnInputChange(ChangeEventArgs e)

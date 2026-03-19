@@ -1,16 +1,33 @@
 @namespace Lumeo
 
-<button type="button" role="switch" aria-checked="@Checked.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
-    <span class="@ThumbClasses"></span>
-</button>
+<div class="inline-flex items-center">
+    <button type="button" role="switch" aria-checked="@Checked.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@(Disabled || Loading)" @attributes="AdditionalAttributes">
+        <span class="@ThumbClasses">
+            @if (Loading)
+            {
+                <Spinner Size="Spinner.SpinnerSize.Sm" Class="@ThumbSpinnerClass" />
+            }
+        </span>
+    </button>
+    @if (HasLabel)
+    {
+        <span class="text-xs text-muted-foreground ml-2">@CurrentLabel</span>
+    }
+</div>
 
 @code {
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? OnLabel { get; set; }
+    [Parameter] public string? OffLabel { get; set; }
     [Parameter] public SwitchSize Size { get; set; } = SwitchSize.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool HasLabel => OnLabel != null || OffLabel != null;
+    private string? CurrentLabel => Checked ? OnLabel : OffLabel;
 
     private string TrackSizeClasses => Size switch
     {
@@ -33,13 +50,20 @@
         _ => Checked ? "translate-x-4" : "translate-x-0"
     };
 
-    private string CssClass => $"peer inline-flex {TrackSizeClasses} shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 {(Checked ? "bg-primary" : "bg-input")} {Class}".Trim();
+    private string ThumbSpinnerClass => Size switch
+    {
+        SwitchSize.Sm => "!h-2 !w-2",
+        SwitchSize.Lg => "!h-3.5 !w-3.5",
+        _ => "!h-3 !w-3"
+    };
 
-    private string ThumbClasses => $"pointer-events-none block {ThumbSizeClasses} rounded-full bg-background shadow-sm ring-0 transition-transform {ThumbTranslateClass}";
+    private string CssClass => $"peer inline-flex {TrackSizeClasses} shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 {(Checked ? "bg-primary" : "bg-input")} {(Loading ? "pointer-events-none opacity-70" : "")} {Class}".Trim();
+
+    private string ThumbClasses => $"pointer-events-none flex items-center justify-center {ThumbSizeClasses} rounded-full bg-background shadow-sm ring-0 transition-transform {ThumbTranslateClass}";
 
     private async Task Toggle()
     {
-        if (!Disabled)
+        if (!Disabled && !Loading)
         {
             Checked = !Checked;
             await CheckedChanged.InvokeAsync(Checked);

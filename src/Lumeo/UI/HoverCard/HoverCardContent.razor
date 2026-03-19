@@ -14,6 +14,7 @@
     [CascadingParameter] public HoverCard.HoverCardContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public HoverCardAlign Align { get; set; } = HoverCardAlign.Center;
+    [Parameter] public HoverCardSide Side { get; set; } = HoverCardSide.Bottom;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -30,11 +31,18 @@
         _ => "center"
     };
 
+    private string SideStr => Side switch
+    {
+        HoverCardSide.Top => "top",
+        HoverCardSide.Bottom => "bottom",
+        _ => "bottom"
+    };
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen && !_positioned)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
             _positioned = true;
         }
         else if (!Context.IsOpen && _positioned)
@@ -58,4 +66,5 @@
     }
 
     public enum HoverCardAlign { Start, Center, End }
+    public enum HoverCardSide { Top, Bottom }
 }

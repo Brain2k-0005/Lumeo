@@ -2,6 +2,10 @@
 
 <div role="tooltip" class="@CssClass" @attributes="AdditionalAttributes">
     @ChildContent
+    @if (ShowArrow)
+    {
+        <div class="@ArrowClasses"></div>
+    }
 </div>
 
 @code {
@@ -9,20 +13,43 @@
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public TooltipSide Side { get; set; } = TooltipSide.Top;
+    [Parameter] public bool ShowArrow { get; set; } = true;
+    [Parameter] public int Offset { get; set; } = 8;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsOpen => Context?.IsOpen ?? false;
 
-    private string CssClass => $"absolute z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-opacity {(IsOpen ? "opacity-100 visible" : "opacity-0 invisible")} {SideClasses} {Class}".Trim();
+    private string CssClass => $"absolute z-50 overflow-visible rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground {AnimationClasses} {SideClasses} {Class}".Trim();
+
+    private string AnimationClasses => IsOpen
+        ? "opacity-100 visible animate-fade-in"
+        : "opacity-0 invisible";
 
     private string SideClasses => Side switch
     {
-        TooltipSide.Top => "bottom-full left-1/2 -translate-x-1/2 mb-2",
-        TooltipSide.Bottom => "top-full left-1/2 -translate-x-1/2 mt-2",
-        TooltipSide.Left => "right-full top-1/2 -translate-y-1/2 mr-2",
-        TooltipSide.Right => "left-full top-1/2 -translate-y-1/2 ml-2",
-        _ => "bottom-full left-1/2 -translate-x-1/2 mb-2"
+        TooltipSide.Top => $"bottom-full left-1/2 -translate-x-1/2 mb-{MarginValue}",
+        TooltipSide.Bottom => $"top-full left-1/2 -translate-x-1/2 mt-{MarginValue}",
+        TooltipSide.Left => $"right-full top-1/2 -translate-y-1/2 mr-{MarginValue}",
+        TooltipSide.Right => $"left-full top-1/2 -translate-y-1/2 ml-{MarginValue}",
+        _ => $"bottom-full left-1/2 -translate-x-1/2 mb-{MarginValue}"
+    };
+
+    private string MarginValue => Offset switch
+    {
+        <= 4 => "1",
+        <= 8 => "2",
+        <= 12 => "3",
+        _ => "4"
+    };
+
+    private string ArrowClasses => Side switch
+    {
+        TooltipSide.Top => "absolute left-1/2 -translate-x-1/2 top-full border-[6px] border-transparent border-t-primary",
+        TooltipSide.Bottom => "absolute left-1/2 -translate-x-1/2 bottom-full border-[6px] border-transparent border-b-primary",
+        TooltipSide.Left => "absolute top-1/2 -translate-y-1/2 left-full border-[6px] border-transparent border-l-primary",
+        TooltipSide.Right => "absolute top-1/2 -translate-y-1/2 right-full border-[6px] border-transparent border-r-primary",
+        _ => "absolute left-1/2 -translate-x-1/2 top-full border-[6px] border-transparent border-t-primary"
     };
 
     public enum TooltipSide { Top, Bottom, Left, Right }

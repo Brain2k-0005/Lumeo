@@ -227,27 +227,39 @@ export function getElementDimension(elementId, dimension) {
 
 const drawerHandlers = new Map();
 
-export function registerDrawerSwipe(elementId, dotnetRef) {
+export function registerDrawerSwipe(elementId, direction, dotnetRef) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
-    let startY = 0;
-    let currentY = 0;
+    const isHorizontal = direction === 'left' || direction === 'right';
+    let startPos = 0;
+    let currentPos = 0;
     let isDragging = false;
 
     const onTouchStart = (e) => {
-        startY = e.touches[0].clientY;
-        currentY = startY;
+        startPos = isHorizontal ? e.touches[0].clientX : e.touches[0].clientY;
+        currentPos = startPos;
         isDragging = true;
         el.style.transition = 'none';
     };
 
     const onTouchMove = (e) => {
         if (!isDragging) return;
-        currentY = e.touches[0].clientY;
-        const deltaY = currentY - startY;
-        if (deltaY > 0) {
-            el.style.transform = `translateY(${deltaY}px)`;
+        currentPos = isHorizontal ? e.touches[0].clientX : e.touches[0].clientY;
+        const delta = currentPos - startPos;
+
+        let shouldTranslate = false;
+        if (direction === 'down') shouldTranslate = delta > 0;
+        else if (direction === 'up') shouldTranslate = delta < 0;
+        else if (direction === 'right') shouldTranslate = delta > 0;
+        else if (direction === 'left') shouldTranslate = delta < 0;
+
+        if (shouldTranslate) {
+            if (isHorizontal) {
+                el.style.transform = `translateX(${delta}px)`;
+            } else {
+                el.style.transform = `translateY(${delta}px)`;
+            }
         }
     };
 
@@ -255,8 +267,16 @@ export function registerDrawerSwipe(elementId, dotnetRef) {
         if (!isDragging) return;
         isDragging = false;
         el.style.transition = '';
-        const deltaY = currentY - startY;
-        if (deltaY > 100) {
+        const delta = currentPos - startPos;
+        const absDelta = Math.abs(delta);
+
+        let shouldDismiss = false;
+        if (direction === 'down') shouldDismiss = delta > 100;
+        else if (direction === 'up') shouldDismiss = delta < -100;
+        else if (direction === 'right') shouldDismiss = delta > 100;
+        else if (direction === 'left') shouldDismiss = delta < -100;
+
+        if (shouldDismiss) {
             dotnetRef.invokeMethodAsync('OnSwipeDismiss');
         } else {
             el.style.transform = '';

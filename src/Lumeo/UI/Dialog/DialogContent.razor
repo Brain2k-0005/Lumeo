@@ -8,7 +8,16 @@
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
         <!-- Content -->
         <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
-            @ChildContent
+            @if (Scrollable)
+            {
+                <div class="max-h-[85vh] overflow-y-auto">
+                    @ChildContent
+                </div>
+            }
+            else
+            {
+                @ChildContent
+            }
             @if (!PreventClose)
             {
                 <button class="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none" @onclick="Close">
@@ -26,13 +35,25 @@
     [CascadingParameter] public Dialog.DialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool PreventClose { get; set; }
+    [Parameter] public DialogSize Size { get; set; } = DialogSize.Default;
+    [Parameter] public bool Scrollable { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"dialog-{Guid.NewGuid():N}";
     private bool _wasOpen;
 
-    private string CssClass => $"relative z-50 grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg {Class}".Trim();
+    private string SizeClass => Size switch
+    {
+        DialogSize.Sm => "max-w-sm",
+        DialogSize.Default => "max-w-lg",
+        DialogSize.Lg => "max-w-2xl",
+        DialogSize.Xl => "max-w-4xl",
+        DialogSize.Full => "max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]",
+        _ => "max-w-lg"
+    };
+
+    private string CssClass => $"relative z-50 grid w-full {SizeClass} gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg {Class}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -81,4 +102,6 @@
             await Cleanup();
         }
     }
+
+    public enum DialogSize { Sm, Default, Lg, Xl, Full }
 }

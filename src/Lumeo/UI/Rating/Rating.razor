@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<div class="@CssClass" role="radiogroup" aria-label="Rating" @attributes="AdditionalAttributes">
+<div class="@CssClass" role="radiogroup" aria-label="Rating" tabindex="0" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -12,7 +12,7 @@
             <button type="button"
                     class="@GetStarClasses(isFull || isHalf) @SizeClasses"
                     disabled="@ReadOnly"
-                    aria-label="@starIndex star"
+                    aria-label="@($"Rate {starIndex} out of {Max}")"
                     @onclick="() => HandleClick(starIndex)"
                     @onmouseover="() => HandleHover(starIndex)"
                     @onmouseout="HandleMouseLeave">
@@ -24,7 +24,7 @@
             <button type="button"
                     class="@SizeClasses relative"
                     disabled="@ReadOnly"
-                    aria-label="@starIndex star"
+                    aria-label="@($"Rate {starIndex} out of {Max}")"
                     @onclick="() => HandleClick(starIndex)"
                     @onmouseover="() => HandleHover(starIndex)"
                     @onmouseout="HandleMouseLeave">
@@ -33,13 +33,13 @@
                     <span class="relative inline-block">
                         <Blazicon Svg="Lucide.Star" class="text-muted-foreground/30 fill-muted-foreground/10" />
                         <span class="absolute inset-0 overflow-hidden" style="width: 50%;">
-                            <Blazicon Svg="Lucide.Star" class="text-yellow-400 fill-yellow-400" />
+                            <Blazicon Svg="Lucide.Star" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
                         </span>
                     </span>
                 }
                 else if (isFull || (_hoverValue > 0 && starIndex <= _hoverValue))
                 {
-                    <Blazicon Svg="Lucide.Star" class="text-yellow-400 fill-yellow-400" />
+                    <Blazicon Svg="Lucide.Star" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
                 }
                 else
                 {
@@ -73,7 +73,7 @@
     };
 
     private string GetStarClasses(bool isActive) => isActive
-        ? "text-yellow-400"
+        ? "text-[var(--color-rating)]"
         : "text-muted-foreground/30";
 
     private async Task HandleClick(int index)
@@ -101,6 +101,34 @@
     private void HandleMouseLeave()
     {
         _hoverValue = 0;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (ReadOnly) return;
+
+        var step = AllowHalf ? 0.5 : 1.0;
+        double newValue = Value;
+
+        switch (e.Key)
+        {
+            case "ArrowRight":
+            case "ArrowUp":
+                newValue = Math.Min(Value + step, Max);
+                break;
+            case "ArrowLeft":
+            case "ArrowDown":
+                newValue = Math.Max(Value - step, 0);
+                break;
+            default:
+                return;
+        }
+
+        if (newValue != Value)
+        {
+            Value = newValue;
+            await ValueChanged.InvokeAsync(Value);
+        }
     }
 
     public enum RatingSize { Small, Default, Large }

@@ -1,15 +1,59 @@
 @namespace Lumeo
+@implements IDisposable
 
 @if (!_isDismissed)
 {
     <div role="alert" class="@CssClass" @attributes="AdditionalAttributes">
-        @if (IsDismissible)
-        {
-            <button type="button" class="absolute top-3 right-3 rounded-md hover:bg-foreground/10 focus:outline-none focus:ring-1 focus:ring-ring p-0.5" @onclick="Dismiss" aria-label="Dismiss">
-                <Blazicon Svg="Lucide.X" class="h-4 w-4" />
-            </button>
-        }
-        @ChildContent
+        <div class="flex gap-3">
+            @if (Icon is not null)
+            {
+                <div class="shrink-0 mt-0.5">
+                    @Icon
+                </div>
+            }
+            else if (ShowIcon)
+            {
+                <div class="shrink-0 mt-0.5">
+                    @switch (Variant)
+                    {
+                        case AlertVariant.Destructive:
+                            <Blazicon Svg="Lucide.TriangleAlert" class="h-4 w-4" />
+                            break;
+                        case AlertVariant.Success:
+                            <Blazicon Svg="Lucide.CircleCheck" class="h-4 w-4" />
+                            break;
+                        case AlertVariant.Warning:
+                            <Blazicon Svg="Lucide.TriangleAlert" class="h-4 w-4" />
+                            break;
+                        case AlertVariant.Info:
+                            <Blazicon Svg="Lucide.Info" class="h-4 w-4" />
+                            break;
+                        default:
+                            <Blazicon Svg="Lucide.Info" class="h-4 w-4" />
+                            break;
+                    }
+                </div>
+            }
+            <div class="flex-1 min-w-0">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <h5 class="mb-1 font-medium leading-none tracking-tight">@Title</h5>
+                }
+                @if (!string.IsNullOrEmpty(Description))
+                {
+                    <div class="text-sm opacity-90">@Description</div>
+                }
+                @ChildContent
+            </div>
+            @if (IsDismissible)
+            {
+                <div class="shrink-0">
+                    <button type="button" class="rounded-md hover:bg-foreground/10 focus:outline-none focus:ring-1 focus:ring-ring p-0.5" @onclick="Dismiss" aria-label="Dismiss">
+                        <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                    </button>
+                </div>
+            }
+        </div>
     </div>
 }
 
@@ -18,10 +62,24 @@
     [Parameter] public AlertVariant Variant { get; set; } = AlertVariant.Default;
     [Parameter] public bool IsDismissible { get; set; }
     [Parameter] public EventCallback OnDismiss { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? Icon { get; set; }
+    [Parameter] public bool ShowIcon { get; set; } = true;
+    [Parameter] public int? AutoDismissMs { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isDismissed;
+    private Timer? _autoDismissTimer;
+
+    protected override void OnInitialized()
+    {
+        if (AutoDismissMs.HasValue && AutoDismissMs.Value > 0)
+        {
+            _autoDismissTimer = new Timer(AutoDismissCallback, null, AutoDismissMs.Value, Timeout.Infinite);
+        }
+    }
 
     private string CssClass => $"relative w-full rounded-lg border border-border px-4 py-3 text-sm {VariantClasses} {Class}".Trim();
 
@@ -39,6 +97,21 @@
     {
         _isDismissed = true;
         await OnDismiss.InvokeAsync();
+    }
+
+    private void AutoDismissCallback(object? state)
+    {
+        InvokeAsync(async () =>
+        {
+            _isDismissed = true;
+            await OnDismiss.InvokeAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        _autoDismissTimer?.Dispose();
     }
 
     public enum AlertVariant { Default, Destructive, Success, Warning, Info }

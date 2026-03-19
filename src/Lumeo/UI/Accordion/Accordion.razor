@@ -13,12 +13,26 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public AccordionType Type { get; set; } = AccordionType.Single;
+    [Parameter] public List<string>? DefaultValues { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly HashSet<string> _openItems = new();
+    private bool _initialized;
 
     private string CssClass => $"{Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        if (!_initialized && DefaultValues is { Count: > 0 })
+        {
+            foreach (var value in DefaultValues)
+            {
+                _openItems.Add(value);
+            }
+            _initialized = true;
+        }
+    }
 
     private Task ToggleItem(string value)
     {
