@@ -2,9 +2,24 @@
 
 @if (!_isRemoved)
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
-        @if (!IsDot)
-        {
+    @if (IsDot && Pulse)
+    {
+        <span class="relative inline-flex h-2 w-2" @attributes="AdditionalAttributes">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 @PulseColorClass"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 @DotClasses @Class"></span>
+        </span>
+    }
+    else if (IsDot)
+    {
+        <div class="@CssClass" @attributes="AdditionalAttributes"></div>
+    }
+    else
+    {
+        <div class="@CssClass" @attributes="AdditionalAttributes">
+            @if (Icon != null)
+            {
+                <span class="mr-1 inline-flex items-center">@Icon</span>
+            }
             @ChildContent
             @if (IsRemovable)
             {
@@ -12,14 +27,16 @@
                     <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                 </button>
             }
-        }
-    </div>
+        </div>
+    }
 }
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Icon { get; set; }
     [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Default;
     [Parameter] public bool IsDot { get; set; }
+    [Parameter] public bool Pulse { get; set; }
     [Parameter] public bool IsRemovable { get; set; }
     [Parameter] public EventCallback OnRemove { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -32,6 +49,19 @@
         : $"{BaseClasses} {VariantClasses} {Class}".Trim();
 
     private const string BaseClasses = "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none";
+
+    private string DotClasses => VariantClasses;
+
+    private string PulseColorClass => Variant switch
+    {
+        BadgeVariant.Default => "bg-primary",
+        BadgeVariant.Secondary => "bg-secondary",
+        BadgeVariant.Destructive => "bg-destructive",
+        BadgeVariant.Outline => "bg-foreground",
+        BadgeVariant.Success => "bg-success-text",
+        BadgeVariant.Warning => "bg-warning-text",
+        _ => "bg-primary"
+    };
 
     private string VariantClasses => Variant switch
     {

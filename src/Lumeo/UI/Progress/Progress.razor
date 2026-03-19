@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-@if (IsIndeterminate)
+@if (IsIndeterminate && Shape == ProgressShape.Linear)
 {
     <style>
         @@keyframes progress-indeterminate {
@@ -18,7 +18,21 @@
     </style>
 }
 
-@if (Striped || Animated)
+@if (IsIndeterminate && Shape == ProgressShape.Circular)
+{
+    <style>
+        @@keyframes circular-indeterminate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .animate-circular-indeterminate {
+            animation: circular-indeterminate 1.5s linear infinite;
+            transform-origin: center;
+        }
+    </style>
+}
+
+@if ((Striped || Animated) && Shape == ProgressShape.Linear)
 {
     <style>
         @@keyframes progress-stripes {
@@ -44,9 +58,73 @@
     </style>
 }
 
-@if (ShowLabel)
+@if (Shape == ProgressShape.Circular)
 {
-    <div class="flex items-center gap-2">
+    @if (ShowLabel)
+    {
+        <div class="flex items-center gap-2">
+            <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
+                <svg viewBox="0 0 36 36" class="@CircularSvgClass" style="@CircularSizeStyle">
+                    <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="text-primary/20" stroke-width="@StrokeWidth" />
+                    <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="@CircularStrokeColor"
+                        stroke-width="@StrokeWidth"
+                        stroke-dasharray="@Circumference.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                        stroke-dashoffset="@DashOffset.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                        stroke-linecap="round"
+                        transform="rotate(-90 18 18)"
+                        style="transition: stroke-dashoffset 0.3s ease" />
+                </svg>
+                @if (ShowValue)
+                {
+                    <span class="absolute inset-0 flex items-center justify-center text-foreground @CircularTextSize">@(Label ?? $"{Percentage}%")</span>
+                }
+            </div>
+            @if (!ShowValue)
+            {
+                <span class="text-sm text-muted-foreground whitespace-nowrap">@(Label ?? $"{Percentage}%")</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
+            <svg viewBox="0 0 36 36" class="@CircularSvgClass" style="@CircularSizeStyle">
+                <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="text-primary/20" stroke-width="@StrokeWidth" />
+                <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="@CircularStrokeColor"
+                    stroke-width="@StrokeWidth"
+                    stroke-dasharray="@Circumference.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                    stroke-dashoffset="@DashOffset.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                    stroke-linecap="round"
+                    transform="rotate(-90 18 18)"
+                    style="transition: stroke-dashoffset 0.3s ease" />
+            </svg>
+            @if (ShowValue)
+            {
+                <span class="absolute inset-0 flex items-center justify-center text-foreground @CircularTextSize">@(Label ?? $"{Percentage}%")</span>
+            }
+        </div>
+    }
+}
+else
+{
+    @if (ShowLabel)
+    {
+        <div class="flex items-center gap-2">
+            <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
+                @if (IsIndeterminate)
+                {
+                    <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
+                }
+                else
+                {
+                    <div class="@IndicatorClasses" style="@IndicatorStyle"></div>
+                }
+            </div>
+            <span class="text-sm text-muted-foreground whitespace-nowrap">@(Label ?? $"{Percentage}%")</span>
+        </div>
+    }
+    else
+    {
         <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
             @if (IsIndeterminate)
             {
@@ -57,40 +135,30 @@
                 <div class="@IndicatorClasses" style="@IndicatorStyle"></div>
             }
         </div>
-        <span class="text-sm text-muted-foreground whitespace-nowrap">@(Label ?? $"{Percentage}%")</span>
-    </div>
-}
-else
-{
-    <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" @attributes="AdditionalAttributes">
-        @if (IsIndeterminate)
-        {
-            <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
-        }
-        else
-        {
-            <div class="@IndicatorClasses" style="@IndicatorStyle"></div>
-        }
-    </div>
+    }
 }
 
 @code {
     [Parameter] public int Value { get; set; }
     [Parameter] public int Max { get; set; } = 100;
     [Parameter] public ProgressVariant Variant { get; set; } = ProgressVariant.Default;
+    [Parameter] public ProgressShape Shape { get; set; } = ProgressShape.Linear;
     [Parameter] public bool IsIndeterminate { get; set; }
     [Parameter] public bool ShowLabel { get; set; }
+    [Parameter] public bool ShowValue { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public bool Striped { get; set; }
     [Parameter] public bool Animated { get; set; }
     [Parameter] public string? GradientFrom { get; set; }
     [Parameter] public string? GradientTo { get; set; }
     [Parameter] public string Size { get; set; } = "Default";
+    [Parameter] public int StrokeWidth { get; set; } = 4;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int Percentage => Max > 0 ? Math.Min(100, (int)((double)Value / Max * 100)) : 0;
 
+    // --- Linear progress ---
     private string SizeClass => Size switch
     {
         "Small" => "h-1",
@@ -133,5 +201,38 @@ else
         _ => "bg-primary"
     };
 
+    // --- Circular progress ---
+    private const double CircularRadius = 16;
+    private double Circumference => 2 * Math.PI * CircularRadius;
+    private double DashOffset => IsIndeterminate ? Circumference * 0.75 : Circumference * (1.0 - Percentage / 100.0);
+
+    private string CircularSizeStyle => Size switch
+    {
+        "Small" => "width: 40px; height: 40px",
+        "Large" => "width: 80px; height: 80px",
+        _ => "width: 56px; height: 56px"
+    };
+
+    private string CircularTextSize => Size switch
+    {
+        "Small" => "text-[10px] font-medium",
+        "Large" => "text-sm font-semibold",
+        _ => "text-xs font-medium"
+    };
+
+    private string CircularWrapperClass => $"relative inline-flex items-center justify-center {Class}".Trim();
+
+    private string CircularSvgClass => IsIndeterminate ? "animate-circular-indeterminate" : "";
+
+    private string CircularStrokeColor => Variant switch
+    {
+        ProgressVariant.Default => "text-primary",
+        ProgressVariant.Success => "text-success",
+        ProgressVariant.Warning => "text-warning",
+        ProgressVariant.Destructive => "text-destructive",
+        _ => "text-primary"
+    };
+
     public enum ProgressVariant { Default, Success, Warning, Destructive }
+    public enum ProgressShape { Linear, Circular }
 }
