@@ -29,8 +29,11 @@ public class AvatarTests : IAsyncLifetime
         Assert.Contains("relative", cls);
         Assert.Contains("flex", cls);
         Assert.Contains("shrink-0", cls);
-        Assert.Contains("overflow-hidden", cls);
-        Assert.Contains("rounded-full", cls);
+        // overflow-hidden and rounded-full are on the inner div
+        var inner = cut.FindAll("div")[1];
+        var innerCls = inner.GetAttribute("class");
+        Assert.Contains("overflow-hidden", innerCls);
+        Assert.Contains("rounded-full", innerCls);
     }
 
     [Fact]
@@ -65,7 +68,9 @@ public class AvatarTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-avatar-class", cls);
-        Assert.Contains("rounded-full", cls);
+        // rounded-full is on the inner div
+        var inner = cut.FindAll("div")[1];
+        Assert.Contains("rounded-full", inner.GetAttribute("class"));
     }
 
     [Fact]
