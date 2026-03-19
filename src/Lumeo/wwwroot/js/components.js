@@ -96,143 +96,151 @@ export function removeFocusTrap(elementId) {
 
 const positionCleanups = new Map();
 
-function applyPosition(content, reference, align, matchWidth, resolvedSide) {
-    const refRect = reference.getBoundingClientRect();
-    const gap = 4;
-
-    content.style.position = 'fixed';
-    content.style.zIndex = '50';
-    content.style.top = '';
-    content.style.bottom = '';
-    content.style.left = '';
-    content.style.right = '';
-    content.style.transform = '';
-
-    if (matchWidth) {
-        content.style.width = `${refRect.width}px`;
-    }
-
-    if (resolvedSide === 'top') {
-        content.style.top = `${refRect.top - gap}px`;
-        switch (align) {
-            case 'center':
-                content.style.left = `${refRect.left + refRect.width / 2}px`;
-                content.style.transform = 'translateX(-50%) translateY(-100%)';
-                break;
-            case 'end':
-                content.style.right = `${window.innerWidth - refRect.right}px`;
-                content.style.transform = 'translateY(-100%)';
-                break;
-            default:
-                content.style.left = `${refRect.left}px`;
-                content.style.transform = 'translateY(-100%)';
-                break;
-        }
-    } else if (resolvedSide === 'left') {
-        content.style.left = `${refRect.left - gap}px`;
-        content.style.transform = 'translateX(-100%)';
-        switch (align) {
-            case 'center':
-                content.style.top = `${refRect.top + refRect.height / 2}px`;
-                content.style.transform = 'translateX(-100%) translateY(-50%)';
-                break;
-            case 'end':
-                content.style.top = `${refRect.bottom}px`;
-                content.style.transform = 'translateX(-100%) translateY(-100%)';
-                break;
-            default:
-                content.style.top = `${refRect.top}px`;
-                content.style.transform = 'translateX(-100%)';
-                break;
-        }
-    } else if (resolvedSide === 'right') {
-        content.style.left = `${refRect.right + gap}px`;
-        switch (align) {
-            case 'center':
-                content.style.top = `${refRect.top + refRect.height / 2}px`;
-                content.style.transform = 'translateY(-50%)';
-                break;
-            case 'end':
-                content.style.top = `${refRect.bottom}px`;
-                content.style.transform = 'translateY(-100%)';
-                break;
-            default:
-                content.style.top = `${refRect.top}px`;
-                break;
-        }
-    } else {
-        content.style.top = `${refRect.bottom + gap}px`;
-        switch (align) {
-            case 'center':
-                content.style.left = `${refRect.left + refRect.width / 2}px`;
-                content.style.transform = 'translateX(-50%)';
-                break;
-            case 'end':
-                content.style.left = 'auto';
-                content.style.right = `${window.innerWidth - refRect.right}px`;
-                break;
-            default:
-                content.style.left = `${refRect.left}px`;
-                break;
-        }
-    }
-
-    // Viewport bounds check
-    requestAnimationFrame(() => {
-        if (!content.isConnected) return;
-        const cr = content.getBoundingClientRect();
-        if (resolvedSide === 'bottom' && cr.bottom > window.innerHeight) {
-            content.style.top = `${refRect.top - cr.height - gap}px`;
-            content.style.transform = content.style.transform.replace('translateY(-100%)', '').trim() || '';
-        }
-        if (resolvedSide === 'top' && cr.top < 0) {
-            content.style.top = `${refRect.bottom + gap}px`;
-            content.style.transform = content.style.transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
-        }
-        if (cr.right > window.innerWidth) {
-            content.style.left = `${window.innerWidth - cr.width - 8}px`;
-            content.style.transform = '';
-            content.style.right = 'auto';
-        }
-        if (cr.left < 0) {
-            content.style.left = '8px';
-            content.style.transform = '';
-            content.style.right = 'auto';
-        }
-    });
-}
-
 export function positionFixed(contentId, referenceId, align, matchWidth, side) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
     if (!content || !reference) return;
 
     const resolvedSide = side || 'bottom';
+    const gap = 4;
 
-    // Clean up any previous scroll listener for this content
+    // Clean up any previous listener for this content
     if (positionCleanups.has(contentId)) {
         positionCleanups.get(contentId)();
     }
 
-    // Initial position
-    applyPosition(content, reference, align, matchWidth, resolvedSide);
-
-    // Reposition on scroll so the popup follows the trigger
-    const onScroll = () => {
+    function update() {
         if (!content.isConnected || !reference.isConnected) {
             cleanup();
             return;
         }
-        applyPosition(content, reference, align, matchWidth, resolvedSide);
-    };
-    const onResize = onScroll;
 
-    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
-    window.addEventListener('resize', onResize, { passive: true });
+        const refRect = reference.getBoundingClientRect();
+
+        content.style.position = 'fixed';
+        content.style.zIndex = '50';
+
+        if (matchWidth) {
+            content.style.width = `${refRect.width}px`;
+        }
+
+        // Calculate preferred position
+        let top, left, right;
+        let transform = '';
+
+        if (resolvedSide === 'top') {
+            top = refRect.top - gap;
+            switch (align) {
+                case 'center':
+                    left = refRect.left + refRect.width / 2;
+                    transform = 'translateX(-50%) translateY(-100%)';
+                    break;
+                case 'end':
+                    left = refRect.right;
+                    transform = 'translateX(-100%) translateY(-100%)';
+                    break;
+                default:
+                    left = refRect.left;
+                    transform = 'translateY(-100%)';
+                    break;
+            }
+        } else if (resolvedSide === 'left') {
+            left = refRect.left - gap;
+            transform = 'translateX(-100%)';
+            switch (align) {
+                case 'center':
+                    top = refRect.top + refRect.height / 2;
+                    transform = 'translateX(-100%) translateY(-50%)';
+                    break;
+                case 'end':
+                    top = refRect.bottom;
+                    transform = 'translateX(-100%) translateY(-100%)';
+                    break;
+                default:
+                    top = refRect.top;
+                    break;
+            }
+        } else if (resolvedSide === 'right') {
+            left = refRect.right + gap;
+            switch (align) {
+                case 'center':
+                    top = refRect.top + refRect.height / 2;
+                    transform = 'translateY(-50%)';
+                    break;
+                case 'end':
+                    top = refRect.bottom;
+                    transform = 'translateY(-100%)';
+                    break;
+                default:
+                    top = refRect.top;
+                    break;
+            }
+        } else {
+            // bottom (default)
+            top = refRect.bottom + gap;
+            switch (align) {
+                case 'center':
+                    left = refRect.left + refRect.width / 2;
+                    transform = 'translateX(-50%)';
+                    break;
+                case 'end':
+                    left = refRect.right;
+                    transform = 'translateX(-100%)';
+                    break;
+                default:
+                    left = refRect.left;
+                    break;
+            }
+        }
+
+        // Apply initial position
+        content.style.top = `${top}px`;
+        content.style.left = left != null ? `${left}px` : '';
+        content.style.right = right != null ? `${right}px` : '';
+        content.style.transform = transform;
+
+        // Viewport bounds check (synchronous — no rAF to avoid stale refs)
+        const cr = content.getBoundingClientRect();
+        // Flip vertical if overflows bottom
+        if (resolvedSide === 'bottom' && cr.bottom > window.innerHeight) {
+            const newRefRect = reference.getBoundingClientRect();
+            content.style.top = `${newRefRect.top - cr.height - gap}px`;
+            content.style.transform = transform.replace('translateY(-100%)', '').trim() || '';
+        }
+        // Flip vertical if overflows top
+        if (resolvedSide === 'top' && cr.top < 0) {
+            const newRefRect = reference.getBoundingClientRect();
+            content.style.top = `${newRefRect.bottom + gap}px`;
+            content.style.transform = transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
+        }
+        // Clamp horizontal
+        if (cr.right > window.innerWidth) {
+            content.style.left = `${window.innerWidth - cr.width - 8}px`;
+            content.style.transform = '';
+        }
+        if (cr.left < 0) {
+            content.style.left = '8px';
+            content.style.transform = '';
+        }
+    }
+
+    // Initial position
+    update();
+
+    // Reposition on scroll/resize so popup follows the trigger
+    let rafId = 0;
+    const onScrollOrResize = () => {
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(update);
+    };
+
+    window.addEventListener('scroll', onScrollOrResize, { capture: true, passive: true });
+    window.addEventListener('resize', onScrollOrResize, { passive: true });
 
     const cleanup = () => {
-        window.removeEventListener('scroll', onScroll, { capture: true });
-        window.removeEventListener('resize', onResize);
+        cancelAnimationFrame(rafId);
+        window.removeEventListener('scroll', onScrollOrResize, { capture: true });
+        window.removeEventListener('resize', onScrollOrResize);
         positionCleanups.delete(contentId);
     };
     positionCleanups.set(contentId, cleanup);
