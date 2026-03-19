@@ -50,7 +50,7 @@ Kanban, SortableList, Transfer
 ## Installation
 
 ```bash
-dotnet add package Lumeo --version 1.0.0-beta.4
+dotnet add package Lumeo --version 1.0.0-beta.5
 ```
 
 ## Setup

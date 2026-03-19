@@ -5,6 +5,12 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.5] - 2026-03-19
+
+### Improved
+- Updated NuGet package description (90+ → 103 components, added test count and feature list)
+- Updated README with accurate component count, themes, and install command
+
 ## [1.0.0-beta.4] - 2026-03-19
 
 ### Added
