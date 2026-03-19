@@ -186,4 +186,41 @@ public class CheckboxTests : IAsyncLifetime
         Assert.Equal("my-checkbox", button.GetAttribute("data-testid"));
         Assert.Equal("Accept terms", button.GetAttribute("aria-label"));
     }
+
+    // --- Label ---
+
+    [Fact]
+    public void Label_Renders_Label_Text()
+    {
+        var cut = _ctx.Render<Lumeo.Checkbox>(p => p
+            .Add(b => b.Label, "Accept terms"));
+
+        Assert.Contains("Accept terms", cut.Markup);
+        Assert.NotNull(cut.Find("label"));
+    }
+
+    // --- Description ---
+
+    [Fact]
+    public void Description_Renders_Description_Text()
+    {
+        var cut = _ctx.Render<Lumeo.Checkbox>(p => p
+            .Add(b => b.Label, "Terms")
+            .Add(b => b.Description, "You agree to our terms"));
+
+        Assert.Contains("You agree to our terms", cut.Markup);
+        Assert.NotNull(cut.Find("p"));
+    }
+
+    // --- Without Label: backward compat ---
+
+    [Fact]
+    public void Without_Label_Renders_Bare_Checkbox()
+    {
+        var cut = _ctx.Render<Lumeo.Checkbox>();
+
+        // No label element, just the button
+        Assert.Empty(cut.FindAll("label"));
+        Assert.NotNull(cut.Find("button[role='checkbox']"));
+    }
 }

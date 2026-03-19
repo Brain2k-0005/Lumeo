@@ -134,4 +134,53 @@ public class SpinnerTests : IAsyncLifetime
         Assert.Equal("my-spinner", wrapper.GetAttribute("data-testid"));
         Assert.Equal("Loading", wrapper.GetAttribute("aria-label"));
     }
+
+    // --- Variant: Dots ---
+
+    [Fact]
+    public void Dots_Variant_Renders_Three_Bounce_Elements()
+    {
+        var cut = _ctx.Render<L.Spinner>(p => p
+            .Add(s => s.Variant, L.Spinner.SpinnerVariant.Dots));
+
+        var allDivs = cut.FindAll("div");
+        var bounceDivs = allDivs.Where(d =>
+            (d.GetAttribute("class") ?? "").Contains("animate-bounce")).ToList();
+        Assert.Equal(3, bounceDivs.Count);
+    }
+
+    // --- Variant: Bars ---
+
+    [Fact]
+    public void Bars_Variant_Renders_Three_Bar_Elements()
+    {
+        var cut = _ctx.Render<L.Spinner>(p => p
+            .Add(s => s.Variant, L.Spinner.SpinnerVariant.Bars));
+
+        var allDivs = cut.FindAll("div");
+        var barDivs = allDivs.Where(d =>
+            (d.GetAttribute("class") ?? "").Contains("animate-pulse") &&
+            (d.GetAttribute("class") ?? "").Contains("bg-current")).ToList();
+        Assert.Equal(3, barDivs.Count);
+    }
+
+    // --- Label ---
+
+    [Fact]
+    public void Label_Renders_Label_Text()
+    {
+        var cut = _ctx.Render<L.Spinner>(p => p
+            .Add(s => s.Label, "Loading..."));
+
+        Assert.Contains("Loading...", cut.Markup);
+    }
+
+    [Fact]
+    public void No_Label_Does_Not_Render_Label_Span()
+    {
+        var cut = _ctx.Render<L.Spinner>();
+
+        var spans = cut.FindAll("span");
+        Assert.Empty(spans);
+    }
 }

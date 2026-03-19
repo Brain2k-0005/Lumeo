@@ -115,4 +115,51 @@ public class InputTests : IAsyncLifetime
 
         Assert.NotNull(cut.Find("input[disabled]"));
     }
+
+    // --- Size variants ---
+
+    [Fact]
+    public void Size_Sm_Adds_H8_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Size, Lumeo.Input.InputSize.Sm));
+
+        var cls = cut.Find("input").GetAttribute("class");
+        Assert.Contains("h-8", cls);
+    }
+
+    [Fact]
+    public void Size_Lg_Adds_H11_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Size, Lumeo.Input.InputSize.Lg));
+
+        var cls = cut.Find("input").GetAttribute("class");
+        Assert.Contains("h-11", cls);
+    }
+
+    // --- Clearable ---
+
+    [Fact]
+    public void Clearable_Shows_X_Button_When_Value_NonEmpty()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Value, "hello")
+            .Add(b => b.Clearable, true));
+
+        var clearBtn = cut.Find("button[aria-label='Clear']");
+        Assert.NotNull(clearBtn);
+    }
+
+    [Fact]
+    public void Clearable_No_Button_When_Value_Empty()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Value, "")
+            .Add(b => b.Clearable, true));
+
+        // When value is empty, the clearable button path is not rendered
+        // and the bare input is rendered instead
+        Assert.Empty(cut.FindAll("button"));
+    }
 }
