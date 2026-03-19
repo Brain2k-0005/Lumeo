@@ -94,14 +94,11 @@ export function removeFocusTrap(elementId) {
 
 // --- Floating Position ---
 
-export function positionFixed(contentId, referenceId, align, matchWidth, side) {
-    const content = document.getElementById(contentId);
-    const reference = document.getElementById(referenceId);
-    if (!content || !reference) return;
+const positionCleanups = new Map();
 
+function applyPosition(content, reference, align, matchWidth, resolvedSide) {
     const refRect = reference.getBoundingClientRect();
     const gap = 4;
-    const resolvedSide = side || 'bottom';
 
     content.style.position = 'fixed';
     content.style.zIndex = '50';
@@ -116,8 +113,7 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
     }
 
     if (resolvedSide === 'top') {
-        // Position above reference; horizontal align same as bottom
-        content.style.top = `${refRect.top - gap}px`; // will be corrected after measuring in rAF
+        content.style.top = `${refRect.top - gap}px`;
         switch (align) {
             case 'center':
                 content.style.left = `${refRect.left + refRect.width / 2}px`;
@@ -165,7 +161,6 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
                 break;
         }
     } else {
-        // bottom (default)
         content.style.top = `${refRect.bottom + gap}px`;
         switch (align) {
             case 'center':
@@ -205,6 +200,42 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
             content.style.right = 'auto';
         }
     });
+}
+
+export function positionFixed(contentId, referenceId, align, matchWidth, side) {
+    const content = document.getElementById(contentId);
+    const reference = document.getElementById(referenceId);
+    if (!content || !reference) return;
+
+    const resolvedSide = side || 'bottom';
+
+    // Clean up any previous scroll listener for this content
+    if (positionCleanups.has(contentId)) {
+        positionCleanups.get(contentId)();
+    }
+
+    // Initial position
+    applyPosition(content, reference, align, matchWidth, resolvedSide);
+
+    // Reposition on scroll so the popup follows the trigger
+    const onScroll = () => {
+        if (!content.isConnected || !reference.isConnected) {
+            cleanup();
+            return;
+        }
+        applyPosition(content, reference, align, matchWidth, resolvedSide);
+    };
+    const onResize = onScroll;
+
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    window.addEventListener('resize', onResize, { passive: true });
+
+    const cleanup = () => {
+        window.removeEventListener('scroll', onScroll, { capture: true });
+        window.removeEventListener('resize', onResize);
+        positionCleanups.delete(contentId);
+    };
+    positionCleanups.set(contentId, cleanup);
 }
 
 // --- Element Rect ---

@@ -239,8 +239,11 @@
     private bool _layoutLoaded;
     private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
 
-    private List<DataGridColumn<TItem>> EffectiveColumns =>
+    private List<DataGridColumn<TItem>> SourceColumns =>
         Columns is not null && Columns.Count > 0 ? Columns : _columnDefs;
+
+    private List<DataGridColumn<TItem>> EffectiveColumns =>
+        _orderedColumns.Count > 0 ? _orderedColumns : SourceColumns;
 
     private int EffectiveTotalCount => ServerMode ? TotalCount : _processedItems.Count;
 
@@ -281,18 +284,18 @@
 
     private void SyncOrderedColumns()
     {
-        var effective = EffectiveColumns;
+        var source = SourceColumns;
 
-        // If ordered columns has different column set (by ID), rebuild from effective
+        // If ordered columns has different column set (by ID), rebuild from source
         // Preserve user-reordered order for existing columns
-        var effectiveIds = effective.Select(c => c.Id).ToHashSet();
+        var sourceIds = source.Select(c => c.Id).ToHashSet();
         var orderedIds = _orderedColumns.Select(c => c.Id).ToHashSet();
 
-        if (effectiveIds.SetEquals(orderedIds)) return; // Same columns, keep user order
+        if (sourceIds.SetEquals(orderedIds)) return; // Same columns, keep user order
 
         // Columns changed — rebuild keeping existing order for known columns, append new ones
-        var newOrder = _orderedColumns.Where(c => effectiveIds.Contains(c.Id)).ToList();
-        var added = effective.Where(c => !orderedIds.Contains(c.Id)).ToList();
+        var newOrder = _orderedColumns.Where(c => sourceIds.Contains(c.Id)).ToList();
+        var added = source.Where(c => !orderedIds.Contains(c.Id)).ToList();
         newOrder.AddRange(added);
         _orderedColumns = newOrder;
     }
