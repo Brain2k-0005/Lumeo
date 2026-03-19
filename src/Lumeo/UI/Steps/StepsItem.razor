@@ -3,6 +3,7 @@
 @{
     var status = GetStatus();
     var isHorizontal = Context?.Orientation != Steps.StepsOrientation.Vertical;
+    var isError = Status == StepsItemStatus.Error && status == StepStatus.Current;
 }
 
 @if (isHorizontal)
@@ -10,10 +11,18 @@
     <div class="@HorizontalCssClass" role="listitem" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
             <button type="button"
-                    class="@GetIndicatorClasses(status)"
+                    class="@GetIndicatorClasses(status, isError)"
                     disabled="@(!IsClickable)"
                     @onclick="HandleClick">
-                @if (status == StepStatus.Completed)
+                @if (Icon is not null)
+                {
+                    @Icon
+                }
+                else if (isError)
+                {
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                }
+                else if (status == StepStatus.Completed)
                 {
                     <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
                 }
@@ -25,7 +34,7 @@
             <div class="mt-2 text-center">
                 @if (!string.IsNullOrEmpty(Title))
                 {
-                    <p class="@GetTitleClasses(status)">@Title</p>
+                    <p class="@GetTitleClasses(status, isError)">@Title</p>
                 }
                 @if (!string.IsNullOrEmpty(Description))
                 {
@@ -41,10 +50,18 @@ else
     <div class="@VerticalCssClass" role="listitem" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
             <button type="button"
-                    class="@GetIndicatorClasses(status)"
+                    class="@GetIndicatorClasses(status, isError)"
                     disabled="@(!IsClickable)"
                     @onclick="HandleClick">
-                @if (status == StepStatus.Completed)
+                @if (Icon is not null)
+                {
+                    @Icon
+                }
+                else if (isError)
+                {
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                }
+                else if (status == StepStatus.Completed)
                 {
                     <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
                 }
@@ -58,7 +75,7 @@ else
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
             {
-                <p class="@GetTitleClasses(status)">@Title</p>
+                <p class="@GetTitleClasses(status, isError)">@Title</p>
             }
             @if (!string.IsNullOrEmpty(Description))
             {
@@ -72,6 +89,8 @@ else
     [CascadingParameter] public Steps.StepsContext? Context { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Description { get; set; }
+    [Parameter] public StepsItemStatus Status { get; set; } = StepsItemStatus.Default;
+    [Parameter] public RenderFragment? Icon { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -95,19 +114,25 @@ else
         return StepStatus.Future;
     }
 
-    private string GetIndicatorClasses(StepStatus status) => status switch
-    {
-        StepStatus.Completed => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground",
-        StepStatus.Current => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-sm font-semibold text-primary",
-        _ => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground"
-    };
+    private string GetIndicatorClasses(StepStatus status, bool isError) =>
+        isError
+            ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-background text-destructive"
+            : status switch
+            {
+                StepStatus.Completed => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground",
+                StepStatus.Current => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-sm font-semibold text-primary",
+                _ => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground"
+            };
 
-    private string GetTitleClasses(StepStatus status) => status switch
-    {
-        StepStatus.Completed => "text-sm font-medium text-foreground",
-        StepStatus.Current => "text-sm font-semibold text-foreground",
-        _ => "text-sm text-muted-foreground"
-    };
+    private string GetTitleClasses(StepStatus status, bool isError) =>
+        isError
+            ? "text-sm font-semibold text-destructive"
+            : status switch
+            {
+                StepStatus.Completed => "text-sm font-medium text-foreground",
+                StepStatus.Current => "text-sm font-semibold text-foreground",
+                _ => "text-sm text-muted-foreground"
+            };
 
     private string GetLineClasses(StepStatus status) => status switch
     {
@@ -127,4 +152,6 @@ else
     private string VerticalCssClass => $"flex flex-row {Class}".Trim();
 
     private enum StepStatus { Completed, Current, Future }
+
+    public enum StepsItemStatus { Default, Error }
 }

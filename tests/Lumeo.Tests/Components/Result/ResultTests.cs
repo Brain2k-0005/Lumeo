@@ -35,8 +35,8 @@ public class ResultTests : IAsyncLifetime
             .Add(r => r.Status, Lumeo.Result.ResultStatus.Success)
             .Add(r => r.Title, "Done"));
 
-        Assert.Contains("bg-emerald-500/10", cut.Markup);
-        Assert.Contains("text-emerald-500", cut.Markup);
+        Assert.Contains("bg-success-light", cut.Markup);
+        Assert.Contains("text-success", cut.Markup);
     }
 
     [Fact]
