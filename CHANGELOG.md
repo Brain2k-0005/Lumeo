@@ -5,6 +5,28 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.4] - 2026-03-19
+
+### Added
+- Checkbox: Label, Description parameters with auto-Id for form association
+- RadioGroupItem: Description text support
+- Steps: Error state per step with red X icon, custom Icon slot
+- Popover: Arrow support (ShowArrow parameter matching Tooltip pattern)
+- 48 new unit tests covering all upgraded component features (1,124 total)
+- Form Validation guide with DataAnnotations, custom validation, and complete examples
+- Contributing guide with setup, component creation, testing, and code style docs
+- "When to Use" and "Related Components" sections on 62 more component pages (82 total)
+- API reference tables now on all 136 component documentation pages
+
+### Improved
+- Home page stats updated (75→103 components, 7→8 themes)
+- Chart patterns integrated into Patterns page with filter category
+- All hardcoded colors replaced with CSS variables (Avatar, Statistic, Result, KanbanCard)
+
+### Fixed
+- MentionPage Razor escape for @user syntax
+- Statistic and Result test assertions updated for CSS variable colors
+
 ## [1.0.0-beta.3] - 2026-03-19
 
 ### Added
