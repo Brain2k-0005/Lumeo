@@ -114,4 +114,49 @@ public class TextareaTests : IAsyncLifetime
 
         Assert.NotNull(cut.Find("textarea[disabled]"));
     }
+
+    // --- ShowCount ---
+
+    [Fact]
+    public void ShowCount_Renders_Character_Count()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.Value, "hello"));
+
+        // Should show "5" somewhere in the markup (the character count)
+        Assert.Contains("5", cut.Markup);
+    }
+
+    [Fact]
+    public void ShowCount_With_MaxLength_Renders_Count_And_Max()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 100)
+            .Add(t => t.Value, "hello"));
+
+        Assert.Contains("5/100", cut.Markup);
+    }
+
+    // --- Resize ---
+
+    [Fact]
+    public void Resize_None_Adds_Resize_None_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.Resize, Lumeo.Textarea.TextareaResize.None));
+
+        var cls = cut.Find("textarea").GetAttribute("class");
+        Assert.Contains("resize-none", cls);
+    }
+
+    [Fact]
+    public void Default_Resize_Has_Resize_Y_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>();
+
+        var cls = cut.Find("textarea").GetAttribute("class");
+        Assert.Contains("resize-y", cls);
+    }
 }

@@ -304,4 +304,40 @@ public class SelectTests : IAsyncLifetime
         var allDivs = cut.FindAll("div");
         Assert.True(allDivs.Any(d => (d.GetAttribute("class") ?? "").Contains("my-content-class")));
     }
+
+    // --- Disabled SelectItem ---
+
+    [Fact]
+    public void Disabled_SelectItem_Has_Opacity_50_Class()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(t => t.AddContent(0, "Choose...")));
+                b.CloseComponent();
+
+                b.OpenComponent<L.SelectContent>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectItem>(0);
+                    c.AddAttribute(1, "Value", "apple");
+                    c.AddAttribute(2, "Disabled", true);
+                    c.AddAttribute(3, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var itemButtons = cut.FindAll("button[role='option']");
+        var disabledItem = itemButtons.FirstOrDefault(b => b.TextContent.Contains("Apple"));
+        Assert.NotNull(disabledItem);
+        Assert.Contains("opacity-50", disabledItem!.GetAttribute("class"));
+        Assert.Equal("true", disabledItem.GetAttribute("aria-disabled"));
+    }
 }

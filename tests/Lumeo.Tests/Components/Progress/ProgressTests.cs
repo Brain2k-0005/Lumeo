@@ -182,4 +182,37 @@ public class ProgressTests : IAsyncLifetime
         var indicator = cut.Find("[role='progressbar'] div");
         Assert.Contains("width: 75%", indicator.GetAttribute("style"));
     }
+
+    // --- Circular variant ---
+
+    [Fact]
+    public void Circular_Shape_Renders_SVG_Element()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular));
+
+        Assert.NotNull(cut.Find("svg"));
+    }
+
+    [Fact]
+    public void Circular_Shape_Has_Progressbar_Role()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular));
+
+        Assert.NotNull(cut.Find("[role='progressbar']"));
+    }
+
+    [Fact]
+    public void Circular_ShowValue_Shows_Percentage_Text()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 75)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.ShowValue, true));
+
+        Assert.Contains("75%", cut.Markup);
+    }
 }

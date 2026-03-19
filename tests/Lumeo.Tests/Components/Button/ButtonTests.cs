@@ -137,4 +137,67 @@ public class ButtonTests : IAsyncLifetime
         Assert.Equal("my-button", button.GetAttribute("data-testid"));
         Assert.Equal("Close dialog", button.GetAttribute("aria-label"));
     }
+
+    // --- FullWidth ---
+
+    [Fact]
+    public void FullWidth_Adds_W_Full_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.FullWidth, true)
+            .AddChildContent("Full"));
+
+        var button = cut.Find("button");
+        Assert.Contains("w-full", button.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Default_Does_Not_Have_W_Full_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .AddChildContent("Normal"));
+
+        var button = cut.Find("button");
+        Assert.DoesNotContain("w-full", button.GetAttribute("class"));
+    }
+
+    // --- LeftIcon / RightIcon ---
+
+    [Fact]
+    public void LeftIcon_Renders_Before_Content()
+    {
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.LeftIcon, (Microsoft.AspNetCore.Components.RenderFragment)(builder =>
+            {
+                builder.OpenElement(0, "span");
+                builder.AddAttribute(1, "class", "left-icon-marker");
+                builder.AddContent(2, "L");
+                builder.CloseElement();
+            }))
+            .AddChildContent("Text"));
+
+        var html = cut.Find("button").InnerHtml;
+        var leftIconPos = html.IndexOf("left-icon-marker");
+        var textPos = html.IndexOf("Text");
+        Assert.True(leftIconPos < textPos, "LeftIcon should render before content");
+    }
+
+    [Fact]
+    public void RightIcon_Renders_After_Content()
+    {
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.RightIcon, (Microsoft.AspNetCore.Components.RenderFragment)(builder =>
+            {
+                builder.OpenElement(0, "span");
+                builder.AddAttribute(1, "class", "right-icon-marker");
+                builder.AddContent(2, "R");
+                builder.CloseElement();
+            }))
+            .AddChildContent("Text"));
+
+        var html = cut.Find("button").InnerHtml;
+        var textPos = html.IndexOf("Text");
+        var rightIconPos = html.IndexOf("right-icon-marker");
+        Assert.True(rightIconPos > textPos, "RightIcon should render after content");
+    }
 }

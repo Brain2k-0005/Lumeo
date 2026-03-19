@@ -75,4 +75,40 @@ public class NumberInputTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-number-input", cls);
     }
+
+    // --- Prefix ---
+
+    [Fact]
+    public void Prefix_Renders_Prefix_Text()
+    {
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Prefix, "$")
+            .Add(n => n.Value, 42.0));
+
+        Assert.Contains("$", cut.Markup);
+    }
+
+    // --- Suffix ---
+
+    [Fact]
+    public void Suffix_Renders_Suffix_Text()
+    {
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Suffix, "kg")
+            .Add(n => n.Value, 10.0));
+
+        Assert.Contains("kg", cut.Markup);
+    }
+
+    [Fact]
+    public void Prefix_And_Suffix_Both_Render()
+    {
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Prefix, "$")
+            .Add(n => n.Suffix, "USD")
+            .Add(n => n.Value, 99.0));
+
+        Assert.Contains("$", cut.Markup);
+        Assert.Contains("USD", cut.Markup);
+    }
 }
