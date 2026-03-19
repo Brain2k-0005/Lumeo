@@ -4,7 +4,7 @@
     @ChildContent
     @if (ShowArrow)
     {
-        <div class="@ArrowClasses"></div>
+        <div class="@ArrowPositionClasses" style="@ArrowStyle"></div>
     }
 </div>
 
@@ -20,7 +20,7 @@
 
     private bool IsOpen => Context?.IsOpen ?? false;
 
-    private string CssClass => $"absolute z-50 overflow-visible rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground {AnimationClasses} {SideClasses} {Class}".Trim();
+    private string CssClass => string.Join(" ", new[] { "absolute z-50 overflow-visible rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground", AnimationClasses, SideClasses, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private string AnimationClasses => IsOpen
         ? "opacity-100 visible animate-fade-in"
@@ -43,13 +43,22 @@
         _ => "4"
     };
 
-    private string ArrowClasses => Side switch
+    private string ArrowPositionClasses => Side switch
     {
-        TooltipSide.Top => "absolute left-1/2 -translate-x-1/2 top-full border-[6px] border-transparent border-t-primary",
-        TooltipSide.Bottom => "absolute left-1/2 -translate-x-1/2 bottom-full border-[6px] border-transparent border-b-primary",
-        TooltipSide.Left => "absolute top-1/2 -translate-y-1/2 left-full border-[6px] border-transparent border-l-primary",
-        TooltipSide.Right => "absolute top-1/2 -translate-y-1/2 right-full border-[6px] border-transparent border-r-primary",
-        _ => "absolute left-1/2 -translate-x-1/2 top-full border-[6px] border-transparent border-t-primary"
+        TooltipSide.Top => "absolute left-1/2 -translate-x-1/2 top-full",
+        TooltipSide.Bottom => "absolute left-1/2 -translate-x-1/2 bottom-full",
+        TooltipSide.Left => "absolute top-1/2 -translate-y-1/2 left-full",
+        TooltipSide.Right => "absolute top-1/2 -translate-y-1/2 right-full",
+        _ => "absolute left-1/2 -translate-x-1/2 top-full"
+    };
+
+    private string ArrowStyle => Side switch
+    {
+        TooltipSide.Top => "border-width: 6px; border-style: solid; border-color: var(--color-primary) transparent transparent transparent;",
+        TooltipSide.Bottom => "border-width: 6px; border-style: solid; border-color: transparent transparent var(--color-primary) transparent;",
+        TooltipSide.Left => "border-width: 6px; border-style: solid; border-color: transparent transparent transparent var(--color-primary);",
+        TooltipSide.Right => "border-width: 6px; border-style: solid; border-color: transparent var(--color-primary) transparent transparent;",
+        _ => "border-width: 6px; border-style: solid; border-color: var(--color-primary) transparent transparent transparent;"
     };
 
     public enum TooltipSide { Top, Bottom, Left, Right }
