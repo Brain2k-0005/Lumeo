@@ -112,9 +112,11 @@ public class SpinnerTests : IAsyncLifetime
         var cut = _ctx.Render<L.Spinner>(p => p
             .Add(s => s.Class, "text-primary"));
 
-        var cls = cut.Find("svg").GetAttribute("class");
-        Assert.Contains("text-primary", cls);
-        Assert.Contains("animate-spin", cls);
+        // Class is on the wrapper div; svg is inside it
+        var wrapper = cut.Find("div");
+        Assert.Contains("text-primary", wrapper.GetAttribute("class"));
+        var svg = cut.Find("svg");
+        Assert.Contains("animate-spin", svg.GetAttribute("class"));
     }
 
     [Fact]
@@ -127,8 +129,9 @@ public class SpinnerTests : IAsyncLifetime
                 ["aria-label"] = "Loading"
             }));
 
-        var svg = cut.Find("svg");
-        Assert.Equal("my-spinner", svg.GetAttribute("data-testid"));
-        Assert.Equal("Loading", svg.GetAttribute("aria-label"));
+        // AdditionalAttributes are on the wrapper div
+        var wrapper = cut.Find("div");
+        Assert.Equal("my-spinner", wrapper.GetAttribute("data-testid"));
+        Assert.Equal("Loading", wrapper.GetAttribute("aria-label"));
     }
 }
