@@ -31,7 +31,7 @@ public static class DataGridExportService
         ComponentInteropService interop,
         IEnumerable<TItem> items,
         IReadOnlyList<DataGridColumn<TItem>> columns,
-        string fileName = "export.xlsx")
+        string fileName = "export.csv")
     {
         // Export as CSV with UTF-8 BOM so Excel opens it correctly
         var visibleColumns = columns.Where(c => c.Visible).ToList();
@@ -51,7 +51,7 @@ public static class DataGridExportService
         var content = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
         var bytes = bom.Concat(content).ToArray();
         var base64 = Convert.ToBase64String(bytes);
-        await interop.DownloadFile(fileName, base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        await interop.DownloadFile(fileName, base64, "text/csv; charset=utf-8");
     }
 
     public static async Task ExportToJsonAsync<TItem>(

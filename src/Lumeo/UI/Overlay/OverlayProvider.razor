@@ -93,23 +93,37 @@
 
     private async void HandleShow(OverlayInstance instance)
     {
-        _overlays.Add(instance);
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            _overlays.Add(instance);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo OverlayProvider] HandleShow error: {ex.Message}");
+        }
     }
 
-    private async void HandleClose(string id, object? result)
+    private async void HandleClose(string id, object? result, bool cancelled)
     {
-        var overlay = _overlays.FirstOrDefault(o => o.Id == id);
-        if (overlay is null) return;
+        try
+        {
+            var overlay = _overlays.FirstOrDefault(o => o.Id == id);
+            if (overlay is null) return;
 
-        _overlays.Remove(overlay);
+            _overlays.Remove(overlay);
 
-        if (result is not null)
-            overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
-        else
-            overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
+            if (cancelled)
+                overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
+            else
+                overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
 
-        await InvokeAsync(StateHasChanged);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo OverlayProvider] HandleClose error: {ex.Message}");
+        }
     }
 
     private void OnOverlayClosed(bool isOpen, string id)
