@@ -51,7 +51,8 @@
                     <label class="text-xs text-muted-foreground mb-1 block">Lightness</label>
                     <input type="range" min="0" max="100" value="@_lightness"
                            class="w-full h-2 rounded-full appearance-none cursor-pointer"
-                           style="background: linear-gradient(to right, #000, hsl(@_hue, @(_saturation)%, 50%), #fff)" />
+                           style="background: linear-gradient(to right, #000, hsl(@_hue, @(_saturation)%, 50%), #fff)"
+                           @oninput="OnLightnessChanged" />
                 </div>
 
                 @if (ShowAlpha)
@@ -173,6 +174,15 @@
         }
     }
 
+    private void OnLightnessChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var l))
+        {
+            _lightness = l;
+            UpdateFromHsl();
+        }
+    }
+
     private void OnAlphaChanged(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var a))
@@ -224,6 +234,7 @@
 
     private async Task Cleanup()
     {
+        try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }

@@ -277,9 +277,9 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
         await module.InvokeVoidAsync("registerToastSwipe", elementId, toastId, GetSelfRef());
     }
 
-    public async ValueTask UnregisterToastSwipe(string elementId)
+    public async ValueTask UnregisterToastSwipe(string toastId, string elementId)
     {
-        _toastSwipeHandlers.Remove(elementId);
+        _toastSwipeHandlers.Remove(toastId);
         var module = await GetModuleAsync();
         await module.InvokeVoidAsync("unregisterToastSwipe", elementId);
     }
