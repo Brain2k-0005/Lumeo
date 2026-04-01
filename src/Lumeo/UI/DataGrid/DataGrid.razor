@@ -379,7 +379,7 @@
                         }
                     }
                 }
-                catch { /* corrupt storage — ignore */ }
+                catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load persisted layout: {ex.Message}"); }
             }
         }
     }
@@ -987,7 +987,7 @@
         if (EnableLayoutPersistence)
         {
             var key = LayoutStorageKey ?? _layoutId;
-            try { await Interop.RemoveFromLocalStorage(key); } catch { }
+            try { await Interop.RemoveFromLocalStorage(key); } catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to clear persisted layout: {ex.Message}"); }
         }
     }
 
@@ -1015,7 +1015,7 @@
                 var json = System.Text.Json.JsonSerializer.Serialize(layout);
                 await Interop.SaveToLocalStorage(key, json);
             }
-            catch { /* storage unavailable — ignore */ }
+            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save layout: {ex.Message}"); }
         }
 
         if (OnLayoutSave.HasDelegate)
@@ -1055,7 +1055,7 @@
                 existing.Add(withLayout);
                 await Interop.SaveToLocalStorage(key, System.Text.Json.JsonSerializer.Serialize(existing));
             }
-            catch { }
+            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save named layout: {ex.Message}"); }
         }
 
         if (OnSaveNamedLayout.HasDelegate)
@@ -1078,7 +1078,7 @@
             if (!string.IsNullOrEmpty(json))
                 return System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
         }
-        catch { }
+        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load named layouts: {ex.Message}"); }
         return new();
     }
 

@@ -145,7 +145,9 @@ function colorToHex(color) {
         if (px[0] !== 0 || px[1] !== 0 || px[2] !== 0) {
             return rgbToHex(px[0], px[1], px[2]);
         }
-    } catch {}
+    } catch {
+        // Color parsing failed — unsupported format or CSS custom property; fall through to return original
+    }
 
     return color;
 }
