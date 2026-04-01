@@ -48,88 +48,82 @@
         ToastService.OnUpdate += HandleUpdate;
     }
 
-    private async void HandleShow(ToastMessage message)
+    private void HandleShow(ToastMessage message)
     {
-        try
+        _ = InvokeAsync(() => HandleShowAsync(message));
+    }
+
+    private async Task HandleShowAsync(ToastMessage message)
+    {
+        var item = new ToastItem(message.Id, message.Options);
+
+        // Enforce MaxToasts: evict oldest non-persistent toasts
+        while (_toasts.Count >= MaxToasts)
         {
-            var item = new ToastItem(message.Id, message.Options);
-
-            // Enforce MaxToasts: evict oldest non-persistent toasts
-            while (_toasts.Count >= MaxToasts)
-            {
-                var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0);
-                if (oldest is null) break;
-                await RemoveItemAsync(oldest.Id);
-            }
-
-            _toasts.Add(item);
-            await InvokeAsync(StateHasChanged);
-
-            var duration = message.Options.Duration ?? DefaultDuration;
-            if (duration > 0)
-            {
-                var cts = new CancellationTokenSource();
-                _timers[message.Id] = cts;
-                _ = DismissAfterDelayAsync(message.Id, duration, cts.Token);
-            }
+            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0);
+            if (oldest is null) break;
+            await RemoveItemAsync(oldest.Id);
         }
-        catch (Exception ex)
+
+        _toasts.Add(item);
+        StateHasChanged();
+
+        var duration = message.Options.Duration ?? DefaultDuration;
+        if (duration > 0)
         {
-            Console.Error.WriteLine($"[Lumeo ToastProvider] HandleShow error: {ex.Message}");
+            var cts = new CancellationTokenSource();
+            _timers[message.Id] = cts;
+            _ = DismissAfterDelayAsync(message.Id, duration, cts.Token);
         }
     }
 
-    private async void HandleDismiss(string toastId)
+    private void HandleDismiss(string toastId)
     {
-        try
-        {
-            if (toastId == "*")
-            {
-                var ids = _toasts.Select(t => t.Id).ToList();
-                foreach (var id in ids)
-                {
-                    CancelTimer(id);
-                    _toasts.RemoveAll(t => t.Id == id);
-                }
-            }
-            else
-            {
-                await RemoveItemAsync(toastId);
-            }
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo ToastProvider] HandleDismiss error: {ex.Message}");
-        }
+        _ = InvokeAsync(() => HandleDismissAsync(toastId));
     }
 
-    private async void HandleUpdate(string toastId, ToastOptions options)
+    private async Task HandleDismissAsync(string toastId)
     {
-        try
+        if (toastId == "*")
         {
-            var index = _toasts.FindIndex(t => t.Id == toastId);
-            if (index < 0) return;
-
-            var updated = new ToastItem(toastId, options);
-            _toasts[index] = updated;
-
-            // Reset timer
-            CancelTimer(toastId);
-            var duration = options.Duration ?? DefaultDuration;
-            if (duration > 0)
+            var ids = _toasts.Select(t => t.Id).ToList();
+            foreach (var id in ids)
             {
-                var cts = new CancellationTokenSource();
-                _timers[toastId] = cts;
-                _ = DismissAfterDelayAsync(toastId, duration, cts.Token);
+                CancelTimer(id);
+                _toasts.RemoveAll(t => t.Id == id);
             }
-
-            await InvokeAsync(StateHasChanged);
         }
-        catch (Exception ex)
+        else
         {
-            Console.Error.WriteLine($"[Lumeo ToastProvider] HandleUpdate error: {ex.Message}");
+            await RemoveItemAsync(toastId);
         }
+        StateHasChanged();
+    }
+
+    private void HandleUpdate(string toastId, ToastOptions options)
+    {
+        _ = InvokeAsync(() => HandleUpdateAsync(toastId, options));
+    }
+
+    private async Task HandleUpdateAsync(string toastId, ToastOptions options)
+    {
+        var index = _toasts.FindIndex(t => t.Id == toastId);
+        if (index < 0) return;
+
+        var updated = new ToastItem(toastId, options);
+        _toasts[index] = updated;
+
+        // Reset timer
+        CancelTimer(toastId);
+        var duration = options.Duration ?? DefaultDuration;
+        if (duration > 0)
+        {
+            var cts = new CancellationTokenSource();
+            _timers[toastId] = cts;
+            _ = DismissAfterDelayAsync(toastId, duration, cts.Token);
+        }
+
+        StateHasChanged();
     }
 
     private async Task DismissAfterDelayAsync(string id, int duration, CancellationToken token)
