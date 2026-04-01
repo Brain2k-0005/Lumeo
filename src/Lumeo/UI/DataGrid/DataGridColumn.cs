@@ -30,12 +30,21 @@ public class DataGridColumn<TItem>
     public Comparison<object?>? CustomSort { get; set; }
     public List<FilterOption>? FilterOptions { get; set; }
 
+    private System.Reflection.PropertyInfo? _cachedProperty;
+    private string? _cachedPropertyField;
+
     public object? GetValue(TItem item)
     {
         if (FieldSelector is not null) return FieldSelector(item);
         if (Field is null || item is null) return null;
-        var prop = typeof(TItem).GetProperty(Field);
-        return prop?.GetValue(item);
+
+        if (_cachedProperty is null || _cachedPropertyField != Field)
+        {
+            _cachedProperty = typeof(TItem).GetProperty(Field);
+            _cachedPropertyField = Field;
+        }
+
+        return _cachedProperty?.GetValue(item);
     }
 
     public string GetFormattedValue(TItem item)

@@ -28,7 +28,7 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         var handle = await _service.RegisterAsync("ctrl+k", () => Task.CompletedTask);
 
         Assert.NotNull(handle);
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         var handle = await _service.RegisterAsync("ctrl+k", () => { });
 
         Assert.NotNull(handle);
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     [Fact]
@@ -50,8 +50,8 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         Assert.NotNull(handle2);
         Assert.NotSame(handle1, handle2);
 
-        handle1.Dispose();
-        handle2.Dispose();
+        await handle1.DisposeAsync();
+        await handle2.DisposeAsync();
     }
 
     // --- OnShortcutTriggered ---
@@ -72,7 +72,7 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         await _service.OnShortcutTriggered("non-existent-id");
 
         Assert.False(called); // Should not call for unknown id
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     [Fact]
@@ -93,8 +93,8 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
 
         Assert.NotNull(h1);
         Assert.NotNull(h2);
-        h1.Dispose();
-        h2.Dispose();
+        await h1.DisposeAsync();
+        await h2.DisposeAsync();
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         var handle = await _service.RegisterAsync("escape", () => Task.CompletedTask);
 
         Assert.NotNull(handle);
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     [Fact]
@@ -112,27 +112,27 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         var handle = await _service.RegisterAsync("alt+n", () => Task.CompletedTask);
 
         Assert.NotNull(handle);
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     // --- Dispose via handle ---
 
     [Fact]
-    public async Task ShortcutHandle_Dispose_Does_Not_Throw()
+    public async Task ShortcutHandle_DisposeAsync_Does_Not_Throw()
     {
         var handle = await _service.RegisterAsync("ctrl+k", () => Task.CompletedTask);
 
-        var exception = Record.Exception(() => handle.Dispose());
+        var exception = await Record.ExceptionAsync(() => handle.DisposeAsync().AsTask());
         Assert.Null(exception);
     }
 
     [Fact]
-    public async Task ShortcutHandle_Double_Dispose_Does_Not_Throw()
+    public async Task ShortcutHandle_Double_DisposeAsync_Does_Not_Throw()
     {
         var handle = await _service.RegisterAsync("ctrl+k", () => Task.CompletedTask);
 
-        handle.Dispose();
-        var exception = Record.Exception(() => handle.Dispose());
+        await handle.DisposeAsync();
+        var exception = await Record.ExceptionAsync(() => handle.DisposeAsync().AsTask());
         Assert.Null(exception);
     }
 
@@ -144,7 +144,7 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         var handle = await _service.RegisterAsync("ctrl+s", () => Task.CompletedTask, preventDefault: false);
 
         Assert.NotNull(handle);
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class KeyboardShortcutServiceTests : IAsyncLifetime
         var handle = await _service.RegisterAsync("ctrl+s", () => Task.CompletedTask, preventDefault: true);
 
         Assert.NotNull(handle);
-        handle.Dispose();
+        await handle.DisposeAsync();
     }
 
     // --- DisposeAsync ---

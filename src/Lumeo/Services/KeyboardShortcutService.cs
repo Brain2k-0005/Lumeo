@@ -40,7 +40,7 @@ public sealed class KeyboardShortcutService : IAsyncDisposable
     /// Register a keyboard shortcut. Key combo format: "ctrl+k", "ctrl+shift+p", "escape", "alt+n"
     /// Modifiers: ctrl, shift, alt, meta. Separate with +. Key names use KeyboardEvent.key values.
     /// </summary>
-    public async ValueTask<IDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true)
+    public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true)
     {
         await EnsureInitializedAsync();
         var id = Guid.NewGuid().ToString("N");
@@ -56,7 +56,7 @@ public sealed class KeyboardShortcutService : IAsyncDisposable
     /// <summary>
     /// Register a keyboard shortcut with a synchronous handler.
     /// </summary>
-    public async ValueTask<IDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true)
+    public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true)
     {
         return await RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault);
     }
@@ -118,7 +118,7 @@ public sealed class KeyboardShortcutService : IAsyncDisposable
 
     private record ShortcutRegistration(string NormalizedCombo, Func<Task> Handler, bool PreventDefault);
 
-    private sealed class ShortcutHandle(KeyboardShortcutService service, string id) : IDisposable
+    private sealed class ShortcutHandle(KeyboardShortcutService service, string id) : IDisposable, IAsyncDisposable
     {
         private bool _disposed;
 
@@ -126,7 +126,28 @@ public sealed class KeyboardShortcutService : IAsyncDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            _ = service.UnregisterAsync(id);
+            // Remove from local dictionary immediately to prevent handler from firing
+            service._shortcuts.Remove(id);
+            // Fire-and-forget JS cleanup as fallback
+            _ = CleanupJsAsync();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            await service.UnregisterAsync(id);
+        }
+
+        private async Task CleanupJsAsync()
+        {
+            try
+            {
+                if (service._module is not null)
+                    await service._module.InvokeVoidAsync("removeShortcut", id);
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
         }
     }
 }

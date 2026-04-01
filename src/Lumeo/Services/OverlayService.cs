@@ -5,7 +5,7 @@ namespace Lumeo.Services;
 public sealed class OverlayService
 {
     public event Action<OverlayInstance>? OnShow;
-    public event Action<string, object?>? OnClose;
+    public event Action<string, object?, bool>? OnClose;
 
     public Task<OverlayResult> ShowDialogAsync<TComponent>(
         string? title = null,
@@ -53,12 +53,12 @@ public sealed class OverlayService
 
     public void Close(string overlayId, object? result = null)
     {
-        OnClose?.Invoke(overlayId, result);
+        OnClose?.Invoke(overlayId, result, false);
     }
 
     public void Cancel(string overlayId)
     {
-        OnClose?.Invoke(overlayId, null);
+        OnClose?.Invoke(overlayId, null, true);
     }
 
     private Task<OverlayResult> ShowAsync(

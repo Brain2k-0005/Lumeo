@@ -29,6 +29,8 @@
     private bool _initialized;
     private string? _lastJson;
     private bool _lastShowLoading;
+    private string? _lastTheme;
+    private string? _lastGroup;
 
     private string CssClass => $"{Class}".Trim();
     private string StyleStr => AspectRatio is not null
@@ -44,6 +46,8 @@
 
             var json = GetOptionsJson();
             _lastJson = json;
+            _lastTheme = Theme;
+            _lastGroup = Group;
 
             try
             {
@@ -96,6 +100,22 @@
                     await _module!.InvokeVoidAsync("showLoading", _chartId, null);
                 else
                     await _module!.InvokeVoidAsync("hideLoading", _chartId);
+            }
+
+            if (Theme != _lastTheme)
+            {
+                _lastTheme = Theme;
+                // Re-initialize chart with new theme — echarts requires dispose+init for theme changes
+                await _module!.InvokeVoidAsync("disposeChart", _chartId);
+                var currentJson = _lastJson ?? GetOptionsJson();
+                await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
+            }
+
+            if (Group != _lastGroup)
+            {
+                _lastGroup = Group;
+                if (!string.IsNullOrEmpty(Group))
+                    await _module!.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
             }
         }
     }
