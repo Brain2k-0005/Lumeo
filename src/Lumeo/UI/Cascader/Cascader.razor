@@ -74,7 +74,7 @@
 
 @code {
     [Parameter] public List<string>? Value { get; set; }
-    [Parameter] public EventCallback<List<string>> ValueChanged { get; set; }
+    [Parameter] public EventCallback<List<string>?> ValueChanged { get; set; }
     [Parameter] public List<CascaderOption>? Options { get; set; }
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public bool Disabled { get; set; }
@@ -206,7 +206,7 @@
         Value = null;
         _selectedPath.Clear();
         _activePanels.Clear();
-        await ValueChanged.InvokeAsync(null!);
+        await ValueChanged.InvokeAsync(null);
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -242,6 +242,7 @@
 
     private async Task Cleanup()
     {
+        try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
