@@ -457,4 +457,105 @@ public class ComponentInteropServiceTests : IAsyncLifetime
         Assert.True(handler1Visible);
         Assert.Null(handler2Visible);
     }
+
+    // --- Toast Swipe Unregister ---
+
+    [Fact]
+    public async Task UnregisterToastSwipe_Removes_Handler_By_ToastId()
+    {
+        string? receivedId = null;
+        await _service.RegisterToastSwipe("element-1", "toast-1", (id) => { receivedId = id; return Task.CompletedTask; });
+
+        await _service.UnregisterToastSwipe("toast-1", "element-1");
+        await _service.OnToastSwipeDismiss("toast-1");
+
+        Assert.Null(receivedId); // Handler should have been removed
+    }
+
+    [Fact]
+    public async Task UnregisterToastSwipe_Does_Not_Throw_For_Unknown_Id()
+    {
+        var exception = await Record.ExceptionAsync(() =>
+            _service.UnregisterToastSwipe("unknown-toast", "unknown-element").AsTask());
+
+        Assert.Null(exception);
+    }
+
+    // --- UnpositionFixed ---
+
+    [Fact]
+    public async Task UnpositionFixed_Does_Not_Throw()
+    {
+        var exception = await Record.ExceptionAsync(() =>
+            _service.UnpositionFixed("content-id").AsTask());
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task PositionFixed_Then_UnpositionFixed_Does_Not_Throw()
+    {
+        await _service.PositionFixed("content-id", "ref-id", "start", false);
+
+        var exception = await Record.ExceptionAsync(() =>
+            _service.UnpositionFixed("content-id").AsTask());
+
+        Assert.Null(exception);
+    }
+
+    // --- ColumnResize ---
+
+    [Fact]
+    public async Task OnColumnResize_Calls_Only_Matching_Handler()
+    {
+        double receivedDelta = 0;
+        bool otherCalled = false;
+        await _service.RegisterColumnResize("col-1",
+            delta => { receivedDelta = delta; return Task.CompletedTask; },
+            () => Task.CompletedTask);
+        await _service.RegisterColumnResize("col-2",
+            _ => { otherCalled = true; return Task.CompletedTask; },
+            () => Task.CompletedTask);
+
+        await _service.OnColumnResize("col-1", 15.0);
+
+        Assert.Equal(15.0, receivedDelta);
+        Assert.False(otherCalled);
+    }
+
+    [Fact]
+    public async Task OnColumnResizeEnd_Calls_Only_Matching_Handler()
+    {
+        bool called = false;
+        bool otherCalled = false;
+        await _service.RegisterColumnResize("col-3",
+            _ => Task.CompletedTask,
+            () => { called = true; return Task.CompletedTask; });
+        await _service.RegisterColumnResize("col-4",
+            _ => Task.CompletedTask,
+            () => { otherCalled = true; return Task.CompletedTask; });
+
+        await _service.OnColumnResizeEnd("col-3");
+
+        Assert.True(called);
+        Assert.False(otherCalled);
+    }
+
+    // --- OTP Paste ---
+
+    [Fact]
+    public async Task OnOtpPaste_Calls_Only_Matching_Handler()
+    {
+        string? received = null;
+        bool otherCalled = false;
+        await _service.RegisterOtpPaste("otp-1", 6,
+            digits => { received = digits; return Task.CompletedTask; });
+        await _service.RegisterOtpPaste("otp-2", 4,
+            _ => { otherCalled = true; return Task.CompletedTask; });
+
+        await _service.OnOtpPaste("otp-1", "123456");
+
+        Assert.Equal("123456", received);
+        Assert.False(otherCalled);
+    }
 }

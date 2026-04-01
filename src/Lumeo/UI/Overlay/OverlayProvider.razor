@@ -91,39 +91,37 @@
         OverlayService.OnClose += HandleClose;
     }
 
-    private async void HandleShow(OverlayInstance instance)
+    private void HandleShow(OverlayInstance instance)
     {
-        try
-        {
-            _overlays.Add(instance);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo OverlayProvider] HandleShow error: {ex.Message}");
-        }
+        _ = InvokeAsync(() => HandleShowAsync(instance));
     }
 
-    private async void HandleClose(string id, object? result, bool cancelled)
+    private Task HandleShowAsync(OverlayInstance instance)
     {
-        try
-        {
-            var overlay = _overlays.FirstOrDefault(o => o.Id == id);
-            if (overlay is null) return;
+        _overlays.Add(instance);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
 
-            _overlays.Remove(overlay);
+    private void HandleClose(string id, object? result, bool cancelled)
+    {
+        _ = InvokeAsync(() => HandleCloseAsync(id, result, cancelled));
+    }
 
-            if (cancelled)
-                overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
-            else
-                overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
+    private Task HandleCloseAsync(string id, object? result, bool cancelled)
+    {
+        var overlay = _overlays.FirstOrDefault(o => o.Id == id);
+        if (overlay is null) return Task.CompletedTask;
 
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo OverlayProvider] HandleClose error: {ex.Message}");
-        }
+        _overlays.Remove(overlay);
+
+        if (cancelled)
+            overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
+        else
+            overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
+
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private void OnOverlayClosed(bool isOpen, string id)
