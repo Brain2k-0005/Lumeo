@@ -246,6 +246,12 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
     positionCleanups.set(contentId, cleanup);
 }
 
+export function unpositionFixed(contentId) {
+    if (positionCleanups.has(contentId)) {
+        positionCleanups.get(contentId)();
+    }
+}
+
 // --- Element Rect ---
 
 export function getElementRect(elementId) {
@@ -316,7 +322,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef) {
         else if (direction === 'left') shouldDismiss = delta < -100;
 
         if (shouldDismiss) {
-            dotnetRef.invokeMethodAsync('OnSwipeDismiss');
+            dotnetRef.invokeMethodAsync('OnSwipeDismiss', elementId);
         } else {
             el.style.transform = '';
         }
@@ -366,9 +372,9 @@ export function registerCarouselSwipe(elementId, orientation, dotnetRef) {
         const threshold = 50;
 
         if (orientation === 'horizontal' && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
-            dotnetRef.invokeMethodAsync('OnSwipe', deltaX > 0 ? 'prev' : 'next');
+            dotnetRef.invokeMethodAsync('OnSwipe', elementId, deltaX > 0 ? 'prev' : 'next');
         } else if (orientation === 'vertical' && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > threshold) {
-            dotnetRef.invokeMethodAsync('OnSwipe', deltaY > 0 ? 'prev' : 'next');
+            dotnetRef.invokeMethodAsync('OnSwipe', elementId, deltaY > 0 ? 'prev' : 'next');
         }
     };
 
@@ -377,7 +383,7 @@ export function registerCarouselSwipe(elementId, orientation, dotnetRef) {
         const maxScroll = orientation === 'horizontal'
             ? el.scrollWidth - el.clientWidth
             : el.scrollHeight - el.clientHeight;
-        dotnetRef.invokeMethodAsync('OnScrollPosition', scrollPos, maxScroll);
+        dotnetRef.invokeMethodAsync('OnScrollPosition', elementId, scrollPos, maxScroll);
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -433,7 +439,7 @@ export function registerResizeHandle(elementId, direction, dotnetRef) {
         const currentPos = direction === 'horizontal' ? e.clientX : e.clientY;
         const delta = currentPos - startPos;
         startPos = currentPos;
-        dotnetRef.invokeMethodAsync('OnResize', delta);
+        dotnetRef.invokeMethodAsync('OnResize', elementId, delta);
     };
 
     const onMouseUp = () => {
@@ -441,7 +447,7 @@ export function registerResizeHandle(elementId, direction, dotnetRef) {
         isDragging = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        dotnetRef.invokeMethodAsync('OnResizeEnd');
+        dotnetRef.invokeMethodAsync('OnResizeEnd', elementId);
     };
 
     el.addEventListener('mousedown', onMouseDown);
@@ -746,7 +752,7 @@ export function registerOtpPaste(baseId, length, dotnetRef) {
                 e.preventDefault();
                 const text = (e.clipboardData || window.clipboardData).getData('text');
                 const digits = text.replace(/\D/g, '').slice(0, length);
-                dotnetRef.invokeMethodAsync('OnOtpPaste', digits);
+                dotnetRef.invokeMethodAsync('OnOtpPaste', baseId, digits);
             };
             el.addEventListener('paste', handler);
             handlers.push(handler);
@@ -792,14 +798,14 @@ export function registerColumnResize(handleId, dotnetRef) {
         if (!isDragging) return;
         const delta = e.clientX - startX;
         startX = e.clientX;
-        dotnetRef.invokeMethodAsync('OnColumnResize', delta);
+        dotnetRef.invokeMethodAsync('OnColumnResize', handleId, delta);
     };
     const onMouseUp = () => {
         if (!isDragging) return;
         isDragging = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        dotnetRef.invokeMethodAsync('OnColumnResizeEnd');
+        dotnetRef.invokeMethodAsync('OnColumnResizeEnd', handleId);
     };
     handle.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);
@@ -940,30 +946,33 @@ export function unregisterAffix(elementId) {
 
 // --- BackToTop: scroll detection ---
 
-let backToTopRef = null;
-let backToTopThreshold = 300;
-let backToTopScrollHandler = null;
+const backToTopHandlers = new Map();
 
-export function registerBackToTop(dotnetRef, threshold) {
-    backToTopRef = dotnetRef;
-    backToTopThreshold = threshold || 300;
+export function registerBackToTop(id, dotnetRef, threshold) {
+    // Clean up previous registration for this id
+    if (backToTopHandlers.has(id)) {
+        const prev = backToTopHandlers.get(id);
+        window.removeEventListener('scroll', prev.handler);
+    }
 
-    backToTopScrollHandler = () => {
+    const effectiveThreshold = threshold || 300;
+    const handler = () => {
         const scrollY = window.scrollY || document.documentElement.scrollTop;
-        const visible = scrollY > backToTopThreshold;
-        backToTopRef.invokeMethodAsync('OnScrollVisibilityChanged', visible);
+        const visible = scrollY > effectiveThreshold;
+        dotnetRef.invokeMethodAsync('OnScrollVisibilityChanged', id, visible);
     };
 
-    window.addEventListener('scroll', backToTopScrollHandler, { passive: true });
-    backToTopScrollHandler(); // initial check
+    window.addEventListener('scroll', handler, { passive: true });
+    backToTopHandlers.set(id, { handler, dotnetRef });
+    handler(); // initial check
 }
 
-export function unregisterBackToTop() {
-    if (backToTopScrollHandler) {
-        window.removeEventListener('scroll', backToTopScrollHandler);
-        backToTopScrollHandler = null;
+export function unregisterBackToTop(id) {
+    const entry = backToTopHandlers.get(id);
+    if (entry) {
+        window.removeEventListener('scroll', entry.handler);
+        backToTopHandlers.delete(id);
     }
-    backToTopRef = null;
 }
 
 export function scrollToTop() {

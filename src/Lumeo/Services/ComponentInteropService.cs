@@ -107,6 +107,12 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
         await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth, side);
     }
 
+    public async ValueTask UnpositionFixed(string contentId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("unpositionFixed", contentId);
+    }
+
     // --- Element Rect ---
 
     public async ValueTask<ElementRect?> GetElementRect(string elementId)
@@ -145,9 +151,9 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     }
 
     [JSInvokable]
-    public async Task OnSwipeDismiss()
+    public async Task OnSwipeDismiss(string elementId)
     {
-        foreach (var handler in _drawerSwipeHandlers.Values)
+        if (_drawerSwipeHandlers.TryGetValue(elementId, out var handler))
         {
             await handler();
         }
@@ -178,18 +184,18 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     }
 
     [JSInvokable]
-    public async Task OnSwipe(string direction)
+    public async Task OnSwipe(string elementId, string direction)
     {
-        foreach (var handler in _carouselSwipeHandlers.Values)
+        if (_carouselSwipeHandlers.TryGetValue(elementId, out var handler))
         {
             await handler(direction);
         }
     }
 
     [JSInvokable]
-    public async Task OnScrollPosition(double scrollPos, double maxScroll)
+    public async Task OnScrollPosition(string elementId, double scrollPos, double maxScroll)
     {
-        foreach (var handler in _carouselScrollHandlers.Values)
+        if (_carouselScrollHandlers.TryGetValue(elementId, out var handler))
         {
             await handler(scrollPos, maxScroll);
         }
@@ -214,18 +220,18 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     }
 
     [JSInvokable]
-    public async Task OnResize(double delta)
+    public async Task OnResize(string elementId, double delta)
     {
-        foreach (var handler in _resizeHandlers.Values)
+        if (_resizeHandlers.TryGetValue(elementId, out var handler))
         {
             await handler(delta);
         }
     }
 
     [JSInvokable]
-    public async Task OnResizeEnd()
+    public async Task OnResizeEnd(string elementId)
     {
-        foreach (var handler in _resizeEndHandlers.Values)
+        if (_resizeEndHandlers.TryGetValue(elementId, out var handler))
         {
             await handler();
         }
@@ -266,7 +272,7 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
 
     public async ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)
     {
-        _toastSwipeHandlers[elementId] = handler;
+        _toastSwipeHandlers[toastId] = handler;
         var module = await GetModuleAsync();
         await module.InvokeVoidAsync("registerToastSwipe", elementId, toastId, GetSelfRef());
     }
@@ -314,9 +320,9 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     }
 
     [JSInvokable]
-    public async Task OnOtpPaste(string digits)
+    public async Task OnOtpPaste(string baseId, string digits)
     {
-        foreach (var handler in _otpPasteHandlers.Values)
+        if (_otpPasteHandlers.TryGetValue(baseId, out var handler))
         {
             await handler(digits);
         }
@@ -344,16 +350,16 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     }
 
     [JSInvokable]
-    public async Task OnColumnResize(double delta)
+    public async Task OnColumnResize(string handleId, double delta)
     {
-        foreach (var handler in _columnResizeHandlers.Values)
+        if (_columnResizeHandlers.TryGetValue(handleId, out var handler))
             await handler(delta);
     }
 
     [JSInvokable]
-    public async Task OnColumnResizeEnd()
+    public async Task OnColumnResizeEnd(string handleId)
     {
-        foreach (var handler in _columnResizeEndHandlers.Values)
+        if (_columnResizeEndHandlers.TryGetValue(handleId, out var handler))
             await handler();
     }
 
@@ -410,14 +416,14 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     {
         _backToTopHandlers[id] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerBackToTop", GetSelfRef(), threshold);
+        await module.InvokeVoidAsync("registerBackToTop", id, GetSelfRef(), threshold);
     }
 
     public async ValueTask UnregisterBackToTop(string id)
     {
         _backToTopHandlers.Remove(id);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterBackToTop");
+        await module.InvokeVoidAsync("unregisterBackToTop", id);
     }
 
     public async ValueTask ScrollToTop()
@@ -427,9 +433,9 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     }
 
     [JSInvokable]
-    public async Task OnScrollVisibilityChanged(bool visible)
+    public async Task OnScrollVisibilityChanged(string id, bool visible)
     {
-        foreach (var handler in _backToTopHandlers.Values)
+        if (_backToTopHandlers.TryGetValue(id, out var handler))
         {
             await handler(visible);
         }

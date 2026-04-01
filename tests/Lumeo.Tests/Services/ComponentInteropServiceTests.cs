@@ -187,15 +187,17 @@ public class ComponentInteropServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task OnSwipeDismiss_Calls_All_Drawer_Handlers()
+    public async Task OnSwipeDismiss_Calls_Only_Matching_Handler()
     {
-        int callCount = 0;
-        await _service.RegisterDrawerSwipe("d1", () => { callCount++; return Task.CompletedTask; });
-        await _service.RegisterDrawerSwipe("d2", () => { callCount++; return Task.CompletedTask; });
+        int handler1Count = 0;
+        int handler2Count = 0;
+        await _service.RegisterDrawerSwipe("d1", () => { handler1Count++; return Task.CompletedTask; });
+        await _service.RegisterDrawerSwipe("d2", () => { handler2Count++; return Task.CompletedTask; });
 
-        await _service.OnSwipeDismiss();
+        await _service.OnSwipeDismiss("d1");
 
-        Assert.Equal(2, callCount);
+        Assert.Equal(1, handler1Count);
+        Assert.Equal(0, handler2Count);
     }
 
     // --- CarouselSwipe ---
@@ -229,7 +231,7 @@ public class ComponentInteropServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task OnSwipe_Calls_All_Carousel_Handlers()
+    public async Task OnSwipe_Calls_Only_Matching_Handler()
     {
         var directions = new List<string>();
         await _service.RegisterCarouselSwipe(
@@ -237,15 +239,20 @@ public class ComponentInteropServiceTests : IAsyncLifetime
             "horizontal",
             dir => { directions.Add(dir); return Task.CompletedTask; },
             (_, _) => Task.CompletedTask);
+        await _service.RegisterCarouselSwipe(
+            "c2",
+            "horizontal",
+            dir => Task.CompletedTask,
+            (_, _) => Task.CompletedTask);
 
-        await _service.OnSwipe("left");
+        await _service.OnSwipe("c1", "left");
 
         Assert.Single(directions);
         Assert.Equal("left", directions[0]);
     }
 
     [Fact]
-    public async Task OnScrollPosition_Calls_All_Carousel_Scroll_Handlers()
+    public async Task OnScrollPosition_Calls_Only_Matching_Handler()
     {
         double receivedPos = -1;
         double receivedMax = -1;
@@ -255,8 +262,13 @@ public class ComponentInteropServiceTests : IAsyncLifetime
             "horizontal",
             _ => Task.CompletedTask,
             (pos, max) => { receivedPos = pos; receivedMax = max; return Task.CompletedTask; });
+        await _service.RegisterCarouselSwipe(
+            "c3",
+            "horizontal",
+            _ => Task.CompletedTask,
+            (_, _) => Task.CompletedTask);
 
-        await _service.OnScrollPosition(100.0, 500.0);
+        await _service.OnScrollPosition("c2", 100.0, 500.0);
 
         Assert.Equal(100.0, receivedPos);
         Assert.Equal(500.0, receivedMax);
@@ -293,33 +305,47 @@ public class ComponentInteropServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task OnResize_Calls_All_Resize_Handlers()
+    public async Task OnResize_Calls_Only_Matching_Handler()
     {
         double receivedDelta = 0;
+        bool otherCalled = false;
         await _service.RegisterResizeHandle(
             "h1",
             "horizontal",
             delta => { receivedDelta = delta; return Task.CompletedTask; },
             () => Task.CompletedTask);
+        await _service.RegisterResizeHandle(
+            "h3",
+            "horizontal",
+            _ => { otherCalled = true; return Task.CompletedTask; },
+            () => Task.CompletedTask);
 
-        await _service.OnResize(42.5);
+        await _service.OnResize("h1", 42.5);
 
         Assert.Equal(42.5, receivedDelta);
+        Assert.False(otherCalled);
     }
 
     [Fact]
-    public async Task OnResizeEnd_Calls_All_ResizeEnd_Handlers()
+    public async Task OnResizeEnd_Calls_Only_Matching_Handler()
     {
         var called = false;
+        bool otherCalled = false;
         await _service.RegisterResizeHandle(
             "h2",
             "vertical",
             _ => Task.CompletedTask,
             () => { called = true; return Task.CompletedTask; });
+        await _service.RegisterResizeHandle(
+            "h4",
+            "vertical",
+            _ => Task.CompletedTask,
+            () => { otherCalled = true; return Task.CompletedTask; });
 
-        await _service.OnResizeEnd();
+        await _service.OnResizeEnd("h2");
 
         Assert.True(called);
+        Assert.False(otherCalled);
     }
 
     // --- Scrollspy ---
@@ -401,5 +427,34 @@ public class ComponentInteropServiceTests : IAsyncLifetime
             _service.DisposeAsync().AsTask());
 
         Assert.Null(exception);
+    }
+
+    // --- ToastSwipe key fix ---
+
+    [Fact]
+    public async Task OnToastSwipeDismiss_Calls_Handler_By_ToastId()
+    {
+        string? receivedId = null;
+        await _service.RegisterToastSwipe("element-1", "toast-1", (id) => { receivedId = id; return Task.CompletedTask; });
+
+        await _service.OnToastSwipeDismiss("toast-1");
+
+        Assert.Equal("toast-1", receivedId);
+    }
+
+    // --- BackToTop instance-specific ---
+
+    [Fact]
+    public async Task OnScrollVisibilityChanged_Calls_Only_Matching_Handler()
+    {
+        bool? handler1Visible = null;
+        bool? handler2Visible = null;
+        await _service.RegisterBackToTop("bt1", 100, (v) => { handler1Visible = v; return Task.CompletedTask; });
+        await _service.RegisterBackToTop("bt2", 200, (v) => { handler2Visible = v; return Task.CompletedTask; });
+
+        await _service.OnScrollVisibilityChanged("bt1", true);
+
+        Assert.True(handler1Visible);
+        Assert.Null(handler2Visible);
     }
 }
