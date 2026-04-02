@@ -641,7 +641,7 @@
                 var menuAccent = await JS.InvokeAsync<string>("themeManager.getMenuAccent");
                 if (!string.IsNullOrEmpty(menuAccent)) _activeMenuAccent = menuAccent;
             }
-            catch { }
+            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo Docs] Failed to load theme settings: {ex.Message}"); }
 
             // Register keyboard shortcuts
             _kbdShortcuts.Add(await Shortcuts.RegisterAsync("r", async () =>
@@ -723,7 +723,7 @@
             parts.Add($"\n:root {{\n  font-family: {fontOption?.Family};\n}}");
         }
         var css = string.Join("\n", parts);
-        try { await JS.InvokeVoidAsync("themeManager.copyText", css); } catch { }
+        try { await JS.InvokeVoidAsync("themeManager.copyText", css); } catch (JSException) { /* clipboard API may be unavailable */ }
         _copied = true;
         StateHasChanged();
         await Task.Delay(2000);
