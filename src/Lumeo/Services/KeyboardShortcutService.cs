@@ -118,36 +118,15 @@ public sealed class KeyboardShortcutService : IAsyncDisposable
 
     private record ShortcutRegistration(string NormalizedCombo, Func<Task> Handler, bool PreventDefault);
 
-    private sealed class ShortcutHandle(KeyboardShortcutService service, string id) : IDisposable, IAsyncDisposable
+    private sealed class ShortcutHandle(KeyboardShortcutService service, string id) : IAsyncDisposable
     {
         private bool _disposed;
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            // Remove from local dictionary immediately to prevent handler from firing
-            service._shortcuts.Remove(id);
-            // Fire-and-forget JS cleanup as fallback
-            _ = CleanupJsAsync();
-        }
 
         public async ValueTask DisposeAsync()
         {
             if (_disposed) return;
             _disposed = true;
             await service.UnregisterAsync(id);
-        }
-
-        private async Task CleanupJsAsync()
-        {
-            try
-            {
-                if (service._module is not null)
-                    await service._module.InvokeVoidAsync("removeShortcut", id);
-            }
-            catch (JSDisconnectedException) { }
-            catch (ObjectDisposedException) { }
         }
     }
 }
