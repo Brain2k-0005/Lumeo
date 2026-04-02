@@ -168,6 +168,32 @@ public class TooltipTests : IAsyncLifetime
         Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex")));
     }
 
+    // --- Mouse interaction ---
+
+    [Fact]
+    public void Tooltip_Shows_On_MouseEnter_With_Zero_Delay()
+    {
+        var cut = _ctx.Render<L.Tooltip>(p => p
+            .Add(x => x.ShowDelay, 0)
+            .Add(x => x.ChildContent, builder =>
+            {
+                builder.OpenComponent<L.TooltipTrigger>(0);
+                builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Hover me")));
+                builder.CloseComponent();
+                builder.OpenComponent<L.TooltipContent>(2);
+                builder.AddAttribute(3, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Tooltip text")));
+                builder.CloseComponent();
+            }));
+
+        cut.Find("div").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        // Verify tooltip content appears (visible class replaces invisible)
+        Assert.Contains("Tooltip text", cut.Markup);
+        var tooltip = cut.Find("[role='tooltip']");
+        var cls = tooltip.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("invisible", cls);
+        Assert.Contains("visible", cls);
+    }
+
     // --- AdditionalAttributes forwarded ---
 
     [Fact]
