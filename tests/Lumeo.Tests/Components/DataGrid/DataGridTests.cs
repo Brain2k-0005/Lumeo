@@ -562,4 +562,17 @@ public class DataGridTests : IAsyncLifetime
         var root = cut.Find("[data-testid=my-datagrid]");
         Assert.NotNull(root);
     }
+
+    [Fact]
+    public void DataGrid_Has_OnError_Parameter()
+    {
+        Exception? receivedError = null;
+        var cut = _ctx.Render<DataGrid<TestItem>>(p => p
+            .Add(x => x.Items, GetTestData())
+            .Add(x => x.Columns, GetColumns())
+            .Add(x => x.OnError, EventCallback.Factory.Create<Exception>(
+                new object(), ex => receivedError = ex)));
+
+        Assert.NotNull(cut.Find("table"));
+    }
 }

@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -200,5 +201,66 @@ public class ChartTests : IAsyncLifetime
         // Both should render a div container without error
         Assert.NotNull(cut1.Find("div"));
         Assert.NotNull(cut2.Find("div"));
+    }
+
+    [Fact]
+    public void Chart_With_OnClick_Renders_Without_Error()
+    {
+        bool clicked = false;
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.OnClick, EventCallback.Factory.Create<L.Chart.ChartEventArgs>(
+                new object(), _ => { clicked = true; return Task.CompletedTask; })));
+
+        Assert.NotNull(cut.Find("div"));
+    }
+
+    [Fact]
+    public void Chart_With_Group_Renders_Without_Error()
+    {
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.Group, "sync-group"));
+
+        Assert.NotNull(cut.Find("div"));
+    }
+
+    [Fact]
+    public void Chart_Theme_Change_With_Group_Does_Not_Throw()
+    {
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.Theme, "light")
+            .Add(x => x.Group, "sync-group"));
+
+        var ex = Record.Exception(() =>
+            cut.Render(p => p.Add(x => x.Theme, "dark")));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Chart_Theme_Change_With_OnClick_Does_Not_Throw()
+    {
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.Theme, "light")
+            .Add(x => x.OnClick, EventCallback.Factory.Create<L.Chart.ChartEventArgs>(
+                new object(), _ => Task.CompletedTask)));
+
+        var ex = Record.Exception(() =>
+            cut.Render(p => p.Add(x => x.Theme, "dark")));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Chart_With_OnInitError_Renders_Without_Error()
+    {
+        // Verifies that the OnInitError parameter is accepted and the component renders normally
+        string? capturedError = null;
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.OnInitError, EventCallback.Factory.Create<string>(
+                new object(), msg => capturedError = msg)));
+
+        Assert.NotNull(cut.Find("div"));
+        // No error fired in unit tests because echarts-interop is mocked in Loose mode
+        Assert.Null(capturedError);
     }
 }

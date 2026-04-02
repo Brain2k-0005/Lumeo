@@ -354,7 +354,11 @@
     {
         if (firstRender)
         {
-            _layoutService ??= new DataGridLayoutService(Interop);
+            _layoutService ??= new DataGridLayoutService(Interop, ex =>
+            {
+                if (OnError.HasDelegate)
+                    InvokeAsync(() => OnError.InvokeAsync(ex));
+            });
             _serverService ??= new DataGridServerService();
 
             // Snapshot default layout now that columns are registered (via ColumnDef)
@@ -373,7 +377,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _layoutService ??= new DataGridLayoutService(Interop);
+        _layoutService ??= new DataGridLayoutService(Interop, ex =>
+        {
+            if (OnError.HasDelegate)
+                InvokeAsync(() => OnError.InvokeAsync(ex));
+        });
         _serverService ??= new DataGridServerService();
 
         if (ServerMode)
@@ -980,7 +988,10 @@
     {
         if (!EnableLayoutPersistence && !OnLayoutSave.HasDelegate) return;
         var gen = _layoutService!.CurrentSaveGeneration;
-        _layoutService.ScheduleAutoSave(() => InvokeAsync(() => PersistLayoutAsync(gen + 1)));
+        _layoutService.ScheduleAutoSave(async () =>
+        {
+            await InvokeAsync(() => PersistLayoutAsync(gen + 1));
+        });
     }
 
     private async Task PersistLayoutAsync(int? generation = null)
