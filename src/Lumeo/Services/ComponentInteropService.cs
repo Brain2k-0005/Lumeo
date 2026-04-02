@@ -1,3 +1,4 @@
+using Lumeo.Services.Interop;
 using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
@@ -7,14 +8,15 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     private readonly IJSRuntime _jsRuntime;
     private IJSObjectReference? _module;
     private DotNetObjectReference<ComponentInteropService>? _selfRef;
-    private readonly Dictionary<string, Func<Task>> _clickOutsideHandlers = new();
-    private readonly Dictionary<string, Func<Task>> _drawerSwipeHandlers = new();
-    private readonly Dictionary<string, Func<string, Task>> _carouselSwipeHandlers = new();
-    private readonly Dictionary<string, Func<double, double, Task>> _carouselScrollHandlers = new();
-    private readonly Dictionary<string, Func<double, Task>> _resizeHandlers = new();
-    private readonly Dictionary<string, Func<Task>> _resizeEndHandlers = new();
-    private readonly Dictionary<string, Func<string?, Task>> _scrollspyHandlers = new();
-    private readonly Dictionary<string, Func<string, Task>> _toastSwipeHandlers = new();
+
+    // Adapters
+    private readonly ClickOutsideInterop _clickOutside = new();
+    private readonly FloatingPositionInterop _floatingPosition = new();
+    private readonly FocusInterop _focus = new();
+    private readonly SwipeInterop _swipe = new();
+    private readonly ResizeInterop _resize = new();
+    private readonly ScrollInterop _scroll = new();
+    private readonly UtilityInterop _utility = new();
 
     public ComponentInteropService(IJSRuntime jsRuntime)
     {
@@ -34,69 +36,65 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
         return _selfRef;
     }
 
+    // --- Click Outside ---
+
     public async ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)
     {
-        _clickOutsideHandlers[elementId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerClickOutside", elementId, triggerElementId, GetSelfRef());
+        await _clickOutside.Register(module, GetSelfRef(), elementId, triggerElementId, handler);
     }
 
     public async ValueTask UnregisterClickOutside(string elementId)
     {
-        _clickOutsideHandlers.Remove(elementId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterClickOutside", elementId);
+        await _clickOutside.Unregister(module, elementId);
     }
 
     [JSInvokable]
-    public async Task OnClickOutside(string elementId)
-    {
-        if (_clickOutsideHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler();
-        }
-    }
+    public async Task OnClickOutside(string elementId) => await _clickOutside.OnCallback(elementId);
+
+    // --- Focus / Scroll Lock ---
 
     public async ValueTask FocusElement(string elementId)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("focusElementById", elementId);
+        await _focus.FocusElement(module, elementId);
     }
 
     public async ValueTask FocusMenuItemByIndex(string containerId, int index)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("focusMenuItemByIndex", containerId, index);
+        await _focus.FocusMenuItemByIndex(module, containerId, index);
     }
 
     public async ValueTask<int> GetMenuItemCount(string containerId)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<int>("getMenuItemCount", containerId);
+        return await _focus.GetMenuItemCount(module, containerId);
     }
 
     public async ValueTask LockScroll()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("lockScroll");
+        await _focus.LockScroll(module);
     }
 
     public async ValueTask UnlockScroll()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unlockScroll");
+        await _focus.UnlockScroll(module);
     }
 
     public async ValueTask SetupFocusTrap(string elementId)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("setupFocusTrap", elementId);
+        await _focus.SetupFocusTrap(module, elementId);
     }
 
     public async ValueTask RemoveFocusTrap(string elementId)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("removeFocusTrap", elementId);
+        await _focus.RemoveFocusTrap(module, elementId);
     }
 
     // --- Floating Position ---
@@ -104,13 +102,13 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth, side);
+        await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side);
     }
 
     public async ValueTask UnpositionFixed(string contentId)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unpositionFixed", contentId);
+        await _floatingPosition.UnpositionFixed(module, contentId);
     }
 
     // --- Element Rect ---
@@ -118,335 +116,235 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     public async ValueTask<ElementRect?> GetElementRect(string elementId)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<ElementRect?>("getElementRect", elementId);
+        return await _floatingPosition.GetElementRect(module, elementId);
     }
 
     public async ValueTask<double> GetElementDimension(string elementId, string dimension)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<double>("getElementDimension", elementId, dimension);
+        return await _floatingPosition.GetElementDimension(module, elementId, dimension);
     }
 
     // --- Drawer Swipe ---
 
     public async ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
     {
-        _drawerSwipeHandlers[elementId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, GetSelfRef());
+        await _swipe.RegisterDrawerSwipe(module, GetSelfRef(), elementId, direction, handler);
     }
 
     public async ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler)
     {
-        _drawerSwipeHandlers[elementId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, "down", GetSelfRef());
+        await _swipe.RegisterDrawerSwipe(module, GetSelfRef(), elementId, handler);
     }
 
     public async ValueTask UnregisterDrawerSwipe(string elementId)
     {
-        _drawerSwipeHandlers.Remove(elementId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterDrawerSwipe", elementId);
+        await _swipe.UnregisterDrawerSwipe(module, elementId);
     }
 
     [JSInvokable]
-    public async Task OnSwipeDismiss(string elementId)
-    {
-        if (_drawerSwipeHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler();
-        }
-    }
+    public async Task OnSwipeDismiss(string elementId) => await _swipe.OnSwipeDismiss(elementId);
 
     // --- Carousel Swipe ---
 
     public async ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler)
     {
-        _carouselSwipeHandlers[elementId] = swipeHandler;
-        _carouselScrollHandlers[elementId] = scrollHandler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerCarouselSwipe", elementId, orientation, GetSelfRef());
+        await _swipe.RegisterCarouselSwipe(module, GetSelfRef(), elementId, orientation, swipeHandler, scrollHandler);
     }
 
     public async ValueTask UnregisterCarouselSwipe(string elementId)
     {
-        _carouselSwipeHandlers.Remove(elementId);
-        _carouselScrollHandlers.Remove(elementId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterCarouselSwipe", elementId);
+        await _swipe.UnregisterCarouselSwipe(module, elementId);
     }
 
     public async ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth")
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("carouselScrollTo", elementId, index, behavior);
+        await _swipe.CarouselScrollTo(module, elementId, index, behavior);
     }
 
     [JSInvokable]
-    public async Task OnSwipe(string elementId, string direction)
-    {
-        if (_carouselSwipeHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler(direction);
-        }
-    }
+    public async Task OnSwipe(string elementId, string direction) => await _swipe.OnSwipe(elementId, direction);
 
     [JSInvokable]
     public async Task OnScrollPosition(string elementId, double scrollPos, double maxScroll)
-    {
-        if (_carouselScrollHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler(scrollPos, maxScroll);
-        }
-    }
+        => await _swipe.OnScrollPosition(elementId, scrollPos, maxScroll);
 
     // --- Resizable Handle ---
 
     public async ValueTask RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler)
     {
-        _resizeHandlers[elementId] = resizeHandler;
-        _resizeEndHandlers[elementId] = resizeEndHandler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerResizeHandle", elementId, direction, GetSelfRef());
+        await _resize.RegisterResizeHandle(module, GetSelfRef(), elementId, direction, resizeHandler, resizeEndHandler);
     }
 
     public async ValueTask UnregisterResizeHandle(string elementId)
     {
-        _resizeHandlers.Remove(elementId);
-        _resizeEndHandlers.Remove(elementId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterResizeHandle", elementId);
+        await _resize.UnregisterResizeHandle(module, elementId);
     }
 
     [JSInvokable]
-    public async Task OnResize(string elementId, double delta)
-    {
-        if (_resizeHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler(delta);
-        }
-    }
+    public async Task OnResize(string elementId, double delta) => await _resize.OnResize(elementId, delta);
 
     [JSInvokable]
-    public async Task OnResizeEnd(string elementId)
-    {
-        if (_resizeEndHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler();
-        }
-    }
+    public async Task OnResizeEnd(string elementId) => await _resize.OnResizeEnd(elementId);
 
     // --- Scrollspy ---
 
     public async ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler)
     {
-        _scrollspyHandlers[containerId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerScrollspy", containerId, offset, smooth, GetSelfRef());
+        await _scroll.RegisterScrollspy(module, GetSelfRef(), containerId, offset, smooth, handler);
     }
 
     public async ValueTask UnregisterScrollspy(string containerId)
     {
-        _scrollspyHandlers.Remove(containerId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterScrollspy", containerId);
+        await _scroll.UnregisterScrollspy(module, containerId);
     }
 
     public async ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("scrollspyScrollTo", containerId, sectionId, smooth);
+        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth);
     }
 
     [JSInvokable]
     public async Task OnScrollspyUpdate(string containerId, string? activeId)
-    {
-        if (_scrollspyHandlers.TryGetValue(containerId, out var handler))
-        {
-            await handler(activeId);
-        }
-    }
+        => await _scroll.OnScrollspyUpdate(containerId, activeId);
 
     // --- Toast Swipe ---
 
     public async ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)
     {
-        _toastSwipeHandlers[toastId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerToastSwipe", elementId, toastId, GetSelfRef());
+        await _swipe.RegisterToastSwipe(module, GetSelfRef(), elementId, toastId, handler);
     }
 
     public async ValueTask UnregisterToastSwipe(string toastId, string elementId)
     {
-        _toastSwipeHandlers.Remove(toastId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterToastSwipe", elementId);
+        await _swipe.UnregisterToastSwipe(module, toastId, elementId);
     }
 
     [JSInvokable]
-    public async Task OnToastSwipeDismiss(string toastId)
-    {
-        if (_toastSwipeHandlers.TryGetValue(toastId, out var handler))
-        {
-            await handler(toastId);
-        }
-    }
+    public async Task OnToastSwipeDismiss(string toastId) => await _swipe.OnToastSwipeDismiss(toastId);
 
     // --- Auto Resize ---
 
     public async ValueTask SetupAutoResize(string elementId, int maxRows)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("setupAutoResize", elementId, maxRows);
+        await _utility.SetupAutoResize(module, elementId, maxRows);
     }
 
     // --- OTP Paste ---
 
-    private readonly Dictionary<string, Func<string, Task>> _otpPasteHandlers = new();
-
     public async ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)
     {
-        _otpPasteHandlers[baseId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerOtpPaste", baseId, length, GetSelfRef());
+        await _utility.RegisterOtpPaste(module, GetSelfRef(), baseId, length, handler);
     }
 
     public async ValueTask UnregisterOtpPaste(string baseId, int length)
     {
-        _otpPasteHandlers.Remove(baseId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterOtpPaste", baseId, length);
+        await _utility.UnregisterOtpPaste(module, baseId, length);
     }
 
     [JSInvokable]
-    public async Task OnOtpPaste(string baseId, string digits)
-    {
-        if (_otpPasteHandlers.TryGetValue(baseId, out var handler))
-        {
-            await handler(digits);
-        }
-    }
+    public async Task OnOtpPaste(string baseId, string digits) => await _utility.OnOtpPaste(baseId, digits);
 
     // --- DataGrid Column Resize ---
 
-    private readonly Dictionary<string, Func<double, Task>> _columnResizeHandlers = new();
-    private readonly Dictionary<string, Func<Task>> _columnResizeEndHandlers = new();
-
     public async ValueTask RegisterColumnResize(string handleId, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler)
     {
-        _columnResizeHandlers[handleId] = resizeHandler;
-        _columnResizeEndHandlers[handleId] = resizeEndHandler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerColumnResize", handleId, GetSelfRef());
+        await _resize.RegisterColumnResize(module, GetSelfRef(), handleId, resizeHandler, resizeEndHandler);
     }
 
     public async ValueTask UnregisterColumnResize(string handleId)
     {
-        _columnResizeHandlers.Remove(handleId);
-        _columnResizeEndHandlers.Remove(handleId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterColumnResize", handleId);
+        await _resize.UnregisterColumnResize(module, handleId);
     }
 
     [JSInvokable]
-    public async Task OnColumnResize(string handleId, double delta)
-    {
-        if (_columnResizeHandlers.TryGetValue(handleId, out var handler))
-            await handler(delta);
-    }
+    public async Task OnColumnResize(string handleId, double delta) => await _resize.OnColumnResize(handleId, delta);
 
     [JSInvokable]
-    public async Task OnColumnResizeEnd(string handleId)
-    {
-        if (_columnResizeEndHandlers.TryGetValue(handleId, out var handler))
-            await handler();
-    }
+    public async Task OnColumnResizeEnd(string handleId) => await _resize.OnColumnResizeEnd(handleId);
 
     // --- Tour: Element Rect By Selector ---
 
     public async ValueTask<ElementRect?> GetElementRectBySelector(string selector)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<ElementRect?>("getElementRectBySelector", selector);
+        return await _floatingPosition.GetElementRectBySelector(module, selector);
     }
 
     // --- Affix ---
 
-    private readonly Dictionary<string, Func<bool, Task>> _affixHandlers = new();
-
     public async ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
     {
-        _affixHandlers[elementId] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerAffix", elementId, offsetTop, offsetBottom, target, GetSelfRef());
+        await _scroll.RegisterAffix(module, GetSelfRef(), elementId, offsetTop, offsetBottom, target, handler);
     }
 
     public async ValueTask UnregisterAffix(string elementId)
     {
-        _affixHandlers.Remove(elementId);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterAffix", elementId);
+        await _scroll.UnregisterAffix(module, elementId);
     }
 
     [JSInvokable]
-    public async Task OnAffixChanged(string elementId, bool isFixed)
-    {
-        if (_affixHandlers.TryGetValue(elementId, out var handler))
-        {
-            await handler(isFixed);
-        }
-    }
+    public async Task OnAffixChanged(string elementId, bool isFixed) => await _scroll.OnAffixChanged(elementId, isFixed);
 
     // --- Mention: Textarea Caret Position ---
 
     public async ValueTask<TextareaCaretInfo> GetTextareaCaretPosition(string elementId)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<TextareaCaretInfo>("getTextareaCaretPosition", elementId);
+        return await _utility.GetTextareaCaretPosition(module, elementId);
     }
 
     public record TextareaCaretInfo(double Top, double Left, int SelectionStart);
 
     // --- BackToTop ---
 
-    private readonly Dictionary<string, Func<bool, Task>> _backToTopHandlers = new();
-
     public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
     {
-        _backToTopHandlers[id] = handler;
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("registerBackToTop", id, GetSelfRef(), threshold);
+        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler);
     }
 
     public async ValueTask UnregisterBackToTop(string id)
     {
-        _backToTopHandlers.Remove(id);
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("unregisterBackToTop", id);
+        await _scroll.UnregisterBackToTop(module, id);
     }
 
     public async ValueTask ScrollToTop()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("scrollToTop");
+        await _scroll.ScrollToTop(module);
     }
 
     [JSInvokable]
-    public async Task OnScrollVisibilityChanged(string id, bool visible)
-    {
-        if (_backToTopHandlers.TryGetValue(id, out var handler))
-        {
-            await handler(visible);
-        }
-    }
+    public async Task OnScrollVisibilityChanged(string id, bool visible) => await _scroll.OnScrollVisibilityChanged(id, visible);
 
     // --- File Download ---
 
     public async ValueTask DownloadFile(string fileName, string contentBase64, string mimeType = "application/octet-stream")
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("downloadFile", fileName, contentBase64, mimeType);
+        await _utility.DownloadFile(module, fileName, contentBase64, mimeType);
     }
 
     // --- Clipboard ---
@@ -454,7 +352,7 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     public async ValueTask CopyToClipboard(string text)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("copyToClipboard", text);
+        await _utility.CopyToClipboard(module, text);
     }
 
     // --- LocalStorage ---
@@ -462,44 +360,36 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
     public async ValueTask SaveToLocalStorage(string key, string value)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("saveToLocalStorage", key, value);
+        await _utility.SaveToLocalStorage(module, key, value);
     }
 
     public async ValueTask<string?> LoadFromLocalStorage(string key)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<string?>("loadFromLocalStorage", key);
+        return await _utility.LoadFromLocalStorage(module, key);
     }
 
     public async ValueTask RemoveFromLocalStorage(string key)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("removeFromLocalStorage", key);
+        await _utility.RemoveFromLocalStorage(module, key);
     }
 
     public record ElementRect(double X, double Y, double Width, double Height);
 
     public void Dispose()
     {
-        _clickOutsideHandlers.Clear();
-        _drawerSwipeHandlers.Clear();
-        _carouselSwipeHandlers.Clear();
-        _carouselScrollHandlers.Clear();
-        _resizeHandlers.Clear();
-        _resizeEndHandlers.Clear();
-        _scrollspyHandlers.Clear();
-        _toastSwipeHandlers.Clear();
-        _otpPasteHandlers.Clear();
-        _columnResizeHandlers.Clear();
-        _columnResizeEndHandlers.Clear();
-        _affixHandlers.Clear();
-        _backToTopHandlers.Clear();
+        _clickOutside.Clear();
+        _swipe.Clear();
+        _resize.Clear();
+        _scroll.Clear();
+        _utility.Clear();
         _selfRef?.Dispose();
     }
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var id in _clickOutsideHandlers.Keys.ToList())
+        foreach (var id in _clickOutside.RegisteredIds.ToList())
         {
             try
             {
@@ -514,19 +404,11 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
             }
         }
 
-        _clickOutsideHandlers.Clear();
-        _drawerSwipeHandlers.Clear();
-        _carouselSwipeHandlers.Clear();
-        _carouselScrollHandlers.Clear();
-        _resizeHandlers.Clear();
-        _resizeEndHandlers.Clear();
-        _scrollspyHandlers.Clear();
-        _toastSwipeHandlers.Clear();
-        _otpPasteHandlers.Clear();
-        _columnResizeHandlers.Clear();
-        _columnResizeEndHandlers.Clear();
-        _affixHandlers.Clear();
-        _backToTopHandlers.Clear();
+        _clickOutside.Clear();
+        _swipe.Clear();
+        _resize.Clear();
+        _scroll.Clear();
+        _utility.Clear();
 
         if (_module is not null)
         {
