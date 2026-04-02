@@ -281,4 +281,272 @@ public class StrictInteropTests : IAsyncLifetime
         var invocation = _module.VerifyInvoke("unregisterCarouselSwipe");
         Assert.Equal("carousel-1", invocation.Arguments[0]);
     }
+
+    // --- Scrollspy ScrollTo ---
+
+    [Fact]
+    public async Task ScrollspyScrollTo_Invokes_JS_With_Correct_Args()
+    {
+        await _service.ScrollspyScrollTo("container-1", "section-2", true);
+
+        var inv = _module.VerifyInvoke("scrollspyScrollTo");
+        Assert.Equal("container-1", inv.Arguments[0]);
+        Assert.Equal("section-2", inv.Arguments[1]);
+        Assert.Equal(true, inv.Arguments[2]);
+    }
+
+    [Fact]
+    public async Task ScrollspyScrollTo_Smooth_False_Passes_False_As_Third_Arg()
+    {
+        await _service.ScrollspyScrollTo("container-2", "section-3", false);
+
+        var inv = _module.VerifyInvoke("scrollspyScrollTo");
+        Assert.Equal("container-2", inv.Arguments[0]);
+        Assert.Equal("section-3", inv.Arguments[1]);
+        Assert.Equal(false, inv.Arguments[2]);
+    }
+
+    // --- Affix ---
+
+    [Fact]
+    public async Task RegisterAffix_Invokes_JS_With_Correct_Args()
+    {
+        // JS call: registerAffix(elementId, offsetTop, offsetBottom, target, selfRef)
+        await _service.RegisterAffix("elem-1", 100, 50, "#target", _ => Task.CompletedTask);
+
+        var inv = _module.VerifyInvoke("registerAffix");
+        Assert.Equal("elem-1", inv.Arguments[0]);
+        Assert.Equal(100, inv.Arguments[1]);
+        Assert.Equal(50, inv.Arguments[2]);
+        Assert.Equal("#target", inv.Arguments[3]);
+        // Arguments[4] is DotNetObjectReference — not assertable by value
+    }
+
+    [Fact]
+    public async Task RegisterAffix_Null_OffsetBottom_And_Target_Passes_Nulls()
+    {
+        await _service.RegisterAffix("elem-2", 0, null, null, _ => Task.CompletedTask);
+
+        var inv = _module.VerifyInvoke("registerAffix");
+        Assert.Equal("elem-2", inv.Arguments[0]);
+        Assert.Equal(0, inv.Arguments[1]);
+        Assert.Null(inv.Arguments[2]);
+        Assert.Null(inv.Arguments[3]);
+    }
+
+    [Fact]
+    public async Task UnregisterAffix_Invokes_JS_With_ElementId()
+    {
+        await _service.RegisterAffix("elem-1", 0, null, null, _ => Task.CompletedTask);
+        await _service.UnregisterAffix("elem-1");
+
+        var inv = _module.VerifyInvoke("unregisterAffix");
+        Assert.Equal("elem-1", inv.Arguments[0]);
+    }
+
+    // --- Column Resize ---
+
+    [Fact]
+    public async Task RegisterColumnResize_Invokes_JS_With_HandleId()
+    {
+        // JS call: registerColumnResize(handleId, selfRef) — no direction
+        await _service.RegisterColumnResize("handle-1", _ => Task.CompletedTask, () => Task.CompletedTask);
+
+        var inv = _module.VerifyInvoke("registerColumnResize");
+        Assert.Equal("handle-1", inv.Arguments[0]);
+        // Arguments[1] is DotNetObjectReference — not assertable by value
+    }
+
+    [Fact]
+    public async Task UnregisterColumnResize_Invokes_JS_With_HandleId()
+    {
+        await _service.RegisterColumnResize("handle-1", _ => Task.CompletedTask, () => Task.CompletedTask);
+        await _service.UnregisterColumnResize("handle-1");
+
+        var inv = _module.VerifyInvoke("unregisterColumnResize");
+        Assert.Equal("handle-1", inv.Arguments[0]);
+    }
+
+    // --- OTP Paste ---
+
+    [Fact]
+    public async Task RegisterOtpPaste_Invokes_JS_With_BaseId_And_Length()
+    {
+        // JS call: registerOtpPaste(baseId, length, selfRef)
+        await _service.RegisterOtpPaste("otp-1", 6, _ => Task.CompletedTask);
+
+        var inv = _module.VerifyInvoke("registerOtpPaste");
+        Assert.Equal("otp-1", inv.Arguments[0]);
+        Assert.Equal(6, inv.Arguments[1]);
+        // Arguments[2] is DotNetObjectReference — not assertable by value
+    }
+
+    [Fact]
+    public async Task UnregisterOtpPaste_Invokes_JS_With_BaseId_And_Length()
+    {
+        await _service.RegisterOtpPaste("otp-1", 6, _ => Task.CompletedTask);
+        await _service.UnregisterOtpPaste("otp-1", 6);
+
+        var inv = _module.VerifyInvoke("unregisterOtpPaste");
+        Assert.Equal("otp-1", inv.Arguments[0]);
+        Assert.Equal(6, inv.Arguments[1]);
+    }
+
+    // --- AutoResize ---
+
+    [Fact]
+    public async Task SetupAutoResize_Invokes_JS_With_ElementId_And_MaxRows()
+    {
+        await _service.SetupAutoResize("textarea-1", 5);
+
+        var inv = _module.VerifyInvoke("setupAutoResize");
+        Assert.Equal("textarea-1", inv.Arguments[0]);
+        Assert.Equal(5, inv.Arguments[1]);
+    }
+
+    // --- Download ---
+
+    [Fact]
+    public async Task DownloadFile_Invokes_JS_With_FileName_Content_MimeType()
+    {
+        await _service.DownloadFile("test.csv", "base64data", "text/csv");
+
+        var inv = _module.VerifyInvoke("downloadFile");
+        Assert.Equal("test.csv", inv.Arguments[0]);
+        Assert.Equal("base64data", inv.Arguments[1]);
+        Assert.Equal("text/csv", inv.Arguments[2]);
+    }
+
+    [Fact]
+    public async Task DownloadFile_Default_MimeType_Is_OctetStream()
+    {
+        await _service.DownloadFile("archive.bin", "binarydata");
+
+        var inv = _module.VerifyInvoke("downloadFile");
+        Assert.Equal("archive.bin", inv.Arguments[0]);
+        Assert.Equal("binarydata", inv.Arguments[1]);
+        Assert.Equal("application/octet-stream", inv.Arguments[2]);
+    }
+
+    // --- Clipboard ---
+
+    [Fact]
+    public async Task CopyToClipboard_Invokes_JS_With_Text()
+    {
+        await _service.CopyToClipboard("hello world");
+
+        var inv = _module.VerifyInvoke("copyToClipboard");
+        Assert.Equal("hello world", inv.Arguments[0]);
+    }
+
+    // --- LocalStorage ---
+
+    [Fact]
+    public async Task SaveToLocalStorage_Invokes_JS_With_Key_And_Value()
+    {
+        await _service.SaveToLocalStorage("my-key", "my-value");
+
+        var inv = _module.VerifyInvoke("saveToLocalStorage");
+        Assert.Equal("my-key", inv.Arguments[0]);
+        Assert.Equal("my-value", inv.Arguments[1]);
+    }
+
+    [Fact]
+    public async Task LoadFromLocalStorage_Invokes_JS_With_Key_And_Returns_Value()
+    {
+        _module.Setup<string?>("loadFromLocalStorage", "my-key").SetResult("stored-value");
+        var result = await _service.LoadFromLocalStorage("my-key");
+
+        Assert.Equal("stored-value", result);
+    }
+
+    [Fact]
+    public async Task RemoveFromLocalStorage_Invokes_JS_With_Key()
+    {
+        await _service.RemoveFromLocalStorage("my-key");
+
+        var inv = _module.VerifyInvoke("removeFromLocalStorage");
+        Assert.Equal("my-key", inv.Arguments[0]);
+    }
+
+    // --- Resize Handle ---
+
+    [Fact]
+    public async Task RegisterResizeHandle_Invokes_JS_With_ElementId_And_Direction()
+    {
+        // JS call: registerResizeHandle(elementId, direction, selfRef)
+        await _service.RegisterResizeHandle("handle-1", "horizontal", _ => Task.CompletedTask, () => Task.CompletedTask);
+
+        var inv = _module.VerifyInvoke("registerResizeHandle");
+        Assert.Equal("handle-1", inv.Arguments[0]);
+        Assert.Equal("horizontal", inv.Arguments[1]);
+        // Arguments[2] is DotNetObjectReference — not assertable by value
+    }
+
+    [Fact]
+    public async Task UnregisterResizeHandle_Invokes_JS_With_ElementId()
+    {
+        await _service.RegisterResizeHandle("handle-1", "vertical", _ => Task.CompletedTask, () => Task.CompletedTask);
+        await _service.UnregisterResizeHandle("handle-1");
+
+        var inv = _module.VerifyInvoke("unregisterResizeHandle");
+        Assert.Equal("handle-1", inv.Arguments[0]);
+    }
+
+    // --- Carousel ScrollTo ---
+
+    [Fact]
+    public async Task CarouselScrollTo_Invokes_JS_With_ElementId_Index_Behavior()
+    {
+        await _service.CarouselScrollTo("carousel-1", 3, "instant");
+
+        var inv = _module.VerifyInvoke("carouselScrollTo");
+        Assert.Equal("carousel-1", inv.Arguments[0]);
+        Assert.Equal(3, inv.Arguments[1]);
+        Assert.Equal("instant", inv.Arguments[2]);
+    }
+
+    [Fact]
+    public async Task CarouselScrollTo_Default_Behavior_Is_Smooth()
+    {
+        await _service.CarouselScrollTo("carousel-2", 0);
+
+        var inv = _module.VerifyInvoke("carouselScrollTo");
+        Assert.Equal("carousel-2", inv.Arguments[0]);
+        Assert.Equal(0, inv.Arguments[1]);
+        Assert.Equal("smooth", inv.Arguments[2]);
+    }
+
+    // --- ScrollToTop ---
+
+    [Fact]
+    public async Task ScrollToTop_Invokes_JS_With_No_Args()
+    {
+        await _service.ScrollToTop();
+
+        _module.VerifyInvoke("scrollToTop");
+    }
+
+    // --- FocusMenuItemByIndex ---
+
+    [Fact]
+    public async Task FocusMenuItemByIndex_Invokes_JS_With_ContainerId_And_Index()
+    {
+        await _service.FocusMenuItemByIndex("menu-1", 2);
+
+        var inv = _module.VerifyInvoke("focusMenuItemByIndex");
+        Assert.Equal("menu-1", inv.Arguments[0]);
+        Assert.Equal(2, inv.Arguments[1]);
+    }
+
+    // --- GetMenuItemCount ---
+
+    [Fact]
+    public async Task GetMenuItemCount_Returns_JS_Result()
+    {
+        _module.Setup<int>("getMenuItemCount", "menu-1").SetResult(5);
+        var count = await _service.GetMenuItemCount("menu-1");
+
+        Assert.Equal(5, count);
+    }
 }
