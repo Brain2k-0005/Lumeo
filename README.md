@@ -15,7 +15,7 @@ A beautiful, accessible Blazor component library inspired by [shadcn/ui](https:/
 - **DataGrid** — Sort, filter, inline edit, column pin, row group, virtual scroll, and CSV/JSON export
 - **Form Validation** — DataAnnotations and custom validation with styled error states
 - **Accessible** — ARIA attributes, keyboard navigation, focus trapping, screen reader support
-- **1,124 Tests** — Comprehensive bUnit test coverage
+- **1,316 Tests** — Comprehensive bUnit test coverage
 - **Blazor WASM & Server** — Works with both hosting models
 
 ## Component Categories
