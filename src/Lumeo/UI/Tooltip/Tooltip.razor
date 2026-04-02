@@ -17,11 +17,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
-    private System.Threading.Timer? _timer;
+    private readonly DelayedDispatch _dispatch = new();
 
     private void HandleMouseEnter()
     {
-        _timer?.Dispose();
+        _dispatch.Cancel();
         if (ShowDelay <= 0)
         {
             _isOpen = true;
@@ -29,20 +29,18 @@
         }
         else
         {
-            _timer = new System.Threading.Timer(_ =>
+            _dispatch.Schedule(ShowDelay, () => InvokeAsync(() =>
             {
-                InvokeAsync(() =>
-                {
-                    _isOpen = true;
-                    StateHasChanged();
-                });
-            }, null, ShowDelay, System.Threading.Timeout.Infinite);
+                _isOpen = true;
+                StateHasChanged();
+                return Task.CompletedTask;
+            }));
         }
     }
 
     private void HandleMouseLeave()
     {
-        _timer?.Dispose();
+        _dispatch.Cancel();
         if (HideDelay <= 0)
         {
             _isOpen = false;
@@ -50,21 +48,16 @@
         }
         else
         {
-            _timer = new System.Threading.Timer(_ =>
+            _dispatch.Schedule(HideDelay, () => InvokeAsync(() =>
             {
-                InvokeAsync(() =>
-                {
-                    _isOpen = false;
-                    StateHasChanged();
-                });
-            }, null, HideDelay, System.Threading.Timeout.Infinite);
+                _isOpen = false;
+                StateHasChanged();
+                return Task.CompletedTask;
+            }));
         }
     }
 
-    public void Dispose()
-    {
-        _timer?.Dispose();
-    }
+    public void Dispose() => _dispatch.Dispose();
 
     public record TooltipContext(bool IsOpen);
 }

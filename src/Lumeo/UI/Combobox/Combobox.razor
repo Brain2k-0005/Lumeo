@@ -45,8 +45,7 @@
     private readonly string _wrapperId = $"combobox-{Guid.NewGuid():N}";
     private readonly string _contentId = $"combobox-content-{Guid.NewGuid():N}";
     private string SearchText { get; set; } = "";
-    private System.Threading.Timer? _debounceTimer;
-    private int _searchSequence;
+    private readonly DelayedDispatch _dispatch = new();
     private int _focusedIndex = -1;
     private readonly List<(string Id, string Value)> _items = new();
 
@@ -111,20 +110,14 @@
 
         if (OnSearchAsync.HasDelegate)
         {
-            _debounceTimer?.Dispose();
-            var sequence = ++_searchSequence;
-            _debounceTimer = new System.Threading.Timer(_ =>
+            _dispatch.Schedule(DebounceMs, () => InvokeAsync(async () =>
             {
-                _ = InvokeAsync(async () =>
-                {
-                    // Only apply results from the latest search
-                    if (sequence != _searchSequence) return;
-                    await OnSearchAsync.InvokeAsync(text);
-                    if (sequence != _searchSequence) return;
-                    StateHasChanged();
-                });
-            }, null, DebounceMs, System.Threading.Timeout.Infinite);
+                await OnSearchAsync.InvokeAsync(text);
+                StateHasChanged();
+            }));
         }
+
+        await Task.CompletedTask;
     }
 
     private async Task OnCreateItem(string value)
@@ -145,10 +138,7 @@
         SearchText = "";
     }
 
-    public void Dispose()
-    {
-        _debounceTimer?.Dispose();
-    }
+    public void Dispose() => _dispatch.Dispose();
 
     public record ComboboxContext(
         string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading, bool Creatable,
