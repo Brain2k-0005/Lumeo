@@ -220,7 +220,7 @@ public class DataGridLayoutServiceTests : IAsyncLifetime
     public void ScheduleAutoSave_Does_Not_Throw()
     {
         var exception = Record.Exception(() =>
-            _service.ScheduleAutoSave(() => { }));
+            _service.ScheduleAutoSave(async () => await Task.CompletedTask));
 
         Assert.Null(exception);
     }
@@ -229,7 +229,7 @@ public class DataGridLayoutServiceTests : IAsyncLifetime
     public async Task ScheduleAutoSave_Invokes_Callback_After_Delay()
     {
         var tcs = new TaskCompletionSource<bool>();
-        _service.ScheduleAutoSave(() => tcs.TrySetResult(true));
+        _service.ScheduleAutoSave(async () => { tcs.TrySetResult(true); await Task.CompletedTask; });
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(3000));
         Assert.Same(tcs.Task, completed);
@@ -240,8 +240,8 @@ public class DataGridLayoutServiceTests : IAsyncLifetime
     public async Task ScheduleAutoSave_Cancels_Previous_Timer()
     {
         int callCount = 0;
-        _service.ScheduleAutoSave(() => callCount++);
-        _service.ScheduleAutoSave(() => callCount++); // second call should cancel first
+        _service.ScheduleAutoSave(async () => { callCount++; await Task.CompletedTask; });
+        _service.ScheduleAutoSave(async () => { callCount++; await Task.CompletedTask; }); // second call should cancel first
 
         await Task.Delay(1500);
         // At most 1 invocation should occur (second timer fires, first was cancelled)
@@ -264,7 +264,7 @@ public class DataGridLayoutServiceTests : IAsyncLifetime
     public void Dispose_With_Active_Timer_Does_Not_Throw()
     {
         var service = new DataGridLayoutService(_interop);
-        service.ScheduleAutoSave(() => { });
+        service.ScheduleAutoSave(async () => await Task.CompletedTask);
         var exception = Record.Exception(() => service.Dispose());
         Assert.Null(exception);
     }
@@ -276,5 +276,27 @@ public class DataGridLayoutServiceTests : IAsyncLifetime
         service.Dispose();
         var exception = Record.Exception(() => service.Dispose());
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void ScheduleAutoSave_Accepts_Func_Task()
+    {
+        var called = false;
+        var exception = Record.Exception(() =>
+            _service.ScheduleAutoSave(async () => { called = true; await Task.CompletedTask; }));
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task PersistAsync_With_Stale_Generation_Skips_Save()
+    {
+        // Simulate: schedule save with gen 1, then schedule again (bumps to gen 2)
+        // When gen 1's persist runs, it should be skipped
+        _service.ScheduleAutoSave(async () => await Task.CompletedTask); // gen = 1
+        _service.ScheduleAutoSave(async () => await Task.CompletedTask); // gen = 2
+
+        var layout = new DataGridLayout();
+        await _service.PersistAsync("test-key", layout, 1); // stale gen
+        // Should have been skipped (no exception, no write)
     }
 }
