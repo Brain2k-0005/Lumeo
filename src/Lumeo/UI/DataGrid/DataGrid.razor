@@ -979,17 +979,18 @@
     private void ScheduleAutoSave()
     {
         if (!EnableLayoutPersistence && !OnLayoutSave.HasDelegate) return;
-        _layoutService!.ScheduleAutoSave(() => InvokeAsync(PersistLayoutAsync));
+        var gen = _layoutService!.CurrentSaveGeneration;
+        _layoutService.ScheduleAutoSave(() => InvokeAsync(() => PersistLayoutAsync(gen + 1)));
     }
 
-    private async Task PersistLayoutAsync()
+    private async Task PersistLayoutAsync(int? generation = null)
     {
         var layout = SnapshotCurrentLayout();
 
         if (EnableLayoutPersistence)
         {
             var key = LayoutStorageKey ?? _layoutId;
-            await _layoutService!.PersistAsync(key, layout);
+            await _layoutService!.PersistAsync(key, layout, generation);
         }
 
         if (OnLayoutSave.HasDelegate)

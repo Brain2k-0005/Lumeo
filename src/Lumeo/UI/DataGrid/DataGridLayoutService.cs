@@ -6,6 +6,7 @@ internal sealed class DataGridLayoutService : IDisposable
 {
     private readonly ComponentInteropService _interop;
     private System.Threading.Timer? _autoSaveTimer;
+    private int _saveGeneration;
     private bool _layoutLoaded;
     private DataGridLayout? _defaultLayout;
 
@@ -36,8 +37,10 @@ internal sealed class DataGridLayoutService : IDisposable
         catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load persisted layout: {ex.Message}"); }
     }
 
-    internal async Task PersistAsync(string key, DataGridLayout layout)
+    internal async Task PersistAsync(string key, DataGridLayout layout, int? generation = null)
     {
+        // If a generation is provided, only persist if it's still current
+        if (generation.HasValue && generation.Value != _saveGeneration) return;
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(layout);
@@ -74,9 +77,12 @@ internal sealed class DataGridLayoutService : IDisposable
         catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save named layouts: {ex.Message}"); }
     }
 
+    internal int CurrentSaveGeneration => _saveGeneration;
+
     internal void ScheduleAutoSave(Action persistCallback)
     {
         _autoSaveTimer?.Dispose();
+        ++_saveGeneration;
         _autoSaveTimer = new System.Threading.Timer(_ =>
         {
             persistCallback();
