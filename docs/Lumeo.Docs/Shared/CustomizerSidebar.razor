@@ -4,7 +4,7 @@
 @inject IconService _iconService
 @inject Lumeo.Services.ThemeService ThemeService
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
-@implements IDisposable
+@implements IAsyncDisposable
 
 
 <!-- Click-outside backdrop for popover -->
@@ -384,7 +384,7 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter] public bool IsMobile { get; set; }
 
-    private readonly List<IDisposable> _kbdShortcuts = new();
+    private readonly List<IAsyncDisposable> _kbdShortcuts = new();
     private string _expandedSection = "";
     private bool _darkMode;
     private bool _copied;
@@ -669,10 +669,10 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         ThemeService.OnThemeChanged -= OnThemeServiceChanged;
-        foreach (var s in _kbdShortcuts) s.Dispose();
+        foreach (var s in _kbdShortcuts) await s.DisposeAsync();
     }
 
     private async Task ToggleDarkMode()

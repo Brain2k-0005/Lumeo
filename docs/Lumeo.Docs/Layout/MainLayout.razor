@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject Lumeo.Services.ThemeService ThemeService
@@ -235,7 +235,7 @@
 }
 
 @code {
-    private readonly List<IDisposable> _kbdShortcuts = new();
+    private readonly List<IAsyncDisposable> _kbdShortcuts = new();
     private bool _darkMode;
     private bool _customizerOpen = false;
     private bool _mobileNavOpen;
@@ -559,11 +559,11 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         Nav.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeServiceChanged;
-        foreach (var s in _kbdShortcuts) s.Dispose();
+        foreach (var s in _kbdShortcuts) await s.DisposeAsync();
     }
 
     private async Task ToggleDarkMode()
