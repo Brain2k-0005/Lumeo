@@ -46,7 +46,7 @@ public static class DataGridFilterOperator
         if (a is IComparable ca && b is IComparable cb)
         {
             try { return ca.CompareTo(Convert.ChangeType(cb, ca.GetType())); }
-            catch { return string.Compare(a?.ToString(), b?.ToString(), StringComparison.OrdinalIgnoreCase); }
+            catch (Exception) { /* Type conversion failed — fall back to string comparison */ return string.Compare(a?.ToString(), b?.ToString(), StringComparison.OrdinalIgnoreCase); }
         }
         return string.Compare(a?.ToString(), b?.ToString(), StringComparison.OrdinalIgnoreCase);
     }
