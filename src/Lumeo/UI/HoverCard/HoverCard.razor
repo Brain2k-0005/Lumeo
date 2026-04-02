@@ -24,52 +24,33 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _wrapperId = $"hovercard-{Guid.NewGuid():N}";
-    private Timer? _openTimer;
-    private Timer? _closeTimer;
+    private readonly DelayedDispatch _dispatch = new();
 
     private void RequestOpen()
     {
-        _closeTimer?.Dispose();
-        _closeTimer = null;
-
+        _dispatch.Cancel();
         if (IsOpen) return;
-
-        _openTimer?.Dispose();
-        _openTimer = new Timer(_ =>
+        _dispatch.Schedule(OpenDelay, () => InvokeAsync(async () =>
         {
-            InvokeAsync(async () =>
-            {
-                IsOpen = true;
-                await IsOpenChanged.InvokeAsync(true);
-                StateHasChanged();
-            });
-        }, null, OpenDelay, Timeout.Infinite);
+            IsOpen = true;
+            await IsOpenChanged.InvokeAsync(true);
+            StateHasChanged();
+        }));
     }
 
     private void RequestClose()
     {
-        _openTimer?.Dispose();
-        _openTimer = null;
-
+        _dispatch.Cancel();
         if (!IsOpen) return;
-
-        _closeTimer?.Dispose();
-        _closeTimer = new Timer(_ =>
+        _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
         {
-            InvokeAsync(async () =>
-            {
-                IsOpen = false;
-                await IsOpenChanged.InvokeAsync(false);
-                StateHasChanged();
-            });
-        }, null, CloseDelay, Timeout.Infinite);
+            IsOpen = false;
+            await IsOpenChanged.InvokeAsync(false);
+            StateHasChanged();
+        }));
     }
 
-    public void Dispose()
-    {
-        _openTimer?.Dispose();
-        _closeTimer?.Dispose();
-    }
+    public void Dispose() => _dispatch.Dispose();
 
     public record HoverCardContext(bool IsOpen, EventCallback RequestOpen, EventCallback RequestClose, string WrapperId);
 }

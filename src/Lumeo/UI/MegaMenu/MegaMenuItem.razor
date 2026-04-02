@@ -63,7 +63,7 @@
 
     private readonly string _itemId = $"megamenu-item-{Guid.NewGuid():N}";
     private readonly string _triggerId = $"megamenu-trigger-{Guid.NewGuid():N}";
-    private System.Threading.Timer? _closeTimer;
+    private readonly DelayedDispatch _dispatch = new();
     private const int CloseDelay = 150;
 
     private bool _isOpen => Context?.ActiveItemId == _itemId;
@@ -76,8 +76,7 @@
 
     private void HandleMouseEnter()
     {
-        _closeTimer?.Dispose();
-        _closeTimer = null;
+        _dispatch.Cancel();
 
         if (!_isOpen)
         {
@@ -93,18 +92,14 @@
     {
         if (_isOpen)
         {
-            _closeTimer?.Dispose();
-            _closeTimer = new System.Threading.Timer(_ =>
+            _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
             {
-                InvokeAsync(async () =>
+                if (Context.ActiveItemId == _itemId)
                 {
-                    if (Context.ActiveItemId == _itemId)
-                    {
-                        await Context.SetActiveItemId.InvokeAsync(null);
-                        StateHasChanged();
-                    }
-                });
-            }, null, CloseDelay, System.Threading.Timeout.Infinite);
+                    await Context.SetActiveItemId.InvokeAsync(null);
+                    StateHasChanged();
+                }
+            }));
         }
     }
 
@@ -134,10 +129,7 @@
         }
     }
 
-    public void Dispose()
-    {
-        _closeTimer?.Dispose();
-    }
+    public void Dispose() => _dispatch.Dispose();
 
     public record MegaMenuItemContext(string ItemId, string TriggerId);
 }

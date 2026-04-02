@@ -264,6 +264,7 @@
     [Parameter] public EventCallback<string> OnDeleteNamedLayout { get; set; }
     [Parameter] public EventCallback<DataGridNamedLayout> OnApplyNamedLayout { get; set; }
     [Parameter] public string? LayoutStorageKey { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -342,7 +343,12 @@
             else
                 _personalLayouts = new();
         }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load personal layouts: {ex.Message}"); _personalLayouts = new(); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load personal layouts: {ex.Message}");
+            _personalLayouts = new();
+            if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
+        }
     }
 
     private async Task CommitSavePersonal()
@@ -380,7 +386,11 @@
             var json = System.Text.Json.JsonSerializer.Serialize(_personalLayouts);
             await Interop.SaveToLocalStorage(key, json);
         }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save personal layouts: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save personal layouts: {ex.Message}");
+            if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
+        }
 
         if (OnDeleteNamedLayout.HasDelegate)
             await OnDeleteNamedLayout.InvokeAsync(id);
