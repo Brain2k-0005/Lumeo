@@ -2,7 +2,7 @@
 @namespace Lumeo.Docs.Pages.Docs.Services
 
 @using Lumeo.Services
-@implements IDisposable
+@implements IAsyncDisposable
 @inject KeyboardShortcutService Shortcuts
 
 <PageTitle>Keyboard Shortcuts — Lumeo</PageTitle>
@@ -20,11 +20,11 @@
                 keyboard shortcuts that work globally across the page. Inject it, register shortcuts in
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync</code>, and dispose them when the component unmounts.
             </Lumeo.Text>
-            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IAsyncDisposable
 @@inject KeyboardShortcutService Shortcuts
 
 @@code {
-    private IDisposable? _shortcut;
+    private IAsyncDisposable? _shortcut;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -38,15 +38,15 @@
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _shortcut?.Dispose();
+        if (_shortcut is not null) await _shortcut.DisposeAsync();
     }
 }</Stack>
             <Alert>
                 Always register shortcuts inside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync(firstRender)</code>
                 because JS interop is not available during server-side prerendering. The returned
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDisposable</code> handle automatically unregisters the shortcut when disposed.
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code> handle automatically unregisters the shortcut when disposed.
             </Alert>
         </Stack>
     </Stack>
@@ -117,14 +117,14 @@
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync</code> and disposes it when you navigate away.
             </Lumeo.Text>
 
-            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IAsyncDisposable
 @@inject KeyboardShortcutService Shortcuts
 
 &lt;Lumeo.Text&gt;Hit count: @@_hitCount&lt;/Lumeo.Text&gt;
 &lt;Lumeo.Text&gt;Last triggered: @@_lastTriggered&lt;/Lumeo.Text&gt;
 
 @@code {
-    private IDisposable? _shortcut;
+    private IAsyncDisposable? _shortcut;
     private int _hitCount;
     private DateTime? _lastTriggered;
 
@@ -141,7 +141,10 @@
         }
     }
 
-    public void Dispose() => _shortcut?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        if (_shortcut is not null) await _shortcut.DisposeAsync();
+    }
 }</Stack>
         </Stack>
     </Stack>
@@ -265,7 +268,7 @@ _shortcut = await Shortcuts.RegisterAsync("ctrl+p", HandlePrint, preventDefault:
                 <Lumeo.Text Size="sm" Color="muted">
                     Register several shortcuts and dispose them all at once using a list.
                 </Lumeo.Text>
-                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">private List&lt;IDisposable&gt; _shortcuts = new();
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">private List&lt;IAsyncDisposable&gt; _shortcuts = new();
 
 protected override async Task OnAfterRenderAsync(bool firstRender)
 {
@@ -277,9 +280,9 @@ protected override async Task OnAfterRenderAsync(bool firstRender)
     }
 }
 
-public void Dispose()
+public async ValueTask DisposeAsync()
 {
-    foreach (var s in _shortcuts) s.Dispose();
+    foreach (var s in _shortcuts) await s.DisposeAsync();
 }</Stack>
             </Stack>
         </Stack>
@@ -292,16 +295,16 @@ public void Dispose()
         <Stack Gap="4">
             <Heading Level="2">Cleanup Pattern</Heading>
             <Lumeo.Text Size="sm" Color="muted">
-                Shortcut registrations are cleaned up by disposing the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDisposable</code>
+                Shortcut registrations are cleaned up by disposing the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code>
                 handle returned from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RegisterAsync</code>. This is the recommended pattern.
                 Alternatively, you can call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UnregisterAsync(id)</code> manually.
             </Lumeo.Text>
 
             <Heading Level="3">Single shortcut</Heading>
-            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IAsyncDisposable
 
 @@code {
-    private IDisposable? _shortcut;
+    private IAsyncDisposable? _shortcut;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -309,14 +312,17 @@ public void Dispose()
             _shortcut = await Shortcuts.RegisterAsync("ctrl+k", HandleSearch);
     }
 
-    public void Dispose() => _shortcut?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        if (_shortcut is not null) await _shortcut.DisposeAsync();
+    }
 }</Stack>
 
             <Heading Level="3">Multiple shortcuts with List</Heading>
-            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IDisposable
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@implements IAsyncDisposable
 
 @@code {
-    private readonly List&lt;IDisposable&gt; _shortcuts = new();
+    private readonly List&lt;IAsyncDisposable&gt; _shortcuts = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -328,14 +334,14 @@ public void Dispose()
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        foreach (var s in _shortcuts) s.Dispose();
+        foreach (var s in _shortcuts) await s.DisposeAsync();
     }
 }</Stack>
 
             <Alert>
-                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDisposable</code> handle calls
+                The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code> handle calls
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UnregisterAsync</code> internally and handles
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> gracefully, so it is safe
                 to dispose even when the circuit has disconnected.
@@ -364,12 +370,12 @@ public void Dispose()
                         <tbody class="divide-y divide-border/40">
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, Func&lt;Task&gt;, preventDefault?)</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IDisposable&gt;</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IAsyncDisposable&gt;</td>
                                 <td class="p-3 text-muted-foreground">Registers a shortcut with an async handler. Dispose the returned handle to unregister.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono text-xs text-primary">RegisterAsync(keyCombo, Action, preventDefault?)</td>
-                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IDisposable&gt;</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">ValueTask&lt;IAsyncDisposable&gt;</td>
                                 <td class="p-3 text-muted-foreground">Registers a shortcut with a synchronous handler. Wraps the Action internally.</td>
                             </tr>
                             <tr>
@@ -424,7 +430,7 @@ public void Dispose()
 </Stack>
 
 @code {
-    private IDisposable? _shortcut;
+    private IAsyncDisposable? _shortcut;
     private int _hitCount;
     private DateTime? _lastTriggered;
 
@@ -447,8 +453,8 @@ public void Dispose()
         _lastTriggered = null;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _shortcut?.Dispose();
+        if (_shortcut is not null) await _shortcut.DisposeAsync();
     }
 }
