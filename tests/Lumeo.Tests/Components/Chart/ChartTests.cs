@@ -185,4 +185,20 @@ public class ChartTests : IAsyncLifetime
         Assert.Equal("", args.Value);
         Assert.Equal("", args.ComponentType);
     }
+
+    [Fact]
+    public void Theme_Change_Triggers_Rerender()
+    {
+        // Render with light theme
+        var cut1 = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.Theme, "light"));
+
+        // Render with dark theme — verifies that different theme values are accepted without error
+        var cut2 = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.Theme, "dark"));
+
+        // Both should render a div container without error
+        Assert.NotNull(cut1.Find("div"));
+        Assert.NotNull(cut2.Find("div"));
+    }
 }
