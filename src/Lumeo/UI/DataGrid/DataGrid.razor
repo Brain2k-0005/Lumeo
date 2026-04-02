@@ -15,7 +15,7 @@
         TotalCount: EffectiveTotalCount,
         SelectionMode: SelectionMode,
         EditMode: EditMode,
-        IsLoading: IsLoading || _serverLoading,
+        IsLoading: IsLoading || (_serverService?.IsLoading ?? false),
         RowReorderable: RowReorderable,
         RowContextMenuEnabled: RowContextMenu is not null,
         OnRowClick: OnRowClick,
@@ -55,14 +55,14 @@
         @* Declarative column definitions *@
         <div class="hidden">@ChildContent</div>
 
-        @if (_serverError is not null)
+        @if (_serverService?.Error is not null)
         {
             <div class="flex items-center gap-2 px-4 py-2.5 border-b border-destructive/30 bg-destructive/10 text-sm">
                 <Blazicon Svg="Lucide.CircleAlert" class="h-4 w-4 shrink-0 text-destructive" />
-                <span class="flex-1 text-destructive-text">Failed to load data: @_serverError</span>
+                <span class="flex-1 text-destructive-text">Failed to load data: @_serverService.Error</span>
                 <button type="button"
                         class="text-xs text-destructive underline hover:no-underline"
-                        @onclick="@(async () => { _serverError = null; await RequestServerData(); })">
+                        @onclick="@(async () => { _serverService!.ClearError(); await RequestServerData(); })">
                     Retry
                 </button>
             </div>
@@ -231,13 +231,10 @@
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private string _layoutId = $"datagrid-{Guid.NewGuid():N}";
-    private System.Threading.Timer? _autoSaveTimer;
-    private System.Threading.Timer? _searchDebounceTimer;
-    private CancellationTokenSource? _serverRequestCts;
-    private bool _serverLoading;
-    private string? _serverError;
-    private bool _layoutLoaded;
     private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
+    private bool _savedLayoutApplied; // tracks whether the SavedLayout parameter has been applied
+    private DataGridLayoutService? _layoutService;
+    private DataGridServerService? _serverService;
 
     private List<DataGridColumn<TItem>> SourceColumns =>
         Columns is not null && Columns.Count > 0 ? Columns : _columnDefs;
@@ -314,9 +311,9 @@
         }
 
         // Apply SavedLayout when provided externally and not yet applied
-        if (SavedLayout is not null && !_layoutLoaded)
+        if (SavedLayout is not null && !_savedLayoutApplied)
         {
-            _layoutLoaded = true;
+            _savedLayoutApplied = true;
             await ApplyLayoutAsync(SavedLayout);
             return; // ApplyLayoutAsync calls ProcessClientData
         }
@@ -357,35 +354,28 @@
     {
         if (firstRender)
         {
+            _layoutService ??= new DataGridLayoutService(Interop);
+            _serverService ??= new DataGridServerService();
+
             // Snapshot default layout now that columns are registered (via ColumnDef)
             if (_defaultLayout is null && EffectiveColumns.Count > 0)
             {
                 _defaultLayout = SnapshotCurrentLayout();
             }
 
-            if (EnableLayoutPersistence && !_layoutLoaded)
+            if (EnableLayoutPersistence && !_layoutService.LayoutLoaded)
             {
                 var key = LayoutStorageKey ?? _layoutId;
-                try
-                {
-                    var json = await Interop.LoadFromLocalStorage(key);
-                    if (!string.IsNullOrEmpty(json))
-                    {
-                        var layout = System.Text.Json.JsonSerializer.Deserialize<DataGridLayout>(json);
-                        if (layout is not null)
-                        {
-                            _layoutLoaded = true;
-                            await ApplyLayoutAsync(layout);
-                        }
-                    }
-                }
-                catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load persisted layout: {ex.Message}"); }
+                await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
             }
         }
     }
 
     protected override async Task OnInitializedAsync()
     {
+        _layoutService ??= new DataGridLayoutService(Interop);
+        _serverService ??= new DataGridServerService();
+
         if (ServerMode)
         {
             await RequestServerData();
@@ -591,16 +581,11 @@
 
         if (ServerMode)
         {
-            // Debounce 300ms before firing server request
-            _searchDebounceTimer?.Dispose();
-            _searchDebounceTimer = new System.Threading.Timer(async _ =>
+            _serverService!.DebounceSearch(() => InvokeAsync(async () =>
             {
-                await InvokeAsync(async () =>
-                {
-                    await RequestServerData();
-                    StateHasChanged();
-                });
-            }, null, 300, System.Threading.Timeout.Infinite);
+                await RequestServerData();
+                StateHasChanged();
+            }));
         }
         else
         {
@@ -987,20 +972,14 @@
         if (EnableLayoutPersistence)
         {
             var key = LayoutStorageKey ?? _layoutId;
-            try { await Interop.RemoveFromLocalStorage(key); } catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to clear persisted layout: {ex.Message}"); }
+            await _layoutService!.ClearPersistedAsync(key);
         }
     }
 
     private void ScheduleAutoSave()
     {
         if (!EnableLayoutPersistence && !OnLayoutSave.HasDelegate) return;
-
-        // Debounce: cancel any pending save and restart 500 ms timer
-        _autoSaveTimer?.Dispose();
-        _autoSaveTimer = new System.Threading.Timer(_ =>
-        {
-            InvokeAsync(PersistLayoutAsync);
-        }, null, 500, System.Threading.Timeout.Infinite);
+        _layoutService!.ScheduleAutoSave(() => InvokeAsync(PersistLayoutAsync));
     }
 
     private async Task PersistLayoutAsync()
@@ -1010,12 +989,7 @@
         if (EnableLayoutPersistence)
         {
             var key = LayoutStorageKey ?? _layoutId;
-            try
-            {
-                var json = System.Text.Json.JsonSerializer.Serialize(layout);
-                await Interop.SaveToLocalStorage(key, json);
-            }
-            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save layout: {ex.Message}"); }
+            await _layoutService!.PersistAsync(key, layout);
         }
 
         if (OnLayoutSave.HasDelegate)
@@ -1045,17 +1019,10 @@
 
         if (namedLayout.Scope == "Personal")
         {
-            var key = (LayoutStorageKey ?? _layoutId) + "-named";
-            try
-            {
-                var json = await Interop.LoadFromLocalStorage(key);
-                var existing = !string.IsNullOrEmpty(json)
-                    ? System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new()
-                    : new List<DataGridNamedLayout>();
-                existing.Add(withLayout);
-                await Interop.SaveToLocalStorage(key, System.Text.Json.JsonSerializer.Serialize(existing));
-            }
-            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save named layout: {ex.Message}"); }
+            var namedKey = (LayoutStorageKey ?? _layoutId) + "-named";
+            var existing = await _layoutService!.GetPersonalLayoutsAsync(namedKey);
+            existing.Add(withLayout);
+            await _layoutService.SaveNamedLayoutsAsync(namedKey, existing);
         }
 
         if (OnSaveNamedLayout.HasDelegate)
@@ -1072,64 +1039,17 @@
     public async Task<List<DataGridNamedLayout>> GetPersonalLayoutsAsync()
     {
         var key = (LayoutStorageKey ?? _layoutId) + "-named";
-        try
-        {
-            var json = await Interop.LoadFromLocalStorage(key);
-            if (!string.IsNullOrEmpty(json))
-                return System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
-        }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load named layouts: {ex.Message}"); }
-        return new();
+        return await _layoutService!.GetPersonalLayoutsAsync(key);
     }
 
     private async Task RequestServerData()
     {
-        // Cancel any in-flight request
-        _serverRequestCts?.Cancel();
-        _serverRequestCts?.Dispose();
-        _serverRequestCts = new CancellationTokenSource();
-
-        _serverError = null;
-        _serverLoading = true;
-        StateHasChanged();
-
-        if (OnServerRequest.HasDelegate)
-        {
-            var request = new DataGridServerRequest(
-                _currentPage,
-                PageSize,
-                _sorts.Count > 0 ? _sorts : null,
-                _filters.Count > 0 ? _filters : null,
-                _globalSearch,
-                GroupBy,
-                _serverRequestCts.Token
-            );
-            try
-            {
-                await OnServerRequest.InvokeAsync(request);
-            }
-            catch (OperationCanceledException)
-            {
-                // Request was superseded — ignore
-                return;
-            }
-            catch (Exception ex)
-            {
-                _serverError = ex.Message;
-                if (OnError.HasDelegate)
-                    await OnError.InvokeAsync(ex);
-            }
-            finally
-            {
-                _serverLoading = false;
-                StateHasChanged();
-            }
-        }
-        else
-        {
-            _serverLoading = false;
-            StateHasChanged();
-        }
+        await _serverService!.RequestDataAsync(
+            _currentPage, PageSize,
+            _sorts.Count > 0 ? _sorts : null,
+            _filters.Count > 0 ? _filters : null,
+            _globalSearch, GroupBy,
+            OnServerRequest, OnError, StateHasChanged);
     }
 
     private IReadOnlyDictionary<string, double> ComputePinnedLeftOffsets()
@@ -1162,10 +1082,8 @@
 
     public ValueTask DisposeAsync()
     {
-        _autoSaveTimer?.Dispose();
-        _searchDebounceTimer?.Dispose();
-        _serverRequestCts?.Cancel();
-        _serverRequestCts?.Dispose();
+        _layoutService?.Dispose();
+        _serverService?.Dispose();
         return ValueTask.CompletedTask;
     }
 }
