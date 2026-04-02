@@ -60,23 +60,7 @@
             }
             _initialized = true;
 
-            if (OnClick.HasDelegate || OnMouseOver.HasDelegate || OnDoubleClick.HasDelegate || OnBrushSelected.HasDelegate || OnDataZoom.HasDelegate)
-            {
-                _selfRef = DotNetObjectReference.Create(this);
-                if (OnClick.HasDelegate)
-                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "click", _selfRef);
-                if (OnMouseOver.HasDelegate)
-                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "mouseover", _selfRef);
-                if (OnDoubleClick.HasDelegate)
-                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dblclick", _selfRef);
-                if (OnBrushSelected.HasDelegate)
-                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "brushSelected", _selfRef);
-                if (OnDataZoom.HasDelegate)
-                    await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dataZoom", _selfRef);
-            }
-
-            if (!string.IsNullOrEmpty(Group))
-                await _module.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
+            await RegisterChartEventsAsync();
 
             if (ShowLoading)
             {
@@ -109,6 +93,8 @@
                 await _module!.InvokeVoidAsync("disposeChart", _chartId);
                 var currentJson = _lastJson ?? GetOptionsJson();
                 await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
+                // Re-register events and groups lost during dispose+init
+                await RegisterChartEventsAsync();
             }
 
             if (Group != _lastGroup)
@@ -118,6 +104,29 @@
                     await _module!.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
             }
         }
+    }
+
+    private async Task RegisterChartEventsAsync()
+    {
+        if (_module is null || !_initialized) return;
+
+        if (OnClick.HasDelegate || OnMouseOver.HasDelegate || OnDoubleClick.HasDelegate || OnBrushSelected.HasDelegate || OnDataZoom.HasDelegate)
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            if (OnClick.HasDelegate)
+                await _module.InvokeVoidAsync("registerChartEvent", _chartId, "click", _selfRef);
+            if (OnMouseOver.HasDelegate)
+                await _module.InvokeVoidAsync("registerChartEvent", _chartId, "mouseover", _selfRef);
+            if (OnDoubleClick.HasDelegate)
+                await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dblclick", _selfRef);
+            if (OnBrushSelected.HasDelegate)
+                await _module.InvokeVoidAsync("registerChartEvent", _chartId, "brushSelected", _selfRef);
+            if (OnDataZoom.HasDelegate)
+                await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dataZoom", _selfRef);
+        }
+
+        if (!string.IsNullOrEmpty(Group))
+            await _module.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
     }
 
     private string GetOptionsJson()

@@ -6,6 +6,7 @@ internal sealed class DataGridServerService : IDisposable
 {
     private CancellationTokenSource? _requestCts;
     private System.Threading.Timer? _searchDebounceTimer;
+    private int _requestGeneration;
 
     internal bool IsLoading { get; private set; }
     internal string? Error { get; private set; }
@@ -24,6 +25,7 @@ internal sealed class DataGridServerService : IDisposable
         _requestCts?.Cancel();
         _requestCts?.Dispose();
         _requestCts = new CancellationTokenSource();
+        var generation = ++_requestGeneration;
 
         Error = null;
         IsLoading = true;
@@ -56,8 +58,12 @@ internal sealed class DataGridServerService : IDisposable
             }
             finally
             {
-                IsLoading = false;
-                stateChanged();
+                // Only the latest request should reset loading state
+                if (generation == _requestGeneration)
+                {
+                    IsLoading = false;
+                    stateChanged();
+                }
             }
         }
         else

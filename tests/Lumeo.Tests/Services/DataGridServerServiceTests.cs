@@ -370,4 +370,42 @@ public class DataGridServerServiceTests : IDisposable
         var exception = Record.Exception(() => service.Dispose());
         Assert.Null(exception);
     }
+
+    // -----------------------------------------------------------------------
+    // Race condition — superseded request must not clear loading
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task RequestDataAsync_Superseded_Request_Does_Not_Clear_Loading()
+    {
+        var tcs = new TaskCompletionSource();
+        var callback = EventCallback.Factory.Create<DataGridServerRequest>(
+            new object(), async (req) =>
+            {
+                await tcs.Task; // Block until we release
+            });
+
+        // Start first request (will block)
+        var firstRequest = _service.RequestDataAsync(1, 10, null, null, null, null,
+            callback, null, () => { });
+
+        // The first request should have set IsLoading
+        Assert.True(_service.IsLoading);
+
+        // Start second request (cancels first)
+        var fastCallback = EventCallback.Factory.Create<DataGridServerRequest>(
+            new object(), _ => Task.CompletedTask);
+        var secondRequest = _service.RequestDataAsync(2, 10, null, null, null, null,
+            fastCallback, null, () => { });
+
+        await secondRequest;
+        Assert.False(_service.IsLoading); // Second request completed
+
+        // Now release the first request (it was cancelled)
+        tcs.SetCanceled();
+        try { await firstRequest; } catch { }
+
+        // Loading should still be false (first request's finally should NOT reset it)
+        Assert.False(_service.IsLoading);
+    }
 }
