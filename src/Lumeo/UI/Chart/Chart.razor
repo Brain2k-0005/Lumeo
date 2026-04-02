@@ -1,7 +1,16 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
-<div id="@_chartId" class="@CssClass" style="@StyleStr" @attributes="AdditionalAttributes"></div>
+@if (_initError is not null)
+{
+    <div class="@($"flex items-center justify-center text-sm text-destructive border border-destructive/30 rounded-md bg-destructive/5 {Class}".Trim())" style="@StyleStr" @attributes="AdditionalAttributes">
+        <span>@_initError</span>
+    </div>
+}
+else
+{
+    <div id="@_chartId" class="@CssClass" style="@StyleStr" @attributes="AdditionalAttributes"></div>
+}
 
 @inject IJSRuntime JSRuntime
 
@@ -32,6 +41,7 @@
     private bool _lastShowLoading;
     private string? _lastTheme;
     private string? _lastGroup;
+    private string? _initError;
 
     private string CssClass => $"{Class}".Trim();
     private string StyleStr => AspectRatio is not null
@@ -56,9 +66,11 @@
             }
             catch (JSException ex)
             {
+                _initError = $"Chart initialization failed: {ex.Message}";
                 Console.Error.WriteLine($"[Lumeo Chart] Init failed: {ex.Message}");
                 if (OnInitError.HasDelegate)
                     await OnInitError.InvokeAsync(ex.Message);
+                StateHasChanged();
                 return;
             }
             _initialized = true;
