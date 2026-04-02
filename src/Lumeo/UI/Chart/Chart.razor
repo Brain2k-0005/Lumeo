@@ -20,6 +20,7 @@
     [Parameter] public EventCallback<ChartEventArgs> OnDoubleClick { get; set; }
     [Parameter] public EventCallback<ChartEventArgs> OnBrushSelected { get; set; }
     [Parameter] public EventCallback<ChartEventArgs> OnDataZoom { get; set; }
+    [Parameter] public EventCallback<string> OnInitError { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -56,6 +57,8 @@
             catch (JSException ex)
             {
                 Console.Error.WriteLine($"[Lumeo Chart] Init failed: {ex.Message}");
+                if (OnInitError.HasDelegate)
+                    await OnInitError.InvokeAsync(ex.Message);
                 return;
             }
             _initialized = true;

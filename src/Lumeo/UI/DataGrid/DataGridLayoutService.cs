@@ -5,14 +5,16 @@ namespace Lumeo;
 internal sealed class DataGridLayoutService : IDisposable
 {
     private readonly ComponentInteropService _interop;
+    private readonly Action<Exception>? _onError;
     private System.Threading.Timer? _autoSaveTimer;
     private int _saveGeneration;
     private bool _layoutLoaded;
     private DataGridLayout? _defaultLayout;
 
-    internal DataGridLayoutService(ComponentInteropService interop)
+    internal DataGridLayoutService(ComponentInteropService interop, Action<Exception>? onError = null)
     {
         _interop = interop;
+        _onError = onError;
     }
 
     internal bool LayoutLoaded => _layoutLoaded;
@@ -34,7 +36,7 @@ internal sealed class DataGridLayoutService : IDisposable
                 }
             }
         }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load persisted layout: {ex.Message}"); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load persisted layout: {ex.Message}"); _onError?.Invoke(ex); }
     }
 
     internal async Task PersistAsync(string key, DataGridLayout layout, int? generation = null)
@@ -46,13 +48,13 @@ internal sealed class DataGridLayoutService : IDisposable
             var json = System.Text.Json.JsonSerializer.Serialize(layout);
             await _interop.SaveToLocalStorage(key, json);
         }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save layout: {ex.Message}"); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save layout: {ex.Message}"); _onError?.Invoke(ex); }
     }
 
     internal async Task ClearPersistedAsync(string key)
     {
         try { await _interop.RemoveFromLocalStorage(key); }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to clear persisted layout: {ex.Message}"); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to clear persisted layout: {ex.Message}"); _onError?.Invoke(ex); }
     }
 
     internal async Task<List<DataGridNamedLayout>> GetPersonalLayoutsAsync(string key)
@@ -63,7 +65,7 @@ internal sealed class DataGridLayoutService : IDisposable
             if (!string.IsNullOrEmpty(json))
                 return System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
         }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load named layouts: {ex.Message}"); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load named layouts: {ex.Message}"); _onError?.Invoke(ex); }
         return new();
     }
 
@@ -74,18 +76,22 @@ internal sealed class DataGridLayoutService : IDisposable
             var json = System.Text.Json.JsonSerializer.Serialize(layouts);
             await _interop.SaveToLocalStorage(key, json);
         }
-        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save named layouts: {ex.Message}"); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save named layouts: {ex.Message}"); _onError?.Invoke(ex); }
     }
 
     internal int CurrentSaveGeneration => _saveGeneration;
 
-    internal void ScheduleAutoSave(Action persistCallback)
+    internal void ScheduleAutoSave(Func<Task> persistCallback)
     {
         _autoSaveTimer?.Dispose();
         ++_saveGeneration;
         _autoSaveTimer = new System.Threading.Timer(_ =>
         {
-            persistCallback();
+            _ = Task.Run(async () =>
+            {
+                try { await persistCallback(); }
+                catch (Exception ex) { Console.Error.WriteLine($"[Lumeo DataGrid] Autosave failed: {ex.Message}"); }
+            });
         }, null, 500, System.Threading.Timeout.Infinite);
     }
 

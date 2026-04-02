@@ -549,4 +549,66 @@ public class StrictInteropTests : IAsyncLifetime
 
         Assert.Equal(5, count);
     }
+
+    // --- Negative Tests: Unregister prevents JS calls ---
+
+    [Fact]
+    public async Task UnregisterClickOutside_Invokes_Correct_JS()
+    {
+        _module.SetupVoid("registerClickOutside");
+        _module.SetupVoid("unregisterClickOutside");
+
+        await _service.RegisterClickOutside("elem-1", null, () => Task.CompletedTask);
+        await _service.UnregisterClickOutside("elem-1");
+
+        _module.VerifyInvoke("unregisterClickOutside", calledTimes: 1);
+    }
+
+    [Fact]
+    public async Task UnregisterDrawerSwipe_Invokes_Correct_JS()
+    {
+        _module.SetupVoid("registerDrawerSwipe");
+        _module.SetupVoid("unregisterDrawerSwipe");
+
+        await _service.RegisterDrawerSwipe("drawer-1", "down", () => Task.CompletedTask);
+        await _service.UnregisterDrawerSwipe("drawer-1");
+
+        _module.VerifyInvoke("unregisterDrawerSwipe", calledTimes: 1);
+    }
+
+    [Fact]
+    public async Task UnregisterCarouselSwipe_Invokes_Correct_JS()
+    {
+        _module.SetupVoid("registerCarouselSwipe");
+        _module.SetupVoid("unregisterCarouselSwipe");
+
+        await _service.RegisterCarouselSwipe("carousel-1", "horizontal", _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
+        await _service.UnregisterCarouselSwipe("carousel-1");
+
+        _module.VerifyInvoke("unregisterCarouselSwipe", calledTimes: 1);
+    }
+
+    [Fact]
+    public async Task UnregisterResizeHandle_Invokes_Correct_JS()
+    {
+        _module.SetupVoid("registerResizeHandle");
+        _module.SetupVoid("unregisterResizeHandle");
+
+        await _service.RegisterResizeHandle("handle-1", "horizontal", _ => Task.CompletedTask, () => Task.CompletedTask);
+        await _service.UnregisterResizeHandle("handle-1");
+
+        _module.VerifyInvoke("unregisterResizeHandle", calledTimes: 1);
+    }
+
+    [Fact]
+    public async Task UnregisterScrollspy_Invokes_Correct_JS()
+    {
+        _module.SetupVoid("registerScrollspy");
+        _module.SetupVoid("unregisterScrollspy");
+
+        await _service.RegisterScrollspy("container-1", 0, true, _ => Task.CompletedTask);
+        await _service.UnregisterScrollspy("container-1");
+
+        _module.VerifyInvoke("unregisterScrollspy", calledTimes: 1);
+    }
 }
