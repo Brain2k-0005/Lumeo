@@ -320,10 +320,10 @@ public class DataGridTests : IAsyncLifetime
     [Fact]
     public void DataGrid_IsLoading_True_Renders_Skeleton_Rows()
     {
-        var cut = RenderGrid(isLoading: true);
-        // Body shows 5 skeleton rows when loading (hardcoded in DataGridBody)
+        // SkeletonRowCount defaults to PageSize (10) — grid passes PageSize to DataGridBody
+        var cut = RenderGrid(isLoading: true, pageSize: 10);
         var rows = cut.FindAll("tbody tr");
-        Assert.Equal(5, rows.Count);
+        Assert.Equal(10, rows.Count);
         // Actual data names should NOT appear
         Assert.DoesNotContain("Alice", cut.Markup);
         Assert.DoesNotContain("Bob", cut.Markup);
@@ -486,9 +486,9 @@ public class DataGridTests : IAsyncLifetime
             .Add(x => x.IsLoading, true)
             .Add(x => x.TotalCount, 0));
 
-        // Skeleton rows shown when loading
+        // Skeleton rows shown when loading — DataGridBody uses SkeletonRowCount=PageSize (default 10)
         var rows = cut.FindAll("tbody tr");
-        Assert.Equal(5, rows.Count); // DataGridBody hardcodes 5 skeleton rows
+        Assert.Equal(10, rows.Count);
         Assert.DoesNotContain("Alice", cut.Markup);
     }
 

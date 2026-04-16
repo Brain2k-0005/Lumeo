@@ -4,7 +4,11 @@
 @if (Context is not null && Context.IsLoading)
 {
     <tbody class="@CssClass" @attributes="AdditionalAttributes">
-        @for (var i = 0; i < 5; i++)
+        @{
+            var visibleColumns = Context.Columns.Where(c => c.Visible).ToList();
+            var fallbackCellCount = visibleColumns.Count > 0 ? visibleColumns.Count : (SkeletonRowCount > 0 ? 4 : 4);
+        }
+        @for (var i = 0; i < SkeletonRowCount; i++)
         {
             <tr class="border-b border-border/40">
                 @if (Context.SelectionMode != DataGridSelectionMode.None)
@@ -19,11 +23,23 @@
                         <Skeleton Class="h-4 w-4 rounded" />
                     </td>
                 }
-                @foreach (var column in Context.Columns.Where(c => c.Visible))
+                @if (visibleColumns.Count > 0)
                 {
-                    <td class="px-3 py-2">
-                        <Skeleton Class="h-4 w-full rounded" />
-                    </td>
+                    @foreach (var column in visibleColumns)
+                    {
+                        <td class="px-3 py-2">
+                            <Skeleton Class="h-4 w-full rounded" />
+                        </td>
+                    }
+                }
+                else
+                {
+                    @for (var j = 0; j < fallbackCellCount; j++)
+                    {
+                        <td class="px-3 py-2">
+                            <Skeleton Class="h-4 w-full rounded" />
+                        </td>
+                    }
                 }
             </tr>
         }
@@ -113,6 +129,7 @@ else if (Context is not null)
     [Parameter] public RenderFragment? EmptyContent { get; set; }
     [Parameter] public bool UseVirtualization { get; set; }
     [Parameter] public bool HasDetailTemplate { get; set; }
+    [Parameter] public int SkeletonRowCount { get; set; } = 5;
     [Parameter] public EventCallback<(TItem, double, double)> OnContextMenu { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }

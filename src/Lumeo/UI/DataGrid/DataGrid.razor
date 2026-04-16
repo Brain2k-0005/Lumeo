@@ -120,6 +120,7 @@
                               EmptyContent="EmptyContent"
                               UseVirtualization="@UseVirtualization"
                               HasDetailTemplate="@(DetailTemplate is not null)"
+                              SkeletonRowCount="@PageSize"
                               OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
 
                 <DataGridFooter TItem="TItem"
@@ -231,6 +232,7 @@
     private string _contextMenuId = $"dg-ctx-{Guid.NewGuid():N}";
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
+    private string? _lastGroupBy;
     private string _layoutId = $"datagrid-{Guid.NewGuid():N}";
     private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
     private bool _savedLayoutApplied; // tracks whether the SavedLayout parameter has been applied
@@ -329,14 +331,36 @@
                 var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == GroupBy);
                 if (groupCol is not null)
                 {
+                    var serverGroupByChanged = GroupBy != _lastGroupBy;
+                    _lastGroupBy = GroupBy;
+
                     _groupedSections = _displayedItems
                         .GroupBy(item => groupCol.GetFormattedValue(item))
                         .OrderBy(g => g.Key)
                         .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
                         .ToList();
-                    foreach (var section in _groupedSections)
-                        _expandedGroups.Add(section.Key);
+
+                    if (serverGroupByChanged)
+                    {
+                        _expandedGroups.Clear();
+                        foreach (var section in _groupedSections)
+                            _expandedGroups.Add(section.Key);
+                    }
+                    else
+                    {
+                        var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
+                        _expandedGroups.IntersectWith(validKeys);
+                        foreach (var section in _groupedSections)
+                        {
+                            if (!_expandedGroups.Contains(section.Key))
+                                _expandedGroups.Add(section.Key);
+                        }
+                    }
                 }
+            }
+            else
+            {
+                _lastGroupBy = null;
             }
         }
         else
@@ -488,16 +512,32 @@
             var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == GroupBy);
             if (groupCol is not null)
             {
+                var groupByChanged = GroupBy != _lastGroupBy;
+                _lastGroupBy = GroupBy;
+
                 _groupedSections = _processedItems
                     .GroupBy(item => groupCol.GetFormattedValue(item))
                     .OrderBy(g => g.Key)
                     .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
                     .ToList();
 
-                // Auto-expand all groups initially
-                foreach (var section in _groupedSections)
+                if (groupByChanged)
                 {
-                    _expandedGroups.Add(section.Key);
+                    // GroupBy field changed — reset and auto-expand all groups
+                    _expandedGroups.Clear();
+                    foreach (var section in _groupedSections)
+                        _expandedGroups.Add(section.Key);
+                }
+                else
+                {
+                    // Keep user's expand/collapse state; remove stale keys and add newly discovered groups
+                    var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
+                    _expandedGroups.IntersectWith(validKeys);
+                    foreach (var section in _groupedSections)
+                    {
+                        if (!_expandedGroups.Contains(section.Key))
+                            _expandedGroups.Add(section.Key);
+                    }
                 }
 
                 // When grouped, show items from expanded groups (no pagination)
@@ -508,6 +548,7 @@
                 return; // Skip normal pagination when grouped
             }
         }
+        _lastGroupBy = null;
         _groupedSections.Clear();
 
         // Paginate
