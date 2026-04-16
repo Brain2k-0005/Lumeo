@@ -161,6 +161,7 @@
     [Parameter] public bool Reorderable { get; set; }
     [Parameter] public bool RowReorderable { get; set; }
     [Parameter] public string? GroupBy { get; set; }
+    [Parameter] public bool GroupsExpandedByDefault { get; set; } = true;
 
     // --- Conditional Row Styling ---
     [Parameter] public Func<TItem, string>? RowClass { get; set; }
@@ -343,17 +344,23 @@
                     if (serverGroupByChanged)
                     {
                         _expandedGroups.Clear();
-                        foreach (var section in _groupedSections)
-                            _expandedGroups.Add(section.Key);
+                        if (GroupsExpandedByDefault)
+                        {
+                            foreach (var section in _groupedSections)
+                                _expandedGroups.Add(section.Key);
+                        }
                     }
                     else
                     {
                         var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
                         _expandedGroups.IntersectWith(validKeys);
-                        foreach (var section in _groupedSections)
+                        if (GroupsExpandedByDefault)
                         {
-                            if (!_expandedGroups.Contains(section.Key))
-                                _expandedGroups.Add(section.Key);
+                            foreach (var section in _groupedSections)
+                            {
+                                if (!_expandedGroups.Contains(section.Key))
+                                    _expandedGroups.Add(section.Key);
+                            }
                         }
                     }
                 }
@@ -523,20 +530,27 @@
 
                 if (groupByChanged)
                 {
-                    // GroupBy field changed — reset and auto-expand all groups
+                    // GroupBy field changed — reset expand state based on default
                     _expandedGroups.Clear();
-                    foreach (var section in _groupedSections)
-                        _expandedGroups.Add(section.Key);
+                    if (GroupsExpandedByDefault)
+                    {
+                        foreach (var section in _groupedSections)
+                            _expandedGroups.Add(section.Key);
+                    }
                 }
                 else
                 {
-                    // Keep user's expand/collapse state; remove stale keys and add newly discovered groups
+                    // Keep user's expand/collapse state; remove stale keys
                     var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
                     _expandedGroups.IntersectWith(validKeys);
-                    foreach (var section in _groupedSections)
+                    // Add newly discovered groups based on default
+                    if (GroupsExpandedByDefault)
                     {
-                        if (!_expandedGroups.Contains(section.Key))
-                            _expandedGroups.Add(section.Key);
+                        foreach (var section in _groupedSections)
+                        {
+                            if (!_expandedGroups.Contains(section.Key))
+                                _expandedGroups.Add(section.Key);
+                        }
                     }
                 }
 
