@@ -1,581 +1,522 @@
-﻿@page "/blocks/filters"
+@page "/blocks/filters"
 @namespace Lumeo.Docs.Pages.Patterns
 
-<PageTitle>Filters — Lumeo</PageTitle>
+<PageTitle>Filters — Lumeo Patterns</PageTitle>
 
-<Stack Gap="6" Class="w-full min-w-[700px]">
+<PageHeader Title="Filters" Description="A full faceted-search product browser with a sticky filter sidebar, live category/brand/rating/price/date/stock filters, active chips, and a responsive product grid with favorites." />
 
-    <!-- Page Title Bar -->
-    <Flex Class="items-center justify-between">
-        <Stack>
-            <Heading Level="1" Class="text-2xl font-bold text-foreground">Tasks</Heading>
-            <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Manage and filter your team's tasks across all projects.</Lumeo.Text>
-        </Stack>
-        <Button>
-            <DynamicIcon Name="Plus" Class="h-4 w-4 mr-2" />
-            New Task
-        </Button>
-    </Flex>
+<ComponentDemo Title="Product Filter &amp; Browse" Code="@_code">
+    <div class="w-full min-w-[720px]">
 
-    <Separator Class="my-4" />
+        <!-- Page header row -->
+        <div class="flex items-center justify-between mb-5">
+            <div>
+                <Heading Level="2" Class="text-2xl font-bold text-foreground tracking-tight">Marketplace</Heading>
+                <Lumeo.Text Class="text-sm text-muted-foreground mt-0.5">
+                    @FilteredProducts.Count of @_allProducts.Count products
+                </Lumeo.Text>
+            </div>
+            <div class="flex items-center gap-2">
+                <Select Value="@_sortBy" ValueChanged="@(v => _sortBy = v ?? "Relevance")" Class="w-48">
+                    <SelectTrigger Class="h-9 text-sm">
+                        <DynamicIcon Name="ArrowUpDown" Class="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                        <span>@_sortBy</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value="Relevance">Relevance</SelectItem>
+                        <SelectItem Value="Price: Low to High">Price: Low → High</SelectItem>
+                        <SelectItem Value="Price: High to Low">Price: High → Low</SelectItem>
+                        <SelectItem Value="Newest">Newest</SelectItem>
+                        <SelectItem Value="Highest Rated">Highest Rated</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+        </div>
 
-    <!-- Filter Bar -->
-    <Card>
-        <CardContent Class="pt-6">
-            <FilterBar>
-                <ChildContent>
-                    <!-- Filter Controls Row -->
-                    <Flex Class="items-center gap-3 flex-wrap">
+        <!-- Active filter chips -->
+        @if (HasActiveFilters)
+        {
+            <div class="flex flex-wrap gap-2 mb-4 items-center">
+                <Lumeo.Text As="span" Class="text-xs font-medium text-muted-foreground shrink-0">Active:</Lumeo.Text>
+                @if (_searchQuery != "")
+                {
+                    <FilterPill Label="Search" Value="@($"\"{_searchQuery}\"")" OnDismiss="@(() => _searchQuery = "")" />
+                }
+                @foreach (var cat in _selectedCategories.ToList())
+                {
+                    var c = cat;
+                    <FilterPill Label="Category" Value="@c" OnDismiss="@(() => _selectedCategories.Remove(c))" />
+                }
+                @foreach (var brand in _selectedBrands.ToList())
+                {
+                    var b = brand;
+                    <FilterPill Label="Brand" Value="@b" OnDismiss="@(() => _selectedBrands.Remove(b))" />
+                }
+                @if (_selectedRating > 0)
+                {
+                    <FilterPill Label="Rating" Value="@($"{_selectedRating}+ stars")" OnDismiss="@(() => _selectedRating = 0)" />
+                }
+                @if (_priceMin > 0 || _priceMax < 1000)
+                {
+                    <FilterPill Label="Price" Value="@($"${_priceMin}–${_priceMax}")" OnDismiss="@(() => { _priceMin = 0; _priceMax = 1000; })" />
+                }
+                @if (_inStockOnly)
+                {
+                    <FilterPill Label="Stock" Value="In stock only" OnDismiss="@(() => _inStockOnly = false)" />
+                }
+                @if (_dateFrom.HasValue || _dateTo.HasValue)
+                {
+                    var label = _dateFrom.HasValue && _dateTo.HasValue
+                        ? $"{_dateFrom!.Value:MMM d} – {_dateTo!.Value:MMM d}"
+                        : _dateFrom.HasValue ? $"From {_dateFrom.Value:MMM d}" : $"Until {_dateTo!.Value:MMM d}";
+                    <FilterPill Label="Added" Value="@label" OnDismiss="@(() => { _dateFrom = null; _dateTo = null; })" />
+                }
+                @foreach (var color in _selectedColors.ToList())
+                {
+                    var col = color;
+                    <FilterPill Label="Color" Value="@col" OnDismiss="@(() => _selectedColors.Remove(col))" />
+                }
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                        Class="h-6 text-xs text-muted-foreground hover:text-destructive transition-colors px-2"
+                        @onclick="ClearAllFilters">
+                    <DynamicIcon Name="X" Class="h-3 w-3 mr-1" />
+                    Clear all
+                </Button>
+            </div>
+        }
 
-                        <!-- Add Filter Dropdown -->
-                        <DropdownMenu @bind-IsOpen="_addFilterOpen">
-                            <DropdownMenuTrigger>
-                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                                    <DynamicIcon Name="Plus" Class="h-3.5 w-3.5 mr-1.5" />
-                                    Add Filter
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuLabel>Filter by</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Status"))">
-                                    <DynamicIcon Name="CircleDot" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Status
-                                    @if (_activeFilterFields.Contains("Status"))
-                                    {
-                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                    }
-                                </DropdownMenuItem>
-                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Priority"))">
-                                    <DynamicIcon Name="Flag" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Priority
-                                    @if (_activeFilterFields.Contains("Priority"))
-                                    {
-                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                    }
-                                </DropdownMenuItem>
-                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Category"))">
-                                    <DynamicIcon Name="Tag" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Category
-                                    @if (_activeFilterFields.Contains("Category"))
-                                    {
-                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                    }
-                                </DropdownMenuItem>
-                                <DropdownMenuItem OnClick="@(() => ToggleFilterField("Assignee"))">
-                                    <DynamicIcon Name="User" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Assignee
-                                    @if (_activeFilterFields.Contains("Assignee"))
-                                    {
-                                        <DynamicIcon Name="Check" Class="h-4 w-4 ml-auto text-primary" />
-                                    }
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+        <div class="flex gap-6">
 
-                        <!-- Active Filter Selectors -->
-                        @if (_activeFilterFields.Contains("Status"))
-                        {
-                            <Select Value="@_statusFilter" ValueChanged="OnStatusChanged">
-                                <SelectTrigger Class="w-[160px] h-8 text-xs">
-                                    <Lumeo.Text As="span" Class="truncate">@(_statusFilter == "" ? "Status" : $"Status: {_statusFilter}")</Lumeo.Text>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem Value="Active">Active</SelectItem>
-                                    <SelectItem Value="Inactive">Inactive</SelectItem>
-                                    <SelectItem Value="Pending">Pending</SelectItem>
-                                    <SelectItem Value="Archived">Archived</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        }
+            <!-- ── Filter Sidebar ───────────────────────────────────── -->
+            <div class="w-64 shrink-0 space-y-5">
 
-                        @if (_activeFilterFields.Contains("Priority"))
-                        {
-                            <Select Value="@_priorityFilter" ValueChanged="OnPriorityChanged">
-                                <SelectTrigger Class="w-[160px] h-8 text-xs">
-                                    <Lumeo.Text As="span" Class="truncate">@(_priorityFilter == "" ? "Priority" : $"Priority: {_priorityFilter}")</Lumeo.Text>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem Value="Low">Low</SelectItem>
-                                    <SelectItem Value="Medium">Medium</SelectItem>
-                                    <SelectItem Value="High">High</SelectItem>
-                                    <SelectItem Value="Critical">Critical</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        }
-
-                        @if (_activeFilterFields.Contains("Category"))
-                        {
-                            <DropdownMenu @bind-IsOpen="_categoryDropdownOpen">
-                                <DropdownMenuTrigger>
-                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">
-                                        @if (_categoryFilters.Count == 0)
-                                        {
-                                            <Lumeo.Text As="span">Category</Lumeo.Text>
-                                        }
-                                        else
-                                        {
-                                            <Lumeo.Text As="span">Category: @_categoryFilters.Count selected</Lumeo.Text>
-                                        }
-                                        <DynamicIcon Name="ChevronDown" Class="h-3.5 w-3.5 ml-1.5 opacity-50" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                    <DropdownMenuLabel>Categories</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    @foreach (var category in _allCategories)
-                                    {
-                                        var cat = category;
-                                        <Flex Class="items-center gap-2 px-2 py-1.5">
-                                            <Checkbox Checked="@_categoryFilters.Contains(cat)"
-                                                      CheckedChanged="@(v => ToggleCategory(cat, v))" />
-                                            <Lumeo.Text As="span" Class="text-sm">@cat</Lumeo.Text>
-                                        </Flex>
-                                    }
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        }
-
-                        @if (_activeFilterFields.Contains("Assignee"))
-                        {
-                            <Select Value="@_assigneeFilter" ValueChanged="OnAssigneeChanged">
-                                <SelectTrigger Class="w-[180px] h-8 text-xs">
-                                    <Lumeo.Text As="span" Class="truncate">@(_assigneeFilter == "" ? "Assignee" : $"Assignee: {_assigneeFilter}")</Lumeo.Text>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    @foreach (var assignee in _allAssignees)
-                                    {
-                                        <SelectItem Value="@assignee.Name">
-                                            <Flex Class="items-center gap-2">
-                                                <Avatar Size="Avatar.AvatarSize.Sm" Class="h-5 w-5">
-                                                    <AvatarFallback Class="text-[10px]">@assignee.Initials</AvatarFallback>
-                                                </Avatar>
-                                                @assignee.Name
-                                            </Flex>
-                                        </SelectItem>
-                                    }
-                                </SelectContent>
-                            </Select>
-                        }
-
-                        <!-- Spacer -->
-                        <Flex Class="flex-1" />
-
-                        <!-- Clear All button -->
-                        @if (HasActiveFilters)
-                        {
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
-                                    Class="h-8 text-xs text-muted-foreground"
-                                    @onclick="ClearFilters">
-                                <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
-                                Clear all
-                            </Button>
-                        }
-                    </Flex>
-
-                    <!-- Search Input -->
-                    <Stack Class="relative">
+                <!-- Search -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Search</Lumeo.Text>
+                    <div class="relative">
                         <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                        <Input placeholder="Search tasks by title..."
-                               Value="@_searchQuery"
-                               OnInput="OnSearchInput"
-                               Class="pl-9 max-w-sm" />
-                    </Stack>
-                </ChildContent>
-                <Pills>
-                    @if (HasActiveFilters)
-                    {
-                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground font-medium">Active filters:</Lumeo.Text>
+                        <Input Value="@_searchQuery"
+                               ValueChanged="@(v => _searchQuery = v ?? "")"
+                               placeholder="Search products…"
+                               Class="pl-9" />
+                    </div>
+                </div>
 
-                        @if (_statusFilter != "")
-                        {
-                            <FilterPill Label="Status" Value="@_statusFilter" OnDismiss="@(() => { _statusFilter = ""; })" />
-                        }
+                <Separator />
 
-                        @if (_priorityFilter != "")
-                        {
-                            <FilterPill Label="Priority" Value="@_priorityFilter" OnDismiss="@(() => { _priorityFilter = ""; })" />
-                        }
-
-                        @foreach (var cat in _categoryFilters.ToList())
+                <!-- Category -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Category</Lumeo.Text>
+                    <div class="space-y-2">
+                        @foreach (var cat in _allCategories)
                         {
                             var c = cat;
-                            <FilterPill Label="Category" Value="@c" OnDismiss="@(() => _categoryFilters.Remove(c))" />
+                            var count = _allProducts.Count(p => p.Category == c);
+                            <div class="flex items-center gap-2.5">
+                                <Checkbox Id="@($"cat-{c}")"
+                                          Checked="@_selectedCategories.Contains(c)"
+                                          CheckedChanged="@(v => ToggleItem(_selectedCategories, c, v))" />
+                                <label for="@($"cat-{c}")" class="flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none">
+                                    @c
+                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@count</Lumeo.Text>
+                                </label>
+                            </div>
                         }
+                    </div>
+                </div>
 
-                        @if (_assigneeFilter != "")
-                        {
-                            <FilterPill Label="Assignee" Value="@_assigneeFilter" OnDismiss="@(() => { _assigneeFilter = ""; })" />
-                        }
+                <Separator />
 
-                        @if (_searchQuery != "")
-                        {
-                            <FilterPill Label="Search" Value="@($"\"{_searchQuery}\"")" OnDismiss="@(() => { _searchQuery = ""; })" />
-                        }
-                    }
-                </Pills>
-            </FilterBar>
-        </CardContent>
-    </Card>
+                <!-- Price range -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest">Price range</Lumeo.Text>
+                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">$@((int)_priceMin) – $@((int)_priceMax)</Lumeo.Text>
+                    </div>
+                    <div class="space-y-2.5">
+                        <div>
+                            <Lumeo.Text Class="text-[11px] text-muted-foreground mb-1">Min: $@((int)_priceMin)</Lumeo.Text>
+                            <Slider Value="@_priceMin" ValueChanged="@(v => _priceMin = Math.Min(v, _priceMax - 10))" Min="0" Max="1000" Step="10" />
+                        </div>
+                        <div>
+                            <Lumeo.Text Class="text-[11px] text-muted-foreground mb-1">Max: $@((int)_priceMax)</Lumeo.Text>
+                            <Slider Value="@_priceMax" ValueChanged="@(v => _priceMax = Math.Max(v, _priceMin + 10))" Min="0" Max="1000" Step="10" />
+                        </div>
+                    </div>
+                </div>
 
-    <!-- Data Table -->
-    <Card>
-        <CardContent Class="pt-6 px-0">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead Class="w-[40px]">
-                            <Checkbox Checked="@_selectAll" CheckedChanged="ToggleSelectAll" />
-                        </TableHead>
-                        <TableHead Class="w-[80px]">
-                            <Button Variant="Button.ButtonVariant.Ghost" Class="h-auto p-0 font-medium flex items-center gap-1 hover:text-foreground transition-colors" @onclick="@(() => ToggleSort("Id"))">
-                                ID
-                                @if (_sortField == "Id")
-                                {
-                                    <DynamicIcon Name="@(_sortAsc ? "ArrowUp" : "ArrowDown")" Class="h-3.5 w-3.5" />
-                                }
-                            </Button>
-                        </TableHead>
-                        <TableHead>
-                            <Button Variant="Button.ButtonVariant.Ghost" Class="h-auto p-0 font-medium flex items-center gap-1 hover:text-foreground transition-colors" @onclick="@(() => ToggleSort("Title"))">
-                                Title
-                                @if (_sortField == "Title")
-                                {
-                                    <DynamicIcon Name="@(_sortAsc ? "ArrowUp" : "ArrowDown")" Class="h-3.5 w-3.5" />
-                                }
-                            </Button>
-                        </TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Assignee</TableHead>
-                        <TableHead Class="text-right">Created</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    @if (FilteredTasks.Count == 0)
-                    {
-                        <TableRow>
-                            <TableCell Class="text-center py-12 text-muted-foreground" colspan="8">
-                                <Flex Direction="col" Class="items-center gap-2">
-                                    <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground/50" />
-                                    <Lumeo.Text Class="text-sm font-medium">No tasks found</Lumeo.Text>
-                                    <Lumeo.Text Class="text-xs">Try adjusting your filters to find what you're looking for.</Lumeo.Text>
-                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="mt-2" @onclick="ClearFilters">
-                                        Clear Filters
-                                    </Button>
-                                </Flex>
-                            </TableCell>
-                        </TableRow>
-                    }
-                    else
-                    {
-                        @foreach (var task in SortedTasks)
+                <Separator />
+
+                <!-- Rating -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Minimum rating</Lumeo.Text>
+                    <div class="space-y-1.5">
+                        @foreach (var rating in new[] { 5, 4, 3, 2 })
                         {
-                            var t = task;
-                            <TableRow>
-                                <TableCell>
-                                    <Checkbox Checked="@_selectedIds.Contains(t.Id)"
-                                              CheckedChanged="@(v => ToggleRowSelection(t.Id, v))" />
-                                </TableCell>
-                                <TableCell>
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground font-mono">@t.Id</Lumeo.Text>
-                                </TableCell>
-                                <TableCell>
-                                    <Flex Direction="col">
-                                        <Lumeo.Text As="span" Class="font-medium text-foreground">@t.Title</Lumeo.Text>
-                                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground truncate max-w-[280px]">@t.Description</Lumeo.Text>
-                                    </Flex>
-                                </TableCell>
-                                <TableCell>
-                                    <Badge Variant="@GetStatusVariant(t.Status)" Class="text-xs">
-                                        @t.Status
-                                    </Badge>
-                                </TableCell>
-                                <TableCell>
-                                    <Flex Class="items-center gap-1.5">
-                                        <Stack Class="@GetPriorityDotClass(t.Priority)"></Stack>
-                                        <Lumeo.Text As="span" Class="text-sm">@t.Priority</Lumeo.Text>
-                                    </Flex>
-                                </TableCell>
-                                <TableCell>
-                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs font-normal">@t.Category</Badge>
-                                </TableCell>
-                                <TableCell>
-                                    <Flex Class="items-center gap-2">
-                                        <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6">
-                                            <AvatarFallback Class="text-[10px]">@GetInitials(t.Assignee)</AvatarFallback>
-                                        </Avatar>
-                                        <Lumeo.Text As="span" Class="text-sm">@t.Assignee</Lumeo.Text>
-                                    </Flex>
-                                </TableCell>
-                                <TableCell Class="text-right">
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground">@t.CreatedDate.ToString("MMM d, yyyy")</Lumeo.Text>
-                                </TableCell>
-                            </TableRow>
+                            var r = rating;
+                            <label class="flex items-center gap-2.5 cursor-pointer group select-none">
+                                <input type="radio"
+                                       name="rating-filter"
+                                       class="accent-primary cursor-pointer"
+                                       checked="@(_selectedRating == r)"
+                                       @onchange="@(() => _selectedRating = _selectedRating == r ? 0 : r)" />
+                                <div class="flex items-center gap-1">
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        <DynamicIcon Name="Star" Class="@($"h-3.5 w-3.5 {(i <= r ? "text-warning-text fill-warning-text" : "text-muted-foreground/30")}")" />
+                                    }
+                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground ml-0.5">@(r == 5 ? "only" : "& up")</Lumeo.Text>
+                                </div>
+                            </label>
                         }
-                    }
-                </TableBody>
-            </Table>
-        </CardContent>
-        <CardFooter Class="justify-between border-t py-4">
-            <Stack Class="text-sm text-muted-foreground">
-                @if (_selectedIds.Count > 0)
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Brand -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Brand</Lumeo.Text>
+                    <div class="space-y-2">
+                        @foreach (var brand in _allBrands)
+                        {
+                            var b = brand;
+                            var count = _allProducts.Count(p => p.Brand == b);
+                            <div class="flex items-center gap-2.5">
+                                <Checkbox Id="@($"brand-{b}")"
+                                          Checked="@_selectedBrands.Contains(b)"
+                                          CheckedChanged="@(v => ToggleItem(_selectedBrands, b, v))" />
+                                <label for="@($"brand-{b}")" class="flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none">
+                                    @b
+                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@count</Lumeo.Text>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Availability -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Availability</Lumeo.Text>
+                    <div class="flex items-center gap-2.5">
+                        <Switch Id="in-stock" @bind-Checked="_inStockOnly" />
+                        <label for="in-stock" class="text-sm text-foreground cursor-pointer select-none">In stock only</label>
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Color -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Color</Lumeo.Text>
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (var color in _allColors)
+                        {
+                            var col = color;
+                            var isSelected = _selectedColors.Contains(col.Name);
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <button @onclick="@(() => { if (isSelected) _selectedColors.Remove(col.Name); else _selectedColors.Add(col.Name); })"
+                                            class="@($"h-7 w-7 rounded-full border-2 transition-all {(isSelected ? "border-foreground scale-110 shadow-sm" : "border-transparent hover:border-border")} {col.Bg}")">
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipContent.TooltipSide.Top">@col.Name</TooltipContent>
+                            </Tooltip>
+                        }
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Date Added -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Date added</Lumeo.Text>
+                    <DateRangePicker @bind-StartDate="_dateFrom" @bind-EndDate="_dateTo" Clearable="true" />
+                </div>
+
+                <Separator />
+
+                <!-- Clear all -->
+                <Button Variant="Button.ButtonVariant.Ghost" Class="w-full text-muted-foreground hover:text-destructive" @onclick="ClearAllFilters">
+                    <DynamicIcon Name="RotateCcw" Class="h-4 w-4 mr-2" />
+                    Clear all filters
+                </Button>
+
+            </div>
+
+            <!-- ── Product Grid ──────────────────────────────────────── -->
+            <div class="flex-1 min-w-0 space-y-4">
+
+                @if (FilteredProducts.Count == 0)
                 {
-                    <Lumeo.Text As="span">@_selectedIds.Count of @FilteredTasks.Count row(s) selected.</Lumeo.Text>
+                    <div class="flex flex-col items-center justify-center py-24 text-center">
+                        <div class="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                            <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <Lumeo.Text Class="text-sm font-medium text-foreground">No products found</Lumeo.Text>
+                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1 max-w-xs">Try adjusting your filters or search query.</Lumeo.Text>
+                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="mt-4" @onclick="ClearAllFilters">
+                            Clear filters
+                        </Button>
+                    </div>
                 }
                 else
                 {
-                    <Lumeo.Text As="span">Showing @FilteredTasks.Count of @_allTasks.Count results</Lumeo.Text>
-                }
-            </Stack>
-            <Flex Class="items-center gap-2">
-                @if (_selectedIds.Count > 0)
-                {
-                    <DropdownMenu @bind-IsOpen="_bulkActionsOpen">
-                        <DropdownMenuTrigger>
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                                Bulk Actions
-                                <DynamicIcon Name="ChevronDown" Class="h-3.5 w-3.5 ml-1.5" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent Align="DropdownMenuContent.DropdownMenuAlign.End">
-                            <DropdownMenuItem OnClick="@(() => BulkSetStatus("Active"))">
-                                <DynamicIcon Name="CircleCheck" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                Set Active
-                            </DropdownMenuItem>
-                            <DropdownMenuItem OnClick="@(() => BulkSetStatus("Archived"))">
-                                <DynamicIcon Name="Archive" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                Archive
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem OnClick="@(() => _selectedIds.Clear())" Class="text-destructive">
-                                <DynamicIcon Name="Trash2" Class="h-4 w-4 mr-2" />
-                                Delete Selected
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                }
-            </Flex>
-        </CardFooter>
-    </Card>
+                    <div class="grid grid-cols-3 gap-4">
+                        @foreach (var product in SortedProducts)
+                        {
+                            var p = product;
+                            <div class="group cursor-pointer rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden hover:border-border/80 hover:shadow-md transition-all">
+                                <!-- Product image -->
+                                <div class="relative overflow-hidden" style="aspect-ratio:4/3">
+                                    <img src="https://images.unsplash.com/photo-@(p.UnsplashId)?w=400&auto=format&fit=crop&q=60"
+                                         alt="@p.Name"
+                                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                    <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                                    <!-- Badges -->
+                                    <div class="absolute top-2 left-2 flex flex-col gap-1">
+                                        @if (p.IsNew)
+                                        {
+                                            <Badge Variant="Badge.BadgeVariant.Default" Class="text-[10px] py-0 px-1.5 h-4">New</Badge>
+                                        }
+                                        @if (p.DiscountPct > 0)
+                                        {
+                                            <Badge Variant="Badge.BadgeVariant.Destructive" Class="text-[10px] py-0 px-1.5 h-4">-@p.DiscountPct%</Badge>
+                                        }
+                                    </div>
+                                    <!-- Favorite -->
+                                    <button class="@($"absolute top-2 right-2 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center transition-all {(p.IsFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100")}")"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="@(() => p.IsFavorite = !p.IsFavorite)">
+                                        <DynamicIcon Name="Heart" Class="@($"h-4 w-4 transition-colors {(p.IsFavorite ? "text-destructive fill-destructive" : "text-muted-foreground")}")" />
+                                    </button>
+                                </div>
+                                <!-- Product info -->
+                                <div class="p-3">
+                                    <Lumeo.Text Class="text-[10px] text-muted-foreground uppercase tracking-widest mb-0.5">@p.Brand</Lumeo.Text>
+                                    <Lumeo.Text Class="text-sm font-semibold text-foreground truncate leading-snug">@p.Name</Lumeo.Text>
+                                    <!-- Stars -->
+                                    <div class="flex items-center gap-1 mt-1 mb-2">
+                                        @for (var i = 1; i <= 5; i++)
+                                        {
+                                            <DynamicIcon Name="Star" Class="@($"h-3 w-3 {(i <= p.Rating ? "text-warning-text fill-warning-text" : "text-muted-foreground/30")}")" />
+                                        }
+                                        <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground ml-0.5">(@p.ReviewCount)</Lumeo.Text>
+                                    </div>
+                                    <!-- Price + stock -->
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1.5">
+                                            <Lumeo.Text Class="text-sm font-bold text-foreground">$@p.Price.ToString("F0")</Lumeo.Text>
+                                            @if (p.OriginalPrice > p.Price)
+                                            {
+                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground line-through">$@p.OriginalPrice.ToString("F0")</Lumeo.Text>
+                                            }
+                                        </div>
+                                        @if (!p.InStock)
+                                        {
+                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] py-0 px-1.5 h-4">Out of stock</Badge>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
 
-</Stack>
+                    <!-- Pagination footer -->
+                    <div class="flex items-center justify-between pt-4 border-t border-border/40">
+                        <Lumeo.Text As="span" Class="text-sm text-muted-foreground">
+                            Showing @FilteredProducts.Count result@(FilteredProducts.Count != 1 ? "s" : "")
+                        </Lumeo.Text>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Disabled="true">
+                                <DynamicIcon Name="ChevronLeft" Class="h-4 w-4 mr-1" />
+                                Previous
+                            </Button>
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="px-3 h-8 text-sm">1</Badge>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Disabled="true">
+                                Next
+                                <DynamicIcon Name="ChevronRight" Class="h-4 w-4 ml-1" />
+                            </Button>
+                        </div>
+                    </div>
+                }
+
+            </div>
+        </div>
+    </div>
+</ComponentDemo>
 
 @code {
-    // Filter state
     private string _searchQuery = "";
-    private string _statusFilter = "";
-    private string _priorityFilter = "";
-    private string _assigneeFilter = "";
-    private List<string> _categoryFilters = new();
-    private HashSet<string> _activeFilterFields = new();
+    private string _sortBy = "Relevance";
+    private List<string> _selectedCategories = new();
+    private List<string> _selectedBrands = new();
+    private List<string> _selectedColors = new();
+    private int _selectedRating = 0;
+    private double _priceMin = 0;
+    private double _priceMax = 1000;
+    private bool _inStockOnly = false;
+    private DateOnly? _dateFrom;
+    private DateOnly? _dateTo;
 
-    // Dropdown state
-    private bool _addFilterOpen;
-    private bool _categoryDropdownOpen;
-    private bool _bulkActionsOpen;
+    private readonly string[] _allCategories = { "Electronics", "Audio", "Accessories", "Wearables", "Smart Home" };
+    private readonly string[] _allBrands = { "Apex", "NovaTech", "SoundWave", "Lumiq", "Vertex" };
 
-    // Table state
-    private HashSet<int> _selectedIds = new();
-    private bool _selectAll;
-    private string _sortField = "Id";
-    private bool _sortAsc = true;
-
-    // Data records
-    private record TaskItem(int Id, string Title, string Description, string Status, string Priority, string Category, string Assignee, DateTime CreatedDate);
-    private record AssigneeInfo(string Name, string Initials);
-
-    // Reference data
-    private readonly string[] _allCategories = { "Engineering", "Design", "Marketing", "Sales", "Support" };
-
-    private readonly List<AssigneeInfo> _allAssignees = new()
+    private record ColorChip(string Name, string Bg);
+    private readonly List<ColorChip> _allColors = new()
     {
-        new("John Davis", "JD"),
-        new("Sarah Chen", "SC"),
-        new("Mike Torres", "MT"),
-        new("Lisa Park", "LP"),
+        new("Black",  "bg-gray-900"),
+        new("White",  "bg-gray-100 border border-border/40"),
+        new("Silver", "bg-gray-400"),
+        new("Blue",   "bg-blue-500"),
+        new("Red",    "bg-red-500"),
+        new("Gold",   "bg-yellow-400"),
     };
 
-    // Task data
-    private readonly List<TaskItem> _allTasks = new()
+    private class ProductItem
     {
-        new(1001, "Migrate database to PostgreSQL 16", "Update the primary database engine and run migration scripts for all schemas.", "Active", "High", "Engineering", "John Davis", new DateTime(2026, 2, 1)),
-        new(1002, "Redesign onboarding flow", "Create a streamlined onboarding experience with guided tooltips and progress tracking.", "Active", "Medium", "Design", "Sarah Chen", new DateTime(2026, 2, 3)),
-        new(1003, "Q1 campaign landing page", "Build and deploy the landing page for the Q1 product launch campaign.", "Pending", "High", "Marketing", "Lisa Park", new DateTime(2026, 2, 5)),
-        new(1004, "Fix checkout timeout errors", "Investigate and resolve intermittent 504 errors during payment processing.", "Active", "Critical", "Engineering", "Mike Torres", new DateTime(2026, 2, 6)),
-        new(1005, "Update sales deck for Enterprise tier", "Revise pricing slides and add new case studies for enterprise prospects.", "Inactive", "Low", "Sales", "John Davis", new DateTime(2026, 2, 8)),
-        new(1006, "Implement SSO integration", "Add SAML and OIDC single sign-on support for enterprise customers.", "Active", "High", "Engineering", "Sarah Chen", new DateTime(2026, 2, 10)),
-        new(1007, "Customer feedback analysis report", "Compile and analyze NPS survey responses from January.", "Archived", "Low", "Support", "Lisa Park", new DateTime(2026, 1, 15)),
-        new(1008, "Design system color token audit", "Review and standardize color tokens across all component libraries.", "Pending", "Medium", "Design", "Sarah Chen", new DateTime(2026, 2, 12)),
-        new(1009, "Set up monitoring dashboards", "Configure Grafana dashboards for API latency, error rates, and throughput.", "Active", "Medium", "Engineering", "Mike Torres", new DateTime(2026, 2, 14)),
-        new(1010, "Partner co-marketing proposal", "Draft partnership proposal for joint webinar series with Acme Corp.", "Pending", "Medium", "Marketing", "John Davis", new DateTime(2026, 2, 16)),
-        new(1011, "Automate support ticket triage", "Build rules engine to auto-categorize and route incoming support tickets.", "Inactive", "High", "Support", "Mike Torres", new DateTime(2026, 2, 18)),
-        new(1012, "Mobile app push notification system", "Implement push notification infrastructure for iOS and Android apps.", "Active", "Critical", "Engineering", "Lisa Park", new DateTime(2026, 2, 20)),
+        public int Id { get; init; }
+        public string Name { get; init; } = "";
+        public string Brand { get; init; } = "";
+        public string Category { get; init; } = "";
+        public double Price { get; init; }
+        public double OriginalPrice { get; init; }
+        public int Rating { get; init; }
+        public int ReviewCount { get; init; }
+        public bool InStock { get; init; }
+        public bool IsNew { get; init; }
+        public int DiscountPct { get; init; }
+        public string UnsplashId { get; init; } = "";
+        public DateOnly AddedDate { get; init; }
+        public bool IsFavorite { get; set; }
+    }
+
+    private readonly List<ProductItem> _allProducts = new()
+    {
+        new() { Id = 1,  Name = "Pro Wireless Headphones",     Brand = "SoundWave", Category = "Audio",       Price = 249, OriginalPrice = 299, Rating = 5, ReviewCount = 1840, InStock = true,  IsNew = false, DiscountPct = 17, UnsplashId = "1505740420928-5e560c06d30e", AddedDate = new DateOnly(2026, 3, 15) },
+        new() { Id = 2,  Name = "Ultra Slim Laptop Stand",     Brand = "Apex",      Category = "Accessories", Price = 79,  OriginalPrice = 79,  Rating = 4, ReviewCount = 412,  InStock = true,  IsNew = true,  DiscountPct = 0,  UnsplashId = "1542291026-7eec264c27ff", AddedDate = new DateOnly(2026, 4, 1)  },
+        new() { Id = 3,  Name = "Smart Watch Series 5",        Brand = "NovaTech",  Category = "Wearables",   Price = 399, OriginalPrice = 449, Rating = 4, ReviewCount = 963,  InStock = true,  IsNew = false, DiscountPct = 11, UnsplashId = "1523275335684-37898b6baf30", AddedDate = new DateOnly(2026, 2, 20) },
+        new() { Id = 4,  Name = "Portable Bluetooth Speaker",  Brand = "SoundWave", Category = "Audio",       Price = 129, OriginalPrice = 129, Rating = 4, ReviewCount = 2201, InStock = true,  IsNew = false, DiscountPct = 0,  UnsplashId = "1496181133206-80ce9b88a853", AddedDate = new DateOnly(2026, 1, 10) },
+        new() { Id = 5,  Name = "4K Webcam Pro",               Brand = "Lumiq",     Category = "Electronics", Price = 199, OriginalPrice = 229, Rating = 3, ReviewCount = 287,  InStock = false, IsNew = false, DiscountPct = 13, UnsplashId = "1553062407-98eeb64c6a62", AddedDate = new DateOnly(2026, 3, 5)  },
+        new() { Id = 6,  Name = "Smart Home Hub",              Brand = "Vertex",    Category = "Smart Home",  Price = 149, OriginalPrice = 149, Rating = 4, ReviewCount = 541,  InStock = true,  IsNew = true,  DiscountPct = 0,  UnsplashId = "1511499767150-a48a237f0083", AddedDate = new DateOnly(2026, 4, 10) },
+        new() { Id = 7,  Name = "Noise Cancelling Earbuds",    Brand = "SoundWave", Category = "Audio",       Price = 179, OriginalPrice = 199, Rating = 5, ReviewCount = 3102, InStock = true,  IsNew = false, DiscountPct = 10, UnsplashId = "1555041469-a586c61ea9bc", AddedDate = new DateOnly(2026, 2, 1)  },
+        new() { Id = 8,  Name = "Mechanical Keyboard TKL",     Brand = "Apex",      Category = "Accessories", Price = 159, OriginalPrice = 159, Rating = 5, ReviewCount = 772,  InStock = true,  IsNew = true,  DiscountPct = 0,  UnsplashId = "1502920917128-1aa500764cbd", AddedDate = new DateOnly(2026, 4, 5)  },
+        new() { Id = 9,  Name = "USB-C Docking Station",       Brand = "NovaTech",  Category = "Electronics", Price = 229, OriginalPrice = 279, Rating = 4, ReviewCount = 498,  InStock = false, IsNew = false, DiscountPct = 18, UnsplashId = "1505740420928-5e560c06d30e", AddedDate = new DateOnly(2026, 1, 20) },
+        new() { Id = 10, Name = "Smart LED Desk Lamp",         Brand = "Vertex",    Category = "Smart Home",  Price = 89,  OriginalPrice = 89,  Rating = 4, ReviewCount = 329,  InStock = true,  IsNew = false, DiscountPct = 0,  UnsplashId = "1542291026-7eec264c27ff", AddedDate = new DateOnly(2026, 3, 25) },
+        new() { Id = 11, Name = "Fitness Tracker Band",        Brand = "NovaTech",  Category = "Wearables",   Price = 69,  OriginalPrice = 89,  Rating = 3, ReviewCount = 1105, InStock = true,  IsNew = false, DiscountPct = 22, UnsplashId = "1523275335684-37898b6baf30", AddedDate = new DateOnly(2026, 2, 14) },
+        new() { Id = 12, Name = "Wireless Charging Pad",       Brand = "Lumiq",     Category = "Accessories", Price = 49,  OriginalPrice = 49,  Rating = 4, ReviewCount = 651,  InStock = true,  IsNew = false, DiscountPct = 0,  UnsplashId = "1496181133206-80ce9b88a853", AddedDate = new DateOnly(2026, 3, 10) },
     };
 
-    // Computed properties
     private bool HasActiveFilters =>
-        _statusFilter != "" || _priorityFilter != "" || _assigneeFilter != "" || _categoryFilters.Count > 0 || _searchQuery != "";
+        _searchQuery != "" ||
+        _selectedCategories.Count > 0 ||
+        _selectedBrands.Count > 0 ||
+        _selectedColors.Count > 0 ||
+        _selectedRating > 0 ||
+        _priceMin > 0 || _priceMax < 1000 ||
+        _inStockOnly ||
+        _dateFrom.HasValue || _dateTo.HasValue;
 
-    private List<TaskItem> FilteredTasks
+    private List<ProductItem> FilteredProducts
     {
         get
         {
-            var tasks = _allTasks.AsEnumerable();
-
+            var products = _allProducts.AsEnumerable();
             if (_searchQuery != "")
-                tasks = tasks.Where(t => t.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
-
-            if (_statusFilter != "")
-                tasks = tasks.Where(t => t.Status == _statusFilter);
-
-            if (_priorityFilter != "")
-                tasks = tasks.Where(t => t.Priority == _priorityFilter);
-
-            if (_assigneeFilter != "")
-                tasks = tasks.Where(t => t.Assignee == _assigneeFilter);
-
-            if (_categoryFilters.Count > 0)
-                tasks = tasks.Where(t => _categoryFilters.Contains(t.Category));
-
-            return tasks.ToList();
+                products = products.Where(p =>
+                    p.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    p.Brand.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+            if (_selectedCategories.Count > 0)
+                products = products.Where(p => _selectedCategories.Contains(p.Category));
+            if (_selectedBrands.Count > 0)
+                products = products.Where(p => _selectedBrands.Contains(p.Brand));
+            if (_selectedRating > 0)
+                products = products.Where(p => p.Rating >= _selectedRating);
+            products = products.Where(p => p.Price >= _priceMin && p.Price <= _priceMax);
+            if (_inStockOnly)
+                products = products.Where(p => p.InStock);
+            if (_dateFrom.HasValue)
+                products = products.Where(p => p.AddedDate >= _dateFrom.Value);
+            if (_dateTo.HasValue)
+                products = products.Where(p => p.AddedDate <= _dateTo.Value);
+            return products.ToList();
         }
     }
 
-    private List<TaskItem> SortedTasks
+    private IEnumerable<ProductItem> SortedProducts => _sortBy switch
     {
-        get
-        {
-            var tasks = FilteredTasks;
-            return _sortField switch
-            {
-                "Id" => _sortAsc ? tasks.OrderBy(t => t.Id).ToList() : tasks.OrderByDescending(t => t.Id).ToList(),
-                "Title" => _sortAsc ? tasks.OrderBy(t => t.Title).ToList() : tasks.OrderByDescending(t => t.Title).ToList(),
-                _ => tasks
-            };
-        }
+        "Price: Low to High" => FilteredProducts.OrderBy(p => p.Price),
+        "Price: High to Low" => FilteredProducts.OrderByDescending(p => p.Price),
+        "Newest"             => FilteredProducts.OrderByDescending(p => p.AddedDate),
+        "Highest Rated"      => FilteredProducts.OrderByDescending(p => p.Rating).ThenByDescending(p => p.ReviewCount),
+        _                    => FilteredProducts.AsEnumerable()
+    };
+
+    private void ToggleItem(List<string> list, string item, bool add)
+    {
+        if (add && !list.Contains(item)) list.Add(item);
+        else if (!add) list.Remove(item);
     }
 
-    // Event handlers
-    private void OnSearchInput(ChangeEventArgs e)
-    {
-        _searchQuery = e.Value?.ToString() ?? "";
-    }
-
-    private void OnStatusChanged(string value)
-    {
-        _statusFilter = value;
-    }
-
-    private void OnPriorityChanged(string value)
-    {
-        _priorityFilter = value;
-    }
-
-    private void OnAssigneeChanged(string value)
-    {
-        _assigneeFilter = value;
-    }
-
-    private void ToggleCategory(string category, bool isChecked)
-    {
-        if (isChecked && !_categoryFilters.Contains(category))
-            _categoryFilters.Add(category);
-        else if (!isChecked)
-            _categoryFilters.Remove(category);
-    }
-
-    private void ToggleFilterField(string field)
-    {
-        if (_activeFilterFields.Contains(field))
-        {
-            _activeFilterFields.Remove(field);
-            // Clear the filter value when removing the field
-            switch (field)
-            {
-                case "Status": _statusFilter = ""; break;
-                case "Priority": _priorityFilter = ""; break;
-                case "Category": _categoryFilters.Clear(); break;
-                case "Assignee": _assigneeFilter = ""; break;
-            }
-        }
-        else
-        {
-            _activeFilterFields.Add(field);
-        }
-    }
-
-    private void ClearFilters()
+    private void ClearAllFilters()
     {
         _searchQuery = "";
-        _statusFilter = "";
-        _priorityFilter = "";
-        _assigneeFilter = "";
-        _categoryFilters.Clear();
-        _activeFilterFields.Clear();
-        _selectedIds.Clear();
+        _selectedCategories.Clear();
+        _selectedBrands.Clear();
+        _selectedColors.Clear();
+        _selectedRating = 0;
+        _priceMin = 0;
+        _priceMax = 1000;
+        _inStockOnly = false;
+        _dateFrom = null;
+        _dateTo = null;
     }
 
-    // Table interactions
-    private void ToggleSelectAll(bool value)
-    {
-        _selectAll = value;
-        _selectedIds = value ? FilteredTasks.Select(t => t.Id).ToHashSet() : new();
-    }
+    private string _code = @"<!-- Filters + Product grid — Lumeo pattern -->
+<div class=""w-full"">
+  <!-- Active chip row -->
+  <div class=""flex flex-wrap gap-2 mb-4 items-center"">
+    <FilterPill Label=""Category"" Value=""Audio"" OnDismiss=""@(() => {})"" />
+    <FilterPill Label=""Price"" Value=""$0–$300"" OnDismiss=""@(() => {})"" />
+    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""text-muted-foreground hover:text-destructive"">
+      <DynamicIcon Name=""X"" Class=""h-3 w-3 mr-1"" /> Clear all
+    </Button>
+  </div>
 
-    private void ToggleRowSelection(int id, bool value)
-    {
-        if (value)
-            _selectedIds.Add(id);
-        else
-            _selectedIds.Remove(id);
+  <div class=""flex gap-6"">
+    <!-- Filter sidebar w-64 -->
+    <div class=""w-64 shrink-0 space-y-5"">
+      <!-- Search -->
+      <Input placeholder=""Search products…"" Class=""pl-9"" />
+      <Separator />
+      <!-- Category checkboxes with live counts -->
+      @foreach (var cat in _allCategories) {
+        <div class=""flex items-center gap-2.5"">
+          <Checkbox Checked=""@_selectedCategories.Contains(cat)"" CheckedChanged=""@(v => ToggleItem(_selectedCategories, cat, v))"" />
+          <label class=""text-sm text-foreground"">@cat</label>
+        </div>
+      }
+      <Separator />
+      <!-- Dual price sliders -->
+      <Slider Value=""@_priceMin"" ValueChanged=""@(v => _priceMin = v)"" Min=""0"" Max=""1000"" Step=""10"" />
+      <Slider Value=""@_priceMax"" ValueChanged=""@(v => _priceMax = v)"" Min=""0"" Max=""1000"" Step=""10"" />
+      <Separator />
+      <!-- Star rating radios -->
+      @foreach (var r in new[]{5,4,3,2}) {
+        <input type=""radio"" name=""rating"" class=""accent-primary"" @onchange=""@(() => _selectedRating = r)"" />
+      }
+      <Separator />
+      <!-- Brand checkboxes, Availability switch, Color chips, Date range picker ... -->
+      <Switch @bind-Checked=""_inStockOnly"" /><label>In stock only</label>
+      <DateRangePicker @bind-StartDate=""_dateFrom"" @bind-EndDate=""_dateTo"" Clearable=""true"" />
+    </div>
 
-        _selectAll = _selectedIds.Count == FilteredTasks.Count && FilteredTasks.Count > 0;
-    }
-
-    private void ToggleSort(string field)
-    {
-        if (_sortField == field)
-            _sortAsc = !_sortAsc;
-        else
-        {
-            _sortField = field;
-            _sortAsc = true;
-        }
-    }
-
-    private void BulkSetStatus(string status)
-    {
-        // In a real app this would update the data source
-        _selectedIds.Clear();
-        _selectAll = false;
-    }
-
-    // Helpers
-    private string GetInitials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2
-            ? $"{parts[0][0]}{parts[1][0]}"
-            : name.Length >= 2 ? name[..2].ToUpper() : name.ToUpper();
-    }
-
-    private Badge.BadgeVariant GetStatusVariant(string status) => status switch
-    {
-        "Active" => Badge.BadgeVariant.Success,
-        "Pending" => Badge.BadgeVariant.Warning,
-        "Inactive" => Badge.BadgeVariant.Secondary,
-        "Archived" => Badge.BadgeVariant.Outline,
-        _ => Badge.BadgeVariant.Default
-    };
-
-    private string GetPriorityDotClass(string priority) => priority switch
-    {
-        "Critical" => "h-2 w-2 rounded-full bg-destructive",
-        "High" => "h-2 w-2 rounded-full bg-warning-text",
-        "Medium" => "h-2 w-2 rounded-full bg-primary",
-        "Low" => "h-2 w-2 rounded-full bg-muted-foreground",
-        _ => "h-2 w-2 rounded-full bg-muted-foreground"
-    };
+    <!-- Product grid 3-col, hover scale, Unsplash images, star rating, discount badge -->
+    <div class=""flex-1 grid grid-cols-3 gap-4"">
+      @foreach (var p in SortedProducts) { /* product card ... */ }
+    </div>
+  </div>
+</div>";
 }

@@ -45,6 +45,35 @@
         }
     </tbody>
 }
+else if (Context is not null && Context.IsGrouped && Context.GroupedSections is not null && Context.GroupedSections.Count > 0)
+{
+    <tbody class="@CssClass" @attributes="AdditionalAttributes">
+        @foreach (var grp in Context.GroupedSections)
+        {
+            var groupKey = grp.Key;
+            var expanded = Context.IsGroupExpanded(groupKey);
+            <DataGridGroupRow TItem="TItem"
+                              GroupKey="@groupKey"
+                              Count="@grp.TotalCount"
+                              IsExpanded="@expanded"
+                              ColSpan="@ColSpan"
+                              OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
+            if (expanded)
+            {
+                var grpIndex = 0;
+                foreach (var item in grp.Items)
+                {
+                    <DataGridRow TItem="TItem"
+                                 Item="item"
+                                 RowIndex="grpIndex"
+                                 DetailTemplate="DetailTemplate"
+                                 OnContextMenu="OnContextMenu" />
+                    grpIndex++;
+                }
+            }
+        }
+    </tbody>
+}
 else if (Context is not null && Context.DisplayedItems.Count == 0)
 {
     <tbody class="@CssClass" @attributes="AdditionalAttributes">

@@ -1,59 +1,65 @@
 @page "/blocks/calendar"
-@namespace Lumeo.Docs.Pages.Blocks
+@namespace Lumeo.Docs.Pages.Patterns
 
 <PageTitle>Calendar — Lumeo Patterns</PageTitle>
 
-<PageHeader Title="Calendar / Scheduling" Description="A full-featured calendar view with day/week/month toggle, event dots, and a side panel for event details and creation." />
+<PageHeader Title="Calendar / Scheduling" Description="A full-featured calendar view with event chips, category filters, a mini-calendar sidebar, upcoming list, and an inline event composer." />
 
 <Stack Gap="12">
 
     <ComponentDemo Title="Calendar View" Code="@_calendarCode">
-        <Flex Direction="col" Gap="4" Class="w-full min-w-[700px] lg:flex-row">
+        <Flex Direction="col" Gap="4" Class="w-full min-w-[780px] lg:flex-row">
 
             <!-- Main Calendar -->
-            <Stack Class="flex-1">
+            <Stack Class="flex-1 min-w-0">
                 <Card>
                     <!-- Calendar Header -->
                     <CardHeader>
                         <Flex Align="center" Justify="between">
                             <Flex Align="center" Gap="2">
-                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon"
-                                        OnClick="@PrevMonth">
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" OnClick="@PrevMonth">
                                     <DynamicIcon Name="ChevronLeft" Class="h-4 w-4" />
                                 </Button>
-                                <Heading Level="3" Size="base" Class="min-w-[140px] text-center">
+                                <Heading Level="3" Size="base" Class="min-w-[148px] text-center font-semibold">
                                     @_currentMonth.ToString("MMMM yyyy")
                                 </Heading>
-                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon"
-                                        OnClick="@NextMonth">
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" OnClick="@NextMonth">
                                     <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
                                 </Button>
                             </Flex>
-                            <Flex Align="center" Gap="1">
-                                <Button Variant="@(_view == "day" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
-                                        Size="Button.ButtonSize.Sm"
-                                        OnClick="@(() => _view = "day")">Day</Button>
-                                <Button Variant="@(_view == "week" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
-                                        Size="Button.ButtonSize.Sm"
-                                        OnClick="@(() => _view = "week")">Week</Button>
-                                <Button Variant="@(_view == "month" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
-                                        Size="Button.ButtonSize.Sm"
-                                        OnClick="@(() => _view = "month")">Month</Button>
+                            <Flex Align="center" Gap="2">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="@GoToToday">
+                                    Today
+                                </Button>
+                                <Flex Align="center" Gap="1" Class="rounded-[var(--radius)] border border-border/60 p-0.5">
+                                    @foreach (var v in new[] { "month", "week", "day" })
+                                    {
+                                        var view = v;
+                                        <Button Variant="@(_view == view ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                                                Size="Button.ButtonSize.Sm"
+                                                Class="capitalize"
+                                                OnClick="@(() => _view = view)">@view</Button>
+                                    }
+                                </Flex>
+                                <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm" OnClick="@(() => _dialogOpen = true)">
+                                    <DynamicIcon Name="Plus" Class="h-4 w-4" />
+                                    New Event
+                                </Button>
                             </Flex>
                         </Flex>
                     </CardHeader>
 
-                    <CardContent>
+                    <CardContent Class="pb-4">
                         <!-- Day Headers -->
-                        <Grid Columns="7" Gap="0" Class="mb-2">
+                        <Grid Columns="7" Gap="0" Class="mb-1">
                             @foreach (var day in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
                             {
-                                <Lumeo.Text Size="xs" Weight="medium" Color="muted" Align="center" Class="py-1">@day</Lumeo.Text>
+                                <Lumeo.Text Size="xs" Weight="medium" Color="muted" Align="center" Class="py-2 uppercase tracking-wide">@day</Lumeo.Text>
                             }
                         </Grid>
 
                         <!-- Calendar Grid -->
-                        <Grid Class="grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+                        <div class="grid grid-cols-7 gap-px bg-border/40 rounded-[var(--radius-lg)] overflow-hidden border border-border/40">
                             @{
                                 var firstDay = new DateTime(_currentMonth.Year, _currentMonth.Month, 1);
                                 var startOffset = (int)firstDay.DayOfWeek;
@@ -68,161 +74,421 @@
                                 var date = isCurrentMonth ? new DateTime(_currentMonth.Year, _currentMonth.Month, dayNum) : (DateTime?)null;
                                 var isToday = date.HasValue && date.Value.Date == today;
                                 var isSelected = date.HasValue && date.Value.Date == _selectedDate.Date;
-                                var hasEvents = date.HasValue && _events.Any(e => e.Date.Date == date.Value.Date);
-                                var dayEvents = date.HasValue ? _events.Where(e => e.Date.Date == date.Value.Date).ToList() : new();
-                                var cellDay = dayNum;
+                                var isWeekend = isCurrentMonth && (new DateTime(_currentMonth.Year, _currentMonth.Month, dayNum).DayOfWeek == DayOfWeek.Sunday
+                                    || new DateTime(_currentMonth.Year, _currentMonth.Month, dayNum).DayOfWeek == DayOfWeek.Saturday);
+                                var dayEvents = date.HasValue
+                                    ? _events.Where(e => e.Date.Date == date.Value.Date && (_activeFilters.Count == 0 || _activeFilters.Contains(e.Category))).ToList()
+                                    : new();
                                 var cellDate = date;
 
-                                <Stack Class="@($"bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent transition-colors {(isSelected ? "bg-accent" : "")}")"
-                                     @onclick="@(() => { if (cellDate.HasValue) _selectedDate = cellDate.Value; })">
-                                    <Flex Direction="col" Class="h-full">
-                                        <Lumeo.Text As="span" Class="@($"text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 {(isToday ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-foreground" : "text-muted-foreground/40")}")">
-                                            @(isCurrentMonth ? dayNum.ToString() : "")
-                                        </Lumeo.Text>
-                                        @if (hasEvents)
+                                <div class="@($"bg-background {(isWeekend && isCurrentMonth ? "bg-muted/30" : "")} {(isSelected ? "ring-1 ring-inset ring-primary/40" : "")} p-1.5 min-h-[80px] cursor-pointer hover:bg-accent/60 transition-colors group")"
+                                     @onclick="@(() => { if (cellDate.HasValue) { _selectedDate = cellDate.Value; _showComposer = false; } })">
+                                    <Lumeo.Text As="span" Class="@($"text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 {(isToday ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-foreground" : "text-muted-foreground/30")}")">
+                                        @(isCurrentMonth ? dayNum.ToString() : "")
+                                    </Lumeo.Text>
+                                    <div class="flex flex-col gap-0.5">
+                                        @foreach (var ev in dayEvents.Take(3))
                                         {
-                                            <Flex Class="flex-wrap gap-0.5">
-                                                @foreach (var ev in dayEvents.Take(3))
-                                                {
-                                                    <Lumeo.Text As="span" Class="@($"inline-block w-1.5 h-1.5 rounded-full {ev.ColorClass}")"></Lumeo.Text>
-                                                }
-                                            </Flex>
+                                            <div class="@($"rounded px-1 py-0.5 text-[10px] font-medium leading-tight truncate {ev.ChipClass} cursor-pointer")"
+                                                 @onclick:stopPropagation="true"
+                                                 @onclick="@(() => { _selectedDate = ev.Date; _selectedEvent = ev; })">
+                                                @ev.Time.Split(' ')[0] @ev.Title
+                                            </div>
                                         }
-                                    </Flex>
-                                </Stack>
+                                        @if (dayEvents.Count > 3)
+                                        {
+                                            <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground pl-1">+@(dayEvents.Count - 3) more</Lumeo.Text>
+                                        }
+                                    </div>
+                                </div>
                             }
-                        </Grid>
+                        </div>
 
-                        <!-- Color Legend -->
+                        <!-- Category Legend -->
                         <Flex Class="items-center gap-4 flex-wrap mt-4 pt-3 border-t border-border/40">
-                            <Flex Class="items-center gap-1.5">
-                                <Stack Class="h-2.5 w-2.5 rounded-full bg-primary" />
-                                <Lumeo.Text Class="text-xs text-muted-foreground">Work</Lumeo.Text>
-                            </Flex>
-                            <Flex Class="items-center gap-1.5">
-                                <Stack Class="h-2.5 w-2.5 rounded-full bg-chart-1" />
-                                <Lumeo.Text Class="text-xs text-muted-foreground">Health</Lumeo.Text>
-                            </Flex>
-                            <Flex Class="items-center gap-1.5">
-                                <Stack Class="h-2.5 w-2.5 rounded-full bg-destructive" />
-                                <Lumeo.Text Class="text-xs text-muted-foreground">Urgent</Lumeo.Text>
-                            </Flex>
-                            <Flex Class="items-center gap-1.5">
-                                <Stack Class="h-2.5 w-2.5 rounded-full bg-chart-2" />
-                                <Lumeo.Text Class="text-xs text-muted-foreground">Personal</Lumeo.Text>
-                            </Flex>
-                            <Flex Class="items-center gap-1.5">
-                                <Stack Class="h-2.5 w-2.5 rounded-full bg-chart-3" />
-                                <Lumeo.Text Class="text-xs text-muted-foreground">Meeting</Lumeo.Text>
-                            </Flex>
+                            @foreach (var cat in _categories)
+                            {
+                                var c = cat;
+                                var isActive = _activeFilters.Count == 0 || _activeFilters.Contains(c.Name);
+                                <button @onclick="@(() => ToggleFilter(c.Name))"
+                                        class="@($"flex items-center gap-1.5 text-xs transition-opacity {(isActive ? "opacity-100" : "opacity-40")}")">
+                                    <span class="@($"h-2.5 w-2.5 rounded-full {c.DotClass}")"></span>
+                                    <span class="text-muted-foreground hover:text-foreground">@c.Name</span>
+                                </button>
+                            }
+                            @if (_activeFilters.Count > 0)
+                            {
+                                <button @onclick="@(() => _activeFilters.Clear())" class="text-xs text-primary hover:underline ml-auto">
+                                    Clear filter
+                                </button>
+                            }
                         </Flex>
                     </CardContent>
                 </Card>
             </Stack>
 
-            <!-- Side Panel -->
-            <Stack Gap="4" Class="w-full lg:w-72">
+            <!-- Right Sidebar -->
+            <Stack Gap="4" Class="w-full lg:w-[280px] shrink-0">
 
-                <!-- Selected Day Events -->
+                <!-- Mini Calendar -->
                 <Card>
-                    <CardHeader>
-                        <Heading Level="3" Size="sm">
-                            @_selectedDate.ToString("dddd, MMMM d")
-                        </Heading>
+                    <CardHeader Class="pb-2">
+                        <Flex Align="center" Justify="between">
+                            <Lumeo.Text Size="sm" Weight="semibold">@_currentMonth.ToString("MMMM")</Lumeo.Text>
+                            <Flex Gap="1">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-6 w-6" OnClick="@PrevMonth">
+                                    <DynamicIcon Name="ChevronLeft" Class="h-3 w-3" />
+                                </Button>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-6 w-6" OnClick="@NextMonth">
+                                    <DynamicIcon Name="ChevronRight" Class="h-3 w-3" />
+                                </Button>
+                            </Flex>
+                        </Flex>
+                    </CardHeader>
+                    <CardContent Class="pt-0">
+                        <div class="grid grid-cols-7 gap-0.5">
+                            @foreach (var d in new[] { "S","M","T","W","T","F","S" })
+                            {
+                                <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground text-center py-1">@d</Lumeo.Text>
+                            }
+                            @{
+                                var mFirst = new DateTime(_currentMonth.Year, _currentMonth.Month, 1);
+                                var mOffset = (int)mFirst.DayOfWeek;
+                                var mDays = DateTime.DaysInMonth(_currentMonth.Year, _currentMonth.Month);
+                                var mTotal = ((mOffset + mDays + 6) / 7) * 7;
+                            }
+                            @for (int i = 0; i < mTotal; i++)
+                            {
+                                var dn = i - mOffset + 1;
+                                var valid = dn >= 1 && dn <= mDays;
+                                var mDate = valid ? new DateTime(_currentMonth.Year, _currentMonth.Month, dn) : (DateTime?)null;
+                                var mIsToday = mDate.HasValue && mDate.Value.Date == DateTime.Today;
+                                var mIsSelected = mDate.HasValue && mDate.Value.Date == _selectedDate.Date;
+                                var mHasEvents = mDate.HasValue && _events.Any(e => e.Date.Date == mDate.Value.Date);
+                                var mcd = mDate;
+
+                                <button @onclick="@(() => { if (mcd.HasValue) _selectedDate = mcd.Value; })"
+                                        class="@($"relative text-[10px] h-6 w-6 flex items-center justify-center rounded-full mx-auto transition-colors {(mIsSelected ? "bg-primary text-primary-foreground" : mIsToday ? "border border-primary text-primary" : valid ? "hover:bg-accent text-foreground" : "text-transparent pointer-events-none")}")">
+                                    @(valid ? dn.ToString() : "")
+                                    @if (mHasEvents && !mIsSelected)
+                                    {
+                                        <span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary"></span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Upcoming Events -->
+                <Card>
+                    <CardHeader Class="pb-2">
+                        <Flex Align="center" Justify="between">
+                            <Heading Level="3" Size="sm">Upcoming</Heading>
+                            <Badge Variant="Badge.BadgeVariant.Secondary">@_events.Count(e => e.Date >= DateTime.Today)</Badge>
+                        </Flex>
                     </CardHeader>
                     <CardContent Class="p-0">
                         @{
-                            var selectedEvents = _events.Where(e => e.Date.Date == _selectedDate.Date).ToList();
+                            var upcoming = _events
+                                .Where(e => e.Date.Date >= DateTime.Today)
+                                .OrderBy(e => e.Date)
+                                .Take(6)
+                                .ToList();
                         }
-                        @if (!selectedEvents.Any())
+                        @if (!upcoming.Any())
                         {
-                            <Lumeo.Text Size="sm" Color="muted" Class="px-4 pb-4">No events scheduled.</Lumeo.Text>
+                            <Lumeo.Text Size="sm" Color="muted" Class="px-4 pb-4">No upcoming events.</Lumeo.Text>
                         }
                         else
                         {
-                            <Stack Class="divide-y divide-border">
-                                @foreach (var ev in selectedEvents)
+                            <Stack Class="divide-y divide-border/40">
+                                @foreach (var ev in upcoming)
                                 {
-                                    <Stack Class="px-4 py-3 cursor-pointer hover:bg-accent/50 transition-colors"
-                                           @onclick="@(() => _selectedEvent = ev)">
+                                    var e = ev;
+                                    <button @onclick="@(() => { _selectedDate = e.Date; _selectedEvent = e; })"
+                                            class="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors">
                                         <Flex Align="start" Gap="3">
-                                            <Lumeo.Text As="span" Class="@($"mt-1 w-2 h-2 rounded-full shrink-0 {ev.ColorClass}")"></Lumeo.Text>
-                                            <Stack Gap="0" Class="min-w-0">
-                                                <Lumeo.Text Size="sm" Weight="medium" Color="foreground" Truncate="true">@ev.Title</Lumeo.Text>
-                                                <Lumeo.Text Size="xs" Color="muted">@ev.Time</Lumeo.Text>
-                                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="mt-1 w-fit text-xs">@ev.Category</Badge>
+                                            <span class="@($"mt-1.5 h-2 w-2 rounded-full shrink-0 {e.DotClass}")"></span>
+                                            <Stack Gap="0" Class="min-w-0 flex-1">
+                                                <Lumeo.Text Size="xs" Weight="medium" Class="truncate">@e.Title</Lumeo.Text>
+                                                <Flex Align="center" Gap="1" Class="mt-0.5">
+                                                    <DynamicIcon Name="Clock" Class="h-2.5 w-2.5 text-muted-foreground" />
+                                                    <Lumeo.Text Size="xs" Color="muted">@e.Date.ToString("MMM d") · @e.Time</Lumeo.Text>
+                                                </Flex>
+                                                @if (!string.IsNullOrEmpty(e.Location))
+                                                {
+                                                    <Flex Align="center" Gap="1" Class="mt-0.5">
+                                                        <DynamicIcon Name="MapPin" Class="h-2.5 w-2.5 text-muted-foreground" />
+                                                        <Lumeo.Text Size="xs" Color="muted" Class="truncate">@e.Location</Lumeo.Text>
+                                                    </Flex>
+                                                }
                                             </Stack>
+                                            <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] shrink-0">@e.Category</Badge>
                                         </Flex>
-                                    </Stack>
+                                    </button>
                                 }
                             </Stack>
                         }
                     </CardContent>
                 </Card>
 
-                <!-- New Event Form -->
-                <Card>
-                    <CardHeader>
-                        <Heading Level="3" Size="sm">New Event</Heading>
-                    </CardHeader>
-                    <CardContent>
-                        <Stack Gap="3">
-                            <Stack Gap="1.5">
-                                <Label Class="text-xs">Title</Label>
-                                <Input @bind-Value="_newEventTitle" placeholder="Event title" />
-                            </Stack>
-                            <Grid Columns="2" Gap="2">
-                                <Stack Gap="1.5">
-                                    <Label Class="text-xs">Start</Label>
-                                    <Input type="time" Value="09:00" />
+                <!-- Selected Event Detail or Inline Composer -->
+                @if (_selectedEvent != null && !_showComposer)
+                {
+                    <Card>
+                        <CardHeader Class="pb-2">
+                            <Flex Align="start" Justify="between">
+                                <Stack Gap="1">
+                                    <Heading Level="3" Size="sm" Class="leading-tight">@_selectedEvent.Title</Heading>
+                                    <Badge Variant="Badge.BadgeVariant.Secondary" Class="w-fit text-xs">@_selectedEvent.Category</Badge>
                                 </Stack>
-                                <Stack Gap="1.5">
-                                    <Label Class="text-xs">End</Label>
-                                    <Input type="time" Value="10:00" />
-                                </Stack>
-                            </Grid>
-                            <Stack Gap="1.5">
-                                <Label Class="text-xs">Description</Label>
-                                <Textarea placeholder="Add a description..." />
-                            </Stack>
-                            <Stack Gap="1.5">
-                                <Label Class="text-xs">Category</Label>
-                                <Select @bind-Value="_newEventCategory">
-                                    <SelectTrigger>
-                                        <SelectValue Placeholder="Select category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem Value="@("Work")">Work</SelectItem>
-                                        <SelectItem Value="@("Meeting")">Meeting</SelectItem>
-                                        <SelectItem Value="@("Personal")">Personal</SelectItem>
-                                        <SelectItem Value="@("Urgent")">Urgent</SelectItem>
-                                        <SelectItem Value="@("Health")">Health</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </Stack>
-                            <Stack Gap="1.5">
-                                <Label Class="text-xs">Color</Label>
-                                <Flex Gap="2">
-                                    @foreach (var color in _colorOptions)
-                                    {
-                                        var c = color;
-                                        <Button Variant="Button.ButtonVariant.Ghost"
-                                                Class="@($"w-6 h-6 p-0 rounded-full {c.Value} ring-offset-2 ring-offset-background transition-all {(_selectedColor == c.Key ? "ring-2 ring-foreground" : "")}")"
-                                                @onclick="@(() => _selectedColor = c.Key)">
-                                        </Button>
-                                    }
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0" OnClick="@(() => _selectedEvent = null)">
+                                    <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
+                                </Button>
+                            </Flex>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="2">
+                                <Flex Align="center" Gap="2">
+                                    <DynamicIcon Name="Clock" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                    <Lumeo.Text Size="sm" Color="muted">@_selectedEvent.Date.ToString("EEEE, MMMM d") · @_selectedEvent.Time</Lumeo.Text>
                                 </Flex>
+                                @if (!string.IsNullOrEmpty(_selectedEvent.Location))
+                                {
+                                    <Flex Align="center" Gap="2">
+                                        <DynamicIcon Name="MapPin" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                        <Lumeo.Text Size="sm" Color="muted">@_selectedEvent.Location</Lumeo.Text>
+                                    </Flex>
+                                }
+                                @if (_selectedEvent.Attendees.Any())
+                                {
+                                    <Flex Align="center" Gap="2">
+                                        <DynamicIcon Name="Users" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                        <Flex Class="flex-wrap gap-1">
+                                            @foreach (var att in _selectedEvent.Attendees)
+                                            {
+                                                <Avatar Size="Avatar.AvatarSize.Sm" Class="h-5 w-5 text-[8px]">
+                                                    <AvatarFallback>@att.Substring(0, 1).ToUpper()</AvatarFallback>
+                                                </Avatar>
+                                            }
+                                            <Lumeo.Text Size="xs" Color="muted" Class="self-center">@string.Join(", ", _selectedEvent.Attendees)</Lumeo.Text>
+                                        </Flex>
+                                    </Flex>
+                                }
+                                @if (!string.IsNullOrEmpty(_selectedEvent.Description))
+                                {
+                                    <Lumeo.Text Size="xs" Color="muted" Class="mt-1 leading-relaxed">@_selectedEvent.Description</Lumeo.Text>
+                                }
                             </Stack>
-                            <Button Variant="Button.ButtonVariant.Default" Class="w-full" OnClick="@AddEvent">
-                                <DynamicIcon Name="Plus" Class="h-4 w-4" />
-                                Create Event
-                            </Button>
-                        </Stack>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                }
+                else if (_showComposer)
+                {
+                    <!-- New Event Composer -->
+                    <Card>
+                        <CardHeader Class="pb-2">
+                            <Flex Align="center" Justify="between">
+                                <Heading Level="3" Size="sm">Create Event</Heading>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7" OnClick="@(() => _showComposer = false)">
+                                    <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
+                                </Button>
+                            </Flex>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="3">
+                                <Stack Gap="1.5">
+                                    <Label Class="text-xs font-medium">Title</Label>
+                                    <Input @bind-Value="_newEventTitle" placeholder="e.g. Q2 All-hands" />
+                                </Stack>
+                                <Stack Gap="1.5">
+                                    <Label Class="text-xs font-medium">Date</Label>
+                                    <Lumeo.Text Size="xs" Color="muted" Class="border border-border/60 rounded-[var(--radius)] px-3 py-2">
+                                        @_selectedDate.ToString("EEEE, MMMM d, yyyy")
+                                    </Lumeo.Text>
+                                </Stack>
+                                <Grid Columns="2" Gap="2">
+                                    <Stack Gap="1.5">
+                                        <Label Class="text-xs font-medium">Start</Label>
+                                        <Input type="time" @bind-Value="_newStartTime" />
+                                    </Stack>
+                                    <Stack Gap="1.5">
+                                        <Label Class="text-xs font-medium">End</Label>
+                                        <Input type="time" @bind-Value="_newEndTime" />
+                                    </Stack>
+                                </Grid>
+                                <Stack Gap="1.5">
+                                    <Label Class="text-xs font-medium">Location <Lumeo.Text As="span" Color="muted">(optional)</Lumeo.Text></Label>
+                                    <Input @bind-Value="_newEventLocation" placeholder="e.g. Zoom · Meeting Room 2B" />
+                                </Stack>
+                                <Stack Gap="1.5">
+                                    <Label Class="text-xs font-medium">Category</Label>
+                                    <Select @bind-Value="_newEventCategory">
+                                        <SelectTrigger>
+                                            <SelectValue Placeholder="Select category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            @foreach (var cat in _categories)
+                                            {
+                                                <SelectItem Value="@cat.Name">@cat.Name</SelectItem>
+                                            }
+                                        </SelectContent>
+                                    </Select>
+                                </Stack>
+                                <Stack Gap="1.5">
+                                    <Label Class="text-xs font-medium">Notes</Label>
+                                    <Textarea @bind-Value="_newEventDesc" placeholder="Agenda, notes, links..." Rows="2" />
+                                </Stack>
+                                <Button Variant="Button.ButtonVariant.Default" Class="w-full" OnClick="@AddEvent">
+                                    <DynamicIcon Name="Plus" Class="h-4 w-4" />
+                                    Create Event
+                                </Button>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                }
+                else
+                {
+                    <!-- Selected Day Events -->
+                    <Card>
+                        <CardHeader Class="pb-2">
+                            <Flex Align="center" Justify="between">
+                                <Heading Level="3" Size="sm">@_selectedDate.ToString("MMMM d")</Heading>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-7 text-xs" OnClick="@(() => _showComposer = true)">
+                                    <DynamicIcon Name="Plus" Class="h-3 w-3" />
+                                    Add
+                                </Button>
+                            </Flex>
+                        </CardHeader>
+                        <CardContent Class="p-0">
+                            @{
+                                var dayEvs = _events.Where(e => e.Date.Date == _selectedDate.Date).OrderBy(e => e.Date).ToList();
+                            }
+                            @if (!dayEvs.Any())
+                            {
+                                <Stack Class="px-4 pb-4 pt-1">
+                                    <Lumeo.Text Size="sm" Color="muted">No events this day.</Lumeo.Text>
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="mt-2 w-full" OnClick="@(() => _showComposer = true)">
+                                        <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
+                                        Create event
+                                    </Button>
+                                </Stack>
+                            }
+                            else
+                            {
+                                <Stack Class="divide-y divide-border/40">
+                                    @foreach (var ev in dayEvs)
+                                    {
+                                        var e = ev;
+                                        <button @onclick="@(() => _selectedEvent = e)"
+                                                class="w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors">
+                                            <Flex Align="start" Gap="3">
+                                                <span class="@($"mt-1.5 h-2 w-2 rounded-full shrink-0 {e.DotClass}")"></span>
+                                                <Stack Gap="0" Class="min-w-0 flex-1">
+                                                    <Lumeo.Text Size="sm" Weight="medium" Class="truncate">@e.Title</Lumeo.Text>
+                                                    <Flex Align="center" Gap="1" Class="mt-0.5">
+                                                        <DynamicIcon Name="Clock" Class="h-3 w-3 text-muted-foreground" />
+                                                        <Lumeo.Text Size="xs" Color="muted">@e.Time</Lumeo.Text>
+                                                    </Flex>
+                                                </Stack>
+                                                <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] shrink-0">@e.Category</Badge>
+                                            </Flex>
+                                        </button>
+                                    }
+                                </Stack>
+                            }
+                        </CardContent>
+                    </Card>
+                }
 
             </Stack>
         </Flex>
+
+        <!-- ── Create Event Dialog ── -->
+        <Dialog @bind-IsOpen="_dialogOpen">
+            <DialogContent Size="DialogContent.DialogSize.Default" Scrollable="true">
+                <DialogHeader>
+                    <DialogTitle>Create New Event</DialogTitle>
+                    <DialogDescription>Fill in the details for your event. Click "Create event" when you're done.</DialogDescription>
+                </DialogHeader>
+
+                <Stack Gap="4" Class="py-2">
+                    <!-- Title -->
+                    <Stack Gap="1.5">
+                        <Label Class="text-sm font-medium">Title <Lumeo.Text As="span" Class="text-destructive">*</Lumeo.Text></Label>
+                        <Input @bind-Value="_newEventTitle" placeholder="e.g. Q2 All-hands" />
+                    </Stack>
+
+                    <!-- Date + Times row -->
+                    <Grid Class="grid-cols-1 sm:grid-cols-3 gap-3">
+                        <Stack Gap="1.5" Class="sm:col-span-1">
+                            <Label Class="text-sm font-medium">Date</Label>
+                            <DatePicker @bind-Value="_newEventDate" />
+                        </Stack>
+                        <Stack Gap="1.5">
+                            <Label Class="text-sm font-medium">Start time</Label>
+                            <Input type="time" @bind-Value="_newStartTime" />
+                        </Stack>
+                        <Stack Gap="1.5">
+                            <Label Class="text-sm font-medium">End time</Label>
+                            <Input type="time" @bind-Value="_newEndTime" />
+                        </Stack>
+                    </Grid>
+
+                    <!-- Location -->
+                    <Stack Gap="1.5">
+                        <Label Class="text-sm font-medium">
+                            Location
+                            <Lumeo.Text As="span" Class="text-muted-foreground font-normal ml-1">(optional)</Lumeo.Text>
+                        </Label>
+                        <Input @bind-Value="_newEventLocation" placeholder="e.g. Zoom · Meeting Room 2B" />
+                    </Stack>
+
+                    <!-- Category -->
+                    <Stack Gap="1.5">
+                        <Label Class="text-sm font-medium">Category</Label>
+                        <Select @bind-Value="_newEventCategory">
+                            <SelectTrigger>
+                                <SelectValue Placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                @foreach (var cat in _categories)
+                                {
+                                    <SelectItem Value="@cat.Name">@cat.Name</SelectItem>
+                                }
+                            </SelectContent>
+                        </Select>
+                    </Stack>
+
+                    <!-- Attendees -->
+                    <Stack Gap="1.5">
+                        <Label Class="text-sm font-medium">
+                            Attendees
+                            <Lumeo.Text As="span" Class="text-muted-foreground font-normal ml-1">(comma-separated)</Lumeo.Text>
+                        </Label>
+                        <Input @bind-Value="_newEventAttendees" placeholder="e.g. Jordan, Priya, Sam" />
+                    </Stack>
+
+                    <!-- Description -->
+                    <Stack Gap="1.5">
+                        <Label Class="text-sm font-medium">Description</Label>
+                        <Textarea @bind-Value="_newEventDesc" placeholder="Agenda, notes, links..." Rows="3" />
+                    </Stack>
+                </Stack>
+
+                <DialogFooter>
+                    <DialogClose>
+                        <Button Variant="Button.ButtonVariant.Outline">Cancel</Button>
+                    </DialogClose>
+                    <Button Variant="Button.ButtonVariant.Default" OnClick="@AddEventFromDialog">
+                        <DynamicIcon Name="CalendarPlus" Class="h-4 w-4 mr-1" />
+                        Create event
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
     </ComponentDemo>
 
 </Stack>
@@ -231,130 +497,236 @@
     private DateTime _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime _selectedDate = DateTime.Today;
     private string _view = "month";
-    private string _newEventTitle = "";
-    private string _selectedColor = "blue";
-    private string _newEventCategory = "Work";
+    private bool _showComposer = false;
+    private bool _dialogOpen = false;
     private CalendarEvent? _selectedEvent;
 
-    private Dictionary<string, string> _colorOptions = new()
+    // Dialog-specific date field (DatePicker uses DateOnly)
+    private DateOnly? _newEventDate = DateOnly.FromDateTime(DateTime.Today);
+
+    // Composer / Dialog state
+    private string _newEventTitle = "";
+    private string _newStartTime = "09:00";
+    private string _newEndTime = "10:00";
+    private string _newEventLocation = "";
+    private string _newEventDesc = "";
+    private string _newEventCategory = "Work";
+    private string _newEventAttendees = "";
+
+    // Active category filters (empty = show all)
+    private HashSet<string> _activeFilters = new();
+
+    private record CategoryDef(string Name, string DotClass, string ChipClass);
+
+    private List<CategoryDef> _categories = new()
     {
-        { "blue", "bg-primary" },
-        { "green", "bg-chart-1" },
-        { "red", "bg-destructive" },
-        { "purple", "bg-chart-2" },
-        { "orange", "bg-chart-3" },
+        new("Work",     "bg-primary",     "bg-primary/15 text-primary"),
+        new("Meeting",  "bg-chart-2",     "bg-chart-2/15 text-chart-2"),
+        new("Health",   "bg-chart-1",     "bg-chart-1/15 text-chart-1"),
+        new("Personal", "bg-chart-3",     "bg-chart-3/15 text-chart-3"),
+        new("Urgent",   "bg-destructive", "bg-destructive/15 text-destructive"),
     };
 
-    private List<CalendarEvent> _events = new()
+    private record CalendarEvent(
+        DateTime Date,
+        string Title,
+        string Time,
+        string DotClass,
+        string ChipClass,
+        string Category,
+        string Location = "",
+        string Description = "",
+        List<string>? AttendeeList = null
+    )
     {
-        new(DateTime.Today, "Team standup", "9:00 AM", "bg-primary", "Work"),
-        new(DateTime.Today, "Design review", "2:00 PM", "bg-chart-2", "Meeting"),
-        new(DateTime.Today, "Sprint planning", "4:00 PM", "bg-chart-1", "Health"),
-        new(DateTime.Today.AddDays(2), "Client call", "10:00 AM", "bg-chart-3", "Personal"),
-        new(DateTime.Today.AddDays(2), "Lunch with Sarah", "12:30 PM", "bg-destructive", "Urgent"),
-        new(DateTime.Today.AddDays(5), "Product demo", "3:00 PM", "bg-primary", "Work"),
-        new(DateTime.Today.AddDays(-2), "Release v2.0", "11:00 AM", "bg-chart-1", "Health"),
-    };
+        public List<string> Attendees => AttendeeList ?? new();
+    }
+
+    private List<CalendarEvent> _events = new();
+
+    protected override void OnInitialized()
+    {
+        var t = DateTime.Today;
+        _events = new List<CalendarEvent>
+        {
+            new(t, "Team standup", "9:00 AM", "bg-primary", "bg-primary/15 text-primary", "Work",
+                "Zoom · Daily sync", "Review blockers and progress from yesterday.", new() { "Jordan", "Priya", "Sam" }),
+
+            new(t, "Design system review", "2:00 PM", "bg-chart-2", "bg-chart-2/15 text-chart-2", "Meeting",
+                "Meeting Room 3A", "Review latest component updates and token changes.", new() { "Maya", "Alex" }),
+
+            new(t.AddDays(1), "Q2 All-hands", "10:00 AM", "bg-primary", "bg-primary/15 text-primary", "Work",
+                "Main Auditorium · Livestream", "Quarterly company update. All employees required.", new() { "Entire org" }),
+
+            new(t.AddDays(1), "Sprint planning", "3:00 PM", "bg-chart-2", "bg-chart-2/15 text-chart-2", "Meeting",
+                "Zoom", "Plan sprint 24 stories, estimate points, assign owners.", new() { "Jordan", "Priya", "Sam", "Noah" }),
+
+            new(t.AddDays(2), "Product review w/ Leadership", "11:00 AM", "bg-chart-2", "bg-chart-2/15 text-chart-2", "Meeting",
+                "Board Room", "Present Q2 roadmap and gather exec sign-off.", new() { "CEO", "CPO", "Jordan" }),
+
+            new(t.AddDays(2), "Gym — upper body", "6:30 PM", "bg-chart-1", "bg-chart-1/15 text-chart-1", "Health",
+                "Iron Works Fitness", "Push day: chest, shoulders, triceps."),
+
+            new(t.AddDays(3), "Dentist appointment", "9:00 AM", "bg-chart-1", "bg-chart-1/15 text-chart-1", "Health",
+                "Bright Smiles Dental, Suite 4"),
+
+            new(t.AddDays(4), "Lunch w/ Sarah Chen", "12:30 PM", "bg-chart-3", "bg-chart-3/15 text-chart-3", "Personal",
+                "The Garden Bistro"),
+
+            new(t.AddDays(5), "Release v2.4.0", "10:00 AM", "bg-destructive", "bg-destructive/15 text-destructive", "Urgent",
+                "All-remote", "Production deploy, monitor error rates, announce on #eng-releases.", new() { "Jordan", "Sam" }),
+
+            new(t.AddDays(5), "1:1 with Alex", "4:00 PM", "bg-chart-2", "bg-chart-2/15 text-chart-2", "Meeting",
+                "Zoom", "Discuss career growth and Q2 OKRs."),
+
+            new(t.AddDays(7), "Performance reviews due", "11:59 PM", "bg-destructive", "bg-destructive/15 text-destructive", "Urgent",
+                "", "Submit peer review forms in Lattice."),
+
+            new(t.AddDays(8), "Team off-site planning", "2:00 PM", "bg-primary", "bg-primary/15 text-primary", "Work",
+                "Conference Room A", "Plan Q3 off-site logistics — venue, travel, agenda.", new() { "Jordan", "Maya", "Priya" }),
+
+            new(t.AddDays(10), "Yoga class", "7:00 AM", "bg-chart-1", "bg-chart-1/15 text-chart-1", "Health",
+                "Mindful Motion Studio"),
+
+            new(t.AddDays(-2), "API deprecation meeting", "3:00 PM", "bg-chart-2", "bg-chart-2/15 text-chart-2", "Meeting",
+                "Zoom", "Finalize migration plan for v1 endpoints.", new() { "Noah", "Alex", "Jordan" }),
+
+            new(t.AddDays(-1), "Weekly retrospective", "4:30 PM", "bg-primary", "bg-primary/15 text-primary", "Work",
+                "Meeting Room 2B", "Sprint 23 retro — what went well, what didn't.", new() { "Jordan", "Priya", "Sam" }),
+        };
+    }
 
     private void PrevMonth() => _currentMonth = _currentMonth.AddMonths(-1);
     private void NextMonth() => _currentMonth = _currentMonth.AddMonths(1);
+    private void GoToToday()
+    {
+        _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _selectedDate = DateTime.Today;
+    }
+
+    private void ToggleFilter(string category)
+    {
+        if (_activeFilters.Contains(category))
+            _activeFilters.Remove(category);
+        else
+            _activeFilters.Add(category);
+    }
 
     private void AddEvent()
     {
-        if (!string.IsNullOrWhiteSpace(_newEventTitle))
-        {
-            var colorClass = _colorOptions.GetValueOrDefault(_selectedColor, "bg-primary");
-            _events.Add(new CalendarEvent(_selectedDate, _newEventTitle, "12:00 PM", colorClass, _newEventCategory));
-            _newEventTitle = "";
-        }
+        if (string.IsNullOrWhiteSpace(_newEventTitle)) return;
+
+        var cat = _categories.FirstOrDefault(c => c.Name == _newEventCategory) ?? _categories[0];
+        var timeLabel = string.IsNullOrEmpty(_newStartTime) ? "12:00 PM" : FormatTime(_newStartTime);
+
+        _events.Add(new CalendarEvent(
+            _selectedDate, _newEventTitle, timeLabel,
+            cat.DotClass, cat.ChipClass, cat.Name,
+            _newEventLocation, _newEventDesc
+        ));
+
+        _newEventTitle = "";
+        _newEventLocation = "";
+        _newEventDesc = "";
+        _newStartTime = "09:00";
+        _newEndTime = "10:00";
+        _showComposer = false;
     }
 
-    private record CalendarEvent(DateTime Date, string Title, string Time, string ColorClass, string Category);
+    private void AddEventFromDialog()
+    {
+        if (string.IsNullOrWhiteSpace(_newEventTitle)) return;
 
-    private string _calendarCode = @"<!-- Calendar with month grid, event dots, side panel, and new event form -->
-<Flex Gap=""4"">
-    <!-- Main Calendar -->
+        var cat = _categories.FirstOrDefault(c => c.Name == _newEventCategory) ?? _categories[0];
+        var timeLabel = string.IsNullOrEmpty(_newStartTime) ? "12:00 PM" : FormatTime(_newStartTime);
+        var eventDate = _newEventDate.HasValue
+            ? _newEventDate.Value.ToDateTime(TimeOnly.Parse(_newStartTime.Length > 0 ? _newStartTime : "09:00"))
+            : _selectedDate;
+
+        var attendeeList = string.IsNullOrWhiteSpace(_newEventAttendees)
+            ? new List<string>()
+            : _newEventAttendees.Split(',').Select(a => a.Trim()).Where(a => a.Length > 0).ToList();
+
+        _events.Add(new CalendarEvent(
+            eventDate, _newEventTitle, timeLabel,
+            cat.DotClass, cat.ChipClass, cat.Name,
+            _newEventLocation, _newEventDesc,
+            attendeeList.Count > 0 ? attendeeList : null
+        ));
+
+        // Reset form
+        _newEventTitle = "";
+        _newEventLocation = "";
+        _newEventDesc = "";
+        _newEventAttendees = "";
+        _newStartTime = "09:00";
+        _newEndTime = "10:00";
+        _newEventDate = DateOnly.FromDateTime(DateTime.Today);
+        _dialogOpen = false;
+    }
+
+    private static string FormatTime(string t24)
+    {
+        if (TimeOnly.TryParse(t24, out var to))
+            return to.ToString("h:mm tt");
+        return t24;
+    }
+
+    private string _calendarCode = @"<!-- Full calendar with event chips, filters, mini-calendar, upcoming list, and event composer -->
+<Flex Gap=""4"" Class=""min-w-[780px]"">
+
+    <!-- Main Month Grid -->
     <Card Class=""flex-1"">
         <CardHeader>
             <Flex Align=""center"" Justify=""between"">
                 <Flex Align=""center"" Gap=""2"">
-                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"" OnClick=""PrevMonth"">
+                    <Button Variant=""Outline"" Size=""Icon"" OnClick=""PrevMonth"">
                         <DynamicIcon Name=""ChevronLeft"" Class=""h-4 w-4"" />
                     </Button>
-                    <Heading Level=""3"" Class=""font-semibold"">@_currentMonth.ToString(""MMMM yyyy"")</Heading>
-                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"" OnClick=""NextMonth"">
+                    <Heading Level=""3"">@_currentMonth.ToString(""MMMM yyyy"")</Heading>
+                    <Button Variant=""Outline"" Size=""Icon"" OnClick=""NextMonth"">
                         <DynamicIcon Name=""ChevronRight"" Class=""h-4 w-4"" />
                     </Button>
                 </Flex>
-                <Flex Gap=""1"">
-                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Day</Button>
-                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Week</Button>
-                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Month</Button>
+                <Flex Gap=""2"">
+                    <Button Variant=""Ghost"" Size=""Sm"" OnClick=""GoToToday"">Today</Button>
+                    <Button Variant=""Default"" Size=""Sm"" OnClick=""() => _showComposer = true"">
+                        <DynamicIcon Name=""Plus"" Class=""h-4 w-4"" /> New Event
+                    </Button>
                 </Flex>
             </Flex>
         </CardHeader>
         <CardContent>
-            <!-- 7-column day grid -->
-            <Grid Class=""grid-cols-7 gap-px bg-border rounded-lg overflow-hidden"">
+            <!-- 7-column grid with event chips -->
+            <div class=""grid grid-cols-7 gap-px bg-border/40 rounded-lg overflow-hidden border border-border/40"">
                 @for (int i = 0; i < totalCells; i++)
                 {
-                    <Stack Class=""bg-background p-1.5 min-h-[72px] cursor-pointer hover:bg-accent"" Gap=""0"">
-                        <Lumeo.Text As=""span"" Class=""text-xs font-medium"">@dayNum</Lumeo.Text>
-                        <!-- Event dots -->
-                        <Flex Class=""gap-0.5 mt-1"">
-                            <Stack Class=""w-1.5 h-1.5 rounded-full bg-primary"" />
-                            <Stack Class=""w-1.5 h-1.5 rounded-full bg-chart-1"" />
-                        </Flex>
-                    </Stack>
+                    <div class=""bg-background p-1.5 min-h-[80px] hover:bg-accent/60 transition-colors"">
+                        <!-- Day number with today highlight -->
+                        <span class=""text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full"">@dayNum</span>
+                        <!-- Event chips colored by category -->
+                        <div class=""flex flex-col gap-0.5"">
+                            <div class=""rounded px-1 py-0.5 text-[10px] font-medium bg-primary/15 text-primary truncate"">
+                                9:00 Q2 All-hands
+                            </div>
+                        </div>
+                    </div>
                 }
-            </Grid>
+            </div>
+            <!-- Category legend with filter toggles -->
+            <Flex Class=""items-center gap-4 flex-wrap mt-4 pt-3 border-t border-border/40"">
+                <button class=""flex items-center gap-1.5 text-xs"">
+                    <span class=""h-2.5 w-2.5 rounded-full bg-primary""></span>
+                    <span class=""text-muted-foreground"">Work</span>
+                </button>
+                <!-- ... more categories -->
+            </Flex>
         </CardContent>
     </Card>
 
-    <!-- Side Panel -->
-    <Stack Gap=""4"" Class=""w-72"">
-        <!-- Day Events -->
-        <Card>
-            <CardHeader>
-                <Heading Level=""3"" Class=""text-sm font-semibold"">@_selectedDate.ToString(""dddd, MMMM d"")</Heading>
-            </CardHeader>
-            <CardContent>
-                <Flex Align=""center"" Gap=""3"" Class=""py-2"">
-                    <Stack Class=""w-2 h-2 rounded-full bg-primary"" />
-                    <Stack Gap=""0"">
-                        <Lumeo.Text Class=""text-sm font-medium"">Team standup</Lumeo.Text>
-                        <Lumeo.Text Class=""text-xs text-muted-foreground"">9:00 AM</Lumeo.Text>
-                    </Stack>
-                </Flex>
-            </CardContent>
-        </Card>
-
-        <!-- New Event -->
-        <Card>
-            <CardHeader><Heading Level=""3"" Class=""text-sm font-semibold"">New Event</Heading></CardHeader>
-            <CardContent>
-                <Stack Gap=""3"">
-                    <Input placeholder=""Event title"" />
-                    <Grid Class=""grid-cols-2 gap-2"">
-                        <Input type=""time"" Value=""09:00"" />
-                        <Input type=""time"" Value=""10:00"" />
-                    </Grid>
-                    <Textarea placeholder=""Description..."" />
-                    <Select>
-                        <SelectTrigger><SelectValue Placeholder=""Category"" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem Value=""Work"">Work</SelectItem>
-                            <SelectItem Value=""Meeting"">Meeting</SelectItem>
-                            <SelectItem Value=""Personal"">Personal</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Button Variant=""Button.ButtonVariant.Default"" Class=""w-full"">
-                        <DynamicIcon Name=""Plus"" Class=""h-4 w-4"" />
-                        Create Event
-                    </Button>
-                </Stack>
-            </CardContent>
-        </Card>
+    <!-- Sidebar: mini-calendar, upcoming events, event detail/composer -->
+    <Stack Gap=""4"" Class=""w-[280px]"">
+        <!-- Mini calendar, upcoming list, event composer shown here -->
     </Stack>
 </Flex>
 
@@ -362,9 +734,8 @@
     private DateTime _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime _selectedDate = DateTime.Today;
 
-    private record CalendarEvent(DateTime Date, string Title, string Time, string ColorClass, string Category);
-
     private void PrevMonth() => _currentMonth = _currentMonth.AddMonths(-1);
     private void NextMonth() => _currentMonth = _currentMonth.AddMonths(1);
+    private void GoToToday() { _currentMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1); _selectedDate = DateTime.Today; }
 }";
 }

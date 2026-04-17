@@ -204,6 +204,36 @@
         </DataGrid>
     </ComponentDemo>
 
+    <ComponentDemo Title="Row Grouping" Description="Group rows by a field. Click the group header to expand or collapse each group. Set GroupsExpandedByDefault to control the initial state." Code="@_groupingCode">
+        <Stack Gap="2">
+            <Flex Align="center" Gap="2">
+                <Lumeo.Text Size="sm">Group by:</Lumeo.Text>
+                <Select Value="@_groupBy" ValueChanged="@((string v) => { _groupBy = v; StateHasChanged(); })">
+                    <SelectTrigger Class="h-8 w-[160px]">
+                        <span class="text-sm">@(_groupBy == "" ? "None" : _groupBy)</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value="">None</SelectItem>
+                        <SelectItem Value="Department">Department</SelectItem>
+                        <SelectItem Value="Status">Status</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Switch Checked="@_groupsExpandedByDefault" CheckedChanged="@((bool v) => { _groupsExpandedByDefault = v; StateHasChanged(); })" />
+                <Lumeo.Text Size="sm" Color="muted">Expanded by default</Lumeo.Text>
+            </Flex>
+            <DataGrid TItem="Employee" Items="@_employees"
+                      GroupBy="@(string.IsNullOrEmpty(_groupBy) ? null : _groupBy)"
+                      GroupsExpandedByDefault="@_groupsExpandedByDefault"
+                      Striped="true">
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+                <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Average" />
+                <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Format="yyyy-MM-dd" />
+            </DataGrid>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Column Reordering" Description="Drag column headers to reorder them. Enable with the Reorderable property on the grid." Code="@_reorderCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" Reorderable="true">
             <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
@@ -660,6 +690,8 @@
     private string? _lastEditInfo;
     private string? _lastRowEditInfo;
     private string? _savedLayoutNotice;
+    private string _groupBy = "Department";
+    private bool _groupsExpandedByDefault = true;
 
     private List<DataGridNamedLayout> _globalLayouts = new()
     {
@@ -857,6 +889,16 @@
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>";
+
+    private string _groupingCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
+          GroupBy=""Department""
+          GroupsExpandedByDefault=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
+                       Format=""C0"" Aggregate=""AggregateType.Average"" />
 </DataGrid>";
 
     private string _templateCode = @"<DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name"">

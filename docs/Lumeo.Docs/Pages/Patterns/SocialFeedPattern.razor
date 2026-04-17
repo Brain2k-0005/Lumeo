@@ -1,45 +1,77 @@
 @page "/blocks/social-feed"
 @namespace Lumeo.Docs.Pages.Patterns
 
-<PageTitle>Social Feed Pattern — Lumeo</PageTitle>
+<PageTitle>Social Feed — Lumeo Patterns</PageTitle>
 
-<PageHeader Title="Social Feed" Description="A social media timeline with a compose area, post cards with avatars, tooltips, like/comment actions, avatar groups, and a detail sheet." />
+<PageHeader Title="Social Feed" Description="A three-column social media layout with navigation rail, timeline feed with posts and interactions, and a right sidebar with trending topics and follow suggestions." />
 
-<Stack Gap="6">
+<ComponentDemo Title="Social Media Timeline" Code="@_code">
+    <Flex Class="w-full min-w-[800px] gap-0" style="min-height: 720px;">
 
-    <ComponentDemo Title="Social Media Timeline" Code="@_socialFeedCode">
-        <Stack Gap="4" Class="w-full min-w-[700px]">
+        <!-- Left Rail: Navigation -->
+        <Flex Direction="col" Class="w-56 shrink-0 pr-4 border-r border-border/40 sticky top-0 self-start pt-2">
+            <!-- User Profile Mini -->
+            <Flex Class="items-center gap-3 px-2 py-3 mb-2">
+                <Avatar>
+                    <AvatarFallback>ME</AvatarFallback>
+                </Avatar>
+                <Stack Class="min-w-0">
+                    <Lumeo.Text Class="text-sm font-semibold text-foreground truncate">You</Lumeo.Text>
+                    <Lumeo.Text Class="text-xs text-muted-foreground truncate">@me_handle</Lumeo.Text>
+                </Stack>
+            </Flex>
+            <Separator Class="mb-2" />
 
-            <!-- Compose Card -->
-            <Card>
+            @foreach (var nav in _navItems)
+            {
+                var n = nav;
+                <button class="@($"flex items-center gap-3 w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors mb-0.5 {(n.IsActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}")"
+                        @onclick="@(() => SetActiveNav(n.Label))">
+                    <DynamicIcon Name="@n.Icon" Class="h-4 w-4 shrink-0" />
+                    @n.Label
+                    @if (n.Badge > 0)
+                    {
+                        <Badge Class="ml-auto text-[10px] py-0 px-1.5 h-4" Variant="Badge.BadgeVariant.Default">@n.Badge</Badge>
+                    }
+                </button>
+            }
+
+            <Separator Class="my-3" />
+            <Button Variant="Button.ButtonVariant.Default" Class="w-full mt-1" Size="Button.ButtonSize.Sm">
+                <DynamicIcon Name="PenLine" Class="h-4 w-4 mr-2" />
+                New Post
+            </Button>
+        </Flex>
+
+        <!-- Center: Feed -->
+        <Stack Class="flex-1 px-6 min-w-0">
+
+            <!-- Compose -->
+            <Card Class="mb-4 border-border/40">
                 <CardContent Class="pt-4 pb-4">
                     <Flex Class="gap-3">
-                        <Avatar>
+                        <Avatar Class="shrink-0">
                             <AvatarFallback>ME</AvatarFallback>
                         </Avatar>
-                        <Stack Gap="3" Class="flex-1">
-                            <Textarea AutoResize="true" MaxRows="6"
+                        <Stack Class="flex-1 gap-3">
+                            <Textarea AutoResize="true" MaxRows="5"
                                       Value="@_composeText"
                                       OnInput="@(e => _composeText = e.Value?.ToString() ?? "")"
-                                      placeholder="What's on your mind?" />
-
-                            <!-- Tag Combobox (Multiple) -->
-                            <Combobox Multiple="true"
-                                      @bind-Values="_selectedTags"
-                                      Placeholder="Add tags..."
-                                      Class="max-w-xs">
-                                <ComboboxContent>
-                                    <ComboboxItem Value="design">Design</ComboboxItem>
-                                    <ComboboxItem Value="engineering">Engineering</ComboboxItem>
-                                    <ComboboxItem Value="product">Product</ComboboxItem>
-                                    <ComboboxItem Value="announcement">Announcement</ComboboxItem>
-                                    <ComboboxItem Value="update">Update</ComboboxItem>
-                                </ComboboxContent>
-                            </Combobox>
-
-                            <Flex Class="justify-end">
-                                <Button IsLoading="@_isPosting" OnClick="HandlePost">
-                                    <DynamicIcon Name="Send" Class="h-4 w-4 mr-2" />
+                                      placeholder="What's on your mind?" Class="resize-none" />
+                            <Flex Class="items-center justify-between">
+                                <Flex Class="items-center gap-1 text-muted-foreground">
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Image" Class="h-4 w-4" />
+                                    </Button>
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Smile" Class="h-4 w-4" />
+                                    </Button>
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Link" Class="h-4 w-4" />
+                                    </Button>
+                                </Flex>
+                                <Button IsLoading="@_isPosting" OnClick="HandlePost" Size="Button.ButtonSize.Sm">
+                                    <DynamicIcon Name="Send" Class="h-4 w-4 mr-1.5" />
                                     Post
                                 </Button>
                             </Flex>
@@ -48,331 +80,377 @@
                 </CardContent>
             </Card>
 
-            <!-- Feed -->
-            <Stack Gap="4">
-                @foreach (var post in _posts)
-                {
-                    var p = post;
-                    <Card>
-                        <CardHeader>
-                            <Flex Class="items-center justify-between">
-                                <Flex Class="items-center gap-3">
-                                    <Avatar>
-                                        <AvatarFallback>@p.AuthorInitials</AvatarFallback>
-                                    </Avatar>
-                                    <Stack>
-                                        <Flex Class="items-center gap-2">
-                                            <Lumeo.Text Class="text-sm font-semibold text-foreground">@p.Author</Lumeo.Text>
-                                            @if (p.IsNew)
-                                            {
-                                                <Badge IsDot="true" Variant="Badge.BadgeVariant.Default" />
-                                                <Lumeo.Text As="span" Class="text-xs text-primary font-medium">New</Lumeo.Text>
-                                            }
-                                        </Flex>
-                                        <Tooltip ShowDelay="400">
-                                            <TooltipTrigger>
-                                                <Lumeo.Text Class="text-xs text-muted-foreground cursor-default">@p.TimeAgo</Lumeo.Text>
-                                            </TooltipTrigger>
-                                            <TooltipContent Side="TooltipContent.TooltipSide.Bottom">
-                                                Posted @p.TimeAgo
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </Stack>
-                                </Flex>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
-                                        OnClick="@(() => OpenSheet(p))">
-                                    <DynamicIcon Name="ExternalLink" Class="h-4 w-4" />
-                                </Button>
-                            </Flex>
-                        </CardHeader>
-
-                        <CardContent Class="space-y-3">
-                            <!-- Post Content -->
-                            <Lumeo.Text Class="text-sm text-foreground leading-relaxed">@p.Content</Lumeo.Text>
-
-                            <!-- Image Placeholder -->
-                            @if (p.HasImage)
-                            {
-                                <Stack Class="relative bg-muted rounded-lg h-48 overflow-hidden">
-                                    <Stack Class="absolute inset-0" style="background: linear-gradient(135deg, var(--color-muted) 0%, color-mix(in srgb, var(--color-muted-foreground) 10%, var(--color-muted)) 100%)" />
-                                    <Flex Class="absolute inset-0 items-center justify-center">
-                                        <DynamicIcon Name="Image" Class="h-16 w-16 text-muted-foreground/30" />
+            <!-- Feed Posts -->
+            @foreach (var post in _posts)
+            {
+                var p = post;
+                <Card Class="mb-3 border-border/40 hover:border-border/70 transition-colors">
+                    <CardHeader Class="pb-2">
+                        <Flex Class="items-start justify-between gap-2">
+                            <Flex Class="items-center gap-3">
+                                <Avatar>
+                                    <AvatarFallback>@p.AuthorInitials</AvatarFallback>
+                                </Avatar>
+                                <Stack Class="gap-0">
+                                    <Flex Class="items-center gap-2">
+                                        <Lumeo.Text Class="text-sm font-semibold text-foreground">@p.Author</Lumeo.Text>
+                                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground">@p.Handle</Lumeo.Text>
+                                        @if (p.IsVerified)
+                                        {
+                                            <DynamicIcon Name="BadgeCheck" Class="h-3.5 w-3.5 text-primary" />
+                                        }
                                     </Flex>
+                                    <Tooltip ShowDelay="400">
+                                        <TooltipTrigger>
+                                            <Lumeo.Text Class="text-xs text-muted-foreground cursor-default">@p.TimeAgo</Lumeo.Text>
+                                        </TooltipTrigger>
+                                        <TooltipContent Side="TooltipContent.TooltipSide.Bottom">
+                                            @p.FullTimestamp
+                                        </TooltipContent>
+                                    </Tooltip>
                                 </Stack>
-                            }
-                        </CardContent>
-
-                        <CardFooter Class="flex items-center justify-between border-t pt-3">
-                            <!-- Action Buttons -->
+                            </Flex>
                             <Flex Class="items-center gap-1">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
-                                        Class="@(p.IsLiked ? "text-primary" : "")"
-                                        OnClick="@(() => ToggleLike(p))">
-                                    <DynamicIcon Name="Heart" Class="h-4 w-4 mr-1.5" />
-                                    @p.LikeCount
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
-                                    <DynamicIcon Name="MessageCircle" Class="h-4 w-4 mr-1.5" />
-                                    @p.CommentCount
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
-                                    <DynamicIcon Name="Share2" Class="h-4 w-4 mr-1.5" />
-                                    Share
+                                @if (!p.IsFollowing)
+                                {
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
+                                            @onclick="@(() => p.IsFollowing = true)">
+                                        Follow
+                                    </Button>
+                                }
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 text-muted-foreground">
+                                    <DynamicIcon Name="MoreHorizontal" Class="h-4 w-4" />
                                 </Button>
                             </Flex>
+                        </Flex>
+                    </CardHeader>
 
-                            <!-- Who Liked (AvatarGroup) -->
+                    <CardContent Class="pt-1 pb-3 space-y-3">
+                        <Lumeo.Text Class="text-sm text-foreground leading-relaxed">@p.Content</Lumeo.Text>
+
+                        @if (p.HasImage)
+                        {
+                            <div class="relative bg-muted rounded-[var(--radius-md)] overflow-hidden" style="height:200px">
+                                <div class="absolute inset-0" style="background: linear-gradient(135deg, var(--color-muted) 0%, color-mix(in srgb, var(--color-muted-foreground) 8%, var(--color-muted)) 100%)" />
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <DynamicIcon Name="Image" Class="h-12 w-12 text-muted-foreground/25" />
+                                </div>
+                            </div>
+                        }
+
+                        @if (p.Tags is { Count: > 0 })
+                        {
+                            <Flex Class="flex-wrap gap-1">
+                                @foreach (var tag in p.Tags)
+                                {
+                                    <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs font-normal">@tag</Badge>
+                                }
+                            </Flex>
+                        }
+                    </CardContent>
+
+                    <CardFooter Class="flex items-center justify-between pt-2 pb-3 border-t border-border/30">
+                        <Flex Class="items-center gap-0.5">
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                    Class="@($"h-8 px-2 gap-1.5 transition-colors {(p.IsLiked ? "text-destructive" : "text-muted-foreground hover:text-destructive")}")"
+                                    @onclick="@(() => ToggleLike(p))">
+                                <DynamicIcon Name="Heart" Class="@($"h-4 w-4 {(p.IsLiked ? "fill-destructive" : "")}")" />
+                                <Lumeo.Text As="span" Class="text-xs tabular-nums">@p.LikeCount</Lumeo.Text>
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                    Class="h-8 px-2 gap-1.5 text-muted-foreground hover:text-primary transition-colors">
+                                <DynamicIcon Name="MessageCircle" Class="h-4 w-4" />
+                                <Lumeo.Text As="span" Class="text-xs tabular-nums">@p.CommentCount</Lumeo.Text>
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                    Class="h-8 px-2 gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
+                                <DynamicIcon Name="Share2" Class="h-4 w-4" />
+                                <Lumeo.Text As="span" Class="text-xs">Share</Lumeo.Text>
+                            </Button>
+                        </Flex>
+                        <Flex Class="items-center gap-2">
                             @if (p.LikeCount > 0)
                             {
-                                <Flex Class="items-center gap-2">
+                                <Flex Class="items-center gap-1.5">
                                     <AvatarGroup Max="3" Total="@p.LikeCount">
                                         @for (var i = 0; i < Math.Min(3, p.LikeCount); i++)
                                         {
                                             var idx = i;
-                                            <Avatar Size="Avatar.AvatarSize.Sm" Class="border-2 border-background">
-                                                <AvatarFallback Class="text-[10px]">@_likerInitials[idx % _likerInitials.Length]</AvatarFallback>
+                                            <Avatar Size="Avatar.AvatarSize.Sm" Class="border-2 border-background h-5 w-5">
+                                                <AvatarFallback Class="text-[9px]">@_likerInitials[idx % _likerInitials.Length]</AvatarFallback>
                                             </Avatar>
                                         }
                                     </AvatarGroup>
                                     <Lumeo.Text As="span" Class="text-xs text-muted-foreground">liked this</Lumeo.Text>
                                 </Flex>
                             }
-                        </CardFooter>
-                    </Card>
-                }
-            </Stack>
-
-            <!-- Post Detail Sheet -->
-            <Sheet @bind-IsOpen="_sheetOpen">
-                <SheetContent Size="SheetContent.SheetSize.Lg">
-                    @if (_selectedPost is not null)
-                    {
-                        <SheetHeader>
-                            <SheetTitle>Post by @_selectedPost.Author</SheetTitle>
-                            <SheetDescription>@_selectedPost.TimeAgo</SheetDescription>
-                        </SheetHeader>
-                        <Stack Gap="4" Class="mt-4">
-                            <Flex Class="items-center gap-3">
-                                <Avatar>
-                                    <AvatarFallback>@_selectedPost.AuthorInitials</AvatarFallback>
-                                </Avatar>
-                                <Stack>
-                                    <Lumeo.Text Class="text-sm font-semibold text-foreground">@_selectedPost.Author</Lumeo.Text>
-                                    <Lumeo.Text Class="text-xs text-muted-foreground">@_selectedPost.TimeAgo</Lumeo.Text>
-                                </Stack>
-                            </Flex>
-                            <Lumeo.Text Class="text-sm text-foreground leading-relaxed">@_selectedPost.Content</Lumeo.Text>
-                            <Separator />
-                            <Stack Gap="3">
-                                <Heading Level="4" Class="text-sm font-medium text-foreground">Comments (@_selectedPost.CommentCount)</Heading>
-                                @foreach (var comment in _sampleComments)
-                                {
-                                    <Flex Class="gap-2">
-                                        <Avatar Size="Avatar.AvatarSize.Sm">
-                                            <AvatarFallback Class="text-[10px]">@comment.Initials</AvatarFallback>
-                                        </Avatar>
-                                        <Stack Class="flex-1 rounded-md bg-muted px-3 py-2">
-                                            <Lumeo.Text Class="text-xs font-medium text-foreground">@comment.Author</Lumeo.Text>
-                                            <Lumeo.Text Class="text-xs text-muted-foreground mt-0.5">@comment.Text</Lumeo.Text>
-                                        </Stack>
-                                    </Flex>
-                                }
-                            </Stack>
-                        </Stack>
-                    }
-                </SheetContent>
-            </Sheet>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 text-muted-foreground hover:text-foreground transition-colors"
+                                    @onclick="@(() => ToggleBookmark(p))">
+                                <DynamicIcon Name="Bookmark" Class="@($"h-4 w-4 {(p.IsBookmarked ? "fill-foreground" : "")}")" />
+                            </Button>
+                        </Flex>
+                    </CardFooter>
+                </Card>
+            }
 
         </Stack>
-    </ComponentDemo>
 
-</Stack>
+        <!-- Right Rail: Trending + Suggestions -->
+        <Stack Class="w-64 shrink-0 pl-4 border-l border-border/40 gap-4 sticky top-0 self-start pt-2">
+
+            <!-- Search -->
+            <div class="relative">
+                <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input placeholder="Search..." Class="pl-9 h-9 text-sm" />
+            </div>
+
+            <!-- Trending -->
+            <Card Class="border-border/40">
+                <CardHeader Class="pb-2">
+                    <Flex Class="items-center gap-2">
+                        <DynamicIcon Name="TrendingUp" Class="h-4 w-4 text-muted-foreground" />
+                        <Heading Level="4" Class="text-sm font-semibold text-foreground">Trending</Heading>
+                    </Flex>
+                </CardHeader>
+                <CardContent Class="pt-0 space-y-0">
+                    @foreach (var topic in _trending)
+                    {
+                        <div class="py-2.5 border-b border-border/30 last:border-0 cursor-pointer hover:opacity-80 transition-opacity">
+                            <Lumeo.Text Class="text-xs text-muted-foreground">@topic.Category</Lumeo.Text>
+                            <Lumeo.Text Class="text-sm font-semibold text-foreground">@topic.Tag</Lumeo.Text>
+                            <Lumeo.Text Class="text-xs text-muted-foreground">@topic.PostCount posts</Lumeo.Text>
+                        </div>
+                    }
+                </CardContent>
+            </Card>
+
+            <!-- Who to Follow -->
+            <Card Class="border-border/40">
+                <CardHeader Class="pb-2">
+                    <Flex Class="items-center gap-2">
+                        <DynamicIcon Name="Users" Class="h-4 w-4 text-muted-foreground" />
+                        <Heading Level="4" Class="text-sm font-semibold text-foreground">Who to Follow</Heading>
+                    </Flex>
+                </CardHeader>
+                <CardContent Class="pt-0 space-y-0">
+                    @foreach (var suggestion in _suggestions)
+                    {
+                        var s = suggestion;
+                        <Flex Class="items-center gap-3 py-2.5 border-b border-border/30 last:border-0">
+                            <Avatar Size="Avatar.AvatarSize.Sm">
+                                <AvatarFallback Class="text-xs">@s.Initials</AvatarFallback>
+                            </Avatar>
+                            <Stack Class="flex-1 min-w-0">
+                                <Lumeo.Text Class="text-sm font-medium text-foreground truncate leading-tight">@s.Name</Lumeo.Text>
+                                <Lumeo.Text Class="text-xs text-muted-foreground truncate">@s.Followers followers</Lumeo.Text>
+                            </Stack>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-7 text-xs shrink-0"
+                                    @onclick="@(() => s.Following = !s.Following)">
+                                @(s.Following ? "Following" : "Follow")
+                            </Button>
+                        </Flex>
+                    }
+                </CardContent>
+            </Card>
+
+        </Stack>
+
+    </Flex>
+</ComponentDemo>
 
 @code {
+    private string me_handle = "@you";
     private string _composeText = "";
     private bool _isPosting;
-    private HashSet<string>? _selectedTags = new();
-
-    // Sheet state
-    private bool _sheetOpen;
-    private PostItem? _selectedPost;
+    private string _activeNav = "Home";
 
     private readonly string[] _likerInitials = { "OL", "JK", "SD", "WK", "IN" };
+
+    private record NavItem(string Label, string Icon, int Badge, bool IsActive);
+    private List<NavItem> _navItems = new()
+    {
+        new("Home",          "House",        0,  true),
+        new("Explore",       "Compass",      0,  false),
+        new("Notifications", "Bell",         4,  false),
+        new("Messages",      "Mail",         2,  false),
+        new("Bookmarks",     "Bookmark",     0,  false),
+        new("Profile",       "User",         0,  false),
+    };
+
+    private void SetActiveNav(string label)
+    {
+        _navItems = _navItems.Select(n => n with { IsActive = n.Label == label }).ToList();
+        _activeNav = label;
+    }
 
     private class PostItem
     {
         public int Id { get; init; }
         public string Author { get; init; } = "";
         public string AuthorInitials { get; init; } = "";
+        public string Handle { get; init; } = "";
         public string Content { get; init; } = "";
         public bool HasImage { get; init; }
+        public List<string>? Tags { get; init; }
         public int LikeCount { get; set; }
         public int CommentCount { get; init; }
         public string TimeAgo { get; init; } = "";
-        public bool IsNew { get; init; }
+        public string FullTimestamp { get; init; } = "";
+        public bool IsVerified { get; init; }
         public bool IsLiked { get; set; }
+        public bool IsBookmarked { get; set; }
+        public bool IsFollowing { get; set; }
     }
 
-    private record CommentItem(string Author, string Initials, string Text);
+    private class SuggestionItem
+    {
+        public string Name { get; init; } = "";
+        public string Initials { get; init; } = "";
+        public string Followers { get; init; } = "";
+        public bool Following { get; set; }
+    }
+
+    private record TrendingItem(string Category, string Tag, string PostCount);
 
     private readonly List<PostItem> _posts = new()
     {
-        new() { Id = 1, Author = "Olivia Martin",   AuthorInitials = "OM", Content = "Just shipped our new design system! After 3 months of work, we've standardized colors, spacing, and typography across all products. Huge thanks to the team for pushing through.", HasImage = true,  LikeCount = 14, CommentCount = 8,  TimeAgo = "2 hours ago", IsNew = true  },
-        new() { Id = 2, Author = "Jackson Lee",     AuthorInitials = "JL", Content = "Interesting findings from our latest user research session — turns out 70% of users never scroll past the fold on mobile. Time to rethink our information architecture.",         HasImage = false, LikeCount = 22, CommentCount = 12, TimeAgo = "5 hours ago", IsNew = false },
-        new() { Id = 3, Author = "Sofia Davis",     AuthorInitials = "SD", Content = "Pro tip: use CSS container queries instead of media queries for truly component-level responsiveness. Game changer for library development.",                                     HasImage = true,  LikeCount = 9,  CommentCount = 4,  TimeAgo = "Yesterday",   IsNew = true  },
-        new() { Id = 4, Author = "Isabella Nguyen", AuthorInitials = "IN", Content = "We crossed 10,000 GitHub stars today! Thank you to everyone who has contributed, filed issues, and spread the word. This milestone means everything to us.",                   HasImage = false, LikeCount = 47, CommentCount = 21, TimeAgo = "2 days ago",  IsNew = false },
+        new()
+        {
+            Id = 1, Author = "Olivia Martin", AuthorInitials = "OM", Handle = "@olivia.m", IsVerified = true, IsFollowing = true,
+            Content = "Just shipped our new design system after 3 months of work. We've standardized every color token, spacing scale, and typography style across all products. The velocity improvement alone has been incredible — PRs that used to take 2 weeks are shipping in 2 days. Huge thanks to the whole team.",
+            HasImage = true, Tags = new() { "#designsystem", "#ux" },
+            LikeCount = 247, CommentCount = 38, TimeAgo = "2m", FullTimestamp = "Apr 17, 2026 at 10:08 AM"
+        },
+        new()
+        {
+            Id = 2, Author = "Jackson Lee", AuthorInitials = "JL", Handle = "@jacksonlee.dev",
+            Content = "Fascinating finding from our latest user research: 70% of mobile users never scroll past the fold on first visit. We're completely rethinking our landing page information architecture. Sometimes data punches you in the face.",
+            HasImage = false, Tags = new() { "#ux", "#research" },
+            LikeCount = 84, CommentCount = 19, TimeAgo = "41m", FullTimestamp = "Apr 17, 2026 at 9:29 AM"
+        },
+        new()
+        {
+            Id = 3, Author = "Sofia Davis", AuthorInitials = "SD", Handle = "@sofiadavis",
+            Content = "Hot take: CSS container queries are the single most impactful CSS feature of the last decade. Stop using media queries for component-level responsiveness — your components should know their own width, not the viewport's.",
+            HasImage = false, Tags = new() { "#css", "#webdev" },
+            LikeCount = 512, CommentCount = 67, TimeAgo = "2h", FullTimestamp = "Apr 17, 2026 at 8:15 AM"
+        },
+        new()
+        {
+            Id = 4, Author = "Isabella Nguyen", AuthorInitials = "IN", Handle = "@bella.nguyen", IsVerified = true,
+            Content = "We crossed 10,000 GitHub stars today. I started this project on a whim on a Sunday afternoon with zero expectations. Thank you to every single person who starred, filed an issue, opened a PR, or just told a friend. This milestone means everything.",
+            HasImage = true, Tags = new() { "#opensource", "#milestone" },
+            LikeCount = 1840, CommentCount = 203, TimeAgo = "5h", FullTimestamp = "Apr 17, 2026 at 5:10 AM"
+        },
     };
 
-    private readonly List<CommentItem> _sampleComments = new()
+    private readonly List<TrendingItem> _trending = new()
     {
-        new("William Kim",    "WK", "This is incredible work! Congrats to the whole team."),
-        new("Liam Johnson",   "LJ", "How did you handle theming? Did you go with CSS variables?"),
-        new("Emma Wilson",    "EW", "Looking forward to migrating our codebase to this."),
+        new("Technology",  "#blazor",        "14.2K"),
+        new("Design",      "#designsystems", "8.6K"),
+        new("Development", "#dotnet10",      "6.1K"),
+        new("Culture",     "#remotework",    "4.9K"),
+    };
+
+    private readonly List<SuggestionItem> _suggestions = new()
+    {
+        new() { Name = "William Kim",    Initials = "WK", Followers = "12.4K" },
+        new() { Name = "Emma Wilson",    Initials = "EW", Followers = "8.1K"  },
+        new() { Name = "Liam Johnson",   Initials = "LJ", Followers = "5.7K"  },
     };
 
     private async Task HandlePost()
     {
         if (string.IsNullOrWhiteSpace(_composeText)) return;
         _isPosting = true;
-        await Task.Delay(1500);
+        await Task.Delay(1200);
         _composeText = "";
-        _selectedTags = new();
         _isPosting = false;
     }
 
     private void ToggleLike(PostItem post)
     {
-        if (post.IsLiked)
-        {
-            post.IsLiked = false;
-            post.LikeCount--;
-        }
-        else
-        {
-            post.IsLiked = true;
-            post.LikeCount++;
-        }
+        if (post.IsLiked) { post.IsLiked = false; post.LikeCount--; }
+        else              { post.IsLiked = true;  post.LikeCount++; }
     }
 
-    private void OpenSheet(PostItem post)
+    private void ToggleBookmark(PostItem post) => post.IsBookmarked = !post.IsBookmarked;
+
+    private string _code = @"<!-- Three-column social feed layout -->
+<Flex Class=""w-full gap-0"">
+
+  <!-- Left Rail -->
+  <Flex Direction=""col"" Class=""w-56 shrink-0 pr-4 border-r border-border/40"">
+    <Flex Class=""items-center gap-3 px-2 py-3"">
+      <Avatar><AvatarFallback>ME</AvatarFallback></Avatar>
+      <Lumeo.Text Class=""text-sm font-semibold"">You</Lumeo.Text>
+    </Flex>
+    <Separator />
+    @foreach (var nav in _navItems)
     {
-        _selectedPost = post;
-        _sheetOpen = true;
+      <button class=""flex items-center gap-3 w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors
+                      @(nav.IsActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent')"">
+        <DynamicIcon Name=""@nav.Icon"" Class=""h-4 w-4"" />
+        @nav.Label
+        @if (nav.Badge > 0) { <Badge Class=""ml-auto"">@nav.Badge</Badge> }
+      </button>
     }
+    <Button Class=""w-full mt-2"" Size=""Button.ButtonSize.Sm"">
+      <DynamicIcon Name=""PenLine"" Class=""h-4 w-4 mr-2"" /> New Post
+    </Button>
+  </Flex>
 
-    private string _socialFeedCode = @"<!-- Compose Card -->
-<Card>
-    <CardContent>
+  <!-- Center Feed -->
+  <Stack Class=""flex-1 px-6 min-w-0"">
+    <!-- Compose card -->
+    <Card Class=""mb-4 border-border/40"">
+      <CardContent Class=""pt-4"">
         <Flex Gap=""3"">
-            <Avatar><AvatarFallback>ME</AvatarFallback></Avatar>
-            <Stack Gap=""3"" Class=""flex-1"">
-                <Textarea AutoResize=""true"" MaxRows=""6""
-                          Value=""@_composeText""
-                          OnInput=""@(e => _composeText = e.Value?.ToString() ?? """")"" />
-
-                <!-- Tag Combobox (Multiple) -->
-                <Combobox Multiple=""true"" @bind-Values=""_selectedTags"" Placeholder=""Add tags..."" Class=""max-w-xs"">
-                    <ComboboxContent>
-                        <ComboboxItem Value=""design"">Design</ComboboxItem>
-                        <ComboboxItem Value=""engineering"">Engineering</ComboboxItem>
-                        <ComboboxItem Value=""product"">Product</ComboboxItem>
-                        <ComboboxItem Value=""announcement"">Announcement</ComboboxItem>
-                        <ComboboxItem Value=""update"">Update</ComboboxItem>
-                    </ComboboxContent>
-                </Combobox>
-
-                <Button Variant=""Button.ButtonVariant.Default"" IsLoading=""@_isPosting"" OnClick=""HandlePost"">
-                    <DynamicIcon Name=""Send"" Class=""h-4 w-4 mr-2"" />
-                    Post
-                </Button>
-            </Stack>
+          <Avatar><AvatarFallback>ME</AvatarFallback></Avatar>
+          <Stack Class=""flex-1 gap-3"">
+            <Textarea AutoResize=""true"" placeholder=""What's on your mind?"" />
+            <Button IsLoading=""@_isPosting"" OnClick=""HandlePost"">
+              <DynamicIcon Name=""Send"" Class=""h-4 w-4 mr-1.5"" /> Post
+            </Button>
+          </Stack>
         </Flex>
-    </CardContent>
-</Card>
-
-<!-- Post Card -->
-@foreach (var post in _posts)
-{
-    <Card>
-        <CardHeader>
-            <Flex Align=""center"" Justify=""between"">
-                <Flex Align=""center"" Gap=""3"">
-                    <Avatar><AvatarFallback>@post.AuthorInitials</AvatarFallback></Avatar>
-                    <Stack Gap=""0"">
-                        <Flex Align=""center"" Gap=""2"">
-                            <Lumeo.Text Class=""text-sm font-semibold text-foreground"">@post.Author</Lumeo.Text>
-                            @if (post.IsNew)
-                            {
-                                <Badge IsDot=""true"" />
-                                <Lumeo.Text As=""span"" Class=""text-xs text-primary font-medium"">New</Lumeo.Text>
-                            }
-                        </Flex>
-                        <!-- Tooltip with delay -->
-                        <Tooltip ShowDelay=""400"">
-                            <TooltipTrigger>
-                                <Lumeo.Text Class=""text-xs text-muted-foreground cursor-default"">@post.TimeAgo</Lumeo.Text>
-                            </TooltipTrigger>
-                            <TooltipContent Side=""TooltipContent.TooltipSide.Bottom"">
-                                Posted @post.TimeAgo
-                            </TooltipContent>
-                        </Tooltip>
-                    </Stack>
-                </Flex>
-                <!-- Opens Sheet -->
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" OnClick=""@(() => OpenSheet(post))"">
-                    <DynamicIcon Name=""ExternalLink"" Class=""h-4 w-4"" />
-                </Button>
-            </Flex>
-        </CardHeader>
-        <CardContent Class=""space-y-3"">
-            <Lumeo.Text Class=""text-sm text-foreground leading-relaxed"">@post.Content</Lumeo.Text>
-            <!-- Image placeholder -->
-            <Stack Class=""relative bg-muted rounded-lg h-48 overflow-hidden"" Gap=""0"">
-                <Stack Class=""absolute inset-0 bg-gradient-to-br from-muted to-muted-foreground/10"" />
-                <Flex Class=""absolute inset-0 items-center justify-center"">
-                    <DynamicIcon Name=""Image"" Class=""h-10 w-10 text-muted-foreground/40"" />
-                </Flex>
-            </Stack>
-        </CardContent>
-        <CardFooter Class=""flex items-center justify-between border-t pt-3"">
-            <Flex Align=""center"" Gap=""1"">
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" OnClick=""@(() => ToggleLike(post))"">
-                    <DynamicIcon Name=""Heart"" Class=""h-4 w-4 mr-1.5"" />
-                    @post.LikeCount
-                </Button>
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
-                    <DynamicIcon Name=""MessageCircle"" Class=""h-4 w-4 mr-1.5"" />
-                    @post.CommentCount
-                </Button>
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
-                    <DynamicIcon Name=""Share2"" Class=""h-4 w-4 mr-1.5"" />
-                    Share
-                </Button>
-            </Flex>
-            <!-- AvatarGroup -->
-            <AvatarGroup Max=""3"" Total=""@post.LikeCount"">
-                <Avatar Size=""Avatar.AvatarSize.Sm"" Class=""border-2 border-background"">
-                    <AvatarFallback Class=""text-[10px]"">OL</AvatarFallback>
-                </Avatar>
-                <!-- ... more avatars -->
-            </AvatarGroup>
-        </CardFooter>
+      </CardContent>
     </Card>
-}
 
-<!-- Detail Sheet -->
-<Sheet @bind-IsOpen=""_sheetOpen"">
-    <SheetContent Size=""SheetContent.SheetSize.Lg"">
-        <SheetHeader>
-            <SheetTitle>Post Details</SheetTitle>
-            <SheetDescription>@_selectedPost?.TimeAgo</SheetDescription>
-        </SheetHeader>
-        <Stack Gap=""4"" Class=""mt-4"">
-            <Lumeo.Text Class=""text-sm text-foreground"">@_selectedPost?.Content</Lumeo.Text>
-            <Separator />
-            <Heading Level=""4"" Class=""text-sm font-medium"">Comments</Heading>
-            <!-- comment items ... -->
-        </Stack>
-    </SheetContent>
-</Sheet>";
+    <!-- Post cards with like/comment/share/bookmark -->
+    @foreach (var post in _posts) { /* ... */ }
+  </Stack>
+
+  <!-- Right Rail -->
+  <Stack Class=""w-64 shrink-0 pl-4 border-l border-border/40 gap-4"">
+    <Input placeholder=""Search..."" Class=""pl-9"" />
+
+    <!-- Trending topics -->
+    <Card Class=""border-border/40"">
+      <CardHeader><Heading Level=""4"">Trending</Heading></CardHeader>
+      <CardContent>
+        @foreach (var t in _trending) { /* tag + post count */ }
+      </CardContent>
+    </Card>
+
+    <!-- Who to follow -->
+    <Card Class=""border-border/40"">
+      <CardHeader><Heading Level=""4"">Who to Follow</Heading></CardHeader>
+      <CardContent>
+        @foreach (var s in _suggestions)
+        {
+          <Flex Class=""items-center gap-3 py-2.5"">
+            <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>@s.Initials</AvatarFallback></Avatar>
+            <Stack Class=""flex-1 min-w-0"">
+              <Lumeo.Text Class=""text-sm font-medium"">@s.Name</Lumeo.Text>
+              <Lumeo.Text Class=""text-xs text-muted-foreground"">@s.Followers followers</Lumeo.Text>
+            </Stack>
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Follow</Button>
+          </Flex>
+        }
+      </CardContent>
+    </Card>
+  </Stack>
+
+</Flex>";
 }

@@ -1,427 +1,392 @@
 @page "/blocks/ecommerce"
+@namespace Lumeo.Docs.Pages.Patterns
 
 <PageTitle>E-Commerce — Lumeo</PageTitle>
 
-<PageHeader Title="E-Commerce" Description="A product detail page with variant selectors, cart actions, reviews, and related products." />
+<PageHeader Title="E-Commerce" Description="An e-commerce admin dashboard with KPI cards, revenue chart, recent orders, top products, inventory alerts, and customer segment breakdown." />
 
-<ComponentDemo Title="Product Page" Code="@_ecommerceCode">
-    <Stack Gap="8" Class="w-full min-w-[700px]">
+<ComponentDemo Title="E-Commerce Admin Dashboard" Code="@_code">
+    <Stack Gap="6" Class="w-full min-w-[700px]">
 
-        <!-- Product Detail Section -->
-        <Grid Class="grid-cols-1 lg:grid-cols-2 gap-8">
-
-            <!-- Product Images -->
-            <Stack Gap="3">
-                <!-- Main Image -->
-                <Stack Class="relative aspect-square bg-muted rounded-lg overflow-hidden">
-                    <Stack Class="absolute inset-0" style="background: linear-gradient(135deg, var(--color-muted) 0%, color-mix(in srgb, var(--color-muted-foreground) 10%, var(--color-muted)) 100%)" />
-                    <Flex Class="absolute inset-0 items-center justify-center">
-                        <DynamicIcon Name="Headphones" Class="h-24 w-24 text-muted-foreground/20" />
-                    </Flex>
-                </Stack>
-                <!-- Thumbnails -->
-                <Grid Class="grid-cols-4 gap-2">
-                    @for (int i = 0; i < 4; i++)
-                    {
-                        var idx = i;
-                        <Flex Class="@($"aspect-square rounded-md bg-muted items-center justify-center border cursor-pointer transition-colors {(_activeThumb == idx ? "border-primary ring-2 ring-primary" : "hover:border-muted-foreground")}")"
-                             @onclick="@(() => _activeThumb = idx)">
-                            <DynamicIcon Name="Eye" Class="h-6 w-6 text-muted-foreground" />
-                        </Flex>
-                    }
-                </Grid>
-            </Stack>
-
-            <!-- Product Details -->
-            <Stack Gap="5">
-                <Stack Gap="2">
-                    <Flex Class="items-center gap-2">
-                        <Badge>New Arrival</Badge>
-                        <Badge Variant="Badge.BadgeVariant.Success">In Stock</Badge>
-                    </Flex>
-                    <Heading Level="1" Class="text-2xl font-bold text-foreground">Lumeo Pro Wireless Headphones</Heading>
-                    <Flex Class="items-center gap-3">
-                        <Flex Class="items-center gap-0.5">
-                            @for (int s = 0; s < 5; s++)
-                            {
-                                <DynamicIcon Name="Star" Class="@($"h-4 w-4 {(s < 4 ? "text-primary" : "text-muted-foreground/40")}")" />
-                            }
-                        </Flex>
-                        <Lumeo.Text As="span" Class="text-sm text-muted-foreground">4.0</Lumeo.Text>
-                        <Badge Variant="Badge.BadgeVariant.Outline">128 reviews</Badge>
-                    </Flex>
-                    <Flex Class="items-baseline gap-2">
-                        <Lumeo.Text As="span" Class="text-3xl font-bold text-foreground">$99.99</Lumeo.Text>
-                        <Lumeo.Text As="span" Class="text-sm text-muted-foreground line-through">$129.99</Lumeo.Text>
-                        <Badge Variant="Badge.BadgeVariant.Destructive">-23%</Badge>
-                    </Flex>
-                    <Lumeo.Text Class="text-sm text-muted-foreground leading-relaxed">
-                        Experience premium sound quality with our Lumeo Pro headphones. Featuring 40-hour battery life,
-                        active noise cancellation, and a sleek foldable design perfect for travel and everyday use.
-                    </Lumeo.Text>
-                </Stack>
-
-                <Separator Class="my-4" />
-
-                <!-- Color Selector -->
-                <Stack Gap="2">
-                    <Lumeo.Text Class="text-sm font-medium text-foreground">
-                        Color: <Lumeo.Text As="span" Class="text-muted-foreground">@_selectedColor</Lumeo.Text>
-                    </Lumeo.Text>
-                    <Flex Class="items-center gap-2">
-                        @foreach (var color in _colors)
-                        {
-                            var c = color;
-                            <Button Variant="Button.ButtonVariant.Ghost"
-                                    Class="@($"h-8 w-8 rounded-full border-2 transition-all p-0 {(_selectedColor == c.Name ? "ring-2 ring-offset-2 ring-primary border-primary" : "border-border hover:border-foreground")}")"
-                                    style="@($"background-color: {c.Hex};")"
-                                    title="@c.Name"
-                                    @onclick="@(() => _selectedColor = c.Name)">
-                            </Button>
-                        }
-                    </Flex>
-                </Stack>
-
-                <!-- Size Selector -->
-                <Stack Gap="2">
-                    <Lumeo.Text Class="text-sm font-medium text-foreground">
-                        Size: <Lumeo.Text As="span" Class="text-muted-foreground">@_selectedSize</Lumeo.Text>
-                    </Lumeo.Text>
-                    <Flex Class="items-center gap-2">
-                        @foreach (var size in new[] { "S", "M", "L", "XL" })
-                        {
-                            var s = size;
-                            <Button Variant="@(_selectedSize == s ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
-                                    Size="Button.ButtonSize.Sm"
-                                    Class="w-12"
-                                    @onclick="@(() => _selectedSize = s)">@s</Button>
-                        }
-                    </Flex>
-                </Stack>
-
-                <!-- Quantity -->
-                <Stack Gap="2">
-                    <Lumeo.Text Class="text-sm font-medium text-foreground">Quantity</Lumeo.Text>
-                    <Flex Class="items-center gap-2">
-                        <Button Variant="Button.ButtonVariant.Outline"
-                                Size="Button.ButtonSize.Icon"
-                                Class="h-9 w-9"
-                                @onclick="DecrementQty">
-                            <DynamicIcon Name="Minus" Class="h-4 w-4" />
-                        </Button>
-                        <Input Value="@_quantity.ToString()" Class="w-16 text-center h-9" />
-                        <Button Variant="Button.ButtonVariant.Outline"
-                                Size="Button.ButtonSize.Icon"
-                                Class="h-9 w-9"
-                                @onclick="IncrementQty">
-                            <DynamicIcon Name="Plus" Class="h-4 w-4" />
-                        </Button>
-                    </Flex>
-                </Stack>
-
-                <!-- Actions -->
-                <Flex Class="items-center gap-3">
-                    <Button Class="flex-1">
-                        <DynamicIcon Name="Plus" Class="h-4 w-4 mr-2" />
-                        Add to Cart
-                    </Button>
-                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="h-10 w-10">
-                        <DynamicIcon Name="Heart" Class="h-4 w-4" />
-                    </Button>
+        <!-- Top Bar -->
+        <Flex Class="items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-border/40 bg-card px-4 py-3">
+            <Flex Class="items-center gap-3">
+                <Flex Class="h-8 w-8 items-center justify-center rounded-md bg-primary">
+                    <DynamicIcon Name="ShoppingBag" Class="h-4 w-4 text-primary-foreground" />
                 </Flex>
-
-                <!-- Feature Strip -->
-                <Stack Class="border rounded-lg p-4 mt-2">
-                    <div class="grid grid-cols-3 gap-4">
-                        <Flex Direction="col" Class="items-center gap-2 text-center">
-                            <DynamicIcon Name="Zap" Class="h-5 w-5 text-primary" />
-                            <Lumeo.Text Class="text-xs font-medium">40hr Battery</Lumeo.Text>
-                        </Flex>
-                        <Flex Direction="col" Class="items-center gap-2 text-center">
-                            <DynamicIcon Name="Shield" Class="h-5 w-5 text-primary" />
-                            <Lumeo.Text Class="text-xs font-medium">2yr Warranty</Lumeo.Text>
-                        </Flex>
-                        <Flex Direction="col" Class="items-center gap-2 text-center">
-                            <DynamicIcon Name="RefreshCw" Class="h-5 w-5 text-primary" />
-                            <Lumeo.Text Class="text-xs font-medium">Free Returns</Lumeo.Text>
-                        </Flex>
-                    </div>
+                <Lumeo.Text As="span" Class="text-base font-semibold text-foreground">Storefront Admin</Lumeo.Text>
+            </Flex>
+            <Flex Class="flex-1 max-w-sm items-center gap-2 rounded-md border border-border/40 bg-background px-3">
+                <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground shrink-0" />
+                <Input type="text" placeholder="Search orders, products..." Class="flex h-8 w-full bg-transparent text-sm outline-none border-0 shadow-none p-0 focus-visible:ring-0" />
+            </Flex>
+            <Flex Class="items-center gap-2">
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                    <DynamicIcon Name="Bell" Class="h-4 w-4" />
+                </Button>
+                <Avatar Size="Avatar.AvatarSize.Sm">
+                    <AvatarFallback>KS</AvatarFallback>
+                </Avatar>
+                <Stack Class="hidden sm:block">
+                    <Lumeo.Text Class="text-sm font-medium text-foreground leading-none">Keiko Sato</Lumeo.Text>
+                    <Lumeo.Text Class="text-xs text-muted-foreground">Store Manager</Lumeo.Text>
                 </Stack>
-            </Stack>
+            </Flex>
+        </Flex>
+
+        <!-- KPI Row -->
+        <Grid Class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            @foreach (var kpi in _kpis)
+            {
+                <Card Class="border-border/40">
+                    <CardHeader>
+                        <Flex Class="items-center justify-between">
+                            <Lumeo.Text Class="text-sm font-medium text-muted-foreground">@kpi.Label</Lumeo.Text>
+                            <Flex Class="h-8 w-8 items-center justify-center rounded-md bg-muted">
+                                <DynamicIcon Name="@kpi.Icon" Class="h-4 w-4 text-muted-foreground" />
+                            </Flex>
+                        </Flex>
+                    </CardHeader>
+                    <CardContent>
+                        <Lumeo.Text Class="text-2xl font-bold text-foreground">@kpi.Value</Lumeo.Text>
+                        <Flex Class="mt-1 items-center gap-1.5">
+                            <Badge Variant="@kpi.TrendVariant" Class="text-xs">@kpi.Trend</Badge>
+                            <Lumeo.Text As="span" Class="text-xs text-muted-foreground">vs last month</Lumeo.Text>
+                        </Flex>
+                        <Progress Value="@kpi.Progress" Class="mt-3 h-1" Variant="@kpi.ProgressVariant" />
+                    </CardContent>
+                </Card>
+            }
         </Grid>
 
-        <Separator Class="my-4" />
+        <!-- Revenue Chart + Customer Segments -->
+        <Grid Class="grid-cols-1 lg:grid-cols-7 gap-4">
+            <Card Class="lg:col-span-5 border-border/40">
+                <CardHeader>
+                    <Flex Class="items-center justify-between">
+                        <Stack>
+                            <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Revenue Overview</Heading>
+                            <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Monthly revenue vs. refunds — 2026</Lumeo.Text>
+                        </Stack>
+                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                            <DynamicIcon Name="CalendarDays" Class="h-4 w-4 mr-1" />
+                            Apr 2026
+                        </Button>
+                    </Flex>
+                </CardHeader>
+                <CardContent>
+                    <AreaChart
+                        Categories="@_revenueMonths"
+                        Series="@_revenueSeries"
+                        Smooth="true"
+                        Height="240px" />
+                </CardContent>
+            </Card>
 
-        <!-- Tabs: Details, Reviews, Shipping -->
-        <Tabs @bind-ActiveValue="_activeTab">
-            <TabsList>
-                <TabsTrigger Value="details">Details</TabsTrigger>
-                <TabsTrigger Value="reviews">Reviews <Badge Class="ml-1.5">3</Badge></TabsTrigger>
-                <TabsTrigger Value="shipping">Shipping</TabsTrigger>
-            </TabsList>
+            <!-- Customer Segments Donut -->
+            <Card Class="lg:col-span-2 border-border/40">
+                <CardHeader>
+                    <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Customer Segments</Heading>
+                    <Lumeo.Text Class="text-sm text-muted-foreground">Revenue by segment</Lumeo.Text>
+                </CardHeader>
+                <CardContent>
+                    <DonutChart Data="@_segments" Height="180px" />
+                    <Stack Gap="2" Class="mt-4">
+                        @foreach (var seg in _segments)
+                        {
+                            <Flex Class="items-center justify-between text-sm">
+                                <Flex Class="items-center gap-2">
+                                    <Stack Class="h-2.5 w-2.5 rounded-full shrink-0 bg-primary"></Stack>
+                                    <Lumeo.Text As="span" Class="text-muted-foreground">@seg.Name</Lumeo.Text>
+                                </Flex>
+                                <Lumeo.Text As="span" Class="font-medium text-foreground">@seg.Value%</Lumeo.Text>
+                            </Flex>
+                        }
+                    </Stack>
+                </CardContent>
+            </Card>
+        </Grid>
 
-            <TabsContent Value="details">
-                <Card>
-                    <CardContent Class="pt-4">
-                        <Grid Class="grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                            <Stack Gap="2">
-                                <Flex Class="justify-between py-1 border-b">
-                                    <Lumeo.Text As="span" Class="text-muted-foreground">Driver Size</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-foreground font-medium">40mm</Lumeo.Text>
-                                </Flex>
-                                <Flex Class="justify-between py-1 border-b">
-                                    <Lumeo.Text As="span" Class="text-muted-foreground">Frequency</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-foreground font-medium">20Hz – 20kHz</Lumeo.Text>
-                                </Flex>
-                                <Flex Class="justify-between py-1 border-b">
-                                    <Lumeo.Text As="span" Class="text-muted-foreground">Battery Life</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-foreground font-medium">40 hours</Lumeo.Text>
-                                </Flex>
-                            </Stack>
-                            <Stack Gap="2">
-                                <Flex Class="justify-between py-1 border-b">
-                                    <Lumeo.Text As="span" Class="text-muted-foreground">Connectivity</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-foreground font-medium">Bluetooth 5.3</Lumeo.Text>
-                                </Flex>
-                                <Flex Class="justify-between py-1 border-b">
-                                    <Lumeo.Text As="span" Class="text-muted-foreground">Weight</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-foreground font-medium">250g</Lumeo.Text>
-                                </Flex>
-                                <Flex Class="justify-between py-1 border-b">
-                                    <Lumeo.Text As="span" Class="text-muted-foreground">Warranty</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-foreground font-medium">2 years</Lumeo.Text>
-                                </Flex>
-                            </Stack>
-                        </Grid>
-                    </CardContent>
-                </Card>
-            </TabsContent>
+        <!-- Recent Orders Table + Top Products -->
+        <Grid Class="grid-cols-1 lg:grid-cols-7 gap-4">
 
-            <TabsContent Value="reviews">
-                <Stack Gap="4">
-                    @foreach (var review in _reviews)
-                    {
-                        <Card>
-                            <CardContent Class="pt-4">
-                                <Flex Class="items-start gap-3">
-                                    <Avatar Size="Avatar.AvatarSize.Sm">
-                                        <AvatarFallback>@review.Initials</AvatarFallback>
-                                    </Avatar>
-                                    <Stack Gap="1" Class="flex-1">
-                                        <Flex Class="items-center justify-between">
-                                            <Lumeo.Text As="span" Class="text-sm font-semibold text-foreground">@review.Author</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-xs text-muted-foreground">@review.Date</Lumeo.Text>
+            <!-- Recent Orders -->
+            <Card Class="lg:col-span-5 border-border/40">
+                <CardHeader>
+                    <Flex Class="items-center justify-between">
+                        <Stack>
+                            <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Recent Orders</Heading>
+                            <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Last 10 orders across all channels</Lumeo.Text>
+                        </Stack>
+                        <Flex Class="items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="Download" Class="h-4 w-4 mr-1" />
+                                Export
+                            </Button>
+                            <Button Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="Plus" Class="h-4 w-4 mr-1" />
+                                New Order
+                            </Button>
+                        </Flex>
+                    </Flex>
+                </CardHeader>
+                <CardContent Class="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Order</TableHead>
+                                <TableHead>Customer</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Channel</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead Class="text-right">Total</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            @foreach (var order in _orders)
+                            {
+                                <TableRow Class="hover:bg-muted/40 transition-colors cursor-pointer">
+                                    <TableCell Class="font-mono text-sm font-medium text-foreground">@order.Id</TableCell>
+                                    <TableCell>
+                                        <Flex Class="items-center gap-2">
+                                            <Avatar Class="h-6 w-6">
+                                                <AvatarFallback Class="text-[10px]">@order.Initials</AvatarFallback>
+                                            </Avatar>
+                                            <Lumeo.Text As="span" Class="text-sm text-foreground">@order.Customer</Lumeo.Text>
                                         </Flex>
-                                        <Flex Class="items-center gap-0.5">
-                                            @for (int s = 0; s < 5; s++)
-                                            {
-                                                <DynamicIcon Name="Star" Class="@($"h-3.5 w-3.5 {(s < review.Rating ? "text-primary" : "text-muted-foreground/40")}")" />
-                                            }
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge Variant="@order.StatusVariant">@order.Status</Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Flex Class="items-center gap-1.5">
+                                            <DynamicIcon Name="@order.ChannelIcon" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                            <Lumeo.Text As="span" Class="text-sm text-muted-foreground">@order.Channel</Lumeo.Text>
                                         </Flex>
-                                        <Lumeo.Text Class="text-sm text-muted-foreground">@review.Text</Lumeo.Text>
-                                    </Stack>
-                                </Flex>
-                            </CardContent>
-                        </Card>
-                    }
-                </Stack>
-            </TabsContent>
+                                    </TableCell>
+                                    <TableCell Class="text-muted-foreground text-sm">@order.Date</TableCell>
+                                    <TableCell Class="text-right font-semibold text-foreground">@order.Total</TableCell>
+                                </TableRow>
+                            }
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
 
-            <TabsContent Value="shipping">
-                <Card>
-                    <CardContent Class="pt-4 space-y-3 text-sm">
-                        <Flex Class="items-start gap-3">
-                            <DynamicIcon Name="Check" Class="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                            <Stack>
-                                <Lumeo.Text Class="font-medium text-foreground">Free Standard Shipping</Lumeo.Text>
-                                <Lumeo.Text Class="text-muted-foreground">5-7 business days — Orders over $50</Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                        <Flex Class="items-start gap-3">
-                            <DynamicIcon Name="Check" Class="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                            <Stack>
-                                <Lumeo.Text Class="font-medium text-foreground">Express Shipping</Lumeo.Text>
-                                <Lumeo.Text Class="text-muted-foreground">2-3 business days — $12.99</Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                        <Flex Class="items-start gap-3">
-                            <DynamicIcon Name="Check" Class="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                            <Stack>
-                                <Lumeo.Text Class="font-medium text-foreground">Free Returns</Lumeo.Text>
-                                <Lumeo.Text Class="text-muted-foreground">30-day return window. No questions asked.</Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                    </CardContent>
-                </Card>
-            </TabsContent>
-        </Tabs>
+            <!-- Top Products -->
+            <Card Class="lg:col-span-2 border-border/40">
+                <CardHeader>
+                    <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Top Products</Heading>
+                    <Lumeo.Text Class="text-sm text-muted-foreground">This month by revenue</Lumeo.Text>
+                </CardHeader>
+                <CardContent>
+                    <Stack Gap="0">
+                        @foreach (var (prod, idx) in _topProducts.Select((p, i) => (p, i)))
+                        {
+                            <Flex Class="items-center gap-3 py-3 border-b border-border/40 last:border-0">
+                                <div class="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted border border-border/40">
+                                    @if (!string.IsNullOrEmpty(prod.ImageUrl))
+                                    {
+                                        <img src="@prod.ImageUrl" class="h-full w-full object-cover" alt="@prod.Name" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <Flex Class="h-full w-full items-center justify-center text-xs font-bold text-muted-foreground">
+                                            @(idx + 1)
+                                        </Flex>
+                                    }
+                                </div>
+                                <Stack Class="flex-1 min-w-0">
+                                    <Lumeo.Text Class="text-sm font-medium text-foreground truncate">@prod.Name</Lumeo.Text>
+                                    <Lumeo.Text Class="text-xs text-muted-foreground">@prod.Units units · SKU @prod.Sku</Lumeo.Text>
+                                </Stack>
+                                <Lumeo.Text As="span" Class="text-sm font-semibold text-foreground shrink-0">@prod.Revenue</Lumeo.Text>
+                            </Flex>
+                        }
+                    </Stack>
+                </CardContent>
+            </Card>
+        </Grid>
 
-        <Separator Class="my-4" />
-
-        <!-- Related Products -->
-        <Stack Gap="4">
-            <Heading Level="2" Class="text-lg font-semibold text-foreground">Related Products</Heading>
-            <Grid Class="grid-cols-2 lg:grid-cols-4 gap-4">
-                @foreach (var product in _relatedProducts)
-                {
-                    <Card Class="overflow-hidden cursor-pointer hover:border-primary transition-colors">
-                        <Flex Class="aspect-square bg-muted items-center justify-center">
-                            <DynamicIcon Name="Eye" Class="h-10 w-10 text-muted-foreground" />
-                        </Flex>
-                        <CardContent Class="p-3 space-y-1">
-                            <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] mb-1">Audio</Badge>
-                            <Lumeo.Text Class="text-sm font-medium text-foreground truncate">@product.Name</Lumeo.Text>
-                            <Flex Class="items-center gap-0.5">
-                                @for (int s = 0; s < 5; s++)
-                                {
-                                    <DynamicIcon Name="Star" Class="@($"h-3 w-3 {(s < product.Rating ? "text-primary" : "text-muted-foreground/40")}")" />
-                                }
-                            </Flex>
-                            <Flex Class="items-center justify-between">
-                                <Lumeo.Text As="span" Class="text-sm font-bold text-foreground">@product.Price</Lumeo.Text>
-                            </Flex>
-                            <Flex Class="gap-1 mt-2">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7">
-                                    <DynamicIcon Name="Heart" Class="h-3.5 w-3.5" />
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 ml-auto">
-                                    <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
-                                </Button>
-                            </Flex>
-                        </CardContent>
-                    </Card>
-                }
-            </Grid>
-        </Stack>
+        <!-- Inventory Alerts -->
+        <Card Class="border-border/40">
+            <CardHeader>
+                <Flex Class="items-center justify-between">
+                    <Stack>
+                        <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Inventory Alerts</Heading>
+                        <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Items requiring attention</Lumeo.Text>
+                    </Stack>
+                    <Badge Variant="Badge.BadgeVariant.Destructive">@_inventoryAlerts.Count alerts</Badge>
+                </Flex>
+            </CardHeader>
+            <CardContent Class="p-0">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Product</TableHead>
+                            <TableHead>SKU</TableHead>
+                            <TableHead>Category</TableHead>
+                            <TableHead>Stock</TableHead>
+                            <TableHead>Threshold</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead Class="text-right">Action</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        @foreach (var alert in _inventoryAlerts)
+                        {
+                            <TableRow Class="hover:bg-muted/40 transition-colors">
+                                <TableCell Class="font-medium text-foreground">@alert.Name</TableCell>
+                                <TableCell Class="font-mono text-sm text-muted-foreground">@alert.Sku</TableCell>
+                                <TableCell>
+                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">@alert.Category</Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <Flex Class="items-center gap-2">
+                                        <Progress Value="@alert.StockPct" Class="h-1.5 w-16" Variant="@(alert.StockPct < 20 ? Progress.ProgressVariant.Destructive : Progress.ProgressVariant.Warning)" />
+                                        <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@alert.Stock</Lumeo.Text>
+                                    </Flex>
+                                </TableCell>
+                                <TableCell Class="text-muted-foreground text-sm">@alert.Threshold</TableCell>
+                                <TableCell>
+                                    <Badge Variant="@(alert.StockPct < 10 ? Badge.BadgeVariant.Destructive : Badge.BadgeVariant.Warning)">
+                                        @(alert.StockPct < 10 ? "Out of stock" : "Low stock")
+                                    </Badge>
+                                </TableCell>
+                                <TableCell Class="text-right">
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                        <DynamicIcon Name="RefreshCw" Class="h-3.5 w-3.5 mr-1" />
+                                        Reorder
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        }
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
 
     </Stack>
 </ComponentDemo>
 
 @code {
-    private int _activeThumb = 0;
-    private string _selectedColor = "Midnight Black";
-    private string _selectedSize = "M";
-    private int _quantity = 1;
-    private string _activeTab = "details";
+    private record KpiItem(string Label, string Value, string Trend, Badge.BadgeVariant TrendVariant, string Icon, int Progress, Progress.ProgressVariant ProgressVariant);
+    private record OrderItem(string Id, string Customer, string Initials, string Status, Badge.BadgeVariant StatusVariant, string Channel, string ChannelIcon, string Date, string Total);
+    private record TopProduct(string Name, string Sku, int Units, string Revenue, string ImageUrl = "");
+    private record InventoryAlert(string Name, string Sku, string Category, int Stock, int Threshold, int StockPct);
 
-    private record ColorOption(string Name, string Hex);
-    private record ReviewItem(string Author, string Initials, int Rating, string Date, string Text);
-    private record RelatedProduct(string Name, string Price, int Rating);
-
-    private List<ColorOption> _colors = new()
+    private List<KpiItem> _kpis = new()
     {
-        new("Midnight Black", "#1a1a1a"),
-        new("Pearl White", "#f5f5f0"),
-        new("Ocean Blue", "#1e6fbf"),
-        new("Rose Gold", "#b76e79"),
+        new("Total Revenue",    "$184,293.40", "+14.2%", Badge.BadgeVariant.Success,     "DollarSign",    78, Progress.ProgressVariant.Success),
+        new("Orders Placed",    "3,841",       "+8.6%",  Badge.BadgeVariant.Success,     "ShoppingCart",  65, Progress.ProgressVariant.Success),
+        new("Avg Order Value",  "$47.98",      "-2.1%",  Badge.BadgeVariant.Destructive, "TrendingUp",    42, Progress.ProgressVariant.Destructive),
+        new("Return Rate",      "3.4%",        "-0.8%",  Badge.BadgeVariant.Success,     "RefreshCw",     18, Progress.ProgressVariant.Success),
     };
 
-    private List<ReviewItem> _reviews = new()
+    private List<string> _revenueMonths = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    private List<AreaChart.ChartSeriesData> _revenueSeries = new()
     {
-        new("Alex Johnson", "AJ", 5, "Feb 18, 2026",
-            "Absolutely love these headphones! The sound quality is incredible and the noise cancellation works perfectly on my morning commute."),
-        new("Maria Garcia", "MG", 4, "Feb 10, 2026",
-            "Great build quality and comfortable to wear for long sessions. Battery life is exactly as advertised. Docking one star only because the carrying case feels a bit flimsy."),
-        new("Sam Lee", "SL", 4, "Jan 30, 2026",
-            "Really impressed with the Bluetooth range — I can walk around my entire apartment without dropout. Setup was a breeze too."),
-    };
-
-    private List<RelatedProduct> _relatedProducts = new()
-    {
-        new("Lumeo Earbuds Pro", "$59.99", 4),
-        new("Lumeo Speaker Mini", "$79.99", 5),
-        new("Lumeo Cable Braided", "$19.99", 4),
-        new("Lumeo Headphone Stand", "$34.99", 3),
-    };
-
-    private void IncrementQty()
-    {
-        if (_quantity < 99) _quantity++;
-    }
-
-    private void DecrementQty()
-    {
-        if (_quantity > 1) _quantity--;
-    }
-
-    private string _ecommerceCode = @"<!-- Product Detail -->
-<Grid Class=""grid-cols-2 gap-8"">
-    <!-- Images -->
-    <Stack Gap=""3"">
-        <Stack Class=""aspect-square rounded-lg bg-muted border"" />
-        <Grid Class=""grid-cols-4 gap-2"">
-            @for (int i = 0; i < 4; i++) {
-                <Stack Class=""aspect-square rounded-md bg-muted border cursor-pointer"" />
-            }
-        </Grid>
-    </Stack>
-    <!-- Details -->
-    <Stack Gap=""5"">
-        <Badge>New Arrival</Badge>
-        <Heading Level=""1"" Class=""text-2xl font-bold"">Lumeo Pro Headphones</Heading>
-        <Flex Gap=""2"">
-            <Lumeo.Text As=""span"" Class=""text-3xl font-bold"">$99.99</Lumeo.Text>
-            <Badge Variant=""Badge.BadgeVariant.Destructive"">-23%</Badge>
-        </Flex>
-        <!-- Color Selector -->
-        <Flex Gap=""2"">
-            @foreach (var color in _colors) {
-                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""h-8 w-8 rounded-full border-2 p-0"" style=""background-color: @color.Hex;""></Button>
-            }
-        </Flex>
-        <!-- Size Selector -->
-        <Flex Gap=""2"">
-            @foreach (var size in new[] { ""S"", ""M"", ""L"", ""XL"" }) {
-                <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">@size</Button>
-            }
-        </Flex>
-        <!-- Quantity -->
-        <Flex Align=""center"" Gap=""2"">
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""Minus"" Class=""h-4 w-4"" />
-            </Button>
-            <Input Value=""1"" Class=""w-16 text-center"" />
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""Plus"" Class=""h-4 w-4"" />
-            </Button>
-        </Flex>
-        <!-- Actions -->
-        <Flex Gap=""3"">
-            <Button Variant=""Button.ButtonVariant.Default"" Class=""flex-1"">Add to Cart</Button>
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""Heart"" Class=""h-4 w-4"" />
-            </Button>
-        </Flex>
-    </Stack>
-</Grid>
-<!-- Tabs -->
-<Tabs @bind-ActiveValue=""_activeTab"">
-    <TabsList>
-        <TabsTrigger Value=""details"">Details</TabsTrigger>
-        <TabsTrigger Value=""reviews"">Reviews</TabsTrigger>
-        <TabsTrigger Value=""shipping"">Shipping</TabsTrigger>
-    </TabsList>
-    <TabsContent Value=""details"">...</TabsContent>
-    <TabsContent Value=""reviews"">
-        @foreach (var review in _reviews) {
-            <Card><CardContent>
-                <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>@review.Initials</AvatarFallback></Avatar>
-                <Lumeo.Text As=""span"">@review.Author</Lumeo.Text>
-                <Lumeo.Text Class=""text-sm text-muted-foreground"">@review.Text</Lumeo.Text>
-            </CardContent></Card>
+        new AreaChart.ChartSeriesData
+        {
+            Name = "Revenue",
+            Values = new List<double> { 32000, 38500, 41200, 36800, 49000, 54300, 48700, 51200, 57800, 62100, 68400, 72900 }
+        },
+        new AreaChart.ChartSeriesData
+        {
+            Name = "Refunds",
+            Values = new List<double> { 1200, 980, 1540, 2100, 1750, 1380, 1920, 1640, 1280, 1890, 2200, 1760 }
         }
-    </TabsContent>
-</Tabs>
-<!-- Related Products -->
-<Grid Class=""grid-cols-4 gap-4"">
-    @foreach (var p in _relatedProducts) {
-        <Card>
-            <Stack Class=""aspect-square bg-muted"" />
-            <CardContent Class=""p-3"">
-                <Lumeo.Text Class=""font-medium"">@p.Name</Lumeo.Text>
-                <Lumeo.Text Class=""font-bold"">@p.Price</Lumeo.Text>
-            </CardContent>
-        </Card>
-    }
-</Grid>";
+    };
+
+    private List<DonutChart.DonutChartData> _segments = new()
+    {
+        new() { Name = "Enterprise",  Value = 38 },
+        new() { Name = "SMB",         Value = 29 },
+        new() { Name = "Consumer",    Value = 21 },
+        new() { Name = "Partner",     Value = 12 },
+    };
+
+    private List<OrderItem> _orders = new()
+    {
+        new("ORD-8472", "Amara Diallo",     "AD", "Shipped",    Badge.BadgeVariant.Success,     "Web",      "Globe",         "Apr 16, 2026", "$243.00"),
+        new("ORD-8471", "Mei-Ling Huang",   "MH", "Processing", Badge.BadgeVariant.Warning,     "Mobile",   "Smartphone",    "Apr 16, 2026", "$89.50"),
+        new("ORD-8470", "Carlos Herrera",   "CH", "Delivered",  Badge.BadgeVariant.Success,     "Web",      "Globe",         "Apr 15, 2026", "$519.99"),
+        new("ORD-8469", "Priya Nair",       "PN", "Pending",    Badge.BadgeVariant.Secondary,   "Partner",  "Handshake",     "Apr 15, 2026", "$134.75"),
+        new("ORD-8468", "Lucas Andersen",   "LA", "Shipped",    Badge.BadgeVariant.Success,     "Web",      "Globe",         "Apr 14, 2026", "$67.20"),
+        new("ORD-8467", "Fatou Ba",         "FB", "Refunded",   Badge.BadgeVariant.Destructive, "Mobile",   "Smartphone",    "Apr 14, 2026", "$299.00"),
+        new("ORD-8466", "Takeshi Yamamoto", "TY", "Delivered",  Badge.BadgeVariant.Success,     "Web",      "Globe",         "Apr 13, 2026", "$154.40"),
+        new("ORD-8465", "Saoirse Murphy",   "SM", "Processing", Badge.BadgeVariant.Warning,     "Retail",   "Store",         "Apr 13, 2026", "$82.30"),
+        new("ORD-8464", "Dmitri Volkov",    "DV", "Delivered",  Badge.BadgeVariant.Success,     "Web",      "Globe",         "Apr 12, 2026", "$445.00"),
+        new("ORD-8463", "Yaw Darko",        "YD", "Cancelled",  Badge.BadgeVariant.Destructive, "Mobile",   "Smartphone",    "Apr 12, 2026", "$32.99"),
+    };
+
+    private List<TopProduct> _topProducts = new()
+    {
+        new("Lumeo Pro Headphones X1",  "LPH-X1-001", 842,  "$83,295.58", "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=80&auto=format&fit=crop&q=60"),
+        new("Wireless Charging Pad 20W","WCP-20W-003", 1204, "$41,977.96", "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=80&auto=format&fit=crop&q=60"),
+        new("Lumeo Earbuds Ultra",      "LEU-003-B",   619,  "$36,158.69", "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=80&auto=format&fit=crop&q=60"),
+        new("USB-C Hub 9-in-1",         "UCH-9N1-007", 988,  "$28,863.12", "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=80&auto=format&fit=crop&q=60"),
+        new("Smart Home Bridge v2",     "SHB-V2-014",  312,  "$21,528.00", "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=80&auto=format&fit=crop&q=60"),
+    };
+
+    private List<InventoryAlert> _inventoryAlerts = new()
+    {
+        new("Lumeo Pro Headphones X1",  "LPH-X1-001", "Audio",      7,   25, 7),
+        new("Screen Protector 6.7\"",   "SP-67-PRO",  "Accessories", 3,  20, 3),
+        new("USB-C Hub 9-in-1",         "UCH-9N1-007","Hubs",        14,  30, 14),
+        new("Braided Cable 2m",         "BC-2M-BLK",  "Cables",      19,  50, 19),
+        new("Smart Home Bridge v2",     "SHB-V2-014", "Smart Home",  0,   15, 0),
+    };
+
+    private string _code = @"<!-- E-Commerce Admin Dashboard -->
+<Stack Gap=""6"">
+    <!-- KPI Row -->
+    <Grid Class=""grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
+        @foreach (var kpi in _kpis)
+        {
+            <Card>
+                <CardHeader>
+                    <Flex Class=""items-center justify-between"">
+                        <Lumeo.Text Class=""text-sm font-medium text-muted-foreground"">@kpi.Label</Lumeo.Text>
+                        <DynamicIcon Name=""@kpi.Icon"" Class=""h-4 w-4 text-muted-foreground"" />
+                    </Flex>
+                </CardHeader>
+                <CardContent>
+                    <Lumeo.Text Class=""text-2xl font-bold text-foreground"">@kpi.Value</Lumeo.Text>
+                    <Badge Variant=""@kpi.TrendVariant"">@kpi.Trend</Badge>
+                    <Progress Value=""@kpi.Progress"" Class=""mt-3 h-1"" />
+                </CardContent>
+            </Card>
+        }
+    </Grid>
+    <!-- Revenue Chart -->
+    <Card>
+        <CardHeader><Heading Level=""3"">Revenue Overview</Heading></CardHeader>
+        <CardContent>
+            <AreaChart Categories=""@_revenueMonths"" Series=""@_revenueSeries"" Height=""240px"" />
+        </CardContent>
+    </Card>
+    <!-- Orders Table -->
+    <Table>
+        <TableHeader>
+            <TableRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Total</TableHead>
+            </TableRow>
+        </TableHeader>
+        <TableBody>
+            @foreach (var o in _orders)
+            {
+                <TableRow>
+                    <TableCell Class=""font-mono"">@o.Id</TableCell>
+                    <TableCell>@o.Customer</TableCell>
+                    <TableCell><Badge Variant=""@o.StatusVariant"">@o.Status</Badge></TableCell>
+                    <TableCell Class=""font-semibold"">@o.Total</TableCell>
+                </TableRow>
+            }
+        </TableBody>
+    </Table>
+</Stack>";
 }
