@@ -3,36 +3,96 @@
 
 <PageTitle>File Manager Pattern — Lumeo</PageTitle>
 
-<PageHeader Title="File Manager" Description="A file browser interface with breadcrumb navigation, sortable data table, context menus, and drag-and-drop upload." />
+<PageHeader Title="File Manager" Description="A Dropbox-inspired file manager with workspace navigation, pinned folders, recent files grid, full file table, and contextual hover actions." />
 
-<Stack Gap="6">
+<ComponentDemo Title="File Browser" Code="@_code">
+    <div class="w-full min-w-[780px] flex rounded-[var(--radius-lg)] border border-border/40 overflow-hidden" style="min-height:620px;">
 
-    <ComponentDemo Title="File Browser" Code="@_fileManagerCode">
-        <Stack Gap="4" Class="w-full min-w-[700px]">
+        <!-- ── Left Sidebar ─────────────────────────────────────────── -->
+        <div class="w-60 shrink-0 flex flex-col border-r border-border/40 bg-muted/20">
 
-            <!-- Top Bar -->
-            <Flex Class="flex-wrap items-center justify-between gap-3">
-                <Breadcrumb>
+            <!-- Workspace dropdown -->
+            <div class="flex items-center gap-2.5 px-4 py-3.5 border-b border-border/40">
+                <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center shrink-0">
+                    <DynamicIcon Name="Layers" Class="h-4 w-4 text-primary-foreground" />
+                </div>
+                <div class="flex-1 min-w-0">
+                    <Lumeo.Text Class="text-sm font-semibold text-foreground truncate leading-none">Lumeo Design</Lumeo.Text>
+                    <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none mt-0.5">Personal workspace</Lumeo.Text>
+                </div>
+                <DynamicIcon Name="ChevronsUpDown" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            </div>
+
+            <!-- Nav links -->
+            <div class="flex flex-col gap-0.5 p-2 flex-1">
+                @foreach (var nav in _navItems)
+                {
+                    var n = nav;
+                    <button class="@($"flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors w-full text-left {(_activeNav == n.Key ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground")}")"
+                            @onclick="@(() => _activeNav = n.Key)">
+                        <DynamicIcon Name="@n.Icon" Class="h-4 w-4 shrink-0" />
+                        <span class="flex-1">@n.Label</span>
+                        @if (n.Count > 0)
+                        {
+                            <span class="text-xs text-muted-foreground tabular-nums">@n.Count</span>
+                        }
+                    </button>
+                }
+
+                <div class="my-1.5 border-t border-border/40"></div>
+
+                <Lumeo.Text Class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Teams</Lumeo.Text>
+
+                @foreach (var team in _teamItems)
+                {
+                    var t = team;
+                    <button class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors w-full text-left"
+                            @onclick="@(() => _activeNav = t)">
+                        <div class="h-4 w-4 rounded-sm bg-chart-2/30 flex items-center justify-center shrink-0">
+                            <span class="text-[9px] font-bold text-chart-2">@t[0]</span>
+                        </div>
+                        @t
+                    </button>
+                }
+            </div>
+
+            <!-- Storage widget -->
+            <div class="p-3 border-t border-border/40 space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <Lumeo.Text Class="text-xs font-medium text-foreground">Storage</Lumeo.Text>
+                    <Lumeo.Text Class="text-[11px] text-muted-foreground tabular-nums">14.2 / 50 GB</Lumeo.Text>
+                </div>
+                <Progress Value="28" Class="h-1.5" />
+                <Lumeo.Text Class="text-[11px] text-muted-foreground">28% used · 35.8 GB free</Lumeo.Text>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-full h-8 text-xs">
+                    <DynamicIcon Name="Zap" Class="h-3.5 w-3.5 mr-1.5 text-primary" />
+                    Upgrade plan
+                </Button>
+            </div>
+        </div>
+
+        <!-- ── Main Area ─────────────────────────────────────────────── -->
+        <div class="flex-1 min-w-0 flex flex-col">
+
+            <!-- Top toolbar -->
+            <div class="flex items-center gap-3 px-5 py-3 border-b border-border/40 bg-background/60">
+                <!-- Breadcrumb -->
+                <Breadcrumb Class="flex-1 min-w-0">
                     <BreadcrumbList>
                         <BreadcrumbItem>
                             <BreadcrumbLink href="#">
-                                <DynamicIcon Name="House" Class="h-4 w-4" />
+                                <DynamicIcon Name="House" Class="h-3.5 w-3.5" />
                             </BreadcrumbLink>
                         </BreadcrumbItem>
                         <BreadcrumbSeparator />
-                        @if (_currentPath.Count > 2)
-                        {
-                            <BreadcrumbEllipsis />
-                            <BreadcrumbSeparator />
-                        }
-                        @for (int i = Math.Max(0, _currentPath.Count - 2); i < _currentPath.Count; i++)
+                        @for (var i = 0; i < _breadcrumb.Count; i++)
                         {
                             var idx = i;
-                            @if (idx < _currentPath.Count - 1)
+                            if (idx < _breadcrumb.Count - 1)
                             {
                                 <BreadcrumbItem>
-                                    <BreadcrumbLink @onclick="@(() => NavigateTo(idx))" style="cursor:pointer">
-                                        @_currentPath[idx]
+                                    <BreadcrumbLink @onclick="@(() => _breadcrumb = _breadcrumb.Take(idx + 1).ToList())" style="cursor:pointer">
+                                        @_breadcrumb[idx]
                                     </BreadcrumbLink>
                                 </BreadcrumbItem>
                                 <BreadcrumbSeparator />
@@ -40,369 +100,360 @@
                             else
                             {
                                 <BreadcrumbItem>
-                                    <BreadcrumbPage>@_currentPath[idx]</BreadcrumbPage>
+                                    <BreadcrumbPage>@_breadcrumb[idx]</BreadcrumbPage>
                                 </BreadcrumbItem>
                             }
                         }
                     </BreadcrumbList>
                 </Breadcrumb>
 
-                <Flex Class="items-center gap-2">
-                    <Flex Class="rounded-md border overflow-hidden">
-                        <Button Variant="@(_viewMode == "grid" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Icon" Class="rounded-none h-8 w-9" @onclick="@(() => _viewMode = "grid")">
-                            <DynamicIcon Name="LayoutGrid" Class="h-4 w-4" />
-                        </Button>
-                        <Button Variant="@(_viewMode == "list" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Icon" Class="rounded-none h-8 w-9" @onclick="@(() => _viewMode = "list")">
-                            <DynamicIcon Name="List" Class="h-4 w-4" />
-                        </Button>
-                    </Flex>
-                    <Button Size="Button.ButtonSize.Sm" @onclick="@(() => _showUpload = !_showUpload)">
-                        <DynamicIcon Name="Upload" Class="h-4 w-4 mr-1" />
-                        Upload
-                    </Button>
-                </Flex>
-            </Flex>
+                <!-- Search -->
+                <div class="relative">
+                    <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input Value="@_search" ValueChanged="@(v => _search = v ?? "")"
+                           placeholder="Search files…"
+                           Class="pl-8 h-8 w-48 text-sm" />
+                </div>
 
-            <!-- Selection info bar -->
-            @if (_selectedFiles.Count > 0)
-            {
-                <Flex Class="items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
-                    <Lumeo.Text As="span" Class="text-sm text-foreground font-medium">@_selectedFiles.Count selected</Lumeo.Text>
-                    <Flex Class="items-center gap-2 ml-auto">
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
-                            <DynamicIcon Name="Copy" Class="h-4 w-4 mr-1" />
-                            Copy
-                        </Button>
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
-                            <DynamicIcon Name="Trash2" Class="h-4 w-4 mr-1" />
-                            Delete
-                        </Button>
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" @onclick="@(() => _selectedFiles.Clear())">
-                            <DynamicIcon Name="X" Class="h-4 w-4 mr-1" />
-                            Clear
-                        </Button>
-                    </Flex>
-                </Flex>
-            }
+                <!-- View toggle -->
+                <div class="flex rounded-md border border-border/40 overflow-hidden">
+                    <button class="@($"flex items-center justify-center h-8 w-8 transition-colors {(_viewMode == "grid" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/40")}")"
+                            @onclick="@(() => _viewMode = "grid")">
+                        <DynamicIcon Name="LayoutGrid" Class="h-4 w-4" />
+                    </button>
+                    <button class="@($"flex items-center justify-center h-8 w-8 border-l border-border/40 transition-colors {(_viewMode == "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/40")}")"
+                            @onclick="@(() => _viewMode = "list")">
+                        <DynamicIcon Name="List" Class="h-4 w-4" />
+                    </button>
+                </div>
 
-            <!-- File Table -->
-            <Card>
-                <CardContent Class="p-0">
-                    <DataTable TItem="FileItem"
-                               Items="@SortedFiles"
-                               Selectable="true"
-                               SelectedItems="@_selectedFiles"
-                               SelectedItemsChanged="@(s => _selectedFiles = s)">
-                        <HeaderTemplate>
-                            <DataTableSortableHeader Column="Name" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Name</DataTableSortableHeader>
-                            <DataTableSortableHeader Column="Type" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Type</DataTableSortableHeader>
-                            <DataTableSortableHeader Column="Size" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Size</DataTableSortableHeader>
-                            <DataTableSortableHeader Column="Modified" SortColumn="@_sortColumn" SortDirection="@_sortDir" OnSort="@HandleSort">Modified</DataTableSortableHeader>
-                            <th class="h-10 px-2 text-left align-middle font-medium text-muted-foreground w-10"></th>
-                        </HeaderTemplate>
-                        <RowTemplate Context="file">
-                            <ContextMenu>
-                                <ContextMenuTrigger>
-                                    <TableCell>
-                                        <Flex Class="items-center gap-2 cursor-pointer" @ondblclick="@(() => OpenFile(file))">
-                                            <DynamicIcon Name="@file.Icon" Class="h-4 w-4 text-muted-foreground shrink-0" />
-                                            <Lumeo.Text As="span" Class="font-medium text-foreground">@file.Name</Lumeo.Text>
-                                        </Flex>
-                                    </TableCell>
-                                </ContextMenuTrigger>
-                                <TableCell><Badge Variant="Badge.BadgeVariant.Secondary">@file.Type</Badge></TableCell>
-                                <TableCell Class="text-muted-foreground">@file.Size</TableCell>
-                                <TableCell Class="text-muted-foreground">@file.Modified</TableCell>
-                                <TableCell>
-                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                        <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                                <ContextMenuContent>
-                                    <ContextMenuItem @onclick="@(() => OpenFile(file))">
-                                        <DynamicIcon Name="FolderOpen" Class="h-4 w-4" />
-                                        Open
-                                    </ContextMenuItem>
-                                    <ContextMenuItem>
-                                        <DynamicIcon Name="Pencil" Class="h-4 w-4" />
-                                        Rename
-                                    </ContextMenuItem>
-                                    <ContextMenuItem>
-                                        <DynamicIcon Name="Copy" Class="h-4 w-4" />
-                                        Copy
-                                    </ContextMenuItem>
-                                    <ContextMenuSeparator />
-                                    <ContextMenuCheckboxItem @bind-Checked="_showHidden">
-                                        Show hidden files
-                                    </ContextMenuCheckboxItem>
-                                    <ContextMenuSeparator />
-                                    <ContextMenuLabel>Sort by</ContextMenuLabel>
-                                    <ContextMenuRadioGroup Value="@_sortColumn" ValueChanged="@(v => _sortColumn = v)">
-                                        <ContextMenuRadioItem Value="Name">Name</ContextMenuRadioItem>
-                                        <ContextMenuRadioItem Value="Modified">Date modified</ContextMenuRadioItem>
-                                        <ContextMenuRadioItem Value="Size">Size</ContextMenuRadioItem>
-                                    </ContextMenuRadioGroup>
-                                    <ContextMenuSeparator />
-                                    <ContextMenuItem Class="text-destructive hover:text-destructive">
-                                        <DynamicIcon Name="Trash2" Class="h-4 w-4" />
-                                        Delete
-                                    </ContextMenuItem>
-                                </ContextMenuContent>
-                            </ContextMenu>
-                        </RowTemplate>
-                    </DataTable>
-                </CardContent>
-            </Card>
+                <!-- Sort -->
+                <Select Value="@_sortBy" ValueChanged="@(v => _sortBy = v ?? "Name")" Class="w-36">
+                    <SelectTrigger Class="h-8 text-sm">
+                        <DynamicIcon Name="ArrowUpDown" Class="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                        <span>@_sortBy</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value="Name">Name</SelectItem>
+                        <SelectItem Value="Modified">Modified</SelectItem>
+                        <SelectItem Value="Size">Size</SelectItem>
+                        <SelectItem Value="Type">Type</SelectItem>
+                    </SelectContent>
+                </Select>
 
-            <!-- Upload Area -->
-            @if (_showUpload)
-            {
-                <Card>
-                    <CardHeader>
-                        <Flex Class="items-center justify-between">
-                            <Heading Level="3" Class="text-sm font-semibold text-foreground">Upload Files</Heading>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" @onclick="@(() => _showUpload = false)">
-                                <DynamicIcon Name="X" Class="h-4 w-4" />
-                            </Button>
-                        </Flex>
-                    </CardHeader>
-                    <CardContent>
-                        <FileUpload
-                            Multiple="true"
-                            ShowProgress="@(_uploadProgress > 0)"
-                            Progress="@_uploadProgress"
-                            Description="PDF, DOCX, PNG, JPG up to 50MB"
-                            OnFilesSelected="@HandleFilesSelected" />
-                        @if (_uploadProgress > 0 && _uploadProgress < 100)
+                <!-- New button -->
+                <DropdownMenu @bind-IsOpen="_newMenuOpen">
+                    <DropdownMenuTrigger>
+                        <Button Size="Button.ButtonSize.Sm" Class="h-8 gap-1.5">
+                            <DynamicIcon Name="Plus" Class="h-4 w-4" />
+                            New
+                            <DynamicIcon Name="ChevronDown" Class="h-3.5 w-3.5" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent Class="w-44">
+                        <DropdownMenuItem>
+                            <DynamicIcon Name="FolderPlus" Class="h-4 w-4 mr-2 text-primary" />
+                            New folder
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem>
+                            <DynamicIcon Name="Upload" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                            Upload file
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                            <DynamicIcon Name="FolderUp" Class="h-4 w-4 mr-2 text-muted-foreground" />
+                            Upload folder
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+
+            <!-- Scrollable content -->
+            <div class="flex-1 overflow-auto p-5 space-y-6">
+
+                <!-- Pinned folders -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Pinned</Lumeo.Text>
+                    <div class="grid grid-cols-4 gap-3">
+                        @foreach (var folder in _pinnedFolders)
                         {
-                            <Lumeo.Text Class="text-xs text-muted-foreground mt-2 text-center">Uploading... @_uploadProgress%</Lumeo.Text>
+                            var f = folder;
+                            <div class="group flex flex-col gap-2.5 rounded-[var(--radius-lg)] border border-border/40 p-4 cursor-pointer hover:border-border/80 hover:bg-muted/30 hover:shadow-sm transition-all"
+                                 @onclick="@(() => { _breadcrumb = new List<string>{ "Projects", f.Name }; })">
+                                <div class="@($"h-10 w-10 rounded-lg {f.BgClass} flex items-center justify-center")">
+                                    <DynamicIcon Name="Folder" Class="@($"h-5 w-5 {f.IconClass}")" />
+                                </div>
+                                <div>
+                                    <Lumeo.Text Class="text-sm font-semibold text-foreground truncate">@f.Name</Lumeo.Text>
+                                    <Lumeo.Text Class="text-[11px] text-muted-foreground">@f.Count items</Lumeo.Text>
+                                </div>
+                            </div>
                         }
-                        @if (_uploadProgress == 100)
-                        {
-                            <Flex Class="items-center gap-2 mt-2 text-sm text-success-text">
-                                <DynamicIcon Name="CircleCheck" Class="h-4 w-4" />
-                                Upload complete
-                            </Flex>
-                        }
-                    </CardContent>
-                </Card>
-            }
+                    </div>
+                </div>
 
-        </Stack>
-    </ComponentDemo>
+                <!-- Recent files grid -->
+                @if (_viewMode == "grid")
+                {
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Recent files</Lumeo.Text>
+                        <div class="grid grid-cols-4 gap-3">
+                            @foreach (var file in VisibleFiles.Where(f => f.Type != "Folder").Take(8))
+                            {
+                                var fi = file;
+                                <div class="group relative rounded-[var(--radius-lg)] border border-border/40 overflow-hidden cursor-pointer hover:border-border/80 hover:shadow-sm transition-all"
+                                     @onclick="@(() => _selectedFile = _selectedFile?.Name == fi.Name ? null : fi)">
+                                    <!-- Thumbnail -->
+                                    <div class="@($"h-24 flex items-center justify-center {fi.ThumbBg}")">
+                                        <DynamicIcon Name="@fi.Icon" Class="@($"h-10 w-10 {fi.IconClass}")" />
+                                    </div>
+                                    <!-- Hover actions -->
+                                    <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <button class="h-6 w-6 rounded-md bg-background/90 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                                                    <DynamicIcon Name="Download" Class="h-3.5 w-3.5" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipContent.TooltipSide.Top">Download</TooltipContent>
+                                        </Tooltip>
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <button class="h-6 w-6 rounded-md bg-background/90 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                                                    <DynamicIcon Name="Share2" Class="h-3.5 w-3.5" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipContent.TooltipSide.Top">Share</TooltipContent>
+                                        </Tooltip>
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <button class="h-6 w-6 rounded-md bg-background/90 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
+                                                    <DynamicIcon Name="Trash2" Class="h-3.5 w-3.5" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipContent.TooltipSide.Top">Move to trash</TooltipContent>
+                                        </Tooltip>
+                                    </div>
+                                    <!-- Meta -->
+                                    <div class="px-3 py-2.5 border-t border-border/40">
+                                        <Lumeo.Text Class="text-xs font-semibold text-foreground truncate">@fi.Name</Lumeo.Text>
+                                        <div class="flex items-center justify-between mt-0.5">
+                                            <Lumeo.Text Class="text-[11px] text-muted-foreground">@fi.Size</Lumeo.Text>
+                                            <Lumeo.Text Class="text-[11px] text-muted-foreground">@fi.Modified</Lumeo.Text>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
 
-</Stack>
+                <!-- All files table -->
+                <div>
+                    <Lumeo.Text Class="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">
+                        @(_viewMode == "grid" ? "All files" : "Files")
+                    </Lumeo.Text>
+
+                    @if (VisibleFiles.Count == 0)
+                    {
+                        <div class="flex flex-col items-center justify-center py-16 text-center">
+                            <div class="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
+                                <DynamicIcon Name="FolderOpen" Class="h-7 w-7 text-muted-foreground" />
+                            </div>
+                            <Lumeo.Text Class="text-sm font-medium text-foreground">No files found</Lumeo.Text>
+                            <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Try adjusting your search or navigate to a different folder.</Lumeo.Text>
+                        </div>
+                    }
+                    else
+                    {
+                        <Card Class="border-border/40">
+                            <CardContent Class="p-0">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow Class="hover:bg-transparent">
+                                            <TableHead Class="pl-4 w-[40%]">Name</TableHead>
+                                            <TableHead>Owner</TableHead>
+                                            <TableHead>Modified</TableHead>
+                                            <TableHead>Size</TableHead>
+                                            <TableHead Class="w-10"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        @foreach (var file in VisibleFiles)
+                                        {
+                                            var f = file;
+                                            <TableRow Class="group hover:bg-muted/30 transition-colors cursor-pointer"
+                                                      @onclick="@(() => _selectedFile = _selectedFile?.Name == f.Name ? null : f)">
+                                                <TableCell Class="pl-4 py-2.5">
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="h-8 w-8 rounded-md bg-muted/60 flex items-center justify-center shrink-0">
+                                                            <DynamicIcon Name="@f.Icon" Class="@($"h-4 w-4 {f.IconClass}")" />
+                                                        </div>
+                                                        <div class="min-w-0">
+                                                            <Lumeo.Text As="span" Class="text-sm font-medium text-foreground truncate block">@f.Name</Lumeo.Text>
+                                                            @if (f.Type != "Folder")
+                                                            {
+                                                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] py-0 px-1.5 h-4 mt-0.5">@f.Type</Badge>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell Class="py-2.5">
+                                                    <div class="flex items-center gap-2">
+                                                        <Avatar Size="Avatar.AvatarSize.Sm">
+                                                            <AvatarFallback Class="text-[10px]">@f.Owner[0]</AvatarFallback>
+                                                        </Avatar>
+                                                        <Lumeo.Text As="span" Class="text-sm text-muted-foreground">@f.Owner</Lumeo.Text>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell Class="py-2.5 text-sm text-muted-foreground">@f.Modified</TableCell>
+                                                <TableCell Class="py-2.5 text-sm text-muted-foreground tabular-nums">@(f.Type == "Folder" ? "—" : f.Size)</TableCell>
+                                                <TableCell Class="py-2.5 pr-3">
+                                                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <button class="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                                                                    <DynamicIcon Name="Download" Class="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent Side="TooltipContent.TooltipSide.Top">Download</TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <button class="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                                                                    <DynamicIcon Name="Pencil" Class="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent Side="TooltipContent.TooltipSide.Top">Rename</TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <button class="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-muted transition-colors">
+                                                                    <DynamicIcon Name="Trash2" Class="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent Side="TooltipContent.TooltipSide.Top">Move to trash</TooltipContent>
+                                                        </Tooltip>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        }
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</ComponentDemo>
 
 @code {
-    private record FileItem(string Name, string Type, string Size, string Modified, string Icon);
+    private record FileItem(string Name, string Type, string Size, string Modified, string Icon, string IconClass, string ThumbBg, string Owner);
+    private record PinnedFolder(string Name, int Count, string BgClass, string IconClass);
+    private record NavItem(string Key, string Label, string Icon, int Count = 0);
 
-    private List<FileItem> _files = new()
+    private string _viewMode  = "grid";
+    private string _activeNav = "drive";
+    private string _sortBy    = "Modified";
+    private string _search    = "";
+    private bool   _newMenuOpen;
+    private FileItem? _selectedFile;
+    private List<string> _breadcrumb = new() { "Projects", "Lumeo" };
+
+    private readonly List<NavItem> _navItems = new()
     {
-        new("Projects",         "Folder",  "—",         "Feb 28, 2026", "Folder"),
-        new("Assets",           "Folder",  "—",         "Feb 25, 2026", "Folder"),
-        new("Archive",          "Folder",  "—",         "Jan 12, 2026", "Folder"),
-        new("Q1 Report.pdf",    "PDF",     "2.4 MB",    "Feb 28, 2026", "FileText"),
-        new("Budget 2026.xlsx", "Excel",   "840 KB",    "Feb 26, 2026", "FileSpreadsheet"),
-        new("Presentation.pptx","PowerPoint","18.2 MB", "Feb 22, 2026", "Presentation"),
-        new("logo.png",         "Image",   "156 KB",    "Feb 20, 2026", "Image"),
-        new("banner.jpg",       "Image",   "1.1 MB",    "Feb 18, 2026", "Image"),
-        new("notes.txt",        "Text",    "12 KB",     "Feb 15, 2026", "FileText"),
-        new("backup.zip",       "Archive", "95.3 MB",   "Feb 10, 2026", "FileArchive"),
-        new("README.md",        "Markdown","8 KB",      "Feb 5, 2026",  "FileText"),
-        new("data.csv",         "CSV",     "340 KB",    "Jan 30, 2026", "FileSpreadsheet"),
+        new("drive",   "My Drive",  "HardDrive"),
+        new("starred", "Starred",   "Star"),
+        new("recent",  "Recent",    "Clock",      12),
+        new("shared",  "Shared with me", "Users", 5),
+        new("trash",   "Trash",     "Trash2"),
     };
 
-    private HashSet<FileItem> _selectedFiles = new();
-    private string _sortColumn = "Name";
-    private DataTable<object>.SortDirection _sortDir = DataTable<object>.SortDirection.Ascending;
-    private string _viewMode = "list";
-    private bool _showHidden;
-    private bool _showUpload;
-    private int _uploadProgress;
-    private List<string> _currentPath = new() { "Home", "Documents", "Projects" };
+    private readonly string[] _teamItems = { "Design", "Engineering", "Marketing" };
 
-    private IEnumerable<FileItem> SortedFiles => (_sortColumn, _sortDir) switch
+    private readonly List<PinnedFolder> _pinnedFolders = new()
     {
-        ("Name",     DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Name),
-        ("Name",     DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Name),
-        ("Type",     DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Type),
-        ("Type",     DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Type),
-        ("Size",     DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Size),
-        ("Size",     DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Size),
-        ("Modified", DataTable<object>.SortDirection.Ascending)  => _files.OrderBy(f => f.Modified),
-        ("Modified", DataTable<object>.SortDirection.Descending) => _files.OrderByDescending(f => f.Modified),
-        _                                                          => _files,
+        new("Design Assets",    47, "bg-primary/10",      "text-primary"),
+        new("Engineering",      83, "bg-chart-2/10",      "text-chart-2"),
+        new("Marketing",        29, "bg-chart-4/10",      "text-chart-4"),
+        new("Archive",          14, "bg-muted-foreground/10", "text-muted-foreground"),
     };
 
-    private void HandleSort((string Column, DataTable<object>.SortDirection Direction) args)
+    private readonly List<FileItem> _allFiles = new()
     {
-        _sortColumn = args.Column;
-        _sortDir = args.Direction;
-    }
+        new("Q2 roadmap.pdf",             "PDF",         "2.4 MB",  "Apr 15, 2026", "FileText",        "text-destructive",      "bg-destructive/10",  "Keiko S."),
+        new("design-tokens.fig",          "Figma",       "8.1 MB",  "Apr 14, 2026", "PenTool",         "text-primary",          "bg-primary/10",      "Amara D."),
+        new("customers-export.csv",       "CSV",         "512 KB",  "Apr 13, 2026", "FileSpreadsheet", "text-chart-2",          "bg-chart-2/10",      "Noah P."),
+        new("team-photo.heic",            "Image",       "4.2 MB",  "Apr 12, 2026", "Image",           "text-chart-3",          "bg-chart-3/10",      "Marcus W."),
+        new("keynote-q2-review.pptx",     "PowerPoint",  "18.7 MB", "Apr 11, 2026", "Presentation",    "text-chart-4",          "bg-chart-4/10",      "Priya K."),
+        new("api-schema.yaml",            "YAML",        "34 KB",   "Apr 10, 2026", "FileCode",        "text-muted-foreground", "bg-muted/50",        "Noah P."),
+        new("brand-guidelines-v4.pdf",    "PDF",         "6.8 MB",  "Apr 9, 2026",  "FileText",        "text-destructive",      "bg-destructive/10",  "Keiko S."),
+        new("lumeo-logo-2x.png",          "Image",       "156 KB",  "Apr 8, 2026",  "Image",           "text-chart-3",          "bg-chart-3/10",      "Amara D."),
+        new("budget-2026.xlsx",           "Excel",       "840 KB",  "Apr 7, 2026",  "FileSpreadsheet", "text-chart-2",          "bg-chart-2/10",      "Marcus W."),
+        new("release-notes-1.0.md",       "Markdown",    "28 KB",   "Apr 6, 2026",  "FileText",        "text-muted-foreground", "bg-muted/50",        "Noah P."),
+        new("backup-2026-04.zip",         "Archive",     "95.3 MB", "Apr 5, 2026",  "FileArchive",     "text-muted-foreground", "bg-muted/50",        "Keiko S."),
+        new("onboarding-video.mp4",       "Video",       "1.2 GB",  "Apr 4, 2026",  "Video",           "text-chart-4",          "bg-chart-4/10",      "Priya K."),
+    };
 
-    private void OpenFile(FileItem file)
+    private List<FileItem> VisibleFiles
     {
-        if (file.Type == "Folder")
-            _currentPath.Add(file.Name);
-    }
-
-    private void NavigateTo(int index)
-    {
-        _currentPath = _currentPath.Take(index + 1).ToList();
-    }
-
-    private async Task HandleFilesSelected(InputFileChangeEventArgs e)
-    {
-        _uploadProgress = 0;
-        for (int i = 0; i <= 100; i += 10)
+        get
         {
-            _uploadProgress = i;
-            StateHasChanged();
-            await Task.Delay(150);
+            var files = _allFiles.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(_search))
+                files = files.Where(f => f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            return (_sortBy switch
+            {
+                "Name"     => files.OrderBy(f => f.Name),
+                "Modified" => files.OrderBy(f => f.Modified),
+                "Size"     => files.OrderBy(f => f.Size),
+                "Type"     => files.OrderBy(f => f.Type),
+                _          => files
+            }).ToList();
         }
     }
 
-    private string _fileManagerCode = @"<!-- File Manager Layout -->
-<Stack Gap=""4"">
+    private string _code = @"<!-- File Manager — Lumeo pattern -->
+<div class=""flex rounded-[var(--radius-lg)] border border-border/40 overflow-hidden"" style=""min-height:620px;"">
 
-    <!-- Top Bar with Breadcrumb + Upload -->
-    <Flex Align=""center"" Justify=""between"" Class=""flex-wrap gap-3"">
-        <Breadcrumb>
-            <BreadcrumbList>
-                <BreadcrumbItem>
-                    <BreadcrumbLink href=""#"">
-                        <DynamicIcon Name=""House"" Class=""h-4 w-4"" />
-                    </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbEllipsis />
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                    <BreadcrumbLink href=""#"">Documents</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                    <BreadcrumbPage>Projects</BreadcrumbPage>
-                </BreadcrumbItem>
-            </BreadcrumbList>
-        </Breadcrumb>
-
-        <Flex Align=""center"" Gap=""2"">
-            <Flex Class=""rounded-md border overflow-hidden"">
-                <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Icon"" Class=""rounded-none h-8 w-9"">
-                    <DynamicIcon Name=""LayoutGrid"" Class=""h-4 w-4"" />
-                </Button>
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""rounded-none h-8 w-9"">
-                    <DynamicIcon Name=""List"" Class=""h-4 w-4"" />
-                </Button>
-            </Flex>
-            <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Sm"">
-                <DynamicIcon Name=""Upload"" Class=""h-4 w-4 mr-1"" /> Upload
-            </Button>
-        </Flex>
-    </Flex>
-
-    <!-- Sortable Data Table with Context Menu -->
-    <Card>
-        <CardContent Class=""p-0"">
-            <DataTable TItem=""FileItem""
-                       Items=""@_files""
-                       Selectable=""true""
-                       @bind-SelectedItems=""_selectedFiles""
-                       @bind-SortColumn=""_sortColumn""
-                       @bind-SortDir=""_sortDir""
-                       OnSort=""HandleSort"">
-                <HeaderTemplate>
-                    <DataTableSortableHeader Column=""Name"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Name</DataTableSortableHeader>
-                    <DataTableSortableHeader Column=""Type"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Type</DataTableSortableHeader>
-                    <DataTableSortableHeader Column=""Size"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Size</DataTableSortableHeader>
-                    <DataTableSortableHeader Column=""Modified"" SortColumn=""@_sortColumn"" SortDirection=""@_sortDir"" OnSort=""HandleSort"">Modified</DataTableSortableHeader>
-                </HeaderTemplate>
-                <RowTemplate Context=""file"">
-                    <ContextMenu>
-                        <ContextMenuTrigger>
-                            <TableCell>
-                                <Flex Align=""center"" Gap=""2"">
-                                    <DynamicIcon Name=""FileText"" Class=""h-4 w-4 text-muted-foreground"" />
-                                    <Lumeo.Text As=""span"" Class=""font-medium"">@file.Name</Lumeo.Text>
-                                </Flex>
-                            </TableCell>
-                        </ContextMenuTrigger>
-                        <TableCell><Badge Variant=""Badge.BadgeVariant.Secondary"">@file.Type</Badge></TableCell>
-                        <TableCell Class=""text-muted-foreground"">@file.Size</TableCell>
-                        <TableCell Class=""text-muted-foreground"">@file.Modified</TableCell>
-                        <ContextMenuContent>
-                            <ContextMenuItem>
-                                <DynamicIcon Name=""FolderOpen"" Class=""h-4 w-4"" /> Open
-                            </ContextMenuItem>
-                            <ContextMenuItem>
-                                <DynamicIcon Name=""Pencil"" Class=""h-4 w-4"" /> Rename
-                            </ContextMenuItem>
-                            <ContextMenuItem>
-                                <DynamicIcon Name=""Copy"" Class=""h-4 w-4"" /> Copy
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuCheckboxItem @bind-Checked=""_showHidden"">
-                                Show hidden files
-                            </ContextMenuCheckboxItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuLabel>Sort by</ContextMenuLabel>
-                            <ContextMenuRadioGroup Value=""@_sortColumn"" ValueChanged=""@(v => _sortColumn = v)"">
-                                <ContextMenuRadioItem Value=""Name"">Name</ContextMenuRadioItem>
-                                <ContextMenuRadioItem Value=""Modified"">Date modified</ContextMenuRadioItem>
-                                <ContextMenuRadioItem Value=""Size"">Size</ContextMenuRadioItem>
-                            </ContextMenuRadioGroup>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem Class=""text-destructive"">
-                                <DynamicIcon Name=""Trash2"" Class=""h-4 w-4"" /> Delete
-                            </ContextMenuItem>
-                        </ContextMenuContent>
-                    </ContextMenu>
-                </RowTemplate>
-            </DataTable>
-        </CardContent>
-    </Card>
-
-    <!-- Upload Area -->
-    <Card>
-        <CardContent>
-            <FileUpload
-                Multiple=""true""
-                ShowProgress=""true""
-                Progress=""@_uploadProgress""
-                Description=""PDF, DOCX, PNG, JPG up to 50MB""
-                OnFilesSelected=""HandleFilesSelected"" />
-        </CardContent>
-    </Card>
-
-</Stack>
-
-@code {
-    private record FileItem(string Name, string Type, string Size, string Modified, string Icon);
-
-    private List<FileItem> _files = new() { /* ... 12 file records ... */ };
-    private HashSet<FileItem> _selectedFiles = new();
-    private string _sortColumn = ""Name"";
-    private DataTable<object>.SortDirection _sortDir = DataTable<object>.SortDirection.Ascending;
-    private bool _showHidden;
-    private int _uploadProgress;
-
-    private void HandleSort((string Column, DataTable<object>.SortDirection Direction) args)
-    {
-        _sortColumn = args.Column;
-        _sortDir = args.Direction;
+  <!-- Sidebar w-60 -->
+  <div class=""w-60 shrink-0 flex flex-col border-r border-border/40 bg-muted/20"">
+    <!-- Workspace badge -->
+    <div class=""flex items-center gap-2.5 px-4 py-3.5 border-b border-border/40"">
+      <div class=""h-7 w-7 rounded-md bg-primary flex items-center justify-center"">
+        <DynamicIcon Name=""Layers"" Class=""h-4 w-4 text-primary-foreground"" />
+      </div>
+      <Lumeo.Text Class=""text-sm font-semibold truncate"">Lumeo Design</Lumeo.Text>
+    </div>
+    <!-- Nav items -->
+    @foreach (var n in _navItems) {
+      <button class=""flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent/50"">
+        <DynamicIcon Name=""@n.Icon"" Class=""h-4 w-4 shrink-0"" /> @n.Label
+      </button>
     }
+    <!-- Storage -->
+    <Progress Value=""28"" Class=""h-1.5"" />
+    <Lumeo.Text Class=""text-xs text-muted-foreground"">14.2 / 50 GB</Lumeo.Text>
+    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" Class=""w-full"">Upgrade plan</Button>
+  </div>
 
-    private async Task HandleFilesSelected(InputFileChangeEventArgs e)
-    {
-        for (int i = 0; i <= 100; i += 10)
-        {
-            _uploadProgress = i;
-            StateHasChanged();
-            await Task.Delay(150);
-        }
-    }
-}";
+  <!-- Main -->
+  <div class=""flex-1 flex flex-col"">
+    <!-- Toolbar: breadcrumb, search, view toggle, sort, New button -->
+    <div class=""flex items-center gap-3 px-5 py-3 border-b border-border/40"">
+      <Breadcrumb Class=""flex-1"">...</Breadcrumb>
+      <Input placeholder=""Search files…"" Class=""h-8 w-48"" />
+      <!-- grid/list toggle, sort select, New dropdown -->
+    </div>
+
+    <!-- Content area -->
+    <div class=""flex-1 overflow-auto p-5 space-y-6"">
+      <!-- Pinned folders: 4-col grid of folder cards -->
+      <!-- Recent files: 4-col thumbnail grid with hover actions -->
+      <!-- All files: full Table with owner, modified, size, action icons -->
+    </div>
+  </div>
+</div>";
 }

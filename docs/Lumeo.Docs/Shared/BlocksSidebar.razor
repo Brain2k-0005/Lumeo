@@ -1,4 +1,5 @@
 @inject NavigationManager Nav
+@implements IDisposable
 
 @if (IsMobile)
 {
@@ -55,6 +56,21 @@ else
     [Parameter] public bool IsMobile { get; set; }
 
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 
     private string LinkClass(string href)
     {

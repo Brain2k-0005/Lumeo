@@ -1,297 +1,441 @@
-﻿@page "/blocks/form-wizard"
+@page "/blocks/form-wizard"
+@namespace Lumeo.Docs.Pages.Patterns
 
 <PageTitle>Form Wizard — Lumeo Patterns</PageTitle>
 
-<PageHeader Title="Multi-Step Form Wizard" Description="A multi-step form with step indicator, validation, and a review summary before submission." />
+<PageHeader Title="Multi-Step Form Wizard" Description="A polished four-step onboarding wizard with progress steps, real field inputs, preferences, and a review summary before submission." />
 
 <Stack Gap="12">
 
-    <ComponentDemo Title="Form Wizard" Code="@_wizardCode">
-        <Stack Class="w-full min-w-[700px] max-w-2xl mx-auto">
-            <Card>
-                <CardHeader>
-                    <!-- Step Indicator -->
-                    <Flex Class="items-center justify-between">
-                        @for (int i = 1; i <= 4; i++)
-                        {
-                            var step = i;
-                            var stepLabel = step switch { 1 => "Personal", 2 => "Address", 3 => "Preferences", 4 => "Review", _ => "" };
-                            var isDone = _currentStep > step;
-                            var isActive = _currentStep == step;
-
-                            <Flex Class="@($"items-center {(step < 4 ? "flex-1" : "")}")">
-                                <Flex Direction="col" Class="items-center gap-1">
-                                    <Flex Class="@($"w-8 h-8 rounded-full items-center justify-center text-sm font-medium transition-colors {(isDone ? "bg-primary text-primary-foreground" : isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}")">
-                                        @if (isDone)
-                                        {
-                                            <DynamicIcon Name="Check" Class="h-4 w-4" />
-                                        }
-                                        else
-                                        {
-                                            @step
-                                        }
-                                    </Flex>
-                                    <Lumeo.Text As="span" Class="@($"text-xs {(isActive ? "text-foreground font-medium" : "text-muted-foreground")} hidden sm:block")">@stepLabel</Lumeo.Text>
-                                </Flex>
-                                @if (step < 4)
-                                {
-                                    <Stack Class="@($"flex-1 h-px {(isDone ? "bg-primary" : "bg-border")} mx-2 mb-4")"></Stack>
-                                }
+    <ComponentDemo Title="Onboarding Wizard" Code="@_wizardCode">
+        @if (_submitted)
+        {
+            <!-- Success State -->
+            <Stack Class="w-full max-w-2xl mx-auto" Gap="0">
+                <Card>
+                    <CardContent Class="py-16">
+                        <Stack Gap="6" Class="items-center text-center">
+                            <Flex Class="h-20 w-20 items-center justify-center rounded-full bg-primary/10 mx-auto">
+                                <DynamicIcon Name="CheckCircle" Class="h-10 w-10 text-primary" />
                             </Flex>
-                        }
-                    </Flex>
-                </CardHeader>
-
-                <CardContent>
-                    <!-- Step 1: Personal Info -->
-                    @if (_currentStep == 1)
-                    {
-                        <Stack Gap="4">
-                            <Heading Level="4" Class="text-base font-semibold text-foreground">Personal Information</Heading>
-                            <Grid Class="grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Stack Gap="2">
-                                    <Label Class="text-sm font-medium text-foreground">First Name</Label>
-                                    <Input @bind-Value="_firstName" placeholder="John" />
-                                </Stack>
-                                <Stack Gap="2">
-                                    <Label Class="text-sm font-medium text-foreground">Last Name</Label>
-                                    <Input @bind-Value="_lastName" placeholder="Doe" />
-                                </Stack>
-                            </Grid>
                             <Stack Gap="2">
-                                <Label Class="text-sm font-medium text-foreground">Email Address</Label>
-                                <Input @bind-Value="_email" type="email" placeholder="john.doe@example.com" />
+                                <Heading Level="2" Size="xl" Class="font-bold">Welcome aboard, @_firstName!</Heading>
+                                <Lumeo.Text Color="muted" Class="max-w-sm mx-auto">
+                                    Your account is set up and ready to go. We've sent a confirmation to <Lumeo.Text As="span" Weight="medium" Color="foreground">@_email</Lumeo.Text>.
+                                </Lumeo.Text>
                             </Stack>
-                            <Stack Gap="2">
-                                <Label Class="text-sm font-medium text-foreground">Phone Number</Label>
-                                <Input @bind-Value="_phone" type="tel" placeholder="+1 (555) 000-0000" />
-                            </Stack>
+                            <Flex Gap="3">
+                                <Button Variant="Button.ButtonVariant.Outline" OnClick="@Reset">
+                                    <DynamicIcon Name="RefreshCw" Class="h-4 w-4" />
+                                    Start Over
+                                </Button>
+                                <Button Variant="Button.ButtonVariant.Default">
+                                    <DynamicIcon Name="ArrowRight" Class="h-4 w-4" />
+                                    Go to Dashboard
+                                </Button>
+                            </Flex>
                         </Stack>
-                    }
+                    </CardContent>
+                </Card>
+            </Stack>
+        }
+        else
+        {
+            <Flex Direction="col" Gap="4" Class="w-full min-w-[700px] max-w-3xl mx-auto">
 
-                    <!-- Step 2: Address -->
-                    @if (_currentStep == 2)
-                    {
-                        <Stack Gap="4">
-                            <Heading Level="4" Class="text-base font-semibold text-foreground">Address</Heading>
-                            <Stack Gap="2">
-                                <Label Class="text-sm font-medium text-foreground">Street Address</Label>
-                                <Input @bind-Value="_street" placeholder="123 Main Street" />
-                            </Stack>
-                            <Grid Class="grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Stack Gap="2">
-                                    <Label Class="text-sm font-medium text-foreground">City</Label>
-                                    <Input @bind-Value="_city" placeholder="San Francisco" />
+                <!-- Steps Progress Bar -->
+                <Card Class="border-border/60">
+                    <CardContent Class="py-4">
+                        <Steps CurrentStep="@(_currentStep - 1)" Class="w-full">
+                            <StepsItem Title="Account" Description="Credentials" />
+                            <StepsItem Title="Profile" Description="About you" />
+                            <StepsItem Title="Preferences" Description="Customize" />
+                            <StepsItem Title="Review" Description="Confirm" />
+                        </Steps>
+                    </CardContent>
+                </Card>
+
+                <!-- Main Content -->
+                <Flex Direction="col" Gap="4" Class="lg:flex-row">
+
+                    <!-- Step Form Card -->
+                    <Card Class="flex-1">
+                        <CardHeader Class="pb-4">
+                            <Flex Align="center" Gap="3">
+                                <Flex Class="h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-primary/10 shrink-0">
+                                    <DynamicIcon Name="@StepIcon" Class="h-4 w-4 text-primary" />
+                                </Flex>
+                                <Stack Gap="0.5">
+                                    <Heading Level="3" Size="base" Class="font-semibold leading-tight">@StepTitle</Heading>
+                                    <Lumeo.Text Size="sm" Color="muted">@StepSubtitle</Lumeo.Text>
                                 </Stack>
-                                <Stack Gap="2">
-                                    <Label Class="text-sm font-medium text-foreground">State</Label>
-                                    <Select @bind-Value="_state">
-                                        <SelectTrigger>
-                                            <Lumeo.Text As="span" Class="@(_state == null ? "text-muted-foreground" : "")">
-                                                @(_state ?? "Select state")
-                                            </Lumeo.Text>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem Value="CA">California</SelectItem>
-                                            <SelectItem Value="NY">New York</SelectItem>
-                                            <SelectItem Value="TX">Texas</SelectItem>
-                                            <SelectItem Value="FL">Florida</SelectItem>
-                                            <SelectItem Value="WA">Washington</SelectItem>
-                                            <SelectItem Value="IL">Illinois</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </Stack>
-                            </Grid>
-                            <Stack Gap="2">
-                                <Label Class="text-sm font-medium text-foreground">ZIP Code</Label>
-                                <Input @bind-Value="_zip" placeholder="94105" Class="max-w-32" />
-                            </Stack>
-                        </Stack>
-                    }
+                                <Badge Variant="Badge.BadgeVariant.Outline" Class="ml-auto text-xs">Step @_currentStep / 4</Badge>
+                            </Flex>
+                        </CardHeader>
 
-                    <!-- Step 3: Preferences -->
-                    @if (_currentStep == 3)
-                    {
-                        <Stack Gap="6">
-                            <Heading Level="4" Class="text-base font-semibold text-foreground">Preferences</Heading>
+                        <Separator />
 
-                            <!-- Notifications -->
-                            <Stack Gap="3">
-                                <Heading Level="5" Class="text-sm font-medium text-foreground">Notifications</Heading>
-                                <Stack Gap="3">
-                                    <Flex Class="items-center justify-between">
-                                        <Stack>
-                                            <Lumeo.Text Class="text-sm text-foreground">Email notifications</Lumeo.Text>
-                                            <Lumeo.Text Class="text-xs text-muted-foreground">Receive updates via email</Lumeo.Text>
+                        <CardContent Class="pt-5">
+                            <!-- Step 1: Account -->
+                            @if (_currentStep == 1)
+                            {
+                                <Stack Gap="4">
+                                    <Grid Class="grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <Stack Gap="2">
+                                            <Label>First name</Label>
+                                            <Input @bind-Value="_firstName" placeholder="Jordan" />
                                         </Stack>
-                                        <Switch @bind-Checked="_emailNotif" />
-                                    </Flex>
-                                    <Flex Class="items-center justify-between">
-                                        <Stack>
-                                            <Lumeo.Text Class="text-sm text-foreground">SMS notifications</Lumeo.Text>
-                                            <Lumeo.Text Class="text-xs text-muted-foreground">Receive updates via text message</Lumeo.Text>
+                                        <Stack Gap="2">
+                                            <Label>Last name</Label>
+                                            <Input @bind-Value="_lastName" placeholder="Rivera" />
                                         </Stack>
-                                        <Switch @bind-Checked="_smsNotif" />
-                                    </Flex>
-                                    <Flex Class="items-center justify-between">
-                                        <Stack>
-                                            <Lumeo.Text Class="text-sm text-foreground">Push notifications</Lumeo.Text>
-                                            <Lumeo.Text Class="text-xs text-muted-foreground">Receive browser push notifications</Lumeo.Text>
-                                        </Stack>
-                                        <Switch @bind-Checked="_pushNotif" />
-                                    </Flex>
-                                </Stack>
-                            </Stack>
-
-                            <Separator Class="my-4" />
-
-                            <!-- Interests -->
-                            <Stack Gap="3">
-                                <Heading Level="5" Class="text-sm font-medium text-foreground">Interests</Heading>
-                                <Grid Class="grid-cols-1 sm:grid-cols-2 gap-2">
-                                    @foreach (var interest in _interests)
+                                    </Grid>
+                                    <Stack Gap="2">
+                                        <Label>Work email</Label>
+                                        <Input @bind-Value="_email" type="email" placeholder="jordan@acme.com" />
+                                    </Stack>
+                                    <Stack Gap="2">
+                                        <Label>Password</Label>
+                                        <PasswordInput @bind-Value="_password" Placeholder="Minimum 8 characters" ShowStrength="true" />
+                                        <Lumeo.Text Size="xs" Color="muted">Use at least 8 characters, one uppercase and one number.</Lumeo.Text>
+                                    </Stack>
+                                    <Stack Gap="2">
+                                        <Label>Confirm password</Label>
+                                        <PasswordInput @bind-Value="_confirmPassword" Placeholder="Re-enter password" />
+                                        @if (!string.IsNullOrEmpty(_confirmPassword) && _password != _confirmPassword)
+                                        {
+                                            <Lumeo.Text Size="xs" Class="text-destructive">Passwords do not match.</Lumeo.Text>
+                                        }
+                                    </Stack>
+                                    @if (!string.IsNullOrEmpty(_step1Error))
                                     {
-                                        var i = interest;
-                                        <Flex Class="items-center gap-2">
-                                            <Checkbox Checked="@i.Selected" CheckedChanged="@(v => i.Selected = v)" />
-                                            <Label Class="text-sm text-foreground cursor-pointer">@i.Label</Label>
-                                        </Flex>
+                                        <Alert Variant="Alert.AlertVariant.Destructive">
+                                            <Flex Align="center" Gap="2">
+                                                <DynamicIcon Name="CircleAlert" Class="h-4 w-4 shrink-0" />
+                                                <Lumeo.Text Size="sm">@_step1Error</Lumeo.Text>
+                                            </Flex>
+                                        </Alert>
                                     }
-                                </Grid>
-                            </Stack>
+                                </Stack>
+                            }
 
-                            <Separator Class="my-4" />
+                            <!-- Step 2: Profile -->
+                            @if (_currentStep == 2)
+                            {
+                                <Stack Gap="4">
+                                    <Grid Class="grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <Stack Gap="2">
+                                            <Label>Job title</Label>
+                                            <Input @bind-Value="_jobTitle" placeholder="Product Designer" />
+                                        </Stack>
+                                        <Stack Gap="2">
+                                            <Label>Department</Label>
+                                            <Select @bind-Value="_department">
+                                                <SelectTrigger>
+                                                    <SelectValue Placeholder="Select department" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem Value="Engineering">Engineering</SelectItem>
+                                                    <SelectItem Value="Design">Design</SelectItem>
+                                                    <SelectItem Value="Product">Product</SelectItem>
+                                                    <SelectItem Value="Marketing">Marketing</SelectItem>
+                                                    <SelectItem Value="Sales">Sales</SelectItem>
+                                                    <SelectItem Value="Finance">Finance</SelectItem>
+                                                    <SelectItem Value="HR">HR &amp; People</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </Stack>
+                                    </Grid>
+                                    <Stack Gap="2">
+                                        <Label>Company / Organization</Label>
+                                        <Input @bind-Value="_company" placeholder="Acme Inc." />
+                                    </Stack>
+                                    <Grid Class="grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <Stack Gap="2">
+                                            <Label>Country</Label>
+                                            <Select @bind-Value="_country">
+                                                <SelectTrigger>
+                                                    <SelectValue Placeholder="Select country" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem Value="US">United States</SelectItem>
+                                                    <SelectItem Value="GB">United Kingdom</SelectItem>
+                                                    <SelectItem Value="CA">Canada</SelectItem>
+                                                    <SelectItem Value="AU">Australia</SelectItem>
+                                                    <SelectItem Value="DE">Germany</SelectItem>
+                                                    <SelectItem Value="FR">France</SelectItem>
+                                                    <SelectItem Value="JP">Japan</SelectItem>
+                                                    <SelectItem Value="IN">India</SelectItem>
+                                                    <SelectItem Value="BR">Brazil</SelectItem>
+                                                    <SelectItem Value="SG">Singapore</SelectItem>
+                                                    <SelectItem Value="NL">Netherlands</SelectItem>
+                                                    <SelectItem Value="Other">Other</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </Stack>
+                                        <Stack Gap="2">
+                                            <Label>Timezone</Label>
+                                            <Select @bind-Value="_timezone">
+                                                <SelectTrigger>
+                                                    <SelectValue Placeholder="Select timezone" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem Value="PST">Pacific (PST / UTC-8)</SelectItem>
+                                                    <SelectItem Value="MST">Mountain (MST / UTC-7)</SelectItem>
+                                                    <SelectItem Value="CST">Central (CST / UTC-6)</SelectItem>
+                                                    <SelectItem Value="EST">Eastern (EST / UTC-5)</SelectItem>
+                                                    <SelectItem Value="GMT">London (GMT / UTC+0)</SelectItem>
+                                                    <SelectItem Value="CET">Central Europe (CET / UTC+1)</SelectItem>
+                                                    <SelectItem Value="IST">India (IST / UTC+5:30)</SelectItem>
+                                                    <SelectItem Value="SGT">Singapore (SGT / UTC+8)</SelectItem>
+                                                    <SelectItem Value="AEST">Sydney (AEST / UTC+10)</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </Stack>
+                                    </Grid>
+                                    <Stack Gap="2">
+                                        <Label>Bio <Lumeo.Text As="span" Color="muted" Size="xs">(optional)</Lumeo.Text></Label>
+                                        <Textarea @bind-Value="_bio" placeholder="A short bio visible to your teammates..." Rows="3" />
+                                    </Stack>
+                                </Stack>
+                            }
 
-                            <!-- Communication Preference -->
-                            <Stack Gap="3">
-                                <Heading Level="5" Class="text-sm font-medium text-foreground">Preferred Communication</Heading>
-                                <RadioGroup @bind-Value="_communication">
-                                    <Flex Class="items-center gap-2">
-                                        <RadioGroupItem Value="email" />
-                                        <Label Class="text-sm text-foreground">Email</Label>
-                                    </Flex>
-                                    <Flex Class="items-center gap-2">
-                                        <RadioGroupItem Value="phone" />
-                                        <Label Class="text-sm text-foreground">Phone</Label>
-                                    </Flex>
-                                    <Flex Class="items-center gap-2">
-                                        <RadioGroupItem Value="sms" />
-                                        <Label Class="text-sm text-foreground">SMS</Label>
-                                    </Flex>
-                                </RadioGroup>
-                            </Stack>
-                        </Stack>
-                    }
+                            <!-- Step 3: Preferences -->
+                            @if (_currentStep == 3)
+                            {
+                                <Stack Gap="5">
+                                    <!-- Notifications Section -->
+                                    <Stack Gap="3">
+                                        <Heading Level="5" Size="sm" Class="font-medium">Notifications</Heading>
+                                        <Card Class="bg-muted/30 border-border/40">
+                                            <CardContent Class="pt-4 pb-4">
+                                                <Stack Gap="0" Class="divide-y divide-border/40">
+                                                    <Flex Align="center" Justify="between" Class="py-3">
+                                                        <Stack Gap="0.5">
+                                                            <Lumeo.Text Size="sm" Weight="medium">Product updates</Lumeo.Text>
+                                                            <Lumeo.Text Size="xs" Color="muted">New features, releases, and announcements</Lumeo.Text>
+                                                        </Stack>
+                                                        <Switch @bind-Checked="_notifProduct" />
+                                                    </Flex>
+                                                    <Flex Align="center" Justify="between" Class="py-3">
+                                                        <Stack Gap="0.5">
+                                                            <Lumeo.Text Size="sm" Weight="medium">Team activity</Lumeo.Text>
+                                                            <Lumeo.Text Size="xs" Color="muted">Comments, mentions, and assignment changes</Lumeo.Text>
+                                                        </Stack>
+                                                        <Switch @bind-Checked="_notifTeam" />
+                                                    </Flex>
+                                                    <Flex Align="center" Justify="between" Class="py-3">
+                                                        <Stack Gap="0.5">
+                                                            <Lumeo.Text Size="sm" Weight="medium">Weekly digest</Lumeo.Text>
+                                                            <Lumeo.Text Size="xs" Color="muted">A summary of activity sent every Monday</Lumeo.Text>
+                                                        </Stack>
+                                                        <Switch @bind-Checked="_notifDigest" />
+                                                    </Flex>
+                                                    <Flex Align="center" Justify="between" Class="py-3">
+                                                        <Stack Gap="0.5">
+                                                            <Lumeo.Text Size="sm" Weight="medium">Security alerts</Lumeo.Text>
+                                                            <Lumeo.Text Size="xs" Color="muted">Sign-ins from new devices or locations</Lumeo.Text>
+                                                        </Stack>
+                                                        <Switch @bind-Checked="_notifSecurity" />
+                                                    </Flex>
+                                                </Stack>
+                                            </CardContent>
+                                        </Card>
+                                    </Stack>
 
-                    <!-- Step 4: Review -->
-                    @if (_currentStep == 4)
-                    {
-                        <Stack Gap="6">
-                            <Heading Level="4" Class="text-base font-semibold text-foreground">Review Your Information</Heading>
+                                    <!-- Role / Primary Use -->
+                                    <Stack Gap="3">
+                                        <Heading Level="5" Size="sm" Class="font-medium">Primary use case</Heading>
+                                        <RadioGroup @bind-Value="_primaryUse">
+                                            <Grid Class="grid-cols-1 sm:grid-cols-2 gap-2">
+                                                @foreach (var (val, label, desc) in _useCases)
+                                                {
+                                                    var v = val;
+                                                    <label class="@($"flex items-start gap-3 rounded-[var(--radius-lg)] border p-3 cursor-pointer transition-colors {(_primaryUse == v ? "border-primary bg-primary/5" : "border-border/60 hover:bg-accent/40")}")">
+                                                        <RadioGroupItem Value="@v" Class="mt-0.5" />
+                                                        <Stack Gap="0.5">
+                                                            <Lumeo.Text Size="sm" Weight="medium">@label</Lumeo.Text>
+                                                            <Lumeo.Text Size="xs" Color="muted">@desc</Lumeo.Text>
+                                                        </Stack>
+                                                    </label>
+                                                }
+                                            </Grid>
+                                        </RadioGroup>
+                                    </Stack>
 
-                            <Card Class="bg-muted/40">
-                                <CardContent Class="pt-4">
-                                    <Stack Gap="4" Class="text-sm">
-                                        <Grid Class="grid-cols-2 gap-x-4 gap-y-2">
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Name</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground font-medium">@(_firstName) @(_lastName)</Lumeo.Text>
-
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Email</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">@(_email.Length > 0 ? _email : "—")</Lumeo.Text>
-
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Phone</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">@(_phone.Length > 0 ? _phone : "—")</Lumeo.Text>
-                                        </Grid>
-
-                                        <Separator Class="my-4" />
-
-                                        <Grid Class="grid-cols-2 gap-x-4 gap-y-2">
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Address</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">@(_street.Length > 0 ? _street : "—")</Lumeo.Text>
-
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">City / State</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">@(_city) @(_state)</Lumeo.Text>
-
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">ZIP</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">@(_zip.Length > 0 ? _zip : "—")</Lumeo.Text>
-                                        </Grid>
-
-                                        <Separator Class="my-4" />
-
-                                        <Grid Class="grid-cols-2 gap-x-4 gap-y-2">
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Notifications</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">
-                                                @string.Join(", ", new[] {
-                                                    _emailNotif ? "Email" : null,
-                                                    _smsNotif ? "SMS" : null,
-                                                    _pushNotif ? "Push" : null
-                                                }.Where(x => x != null))
-                                            </Lumeo.Text>
-
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Interests</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground">@string.Join(", ", _interests.Where(x => x.Selected).Select(x => x.Label))</Lumeo.Text>
-
-                                            <Lumeo.Text As="span" Class="text-muted-foreground">Communication</Lumeo.Text>
-                                            <Lumeo.Text As="span" Class="text-foreground capitalize">@(_communication ?? "—")</Lumeo.Text>
+                                    <!-- Interests -->
+                                    <Stack Gap="3">
+                                        <Heading Level="5" Size="sm" Class="font-medium">Topics of interest</Heading>
+                                        <Grid Class="grid-cols-2 sm:grid-cols-3 gap-2">
+                                            @foreach (var interest in _interests)
+                                            {
+                                                var i = interest;
+                                                <label class="@($"flex items-center gap-2 rounded-[var(--radius)] border p-2.5 cursor-pointer transition-colors {(i.Selected ? "border-primary bg-primary/5" : "border-border/60 hover:bg-accent/40")}")">
+                                                    <Checkbox Checked="@i.Selected" CheckedChanged="@(v => i.Selected = v)" />
+                                                    <Lumeo.Text Size="sm">@i.Label</Lumeo.Text>
+                                                </label>
+                                            }
                                         </Grid>
                                     </Stack>
-                                </CardContent>
-                            </Card>
-
-                            <Flex Class="items-center gap-2">
-                                <Checkbox @bind-Checked="_confirmed" />
-                                <Label Class="text-sm text-foreground">
-                                    I confirm that the information above is accurate and I agree to the <Lumeo.Link Href="#" Class="text-primary hover:underline">terms and conditions</Lumeo.Link>.
-                                </Label>
-                            </Flex>
-                        </Stack>
-                    }
-                </CardContent>
-
-                <CardFooter>
-                    <Flex Class="justify-between w-full">
-                        <Button Variant="Button.ButtonVariant.Outline"
-                                OnClick="@PreviousStep"
-                                Disabled="@(_currentStep == 1)">
-                            <DynamicIcon Name="ChevronLeft" Class="h-4 w-4" />
-                            Previous
-                        </Button>
-
-                        @if (_currentStep < 4)
-                        {
-                            <Button OnClick="@NextStep">
-                                Next
-                                <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
-                            </Button>
-                        }
-                        else
-                        {
-                            <Button OnClick="@Submit" Disabled="@(!_confirmed)">
-                                <DynamicIcon Name="Check" Class="h-4 w-4" />
-                                Submit
-                            </Button>
-                        }
-                    </Flex>
-                </CardFooter>
-            </Card>
-
-            @if (_submitted)
-            {
-                <Stack Class="mt-4">
-                    <Alert>
-                        <Flex Class="gap-3">
-                            <DynamicIcon Name="Check" Class="h-4 w-4 mt-0.5 text-primary" />
-                            <Stack>
-                                <Heading Level="5" Class="mb-1 font-medium leading-none tracking-tight">Form submitted!</Heading>
-                                <Stack Class="text-sm [&_p]:leading-relaxed">
-                                    <Lumeo.Text>Thank you, @_firstName. Your information has been received.</Lumeo.Text>
                                 </Stack>
-                            </Stack>
-                        </Flex>
-                    </Alert>
-                </Stack>
-            }
-        </Stack>
+                            }
+
+                            <!-- Step 4: Review -->
+                            @if (_currentStep == 4)
+                            {
+                                <Stack Gap="5">
+                                    <Heading Level="4" Size="sm" Class="font-medium">Review your information</Heading>
+
+                                    <!-- Account Section -->
+                                    <Stack Gap="0" Class="rounded-[var(--radius-lg)] border border-border/60 overflow-hidden">
+                                        <Flex Align="center" Justify="between" Class="px-4 py-2 bg-muted/40 border-b border-border/40">
+                                            <Lumeo.Text Size="xs" Weight="semibold" Class="uppercase tracking-wide text-muted-foreground">Account</Lumeo.Text>
+                                            <button @onclick="@(() => _currentStep = 1)" class="text-xs text-primary hover:underline">Edit</button>
+                                        </Flex>
+                                        <Grid Class="grid-cols-2 gap-x-6 gap-y-1 px-4 py-3 text-sm">
+                                            <Lumeo.Text Color="muted">Name</Lumeo.Text>
+                                            <Lumeo.Text Weight="medium">@(_firstName) @(_lastName)</Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Email</Lumeo.Text>
+                                            <Lumeo.Text>@(_email.Length > 0 ? _email : "—")</Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Password</Lumeo.Text>
+                                            <Lumeo.Text>••••••••</Lumeo.Text>
+                                        </Grid>
+                                    </Stack>
+
+                                    <!-- Profile Section -->
+                                    <Stack Gap="0" Class="rounded-[var(--radius-lg)] border border-border/60 overflow-hidden">
+                                        <Flex Align="center" Justify="between" Class="px-4 py-2 bg-muted/40 border-b border-border/40">
+                                            <Lumeo.Text Size="xs" Weight="semibold" Class="uppercase tracking-wide text-muted-foreground">Profile</Lumeo.Text>
+                                            <button @onclick="@(() => _currentStep = 2)" class="text-xs text-primary hover:underline">Edit</button>
+                                        </Flex>
+                                        <Grid Class="grid-cols-2 gap-x-6 gap-y-1 px-4 py-3 text-sm">
+                                            <Lumeo.Text Color="muted">Title</Lumeo.Text>
+                                            <Lumeo.Text>@(_jobTitle.Length > 0 ? _jobTitle : "—")</Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Department</Lumeo.Text>
+                                            <Lumeo.Text>@(_department ?? "—")</Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Company</Lumeo.Text>
+                                            <Lumeo.Text>@(_company.Length > 0 ? _company : "—")</Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Country / TZ</Lumeo.Text>
+                                            <Lumeo.Text>@($"{_country ?? "—"} · {_timezone ?? "—"}")</Lumeo.Text>
+                                        </Grid>
+                                    </Stack>
+
+                                    <!-- Preferences Section -->
+                                    <Stack Gap="0" Class="rounded-[var(--radius-lg)] border border-border/60 overflow-hidden">
+                                        <Flex Align="center" Justify="between" Class="px-4 py-2 bg-muted/40 border-b border-border/40">
+                                            <Lumeo.Text Size="xs" Weight="semibold" Class="uppercase tracking-wide text-muted-foreground">Preferences</Lumeo.Text>
+                                            <button @onclick="@(() => _currentStep = 3)" class="text-xs text-primary hover:underline">Edit</button>
+                                        </Flex>
+                                        <Grid Class="grid-cols-2 gap-x-6 gap-y-1 px-4 py-3 text-sm">
+                                            <Lumeo.Text Color="muted">Notifications</Lumeo.Text>
+                                            <Lumeo.Text>
+                                                @{
+                                                    var notifs = new List<string>();
+                                                    if (_notifProduct) notifs.Add("Product");
+                                                    if (_notifTeam) notifs.Add("Team");
+                                                    if (_notifDigest) notifs.Add("Digest");
+                                                    if (_notifSecurity) notifs.Add("Security");
+                                                }
+                                                @(notifs.Count > 0 ? string.Join(", ", notifs) : "None")
+                                            </Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Primary use</Lumeo.Text>
+                                            <Lumeo.Text Class="capitalize">@(_primaryUse ?? "—")</Lumeo.Text>
+                                            <Lumeo.Text Color="muted">Interests</Lumeo.Text>
+                                            <Lumeo.Text>
+                                                @{
+                                                    var sel = _interests.Where(x => x.Selected).Select(x => x.Label).ToList();
+                                                }
+                                                @(sel.Count > 0 ? string.Join(", ", sel) : "None selected")
+                                            </Lumeo.Text>
+                                        </Grid>
+                                    </Stack>
+
+                                    <!-- Terms -->
+                                    <label class="flex items-start gap-3 cursor-pointer rounded-[var(--radius-lg)] border border-border/60 p-3 hover:bg-accent/30 transition-colors">
+                                        <Checkbox @bind-Checked="_confirmed" Class="mt-0.5" />
+                                        <Lumeo.Text Size="sm" Color="muted">
+                                            I confirm that all information is accurate and I agree to the
+                                            <Lumeo.Link Href="#" Class="text-primary hover:underline">Terms of Service</Lumeo.Link>
+                                            and
+                                            <Lumeo.Link Href="#" Class="text-primary hover:underline">Privacy Policy</Lumeo.Link>.
+                                        </Lumeo.Text>
+                                    </label>
+                                </Stack>
+                            }
+                        </CardContent>
+
+                        <Separator />
+
+                        <CardFooter Class="pt-4">
+                            <Flex Justify="between" Class="w-full">
+                                @if (_currentStep > 1)
+                                {
+                                    <Button Variant="Button.ButtonVariant.Outline" OnClick="@PreviousStep">
+                                        <DynamicIcon Name="ChevronLeft" Class="h-4 w-4" />
+                                        Back
+                                    </Button>
+                                }
+                                else
+                                {
+                                    <div></div>
+                                }
+
+                                <Flex Gap="2">
+                                    @if (_currentStep < 4 && _currentStep != 1)
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Ghost" OnClick="@NextStep">
+                                            Skip
+                                        </Button>
+                                    }
+                                    @if (_currentStep < 4)
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Default" OnClick="@NextStep">
+                                            Continue
+                                            <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
+                                        </Button>
+                                    }
+                                    else
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Default" OnClick="@Submit" Disabled="@(!_confirmed)">
+                                            <DynamicIcon Name="Check" Class="h-4 w-4" />
+                                            Create Account
+                                        </Button>
+                                    }
+                                </Flex>
+                            </Flex>
+                        </CardFooter>
+                    </Card>
+
+                    <!-- Side Illustration Card -->
+                    <Stack Class="w-full lg:w-64 shrink-0">
+                        <Card Class="h-full bg-muted/30 border-border/40">
+                            <CardContent Class="py-6">
+                                <Stack Gap="4">
+                                    <Flex Class="h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-primary/10">
+                                        <DynamicIcon Name="@StepIcon" Class="h-6 w-6 text-primary" />
+                                    </Flex>
+                                    <Stack Gap="2">
+                                        <Heading Level="4" Size="sm" Class="font-semibold">@StepSideTitle</Heading>
+                                        <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">@StepSideBody</Lumeo.Text>
+                                    </Stack>
+                                    <Separator />
+                                    <Stack Gap="2">
+                                        @foreach (var tip in StepTips)
+                                        {
+                                            <Flex Align="start" Gap="2">
+                                                <DynamicIcon Name="Check" Class="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                                <Lumeo.Text Size="xs" Color="muted">@tip</Lumeo.Text>
+                                            </Flex>
+                                        }
+                                    </Stack>
+                                </Stack>
+                            </CardContent>
+                        </Card>
+                    </Stack>
+
+                </Flex>
+            </Flex>
+        }
     </ComponentDemo>
 
 </Stack>
@@ -300,38 +444,121 @@
     private int _currentStep = 1;
     private bool _submitted = false;
 
-    // Step 1
+    // Step 1 — Account
     private string _firstName = "";
     private string _lastName = "";
     private string _email = "";
-    private string _phone = "";
+    private string _password = "";
+    private string _confirmPassword = "";
+    private string? _step1Error;
 
-    // Step 2
-    private string _street = "";
-    private string _city = "";
-    private string? _state;
-    private string _zip = "";
+    // Step 2 — Profile
+    private string _jobTitle = "";
+    private string? _department;
+    private string _company = "";
+    private string? _country;
+    private string? _timezone;
+    private string _bio = "";
 
-    // Step 3
-    private bool _emailNotif = true;
-    private bool _smsNotif = false;
-    private bool _pushNotif = false;
-    private string? _communication = "email";
+    // Step 3 — Preferences
+    private bool _notifProduct = true;
+    private bool _notifTeam = true;
+    private bool _notifDigest = false;
+    private bool _notifSecurity = true;
+    private string? _primaryUse = "teams";
+
+    private List<(string Val, string Label, string Desc)> _useCases = new()
+    {
+        ("personal",    "Personal",        "Individual projects and personal productivity"),
+        ("teams",       "Team collaboration", "Working with colleagues on shared projects"),
+        ("clients",     "Client work",     "Managing deliverables and client communications"),
+        ("enterprise",  "Enterprise",      "Large-scale org rollout and admin oversight"),
+    };
 
     private List<InterestItem> _interests = new()
     {
-        new("Technology", false),
-        new("Design", false),
-        new("Marketing", false),
-        new("Business", false),
-        new("Science", false),
+        new("Product Design"),
+        new("Engineering"),
+        new("Data & Analytics"),
+        new("Marketing"),
+        new("Leadership"),
+        new("AI & Automation"),
     };
 
-    // Step 4
+    // Step 4 — Confirm
     private bool _confirmed = false;
+
+    // Step metadata
+    private string StepIcon => _currentStep switch
+    {
+        1 => "UserPlus",
+        2 => "User",
+        3 => "Settings2",
+        4 => "ClipboardCheck",
+        _ => "Circle"
+    };
+
+    private string StepTitle => _currentStep switch
+    {
+        1 => "Create your account",
+        2 => "Tell us about yourself",
+        3 => "Personalize your experience",
+        4 => "Review &amp; confirm",
+        _ => ""
+    };
+
+    private string StepSubtitle => _currentStep switch
+    {
+        1 => "Set up your login credentials",
+        2 => "Help teammates find and recognize you",
+        3 => "Choose what matters to you",
+        4 => "Double-check before we create your account",
+        _ => ""
+    };
+
+    private string StepSideTitle => _currentStep switch
+    {
+        1 => "Secure by default",
+        2 => "Your public profile",
+        3 => "Your feed, your way",
+        4 => "Almost there!",
+        _ => ""
+    };
+
+    private string StepSideBody => _currentStep switch
+    {
+        1 => "We use bcrypt hashing and zero-knowledge proofs. Your password is never stored in plain text.",
+        2 => "A complete profile helps teammates understand your role and contact you through the right channels.",
+        3 => "We use your preferences to surface the most relevant content, integrations, and suggestions.",
+        4 => "Review everything before creating your account. You can always change these settings later.",
+        _ => ""
+    };
+
+    private IEnumerable<string> StepTips => _currentStep switch
+    {
+        1 => new[] { "Use a work email address", "Password must be 8+ characters", "You can add SSO later" },
+        2 => new[] { "Profile photo can be added later", "Bio is visible to your org", "Timezone affects notifications" },
+        3 => new[] { "All notifications can be changed anytime", "Your data is never sold", "You can update interests any time" },
+        4 => new[] { "Confirmation email sent instantly", "You can invite teammates next", "Full setup takes under 2 minutes" },
+        _ => Array.Empty<string>()
+    };
 
     private void NextStep()
     {
+        if (_currentStep == 1)
+        {
+            _step1Error = null;
+            if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_email))
+            {
+                _step1Error = "Please fill in your name and email to continue.";
+                return;
+            }
+            if (!string.IsNullOrEmpty(_password) && _password != _confirmPassword)
+            {
+                _step1Error = "Passwords do not match.";
+                return;
+            }
+        }
         if (_currentStep < 4) _currentStep++;
     }
 
@@ -342,84 +569,107 @@
 
     private void Submit()
     {
-        if (_confirmed)
-        {
-            _submitted = true;
-        }
+        if (_confirmed) _submitted = true;
+    }
+
+    private void Reset()
+    {
+        _currentStep = 1;
+        _submitted = false;
+        _firstName = _lastName = _email = _password = _confirmPassword = "";
+        _jobTitle = _company = _bio = "";
+        _department = _country = _timezone = null;
+        _notifProduct = _notifTeam = _notifSecurity = true;
+        _notifDigest = false;
+        _primaryUse = "teams";
+        _confirmed = false;
+        _step1Error = null;
+        foreach (var i in _interests) i.Selected = false;
     }
 
     private class InterestItem
     {
         public string Label { get; init; }
         public bool Selected { get; set; }
-        public InterestItem(string label, bool selected) { Label = label; Selected = selected; }
+        public InterestItem(string label, bool selected = false) { Label = label; Selected = selected; }
     }
 
-    private string _wizardCode = @"<!-- Multi-step form wizard with 4 steps -->
-<Card>
-    <CardHeader>
-        <!-- Step indicator with numbered circles and connecting lines -->
-        <Flex Align=""center"">
-            @for (int step = 1; step <= 4; step++)
-            {
-                <Flex Align=""center"" Class=""flex-1"">
-                    <Flex Class=""w-8 h-8 rounded-full items-center justify-center
-                        @(_currentStep > step ? ""bg-primary text-primary-foreground"" :
-                          _currentStep == step ? ""bg-primary text-primary-foreground"" :
-                          ""bg-muted text-muted-foreground"")"">
-                        @if (_currentStep > step)
-                        {
-                            <DynamicIcon Name=""Check"" Class=""h-4 w-4"" />
-                        }
-                        else { @step }
+    private string _wizardCode = @"<!-- 4-step onboarding wizard with Steps progress bar, side illustration, and review summary -->
+<Stack Class=""max-w-3xl mx-auto"" Gap=""4"">
+
+    <!-- Steps progress indicator -->
+    <Card>
+        <CardContent Class=""py-4"">
+            <Steps CurrentStep=""@(_currentStep - 1)"" Class=""w-full"">
+                <StepsItem Title=""Account"" Description=""Credentials"" />
+                <StepsItem Title=""Profile"" Description=""About you"" />
+                <StepsItem Title=""Preferences"" Description=""Customize"" />
+                <StepsItem Title=""Review"" Description=""Confirm"" />
+            </Steps>
+        </CardContent>
+    </Card>
+
+    <Flex Gap=""4"" Class=""lg:flex-row"">
+        <!-- Form Card -->
+        <Card Class=""flex-1"">
+            <CardHeader>
+                <Flex Align=""center"" Gap=""3"">
+                    <Flex Class=""h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-primary/10"">
+                        <DynamicIcon Name=""UserPlus"" Class=""h-4 w-4 text-primary"" />
                     </Flex>
-                    @if (step < 4)
+                    <Stack>
+                        <Heading Level=""3"">Create your account</Heading>
+                        <Lumeo.Text Size=""sm"" Color=""muted"">Set up your login credentials</Lumeo.Text>
+                    </Stack>
+                </Flex>
+            </CardHeader>
+            <CardContent>
+                @if (_currentStep == 1)
+                {
+                    <!-- Step 1: First/Last name, Email, Password + PasswordInput with ShowStrength -->
+                }
+                @if (_currentStep == 2)
+                {
+                    <!-- Step 2: Job title, Department Select, Company, Country, Timezone, Bio Textarea -->
+                }
+                @if (_currentStep == 3)
+                {
+                    <!-- Step 3: Notification switches, Use-case RadioGroup in styled cards, Interest checkboxes -->
+                }
+                @if (_currentStep == 4)
+                {
+                    <!-- Step 4: Review sections with Edit links, Terms checkbox, Submit -->
+                }
+            </CardContent>
+            <CardFooter>
+                <Flex Justify=""between"" Class=""w-full"">
+                    <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""PreviousStep"" Disabled=""@(_currentStep == 1)"">
+                        <DynamicIcon Name=""ChevronLeft"" Class=""h-4 w-4"" /> Back
+                    </Button>
+                    @if (_currentStep < 4)
                     {
-                        <Stack Class=""flex-1 h-px @(_currentStep > step ? ""bg-primary"" : ""bg-border"") mx-2"" />
+                        <Button Variant=""Button.ButtonVariant.Default"" OnClick=""NextStep"">
+                            Continue <DynamicIcon Name=""ChevronRight"" Class=""h-4 w-4"" />
+                        </Button>
+                    }
+                    else
+                    {
+                        <Button Variant=""Button.ButtonVariant.Default"" OnClick=""Submit"" Disabled=""@(!_confirmed)"">
+                            <DynamicIcon Name=""Check"" Class=""h-4 w-4"" /> Create Account
+                        </Button>
                     }
                 </Flex>
-            }
-        </Flex>
-    </CardHeader>
-    <CardContent>
-        @if (_currentStep == 1)
-        {
-            <!-- Step 1: Personal Info (First/Last name, Email, Phone) -->
-        }
-        @if (_currentStep == 2)
-        {
-            <!-- Step 2: Address (Street, City, State Select, Zip) -->
-        }
-        @if (_currentStep == 3)
-        {
-            <!-- Step 3: Notification Switches, Interest Checkboxes, Communication RadioGroup -->
-        }
-        @if (_currentStep == 4)
-        {
-            <!-- Step 4: Summary Card, confirm Checkbox, Submit Button -->
-        }
-    </CardContent>
-    <CardFooter>
-        <Flex Justify=""between"" Class=""w-full"">
-            <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""PreviousStep""
-                    Disabled=""@(_currentStep == 1)"">
-                <DynamicIcon Name=""ChevronLeft"" Class=""h-4 w-4"" /> Previous
-            </Button>
-            @if (_currentStep < 4)
-            {
-                <Button Variant=""Button.ButtonVariant.Default"" OnClick=""NextStep"">
-                    Next <DynamicIcon Name=""ChevronRight"" Class=""h-4 w-4"" />
-                </Button>
-            }
-            else
-            {
-                <Button Variant=""Button.ButtonVariant.Default"" OnClick=""Submit"" Disabled=""@(!_confirmed)"">
-                    <DynamicIcon Name=""Check"" Class=""h-4 w-4"" /> Submit
-                </Button>
-            }
-        </Flex>
-    </CardFooter>
-</Card>
+            </CardFooter>
+        </Card>
+
+        <!-- Side illustration / tips panel -->
+        <Card Class=""w-64 bg-muted/30 border-border/40"">
+            <CardContent Class=""py-6"">
+                <!-- Step-specific icon, title, body copy, and tip bullets -->
+            </CardContent>
+        </Card>
+    </Flex>
+</Stack>
 
 @code {
     private int _currentStep = 1;
@@ -427,6 +677,6 @@
 
     private void NextStep() { if (_currentStep < 4) _currentStep++; }
     private void PreviousStep() { if (_currentStep > 1) _currentStep--; }
-    private void Submit() { if (_confirmed) { /* handle submit */ } }
+    private void Submit() { if (_confirmed) { /* create account */ } }
 }";
 }

@@ -233,7 +233,9 @@
     private string _contextMenuId = $"dg-ctx-{Guid.NewGuid():N}";
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
+    private HashSet<string> _knownGroupKeys = new();
     private string? _lastGroupBy;
+    private bool? _lastGroupsExpandedByDefault;
     private string _layoutId = $"datagrid-{Guid.NewGuid():N}";
     private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
     private bool _savedLayoutApplied; // tracks whether the SavedLayout parameter has been applied
@@ -341,12 +343,17 @@
                         .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
                         .ToList();
 
-                    if (serverGroupByChanged)
+                    var serverDefaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
+                    _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
+
+                    if (serverGroupByChanged || serverDefaultChanged)
                     {
                         _expandedGroups.Clear();
-                        if (GroupsExpandedByDefault)
+                        _knownGroupKeys.Clear();
+                        foreach (var section in _groupedSections)
                         {
-                            foreach (var section in _groupedSections)
+                            _knownGroupKeys.Add(section.Key);
+                            if (GroupsExpandedByDefault)
                                 _expandedGroups.Add(section.Key);
                         }
                     }
@@ -354,13 +361,13 @@
                     {
                         var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
                         _expandedGroups.IntersectWith(validKeys);
-                        if (GroupsExpandedByDefault)
+                        _knownGroupKeys.IntersectWith(validKeys);
+                        foreach (var section in _groupedSections)
                         {
-                            foreach (var section in _groupedSections)
-                            {
-                                if (!_expandedGroups.Contains(section.Key))
-                                    _expandedGroups.Add(section.Key);
-                            }
+                            if (_knownGroupKeys.Contains(section.Key)) continue;
+                            _knownGroupKeys.Add(section.Key);
+                            if (GroupsExpandedByDefault)
+                                _expandedGroups.Add(section.Key);
                         }
                     }
                 }
@@ -528,13 +535,18 @@
                     .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
                     .ToList();
 
-                if (groupByChanged)
+                var defaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
+                _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
+
+                if (groupByChanged || defaultChanged)
                 {
-                    // GroupBy field changed — reset expand state based on default
+                    // GroupBy field or default toggle changed — reset expand state based on default
                     _expandedGroups.Clear();
-                    if (GroupsExpandedByDefault)
+                    _knownGroupKeys.Clear();
+                    foreach (var section in _groupedSections)
                     {
-                        foreach (var section in _groupedSections)
+                        _knownGroupKeys.Add(section.Key);
+                        if (GroupsExpandedByDefault)
                             _expandedGroups.Add(section.Key);
                     }
                 }
@@ -543,14 +555,14 @@
                     // Keep user's expand/collapse state; remove stale keys
                     var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
                     _expandedGroups.IntersectWith(validKeys);
-                    // Add newly discovered groups based on default
-                    if (GroupsExpandedByDefault)
+                    _knownGroupKeys.IntersectWith(validKeys);
+                    // Apply default only to groups we haven't seen before (not to user-toggled ones)
+                    foreach (var section in _groupedSections)
                     {
-                        foreach (var section in _groupedSections)
-                        {
-                            if (!_expandedGroups.Contains(section.Key))
-                                _expandedGroups.Add(section.Key);
-                        }
+                        if (_knownGroupKeys.Contains(section.Key)) continue;
+                        _knownGroupKeys.Add(section.Key);
+                        if (GroupsExpandedByDefault)
+                            _expandedGroups.Add(section.Key);
                     }
                 }
 

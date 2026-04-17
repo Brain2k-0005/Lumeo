@@ -97,6 +97,36 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
         await _focus.RemoveFocusTrap(module, elementId);
     }
 
+    // --- ColorPicker SV Drag ---
+
+    private readonly Dictionary<string, Func<double, double, Task>> _svDragHandlers = new();
+
+    public async ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        _svDragHandlers[elementId] = handler;
+        await module.InvokeVoidAsync("registerSvDrag", elementId, GetSelfRef());
+    }
+
+    public async ValueTask UnregisterSvDrag(string elementId)
+    {
+        _svDragHandlers.Remove(elementId);
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterSvDrag", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public Task OnSvDrag(string elementId, double s, double v)
+    {
+        if (_svDragHandlers.TryGetValue(elementId, out var handler))
+            return handler(s, v);
+        return Task.CompletedTask;
+    }
+
     // --- Floating Position ---
 
     public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")

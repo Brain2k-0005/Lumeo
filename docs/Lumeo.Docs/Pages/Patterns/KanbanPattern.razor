@@ -3,232 +3,373 @@
 
 <PageTitle>Kanban Board — Lumeo</PageTitle>
 
-<PageHeader Title="Kanban Board" Description="A project board with task cards organized by status columns. Drag cards between columns to change status." />
+<PageHeader Title="Kanban Board" Description="A sprint board with polished task cards and native HTML5 drag-and-drop between columns." />
 
-<Stack Gap="6" Class="w-full min-w-[700px]">
+<ComponentDemo Title="Sprint 24 — Engineering Board" Code="@_code">
 
-    <!-- Top bar -->
-    <Flex Class="items-center justify-between">
-        <Heading Level="2" Class="text-xl font-semibold text-foreground">Project Board</Heading>
+<Stack Gap="6" Class="w-full min-w-[960px]">
+
+    <!-- Header bar -->
+    <Flex Class="items-center justify-between gap-4">
+        <Stack Gap="0">
+            <Lumeo.Text As="h2" Class="text-xl font-semibold text-foreground leading-none">Sprint 24</Lumeo.Text>
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Apr 14 – Apr 25, 2026 · @_allCards.Count tasks</Lumeo.Text>
+        </Stack>
         <Flex Class="items-center gap-3">
-            <Stack Class="relative">
-                <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input placeholder="Search tasks..." Class="pl-9 w-56" @bind-Value="_search" />
-            </Stack>
-            <Button Variant="Button.ButtonVariant.Default">
-                <DynamicIcon Name="Plus" Class="h-4 w-4 mr-2" />
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                <DynamicIcon Name="Filter" Class="h-4 w-4 mr-1.5" />
+                Filter
+            </Button>
+            <!-- Assignee avatar stack -->
+            <Flex Class="items-center -space-x-2">
+                @foreach (var a in _assignees)
+                {
+                    <Tooltip Content="@a.Name">
+                        <Avatar Size="Avatar.AvatarSize.Sm" Class="ring-2 ring-background cursor-pointer">
+                            <AvatarFallback Class="text-[10px]">@a.Initials</AvatarFallback>
+                        </Avatar>
+                    </Tooltip>
+                }
+                <div class="flex items-center justify-center h-7 w-7 rounded-full bg-muted ring-2 ring-background text-xs text-muted-foreground font-medium cursor-pointer">+2</div>
+            </Flex>
+            <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm">
+                <DynamicIcon Name="Plus" Class="h-4 w-4 mr-1.5" />
                 New Task
             </Button>
         </Flex>
     </Flex>
 
-    <!-- Kanban columns -->
-    <Grid Class="grid-cols-1 md:grid-cols-4 gap-6 items-start">
+    <!-- Kanban board -->
+    <div class="flex gap-4 items-start overflow-x-auto pb-4">
+        @foreach (var col in _columnOrder)
+        {
+            var colKey = col;
+            var colCards = _columns[colKey];
+            var colMeta = _columnMeta[colKey];
+            var isOver = _dragOverColumn == colKey;
 
-        <!-- To Do -->
-        <Stack Gap="3">
-            <Flex Class="items-center justify-between">
-                <Flex Class="items-center gap-2">
-                    <Heading Level="3" Class="text-sm font-semibold text-foreground">To Do</Heading>
-                    <Badge Variant="Badge.BadgeVariant.Secondary">@_todoCards.Count</Badge>
-                </Flex>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                    <DynamicIcon Name="Plus" Class="h-4 w-4" />
-                </Button>
-            </Flex>
-            <div class="@($"space-y-3 min-h-[80px] rounded-lg p-1 transition-colors {(_dropTarget == "todo" ? "bg-primary/10 ring-2 ring-primary/30" : "")}")"
-                 @ondragover="@(() => _dropTarget = "todo")"
+            <div class="@($"flex flex-col gap-2 min-w-[280px] max-w-[320px] w-[300px] rounded-[var(--radius-lg)] p-3 transition-all duration-150 {(isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/30")}")"
                  @ondragover:preventDefault="true"
-                 @ondragleave="@(() => _dropTarget = "")"
-                 @ondrop="() => Drop(_todoCards)">
-                @foreach (var card in _todoCards)
-                {
-                    <Stack draggable="true"
-                         @ondragstart="() => DragStart(card, _todoCards)">
-                        @RenderTaskCard(card, "bg-muted-foreground/30")
-                    </Stack>
-                }
-            </div>
-        </Stack>
+                 @ondragenter="@(() => _dragOverColumn = colKey)"
+                 @ondragleave="@(() => { if (_dragOverColumn == colKey) _dragOverColumn = null; })"
+                 @ondrop="@(() => HandleDrop(colKey))">
 
-        <!-- In Progress -->
-        <Stack Gap="3">
-            <Flex Class="items-center justify-between">
-                <Flex Class="items-center gap-2">
-                    <Heading Level="3" Class="text-sm font-semibold text-foreground">In Progress</Heading>
-                    <Badge Variant="Badge.BadgeVariant.Secondary">@_inProgressCards.Count</Badge>
+                <!-- Column header -->
+                <Flex Class="items-center justify-between mb-1">
+                    <Flex Class="items-center gap-2">
+                        <div class="h-2.5 w-2.5 rounded-full @colMeta.DotColor"></div>
+                        <Lumeo.Text As="h3" Class="text-sm font-semibold text-foreground">@colMeta.Title</Lumeo.Text>
+                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs h-5 px-1.5 min-w-[20px] text-center">@colCards.Count</Badge>
+                    </Flex>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0">
+                        <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
+                    </Button>
                 </Flex>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                    <DynamicIcon Name="Plus" Class="h-4 w-4" />
-                </Button>
-            </Flex>
-            <div class="@($"space-y-3 min-h-[80px] rounded-lg p-1 transition-colors {(_dropTarget == "inprogress" ? "bg-primary/10 ring-2 ring-primary/30" : "")}")"
-                 @ondragover="@(() => _dropTarget = "inprogress")"
-                 @ondragover:preventDefault="true"
-                 @ondragleave="@(() => _dropTarget = "")"
-                 @ondrop="() => Drop(_inProgressCards)">
-                @foreach (var card in _inProgressCards)
-                {
-                    <Stack draggable="true"
-                         @ondragstart="() => DragStart(card, _inProgressCards)">
-                        @RenderTaskCard(card, "bg-primary/60")
-                    </Stack>
-                }
-            </div>
-        </Stack>
 
-        <!-- Review -->
-        <Stack Gap="3">
-            <Flex Class="items-center justify-between">
-                <Flex Class="items-center gap-2">
-                    <Heading Level="3" Class="text-sm font-semibold text-foreground">Review</Heading>
-                    <Badge Variant="Badge.BadgeVariant.Secondary">@_reviewCards.Count</Badge>
-                </Flex>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                    <DynamicIcon Name="Plus" Class="h-4 w-4" />
-                </Button>
-            </Flex>
-            <div class="@($"space-y-3 min-h-[80px] rounded-lg p-1 transition-colors {(_dropTarget == "review" ? "bg-primary/10 ring-2 ring-primary/30" : "")}")"
-                 @ondragover="@(() => _dropTarget = "review")"
-                 @ondragover:preventDefault="true"
-                 @ondragleave="@(() => _dropTarget = "")"
-                 @ondrop="() => Drop(_reviewCards)">
-                @foreach (var card in _reviewCards)
-                {
-                    <Stack draggable="true"
-                         @ondragstart="() => DragStart(card, _reviewCards)">
-                        @RenderTaskCard(card, "bg-chart-3/60")
-                    </Stack>
-                }
-            </div>
-        </Stack>
+                <!-- Cards drop zone -->
+                <div class="flex flex-col gap-2 min-h-[80px]">
+                    @foreach (var card in colCards)
+                    {
+                        var c = card;
+                        <div draggable="true"
+                             class="@($"group rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden cursor-grab active:cursor-grabbing hover:shadow-md hover:border-border/70 transition-all duration-150 {(_draggedCard?.Id == c.Id ? "opacity-50 scale-[0.98]" : "opacity-100")}")"
+                             @ondragstart="@(() => HandleDragStart(c, colKey))"
+                             @ondragend="@(() => HandleDragEnd())">
 
-        <!-- Done -->
-        <Stack Gap="3">
-            <Flex Class="items-center justify-between">
-                <Flex Class="items-center gap-2">
-                    <Heading Level="3" Class="text-sm font-semibold text-foreground">Done</Heading>
-                    <Badge Variant="Badge.BadgeVariant.Secondary">@_doneCards.Count</Badge>
-                </Flex>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                    <DynamicIcon Name="Plus" Class="h-4 w-4" />
-                </Button>
-            </Flex>
-            <div class="@($"space-y-3 min-h-[80px] rounded-lg p-1 transition-colors {(_dropTarget == "done" ? "bg-primary/10 ring-2 ring-primary/30" : "")}")"
-                 @ondragover="@(() => _dropTarget = "done")"
-                 @ondragover:preventDefault="true"
-                 @ondragleave="@(() => _dropTarget = "")"
-                 @ondrop="() => Drop(_doneCards)">
-                @foreach (var card in _doneCards)
-                {
-                    <Stack draggable="true"
-                         @ondragstart="() => DragStart(card, _doneCards)">
-                        @RenderTaskCard(card, "bg-chart-1/60")
-                    </Stack>
-                }
-            </div>
-        </Stack>
+                            <!-- Priority strip -->
+                            <div class="h-1 w-full @GetPriorityStrip(c.Priority)"></div>
 
-    </Grid>
+                            <div class="p-3 flex flex-col gap-2">
+                                <!-- Top row: category tag + priority badge -->
+                                <Flex Class="items-center justify-between gap-2">
+                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-4 px-1.5 font-normal">@c.Category</Badge>
+                                    <Flex Class="items-center gap-1">
+                                        <DynamicIcon Name="@GetPriorityIcon(c.Priority)" Class="@($"h-3 w-3 {GetPriorityIconColor(c.Priority)}")" />
+                                        <Lumeo.Text Class="@($"text-[10px] font-medium {GetPriorityIconColor(c.Priority)}")">@c.Priority</Lumeo.Text>
+                                    </Flex>
+                                </Flex>
+
+                                <!-- Title -->
+                                <Lumeo.Text Class="text-sm font-medium text-foreground leading-snug">@c.Title</Lumeo.Text>
+
+                                <!-- Description -->
+                                <Lumeo.Text Class="text-xs text-muted-foreground leading-relaxed line-clamp-2">@c.Description</Lumeo.Text>
+
+                                <!-- Tags -->
+                                @if (c.Tags.Length > 0)
+                                {
+                                    <Flex Class="items-center gap-1 flex-wrap">
+                                        @foreach (var tag in c.Tags)
+                                        {
+                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] h-4 px-1.5 font-normal">@tag</Badge>
+                                        }
+                                    </Flex>
+                                }
+
+                                <Separator />
+
+                                <!-- Footer -->
+                                <Flex Class="items-center justify-between">
+                                    <!-- Assignee avatars -->
+                                    <Flex Class="items-center -space-x-1.5">
+                                        @foreach (var initials in c.AssigneeInitials)
+                                        {
+                                            <Avatar Class="h-6 w-6 ring-2 ring-card">
+                                                <AvatarFallback Class="text-[9px]">@initials</AvatarFallback>
+                                            </Avatar>
+                                        }
+                                    </Flex>
+                                    <!-- Metadata -->
+                                    <Flex Class="items-center gap-2.5 text-muted-foreground">
+                                        <Flex Class="items-center gap-0.5">
+                                            <DynamicIcon Name="CalendarDays" Class="h-3 w-3" />
+                                            <Lumeo.Text Class="text-[10px]">@c.DueDate</Lumeo.Text>
+                                        </Flex>
+                                        @if (c.Subtasks > 0)
+                                        {
+                                            <Flex Class="items-center gap-0.5">
+                                                <DynamicIcon Name="CheckSquare" Class="h-3 w-3" />
+                                                <Lumeo.Text Class="text-[10px]">@c.Subtasks</Lumeo.Text>
+                                            </Flex>
+                                        }
+                                        <Flex Class="items-center gap-0.5">
+                                            <DynamicIcon Name="MessageCircle" Class="h-3 w-3" />
+                                            <Lumeo.Text Class="text-[10px]">@c.Comments</Lumeo.Text>
+                                        </Flex>
+                                    </Flex>
+                                </Flex>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
 </Stack>
 
+</ComponentDemo>
+
 @code {
-    private string _search = "";
-    private TaskCard? _draggedCard;
-    private List<TaskCard>? _dragSource;
-    private string _dropTarget = "";
 
-    public record TaskCard(string Id, string Title, string Description, TaskPriority Priority, string DueDate, string Category, int Attachments, int Comments);
+    // ── Data model ─────────────────────────────────────────────────────────────
 
-    public enum TaskPriority { High, Medium, Low }
+    public enum TaskPriority { Low, Medium, High, Urgent }
 
-    private readonly List<TaskCard> _todoCards = new()
+    public record TaskCard(
+        string Id,
+        string Title,
+        string Description,
+        TaskPriority Priority,
+        string DueDate,
+        string Category,
+        string[] Tags,
+        int Subtasks,
+        int Comments,
+        string[] AssigneeInitials
+    );
+
+    private record Assignee(string Name, string Initials);
+
+    private record ColumnMeta(string Title, string DotColor);
+
+    // ── Columns ────────────────────────────────────────────────────────────────
+
+    private readonly List<string> _columnOrder = new() { "backlog", "todo", "inprogress", "review", "done" };
+
+    private readonly Dictionary<string, ColumnMeta> _columnMeta = new()
     {
-        new("todo-1", "Design system tokens", "Define and document all color, spacing, and typography tokens for the new design system.", TaskPriority.High, "Mar 5", "Design", 3, 4),
-        new("todo-2", "Write onboarding copy", "Draft welcome emails and in-app onboarding messages for new users.", TaskPriority.Medium, "Mar 8", "Marketing", 1, 2),
-        new("todo-3", "API rate limiting", "Implement rate limiting middleware to protect public API endpoints from abuse.", TaskPriority.High, "Mar 6", "Backend", 0, 5),
-        new("todo-4", "Mobile responsive nav", "Refactor navigation component to be fully responsive on small screens.", TaskPriority.Low, "Mar 12", "Frontend", 2, 1),
+        ["backlog"]    = new("Backlog",      "bg-muted-foreground/60"),
+        ["todo"]       = new("Todo",         "bg-chart-3"),
+        ["inprogress"] = new("In Progress",  "bg-primary"),
+        ["review"]     = new("Review",       "bg-chart-4"),
+        ["done"]       = new("Done",         "bg-chart-2"),
     };
 
-    private readonly List<TaskCard> _inProgressCards = new()
+    private readonly Dictionary<string, List<TaskCard>> _columns = new()
     {
-        new("ip-1", "Authentication flow", "Build complete sign-in, sign-up, and password reset flows using the new auth service.", TaskPriority.High, "Mar 4", "Frontend", 4, 7),
-        new("ip-2", "Dashboard analytics", "Add real-time charts and metrics to the main dashboard overview page.", TaskPriority.Medium, "Mar 7", "Frontend", 2, 3),
-        new("ip-3", "Component library docs", "Document all Lumeo components with usage examples, props, and accessibility notes.", TaskPriority.Low, "Mar 10", "Design", 1, 6),
-    };
-
-    private readonly List<TaskCard> _reviewCards = new()
-    {
-        new("review-1", "Code Review: Authentication Module", "Review PR #142 for security vulnerabilities and best practices", TaskPriority.High, "Today", "Frontend", 2, 5),
-        new("review-2", "UX Review: Checkout Flow", "Review redesigned checkout flow mockups with the team", TaskPriority.Medium, "Tomorrow", "Design", 1, 3),
-    };
-
-    private readonly List<TaskCard> _doneCards = new()
-    {
-        new("done-1", "Project scaffolding", "Set up repository, CI/CD pipeline, and base project structure.", TaskPriority.Medium, "Feb 28", "DevOps", 0, 2),
-        new("done-2", "Database schema", "Design and migrate initial database schema for users, projects, and tasks.", TaskPriority.High, "Mar 1", "Backend", 5, 8),
-    };
-
-    private void DragStart(TaskCard card, List<TaskCard> source)
-    {
-        _draggedCard = card;
-        _dragSource = source;
-    }
-
-    private void Drop(List<TaskCard> target)
-    {
-        _dropTarget = "";
-        if (_draggedCard is null || _dragSource is null || _dragSource == target) return;
-        _dragSource.Remove(_draggedCard);
-        target.Add(_draggedCard);
-        _draggedCard = null;
-        _dragSource = null;
-    }
-
-    private RenderFragment RenderTaskCard(TaskCard card, string columnColor) => __builder =>
-    {
-        var priorityVariant = card.Priority switch
+        ["backlog"] = new()
         {
-            TaskPriority.High => Badge.BadgeVariant.Destructive,
-            TaskPriority.Medium => Badge.BadgeVariant.Secondary,
-            _ => Badge.BadgeVariant.Outline
-        };
-
-        <Card Class="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow overflow-hidden">
-            <Stack Class="@($"h-1 {columnColor}")" />
-            <CardContent Class="p-4 space-y-3">
-                <Flex Class="items-start justify-between gap-2">
-                    <Flex Class="items-center gap-2 flex-wrap">
-                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">@card.Category</Badge>
-                    </Flex>
-                    <Badge Variant="@priorityVariant" Class="shrink-0 text-xs">@card.Priority.ToString()</Badge>
-                </Flex>
-                <Lumeo.Text Class="text-sm font-medium text-foreground leading-snug">@card.Title</Lumeo.Text>
-                <Lumeo.Text Class="text-xs text-muted-foreground">@card.Description</Lumeo.Text>
-                <Separator Class="my-4" />
-                <Flex Class="items-center justify-between mt-2">
-                    <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6">
-                        <AvatarFallback Class="text-xs">@card.Title.Substring(0, Math.Min(2, card.Title.Length)).ToUpperInvariant()</AvatarFallback>
-                    </Avatar>
-                    <Flex Class="items-center gap-3 text-muted-foreground">
-                        @if (card.Attachments > 0)
-                        {
-                            <Flex Class="items-center gap-1">
-                                <DynamicIcon Name="FileText" Class="h-3.5 w-3.5" />
-                                <Lumeo.Text Class="text-xs">@card.Attachments</Lumeo.Text>
-                            </Flex>
-                        }
-                        <Flex Class="items-center gap-1">
-                            <DynamicIcon Name="MessageCircle" Class="h-3.5 w-3.5" />
-                            <Lumeo.Text Class="text-xs">@card.Comments</Lumeo.Text>
-                        </Flex>
-                        <Flex Class="items-center gap-1">
-                            <DynamicIcon Name="CalendarDays" Class="h-3.5 w-3.5" />
-                            <Lumeo.Text Class="text-xs">@card.DueDate</Lumeo.Text>
-                        </Flex>
-                    </Flex>
-                </Flex>
-            </CardContent>
-        </Card>
+            new("bl-1", "Add SSO via SAML 2.0",
+                "Integrate SAML 2.0 identity provider support so enterprise customers can use their existing IdP.",
+                TaskPriority.Urgent, "May 2", "Auth", new[] { "saml", "enterprise" }, 3, 4, new[] { "PK", "MW" }),
+            new("bl-2", "Email notification templates",
+                "Design and implement transactional email templates for lifecycle events (signup, billing, alerts).",
+                TaskPriority.Medium, "May 7", "Product", new[] { "email" }, 2, 1, new[] { "LF" }),
+            new("bl-3", "Audit dark mode WCAG AA",
+                "Run contrast checks across all components in dark mode and fix any failures.",
+                TaskPriority.Low, "May 10", "Design", new[] { "a11y" }, 0, 2, new[] { "AD" }),
+        },
+        ["todo"] = new()
+        {
+            new("todo-1", "Resizable split-pane component",
+                "Build a Resizable component supporting horizontal and vertical pane splits with keyboard support.",
+                TaskPriority.High, "Apr 22", "Frontend", new[] { "component", "a11y" }, 4, 5, new[] { "MW", "NP" }),
+            new("todo-2", "API rate limiting middleware",
+                "Implement per-token rate limiting on all public API endpoints with configurable burst allowances.",
+                TaskPriority.High, "Apr 21", "Backend", new[] { "security" }, 2, 6, new[] { "PK" }),
+            new("todo-3", "Sentry for production",
+                "Set up Sentry error tracking and performance monitoring in the production environment.",
+                TaskPriority.Medium, "Apr 24", "DevOps", new[] { "monitoring" }, 1, 3, new[] { "NP" }),
+        },
+        ["inprogress"] = new()
+        {
+            new("ip-1", "Migrate DataGrid to virtualized rows",
+                "Add row virtualisation so DataGrid renders 10,000-row tables smoothly without jank.",
+                TaskPriority.High, "Apr 19", "Frontend", new[] { "performance" }, 5, 8, new[] { "MW" }),
+            new("ip-2", "Stripe billing integration",
+                "Connect subscription plan management to Stripe — upgrades, downgrades, and cancellations.",
+                TaskPriority.Medium, "Apr 20", "Backend", new[] { "billing" }, 3, 4, new[] { "PK", "AD" }),
+            new("ip-3", "Fix Webhook retry backoff",
+                "Replace linear retry with exponential backoff + jitter on all outbound webhook deliveries.",
+                TaskPriority.Urgent, "Apr 18", "Backend", new[] { "reliability" }, 2, 3, new[] { "NP" }),
+        },
+        ["review"] = new()
+        {
+            new("rev-1", "PR #88 — Resizable component",
+                "Review security, accessibility, and edge cases for the new Resizable split-pane PR.",
+                TaskPriority.High, "Today", "Frontend", new[] { "review" }, 0, 5, new[] { "NP", "MW" }),
+            new("rev-2", "Checkout UX redesign",
+                "Review updated checkout flow mockups and validate against latest usability study findings.",
+                TaskPriority.Medium, "Tomorrow", "Design", new[] { "ux" }, 0, 3, new[] { "AD", "LF" }),
+        },
+        ["done"] = new()
+        {
+            new("done-1", "CI/CD pipeline setup",
+                "Configured GitHub Actions for build, test, lint, and deploy to staging on every PR.",
+                TaskPriority.Medium, "Apr 10", "DevOps", new[] { "ci" }, 0, 2, new[] { "PK" }),
+            new("done-2", "Database schema v2 migration",
+                "Migrated production DB to the v2 schema — users, workspaces, billing, and audit tables.",
+                TaskPriority.High, "Apr 11", "Backend", new[] { "db", "migration" }, 4, 8, new[] { "AD", "NP" }),
+            new("done-3", "Tooltip a11y fix",
+                "Fixed keyboard focus trap and ARIA roles on Tooltip — now passes WCAG AA in all browsers.",
+                TaskPriority.Low, "Apr 14", "Frontend", new[] { "a11y" }, 0, 3, new[] { "MW" }),
+        },
     };
+
+    // ── Assignees ──────────────────────────────────────────────────────────────
+
+    private readonly List<Assignee> _assignees = new()
+    {
+        new("Priya Kapoor",   "PK"),
+        new("Marcus Webb",    "MW"),
+        new("Lena Fischer",   "LF"),
+        new("Amara Diallo",   "AD"),
+        new("Noah Park",      "NP"),
+    };
+
+    // ── Drag state ─────────────────────────────────────────────────────────────
+
+    private TaskCard? _draggedCard;
+    private string?   _dragSourceColumn;
+    private string?   _dragOverColumn;
+
+    // ── Drag handlers ──────────────────────────────────────────────────────────
+
+    private void HandleDragStart(TaskCard card, string sourceColumn)
+    {
+        _draggedCard    = card;
+        _dragSourceColumn = sourceColumn;
+    }
+
+    private void HandleDragEnd()
+    {
+        _draggedCard      = null;
+        _dragSourceColumn = null;
+        _dragOverColumn   = null;
+    }
+
+    private void HandleDrop(string targetColumn)
+    {
+        if (_draggedCard is null || _dragSourceColumn is null)
+            return;
+
+        // Allow drop on same column — it's a no-op but harmless
+        if (_dragSourceColumn != targetColumn)
+        {
+            _columns[_dragSourceColumn].Remove(_draggedCard);
+            _columns[targetColumn].Add(_draggedCard);
+        }
+
+        _draggedCard      = null;
+        _dragSourceColumn = null;
+        _dragOverColumn   = null;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private List<TaskCard> _allCards => _columns.Values.SelectMany(c => c).ToList();
+
+    private static string GetPriorityStrip(TaskPriority p) => p switch
+    {
+        TaskPriority.Urgent => "bg-destructive",
+        TaskPriority.High   => "bg-orange-500",
+        TaskPriority.Medium => "bg-chart-3",
+        _                   => "bg-muted-foreground/40",
+    };
+
+    private static string GetPriorityIcon(TaskPriority p) => p switch
+    {
+        TaskPriority.Urgent => "AlertCircle",
+        TaskPriority.High   => "ArrowUp",
+        TaskPriority.Medium => "Minus",
+        _                   => "ArrowDown",
+    };
+
+    private static string GetPriorityIconColor(TaskPriority p) => p switch
+    {
+        TaskPriority.Urgent => "text-destructive",
+        TaskPriority.High   => "text-orange-500",
+        TaskPriority.Medium => "text-chart-3",
+        _                   => "text-muted-foreground",
+    };
+
+    // ── Code snippet ───────────────────────────────────────────────────────────
+
+    private const string _code = """
+        <!-- Native HTML5 drag-and-drop Kanban board -->
+        <div class="flex gap-4">
+            @foreach (var col in _columnOrder)
+            {
+                var colKey = col;
+                <div @ondragover:preventDefault="true"
+                     @ondragenter="@(() => _dragOverColumn = colKey)"
+                     @ondragleave="@(() => _dragOverColumn = null)"
+                     @ondrop="@(() => HandleDrop(colKey))">
+
+                    @foreach (var card in _columns[colKey])
+                    {
+                        var c = card;
+                        <div draggable="true"
+                             @ondragstart="@(() => HandleDragStart(c, colKey))"
+                             @ondragend="@(() => HandleDragEnd())">
+                            @c.Title
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @code {
+            private TaskCard? _draggedCard;
+            private string?   _dragSourceColumn;
+            private string?   _dragOverColumn;
+
+            private void HandleDragStart(TaskCard card, string col) {
+                _draggedCard = card;
+                _dragSourceColumn = col;
+            }
+
+            private void HandleDragEnd() {
+                _draggedCard = _dragSourceColumn = _dragOverColumn = null;
+            }
+
+            private void HandleDrop(string target) {
+                if (_draggedCard is null || _dragSourceColumn == target) return;
+                _columns[_dragSourceColumn!].Remove(_draggedCard);
+                _columns[target].Add(_draggedCard);
+                HandleDragEnd();
+            }
+        }
+        """;
 }
