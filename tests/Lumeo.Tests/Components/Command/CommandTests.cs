@@ -110,7 +110,7 @@ public class CommandTests : IAsyncLifetime
         });
 
         var input = cut.Find("input");
-        Assert.Equal("Type a command or search...", input.GetAttribute("placeholder"));
+        Assert.Equal("Type a command or search\u2026", input.GetAttribute("placeholder"));
     }
 
     [Fact]
@@ -317,7 +317,7 @@ public class CommandTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        Assert.Contains("No results found.", cut.Markup);
+        Assert.Contains("No results found", cut.Markup);
     }
 
     [Fact]

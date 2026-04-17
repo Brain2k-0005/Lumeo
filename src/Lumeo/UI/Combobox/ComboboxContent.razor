@@ -9,14 +9,14 @@
         {
             <div class="flex items-center justify-center py-2 px-2 text-sm text-muted-foreground">
                 <Spinner Class="h-4 w-4 mr-2" />
-                Loading...
+                @L["Combobox.Loading"]
             </div>
         }
         @ChildContent
-        @if (!Context.IsSearchLoading && Context.ItemCount == 0 && !string.IsNullOrEmpty(EmptyText))
+        @if (!Context.IsSearchLoading && Context.ItemCount == 0)
         {
             <div class="py-6 text-center text-sm text-muted-foreground">
-                @EmptyText
+                @(EmptyText ?? L["Combobox.NoResults"])
             </div>
         }
         @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText) && Context.ItemCount == 0)
@@ -24,18 +24,19 @@
             <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground border-t border-border mt-1 pt-2"
                     @onclick="HandleCreate">
                 <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
-                <span>Create "@Context.SearchText"</span>
+                <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
             </button>
         }
     </div>
 }
 
 @inject ComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public string EmptyText { get; set; } = "No results found.";
+    [Parameter] public string? EmptyText { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

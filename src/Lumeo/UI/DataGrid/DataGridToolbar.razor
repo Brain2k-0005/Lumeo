@@ -1,12 +1,13 @@
 @namespace Lumeo
 @typeparam TItem
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     <div class="flex items-center gap-2 flex-1">
         <div class="relative">
             <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input type="text"
-                   placeholder="Search..."
+                   placeholder="@L["DataGrid.SearchPlaceholder"]"
                    class="h-8 w-56 rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                    value="@SearchText"
                    @oninput="OnSearchInput" />
@@ -41,10 +42,10 @@
         {
             <button type="button"
                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                    title="Copy selected rows to clipboard"
+                    title="@L["DataGrid.CopySelected", SelectedItems.Count]"
                     @onclick="CopySelected">
                 <Blazicon Svg="Lucide.Clipboard" class="h-4 w-4 mr-1.5" />
-                <span>Copy (@SelectedItems.Count)</span>
+                <span>@L["DataGrid.CopySelected", SelectedItems.Count]</span>
             </button>
         }
 
@@ -54,7 +55,7 @@
                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                     @onclick="ToggleColumnPanel">
                 <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
-                <span>Columns</span>
+                <span>@L["DataGrid.Columns"]</span>
             </button>
 
             @if (_columnPanelOpen && EffectiveColumns is not null)
@@ -74,7 +75,7 @@
                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                     @onclick="ToggleExportMenu">
                 <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
-                <span>Export</span>
+                <span>@L["DataGrid.Export"]</span>
                 <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
             </button>
 
@@ -111,7 +112,7 @@
                         class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                         @onclick="ToggleLayoutsPanel">
                     <Blazicon Svg="Lucide.LayoutTemplate" class="h-4 w-4 mr-1.5" />
-                    <span>Layouts</span>
+                    <span>@L["DataGrid.Layouts"]</span>
                     <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
                 </button>
 
@@ -121,12 +122,12 @@
 
                         @* Personal layouts *@
                         <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/40 bg-muted/30">
-                            Personal
+                            @L["DataGrid.Personal"]
                         </div>
                         <div class="p-1">
                             @if (_personalLayouts.Count == 0)
                             {
-                                <div class="px-3 py-1.5 text-xs text-muted-foreground italic">No saved layouts yet.</div>
+                                <div class="px-3 py-1.5 text-xs text-muted-foreground italic">@L["DataGrid.NoSavedLayouts"]</div>
                             }
                             else
                             {
@@ -137,13 +138,13 @@
                                         <span class="flex-1 text-sm truncate">@l.Name</span>
                                         <button type="button"
                                                 class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="Apply layout"
+                                                title="@L["DataGrid.ApplyLayout"]"
                                                 @onclick="@(async () => await ApplyLayout(l))">
                                             <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
                                         </button>
                                         <button type="button"
                                                 class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="Delete layout"
+                                                title="@L["DataGrid.Delete"]"
                                                 @onclick="@(async () => await DeletePersonalLayout(l.Id))">
                                             <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
                                         </button>
@@ -157,19 +158,19 @@
                                 <div class="flex items-center gap-1 px-2 py-1 mt-0.5">
                                     <input type="text"
                                            class="flex-1 h-7 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                                           placeholder="Layout name..."
+                                           placeholder="@L["DataGrid.LayoutName"]"
                                            @bind="_newLayoutName"
                                            @bind:event="oninput"
                                            @onkeydown="HandleSaveKeyDown" />
                                     <button type="button"
                                             class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
-                                            title="Save"
+                                            title="@L["DataGrid.Save"]"
                                             @onclick="CommitSavePersonal">
                                         <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
                                     </button>
                                     <button type="button"
                                             class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
-                                            title="Cancel"
+                                            title="@L["DataGrid.Cancel"]"
                                             @onclick="@(() => { _showSaveInput = false; _newLayoutName = ""; })">
                                         <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
                                     </button>
@@ -181,7 +182,7 @@
                                         class="w-full flex items-center gap-2 rounded px-3 py-1.5 mt-0.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                                         @onclick="@(() => _showSaveInput = true)">
                                     <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
-                                    <span>Save current layout...</span>
+                                    <span>@L["DataGrid.SaveCurrentLayout"]</span>
                                 </button>
                             }
                         </div>
@@ -190,7 +191,7 @@
                         @if (GlobalLayouts is not null && GlobalLayouts.Count > 0)
                         {
                             <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
-                                Global
+                                @L["DataGrid.Global"]
                             </div>
                             <div class="p-1">
                                 @foreach (var layout in GlobalLayouts.Where(l => l.Scope == "Global"))
@@ -200,7 +201,7 @@
                                         <span class="flex-1 text-sm truncate">@l.Name</span>
                                         <button type="button"
                                                 class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="Apply layout"
+                                                title="@L["DataGrid.ApplyLayout"]"
                                                 @onclick="@(async () => await ApplyLayout(l))">
                                             <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
                                         </button>
@@ -208,7 +209,7 @@
                                         {
                                             <button type="button"
                                                     class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    title="Delete layout"
+                                                    title="@L["DataGrid.Delete"]"
                                                     @onclick="@(async () => { _layoutsPanelOpen = false; await OnDeleteNamedLayout.InvokeAsync(l.Id); })">
                                                 <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
                                             </button>
@@ -220,14 +221,14 @@
 
                         @* System Default *@
                         <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
-                            System Default
+                            @L["DataGrid.SystemDefault"]
                         </div>
                         <div class="p-1">
                             <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
-                                <span class="flex-1 text-sm truncate">Default</span>
+                                <span class="flex-1 text-sm truncate">@L["DataGrid.Default"]</span>
                                 <button type="button"
                                         class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Reset to default"
+                                        title="@L["DataGrid.ResetLayout"]"
                                         @onclick="ResetLayout">
                                     <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
                                 </button>
@@ -430,21 +431,21 @@
         await Interop.CopyToClipboard(text);
     }
 
-    private static string GetOperatorLabel(FilterOperator op) => op switch
+    private string GetOperatorLabel(FilterOperator op) => op switch
     {
-        FilterOperator.Contains => "contains",
-        FilterOperator.NotContains => "not contains",
+        FilterOperator.Contains => L["Filter.Contains"],
+        FilterOperator.NotContains => L["Filter.DoesNotContain"],
         FilterOperator.Equals => "=",
         FilterOperator.NotEquals => "!=",
-        FilterOperator.StartsWith => "starts with",
-        FilterOperator.EndsWith => "ends with",
+        FilterOperator.StartsWith => L["Filter.StartsWith"],
+        FilterOperator.EndsWith => L["Filter.EndsWith"],
         FilterOperator.GreaterThan => ">",
         FilterOperator.GreaterThanOrEqual => ">=",
         FilterOperator.LessThan => "<",
         FilterOperator.LessThanOrEqual => "<=",
-        FilterOperator.IsEmpty => "is empty",
-        FilterOperator.IsNotEmpty => "is not empty",
-        FilterOperator.Between => "between",
+        FilterOperator.IsEmpty => L["Filter.IsEmpty"],
+        FilterOperator.IsNotEmpty => L["Filter.IsNotEmpty"],
+        FilterOperator.Between => L["Filter.Between"],
         _ => op.ToString()
     };
 }
