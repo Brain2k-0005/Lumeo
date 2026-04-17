@@ -14,7 +14,7 @@
                     </span>
                 }
                 <div class="flex flex-col gap-1">
-                    <p class="text-sm font-medium leading-none">@Title</p>
+                    <p class="text-sm font-medium leading-none">@EffectiveTitle</p>
                     @if (!string.IsNullOrEmpty(Description))
                     {
                         <p class="text-sm text-muted-foreground">@Description</p>
@@ -23,23 +23,29 @@
             </div>
             <div class="flex justify-end gap-2">
                 <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="HandleCancel">
-                    @CancelText
+                    @EffectiveCancelText
                 </Button>
                 <Button Variant="@(IsDestructive ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Default)"
                         Size="Button.ButtonSize.Sm"
                         OnClick="HandleConfirm">
-                    @ConfirmText
+                    @EffectiveConfirmText
                 </Button>
             </div>
         </div>
     </PopoverContent>
 </Popover>
 
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
 @code {
-    [Parameter] public string Title { get; set; } = "Are you sure?";
+    [Parameter] public string? Title { get; set; }
     [Parameter] public string? Description { get; set; }
-    [Parameter] public string ConfirmText { get; set; } = "Yes";
-    [Parameter] public string CancelText { get; set; } = "No";
+    [Parameter] public string? ConfirmText { get; set; }
+    [Parameter] public string? CancelText { get; set; }
+
+    private string EffectiveTitle => Title ?? L["PopConfirm.Title"];
+    private string EffectiveConfirmText => ConfirmText ?? L["PopConfirm.Confirm"];
+    private string EffectiveCancelText => CancelText ?? L["PopConfirm.Cancel"];
     [Parameter] public bool IsDestructive { get; set; }
     [Parameter] public EventCallback OnConfirm { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }

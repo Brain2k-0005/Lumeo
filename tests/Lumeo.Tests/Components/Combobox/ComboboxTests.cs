@@ -211,7 +211,7 @@ public class ComboboxTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        Assert.Contains("No results found.", cut.Markup);
+        Assert.Contains("No results found", cut.Markup);
     }
 
     [Fact]

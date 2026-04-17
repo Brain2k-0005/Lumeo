@@ -1,6 +1,8 @@
 using Bunit;
 using Lumeo.Services;
+using Lumeo.Services.Localization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Lumeo.Tests.Helpers;
 
@@ -25,6 +27,15 @@ public static class TestContextExtensions
         ctx.Services.AddScoped<ToastService>();
         ctx.Services.AddScoped<ThemeService>();
         ctx.Services.AddScoped<KeyboardShortcutService>();
+
+        // Localization — apply defaults so components can resolve strings in tests
+        ctx.Services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
+        {
+            var options = new LumeoLocalizationOptions();
+            LumeoDefaultStrings.ApplyDefaults(options);
+            return Options.Create(options);
+        });
+        ctx.Services.AddScoped<ILumeoLocalizer, LumeoLocalizer>();
 
         return ctx;
     }

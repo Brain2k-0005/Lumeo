@@ -98,7 +98,7 @@ public class SelectTests : IAsyncLifetime
         var btn = cut.Find("button");
         Assert.NotNull(btn);
         // When no value is selected, the Placeholder is shown instead of ChildContent
-        Assert.Contains("Select an option...", btn.TextContent);
+        Assert.Contains("Select an option", btn.TextContent);
     }
 
     [Fact]

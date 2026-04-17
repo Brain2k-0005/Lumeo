@@ -12,7 +12,7 @@
             disabled="@Disabled"
             aria-haspopup="tree"
             aria-expanded="@_isOpen">
-        <span class="@(string.Join(" ", new[] { "flex-1 truncate text-left", displayText == Placeholder ? "text-muted-foreground" : null }.Where(s => !string.IsNullOrWhiteSpace(s))))">@displayText</span>
+        <span class="@(string.Join(" ", new[] { "flex-1 truncate text-left", displayText == (Placeholder ?? L["TreeSelect.Placeholder"]) ? "text-muted-foreground" : null }.Where(s => !string.IsNullOrWhiteSpace(s))))">@displayText</span>
         @{ var chevronClass = string.Join(" ", new[] { "h-4 w-4 shrink-0 opacity-50 transition-transform", _isOpen ? "rotate-180" : null }.Where(s => !string.IsNullOrWhiteSpace(s))); }
         <Blazicon Svg="Lucide.ChevronDown" class="@chevronClass" />
     </button>
@@ -27,7 +27,7 @@
                 <div class="p-2 border-b border-border">
                     <input type="text"
                            class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
-                           placeholder="Search..."
+                           placeholder="@L["Combobox.SearchPlaceholder"]"
                            value="@_searchText"
                            @oninput="OnSearchInput"
                            @onclick:stopPropagation="true" />
@@ -40,7 +40,7 @@
                 }
                 @if (!HasVisibleItems())
                 {
-                    <div class="py-4 text-center text-sm text-muted-foreground">No results found.</div>
+                    <div class="py-4 text-center text-sm text-muted-foreground">@L["TreeSelect.NoResults"]</div>
                 }
             </div>
         </div>
@@ -48,12 +48,13 @@
 </div>
 
 @inject ComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public List<TreeSelectItem> Items { get; set; } = new();
-    [Parameter] public string Placeholder { get; set; } = "Select...";
+    [Parameter] public string? Placeholder { get; set; }
     [Parameter] public bool Searchable { get; set; }
     [Parameter] public bool Multiple { get; set; }
     [Parameter] public List<string>? Values { get; set; }
@@ -95,14 +96,15 @@
 
     private string GetDisplayText()
     {
+        var placeholder = Placeholder ?? L["TreeSelect.Placeholder"];
         if (Multiple)
         {
-            if (Values == null || Values.Count == 0) return Placeholder;
+            if (Values == null || Values.Count == 0) return placeholder;
             var labels = Values.Select(v => FindLabel(Items, v)).Where(l => l != null).ToList();
-            return labels.Count > 0 ? string.Join(", ", labels) : Placeholder;
+            return labels.Count > 0 ? string.Join(", ", labels) : placeholder;
         }
-        if (string.IsNullOrEmpty(Value)) return Placeholder;
-        return FindLabel(Items, Value) ?? Placeholder;
+        if (string.IsNullOrEmpty(Value)) return placeholder;
+        return FindLabel(Items, Value) ?? placeholder;
     }
 
     private string? FindLabel(List<TreeSelectItem> items, string value)
