@@ -1,355 +1,523 @@
 @page "/blocks/task-tracker"
 @namespace Lumeo.Docs.Pages.Patterns
 
-<PageTitle>Task Tracker Pattern — Lumeo</PageTitle>
+<PageTitle>Task Tracker — Lumeo</PageTitle>
 
-<PageHeader Title="Task Tracker" Description="A task management interface with command search, filter dropdowns, calendar date range, sortable data table with bulk selection, and bulk action controls." />
+<PageHeader Title="Task Tracker" Description="A Linear-inspired task tracker with grouped status lanes, priority icons, label badges, subtask progress, multi-select with bulk actions, and a left navigation rail." />
 
-<Stack Gap="6">
+<ComponentDemo Title="Task Tracker" Code="@_code">
+    <div class="w-full min-w-[800px] flex flex-col rounded-[var(--radius-lg)] border border-border/40 overflow-hidden" style="min-height:640px;">
 
-    <ComponentDemo Title="Task Tracker" Code="@_taskTrackerCode">
-        <Stack Gap="4" Class="w-full min-w-[700px]">
+        <!-- ── Top Bar ───────────────────────────────────────────────── -->
+        <div class="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-background/60">
+            <!-- Project breadcrumb -->
+            <div class="flex items-center gap-1.5 text-sm shrink-0">
+                <Lumeo.Text As="span" Class="font-semibold text-foreground">Lumeo</Lumeo.Text>
+                <DynamicIcon Name="ChevronRight" Class="h-3.5 w-3.5 text-muted-foreground" />
+                <Lumeo.Text As="span" Class="text-muted-foreground">Q2 Sprint</Lumeo.Text>
+            </div>
 
-            <!-- Header Bar -->
-            <Flex Class="flex-col sm:flex-row sm:items-center gap-3">
-                <Heading Level="2" Class="text-xl font-semibold text-foreground shrink-0">Task Tracker</Heading>
+            <!-- View tabs -->
+            <Tabs ActiveValue="@_activeView" ActiveValueChanged="@(v => _activeView = v)" Class="flex-1">
+                <TabsList Class="h-8">
+                    <TabsTrigger Value="all" Class="text-xs px-3 h-7">All</TabsTrigger>
+                    <TabsTrigger Value="mine" Class="text-xs px-3 h-7">My Issues</TabsTrigger>
+                    <TabsTrigger Value="active" Class="text-xs px-3 h-7">Active</TabsTrigger>
+                    <TabsTrigger Value="backlog" Class="text-xs px-3 h-7">Backlog</TabsTrigger>
+                    <TabsTrigger Value="done" Class="text-xs px-3 h-7">Done</TabsTrigger>
+                </TabsList>
+            </Tabs>
 
-                <!-- Command Search -->
-                <Stack Class="flex-1 max-w-sm">
-                    <Command Class="rounded-lg border shadow-none">
-                        <CommandInput Placeholder="Search tasks... (Ctrl+K)" />
-                        <CommandList>
-                            <CommandGroup Heading="Suggestions">
-                                <CommandItem Shortcut="Alt+S">
-                                    <DynamicIcon Name="CircleDot" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Filter by status
-                                </CommandItem>
-                                <CommandItem Shortcut="Alt+P">
-                                    <DynamicIcon Name="Flag" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Filter by priority
-                                </CommandItem>
-                                <CommandItem Shortcut="Alt+A">
-                                    <DynamicIcon Name="User" Class="h-4 w-4 mr-2 text-muted-foreground" />
-                                    Filter by assignee
-                                </CommandItem>
-                            </CommandGroup>
-                        </CommandList>
-                    </Command>
-                </Stack>
+            <!-- Search -->
+            <div class="relative">
+                <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input Value="@_search" ValueChanged="@(v => _search = v ?? "")"
+                       placeholder="Search issues…"
+                       Class="pl-8 h-8 w-44 text-sm" />
+            </div>
 
-                <!-- Filter Dropdown -->
-                <DropdownMenu @bind-IsOpen="_filterOpen">
-                    <DropdownMenuTrigger>
-                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                            <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4 mr-2" />
-                            Filters
-                            <DynamicIcon Name="ChevronDown" Class="h-4 w-4 ml-2 opacity-50" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent Class="w-56">
-                        <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        @foreach (var status in _allStatuses)
+            <!-- Filter -->
+            <DropdownMenu @bind-IsOpen="_filterOpen">
+                <DropdownMenuTrigger>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8">
+                        <DynamicIcon Name="SlidersHorizontal" Class="h-3.5 w-3.5 mr-1.5" />
+                        Filter
+                        @if (_priorityFilters.Count > 0 || _labelFilters.Count > 0)
                         {
-                            var s = status;
-                            <DropdownMenuCheckboxItem Checked="@_statusFilters.Contains(s)"
-                                                      CheckedChanged="@(v => ToggleStatus(s, v))">
-                                @s
-                            </DropdownMenuCheckboxItem>
+                            <Badge Class="ml-1.5 h-4 min-w-4 text-[10px] px-1">@(_priorityFilters.Count + _labelFilters.Count)</Badge>
                         }
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuRadioGroup Value="@_sortField" ValueChanged="@(v => { _sortField = v; _sortDir = DataTable<object>.SortDirection.Ascending; })">
-                            <DropdownMenuRadioItem Value="Title">Title</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem Value="Priority">Priority</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem Value="DueDate">Due Date</DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Button Size="Button.ButtonSize.Sm">
-                    <DynamicIcon Name="Plus" Class="h-4 w-4 mr-2" />
-                    New Task
-                </Button>
-            </Flex>
-
-            <!-- Calendar Range Filter -->
-            <Card>
-                <CardHeader>
-                    <Flex Class="items-center justify-between">
-                        <Heading Level="3" Class="text-sm font-semibold text-foreground">Date Range</Heading>
-                        @if (_calStart.HasValue && _calEnd.HasValue)
-                        {
-                            <Lumeo.Text As="span" Class="text-xs text-muted-foreground">
-                                @_calStart.Value.ToString("MMM d") – @_calEnd.Value.ToString("MMM d, yyyy")
-                            </Lumeo.Text>
-                        }
-                        else if (_calStart.HasValue)
-                        {
-                            <Lumeo.Text As="span" Class="text-xs text-muted-foreground">From @_calStart.Value.ToString("MMM d, yyyy")</Lumeo.Text>
-                        }
-                    </Flex>
-                </CardHeader>
-                <CardContent>
-                    <Calendar IsRange="true"
-                              @bind-RangeStart="_calStart"
-                              @bind-RangeEnd="_calEnd" />
-                </CardContent>
-            </Card>
-
-            <!-- Data Table -->
-            <Card>
-                <CardContent Class="p-0">
-                    <DataTable TItem="TaskItem"
-                               Items="@SortedTasks"
-                               Selectable="true"
-                               SelectedItems="@_selected"
-                               SelectedItemsChanged="@(v => _selected = v)">
-                        <HeaderTemplate>
-                            <DataTableSortableHeader Column="Title" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Title</DataTableSortableHeader>
-                            <DataTableSortableHeader Column="Status" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Status</DataTableSortableHeader>
-                            <DataTableSortableHeader Column="Priority" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Priority</DataTableSortableHeader>
-                            <th class="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Assignee</th>
-                            <DataTableSortableHeader Column="DueDate" SortColumn="@_sortField" SortDirection="@_sortDir" OnSort="@HandleSort">Due Date</DataTableSortableHeader>
-                        </HeaderTemplate>
-                        <RowTemplate Context="task">
-                            <td class="px-2 py-2 align-middle font-medium text-foreground text-sm">@task.Title</td>
-                            <td class="px-2 py-2 align-middle">
-                                <Badge Variant="@GetStatusVariant(task.Status)">@task.Status</Badge>
-                            </td>
-                            <td class="px-2 py-2 align-middle">
-                                <Badge Variant="@GetPriorityVariant(task.Priority)">@task.Priority</Badge>
-                            </td>
-                            <td class="px-2 py-2 align-middle">
-                                <Flex Class="items-center gap-2">
-                                    <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6">
-                                        <AvatarFallback Class="text-[10px]">@task.AssigneeInitials</AvatarFallback>
-                                    </Avatar>
-                                    <Lumeo.Text As="span" Class="text-sm text-foreground">@task.Assignee</Lumeo.Text>
-                                </Flex>
-                            </td>
-                            <td class="px-2 py-2 align-middle text-sm text-muted-foreground">@task.DueDate.ToString("MMM d, yyyy")</td>
-                        </RowTemplate>
-                    </DataTable>
-                </CardContent>
-
-                <!-- Bottom Bar -->
-                <CardFooter Class="border-t py-3 justify-between">
-                    <Lumeo.Text Class="text-sm text-muted-foreground">
-                        @(_selected?.Count ?? 0) of @SortedTasks.Count() tasks selected
-                    </Lumeo.Text>
-                    @if (_selected?.Count > 0)
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Class="w-52">
+                    <DropdownMenuLabel>Priority</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    @foreach (var pr in new[] { "Urgent", "High", "Medium", "Low", "None" })
                     {
-                        <Flex Class="items-center gap-2">
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
-                                    OnClick="@(() => _selected?.Clear())">
-                                <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
-                                Clear
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Destructive" Size="Button.ButtonSize.Sm">
-                                <DynamicIcon Name="Trash2" Class="h-3.5 w-3.5 mr-1" />
-                                Delete (@(_selected?.Count ?? 0))
-                            </Button>
-                            <Button Size="Button.ButtonSize.Sm">
-                                <DynamicIcon Name="CheckCheck" Class="h-3.5 w-3.5 mr-1" />
-                                Mark Done
-                            </Button>
-                        </Flex>
+                        var p = pr;
+                        <DropdownMenuCheckboxItem Checked="@_priorityFilters.Contains(p)"
+                                                  CheckedChanged="@(v => { if (v) _priorityFilters.Add(p); else _priorityFilters.Remove(p); })">
+                            <DynamicIcon Name="@PriorityIcon(p)" Class="@($"h-3.5 w-3.5 mr-2 {PriorityColor(p)}")" />
+                            @p
+                        </DropdownMenuCheckboxItem>
                     }
-                </CardFooter>
-            </Card>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Label</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    @foreach (var lb in new[] { "bug", "feature", "design", "backend", "a11y" })
+                    {
+                        var l = lb;
+                        <DropdownMenuCheckboxItem Checked="@_labelFilters.Contains(l)"
+                                                  CheckedChanged="@(v => { if (v) _labelFilters.Add(l); else _labelFilters.Remove(l); })">
+                            @l
+                        </DropdownMenuCheckboxItem>
+                    }
+                    @if (_priorityFilters.Count > 0 || _labelFilters.Count > 0)
+                    {
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem OnClick="@(() => { _priorityFilters.Clear(); _labelFilters.Clear(); })">
+                            <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-2" />
+                            Clear filters
+                        </DropdownMenuItem>
+                    }
+                </DropdownMenuContent>
+            </DropdownMenu>
 
-        </Stack>
-    </ComponentDemo>
+            <!-- New Issue -->
+            <Button Size="Button.ButtonSize.Sm" Class="h-8 gap-1.5">
+                <DynamicIcon Name="Plus" Class="h-4 w-4" />
+                New issue
+            </Button>
+        </div>
 
-</Stack>
+        <!-- ── Two-column layout ─────────────────────────────────────── -->
+        <div class="flex flex-1 overflow-hidden">
+
+            <!-- Left nav rail -->
+            <div class="w-56 shrink-0 border-r border-border/40 bg-muted/10 flex flex-col p-2 gap-0.5 overflow-y-auto">
+                @foreach (var item in _navRail)
+                {
+                    var n = item;
+                    <button class="@($"flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors w-full text-left {(_railActive == n.Key ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent/40 hover:text-foreground")}")"
+                            @onclick="@(() => _railActive = n.Key)">
+                        <DynamicIcon Name="@n.Icon" Class="h-4 w-4 shrink-0" />
+                        <span class="flex-1 truncate">@n.Label</span>
+                        @if (n.Count > 0)
+                        {
+                            <span class="text-xs tabular-nums text-muted-foreground">@n.Count</span>
+                        }
+                    </button>
+                }
+
+                <div class="my-1 border-t border-border/40"></div>
+
+                <Lumeo.Text Class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Teams</Lumeo.Text>
+                @foreach (var team in _teams)
+                {
+                    var t = team;
+                    <button class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent/40 hover:text-foreground transition-colors w-full text-left">
+                        <div class="h-4 w-4 rounded-sm flex items-center justify-center shrink-0" style="@($"background-color:{t.Color}20;")">
+                            <span class="text-[9px] font-bold" style="@($"color:{t.Color};")">@t.Name[0]</span>
+                        </div>
+                        @t.Name
+                    </button>
+                }
+            </div>
+
+            <!-- Main task list -->
+            <div class="flex-1 overflow-auto relative">
+                @{
+                    var groups = VisibleTasks
+                        .GroupBy(t => t.Status)
+                        .OrderBy(g => StatusOrder(g.Key))
+                        .ToList();
+                }
+
+                @foreach (var group in groups)
+                {
+                    var status = group.Key;
+                    var tasks = group.ToList();
+                    var isCollapsed = _collapsedGroups.Contains(status);
+
+                    <!-- Group header -->
+                    <div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-border/40 bg-muted/20 sticky top-0 z-10">
+                        <button class="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                                @onclick="@(() => { if (isCollapsed) _collapsedGroups.Remove(status); else _collapsedGroups.Add(status); })">
+                            <DynamicIcon Name="@(isCollapsed ? "ChevronRight" : "ChevronDown")" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <DynamicIcon Name="@StatusIcon(status)" Class="@($"h-4 w-4 shrink-0 {StatusColor(status)}")" />
+                            <Lumeo.Text As="span" Class="text-sm font-semibold text-foreground">@status</Lumeo.Text>
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] px-1.5 py-0 h-4">@tasks.Count</Badge>
+                        </button>
+                    </div>
+
+                    @if (!isCollapsed)
+                    {
+                        @foreach (var task in tasks)
+                        {
+                            var t = task;
+                            var isSelected = _selectedTasks.Contains(t);
+                            <div class="@($"group flex items-center gap-3 px-4 py-2.5 border-b border-border/40 hover:bg-accent/30 transition-colors cursor-pointer {(isSelected ? "bg-accent/50" : "")}")"
+                                 @onclick="@(() => { if (isSelected) _selectedTasks.Remove(t); else _selectedTasks.Add(t); })">
+
+                                <!-- Checkbox (visible on hover or when selected) -->
+                                <div class="@($"shrink-0 {(isSelected ? "" : "opacity-0 group-hover:opacity-100 transition-opacity")}")">
+                                    <Checkbox Checked="@isSelected"
+                                              CheckedChanged="@(v => { if (v) _selectedTasks.Add(t); else _selectedTasks.Remove(t); })" />
+                                </div>
+
+                                <!-- Priority icon -->
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <div class="shrink-0">
+                                            <DynamicIcon Name="@PriorityIcon(t.Priority)" Class="@($"h-4 w-4 {PriorityColor(t.Priority)}")" />
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipContent.TooltipSide.Top">@t.Priority priority</TooltipContent>
+                                </Tooltip>
+
+                                <!-- Ticket ID -->
+                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground font-mono tabular-nums shrink-0 w-16">@t.Id</Lumeo.Text>
+
+                                <!-- Title -->
+                                <Lumeo.Text As="span" Class="flex-1 min-w-0 text-sm font-medium text-foreground truncate">@t.Title</Lumeo.Text>
+
+                                <!-- Labels -->
+                                <div class="hidden lg:flex items-center gap-1 shrink-0">
+                                    @foreach (var label in t.Labels.Take(3))
+                                    {
+                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] py-0 px-1.5 h-4">@label</Badge>
+                                    }
+                                </div>
+
+                                <!-- Assignee avatar -->
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Avatar Size="Avatar.AvatarSize.Sm" Class="h-6 w-6 shrink-0">
+                                            <AvatarFallback Class="text-[10px]">@t.AssigneeInitials</AvatarFallback>
+                                        </Avatar>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipContent.TooltipSide.Top">@t.Assignee</TooltipContent>
+                                </Tooltip>
+
+                                <!-- Due date -->
+                                <div class="hidden xl:flex items-center gap-1 shrink-0 min-w-[80px]">
+                                    <DynamicIcon Name="CalendarDays" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                    <Lumeo.Text As="span" Class="@($"text-xs tabular-nums {(t.DueDate < DateTime.Today ? "text-destructive" : "text-muted-foreground")}")">
+                                        @t.DueDate.ToString("MMM d")
+                                    </Lumeo.Text>
+                                </div>
+
+                                <!-- Subtask progress -->
+                                @if (t.SubTasksDone.HasValue && t.SubTasksTotal.HasValue)
+                                {
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <div class="hidden xl:flex items-center gap-1.5 shrink-0">
+                                                <Progress Value="@((int)((double)t.SubTasksDone.Value / t.SubTasksTotal.Value * 100))"
+                                                          Class="w-12 h-1.5" />
+                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@t.SubTasksDone/@t.SubTasksTotal</Lumeo.Text>
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent Side="TooltipContent.TooltipSide.Top">
+                                            @t.SubTasksDone of @t.SubTasksTotal subtasks complete
+                                        </TooltipContent>
+                                    </Tooltip>
+                                }
+
+                                <!-- Row menu -->
+                                <button class="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted transition-all shrink-0"
+                                        @onclick:stopPropagation="true">
+                                    <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
+                                </button>
+                            </div>
+                        }
+                    }
+                }
+
+                @if (!VisibleTasks.Any())
+                {
+                    <div class="flex flex-col items-center justify-center py-24 text-center">
+                        <div class="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
+                            <DynamicIcon Name="CheckCircle2" Class="h-7 w-7 text-muted-foreground" />
+                        </div>
+                        <Lumeo.Text Class="text-sm font-medium text-foreground">No matching issues</Lumeo.Text>
+                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Try adjusting your filters or search.</Lumeo.Text>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- ── Bulk action bar (slides up when items selected) ─────────── -->
+        @if (_selectedTasks.Count > 0)
+        {
+            <div class="flex items-center gap-3 px-4 py-3 border-t border-border/40 bg-accent/20 animate-in slide-in-from-bottom-2 duration-200">
+                <Lumeo.Text As="span" Class="text-sm font-medium text-foreground shrink-0">
+                    @_selectedTasks.Count selected
+                </Lumeo.Text>
+                <div class="flex items-center gap-2 flex-1">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
+                            @onclick="@(() => _selectedTasks.Clear())">
+                        <DynamicIcon Name="X" Class="h-3.5 w-3.5 mr-1" />
+                        Deselect
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-7 text-xs">
+                        <DynamicIcon Name="UserPlus" Class="h-3.5 w-3.5 mr-1" />
+                        Assign to
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-7 text-xs">
+                        <DynamicIcon Name="Flag" Class="h-3.5 w-3.5 mr-1" />
+                        Set priority
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-7 text-xs">
+                        <DynamicIcon Name="CircleDot" Class="h-3.5 w-3.5 mr-1" />
+                        Change status
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                            Class="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 ml-auto">
+                        <DynamicIcon Name="Trash2" Class="h-3.5 w-3.5 mr-1" />
+                        Delete (@_selectedTasks.Count)
+                    </Button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Footer progress bar when nothing selected -->
+            <div class="flex items-center justify-between px-4 py-2.5 border-t border-border/40 bg-muted/10">
+                <Lumeo.Text Class="text-xs text-muted-foreground">
+                    @_allTasks.Count(t => t.Status == "Done") of @_allTasks.Count issues completed
+                </Lumeo.Text>
+                <div class="flex items-center gap-2">
+                    <Progress Value="@((int)((double)_allTasks.Count(t => t.Status == "Done") / _allTasks.Count * 100))"
+                              Class="w-28 h-1.5" />
+                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">
+                        @((int)((double)_allTasks.Count(t => t.Status == "Done") / _allTasks.Count * 100))%
+                    </Lumeo.Text>
+                </div>
+            </div>
+        }
+
+    </div>
+</ComponentDemo>
 
 @code {
-    // Enums
-    private enum TaskStatus  { Todo, InProgress, Done }
-    private enum TaskPriority { Low, Medium, High, Critical }
-
-    // Data record
-    private record TaskItem(int Id, string Title, string Status, string Priority, string Assignee, string AssigneeInitials, DateTime DueDate);
-
-    // State
+    private string _activeView = "all";
+    private string _railActive = "issues";
+    private string _search = "";
     private bool _filterOpen;
-    private string _sortField = "DueDate";
-    private DataTable<object>.SortDirection _sortDir = DataTable<object>.SortDirection.Ascending;
-    private HashSet<TaskItem> _selected = new();
-    private HashSet<string> _statusFilters = new();
-    private DateOnly? _calStart;
-    private DateOnly? _calEnd;
+    private HashSet<string> _priorityFilters = new();
+    private HashSet<string> _labelFilters = new();
+    private HashSet<TaskItem> _selectedTasks = new();
+    private HashSet<string> _collapsedGroups = new();
 
-    private readonly string[] _allStatuses = { "Todo", "In Progress", "Done" };
+    private record NavRailItem(string Key, string Label, string Icon, int Count = 0);
+    private record TeamItem(string Name, string Color);
+
+    private readonly List<NavRailItem> _navRail = new()
+    {
+        new("inbox",   "Inbox",      "Inbox",        3),
+        new("issues",  "My Issues",  "CircleDot",    7),
+        new("active",  "Active",     "Zap",          4),
+        new("backlog", "Backlog",    "BookOpen",      6),
+        new("projects","Projects",   "FolderKanban"),
+        new("cycles",  "Cycles",     "RefreshCw"),
+        new("views",   "Views",      "Layers"),
+    };
+
+    private readonly List<TeamItem> _teams = new()
+    {
+        new("Engineering", "#6366f1"),
+        new("Design",      "#ec4899"),
+        new("Marketing",   "#f59e0b"),
+    };
+
+    private record TaskItem(
+        string Id,
+        string Title,
+        string Status,
+        string Priority,
+        string Assignee,
+        string AssigneeInitials,
+        List<string> Labels,
+        DateTime DueDate,
+        int? SubTasksDone = null,
+        int? SubTasksTotal = null
+    );
 
     private readonly List<TaskItem> _allTasks = new()
     {
-        new(1,  "Design new onboarding flow",        "Todo",        "High",     "Olivia Martin",   "OM", new DateTime(2026, 3, 5)),
-        new(2,  "Fix authentication bug",             "In Progress", "Critical", "Jackson Lee",     "JL", new DateTime(2026, 3, 3)),
-        new(3,  "Write API documentation",            "Todo",        "Medium",   "Sofia Davis",     "SD", new DateTime(2026, 3, 10)),
-        new(4,  "Migrate database to v3",             "In Progress", "High",     "William Kim",     "WK", new DateTime(2026, 3, 7)),
-        new(5,  "Create Q1 report",                   "Done",        "Low",      "Isabella Nguyen", "IN", new DateTime(2026, 2, 28)),
-        new(6,  "Set up CI/CD pipeline",              "Done",        "Medium",   "Olivia Martin",   "OM", new DateTime(2026, 2, 25)),
-        new(7,  "Implement dark mode toggle",         "Todo",        "Low",      "Jackson Lee",     "JL", new DateTime(2026, 3, 15)),
-        new(8,  "Conduct user interviews",            "In Progress", "High",     "Sofia Davis",     "SD", new DateTime(2026, 3, 8)),
-        new(9,  "Deploy staging environment",         "Todo",        "Critical", "William Kim",     "WK", new DateTime(2026, 3, 4)),
-        new(10, "Optimize image loading performance", "In Progress", "Medium",   "Isabella Nguyen", "IN", new DateTime(2026, 3, 12)),
+        new("LUM-101", "Fix DataGrid virtual scroll jitter",           "In Progress", "Urgent", "Marcus Webb",     "MW", new(){"bug","backend"},         new DateTime(2026, 4, 19), 2, 5),
+        new("LUM-102", "Add SSO via SAML 2.0",                        "In Progress", "Urgent", "Priya Kapoor",    "PK", new(){"feature","backend"},      new DateTime(2026, 4, 21), 3, 8),
+        new("LUM-103", "Migrate toast notifications to portals",       "In Progress", "High",   "Amara Diallo",    "AD", new(){"feature","design"},       new DateTime(2026, 4, 20), 1, 3),
+        new("LUM-104", "Stripe billing integration",                   "In Progress", "High",   "Noah Park",       "NP", new(){"feature","backend"},      new DateTime(2026, 4, 22), 4, 6),
+        new("LUM-105", "Resizable split-pane component",               "Todo",        "High",   "Marcus Webb",     "MW", new(){"feature","design"},       new DateTime(2026, 4, 25)),
+        new("LUM-106", "Add SSO via Google OAuth",                     "Todo",        "High",   "Priya Kapoor",    "PK", new(){"feature","backend"},      new DateTime(2026, 4, 26)),
+        new("LUM-107", "Audit WCAG AA contrast across all components", "Todo",        "Medium", "Lena Fischer",    "LF", new(){"a11y","design"},          new DateTime(2026, 4, 28), 0, 12),
+        new("LUM-108", "Email notification templates",                 "Todo",        "Medium", "Lena Fischer",    "LF", new(){"design"},                 new DateTime(2026, 4, 30)),
+        new("LUM-109", "API rate limiting middleware",                 "Todo",        "Medium", "Noah Park",       "NP", new(){"backend"},                new DateTime(2026, 5, 2)),
+        new("LUM-110", "Onboarding copy revision",                     "Todo",        "Low",    "Amara Diallo",    "AD", new(){"design"},                 new DateTime(2026, 5, 5)),
+        new("LUM-111", "DataTable column reorder via drag",            "Backlog",     "Medium", "Marcus Webb",     "MW", new(){"feature"},                new DateTime(2026, 5, 10)),
+        new("LUM-112", "Calendar component — multi-day events",        "Backlog",     "Medium", "Lena Fischer",    "LF", new(){"feature","design"},       new DateTime(2026, 5, 14)),
+        new("LUM-113", "Virtualize Combobox for 10k+ options",         "Backlog",     "Low",    "Priya Kapoor",    "PK", new(){"feature","backend"},      new DateTime(2026, 5, 20)),
+        new("LUM-114", "Storybook stories for all components",         "Backlog",     "Low",    "Amara Diallo",    "AD", new(){"design"},                 new DateTime(2026, 5, 25)),
+        new("LUM-115", "Tooltip accessibility fix (ARIA roles)",        "Done",        "High",   "Marcus Webb",     "MW", new(){"bug","a11y"},             new DateTime(2026, 4, 14), 3, 3),
+        new("LUM-116", "CI/CD pipeline setup (GitHub Actions)",        "Done",        "Medium", "Noah Park",       "NP", new(){"backend"},                new DateTime(2026, 4, 10), 5, 5),
+        new("LUM-117", "DB schema v2 migration",                       "Done",        "High",   "Priya Kapoor",    "PK", new(){"backend"},                new DateTime(2026, 4, 11), 8, 8),
+        new("LUM-118", "Component API reference tables",               "Done",        "Low",    "Lena Fischer",    "LF", new(){"design"},                 new DateTime(2026, 4, 12), 25, 25),
+        new("LUM-119", "Fix Input @bind-Value two-way sync",           "Done",        "High",   "Marcus Webb",     "MW", new(){"bug"},                    new DateTime(2026, 4, 8), 2, 2),
+        new("LUM-120", "Release notes — v1.0",                         "Done",        "Medium", "Amara Diallo",    "AD", new(){"design"},                 new DateTime(2026, 4, 15), 4, 4),
     };
 
-    private IEnumerable<TaskItem> FilteredTasks
+    private IEnumerable<TaskItem> VisibleTasks
     {
         get
         {
             var tasks = _allTasks.AsEnumerable();
-            if (_statusFilters.Count > 0)
-                tasks = tasks.Where(t => _statusFilters.Contains(t.Status));
-            if (_calStart.HasValue)
-                tasks = tasks.Where(t => DateOnly.FromDateTime(t.DueDate) >= _calStart.Value);
-            if (_calEnd.HasValue)
-                tasks = tasks.Where(t => DateOnly.FromDateTime(t.DueDate) <= _calEnd.Value);
+
+            // Tab filter
+            tasks = _activeView switch
+            {
+                "mine"    => tasks.Where(t => t.Assignee is "Marcus Webb" or "Priya Kapoor"),
+                "active"  => tasks.Where(t => t.Status == "In Progress"),
+                "backlog" => tasks.Where(t => t.Status == "Backlog"),
+                "done"    => tasks.Where(t => t.Status == "Done"),
+                _         => tasks
+            };
+
+            // Search
+            if (!string.IsNullOrWhiteSpace(_search))
+                tasks = tasks.Where(t =>
+                    t.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    t.Id.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    t.Assignee.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+            // Priority filter
+            if (_priorityFilters.Count > 0)
+                tasks = tasks.Where(t => _priorityFilters.Contains(t.Priority));
+
+            // Label filter
+            if (_labelFilters.Count > 0)
+                tasks = tasks.Where(t => t.Labels.Any(l => _labelFilters.Contains(l)));
+
             return tasks;
         }
     }
 
-    private IEnumerable<TaskItem> SortedTasks
+    private static int StatusOrder(string s) => s switch
     {
-        get
-        {
-            var tasks = FilteredTasks;
-            var asc = _sortDir == DataTable<object>.SortDirection.Ascending;
-            return _sortField switch
-            {
-                "Title"    => asc ? tasks.OrderBy(t => t.Title)    : tasks.OrderByDescending(t => t.Title),
-                "Status"   => asc ? tasks.OrderBy(t => t.Status)   : tasks.OrderByDescending(t => t.Status),
-                "Priority" => asc ? tasks.OrderBy(t => PriorityOrder(t.Priority)) : tasks.OrderByDescending(t => PriorityOrder(t.Priority)),
-                "DueDate"  => asc ? tasks.OrderBy(t => t.DueDate)  : tasks.OrderByDescending(t => t.DueDate),
-                _          => tasks
-            };
+        "In Progress" => 1,
+        "Todo"        => 2,
+        "Backlog"     => 3,
+        "Done"        => 4,
+        _             => 5
+    };
+
+    private static string StatusIcon(string s) => s switch
+    {
+        "In Progress" => "CircleDot",
+        "Todo"        => "Circle",
+        "Backlog"     => "BookOpen",
+        "Done"        => "CheckCircle2",
+        _             => "Circle"
+    };
+
+    private static string StatusColor(string s) => s switch
+    {
+        "In Progress" => "text-primary",
+        "Todo"        => "text-muted-foreground",
+        "Backlog"     => "text-chart-2",
+        "Done"        => "text-chart-1",
+        _             => "text-muted-foreground"
+    };
+
+    private static string PriorityIcon(string p) => p switch
+    {
+        "Urgent" => "AlertCircle",
+        "High"   => "ArrowUp",
+        "Medium" => "ArrowRight",
+        "Low"    => "ArrowDown",
+        _        => "Minus"
+    };
+
+    private static string PriorityColor(string p) => p switch
+    {
+        "Urgent" => "text-destructive",
+        "High"   => "text-orange-500",
+        "Medium" => "text-primary",
+        "Low"    => "text-muted-foreground",
+        _        => "text-muted-foreground/50"
+    };
+
+    private string _code = @"<!-- Task Tracker — Lumeo pattern -->
+<div class=""flex flex-col rounded-[var(--radius-lg)] border border-border/40 overflow-hidden"" style=""min-height:640px;"">
+
+  <!-- Top bar: breadcrumb, view tabs, search, filter, new issue -->
+  <div class=""flex items-center gap-3 px-4 py-3 border-b border-border/40"">
+    <Lumeo.Text Class=""font-semibold text-foreground"">Lumeo</Lumeo.Text>
+    <DynamicIcon Name=""ChevronRight"" Class=""h-3.5 w-3.5 text-muted-foreground"" />
+    <Lumeo.Text Class=""text-muted-foreground"">Q2 Sprint</Lumeo.Text>
+
+    <Tabs ActiveValue=""@_activeView"" ActiveValueChanged=""@(v => _activeView = v)"" Class=""flex-1"">
+      <TabsList Class=""h-8"">
+        <TabsTrigger Value=""all"">All</TabsTrigger>
+        <TabsTrigger Value=""mine"">My Issues</TabsTrigger>
+        <TabsTrigger Value=""active"">Active</TabsTrigger>
+        <TabsTrigger Value=""backlog"">Backlog</TabsTrigger>
+        <TabsTrigger Value=""done"">Done</TabsTrigger>
+      </TabsList>
+    </Tabs>
+
+    <Input placeholder=""Search issues…"" Class=""h-8 w-44"" />
+    <Button Size=""Button.ButtonSize.Sm"" Class=""h-8""><DynamicIcon Name=""Plus"" Class=""h-4 w-4"" /> New issue</Button>
+  </div>
+
+  <!-- Body: nav rail + task list -->
+  <div class=""flex flex-1 overflow-hidden"">
+
+    <!-- Left nav rail w-56 -->
+    <div class=""w-56 shrink-0 border-r border-border/40 bg-muted/10 flex flex-col p-2 gap-0.5"">
+      @foreach (var n in _navRail) {
+        <button class=""flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent/40"">
+          <DynamicIcon Name=""@n.Icon"" Class=""h-4 w-4 shrink-0"" /> @n.Label
+          @if (n.Count > 0) { <span class=""ml-auto text-xs"">@n.Count</span> }
+        </button>
+      }
+    </div>
+
+    <!-- Task list, grouped by Status -->
+    <div class=""flex-1 overflow-auto"">
+      @foreach (var group in VisibleTasks.GroupBy(t => t.Status).OrderBy(g => StatusOrder(g.Key))) {
+        <!-- Group header with collapse toggle -->
+        <div class=""flex items-center gap-2.5 px-4 py-2.5 border-b bg-muted/20 sticky top-0"">
+          <DynamicIcon Name=""ChevronDown"" Class=""h-3.5 w-3.5 text-muted-foreground"" />
+          <DynamicIcon Name=""@StatusIcon(group.Key)"" Class=""h-4 w-4"" />
+          <Lumeo.Text Class=""text-sm font-semibold"">@group.Key</Lumeo.Text>
+          <Badge Variant=""Badge.BadgeVariant.Secondary"">@group.Count()</Badge>
+        </div>
+        <!-- Task rows -->
+        @foreach (var t in group) {
+          <div class=""group flex items-center gap-3 px-4 py-2.5 border-b hover:bg-accent/30 transition-colors cursor-pointer"">
+            <Checkbox Class=""opacity-0 group-hover:opacity-100"" />
+            <DynamicIcon Name=""@PriorityIcon(t.Priority)"" Class=""@PriorityColor(t.Priority)"" />
+            <Lumeo.Text Class=""text-xs text-muted-foreground font-mono w-16"">@t.Id</Lumeo.Text>
+            <Lumeo.Text Class=""flex-1 text-sm font-medium truncate"">@t.Title</Lumeo.Text>
+            @foreach (var label in t.Labels.Take(3)) { <Badge Variant=""Badge.BadgeVariant.Secondary"">@label</Badge> }
+            <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>@t.AssigneeInitials</AvatarFallback></Avatar>
+            <Lumeo.Text Class=""text-xs text-muted-foreground"">@t.DueDate.ToString(""MMM d"")</Lumeo.Text>
+          </div>
         }
-    }
+      }
+    </div>
+  </div>
 
-    private static int PriorityOrder(string p) => p switch
-    {
-        "Critical" => 4,
-        "High"     => 3,
-        "Medium"   => 2,
-        "Low"      => 1,
-        _          => 0
-    };
-
-    private void ToggleStatus(string status, bool value)
-    {
-        if (value) _statusFilters.Add(status);
-        else _statusFilters.Remove(status);
-    }
-
-    private void HandleSort((string Column, DataTable<object>.SortDirection Direction) args)
-    {
-        _sortField = args.Column;
-        _sortDir   = args.Direction;
-    }
-
-    private static Badge.BadgeVariant GetStatusVariant(string status) => status switch
-    {
-        "Todo"        => Badge.BadgeVariant.Secondary,
-        "In Progress" => Badge.BadgeVariant.Warning,
-        "Done"        => Badge.BadgeVariant.Success,
-        _             => Badge.BadgeVariant.Default
-    };
-
-    private static Badge.BadgeVariant GetPriorityVariant(string priority) => priority switch
-    {
-        "Critical" => Badge.BadgeVariant.Destructive,
-        "High"     => Badge.BadgeVariant.Warning,
-        "Medium"   => Badge.BadgeVariant.Secondary,
-        "Low"      => Badge.BadgeVariant.Outline,
-        _          => Badge.BadgeVariant.Default
-    };
-
-    private string _taskTrackerCode = @"<!-- Header -->
-<Flex Align=""center"" Gap=""3"">
-    <Heading Level=""2"" Class=""text-xl font-semibold text-foreground"">Task Tracker</Heading>
-
-    <!-- Command Search -->
-    <Command Class=""rounded-lg border shadow-none flex-1 max-w-sm"">
-        <CommandInput Placeholder=""Search tasks... (Ctrl+K)"" />
-        <CommandList>
-            <CommandGroup Heading=""Suggestions"">
-                <CommandItem>
-                    <DynamicIcon Name=""CircleDot"" Class=""h-4 w-4 mr-2 text-muted-foreground"" />
-                    Filter by status
-                    <CommandItemShortcut>Alt+S</CommandItemShortcut>
-                </CommandItem>
-                <CommandItem>
-                    <DynamicIcon Name=""Flag"" Class=""h-4 w-4 mr-2 text-muted-foreground"" />
-                    Filter by priority
-                    <CommandItemShortcut>Alt+P</CommandItemShortcut>
-                </CommandItem>
-            </CommandGroup>
-        </CommandList>
-    </Command>
-
-    <!-- Filter Dropdown with Checkbox & Radio items -->
-    <DropdownMenu @bind-IsOpen=""_filterOpen"">
-        <DropdownMenuTrigger>
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Filters</Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent Class=""w-56"">
-            <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem Checked=""@_todoChecked"" CheckedChanged=""@(v => _todoChecked = v)"">Todo</DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem Checked=""@_inProgressChecked"" CheckedChanged=""@(v => _inProgressChecked = v)"">In Progress</DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem Checked=""@_doneChecked"" CheckedChanged=""@(v => _doneChecked = v)"">Done</DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-            <DropdownMenuRadioGroup Value=""@_sortField"" ValueChanged=""@(v => _sortField = v)"">
-                <DropdownMenuRadioItem Value=""Title"">Title</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem Value=""Priority"">Priority</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem Value=""DueDate"">Due Date</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-    </DropdownMenu>
-</Flex>
-
-<!-- Calendar Range Filter -->
-<Calendar IsRange=""true"" @bind-Value=""_calStart"" @bind-ValueEnd=""_calEnd"" />
-
-<!-- DataTable with sortable headers and selection -->
-<DataTable TItem=""TaskItem""
-           Items=""@_tasks""
-           Selectable=""true""
-           @bind-SelectedItems=""_selected""
-           SortColumn=""@_sortField""
-           SortDir=""@_sortDir""
-           OnSort=""@HandleSort"">
-    <HeaderTemplate>
-        <DataTableSortableHeader Column=""Title"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Title</DataTableSortableHeader>
-        <DataTableSortableHeader Column=""Status"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Status</DataTableSortableHeader>
-        <DataTableSortableHeader Column=""Priority"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Priority</DataTableSortableHeader>
-        <th>Assignee</th>
-        <DataTableSortableHeader Column=""DueDate"" SortColumn=""@_sortField"" SortDirection=""@_sortDir"" OnSort=""@HandleSort"">Due Date</DataTableSortableHeader>
-    </HeaderTemplate>
-    <RowTemplate Context=""task"">
-        <td class=""px-2 py-2 font-medium"">@task.Title</td>
-        <td class=""px-2 py-2""><Badge Variant=""@GetStatusVariant(task.Status)"">@task.Status</Badge></td>
-        <td class=""px-2 py-2""><Badge Variant=""@GetPriorityVariant(task.Priority)"">@task.Priority</Badge></td>
-        <td class=""px-2 py-2"">
-            <Flex Align=""center"" Gap=""2"">
-                <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>@task.AssigneeInitials</AvatarFallback></Avatar>
-                @task.Assignee
-            </Flex>
-        </td>
-        <td class=""px-2 py-2 text-muted-foreground"">@task.DueDate.ToString(""MMM d, yyyy"")</td>
-    </RowTemplate>
-</DataTable>
-
-<!-- Bottom Bar -->
-<Flex Align=""center"" Justify=""between"" Class=""border-t pt-3"">
-    <Lumeo.Text Class=""text-sm text-muted-foreground"">@selectedCount of @totalCount tasks selected</Lumeo.Text>
-    <Flex Gap=""2"">
-        <Button Variant=""Button.ButtonVariant.Destructive"" Size=""Button.ButtonSize.Sm"">Delete (@selectedCount)</Button>
-        <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Sm"">Mark Done</Button>
-    </Flex>
-</Flex>";
+  <!-- Bulk action bar (shown when _selectedTasks.Count > 0) -->
+  @if (_selectedTasks.Count > 0) {
+    <div class=""flex items-center gap-3 px-4 py-3 border-t border-border/40 bg-accent/20"">
+      <Lumeo.Text Class=""text-sm font-medium"">@_selectedTasks.Count selected</Lumeo.Text>
+      <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" @onclick=""@(() => _selectedTasks.Clear())"">Deselect</Button>
+      <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Assign to</Button>
+      <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Set priority</Button>
+      <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""text-destructive ml-auto"">Delete</Button>
+    </div>
+  }
+</div>";
 }

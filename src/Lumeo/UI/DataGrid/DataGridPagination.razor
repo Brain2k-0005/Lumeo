@@ -4,8 +4,8 @@
 @if (Context is not null)
 {
     <div class="@CssClass" @attributes="AdditionalAttributes">
-        <div class="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap shrink-0">
-            <span>Showing @StartItem–@EndItem of @Context.TotalCount</span>
+        <div class="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+            <span class="text-xs">Rows per page</span>
             <Select Value="@Context.PageSize.ToString()" ValueChanged="@OnPageSizeSelected">
                 <SelectTrigger Class="h-8 w-[70px]">
                     <span class="text-sm">@Context.PageSize</span>
@@ -17,29 +17,31 @@
                     <SelectItem Value="100">100</SelectItem>
                 </SelectContent>
             </Select>
-            <span class="text-xs">per page</span>
         </div>
 
-        <Pagination Class="!mx-0 !w-auto !justify-end">
-            <PaginationContent>
-                <PaginationPrevious OnClick="@GoToPrevious" Disabled="@(Context.CurrentPage <= 1)" />
-                @foreach (var page in GetPageNumbers())
-                {
-                    if (page == -1)
+        <div class="ml-auto flex items-center gap-4 text-sm text-muted-foreground whitespace-nowrap">
+            <span class="tabular-nums">@StartItem–@EndItem of @Context.TotalCount</span>
+            <Pagination Class="!mx-0 !w-auto">
+                <PaginationContent>
+                    <PaginationPrevious OnClick="@GoToPrevious" Disabled="@(Context.CurrentPage <= 1)" />
+                    @foreach (var page in GetPageNumbers())
                     {
-                        <PaginationEllipsis />
+                        if (page == -1)
+                        {
+                            <PaginationEllipsis />
+                        }
+                        else
+                        {
+                            var pageNum = page;
+                            <PaginationItem IsActive="@(pageNum == Context.CurrentPage)" OnClick="@(() => GoToPage(pageNum))">
+                                @(pageNum)
+                            </PaginationItem>
+                        }
                     }
-                    else
-                    {
-                        var pageNum = page;
-                        <PaginationItem IsActive="@(pageNum == Context.CurrentPage)" OnClick="@(() => GoToPage(pageNum))">
-                            @(pageNum)
-                        </PaginationItem>
-                    }
-                }
-                <PaginationNext OnClick="@GoToNext" Disabled="@(Context.CurrentPage >= TotalPages)" />
-            </PaginationContent>
-        </Pagination>
+                    <PaginationNext OnClick="@GoToNext" Disabled="@(Context.CurrentPage >= TotalPages)" />
+                </PaginationContent>
+            </Pagination>
+        </div>
     </div>
 }
 
@@ -50,7 +52,7 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"flex items-center justify-between px-4 py-3 border-t border-border/40 {Class}".Trim();
+    private string CssClass => $"flex flex-wrap items-center gap-3 px-4 py-3 border-t border-border/40 {Class}".Trim();
 
     private int TotalPages => Context is not null && Context.PageSize > 0
         ? Math.Max(1, (int)Math.Ceiling((double)Context.TotalCount / Context.PageSize))

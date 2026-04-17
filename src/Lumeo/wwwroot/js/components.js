@@ -1035,3 +1035,136 @@ export function removeFromLocalStorage(key) {
         // ignore
     }
 }
+
+// --- ColorPicker SV Drag ---
+
+const svDragHandlers = new Map();
+
+export function registerSvDrag(elementId, dotnetRef) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    let dragging = false;
+    let pointerId = null;
+
+    const compute = (e) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+        const s = (x / rect.width) * 100;
+        const v = (1 - y / rect.height) * 100;
+        dotnetRef.invokeMethodAsync('OnSvDrag', elementId, s, v);
+    };
+
+    const onPointerDown = (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        dragging = true;
+        pointerId = e.pointerId;
+        try { el.setPointerCapture(e.pointerId); } catch (_) { }
+        compute(e);
+        e.preventDefault();
+    };
+    const onPointerMove = (e) => {
+        if (!dragging || e.pointerId !== pointerId) return;
+        compute(e);
+    };
+    const onPointerUp = (e) => {
+        if (!dragging || e.pointerId !== pointerId) return;
+        dragging = false;
+        try { el.releasePointerCapture(e.pointerId); } catch (_) { }
+        pointerId = null;
+    };
+
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerUp);
+
+    svDragHandlers.set(elementId, { el, onPointerDown, onPointerMove, onPointerUp });
+}
+
+export function unregisterSvDrag(elementId) {
+    const h = svDragHandlers.get(elementId);
+    if (h && h.el) {
+        h.el.removeEventListener('pointerdown', h.onPointerDown);
+        h.el.removeEventListener('pointermove', h.onPointerMove);
+        h.el.removeEventListener('pointerup', h.onPointerUp);
+        h.el.removeEventListener('pointercancel', h.onPointerUp);
+    }
+    svDragHandlers.delete(elementId);
+}
+
+// --- OnThisPage (docs TOC) ---
+
+const onThisPageObservers = new Map();
+
+export function onThisPageScan(containerSelector) {
+    const container = document.querySelector(containerSelector);
+    if (!container) return [];
+    // Pick up classical headings AND explicitly-tagged TOC entries (e.g. ComponentDemo sections).
+    // Preserve DOM order so the TOC reads top-to-bottom.
+    const nodes = container.querySelectorAll('h2[id], h3[id], [data-toc-entry][id]');
+    return Array.from(nodes).map(h => {
+        const tocTitle = h.getAttribute('data-toc-title');
+        const isDemo = h.hasAttribute('data-toc-entry');
+        return {
+            id: h.id,
+            text: (tocTitle || h.textContent || '').trim(),
+            level: isDemo ? 3 : parseInt(h.tagName.substring(1), 10)
+        };
+    });
+}
+
+export function onThisPageObserve(id, containerSelector, dotNetRef) {
+    const container = document.querySelector(containerSelector);
+    if (!container) return;
+    const nodes = container.querySelectorAll('h2[id], h3[id], [data-toc-entry][id]');
+    if (nodes.length === 0) return;
+
+    let currentActive = null;
+    const visibleSet = new Set();
+
+    const update = () => {
+        if (visibleSet.size === 0) return;
+        // Pick the heading nearest the top of the viewport
+        let best = null;
+        let bestTop = Infinity;
+        visibleSet.forEach(el => {
+            const top = el.getBoundingClientRect().top;
+            if (top < bestTop) { bestTop = top; best = el; }
+        });
+        if (best && best.id !== currentActive) {
+            currentActive = best.id;
+            dotNetRef.invokeMethodAsync('SetActive', currentActive);
+        }
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+            if (e.isIntersecting) visibleSet.add(e.target);
+            else visibleSet.delete(e.target);
+        });
+        update();
+    }, {
+        // Highlight when a heading is in the top portion of the viewport
+        rootMargin: '-88px 0px -70% 0px',
+        threshold: 0
+    });
+
+    nodes.forEach(h => observer.observe(h));
+    onThisPageObservers.set(id, observer);
+
+    // If nothing is in the observed band on load, default to the first heading
+    if (nodes.length > 0) {
+        dotNetRef.invokeMethodAsync('SetActive', nodes[0].id);
+    }
+}
+
+export function onThisPageUnobserve(id) {
+    const obs = onThisPageObservers.get(id);
+    if (obs) {
+        obs.disconnect();
+        onThisPageObservers.delete(id);
+    }
+}

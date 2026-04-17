@@ -1,129 +1,189 @@
-﻿@page "/blocks/chat"
+@page "/blocks/chat"
+@namespace Lumeo.Docs.Pages.Patterns
 
-<PageTitle>Chat — Lumeo Patterns</PageTitle>
+<PageTitle>Chat — Lumeo</PageTitle>
 
-<PageHeader Title="Chat" Description="A full messaging interface with contact list, conversation view, and message input." />
+<PageHeader Title="Chat" Description="A full messaging interface with contact list, conversation view, time-grouped messages, and message input bar." />
 
 <ComponentDemo Title="Chat Messaging Interface" Code="@_code">
-    <Stack Class="w-full min-w-[700px] border rounded-lg overflow-hidden" style="height: 600px;">
+    <Stack Class="w-full min-w-[700px] border border-border/40 rounded-xl overflow-hidden" style="height: 600px;">
         <Flex Class="h-full">
 
             <!-- Contact Sidebar -->
-            <Flex Direction="col" Class="w-72 border-r bg-card shrink-0">
-                <Stack Class="p-4 border-b">
-                    <Flex Class="items-center justify-between mb-3">
-                        <Heading Level="2" Class="text-lg font-bold text-foreground">Messages</Heading>
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                            <DynamicIcon Name="Plus" Class="h-4 w-4" />
+            <Flex Direction="col" Class="w-72 border-r border-border/20 bg-card shrink-0">
+                <!-- Header -->
+                <Flex Class="items-center justify-between px-4 pt-4 pb-3 border-b border-border/20">
+                    <Lumeo.Text As="span" Class="text-base font-bold text-foreground">Messages</Lumeo.Text>
+                    <Flex Class="items-center gap-1">
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                            <DynamicIcon Name="Search" Class="h-4 w-4" />
+                        </Button>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                            <DynamicIcon Name="SquarePen" Class="h-4 w-4" />
                         </Button>
                     </Flex>
-                    <Flex Class="items-center gap-2 rounded-md border px-3 bg-background">
-                        <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground shrink-0" />
-                        <Input type="text" placeholder="Search messages..." Class="flex h-9 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0 shadow-none p-0 focus-visible:ring-0" />
+                </Flex>
+
+                <!-- Search -->
+                <Stack Class="px-3 py-2 border-b border-border/20">
+                    <Flex Class="items-center gap-2 rounded-md border border-border/30 bg-background px-3">
+                        <DynamicIcon Name="Search" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <Input type="text" placeholder="Search conversations..." Class="h-8 w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none border-0 shadow-none p-0 focus-visible:ring-0" />
                     </Flex>
                 </Stack>
+
+                <!-- Contact List -->
                 <Stack Class="flex-1 overflow-y-auto">
                     @foreach (var contact in _contacts)
                     {
-                        <Button Variant="Button.ButtonVariant.Ghost" Class="@($"flex items-start gap-3 w-full p-3 hover:bg-accent transition-colors text-left h-auto {(contact.Id == _selectedContact?.Id ? "bg-accent" : "")}")"
-                                @onclick="@(() => SelectContact(contact))">
-                            <Stack Class="relative shrink-0">
+                        var c = contact;
+                        <button class="@($"flex items-start gap-3 w-full px-3 py-2.5 hover:bg-muted/40 transition-colors text-left border-b border-border/20 {(c.Id == _selectedContact?.Id ? "bg-accent" : "")}")"
+                                @onclick="@(() => SelectContact(c))">
+                            <Stack Class="relative shrink-0 mt-0.5">
                                 <Avatar Size="Avatar.AvatarSize.Sm">
-                                    <AvatarFallback>@contact.Initials</AvatarFallback>
+                                    <AvatarFallback>@c.Initials</AvatarFallback>
                                 </Avatar>
-                                @if (contact.IsOnline)
+                                @if (c.IsOnline)
                                 {
-                                    <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card"></Lumeo.Text>
+                                    <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card block"></Lumeo.Text>
                                 }
                             </Stack>
-                            <Stack Class="flex-1 min-w-0">
+                            <Stack Class="flex-1 min-w-0 gap-0.5">
                                 <Flex Class="items-center justify-between">
-                                    <Lumeo.Text As="span" Class="text-sm font-medium text-foreground truncate">@contact.Name</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground shrink-0 ml-1">@contact.Timestamp</Lumeo.Text>
+                                    <Lumeo.Text As="span" Class="@($"text-sm truncate {(c.UnreadCount > 0 ? "font-semibold text-foreground" : "font-medium text-foreground")}")">@c.Name</Lumeo.Text>
+                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground shrink-0 ml-1">@c.Timestamp</Lumeo.Text>
                                 </Flex>
                                 <Flex Class="items-center justify-between mt-0.5">
-                                    <Lumeo.Text Class="text-xs text-muted-foreground truncate">@contact.LastMessage</Lumeo.Text>
-                                    @if (contact.UnreadCount > 0)
+                                    <Lumeo.Text Class="text-xs text-muted-foreground truncate">@c.LastMessage</Lumeo.Text>
+                                    @if (c.UnreadCount > 0)
                                     {
-                                        <Badge Class="ml-1 shrink-0 h-4 min-w-4 text-xs px-1">@contact.UnreadCount</Badge>
+                                        <Badge Class="ml-1 shrink-0 h-4 min-w-4 text-[10px] px-1">@c.UnreadCount</Badge>
                                     }
                                 </Flex>
                             </Stack>
-                        </Button>
+                        </button>
                     }
                 </Stack>
             </Flex>
 
             <!-- Main Chat Area -->
-            <Flex Direction="col" Class="flex-1 overflow-hidden">
+            <Flex Direction="col" Class="flex-1 overflow-hidden bg-background">
                 @if (_selectedContact is not null)
                 {
                     <!-- Chat Header -->
-                    <Flex Class="items-center gap-3 px-4 py-3 border-b bg-card shrink-0">
+                    <Flex Class="items-center gap-3 px-4 py-3 border-b border-border/20 bg-card shrink-0">
                         <Stack Class="relative">
                             <Avatar Size="Avatar.AvatarSize.Sm">
                                 <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
                             </Avatar>
                             @if (_selectedContact.IsOnline)
                             {
-                                <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card"></Lumeo.Text>
+                                <Lumeo.Text As="span" Class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card block"></Lumeo.Text>
                             }
                         </Stack>
                         <Stack>
                             <Lumeo.Text Class="text-sm font-semibold text-foreground">@_selectedContact.Name</Lumeo.Text>
                             <Lumeo.Text Class="@($"text-xs {(_selectedContact.IsOnline ? "text-primary" : "text-muted-foreground")}")">
-                                @(_selectedContact.IsOnline ? "Online" : "Offline")
+                                @(_selectedContact.IsOnline ? "Active now" : "Offline")
                             </Lumeo.Text>
                         </Stack>
                         <Flex Class="ml-auto items-center gap-1">
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                <DynamicIcon Name="Search" Class="h-4 w-4" />
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                                <DynamicIcon Name="Phone" Class="h-4 w-4" />
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                            <Tooltip Content="Search in conversation">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Search" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
+                            <Tooltip Content="Voice call">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Phone" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
+                            <Tooltip Content="Video call">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Video" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
                                 <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
                             </Button>
                         </Flex>
                     </Flex>
 
-                    <!-- Messages -->
-                    <Stack Gap="3" Class="flex-1 overflow-y-auto p-4">
-                        @foreach (var msg in _messages)
+                    <!-- Messages Thread -->
+                    <Stack Class="flex-1 overflow-y-auto px-4 py-4 gap-1">
+                        @foreach (var group in _messageGroups)
                         {
-                            <Flex Class="@(msg.IsSent ? "justify-end" : "justify-start")">
-                                @if (!msg.IsSent)
-                                {
-                                    <Avatar Size="Avatar.AvatarSize.Sm" Class="mr-2 mt-1 shrink-0">
-                                        <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
-                                    </Avatar>
-                                }
-                                <Stack Class="max-w-xs lg:max-w-md">
-                                    <Stack Class="@($"rounded-2xl px-4 py-2 {(msg.IsSent ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted text-foreground rounded-tl-sm")}")">
-                                        <Lumeo.Text Class="text-sm">@msg.Text</Lumeo.Text>
-                                    </Stack>
-                                    <Flex Class="@($"items-center gap-1 mt-1 {(msg.IsSent ? "justify-end" : "justify-start")}")">
-                                        <Lumeo.Text Class="text-xs text-muted-foreground">@msg.Time</Lumeo.Text>
-                                        @if (msg.IsSent)
-                                        {
-                                            <DynamicIcon Name="Check" Class="h-3 w-3 text-primary/60" />
-                                        }
-                                    </Flex>
-                                </Stack>
+                            <!-- Time separator -->
+                            <Flex Class="items-center gap-3 my-3">
+                                <Lumeo.Text As="span" Class="flex-1 h-px bg-border/40 block"></Lumeo.Text>
+                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground shrink-0">@group.Label</Lumeo.Text>
+                                <Lumeo.Text As="span" Class="flex-1 h-px bg-border/40 block"></Lumeo.Text>
                             </Flex>
+
+                            @foreach (var msg in group.Messages)
+                            {
+                                <Flex Class="@($"items-end gap-2 mb-1 {(msg.IsSent ? "justify-end" : "justify-start")}")">
+                                    @if (!msg.IsSent)
+                                    {
+                                        <Avatar Size="Avatar.AvatarSize.Sm" Class="shrink-0 mb-1">
+                                            <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
+                                        </Avatar>
+                                    }
+                                    <Stack Class="max-w-xs lg:max-w-sm gap-1">
+                                        <Lumeo.Text As="div" Class="@($"rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed {(msg.IsSent ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm")}")">@msg.Text</Lumeo.Text>
+                                        <Flex Class="@($"items-center gap-1 px-1 {(msg.IsSent ? "justify-end" : "justify-start")}")">
+                                            <Lumeo.Text Class="text-xs text-muted-foreground">@msg.Time</Lumeo.Text>
+                                            @if (msg.IsSent && msg.IsRead)
+                                            {
+                                                <DynamicIcon Name="CheckCheck" Class="h-3 w-3 text-primary" />
+                                            }
+                                            else if (msg.IsSent)
+                                            {
+                                                <DynamicIcon Name="Check" Class="h-3 w-3 text-muted-foreground" />
+                                            }
+                                        </Flex>
+                                    </Stack>
+                                    @if (msg.IsSent)
+                                    {
+                                        <Avatar Size="Avatar.AvatarSize.Sm" Class="shrink-0 mb-1">
+                                            <AvatarFallback>ME</AvatarFallback>
+                                        </Avatar>
+                                    }
+                                </Flex>
+                            }
                         }
                     </Stack>
 
                     <!-- Message Input -->
-                    <Stack Class="border-t bg-card px-4 py-3 shrink-0">
-                        <Flex Class="items-center gap-2">
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9 flex-shrink-0">
-                                <DynamicIcon Name="Paperclip" Class="h-4 w-4" />
-                            </Button>
-                            <Input placeholder="Type a message..." @bind-Value="_newMessage" Class="flex-1" />
-                            <Button @onclick="SendMessage">
-                                <DynamicIcon Name="Send" Class="h-4 w-4" />
+                    <Stack Class="border-t border-border/20 bg-card px-4 py-3 shrink-0 gap-2">
+                        <Flex Class="items-center gap-2 rounded-xl border border-border/30 bg-background px-3 py-2">
+                            <Input placeholder="Type a message..." @bind-Value="_newMessage" Class="flex-1 border-0 shadow-none bg-transparent text-sm p-0 h-auto focus-visible:ring-0" />
+                        </Flex>
+                        <Flex Class="items-center justify-between">
+                            <Flex Class="items-center gap-1">
+                                <Tooltip Content="Attach file">
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Paperclip" Class="h-4 w-4" />
+                                    </Button>
+                                </Tooltip>
+                                <Tooltip Content="Emoji">
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Smile" Class="h-4 w-4" />
+                                    </Button>
+                                </Tooltip>
+                                <Tooltip Content="Image">
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Image" Class="h-4 w-4" />
+                                    </Button>
+                                </Tooltip>
+                                <Tooltip Content="Voice message">
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                        <DynamicIcon Name="Mic" Class="h-4 w-4" />
+                                    </Button>
+                                </Tooltip>
+                            </Flex>
+                            <Button Size="Button.ButtonSize.Sm" @onclick="SendMessage">
+                                <DynamicIcon Name="Send" Class="h-3.5 w-3.5 mr-1.5" />
                                 Send
                             </Button>
                         </Flex>
@@ -132,9 +192,14 @@
                 else
                 {
                     <Flex Class="flex-1 items-center justify-center">
-                        <Stack Class="text-center">
-                            <DynamicIcon Name="User" Class="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                            <Lumeo.Text Class="text-sm text-muted-foreground">Select a conversation to start messaging</Lumeo.Text>
+                        <Stack Class="text-center gap-3">
+                            <Flex Class="h-14 w-14 items-center justify-center rounded-full bg-muted mx-auto">
+                                <DynamicIcon Name="MessageCircle" Class="h-7 w-7 text-muted-foreground" />
+                            </Flex>
+                            <Stack Class="gap-1">
+                                <Lumeo.Text Class="text-sm font-semibold text-foreground">No conversation selected</Lumeo.Text>
+                                <Lumeo.Text Class="text-xs text-muted-foreground">Choose a conversation from the sidebar to start messaging</Lumeo.Text>
+                            </Stack>
                         </Stack>
                     </Flex>
                 }
@@ -146,34 +211,40 @@
 
 @code {
     private record Contact(int Id, string Name, string Initials, string LastMessage, string Timestamp, bool IsOnline, int UnreadCount);
-    private record Message(string Text, bool IsSent, string Time);
+    private record ChatMessage(string Text, bool IsSent, string Time, bool IsRead = true);
+    private record MessageGroup(string Label, List<ChatMessage> Messages);
 
     private List<Contact> _contacts = new()
     {
-        new(1, "Olivia Martin",   "OM", "See you tomorrow!",          "2m",   true,  2),
-        new(2, "Jackson Lee",     "JL", "Thanks for the update.",      "15m",  false, 0),
-        new(3, "Isabella Nguyen", "IN", "Can we reschedule?",          "1h",   true,  1),
-        new(4, "William Kim",     "WK", "The report looks great.",     "2h",   false, 0),
-        new(5, "Sofia Davis",     "SD", "Let me know when you're free","3h",   true,  0),
-        new(6, "Liam Johnson",    "LJ", "Got it, will do!",            "5h",   false, 3),
-        new(7, "Emma Wilson",     "EW", "Sounds good to me.",          "1d",   true,  0),
-        new(8, "Noah Brown",      "NB", "I'll send the files over.",   "2d",   false, 0),
+        new(1, "Priya Kapoor",      "PK", "Left some comments on the Figma — looks great overall",  "2m",   true,  2),
+        new(2, "Marcus Webb",       "MW", "z-index nit on sticky header, otherwise LGTM",            "18m",  true,  1),
+        new(3, "Sofia Herrera",     "SH", "Can we sync Thursday? Updated the doc with my notes",     "1h",   false, 0),
+        new(4, "Lena Fischer",      "LF", "Sprint 14 retro notes sent — action items in Linear",     "2h",   true,  0),
+        new(5, "James Okafor",      "JO", "P0 resolved — gateway is stable as of 07:45 UTC",         "3h",   false, 3),
+        new(6, "Amara Diallo",      "AD", "LGTM, will merge after CI green",                         "5h",   false, 0),
+        new(7, "Design Team",       "DT", "New Figma tokens pushed — dark mode palette updated",     "1d",   true,  0),
+        new(8, "Noah Park",         "NP", "Sending the API keys over now — check 1Password",         "2d",   false, 0),
     };
 
-    private List<Message> _messages = new()
+    private List<MessageGroup> _messageGroups = new()
     {
-        new("Hey! How are you doing?",                                    false, "9:00 AM"),
-        new("I'm doing great, thanks for asking!",                        true,  "9:02 AM"),
-        new("Did you get a chance to review the project proposal?",       false, "9:05 AM"),
-        new("Yes, I went through it last night. It looks really solid.",  true,  "9:07 AM"),
-        new("I had a few thoughts on the timeline section.",              false, "9:08 AM"),
-        new("Oh? What did you think?",                                    true,  "9:09 AM"),
-        new("I think we might be underestimating the testing phase.",     false, "9:11 AM"),
-        new("That's a fair point. We could add a buffer of a week.",      true,  "9:13 AM"),
-        new("Exactly! Also, the budget estimate seems a bit tight.",      false, "9:14 AM"),
-        new("Agreed. Let's set up a call to discuss the details.",        true,  "9:15 AM"),
-        new("Works for me. How about Thursday at 2pm?",                  false, "9:16 AM"),
-        new("Perfect, I'll send a calendar invite.",                     true,  "9:17 AM"),
+        new("Yesterday", new()
+        {
+            new("Hey! Have you had a chance to look at the new onboarding flow mockups?", false, "4:12 PM"),
+            new("Just pulled them up now. The step 2 tooltip placement is a bit off on mobile.", true, "4:15 PM"),
+            new("Ah good catch — I'll fix it. Also the CTA copy on step 4 feels weak.", false, "4:16 PM"),
+            new("Agreed. Something like \"Set up your workspace\" would land better than \"Continue\".", true, "4:18 PM"),
+            new("Perfect. I'll update the Figma and reshare by EOD.", false, "4:20 PM"),
+        }),
+        new("Today", new()
+        {
+            new("Morning! Updated mockups are in Figma — also fixed the mobile tooltip.", false, "9:04 AM"),
+            new("These look great! Really clean progression through the steps.", true, "9:12 AM", false),
+            new("One question — should step 3 be skippable for returning users?", true, "9:13 AM", false),
+            new("Good point. Yes, let's add a \"Skip setup\" link for users who've been through it before.", false, "9:18 AM"),
+            new("Makes sense. I'll add the skip logic on my end. Can you add that link in Figma?", true, "9:20 AM", false),
+            new("Already on it! I'll ping you when it's ready.", false, "9:21 AM"),
+        }),
     };
 
     private Contact? _selectedContact;
@@ -192,107 +263,145 @@
     private void SendMessage()
     {
         if (string.IsNullOrWhiteSpace(_newMessage)) return;
-        _messages.Add(new Message(_newMessage, true, DateTime.Now.ToString("h:mm tt")));
+        var lastGroup = _messageGroups.LastOrDefault();
+        if (lastGroup?.Label == "Today")
+        {
+            lastGroup.Messages.Add(new ChatMessage(_newMessage, true, DateTime.Now.ToString("h:mm tt"), false));
+        }
+        else
+        {
+            _messageGroups.Add(new MessageGroup("Today", new List<ChatMessage>
+            {
+                new ChatMessage(_newMessage, true, DateTime.Now.ToString("h:mm tt"), false)
+            }));
+        }
         _newMessage = string.Empty;
     }
 
-    private string _code = @"<!-- Chat Interface Layout -->
-<Flex Class=""h-full border rounded-lg overflow-hidden"">
+    private string _code = @"<!-- Chat layout: contact sidebar | message thread -->
+<Stack Class=""w-full border border-border/40 rounded-xl overflow-hidden"" style=""height: 600px;"">
+    <Flex Class=""h-full"">
 
-    <!-- Contact Sidebar -->
-    <Flex Direction=""col"" Class=""w-72 border-r bg-card"">
-        <Stack Class=""p-4 border-b"" Gap=""0"">
-            <Flex Align=""center"" Justify=""between"" Class=""mb-3"">
-                <Heading Level=""2"" Class=""text-lg font-bold"">Messages</Heading>
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                    <DynamicIcon Name=""Plus"" Class=""h-4 w-4"" />
-                </Button>
+        <!-- Contact Sidebar -->
+        <Flex Direction=""col"" Class=""w-72 border-r border-border/40 bg-card"">
+            <Flex Class=""items-center justify-between px-4 pt-4 pb-3 border-b border-border/40"">
+                <Lumeo.Text As=""span"" Class=""text-base font-bold text-foreground"">Messages</Lumeo.Text>
+                <Flex Class=""items-center gap-1"">
+                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                        <DynamicIcon Name=""Search"" Class=""h-4 w-4"" />
+                    </Button>
+                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                        <DynamicIcon Name=""SquarePen"" Class=""h-4 w-4"" />
+                    </Button>
+                </Flex>
             </Flex>
-            <Flex Align=""center"" Gap=""2"" Class=""rounded-md border px-3"">
-                <DynamicIcon Name=""Search"" Class=""h-4 w-4 text-muted-foreground"" />
-                <Input Placeholder=""Search messages..."" Class=""flex-1 h-9 bg-transparent"" />
-            </Flex>
-        </Stack>
-        <Stack Class=""flex-1 overflow-y-auto"" Gap=""0"">
-            @foreach (var contact in _contacts)
-            {
-                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""flex items-start gap-3 w-full p-3 hover:bg-accent text-left h-auto"" @onclick=""@(() => SelectContact(contact))"">
-                    <Stack Class=""relative"" Gap=""0"">
-                        <Avatar Size=""Avatar.AvatarSize.Sm"">
-                            <AvatarFallback>@contact.Initials</AvatarFallback>
-                        </Avatar>
-                        @if (contact.IsOnline)
-                        {
-                            <Stack Class=""absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary"" />
-                        }
-                    </Stack>
-                    <Stack Class=""flex-1 min-w-0"" Gap=""0"">
-                        <Flex Align=""center"" Justify=""between"">
-                            <Lumeo.Text As=""span"" Class=""text-sm font-medium truncate"">@contact.Name</Lumeo.Text>
-                            <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground"">@contact.Timestamp</Lumeo.Text>
-                        </Flex>
-                        <Flex Align=""center"" Justify=""between"">
-                            <Lumeo.Text Class=""text-xs text-muted-foreground truncate"">@contact.LastMessage</Lumeo.Text>
-                            @if (contact.UnreadCount > 0)
+            <Stack Class=""flex-1 overflow-y-auto"">
+                @foreach (var contact in _contacts)
+                {
+                    <button class=""flex items-start gap-3 w-full px-3 py-2.5 hover:bg-muted/40 transition-colors"" @onclick=""@(() => SelectContact(contact))"">
+                        <Stack Class=""relative shrink-0"">
+                            <Avatar Size=""Avatar.AvatarSize.Sm"">
+                                <AvatarFallback>@contact.Initials</AvatarFallback>
+                            </Avatar>
+                            @if (contact.IsOnline)
                             {
-                                <Badge>@contact.UnreadCount</Badge>
+                                <Lumeo.Text As=""span"" Class=""absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card block""></Lumeo.Text>
                             }
-                        </Flex>
-                    </Stack>
-                </Button>
-            }
-        </Stack>
-    </Flex>
-
-    <!-- Chat Area -->
-    <Flex Direction=""col"" Class=""flex-1"">
-        <!-- Header -->
-        <Flex Align=""center"" Gap=""3"" Class=""px-4 py-3 border-b"">
-            <Avatar Size=""Avatar.AvatarSize.Sm"">
-                <AvatarFallback>@_selectedContact.Initials</AvatarFallback>
-            </Avatar>
-            <Stack Gap=""0"">
-                <Lumeo.Text Class=""text-sm font-semibold"">@_selectedContact.Name</Lumeo.Text>
-                <Lumeo.Text Class=""text-xs text-primary"">Online</Lumeo.Text>
+                        </Stack>
+                        <Stack Class=""flex-1 min-w-0 gap-0.5"">
+                            <Flex Class=""items-center justify-between"">
+                                <Lumeo.Text As=""span"" Class=""text-sm font-semibold text-foreground truncate"">@contact.Name</Lumeo.Text>
+                                <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground"">@contact.Timestamp</Lumeo.Text>
+                            </Flex>
+                            <Flex Class=""items-center justify-between"">
+                                <Lumeo.Text Class=""text-xs text-muted-foreground truncate"">@contact.LastMessage</Lumeo.Text>
+                                @if (contact.UnreadCount > 0) { <Badge Class=""ml-1 shrink-0 h-4 min-w-4 text-[10px] px-1"">@contact.UnreadCount</Badge> }
+                            </Flex>
+                        </Stack>
+                    </button>
+                }
             </Stack>
         </Flex>
 
-        <!-- Messages -->
-        <Stack Gap=""3"" Class=""flex-1 overflow-y-auto p-4"">
-            @foreach (var msg in _messages)
-            {
-                <Flex Class=""@(msg.IsSent ? \""justify-end\"" : \""justify-start\"")"">
-                    <Stack Class=""rounded-2xl px-4 py-2 max-w-xs @(msg.IsSent ? \""bg-primary text-primary-foreground\"" : \""bg-muted text-foreground\"")"" Gap=""0"">
-                        <Lumeo.Text Class=""text-sm"">@msg.Text</Lumeo.Text>
-                    </Stack>
+        <!-- Chat Area -->
+        <Flex Direction=""col"" Class=""flex-1 overflow-hidden bg-background"">
+            <!-- Header -->
+            <Flex Class=""items-center gap-3 px-4 py-3 border-b border-border/40 bg-card"">
+                <Stack Class=""relative"">
+                    <Avatar Size=""Avatar.AvatarSize.Sm""><AvatarFallback>PK</AvatarFallback></Avatar>
+                    <Lumeo.Text As=""span"" Class=""absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-primary border-2 border-card block""></Lumeo.Text>
+                </Stack>
+                <Stack>
+                    <Lumeo.Text Class=""text-sm font-semibold text-foreground"">Priya Kapoor</Lumeo.Text>
+                    <Lumeo.Text Class=""text-xs text-primary"">Active now</Lumeo.Text>
+                </Stack>
+                <Flex Class=""ml-auto items-center gap-1"">
+                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                        <DynamicIcon Name=""Phone"" Class=""h-4 w-4"" />
+                    </Button>
+                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                        <DynamicIcon Name=""Video"" Class=""h-4 w-4"" />
+                    </Button>
+                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                        <DynamicIcon Name=""Ellipsis"" Class=""h-4 w-4"" />
+                    </Button>
                 </Flex>
-            }
-        </Stack>
-
-        <!-- Input -->
-        <Stack Class=""border-t px-4 py-3"" Gap=""0"">
-            <Flex Align=""center"" Gap=""2"">
-                <Input Placeholder=""Type a message..."" @bind-Value=""_newMessage"" Class=""flex-1"" />
-                <Button Variant=""Button.ButtonVariant.Default"" @onclick=""SendMessage"">
-                    <DynamicIcon Name=""Send"" Class=""h-4 w-4"" /> Send
-                </Button>
             </Flex>
-        </Stack>
+
+            <!-- Messages -->
+            <Stack Class=""flex-1 overflow-y-auto px-4 py-4 gap-1"">
+                <!-- Time group separator -->
+                <Flex Class=""items-center gap-3 my-3"">
+                    <Lumeo.Text As=""span"" Class=""flex-1 h-px bg-border/40 block""></Lumeo.Text>
+                    <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground"">Today</Lumeo.Text>
+                    <Lumeo.Text As=""span"" Class=""flex-1 h-px bg-border/40 block""></Lumeo.Text>
+                </Flex>
+                @foreach (var msg in _messages)
+                {
+                    <Flex Class=""@(msg.IsSent ? \""items-end gap-2 justify-end\"" : \""items-end gap-2 justify-start\"")"">
+                        @if (!msg.IsSent)
+                        {
+                            <Avatar Size=""Avatar.AvatarSize.Sm"" Class=""shrink-0 mb-1""><AvatarFallback>PK</AvatarFallback></Avatar>
+                        }
+                        <Stack Class=""max-w-sm gap-1"">
+                            <Lumeo.Text As=""div"" Class=""@(msg.IsSent ? \""rounded-2xl rounded-br-sm px-3.5 py-2.5 text-sm bg-primary text-primary-foreground\"" : \""rounded-2xl rounded-bl-sm px-3.5 py-2.5 text-sm bg-muted text-foreground\"")"">@msg.Text</Lumeo.Text>
+                            <Lumeo.Text Class=""text-xs text-muted-foreground px-1"">@msg.Time</Lumeo.Text>
+                        </Stack>
+                        @if (msg.IsSent)
+                        {
+                            <Avatar Size=""Avatar.AvatarSize.Sm"" Class=""shrink-0 mb-1""><AvatarFallback>ME</AvatarFallback></Avatar>
+                        }
+                    </Flex>
+                }
+            </Stack>
+
+            <!-- Input -->
+            <Stack Class=""border-t border-border/40 bg-card px-4 py-3 gap-2"">
+                <Flex Class=""items-center gap-2 rounded-xl border border-border/40 bg-background px-3 py-2"">
+                    <Input placeholder=""Type a message..."" @bind-Value=""_newMessage"" Class=""flex-1 border-0 shadow-none bg-transparent text-sm p-0 h-auto focus-visible:ring-0"" />
+                </Flex>
+                <Flex Class=""items-center justify-between"">
+                    <Flex Class=""items-center gap-1"">
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                            <DynamicIcon Name=""Paperclip"" Class=""h-4 w-4"" />
+                        </Button>
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                            <DynamicIcon Name=""Smile"" Class=""h-4 w-4"" />
+                        </Button>
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                            <DynamicIcon Name=""Mic"" Class=""h-4 w-4"" />
+                        </Button>
+                    </Flex>
+                    <Button Size=""Button.ButtonSize.Sm"" @onclick=""SendMessage"">
+                        <DynamicIcon Name=""Send"" Class=""h-3.5 w-3.5 mr-1.5"" /> Send
+                    </Button>
+                </Flex>
+            </Stack>
+        </Flex>
     </Flex>
-</Flex>
+</Stack>
 
 @code {
-    private record Contact(int Id, string Name, string Initials, string LastMessage, string Timestamp, bool IsOnline, int UnreadCount);
-    private record Message(string Text, bool IsSent, string Time);
-
-    private List<Contact> _contacts = new() { /* ... 8 contacts ... */ };
-    private List<Message> _messages = new() { /* ... 12 messages ... */ };
-
-    private Contact? _selectedContact;
-    private string _newMessage = string.Empty;
-
-    private void SelectContact(Contact contact) => _selectedContact = contact;
-
     private void SendMessage()
     {
         if (string.IsNullOrWhiteSpace(_newMessage)) return;

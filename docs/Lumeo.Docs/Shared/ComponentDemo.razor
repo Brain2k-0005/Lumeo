@@ -1,6 +1,6 @@
 @inject IJSRuntime JS
 
-<div class="rounded-[var(--radius-xl)] border border-border bg-card @(OverflowVisible ? "overflow-visible" : "overflow-hidden")">
+<section id="@ComputedId" data-toc-entry data-toc-title="@Title" class="scroll-mt-24 rounded-[var(--radius-xl)] border border-border bg-card @(OverflowVisible ? "overflow-visible" : "overflow-hidden")">
     @* Header bar with title and tab switcher *@
     <Flex Align="center" Justify="between" Class="border-b border-border px-4 py-3 bg-muted/20">
         <Flex Align="center" Gap="1" Class="rounded-[var(--radius)] border border-border bg-background p-0.5">
@@ -73,7 +73,7 @@
             }
         </Flex>
     </Flex>
-</div>
+</section>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -81,6 +81,22 @@
     [Parameter] public string? Code { get; set; }
     [Parameter] public string? Description { get; set; }
     [Parameter] public bool OverflowVisible { get; set; }
+    [Parameter] public string? Id { get; set; }
+
+    private string? ComputedId => Id ?? (string.IsNullOrWhiteSpace(Title) ? null : Slugify(Title!));
+
+    private static string Slugify(string input)
+    {
+        var sb = new System.Text.StringBuilder();
+        bool lastWasDash = false;
+        foreach (var ch in input.ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(ch)) { sb.Append(ch); lastWasDash = false; }
+            else if (!lastWasDash && sb.Length > 0) { sb.Append('-'); lastWasDash = true; }
+        }
+        var s = sb.ToString().TrimEnd('-');
+        return string.IsNullOrEmpty(s) ? "demo" : s;
+    }
 
     private string PreviewContainerClass => OverflowVisible
         ? "min-h-[160px] p-6 sm:p-8 bg-muted/20 overflow-visible flex items-center justify-center"

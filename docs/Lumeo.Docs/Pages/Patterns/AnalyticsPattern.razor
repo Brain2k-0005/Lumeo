@@ -1,73 +1,168 @@
-﻿@page "/blocks/analytics"
+@page "/blocks/analytics"
 @namespace Lumeo.Docs.Pages.Patterns
 
 <PageTitle>Analytics Pattern — Lumeo</PageTitle>
 
-<PageHeader Title="Analytics" Description="A KPI analytics dashboard with vertical tab navigation, progress indicators, date range filtering, and charts for revenue and user metrics." />
+<PageHeader Title="Analytics" Description="A KPI analytics dashboard with metric overview cards, traffic source breakdown, page views trend, top pages table, device split bars, and geographic distribution." />
 
 <Stack Gap="6">
 
     <ComponentDemo Title="Analytics Dashboard" Code="@_analyticsCode">
         <Stack Class="w-full min-w-[700px]">
 
-            <Tabs @bind-ActiveValue="_activeTab" Orientation="Tabs.TabsOrientation.Vertical" Class="gap-6">
+            <Tabs @bind-ActiveValue="_activeTab" Orientation="Tabs.TabsOrientation.Vertical" Class="gap-6 items-start">
 
-                <!-- Vertical Sidebar Tabs -->
-                <TabsList Class="flex-col h-auto w-44 shrink-0 justify-start items-stretch gap-1 bg-muted/50 p-2 rounded-lg self-start">
-                    <TabsTrigger Value="overview" Class="justify-start">
-                        <DynamicIcon Name="LayoutDashboard" Class="h-4 w-4 mr-2" />
-                        Overview
-                    </TabsTrigger>
-                    <TabsTrigger Value="revenue" Class="justify-start">
-                        <DynamicIcon Name="TrendingUp" Class="h-4 w-4 mr-2" />
-                        Revenue
-                    </TabsTrigger>
-                    <TabsTrigger Value="users" Class="justify-start">
-                        <DynamicIcon Name="Users" Class="h-4 w-4 mr-2" />
-                        Users
-                    </TabsTrigger>
-                </TabsList>
+                <!-- ── Fixed-width Sidebar ── -->
+                <div class="w-56 shrink-0 flex flex-col gap-0 self-start rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden">
 
-                <!-- Tab Content -->
-                <Stack Class="flex-1 min-w-0">
+                    <!-- Sidebar Header -->
+                    <div class="flex items-center gap-2 px-3 py-3 border-b border-border/40">
+                        <div class="flex h-6 w-6 items-center justify-center rounded-md bg-primary shrink-0">
+                            <DynamicIcon Name="BarChart2" Class="h-3.5 w-3.5 text-primary-foreground" />
+                        </div>
+                        <Lumeo.Text Class="text-sm font-semibold text-foreground">Analytics</Lumeo.Text>
+                    </div>
 
-                    <!-- Overview Tab -->
+                    <!-- Date-range pill -->
+                    <div class="px-3 py-2.5 border-b border-border/40">
+                        <div class="flex items-center gap-1.5 rounded-md bg-muted/60 border border-border/40 px-2.5 py-1.5">
+                            <DynamicIcon Name="CalendarDays" Class="h-3 w-3 text-muted-foreground shrink-0" />
+                            <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground font-medium">Apr 1 – Apr 14, 2026</Lumeo.Text>
+                        </div>
+                    </div>
+
+                    <!-- Navigation section -->
+                    <div class="px-2 pt-2 pb-1">
+                        <Lumeo.Text Class="px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reports</Lumeo.Text>
+                        <TabsList Class="flex-col h-auto w-full justify-start items-stretch gap-0.5 bg-transparent border-0 p-0 rounded-none">
+                            <TabsTrigger Value="overview" Class="justify-start text-sm h-8 w-full">
+                                <DynamicIcon Name="LayoutDashboard" Class="h-3.5 w-3.5 mr-2 shrink-0" />
+                                Overview
+                            </TabsTrigger>
+                            <TabsTrigger Value="realtime" Class="justify-start text-sm h-8 w-full">
+                                <DynamicIcon Name="Activity" Class="h-3.5 w-3.5 mr-2 shrink-0" />
+                                Realtime
+                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="ml-auto text-[9px] px-1 py-0 h-4">Live</Badge>
+                            </TabsTrigger>
+                            <TabsTrigger Value="traffic" Class="justify-start text-sm h-8 w-full">
+                                <DynamicIcon Name="Globe" Class="h-3.5 w-3.5 mr-2 shrink-0" />
+                                Acquisition
+                            </TabsTrigger>
+                            <TabsTrigger Value="pages" Class="justify-start text-sm h-8 w-full">
+                                <DynamicIcon Name="FileText" Class="h-3.5 w-3.5 mr-2 shrink-0" />
+                                Behavior
+                            </TabsTrigger>
+                            <TabsTrigger Value="devices" Class="justify-start text-sm h-8 w-full">
+                                <DynamicIcon Name="Monitor" Class="h-3.5 w-3.5 mr-2 shrink-0" />
+                                Audience
+                            </TabsTrigger>
+                            <button class="flex w-full items-center justify-start rounded-md px-3 text-sm h-8 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+                                <DynamicIcon Name="Target" Class="h-3.5 w-3.5 mr-2 shrink-0" />
+                                Conversions
+                            </button>
+                        </TabsList>
+                    </div>
+
+                    <Separator Class="my-1" />
+
+                    <!-- Saved reports section -->
+                    <div class="px-2 pt-1 pb-3">
+                        <Lumeo.Text Class="px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Saved Reports</Lumeo.Text>
+                        <Stack Gap="0.5">
+                            @foreach (var report in _savedReports)
+                            {
+                                <button class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors group">
+                                    <DynamicIcon Name="BookmarkCheck" Class="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                                    <Lumeo.Text As="span" Class="text-xs truncate">@report</Lumeo.Text>
+                                </button>
+                            }
+                        </Stack>
+                    </div>
+                </div>
+                <!-- ── /Sidebar ── -->
+
+                <!-- Tab Content Area -->
+                <Stack Class="flex-1 min-w-0" Gap="0">
+
+                    <!-- ── Overview Tab ── -->
                     <TabsContent Value="overview">
-                        <Stack Gap="6">
+                        <Stack Gap="4">
 
-                            <!-- KPI Row -->
+                            <!-- KPI Metric Cards -->
                             <Grid Class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 @foreach (var kpi in _kpis)
                                 {
-                                    <Card>
-                                        <CardHeader>
-                                            <Lumeo.Text Class="text-sm font-medium text-muted-foreground">@kpi.Label</Lumeo.Text>
+                                    <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm overflow-hidden">
+                                        <CardHeader Class="pb-2">
+                                            <Flex Class="items-center justify-between">
+                                                <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">@kpi.Label</Lumeo.Text>
+                                                <Flex Class="h-6 w-6 items-center justify-center rounded-md bg-muted/60">
+                                                    <DynamicIcon Name="@kpi.IconName" Class="h-3 w-3 text-muted-foreground" />
+                                                </Flex>
+                                            </Flex>
                                         </CardHeader>
-                                        <CardContent Class="space-y-2">
-                                            <Lumeo.Text Class="text-2xl font-bold text-foreground">@kpi.Value</Lumeo.Text>
+                                        <CardContent Class="pt-0">
+                                            <Lumeo.Text Class="text-2xl font-bold text-foreground tracking-tight">@kpi.Value</Lumeo.Text>
+                                            <Flex Class="items-center gap-1 mt-1">
+                                                <DynamicIcon Name="@(kpi.IsPositive ? "TrendingUp" : "TrendingDown")" Class="@($"h-3 w-3 {(kpi.IsPositive ? "text-emerald-500" : "text-rose-500")}")" />
+                                                <Lumeo.Text As="span" Class="@($"text-xs font-semibold {(kpi.IsPositive ? "text-emerald-600" : "text-rose-600")}")">@kpi.Delta</Lumeo.Text>
+                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground">vs prior period</Lumeo.Text>
+                                            </Flex>
                                             @if (kpi.IsIndeterminate)
                                             {
-                                                <Progress IsIndeterminate="true" />
-                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground">Processing...</Lumeo.Text>
+                                                <Progress IsIndeterminate="true" Class="mt-3 h-1" />
                                             }
                                             else
                                             {
-                                                <Progress Value="@kpi.Percent" ShowLabel="true" Label="@($"{kpi.Label}: {kpi.Percent}%")" />
+                                                <Progress Value="@kpi.Percent" Class="mt-3 h-1" Variant="@kpi.Variant" />
                                             }
                                         </CardContent>
                                     </Card>
                                 }
                             </Grid>
 
-                            <!-- Date Range Filter -->
-                            <Card>
-                                <CardHeader>
-                                    <Flex Class="items-center justify-between">
-                                        <Stack>
-                                            <Heading Level="3" Class="text-base font-semibold text-foreground">Date Range Filter</Heading>
-                                            <Lumeo.Text Class="text-sm text-muted-foreground mt-0.5">Day @((int)_rangeStart) – Day @((int)_rangeEnd)</Lumeo.Text>
+                            <!-- Page Views Trend — LineChart -->
+                            <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                <CardHeader Class="pb-3">
+                                    <Flex Class="items-start justify-between">
+                                        <Stack Gap="1">
+                                            <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Page Views</Heading>
+                                            <Lumeo.Text Class="text-xs text-muted-foreground">Daily sessions and unique visitors — last 14 days</Lumeo.Text>
                                         </Stack>
-                                        <Badge Variant="Badge.BadgeVariant.Secondary">@((int)_rangeEnd - (int)_rangeStart) days selected</Badge>
+                                        <Flex Class="items-center gap-3">
+                                            <Flex Class="items-center gap-1.5">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-primary inline-block"></span>
+                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground">Sessions</Lumeo.Text>
+                                            </Flex>
+                                            <Flex Class="items-center gap-1.5">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 inline-block"></span>
+                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground">Unique Visitors</Lumeo.Text>
+                                            </Flex>
+                                        </Flex>
+                                    </Flex>
+                                </CardHeader>
+                                <CardContent Class="pt-0">
+                                    <LineChart
+                                        Categories="@_lineCategories"
+                                        Series="@_lineSeries"
+                                        Smooth="true"
+                                        ShowDots="true"
+                                        Height="240px" />
+                                </CardContent>
+                            </Card>
+
+                            <!-- Date Range Slider -->
+                            <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                <CardHeader Class="pb-3">
+                                    <Flex Class="items-center justify-between">
+                                        <Stack Gap="1">
+                                            <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Custom Date Range</Heading>
+                                            <Lumeo.Text Class="text-xs text-muted-foreground">
+                                                Apr @((int)_rangeStart) – Apr @((int)_rangeEnd), 2026
+                                                <Lumeo.Text As="span" Class="ml-1 font-medium text-foreground">(@((int)_rangeEnd - (int)_rangeStart) days)</Lumeo.Text>
+                                            </Lumeo.Text>
+                                        </Stack>
+                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px]">@((int)_rangeEnd - (int)_rangeStart) day window</Badge>
                                     </Flex>
                                 </CardHeader>
                                 <CardContent Class="pb-6">
@@ -76,95 +171,323 @@
                                             @bind-Value="_rangeStart"
                                             @bind-ValueEnd="_rangeEnd" />
                                     <Flex Class="justify-between text-xs text-muted-foreground mt-2">
-                                        <Lumeo.Text As="span">Day 1</Lumeo.Text>
-                                        <Lumeo.Text As="span">Day 30</Lumeo.Text>
+                                        <Lumeo.Text As="span">Apr 1</Lumeo.Text>
+                                        <Lumeo.Text As="span">Apr 30</Lumeo.Text>
                                     </Flex>
-                                </CardContent>
-                            </Card>
-
-                            <!-- Separator with label -->
-                            <Flex Class="items-center gap-3">
-                                <Separator Class="flex-1" />
-                                <Lumeo.Text As="span" Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Revenue Breakdown</Lumeo.Text>
-                                <Separator Class="flex-1" />
-                            </Flex>
-
-                            <!-- Area Chart -->
-                            <Card>
-                                <CardHeader>
-                                    <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">6-Month Revenue</Heading>
-                                    <Lumeo.Text Class="text-sm text-muted-foreground">Revenue trend over the last 6 months</Lumeo.Text>
-                                </CardHeader>
-                                <CardContent>
-                                    <AreaChart
-                                        Categories="@_areaCategories"
-                                        Series="@_areaSeries"
-                                        Smooth="true"
-                                        Height="260px" />
                                 </CardContent>
                             </Card>
 
                         </Stack>
                     </TabsContent>
 
-                    <!-- Revenue Tab -->
-                    <TabsContent Value="revenue">
-                        <Grid Class="grid-cols-1 lg:grid-cols-2 gap-4">
-                            <Card>
-                                <CardHeader>
-                                    <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Monthly Revenue</Heading>
-                                    <Lumeo.Text Class="text-sm text-muted-foreground">Bar chart by month</Lumeo.Text>
+                    <!-- ── Realtime Tab ── -->
+                    <TabsContent Value="realtime">
+                        <Stack Gap="4">
+                            <Grid Class="grid-cols-1 sm:grid-cols-3 gap-4">
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardContent Class="pt-4">
+                                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active Users</Lumeo.Text>
+                                        <Lumeo.Text Class="text-3xl font-bold text-foreground mt-1">1,284</Lumeo.Text>
+                                        <Flex Class="items-center gap-1.5 mt-1">
+                                            <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                            <Lumeo.Text As="span" Class="text-xs text-emerald-600 font-medium">Live now</Lumeo.Text>
+                                        </Flex>
+                                    </CardContent>
+                                </Card>
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardContent Class="pt-4">
+                                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pageviews / min</Lumeo.Text>
+                                        <Lumeo.Text Class="text-3xl font-bold text-foreground mt-1">392</Lumeo.Text>
+                                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">avg last 5 min: 371</Lumeo.Text>
+                                    </CardContent>
+                                </Card>
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardContent Class="pt-4">
+                                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Top Active Page</Lumeo.Text>
+                                        <Lumeo.Text Class="text-lg font-bold text-foreground mt-1 truncate">/pricing</Lumeo.Text>
+                                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">284 active users</Lumeo.Text>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                            <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                <CardHeader Class="pb-3">
+                                    <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Live Activity Feed</Heading>
+                                    <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Most recently visited pages</Lumeo.Text>
                                 </CardHeader>
-                                <CardContent>
-                                    <BarChart
-                                        Categories="@_barCategories"
-                                        Series="@_barSeries"
-                                        Height="280px" />
+                                <CardContent Class="pt-0">
+                                    <Stack Gap="0">
+                                        @foreach (var (pagePath, users) in new[] { ("/pricing", 284), ("/docs", 201), ("/", 187), ("/blog/getting-started", 143), ("/auth/signup", 98) })
+                                        {
+                                            <Flex Class="items-center justify-between py-2.5 border-b border-border/40 last:border-0">
+                                                <Flex Class="items-center gap-2">
+                                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                                    <Lumeo.Text As="span" Class="text-sm font-mono text-foreground">@pagePath</Lumeo.Text>
+                                                </Flex>
+                                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px]">@users active</Badge>
+                                            </Flex>
+                                        }
+                                    </Stack>
                                 </CardContent>
                             </Card>
-                            <Card>
-                                <CardHeader>
-                                    <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">Revenue by Source</Heading>
-                                    <Lumeo.Text Class="text-sm text-muted-foreground">Breakdown of revenue channels</Lumeo.Text>
-                                </CardHeader>
-                                <CardContent>
-                                    <PieChart
-                                        Data="@_pieData"
-                                        Height="280px" />
-                                </CardContent>
-                            </Card>
-                        </Grid>
+                        </Stack>
                     </TabsContent>
 
-                    <!-- Users Tab -->
-                    <TabsContent Value="users">
+                    <!-- ── Traffic Sources Tab ── -->
+                    <TabsContent Value="traffic">
                         <Stack Gap="4">
 
-                            <Card>
-                                <CardHeader>
-                                    <Heading Level="3" Class="text-lg font-semibold leading-none tracking-tight">User Metrics</Heading>
-                                    <Lumeo.Text Class="text-sm text-muted-foreground">Progress by user segment</Lumeo.Text>
-                                </CardHeader>
-                                <CardContent Class="space-y-5">
-
-                                    @foreach (var m in _userMetrics)
-                                    {
-                                        <Stack Gap="1.5">
-                                            <Flex Class="items-center justify-between">
-                                                <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@m.Label</Lumeo.Text>
-                                                <Badge Variant="@m.BadgeVariant">@m.StatusLabel</Badge>
+                            <!-- Summary Strip -->
+                            <Grid Class="grid-cols-1 sm:grid-cols-3 gap-4">
+                                @foreach (var ts in _trafficSummary)
+                                {
+                                    <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                        <CardContent Class="pt-4">
+                                            <Flex Class="items-center justify-between mb-1">
+                                                <Lumeo.Text Class="text-sm font-medium text-foreground">@ts.Name</Lumeo.Text>
+                                                <Badge Variant="@ts.Variant" Class="text-[10px]">@ts.Change</Badge>
                                             </Flex>
-                                            <Progress Value="@m.Value" Variant="@m.ProgressVariant" ShowLabel="true" Label="@($"{m.Value}%")" />
+                                            <Lumeo.Text Class="text-2xl font-bold text-foreground">@ts.Sessions</Lumeo.Text>
+                                            <Lumeo.Text Class="text-xs text-muted-foreground">@ts.Pct% of total traffic</Lumeo.Text>
+                                            <Progress Value="@ts.Pct" Class="mt-2 h-1" />
+                                        </CardContent>
+                                    </Card>
+                                }
+                            </Grid>
 
-                                            @if (m != _userMetrics.Last())
+                            <!-- Traffic Breakdown: Donut + Detailed List -->
+                            <Grid Class="grid-cols-1 lg:grid-cols-2 gap-4">
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardHeader Class="pb-3">
+                                        <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Traffic by Source</Heading>
+                                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Share of total sessions by acquisition channel</Lumeo.Text>
+                                    </CardHeader>
+                                    <CardContent Class="pt-0">
+                                        <DonutChart
+                                            Data="@_trafficDonut"
+                                            CenterLabel="148.4K"
+                                            InnerRadius="52%"
+                                            OuterRadius="72%"
+                                            Height="260px" />
+                                    </CardContent>
+                                </Card>
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardHeader Class="pb-3">
+                                        <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Source Breakdown</Heading>
+                                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Sessions, bounce rate, and avg. session duration</Lumeo.Text>
+                                    </CardHeader>
+                                    <CardContent Class="pt-0">
+                                        <Stack Gap="0">
+                                            <Flex Class="items-center text-[10px] font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/40 gap-2">
+                                                <Lumeo.Text Class="flex-1">Source</Lumeo.Text>
+                                                <Lumeo.Text Class="w-16 text-right">Sessions</Lumeo.Text>
+                                                <Lumeo.Text Class="w-16 text-right">Bounce</Lumeo.Text>
+                                                <Lumeo.Text Class="w-14 text-right">Avg. Time</Lumeo.Text>
+                                            </Flex>
+                                            @foreach (var src in _trafficSources)
                                             {
-                                                <Flex Class="items-center gap-3 pt-1">
-                                                    <Separator Class="flex-1" />
+                                                <Flex Class="items-center py-2.5 border-b border-border/40 last:border-0 hover:bg-muted/30 transition-colors rounded-md px-1 -mx-1 gap-2">
+                                                    <Flex Class="items-center gap-2 flex-1">
+                                                        <DynamicIcon Name="@src.Icon" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                        <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@src.Name</Lumeo.Text>
+                                                    </Flex>
+                                                    <Lumeo.Text As="span" Class="text-sm text-foreground w-16 text-right">@src.Sessions</Lumeo.Text>
+                                                    <Lumeo.Text As="span" Class="text-sm text-muted-foreground w-16 text-right">@src.Bounce</Lumeo.Text>
+                                                    <Lumeo.Text As="span" Class="text-sm text-muted-foreground w-14 text-right">@src.AvgTime</Lumeo.Text>
                                                 </Flex>
                                             }
                                         </Stack>
-                                    }
+                                    </CardContent>
+                                </Card>
+                            </Grid>
 
+                        </Stack>
+                    </TabsContent>
+
+                    <!-- ── Top Pages Tab ── -->
+                    <TabsContent Value="pages">
+                        <Stack Gap="4">
+
+                            <!-- Overview Metric Row -->
+                            <Grid Class="grid-cols-1 sm:grid-cols-3 gap-4">
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardContent Class="pt-4">
+                                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Pageviews</Lumeo.Text>
+                                        <Lumeo.Text Class="text-2xl font-bold text-foreground mt-1">487,291</Lumeo.Text>
+                                        <Flex Class="items-center gap-1 mt-1">
+                                            <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-emerald-500" />
+                                            <Lumeo.Text As="span" Class="text-xs font-semibold text-emerald-600">+22.4%</Lumeo.Text>
+                                        </Flex>
+                                    </CardContent>
+                                </Card>
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardContent Class="pt-4">
+                                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg. Time on Page</Lumeo.Text>
+                                        <Lumeo.Text Class="text-2xl font-bold text-foreground mt-1">2m 38s</Lumeo.Text>
+                                        <Flex Class="items-center gap-1 mt-1">
+                                            <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-emerald-500" />
+                                            <Lumeo.Text As="span" Class="text-xs font-semibold text-emerald-600">+8.1%</Lumeo.Text>
+                                        </Flex>
+                                    </CardContent>
+                                </Card>
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardContent Class="pt-4">
+                                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exit Rate</Lumeo.Text>
+                                        <Lumeo.Text Class="text-2xl font-bold text-foreground mt-1">34.7%</Lumeo.Text>
+                                        <Flex Class="items-center gap-1 mt-1">
+                                            <DynamicIcon Name="TrendingDown" Class="h-3 w-3 text-emerald-500" />
+                                            <Lumeo.Text As="span" Class="text-xs font-semibold text-emerald-600">-2.3%</Lumeo.Text>
+                                        </Flex>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+
+                            <!-- Top Pages Table -->
+                            <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                <CardHeader Class="pb-3">
+                                    <Flex Class="items-center justify-between">
+                                        <Stack Gap="1">
+                                            <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Top Pages</Heading>
+                                            <Lumeo.Text Class="text-xs text-muted-foreground">Ranked by pageviews — Apr 1–14, 2026</Lumeo.Text>
+                                        </Stack>
+                                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-7 text-xs">
+                                            <DynamicIcon Name="Download" Class="h-3.5 w-3.5 mr-1.5" />
+                                            Export CSV
+                                        </Button>
+                                    </Flex>
+                                </CardHeader>
+                                <CardContent Class="pt-0 px-0 pb-0">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow Class="hover:bg-transparent border-border/40">
+                                                <TableHead Class="text-xs font-medium pl-6 w-8">#</TableHead>
+                                                <TableHead Class="text-xs font-medium">Page</TableHead>
+                                                <TableHead Class="text-xs font-medium text-right">Views</TableHead>
+                                                <TableHead Class="text-xs font-medium text-right">Uniques</TableHead>
+                                                <TableHead Class="text-xs font-medium text-right">Bounce</TableHead>
+                                                <TableHead Class="text-xs font-medium text-right pr-6">Avg. Time</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            @foreach (var (pg, idx) in _topPages.Select((p, i) => (p, i + 1)))
+                                            {
+                                                <TableRow Class="hover:bg-muted/40 transition-colors border-border/40">
+                                                    <TableCell Class="pl-6 text-xs text-muted-foreground font-mono">@idx</TableCell>
+                                                    <TableCell>
+                                                        <Stack Gap="0">
+                                                            <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@pg.Title</Lumeo.Text>
+                                                            <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground font-mono">@pg.Path</Lumeo.Text>
+                                                        </Stack>
+                                                    </TableCell>
+                                                    <TableCell Class="text-right text-sm font-medium">@pg.Views</TableCell>
+                                                    <TableCell Class="text-right text-sm text-muted-foreground">@pg.Uniques</TableCell>
+                                                    <TableCell Class="text-right">
+                                                        <Badge Variant="@pg.BounceVariant" Class="text-[10px]">@pg.Bounce</Badge>
+                                                    </TableCell>
+                                                    <TableCell Class="text-right text-sm text-muted-foreground pr-6">@pg.AvgTime</TableCell>
+                                                </TableRow>
+                                            }
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+
+                        </Stack>
+                    </TabsContent>
+
+                    <!-- ── Devices Tab ── -->
+                    <TabsContent Value="devices">
+                        <Stack Gap="4">
+
+                            <!-- Device + Browser Split -->
+                            <Grid Class="grid-cols-1 lg:grid-cols-2 gap-4">
+
+                                <!-- Devices -->
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardHeader Class="pb-3">
+                                        <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Device Type</Heading>
+                                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Session share by device category</Lumeo.Text>
+                                    </CardHeader>
+                                    <CardContent Class="pt-0">
+                                        <Stack Gap="3">
+                                            @foreach (var device in _devices)
+                                            {
+                                                <Stack Gap="1.5">
+                                                    <Flex Class="items-center justify-between">
+                                                        <Flex Class="items-center gap-2">
+                                                            <DynamicIcon Name="@device.Icon" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                                            <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@device.Name</Lumeo.Text>
+                                                        </Flex>
+                                                        <Flex Class="items-center gap-2">
+                                                            <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@device.Sessions</Lumeo.Text>
+                                                            <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] w-10 justify-center">@device.Pct%</Badge>
+                                                        </Flex>
+                                                    </Flex>
+                                                    <Progress Value="@device.Pct" Class="h-1.5" />
+                                                </Stack>
+                                            }
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+                                <!-- Browser Breakdown -->
+                                <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                    <CardHeader Class="pb-3">
+                                        <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Browser Share</Heading>
+                                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1">Top browsers by session volume</Lumeo.Text>
+                                    </CardHeader>
+                                    <CardContent Class="pt-0">
+                                        <Stack Gap="3">
+                                            @foreach (var browser in _browsers)
+                                            {
+                                                <Stack Gap="1.5">
+                                                    <Flex Class="items-center justify-between">
+                                                        <Flex Class="items-center gap-2">
+                                                            <DynamicIcon Name="Globe" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                                            <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@browser.Name</Lumeo.Text>
+                                                        </Flex>
+                                                        <Flex Class="items-center gap-2">
+                                                            <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@browser.Sessions</Lumeo.Text>
+                                                            <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] w-10 justify-center">@browser.Pct%</Badge>
+                                                        </Flex>
+                                                    </Flex>
+                                                    <Progress Value="@browser.Pct" Class="h-1.5" Variant="@browser.Variant" />
+                                                </Stack>
+                                            }
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+
+                            <!-- Geographic Distribution -->
+                            <Card Class="rounded-[var(--radius-lg)] border-border/40 shadow-sm">
+                                <CardHeader Class="pb-3">
+                                    <Flex Class="items-center justify-between">
+                                        <Stack Gap="1">
+                                            <Heading Level="3" Class="text-base font-semibold leading-none tracking-tight">Top Countries</Heading>
+                                            <Lumeo.Text Class="text-xs text-muted-foreground">Session volume by country of origin</Lumeo.Text>
+                                        </Stack>
+                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px]">148,412 total sessions</Badge>
+                                    </Flex>
+                                </CardHeader>
+                                <CardContent Class="pt-0">
+                                    <Grid Class="grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-0">
+                                        @foreach (var country in _countries)
+                                        {
+                                            <Stack Gap="1" Class="py-2.5 border-b border-border/40 last:border-0">
+                                                <Flex Class="items-center justify-between">
+                                                    <Flex Class="items-center gap-2">
+                                                        <Lumeo.Text As="span" Class="text-base leading-none">@country.Flag</Lumeo.Text>
+                                                        <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@country.Name</Lumeo.Text>
+                                                    </Flex>
+                                                    <Flex Class="items-center gap-2">
+                                                        <Lumeo.Text As="span" Class="text-sm font-medium text-foreground">@country.Sessions</Lumeo.Text>
+                                                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground w-10 text-right">@country.Pct%</Lumeo.Text>
+                                                    </Flex>
+                                                </Flex>
+                                                <Progress Value="@country.Pct" Class="h-1" />
+                                            </Stack>
+                                        }
+                                    </Grid>
                                 </CardContent>
                             </Card>
 
@@ -182,144 +505,274 @@
 
 @code {
     private string _activeTab = "overview";
-    private double _rangeStart = 5;
-    private double _rangeEnd = 22;
+    private double _rangeStart = 1;
+    private double _rangeEnd = 14;
 
-    private record KpiItem(string Label, string Value, int Percent, bool IsIndeterminate = false);
+    private readonly List<string> _savedReports = new()
+    {
+        "Weekly Executive Summary",
+        "Paid vs Organic ROI",
+        "Mobile Funnel Analysis",
+        "Top Content (90d)",
+    };
+
+    // ── KPI Cards ─────────────────────────────────────────────────
+    private record KpiItem(
+        string Label, string Value, string Delta, bool IsPositive,
+        string IconName, int Percent, Progress.ProgressVariant Variant,
+        bool IsIndeterminate = false);
+
     private readonly List<KpiItem> _kpis = new()
     {
-        new("Revenue",    "$128,430", 78),
-        new("Users",      "24,812",   65),
-        new("Conversion", "3.4%",     42),
-        new("Processing", "—",        0, IsIndeterminate: true),
+        new("Total Sessions",  "148,412",  "+24.3%", true,  "Activity",    82, Progress.ProgressVariant.Success),
+        new("Unique Visitors", "94,837",   "+18.7%", true,  "Users",       68, Progress.ProgressVariant.Default),
+        new("Conversion Rate", "3.91%",    "+0.4pt", true,  "TrendingUp",  46, Progress.ProgressVariant.Warning),
+        new("Indexing",        "—",        "live",   true,  "RefreshCw",   0,  Progress.ProgressVariant.Default, IsIndeterminate: true),
     };
 
-    // Area chart — 6 months
-    private readonly List<string> _areaCategories = new() { "Sep", "Oct", "Nov", "Dec", "Jan", "Feb" };
-    private readonly List<AreaChart.ChartSeriesData> _areaSeries = new()
+    // ── Line Chart — 14-day page views ────────────────────────────
+    private readonly List<string> _lineCategories = new()
+        { "Apr 1", "Apr 2", "Apr 3", "Apr 4", "Apr 5", "Apr 6", "Apr 7",
+          "Apr 8", "Apr 9", "Apr 10", "Apr 11", "Apr 12", "Apr 13", "Apr 14" };
+
+    private readonly List<LineChart.ChartSeriesData> _lineSeries = new()
     {
-        new AreaChart.ChartSeriesData
+        new LineChart.ChartSeriesData
         {
-            Name   = "Revenue",
-            Values = new List<double> { 32000, 38500, 41000, 54000, 48000, 61000 }
+            Name   = "Sessions",
+            Values = new List<double>
+                { 9841, 11204, 10387, 13918, 14672, 12003, 8419,
+                  10942, 13571, 14208, 15841, 13307, 11894, 12205 }
         },
-        new AreaChart.ChartSeriesData
+        new LineChart.ChartSeriesData
         {
-            Name   = "Expenses",
-            Values = new List<double> { 18000, 20000, 21500, 26000, 24000, 28000 }
+            Name   = "Unique Visitors",
+            Values = new List<double>
+                { 6124, 7089, 6582, 8741, 9312, 7618, 5291,
+                  6873, 8534, 8927, 9941, 8401, 7482, 7741 }
         }
     };
 
-    // Bar chart
-    private readonly List<string> _barCategories = new() { "Sep", "Oct", "Nov", "Dec", "Jan", "Feb" };
-    private readonly List<BarChart.ChartSeriesData> _barSeries = new()
+    // ── Traffic Summary ───────────────────────────────────────────
+    private record TrafficSummaryItem(string Name, string Sessions, int Pct, string Change, Badge.BadgeVariant Variant);
+
+    private readonly List<TrafficSummaryItem> _trafficSummary = new()
     {
-        new BarChart.ChartSeriesData
-        {
-            Name   = "Revenue",
-            Values = new List<double> { 32000, 38500, 41000, 54000, 48000, 61000 }
-        }
+        new("Organic Search", "58,291",  39, "+31.2%", Badge.BadgeVariant.Success),
+        new("Direct",         "41,847",  28, "+7.4%",  Badge.BadgeVariant.Success),
+        new("Paid / Referral","48,274",  33, "+18.9%", Badge.BadgeVariant.Success),
     };
 
-    // Pie chart
-    private readonly List<PieChart.PieChartData> _pieData = new()
+    // ── Traffic Donut ─────────────────────────────────────────────
+    private readonly List<DonutChart.DonutChartData> _trafficDonut = new()
     {
-        new PieChart.PieChartData { Name = "Direct",    Value = 34 },
-        new PieChart.PieChartData { Name = "Organic",   Value = 28 },
-        new PieChart.PieChartData { Name = "Referral",  Value = 22 },
-        new PieChart.PieChartData { Name = "Paid Ads",  Value = 16 },
+        new DonutChart.DonutChartData { Name = "Organic",  Value = 39 },
+        new DonutChart.DonutChartData { Name = "Direct",   Value = 28 },
+        new DonutChart.DonutChartData { Name = "Paid",     Value = 18 },
+        new DonutChart.DonutChartData { Name = "Referral", Value = 10 },
+        new DonutChart.DonutChartData { Name = "Social",   Value = 5  },
     };
 
-    private record UserMetricItem(string Label, int Value, Progress.ProgressVariant ProgressVariant, Badge.BadgeVariant BadgeVariant, string StatusLabel);
-    private readonly List<UserMetricItem> _userMetrics = new()
+    // ── Traffic Source Detail ─────────────────────────────────────
+    private record TrafficSourceItem(string Name, string Icon, string Sessions, string Bounce, string AvgTime);
+
+    private readonly List<TrafficSourceItem> _trafficSources = new()
     {
-        new("Active Users",    82, Progress.ProgressVariant.Success,     Badge.BadgeVariant.Success,     "On track"),
-        new("Churned Users",   18, Progress.ProgressVariant.Destructive, Badge.BadgeVariant.Destructive, "At risk"),
-        new("Trial Users",     45, Progress.ProgressVariant.Warning,     Badge.BadgeVariant.Warning,     "Needs review"),
-        new("Power Users",     63, Progress.ProgressVariant.Default,     Badge.BadgeVariant.Secondary,   "Steady"),
+        new("Google",         "Search",        "52,847", "41.2%", "2m 51s"),
+        new("Direct",         "Globe",          "41,391", "33.8%", "3m 22s"),
+        new("Twitter / X",    "Share2",         "14,209", "58.4%", "1m 44s"),
+        new("LinkedIn",       "Briefcase",      "11,872", "47.1%", "2m 08s"),
+        new("newsletter",     "Mail",           "9,438",  "29.3%", "4m 17s"),
+        new("GitHub",         "Code",           "8,291",  "55.7%", "1m 29s"),
+        new("Bing",           "Search",         "6,184",  "44.9%", "2m 33s"),
+        new("Other",          "MoreHorizontal", "4,180",  "62.1%", "1m 12s"),
+    };
+
+    // ── Top Pages ─────────────────────────────────────────────────
+    private record TopPageItem(string Title, string Path, string Views, string Uniques, string Bounce, Badge.BadgeVariant BounceVariant, string AvgTime);
+
+    private readonly List<TopPageItem> _topPages = new()
+    {
+        new("Home",                  "/",                        "94,281", "71,438", "28.4%", Badge.BadgeVariant.Success,     "1m 47s"),
+        new("Pricing",               "/pricing",                 "42,819", "31,204", "41.2%", Badge.BadgeVariant.Success,     "3m 12s"),
+        new("Documentation",         "/docs",                    "38,402", "29,817", "22.7%", Badge.BadgeVariant.Success,     "5m 44s"),
+        new("Blog — Getting Started","/blog/getting-started",    "31,947", "27,391", "36.8%", Badge.BadgeVariant.Warning,     "4m 01s"),
+        new("Changelog",             "/changelog",               "18,204", "14,927", "49.1%", Badge.BadgeVariant.Warning,     "2m 28s"),
+        new("Sign Up",               "/auth/signup",             "15,873", "15,206", "18.2%", Badge.BadgeVariant.Success,     "1m 03s"),
+        new("Components — Button",   "/components/button",       "12,418", "10,841", "31.4%", Badge.BadgeVariant.Success,     "6m 19s"),
+        new("About",                 "/about",                   "8,291",  "7,014",  "62.8%", Badge.BadgeVariant.Destructive, "1m 21s"),
+    };
+
+    // ── Devices ───────────────────────────────────────────────────
+    private record DeviceItem(string Name, string Icon, string Sessions, int Pct);
+
+    private readonly List<DeviceItem> _devices = new()
+    {
+        new("Desktop", "Monitor",    "83,108",  56),
+        new("Mobile",  "Smartphone", "52,944",  36),
+        new("Tablet",  "Tablet",     "12,360",  8),
+    };
+
+    // ── Browsers ──────────────────────────────────────────────────
+    private record BrowserItem(string Name, string Sessions, int Pct, Progress.ProgressVariant Variant);
+
+    private readonly List<BrowserItem> _browsers = new()
+    {
+        new("Chrome",  "74,206",  50, Progress.ProgressVariant.Default),
+        new("Safari",  "35,619",  24, Progress.ProgressVariant.Success),
+        new("Firefox", "20,778",  14, Progress.ProgressVariant.Warning),
+        new("Edge",    "11,873",  8,  Progress.ProgressVariant.Default),
+        new("Other",   "5,936",   4,  Progress.ProgressVariant.Default),
+    };
+
+    // ── Countries ─────────────────────────────────────────────────
+    private record CountryItem(string Flag, string Name, string Sessions, int Pct);
+
+    private readonly List<CountryItem> _countries = new()
+    {
+        new("🇺🇸", "United States",  "48,291", 33),
+        new("🇬🇧", "United Kingdom", "18,412", 12),
+        new("🇩🇪", "Germany",        "14,927", 10),
+        new("🇨🇦", "Canada",         "11,384", 8),
+        new("🇫🇷", "France",         "9,841",  7),
+        new("🇮🇳", "India",          "8,203",  6),
+        new("🇦🇺", "Australia",      "7,119",  5),
+        new("🇧🇷", "Brazil",         "6,284",  4),
+        new("🇯🇵", "Japan",          "5,712",  4),
+        new("🇳🇱", "Netherlands",    "4,891",  3),
     };
 
     private string _analyticsCode = @"<Tabs @bind-ActiveValue=""_activeTab"" Orientation=""Tabs.TabsOrientation.Vertical"" Class=""gap-6"">
 
-    <TabsList Class=""flex-col h-auto w-44 shrink-0 justify-start items-stretch gap-1 bg-muted/50 p-2 rounded-lg self-start"">
-        <TabsTrigger Value=""overview"" Class=""justify-start"">
-            <Blazicon Svg=""Lucide.LayoutDashboard"" class=""h-4 w-4 mr-2"" />
+    <TabsList Class=""flex-col h-auto w-48 shrink-0 justify-start items-stretch gap-0.5 bg-muted/40 border border-border/40 p-2 rounded-[var(--radius-lg)]"">
+        <TabsTrigger Value=""overview"" Class=""justify-start text-sm h-8"">
+            <DynamicIcon Name=""LayoutDashboard"" Class=""h-3.5 w-3.5 mr-2"" />
             Overview
         </TabsTrigger>
-        <TabsTrigger Value=""revenue"" Class=""justify-start"">
-            <Blazicon Svg=""Lucide.TrendingUp"" class=""h-4 w-4 mr-2"" />
-            Revenue
+        <TabsTrigger Value=""traffic"" Class=""justify-start text-sm h-8"">
+            <DynamicIcon Name=""Globe"" Class=""h-3.5 w-3.5 mr-2"" />
+            Traffic Sources
         </TabsTrigger>
-        <TabsTrigger Value=""users"" Class=""justify-start"">
-            <Blazicon Svg=""Lucide.Users"" class=""h-4 w-4 mr-2"" />
-            Users
+        <TabsTrigger Value=""pages"" Class=""justify-start text-sm h-8"">
+            <DynamicIcon Name=""FileText"" Class=""h-3.5 w-3.5 mr-2"" />
+            Top Pages
+        </TabsTrigger>
+        <TabsTrigger Value=""devices"" Class=""justify-start text-sm h-8"">
+            <DynamicIcon Name=""Monitor"" Class=""h-3.5 w-3.5 mr-2"" />
+            Devices
         </TabsTrigger>
     </TabsList>
 
-    <div class=""flex-1 min-w-0"">
+    <Stack Class=""flex-1 min-w-0"" Gap=""0"">
 
         <!-- Overview Tab -->
         <TabsContent Value=""overview"">
-            <!-- KPI Cards with Progress -->
-            <div class=""grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
-                <Card>
-                    <CardHeader><p class=""text-sm font-medium text-muted-foreground"">Revenue</p></CardHeader>
-                    <CardContent class=""space-y-2"">
-                        <div class=""text-2xl font-bold text-foreground"">$128,430</div>
-                        <Progress Value=""78"" ShowLabel=""true"" Label=""Revenue: 78%"" />
-                    </CardContent>
-                </Card>
-                <!-- ... repeat for Users, Conversion -->
-                <Card>
-                    <CardHeader><p class=""text-sm font-medium text-muted-foreground"">Processing</p></CardHeader>
-                    <CardContent class=""space-y-2"">
-                        <div class=""text-2xl font-bold text-foreground"">—</div>
-                        <Progress IsIndeterminate=""true"" />
-                        <span class=""text-xs text-muted-foreground"">Processing...</span>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <!-- Date Range Slider -->
+            <!-- KPI Row -->
+            <Grid Class=""grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
+                @foreach (var kpi in _kpis) {
+                    <Card>
+                        <CardHeader><Lumeo.Text Class=""text-xs text-muted-foreground"">@kpi.Label</Lumeo.Text></CardHeader>
+                        <CardContent>
+                            <Lumeo.Text Class=""text-2xl font-bold"">@kpi.Value</Lumeo.Text>
+                            <Progress Value=""@kpi.Percent"" Class=""mt-3 h-1"" Variant=""@kpi.Variant"" />
+                        </CardContent>
+                    </Card>
+                }
+            </Grid>
+            <!-- Line Chart -->
             <Card>
-                <CardHeader><h3>Date Range Filter</h3></CardHeader>
+                <CardHeader><Heading Level=""3"">Page Views</Heading></CardHeader>
                 <CardContent>
-                    <Slider IsRange=""true"" Min=""1"" Max=""30"" Step=""1""
-                            @bind-Value=""_rangeStart"" @bind-ValueEnd=""_rangeEnd"" />
+                    <LineChart Categories=""@_lineCategories"" Series=""@_lineSeries"" Smooth=""true"" ShowDots=""true"" Height=""240px"" />
                 </CardContent>
             </Card>
-
-            <!-- Separator with label -->
-            <div class=""flex items-center gap-3"">
-                <Separator Class=""flex-1"" />
-                <span class=""text-xs font-medium text-muted-foreground uppercase tracking-wider"">Revenue Breakdown</span>
-                <Separator Class=""flex-1"" />
-            </div>
-
-            <!-- Area Chart -->
-            <AreaChart Categories=""@_areaCategories"" Series=""@_areaSeries"" Smooth=""true"" Height=""260px"" />
         </TabsContent>
 
-        <!-- Revenue Tab -->
-        <TabsContent Value=""revenue"">
-            <div class=""grid grid-cols-1 lg:grid-cols-2 gap-4"">
-                <BarChart Categories=""@_barCategories"" Series=""@_barSeries"" Height=""280px"" />
-                <PieChart Data=""@_pieData"" Height=""280px"" />
-            </div>
+        <!-- Traffic Tab -->
+        <TabsContent Value=""traffic"">
+            <Grid Class=""grid-cols-1 lg:grid-cols-2 gap-4"">
+                <Card>
+                    <CardHeader><Heading Level=""3"">Traffic by Source</Heading></CardHeader>
+                    <CardContent>
+                        <DonutChart Data=""@_trafficDonut"" CenterLabel=""148.4K"" InnerRadius=""52%"" OuterRadius=""72%"" Height=""260px"" />
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><Heading Level=""3"">Source Breakdown</Heading></CardHeader>
+                    <CardContent>
+                        @foreach (var src in _trafficSources) {
+                            <Flex Class=""py-2.5 border-b last:border-0 hover:bg-muted/30"">
+                                <Lumeo.Text Class=""flex-1 text-sm"">@src.Name</Lumeo.Text>
+                                <Lumeo.Text Class=""text-sm font-medium"">@src.Sessions</Lumeo.Text>
+                            </Flex>
+                        }
+                    </CardContent>
+                </Card>
+            </Grid>
         </TabsContent>
 
-        <!-- Users Tab -->
-        <TabsContent Value=""users"">
+        <!-- Pages Tab -->
+        <TabsContent Value=""pages"">
             <Card>
-                <CardContent class=""space-y-5"">
-                    <Progress Value=""82"" Variant=""Progress.ProgressVariant.Success"" ShowLabel=""true"" Label=""82%"" />
-                    <Progress Value=""18"" Variant=""Progress.ProgressVariant.Destructive"" ShowLabel=""true"" Label=""18%"" />
-                    <Progress Value=""45"" Variant=""Progress.ProgressVariant.Warning"" ShowLabel=""true"" Label=""45%"" />
+                <CardHeader><Heading Level=""3"">Top Pages</Heading></CardHeader>
+                <CardContent Class=""px-0"">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Page</TableHead>
+                                <TableHead Class=""text-right"">Views</TableHead>
+                                <TableHead Class=""text-right"">Bounce</TableHead>
+                                <TableHead Class=""text-right"">Avg. Time</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            @foreach (var page in _topPages) {
+                                <TableRow Class=""hover:bg-muted/40"">
+                                    <TableCell Class=""font-medium"">@page.Title</TableCell>
+                                    <TableCell Class=""text-right"">@page.Views</TableCell>
+                                    <TableCell Class=""text-right""><Badge Variant=""@page.BounceVariant"">@page.Bounce</Badge></TableCell>
+                                    <TableCell Class=""text-right text-muted-foreground"">@page.AvgTime</TableCell>
+                                </TableRow>
+                            }
+                        </TableBody>
+                    </Table>
                 </CardContent>
             </Card>
         </TabsContent>
 
-    </div>
+        <!-- Devices Tab -->
+        <TabsContent Value=""devices"">
+            <Grid Class=""grid-cols-1 lg:grid-cols-2 gap-4"">
+                <Card>
+                    <CardHeader><Heading Level=""3"">Device Type</Heading></CardHeader>
+                    <CardContent>
+                        @foreach (var d in _devices) {
+                            <Stack Gap=""1.5"" Class=""mb-3"">
+                                <Flex Class=""items-center justify-between"">
+                                    <Lumeo.Text Class=""text-sm font-medium"">@d.Name</Lumeo.Text>
+                                    <Lumeo.Text Class=""text-sm"">@d.Sessions</Lumeo.Text>
+                                </Flex>
+                                <Progress Value=""@d.Pct"" Class=""h-1.5"" />
+                            </Stack>
+                        }
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><Heading Level=""3"">Top Countries</Heading></CardHeader>
+                    <CardContent>
+                        @foreach (var c in _countries) {
+                            <Flex Class=""py-2 border-b border-border/40 last:border-0 items-center gap-2"">
+                                <Lumeo.Text As=""span"" Class=""text-base"">@c.Flag</Lumeo.Text>
+                                <Lumeo.Text Class=""flex-1 text-sm"">@c.Name</Lumeo.Text>
+                                <Lumeo.Text Class=""text-sm font-medium"">@c.Sessions</Lumeo.Text>
+                            </Flex>
+                        }
+                    </CardContent>
+                </Card>
+            </Grid>
+        </TabsContent>
+
+    </Stack>
 
 </Tabs>";
 }

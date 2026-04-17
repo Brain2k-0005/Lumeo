@@ -1,57 +1,103 @@
 @page "/blocks/mail"
+@namespace Lumeo.Docs.Pages.Patterns
 
 <PageTitle>Mail — Lumeo</PageTitle>
 
-<PageHeader Title="Mail" Description="An inbox layout with a message list, email viewer, and reply composer." />
+<PageHeader Title="Mail" Description="A three-column inbox with folder rail, message list, reading pane, and reply composer." />
 
 <ComponentDemo Title="Mail / Inbox" Code="@_mailCode">
-    <Stack Class="w-full min-w-[700px] border rounded-lg overflow-hidden" style="height: 560px;">
+    <Stack Class="w-full min-w-[780px] border border-border/40 rounded-xl overflow-hidden" style="height: 580px;">
         <Flex Class="h-full">
 
-            <!-- Folder Nav -->
-            <Stack Class="w-12 border-r border-border items-center py-3 gap-2 flex-shrink-0">
-                <Stack Class="relative" Gap="0">
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
-                        <DynamicIcon Name="Inbox" Class="h-4 w-4" />
+            <!-- Icon Rail (col 1) -->
+            <Flex Direction="col" Class="w-14 border-r border-border/40 bg-card items-center py-3 gap-1 flex-shrink-0">
+                <Tooltip Content="Inbox" Placement="Tooltip.TooltipPlacement.Right">
+                    <Stack Class="relative">
+                        <Button Variant="@(_activeFolder == "inbox" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                                Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                                @onclick="@(() => _activeFolder = "inbox")">
+                            <DynamicIcon Name="Inbox" Class="h-4 w-4" />
+                        </Button>
+                        <Lumeo.Text As="span" Class="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center px-1 pointer-events-none">3</Lumeo.Text>
+                    </Stack>
+                </Tooltip>
+                <Tooltip Content="Sent" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="@(_activeFolder == "sent" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                            Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                            @onclick="@(() => _activeFolder = "sent")">
+                        <DynamicIcon Name="Send" Class="h-4 w-4" />
                     </Button>
-                    <Badge Class="absolute -top-1 -right-1 h-4 min-w-4 text-[10px] px-1">3</Badge>
-                </Stack>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
-                    <DynamicIcon Name="Send" Class="h-4 w-4" />
-                </Button>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
-                    <DynamicIcon Name="Star" Class="h-4 w-4" />
-                </Button>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
-                    <DynamicIcon Name="Trash" Class="h-4 w-4" />
-                </Button>
+                </Tooltip>
+                <Tooltip Content="Drafts" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="@(_activeFolder == "drafts" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                            Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                            @onclick="@(() => _activeFolder = "drafts")">
+                        <DynamicIcon Name="FileEdit" Class="h-4 w-4" />
+                    </Button>
+                </Tooltip>
+                <Tooltip Content="Starred" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="@(_activeFolder == "starred" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                            Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                            @onclick="@(() => _activeFolder = "starred")">
+                        <DynamicIcon Name="Star" Class="h-4 w-4" />
+                    </Button>
+                </Tooltip>
+                <Tooltip Content="Spam" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="@(_activeFolder == "spam" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                            Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                            @onclick="@(() => _activeFolder = "spam")">
+                        <DynamicIcon Name="ShieldAlert" Class="h-4 w-4" />
+                    </Button>
+                </Tooltip>
+                <Tooltip Content="Trash" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="@(_activeFolder == "trash" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
+                            Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                            @onclick="@(() => _activeFolder = "trash")">
+                        <DynamicIcon Name="Trash2" Class="h-4 w-4" />
+                    </Button>
+                </Tooltip>
+
+                <Separator Class="my-1" />
+
+                <!-- Labels -->
+                <Tooltip Content="Work" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                        <Lumeo.Text As="span" Class="h-2.5 w-2.5 rounded-full bg-primary block"></Lumeo.Text>
+                    </Button>
+                </Tooltip>
+                <Tooltip Content="Personal" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                        <Lumeo.Text As="span" Class="h-2.5 w-2.5 rounded-full bg-chart-2 block"></Lumeo.Text>
+                    </Button>
+                </Tooltip>
+                <Tooltip Content="Important" Placement="Tooltip.TooltipPlacement.Right">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9">
+                        <Lumeo.Text As="span" Class="h-2.5 w-2.5 rounded-full bg-chart-4 block"></Lumeo.Text>
+                    </Button>
+                </Tooltip>
+
                 <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9 mt-auto">
                     <DynamicIcon Name="Settings" Class="h-4 w-4" />
                 </Button>
-            </Stack>
+            </Flex>
 
-            <!-- Left Sidebar -->
-            <Flex Direction="col" Class="w-72 border-r bg-card">
+            <!-- Message List (col 2) -->
+            <Flex Direction="col" Class="w-72 border-r border-border/40 bg-card flex-shrink-0">
                 <!-- Toolbar -->
-                <Stack Gap="2" Class="p-3 border-b">
-                    <Flex Class="items-center gap-2">
-                        <Flex Class="relative flex-1">
-                            <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                            <Input placeholder="Search mail..." Class="pl-8 h-8 text-xs w-full" />
-                        </Flex>
+                <Stack Gap="2" Class="p-3 border-b border-border/40">
+                    <Flex Class="relative items-center">
+                        <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                        <Input placeholder="Search mail..." Class="pl-8 h-8 text-xs w-full" />
                     </Flex>
                     <Flex Class="items-center gap-1">
                         <Button Variant="@(_activeFilter == "all" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Sm"
-                                Class="h-7 text-xs"
+                                Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
                                 @onclick="@(() => _activeFilter = "all")">All</Button>
                         <Button Variant="@(_activeFilter == "unread" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Sm"
-                                Class="h-7 text-xs"
+                                Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
                                 @onclick="@(() => _activeFilter = "unread")">Unread</Button>
                         <Button Variant="@(_activeFilter == "starred" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Sm"
-                                Class="h-7 text-xs"
+                                Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
                                 @onclick="@(() => _activeFilter = "starred")">Starred</Button>
                         <Badge Class="ml-auto">@_mailItems.Count(m => !m.IsRead)</Badge>
                     </Flex>
@@ -64,51 +110,60 @@
                         var index = i;
                         var mail = _mailItems[i];
                         var isActive = _selectedIndex == index;
-                        <Stack Class="@($"flex flex-col gap-1 px-3 py-2.5 border-b cursor-pointer transition-colors {(isActive ? "bg-accent" : "hover:bg-muted/50")}")"
-                             @onclick="@(() => _selectedIndex = index)">
+                        <Stack Class="@($"gap-1 px-3 py-2.5 border-b border-border/40 cursor-pointer transition-colors {(isActive ? "bg-accent" : "hover:bg-muted/40")}")"
+                               @onclick="@(() => _selectedIndex = index)">
                             <Flex Class="items-center justify-between gap-2">
                                 <Flex Class="items-center gap-2 min-w-0">
                                     @if (!mail.IsRead)
                                     {
-                                        <Lumeo.Text As="span" Class="h-2 w-2 rounded-full bg-primary shrink-0"></Lumeo.Text>
+                                        <Lumeo.Text As="span" Class="h-2 w-2 rounded-full bg-primary shrink-0 block"></Lumeo.Text>
                                     }
                                     else
                                     {
-                                        <Lumeo.Text As="span" Class="h-2 w-2 shrink-0"></Lumeo.Text>
+                                        <Lumeo.Text As="span" Class="h-2 w-2 shrink-0 block"></Lumeo.Text>
                                     }
                                     <Avatar Class="h-7 w-7 flex-shrink-0">
-                                        <AvatarFallback Class="text-[10px]">@(mail.Sender.Length >= 2 ? mail.Sender.Substring(0, 2).ToUpper() : mail.Sender.ToUpper())</AvatarFallback>
+                                        <AvatarFallback Class="text-[10px]">@mail.Initials</AvatarFallback>
                                     </Avatar>
-                                    <Lumeo.Text As="span" Class="text-sm font-medium text-foreground truncate">@mail.Sender</Lumeo.Text>
+                                    <Lumeo.Text As="span" Class="@($"text-sm truncate {(!mail.IsRead ? "font-semibold text-foreground" : "font-medium text-foreground")}")">@mail.Sender</Lumeo.Text>
                                 </Flex>
                                 <Lumeo.Text As="span" Class="text-xs text-muted-foreground shrink-0">@mail.Time</Lumeo.Text>
                             </Flex>
-                            <Lumeo.Text Class="text-xs font-medium text-foreground pl-4 truncate">@mail.Subject</Lumeo.Text>
+                            <Lumeo.Text Class="@($"text-xs pl-4 truncate {(!mail.IsRead ? "font-semibold text-foreground" : "font-medium text-foreground/80")}")">@mail.Subject</Lumeo.Text>
                             <Lumeo.Text Class="text-xs text-muted-foreground pl-4 truncate">@mail.Preview</Lumeo.Text>
+                            @if (mail.Tags?.Length > 0)
+                            {
+                                <Flex Class="gap-1 pl-4 flex-wrap">
+                                    @foreach (var tag in mail.Tags)
+                                    {
+                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] h-4 px-1">@tag</Badge>
+                                    }
+                                </Flex>
+                            }
                         </Stack>
                     }
                 </Stack>
             </Flex>
 
-            <!-- Main Email View -->
-            <Flex Direction="col" Class="flex-1 bg-card">
+            <!-- Reading Pane (col 3) -->
+            <Flex Direction="col" Class="flex-1 bg-background min-w-0">
                 @{
                     var selected = _mailItems[_selectedIndex];
                 }
 
                 <!-- Email Header -->
-                <Stack Class="p-4 border-b">
+                <Stack Class="p-4 border-b border-border/40 bg-card">
                     <Flex Class="items-start justify-between gap-4">
-                        <Flex Class="items-start gap-3">
+                        <Flex Class="items-start gap-3 min-w-0">
                             <Avatar>
                                 <AvatarFallback>@selected.Initials</AvatarFallback>
                             </Avatar>
-                            <Stack>
-                                <Flex Class="items-center gap-2">
+                            <Stack Class="min-w-0">
+                                <Flex Class="items-center gap-2 flex-wrap">
                                     <Lumeo.Text As="span" Class="text-sm font-semibold text-foreground">@selected.Sender</Lumeo.Text>
-                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">@selected.SenderEmail</Badge>
+                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground border border-border/40 rounded px-1.5 py-0.5">@selected.SenderEmail</Lumeo.Text>
                                 </Flex>
-                                <Lumeo.Text Class="text-base font-semibold text-foreground mt-1">@selected.Subject</Lumeo.Text>
+                                <Lumeo.Text Class="text-base font-semibold text-foreground mt-1 leading-tight">@selected.Subject</Lumeo.Text>
                                 @if (selected.Tags?.Length > 0)
                                 {
                                     <Flex Class="gap-1 flex-wrap mt-1">
@@ -121,40 +176,67 @@
                                 <Lumeo.Text Class="text-xs text-muted-foreground mt-0.5">@selected.Date</Lumeo.Text>
                             </Stack>
                         </Flex>
-                        <Flex Class="items-center gap-1">
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                <DynamicIcon Name="ArrowRight" Class="h-4 w-4" />
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                <DynamicIcon Name="Trash" Class="h-4 w-4" />
-                            </Button>
+                        <Flex Class="items-center gap-1 flex-shrink-0">
+                            <Tooltip Content="Archive">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Archive" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
+                            <Tooltip Content="Forward">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Forward" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
+                            <Tooltip Content="Delete">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Trash2" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
+                            <Tooltip Content="More">
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                    <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
+                                </Button>
+                            </Tooltip>
                         </Flex>
                     </Flex>
                 </Stack>
 
                 <!-- Email Body -->
-                <Stack Class="flex-1 overflow-y-auto p-4">
+                <Stack Class="flex-1 overflow-y-auto p-5">
                     <Lumeo.Text Class="text-sm text-foreground leading-relaxed whitespace-pre-line">@selected.Body</Lumeo.Text>
                 </Stack>
 
                 <Separator />
 
                 <!-- Reply Composer -->
-                <Stack Gap="2" Class="p-3">
+                <Stack Gap="2" Class="p-3 bg-card">
                     <Flex Class="items-center justify-between">
-                        <Lumeo.Text Class="text-xs font-medium text-muted-foreground">Reply to @selected.Sender</Lumeo.Text>
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-auto p-0 text-muted-foreground text-xs">Cc / Bcc</Button>
+                        <Flex Class="items-center gap-2">
+                            <DynamicIcon Name="CornerUpLeft" Class="h-3.5 w-3.5 text-muted-foreground" />
+                            <Lumeo.Text Class="text-xs font-medium text-muted-foreground">Reply to @selected.Sender</Lumeo.Text>
+                        </Flex>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-auto py-0.5 px-2 text-muted-foreground text-xs">Cc / Bcc</Button>
                     </Flex>
-                    <Textarea placeholder="Write your reply..." Class="min-h-[80px] text-sm resize-none" @bind-Value="_replyText" />
-                    <Flex Class="justify-end gap-2">
-                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                            <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5 mr-1.5" />
-                            Forward
-                        </Button>
-                        <Button Size="Button.ButtonSize.Sm">
-                            <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5 mr-1.5" />
-                            Send
-                        </Button>
+                    <Textarea placeholder="Write your reply..." Class="min-h-[70px] text-sm resize-none" @bind-Value="_replyText" />
+                    <Flex Class="justify-between items-center gap-2">
+                        <Flex Class="items-center gap-1">
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                <DynamicIcon Name="Paperclip" Class="h-3.5 w-3.5" />
+                            </Button>
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
+                                <DynamicIcon Name="Image" Class="h-3.5 w-3.5" />
+                            </Button>
+                        </Flex>
+                        <Flex Class="items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="Forward" Class="h-3.5 w-3.5 mr-1.5" />
+                                Forward
+                            </Button>
+                            <Button Size="Button.ButtonSize.Sm">
+                                <DynamicIcon Name="Send" Class="h-3.5 w-3.5 mr-1.5" />
+                                Send
+                            </Button>
+                        </Flex>
                     </Flex>
                 </Stack>
             </Flex>
@@ -166,6 +248,7 @@
 @code {
     private int _selectedIndex = 0;
     private string _activeFilter = "all";
+    private string _activeFolder = "inbox";
     private string _replyText = "";
 
     private record MailItem(
@@ -183,132 +266,191 @@
 
     private List<MailItem> _mailItems = new()
     {
-        new("William Kim", "WK", "will@email.com",
-            "Meeting Tomorrow at 10am",
-            "Hi, just a reminder about our sync tomorrow...",
-            "9:34am",
-            "Feb 26, 2026, 9:34 AM",
-            "Hi,\n\nJust a quick reminder about our sync tomorrow at 10am. Please review the attached agenda beforehand so we can make the most of our time.\n\nLet me know if you have any questions.\n\nBest,\nWilliam",
+        new("Priya Kapoor", "PK", "priya@designco.com",
+            "Re: Q2 roadmap review — feedback attached",
+            "Left some comments on the Figma link. Overall looks strong but the timeline on feature 3...",
+            "2m",
+            "Apr 17, 2026, 9:42 AM",
+            "Hi,\n\nLeft some inline comments on the Figma file. Overall the roadmap looks strong — I'm particularly excited about the AI-assist feature. My one concern is the timeline on Feature 3; two weeks feels optimistic given the API dependencies.\n\nCould we sync Thursday for 30 min to walk through it together?\n\nBest,\nPriya",
             false,
-            Tags: new[] { "meeting", "reminder" }),
-        new("Sofia Davis", "SD", "sofia@email.com",
-            "Q1 Report Ready for Review",
-            "The Q1 financial report is now ready...",
-            "8:15am",
-            "Feb 26, 2026, 8:15 AM",
-            "Hello,\n\nThe Q1 financial report has been finalized and is ready for your review. You can find it in the shared drive under 'Reports > 2026'.\n\nHighlights: Revenue up 18%, costs down 5%.\n\nRegards,\nSofia",
+            Tags: new[] { "roadmap", "Q2" }),
+
+        new("Stripe Notifications", "ST", "no-reply@stripe.com",
+            "Your payout of $4,812.00 has been sent",
+            "Your scheduled payout of $4,812.00 is on its way to your bank account ending in 4242...",
+            "18m",
+            "Apr 17, 2026, 9:26 AM",
+            "Your scheduled payout of $4,812.00 is on its way to your bank account ending in 4242. It should arrive within 2 business days.\n\nTransaction ID: py_3PkQvL2eZvKYlo\nPeriod: Apr 10 – Apr 16, 2026\n\nView your dashboard for full details.",
             false,
-            Tags: new[] { "finance", "Q1" }),
-        new("Jackson Lee", "JL", "jackson@email.com",
-            "Re: Project Proposal",
-            "Thanks for sending over the proposal...",
-            "Yesterday",
-            "Feb 25, 2026, 4:22 PM",
-            "Thanks for sending over the proposal. I've reviewed it and I'm really impressed with the scope and timeline you've outlined. I have a few minor comments which I'll add in the document.\n\nLooking forward to getting started!\n\nJackson",
-            true),
-        new("Olivia Martin", "OM", "olivia@email.com",
-            "Design Assets Updated",
-            "I've pushed the latest design tokens...",
-            "Yesterday",
-            "Feb 25, 2026, 2:10 PM",
-            "Hi team,\n\nI've pushed the latest design tokens and component specs to Figma. The dark mode palette has been updated and all spacing values are now consistent.\n\nPlease check and let me know if anything looks off.\n\nOlivia",
-            true),
-        new("Isabella Nguyen", "IN", "isabella@email.com",
-            "Invoice #2024-089 Attached",
-            "Please find attached invoice #2024-089...",
-            "Mon",
-            "Feb 24, 2026, 11:05 AM",
-            "Dear team,\n\nPlease find the attached invoice #2024-089 for the services rendered in February. Payment is due within 30 days.\n\nDon't hesitate to reach out with any questions.\n\nThank you,\nIsabella",
-            true),
-        new("Ethan Brown", "EB", "ethan@email.com",
-            "Team Lunch This Friday?",
-            "Wanted to check if everyone is free...",
-            "Mon",
-            "Feb 24, 2026, 10:00 AM",
-            "Hey everyone,\n\nWanted to check if the team is free this Friday for a lunch outing. I was thinking we could try that new Italian place downtown.\n\nLet me know your availability!\n\nEthan",
-            false),
-        new("Ava Wilson", "AW", "ava@email.com",
-            "Onboarding Docs Review",
-            "I've updated the onboarding guide...",
-            "Sun",
-            "Feb 23, 2026, 3:45 PM",
-            "Hi,\n\nI've updated the onboarding guide with the new process flows and tool links. Could you take a look and confirm everything is accurate before we share it with new hires?\n\nThanks,\nAva",
-            true),
-        new("Liam Johnson", "LJ", "liam@email.com",
-            "Server Downtime Notice",
-            "Scheduled maintenance window this Saturday...",
-            "Sat",
-            "Feb 22, 2026, 9:00 AM",
-            "Dear all,\n\nPlease be advised that we have a scheduled maintenance window this Saturday from 2 AM to 5 AM UTC. The production servers will be unavailable during this period.\n\nPlan accordingly.\n\nLiam — Infrastructure",
-            true),
-        new("Emma Taylor", "ET", "emma@email.com",
-            "Welcome to the Team!",
-            "We are thrilled to have you on board...",
-            "Feb 20",
-            "Feb 20, 2026, 10:30 AM",
-            "Hi,\n\nWe are thrilled to have you on board! Your first day is Monday, Feb 24. Please bring your ID for the security badge setup.\n\nYour manager will be in touch to walk you through your first week.\n\nWelcome!\nEmma — HR",
-            true),
-        new("Noah Martinez", "NM", "noah@email.com",
-            "Bug Report: Login Page",
-            "Found an issue on the login page in Safari...",
-            "Feb 19",
-            "Feb 19, 2026, 5:55 PM",
-            "Hi,\n\nI found a reproducible bug on the login page when using Safari 17. The password field autofill causes the form to submit prematurely.\n\nSteps to reproduce:\n1. Open Safari\n2. Navigate to /login\n3. Allow autofill to populate credentials\n\nAttached screenshots.\n\nNoah",
+            Tags: new[] { "billing" }),
+
+        new("Marcus Webb", "MW", "marcus@lumeotech.io",
+            "Re: DataGrid sticky headers — PR feedback",
+            "Looks good overall. One nit: the z-index on the sticky header clips the dropdown in the action column...",
+            "1h",
+            "Apr 17, 2026, 8:49 AM",
+            "Looks good overall — nice clean implementation. One nit: the z-index on the sticky header clips the dropdown in the action column when the table scrolls. Setting z-20 on the header row should fix it.\n\nAlso, should we add a test for the horizontal scroll case?\n\nMarcus",
             true,
-            Tags: new[] { "bug", "urgent" }),
+            Tags: new[] { "code review" }),
+
+        new("Amara Diallo", "AD", "amara@acmecorp.com",
+            "Your order has shipped — tracking inside",
+            "Great news! Order #ORD-2026-0417 has been picked up by the carrier. Estimated delivery: Apr 19.",
+            "3h",
+            "Apr 17, 2026, 7:03 AM",
+            "Great news! Your order #ORD-2026-0417 has been picked up by the carrier.\n\nEstimated delivery: Thursday, April 19\nTracking number: 1Z999AA10123456784\nCarrier: UPS Ground\n\nYou can track your package at any time using the link above.",
+            true),
+
+        new("GitHub", "GH", "noreply@github.com",
+            "[lumeo/lumeo] PR #88: Add Resizable component",
+            "mikewb opened a pull request · +847 −12 · Adds the Resizable component with horizontal and vertical...",
+            "Yesterday",
+            "Apr 16, 2026, 4:15 PM",
+            "mikewb opened a pull request:\n\nAdd Resizable component\n\n+847 −12\n\nAdds the Resizable component with horizontal and vertical split pane support. Implemented using CSS custom properties for handle drag state.\n\nCloses #71\n\nReview requested: @priya-k, @marcus-w",
+            true,
+            Tags: new[] { "PR", "component" }),
+
+        new("Sofia Herrera", "SH", "sofia.h@ventureco.com",
+            "Partnership proposal — follow-up",
+            "Following up on our call last week. I've attached the updated one-pager and partnership terms for your review.",
+            "Yesterday",
+            "Apr 16, 2026, 11:30 AM",
+            "Hi,\n\nFollowing up on our call last week. I've attached the updated one-pager and revised partnership terms for your review.\n\nKey changes:\n- Reduced exclusivity window from 12 to 6 months\n- Added performance milestone clause (Section 4.2)\n- Included NDA as Exhibit A\n\nLooking forward to your thoughts.\n\nSofia",
+            false,
+            Tags: new[] { "partnership", "legal" }),
+
+        new("Lena Fischer", "LF", "lena@prodteam.de",
+            "Sprint 14 retrospective notes",
+            "Attached are the retro notes from Friday's session. Key themes: deployment confidence, test coverage, onboarding.",
+            "Apr 14",
+            "Apr 14, 2026, 2:00 PM",
+            "Hi all,\n\nAttached are the condensed notes from Friday's Sprint 14 retrospective. Top themes:\n\n• Deployment confidence improved after new CI checks\n• Test coverage still low on the billing module\n• Onboarding checklist needs update for remote hires\n\nAction items tracked in Linear under milestone 'S14-Retro'.\n\nLena",
+            true),
+
+        new("James Okafor", "JO", "james@supportdesk.io",
+            "Critical: API gateway returning 503 errors",
+            "We're seeing elevated 503 rates from the /v2/payments endpoint since 06:12 UTC. P0 incident opened.",
+            "Apr 12",
+            "Apr 12, 2026, 6:45 AM",
+            "INCIDENT INC-2026-0412\nSeverity: P0\n\nWe're seeing elevated 503 error rates from the /v2/payments endpoint since 06:12 UTC. Error rate peaked at 38% at 06:24 UTC.\n\nRoot cause under investigation — suspected upstream timeout on the payment processor.\n\nStatus page updated. Engineering war room in #inc-0412 on Slack.\n\nJames — On-call Engineering",
+            true,
+            Tags: new[] { "incident", "urgent" }),
+
+        new("Notion", "NO", "notify@notion.so",
+            "Amara Diallo shared a page with you",
+            "Amara shared \"2026 Company OKRs\" with you. Click to view and collaborate.",
+            "Apr 11",
+            "Apr 11, 2026, 3:22 PM",
+            "Amara Diallo shared a page with you:\n\n\"2026 Company OKRs\"\n\nYou can now view and leave comments on this page. Click the button above to open it in Notion.\n\nNotification from Notion Workspace: Lumeo",
+            true),
+
+        new("HR — Lumeo", "HR", "hr@lumeotech.io",
+            "Open enrollment closes April 25 — action required",
+            "This is a reminder that the benefits open enrollment window closes on April 25. Log in to review your selections.",
+            "Apr 10",
+            "Apr 10, 2026, 10:00 AM",
+            "Hi,\n\nThis is a reminder that the annual benefits open enrollment window closes on Friday, April 25 at 11:59 PM PT.\n\nIf you do not make changes, your current elections will carry forward.\n\nAction required: log in to the benefits portal to review your selections.\n\nHR Team — Lumeo",
+            true,
+            Tags: new[] { "action required" }),
     };
 
-    private string _mailCode = @"<Flex Class=""h-full border rounded-lg overflow-hidden"">
-    <!-- Sidebar -->
-    <Stack Class=""w-72 border-r"">
-        <Stack Gap=""2"" Class=""p-3 border-b"">
-            <Input placeholder=""Search mail..."" />
-            <Flex Gap=""1"">
-                <Button Size=""Button.ButtonSize.Sm"">All</Button>
-                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">Unread</Button>
-                <Badge Class=""ml-auto"">3</Badge>
-            </Flex>
-        </Stack>
-        <Stack Class=""flex-1 overflow-y-auto"">
-            @foreach (var mail in _mailItems)
-            {
-                <Stack Class=""px-3 py-2.5 border-b cursor-pointer hover:bg-muted/50""
-                     @onclick=""() => SelectMail(mail)"">
-                    <Flex Align=""center"" Justify=""between"">
-                        @if (!mail.IsRead) { <Lumeo.Text As=""span"" Class=""h-2 w-2 rounded-full bg-primary""></Lumeo.Text> }
-                        <Lumeo.Text As=""span"" Size=""sm"" Weight=""medium"">@mail.Sender</Lumeo.Text>
-                        <Lumeo.Text As=""span"" Size=""xs"" Color=""muted"">@mail.Time</Lumeo.Text>
+    private string _mailCode = @"<!-- 3-column mail layout: icon rail | message list | reading pane -->
+<Stack Class=""w-full border border-border/40 rounded-xl overflow-hidden"" style=""height: 580px;"">
+    <Flex Class=""h-full"">
+
+        <!-- Icon Rail -->
+        <Flex Direction=""col"" Class=""w-14 border-r border-border/40 bg-card items-center py-3 gap-1"">
+            <Stack Class=""relative"">
+                <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Icon"" Class=""h-9 w-9"">
+                    <DynamicIcon Name=""Inbox"" Class=""h-4 w-4"" />
+                </Button>
+                <Lumeo.Text As=""span"" Class=""absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center px-1"">3</Lumeo.Text>
+            </Stack>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-9 w-9"">
+                <DynamicIcon Name=""Send"" Class=""h-4 w-4"" />
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-9 w-9"">
+                <DynamicIcon Name=""FileEdit"" Class=""h-4 w-4"" />
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-9 w-9"">
+                <DynamicIcon Name=""Star"" Class=""h-4 w-4"" />
+            </Button>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-9 w-9"">
+                <DynamicIcon Name=""Trash2"" Class=""h-4 w-4"" />
+            </Button>
+        </Flex>
+
+        <!-- Message List -->
+        <Flex Direction=""col"" Class=""w-72 border-r border-border/40 bg-card"">
+            <Stack Gap=""2"" Class=""p-3 border-b border-border/40"">
+                <Flex Class=""relative items-center"">
+                    <DynamicIcon Name=""Search"" Class=""absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"" />
+                    <Input placeholder=""Search mail..."" Class=""pl-8 h-8 text-xs w-full"" />
+                </Flex>
+                <Flex Class=""items-center gap-1"">
+                    <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Sm"" Class=""h-7 text-xs"">All</Button>
+                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""h-7 text-xs"">Unread</Button>
+                    <Badge Class=""ml-auto"">3</Badge>
+                </Flex>
+            </Stack>
+            <Stack Class=""flex-1 overflow-y-auto"">
+                @foreach (var mail in _mailItems)
+                {
+                    <Stack Class=""gap-1 px-3 py-2.5 border-b border-border/40 cursor-pointer hover:bg-muted/40"">
+                        <Flex Class=""items-center justify-between gap-2"">
+                            <Flex Class=""items-center gap-2 min-w-0"">
+                                @if (!mail.IsRead) { <Lumeo.Text As=""span"" Class=""h-2 w-2 rounded-full bg-primary shrink-0 block""></Lumeo.Text> }
+                                <Avatar Class=""h-7 w-7""><AvatarFallback Class=""text-[10px]"">@mail.Initials</AvatarFallback></Avatar>
+                                <Lumeo.Text As=""span"" Class=""text-sm font-semibold text-foreground truncate"">@mail.Sender</Lumeo.Text>
+                            </Flex>
+                            <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground shrink-0"">@mail.Time</Lumeo.Text>
+                        </Flex>
+                        <Lumeo.Text Class=""text-xs font-semibold text-foreground pl-4 truncate"">@mail.Subject</Lumeo.Text>
+                        <Lumeo.Text Class=""text-xs text-muted-foreground pl-4 truncate"">@mail.Preview</Lumeo.Text>
+                    </Stack>
+                }
+            </Stack>
+        </Flex>
+
+        <!-- Reading Pane -->
+        <Flex Direction=""col"" Class=""flex-1 bg-background"">
+            <Stack Class=""p-4 border-b border-border/40 bg-card"">
+                <Flex Class=""items-start justify-between gap-4"">
+                    <Flex Class=""items-start gap-3"">
+                        <Avatar><AvatarFallback>PK</AvatarFallback></Avatar>
+                        <Stack>
+                            <Lumeo.Text As=""span"" Class=""text-sm font-semibold text-foreground"">Priya Kapoor</Lumeo.Text>
+                            <Lumeo.Text Class=""text-base font-semibold text-foreground mt-1"">Re: Q2 roadmap review</Lumeo.Text>
+                            <Lumeo.Text Class=""text-xs text-muted-foreground mt-0.5"">Apr 17, 2026, 9:42 AM</Lumeo.Text>
+                        </Stack>
                     </Flex>
-                    <Lumeo.Text Size=""xs"" Weight=""medium"" Class=""truncate"">@mail.Subject</Lumeo.Text>
-                    <Lumeo.Text Size=""xs"" Color=""muted"" Class=""truncate"">@mail.Preview</Lumeo.Text>
-                </Stack>
-            }
-        </Stack>
-    </Stack>
-    <!-- Email View -->
-    <Stack Class=""flex-1"">
-        <Stack Class=""p-4 border-b"">
-            <Flex Align=""start"" Gap=""3"">
-                <Avatar><AvatarFallback>WK</AvatarFallback></Avatar>
-                <Stack>
-                    <Lumeo.Text As=""span"" Weight=""semibold"">@selected.Sender</Lumeo.Text>
-                    <Badge Variant=""Badge.BadgeVariant.Outline"">@selected.SenderEmail</Badge>
-                    <Lumeo.Text Weight=""semibold"" Class=""mt-1"">@selected.Subject</Lumeo.Text>
-                    <Lumeo.Text Size=""xs"" Color=""muted"">@selected.Date</Lumeo.Text>
-                </Stack>
-            </Flex>
-        </Stack>
-        <Stack Class=""flex-1 p-4 overflow-y-auto"">
-            <Lumeo.Text Size=""sm"" Class=""leading-relaxed"">@selected.Body</Lumeo.Text>
-        </Stack>
-        <Separator />
-        <Stack Gap=""2"" Class=""p-3"">
-            <Textarea placeholder=""Write your reply..."" @bind-Value=""_replyText"" />
-            <Flex Justify=""end"" Gap=""2"">
-                <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">Forward</Button>
-                <Button Size=""Button.ButtonSize.Sm"">Send</Button>
-            </Flex>
-        </Stack>
-    </Stack>
-</Flex>";
+                    <Flex Class=""items-center gap-1"">
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                            <DynamicIcon Name=""Archive"" Class=""h-4 w-4"" />
+                        </Button>
+                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
+                            <DynamicIcon Name=""Trash2"" Class=""h-4 w-4"" />
+                        </Button>
+                    </Flex>
+                </Flex>
+            </Stack>
+            <Stack Class=""flex-1 overflow-y-auto p-5"">
+                <Lumeo.Text Class=""text-sm text-foreground leading-relaxed"">Email body content...</Lumeo.Text>
+            </Stack>
+            <Separator />
+            <Stack Gap=""2"" Class=""p-3 bg-card"">
+                <Lumeo.Text Class=""text-xs font-medium text-muted-foreground"">Reply to Priya Kapoor</Lumeo.Text>
+                <Textarea placeholder=""Write your reply..."" Class=""min-h-[70px] text-sm resize-none"" />
+                <Flex Class=""justify-end gap-2"">
+                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">
+                        <DynamicIcon Name=""Forward"" Class=""h-3.5 w-3.5 mr-1.5"" /> Forward
+                    </Button>
+                    <Button Size=""Button.ButtonSize.Sm"">
+                        <DynamicIcon Name=""Send"" Class=""h-3.5 w-3.5 mr-1.5"" /> Send
+                    </Button>
+                </Flex>
+            </Stack>
+        </Flex>
+    </Flex>
+</Stack>";
 }
