@@ -209,9 +209,9 @@ public class DataGridTests : IAsyncLifetime
     {
         // 5 items, PageSize=2 → should render pagination
         var cut = RenderGrid(pageSize: 2, showPagination: true);
-        // Pagination renders "Showing X–Y of Z" text
-        Assert.Contains("Showing", cut.Markup);
+        // Pagination renders "X–Y of Z" counter and "Rows per page" label
         Assert.Contains("of 5", cut.Markup);
+        Assert.Contains("Rows per page", cut.Markup);
     }
 
     [Fact]
