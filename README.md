@@ -6,7 +6,12 @@ A beautiful, accessible Blazor component library inspired by [shadcn/ui](https:/
 
 ## Features
 
-- **130+ Components** — Fully accessible, production-ready UI primitives
+- **135+ Components** — Fully accessible, production-ready UI primitives
+- **Scheduler + RichTextEditor** — FullCalendar + TipTap wrappers, lazy-loaded
+- **14 Locales built-in** — EN, DE, ES, FR, IT, PT, NL, PL, JA, ZH-CN, KO, AR, RU, TR via `ILumeoLocalizer`
+- **RTL support** — `IThemeService.SetDirectionAsync()`, persisted + applied before first paint
+- **Excel / PDF / CSV export** — `IDataGridExportService` (ClosedXML + QuestPDF)
+- **`[LumeoForm]` source generator** — annotate a POCO, get a fully-bound Form for free
 - **AI Chat Primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay` — SignalR-native token streaming
 - **Motion Primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`
 - **Dashboard Tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`

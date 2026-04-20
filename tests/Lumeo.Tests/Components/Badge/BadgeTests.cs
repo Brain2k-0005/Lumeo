@@ -190,7 +190,7 @@ public class BadgeTests : IAsyncLifetime
     public void Icon_Renders_Custom_Icon_Content()
     {
         var cut = _ctx.Render<Lumeo.Badge>(p => p
-            .Add(b => b.Icon, (Microsoft.AspNetCore.Components.RenderFragment)(builder =>
+            .Add(b => b.IconContent, (Microsoft.AspNetCore.Components.RenderFragment)(builder =>
             {
                 builder.AddContent(0, "ICON");
             }))
