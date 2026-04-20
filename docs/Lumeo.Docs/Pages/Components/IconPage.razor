@@ -3,6 +3,8 @@
 @inject IJSRuntime JS
 @implements IDisposable
 @using Lumeo.Docs.Shared
+@using Blazicons
+@using System.Reflection
 
 <PageTitle>Icon — Lumeo</PageTitle>
 
@@ -35,7 +37,7 @@
                     </div>
                     <Input @ref="_searchInput"
                            Value="@_query"
-                           ValueChanged="@((string v) => { _query = v; _selected = null; })"
+                           ValueChanged="@((string v) => { _query = v; _selected = null; _displayLimit = 500; })"
                            Placeholder="Search icons — chevron, heart, chart, user…"
                            Class="pl-9" />
                     @if (!string.IsNullOrEmpty(_query))
@@ -47,7 +49,7 @@
                         </button>
                     }
                 </div>
-                <Select Value="@IconService.ActiveLibrary" ValueChanged="@((string v) => IconService.SetLibrary(v))">
+                <Select Value="@IconService.ActiveLibrary" ValueChanged="@((string v) => { IconService.SetLibrary(v); _selected = null; _displayLimit = 500; })">
                     <SelectTrigger Class="h-9 w-[170px]">
                         <span class="text-sm">@LibraryDisplayName(IconService.ActiveLibrary)</span>
                     </SelectTrigger>
@@ -75,7 +77,7 @@
                 </Select>
             </Flex>
             <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span><span class="font-medium text-foreground">@Filtered.Count</span> of @ActiveCatalog.Count icons</span>
+                <span><span class="font-medium text-foreground">@Filtered.Count</span> of @ActiveCatalog.Count @LibraryDisplayName(IconService.ActiveLibrary) icons</span>
                 @if (IconService.ActiveLibrary != "lucide")
                 {
                     <span>Non-Lucide icons use <code class="font-mono text-[11px] px-1 rounded bg-muted">Svg=</code></span>
@@ -106,19 +108,29 @@
                     @* Tile size is fixed — the size picker only affects the selected-icon code snippet,
                        so changing to Xs doesn't squish every tile in the grid. *@
                     <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                        @foreach (var name in Filtered)
+                        @foreach (var entry in Filtered.Take(_displayLimit))
                         {
-                            var n = name;
-                            var isActive = _selected == n;
+                            var e = entry;
+                            var isActive = _selected?.Name == e.Name;
                             <button type="button"
-                                    @onclick="@(() => _selected = n)"
-                                    title="@n"
+                                    @onclick="@(() => _selected = e)"
+                                    title="@e.Name"
                                     class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
-                                <DynamicIcon Name="@n" Class="h-5 w-5 shrink-0" />
-                                <span class="text-[10px] leading-tight truncate w-full px-1">@n</span>
+                                <Blazicon Svg="@e.Svg" class="h-5 w-5 shrink-0" />
+                                <span class="text-[10px] leading-tight truncate w-full px-1">@e.Name</span>
                             </button>
                         }
                     </div>
+                    @if (Filtered.Count > _displayLimit)
+                    {
+                        <div class="mt-4 flex justify-center">
+                            <button type="button"
+                                    @onclick="() => _displayLimit += 500"
+                                    class="text-sm text-primary hover:underline">
+                                Load @Math.Min(500, Filtered.Count - _displayLimit) more — showing @_displayLimit of @Filtered.Count
+                            </button>
+                        </div>
+                    }
                 }
             </div>
 
@@ -137,12 +149,12 @@
 
                     @* Big preview — uses the selected size from the toolbar picker *@
                     <div class="flex items-center justify-center h-32 rounded-md border border-border/40 bg-background mb-4">
-                        <DynamicIcon Name="@_selected" Class="@BigPreviewClass" />
+                        <Blazicon Svg="@_selected.Svg" class="@BigPreviewClass" />
                     </div>
 
                     @* Name + library *@
                     <Stack Gap="0" Class="mb-4">
-                        <Lumeo.Text Weight="medium" Class="text-base">@_selected</Lumeo.Text>
+                        <Lumeo.Text Weight="medium" Class="text-base">@_selected.Name</Lumeo.Text>
                         <Lumeo.Text Size="xs" Color="muted">via @LibraryDisplayName(IconService.ActiveLibrary)</Lumeo.Text>
                     </Stack>
 
@@ -150,11 +162,11 @@
                     <div class="mb-4">
                         <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">All sizes</Lumeo.Text>
                         <div class="flex items-center justify-around rounded-md border border-border/40 bg-background px-3 py-3">
-                            <DynamicIcon Name="@_selected" Class="h-3 w-3" />
-                            <DynamicIcon Name="@_selected" Class="h-3.5 w-3.5" />
-                            <DynamicIcon Name="@_selected" Class="h-4 w-4" />
-                            <DynamicIcon Name="@_selected" Class="h-5 w-5" />
-                            <DynamicIcon Name="@_selected" Class="h-6 w-6" />
+                            <Blazicon Svg="@_selected.Svg" class="h-3 w-3" />
+                            <Blazicon Svg="@_selected.Svg" class="h-3.5 w-3.5" />
+                            <Blazicon Svg="@_selected.Svg" class="h-4 w-4" />
+                            <Blazicon Svg="@_selected.Svg" class="h-5 w-5" />
+                            <Blazicon Svg="@_selected.Svg" class="h-6 w-6" />
                         </div>
                     </div>
 
@@ -325,22 +337,51 @@
 @code {
     // ── Browser state ─────────────────────────────────────────────────────────
     private string _query = "";
-    private string? _selected;
+    private IconEntry? _selected;
     private string _previewSize = "md";
     private bool _copied;
+    private int _displayLimit = 500;
     private string _usageTab = "basic";
     private Lumeo.Input? _searchInput;
 
-    // Catalog is intentionally the set of names `<Icon Name="...">` in the
-    // library recognizes — so every tile you see here is a name you can paste
-    // into the Name= form and get the right icon. Lucide has 1000+ icons total;
-    // for anything outside this set, the Other-libraries tab in Usage shows
-    // how to fall through to the Svg= escape hatch (Blazicons.Lucide.AnyName).
-    private IReadOnlyList<string> ActiveCatalog => _crossLibraryCatalog;
+    // An icon entry the grid can render and the snippet can target.
+    // Name is the Blazicons property name (e.g. "Search", "ChevronDown").
+    private record IconEntry(string Name, SvgIcon Svg);
 
-    private List<string> Filtered => string.IsNullOrWhiteSpace(_query)
+    // Full catalog per library — enumerated via reflection over the Blazicons
+    // static classes so every available icon is shown automatically. No manual
+    // list to keep in sync when Blazicons adds more.
+    private static readonly Dictionary<string, IReadOnlyList<IconEntry>> _catalogsByLibrary = BuildCatalogs();
+
+    private IReadOnlyList<IconEntry> ActiveCatalog =>
+        _catalogsByLibrary.TryGetValue(IconService.ActiveLibrary, out var list)
+            ? list
+            : _catalogsByLibrary["lucide"];
+
+    private List<IconEntry> Filtered => string.IsNullOrWhiteSpace(_query)
         ? ActiveCatalog.ToList()
-        : ActiveCatalog.Where(n => n.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
+        : ActiveCatalog.Where(e => e.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private static Dictionary<string, IReadOnlyList<IconEntry>> BuildCatalogs() => new()
+    {
+        ["lucide"]          = EnumerateIcons(typeof(Lucide)),
+        ["bootstrap"]       = EnumerateIcons(typeof(BootstrapIcon)),
+        ["fluentui"]        = EnumerateIcons(typeof(FluentUiIcon)),
+        ["google-material"] = EnumerateIcons(typeof(GoogleMaterialOutlinedIcon)),
+        ["font-awesome"]    = EnumerateIcons(typeof(FontAwesomeSolidIcon)),
+        ["ionicons"]        = EnumerateIcons(typeof(Ionicon)),
+        ["material-design"] = EnumerateIcons(typeof(MdiIcon)),
+    };
+
+    private static IReadOnlyList<IconEntry> EnumerateIcons(Type svgIconContainer)
+    {
+        return svgIconContainer
+            .GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.PropertyType == typeof(SvgIcon))
+            .Select(p => new IconEntry(p.Name, (SvgIcon)p.GetValue(null)!))
+            .OrderBy(e => e.Name, StringComparer.Ordinal)
+            .ToList();
+    }
 
     // The size picker only affects the selected-icon big preview + the emitted
     // code snippet. Grid tiles stay at a fixed size so changing to Xs doesn't
@@ -359,17 +400,22 @@
         get
         {
             if (_selected is null) return "";
+            var n = _selected.Name;
             var sizeAttr = _previewSize == "md" ? "" : $" Size=\"Icon.IconSize.{char.ToUpper(_previewSize[0])}{_previewSize[1..]}\"";
             return IconService.ActiveLibrary switch
             {
-                "lucide"          => $"<Icon Name=\"{_selected}\"{sizeAttr} />",
-                "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{_selected}\"{sizeAttr} />",
-                "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{_selected}\"{sizeAttr} />",
-                "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{_selected}\"{sizeAttr} />",
-                "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{_selected}\"{sizeAttr} />",
-                "ionicons"        => $"<Icon Svg=\"Ionicon.{_selected}\"{sizeAttr} />",
-                "material-design" => $"<Icon Svg=\"MdiIcon.{_selected}\"{sizeAttr} />",
-                _ => $"<Icon Name=\"{_selected}\"{sizeAttr} />",
+                // For Lucide, always use the Svg= form — it's the universal
+                // path that resolves every one of the 1000+ Lucide icons.
+                // (The short Name= form only works for the ~100 icons that
+                // Icon.razor's MapName hardcodes.)
+                "lucide"          => $"<Icon Svg=\"Lucide.{n}\"{sizeAttr} />",
+                "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{n}\"{sizeAttr} />",
+                "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{n}\"{sizeAttr} />",
+                "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{n}\"{sizeAttr} />",
+                "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{n}\"{sizeAttr} />",
+                "ionicons"        => $"<Icon Svg=\"Ionicon.{n}\"{sizeAttr} />",
+                "material-design" => $"<Icon Svg=\"MdiIcon.{n}\"{sizeAttr} />",
+                _ => $"<Icon Svg=\"Lucide.{n}\"{sizeAttr} />",
             };
         }
     }
