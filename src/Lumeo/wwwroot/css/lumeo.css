@@ -729,3 +729,112 @@ input[type="range"]::-moz-range-thumb {
   filter: blur(0);
   transform: translateY(0);
 }
+
+/* =====================================================
+ * RTL Support
+ *
+ * Tailwind v4 logical utilities (ms-*, me-*, ps-*, pe-*, start-*, end-*,
+ * text-start / text-end, border-s, border-e) already flip automatically in
+ * RTL because they resolve to CSS logical properties. The rules below fix
+ * the few hand-written slide / translate animations that use the *physical*
+ * X axis and therefore look wrong when the document direction is flipped.
+ *
+ * Icons with inherent directional meaning (ChevronLeft/Right, ArrowLeft/Right,
+ * breadcrumb chevrons) are NOT mirrored automatically — consumers should
+ * swap those at the component level if desired.
+ * ===================================================== */
+
+[dir="rtl"] .animate-slide-in-from-left {
+  animation-name: slide-in-from-right-rtl;
+}
+[dir="rtl"] .animate-slide-in-from-right {
+  animation-name: slide-in-from-left-rtl;
+}
+
+@keyframes slide-in-from-right-rtl {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slide-in-from-left-rtl {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Toast default slides from the right-hand edge. In RTL the visual edge
+ * that the toast emerges from is the left, so flip the X direction. */
+[dir="rtl"] .toast-enter,
+[dir="rtl"] .animate-toast-in {
+  animation-name: toast-in-rtl;
+}
+
+@keyframes toast-in-rtl {
+  from { opacity: 0; transform: translateX(-100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ===== RichTextEditor (TipTap / ProseMirror) =====================================
+ * TipTap replaces the mount element with a .ProseMirror contenteditable div.
+ * We scope all styles under .lumeo-rte-content so nothing leaks into the host app.
+ */
+.lumeo-rte-content .ProseMirror {
+  min-height: inherit;
+  padding: 1rem;
+  outline: none;
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.lumeo-rte-content .ProseMirror > * + * {
+  margin-top: 0.75em;
+}
+.lumeo-rte-content .ProseMirror h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.25; }
+.lumeo-rte-content .ProseMirror h2 { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+.lumeo-rte-content .ProseMirror h3 { font-size: 1.125rem; font-weight: 600; line-height: 1.35; }
+.lumeo-rte-content .ProseMirror p { margin: 0; }
+.lumeo-rte-content .ProseMirror ul,
+.lumeo-rte-content .ProseMirror ol { padding-left: 1.25rem; }
+.lumeo-rte-content .ProseMirror ul { list-style: disc; }
+.lumeo-rte-content .ProseMirror ol { list-style: decimal; }
+.lumeo-rte-content .ProseMirror li > p { margin: 0; }
+.lumeo-rte-content .ProseMirror blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 0.75rem;
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+.lumeo-rte-content .ProseMirror code {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.lumeo-rte-content .ProseMirror pre {
+  background: var(--color-muted);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+}
+.lumeo-rte-content .ProseMirror pre code { background: transparent; padding: 0; }
+.lumeo-rte-content .ProseMirror hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 1rem 0;
+}
+.lumeo-rte-content .ProseMirror a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* TipTap placeholder: rendered on the first empty node via the Placeholder extension. */
+.lumeo-rte-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+  height: 0;
+}

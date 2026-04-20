@@ -1,0 +1,234 @@
+@page "/docs/lumeo-form"
+@namespace Lumeo.Docs.Pages.Docs
+@using Lumeo.Docs.Models
+
+<PageTitle>LumeoForm Source Generator — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <!-- Header -->
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">[LumeoForm] Source Generator</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Hand-writing a Blazor form for every POCO — picking the right input per property, wiring
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@bind-Value</code>,
+            repeating <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;FormField Label="…" Required&gt;</code>
+            — is pure boilerplate. The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[LumeoForm]</code>
+            Roslyn source generator does it for you at compile time.
+        </Lumeo.Text>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Annotate any class with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[LumeoForm]</code>
+            and make it <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">partial</code>.
+            The generator emits a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">static RenderForm(model, onValidSubmit)</code>
+            method that returns a ready-to-use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RenderFragment</code>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Example POCO -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">1. Annotate a POCO</Heading>
+        <Code Language="csharp">@_pocoCode</Code>
+    </Stack>
+
+    <!-- Usage -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">2. Render it</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Use the generated <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RenderForm</code>
+            method as a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RenderFragment</code> —
+            either assign it to a field and invoke it as <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@_formFragment</code>
+            or render it directly.
+        </Lumeo.Text>
+        <Code Language="razor">@_usageCode</Code>
+    </Stack>
+
+    <!-- Live demo -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">3. Live demo</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The form below was generated from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ContactFormModel</code>
+            at build time — no hand-written Razor.
+        </Lumeo.Text>
+        <Card Class="p-6">
+            @ContactFormModel.RenderForm(_model, EventCallback.Factory.Create<ContactFormModel>(this, OnValidSubmit))
+            @if (_submittedName is not null)
+            {
+                <Alert Variant="Alert.AlertVariant.Success" Class="mt-4">
+                    Submitted — hello @_submittedName!
+                </Alert>
+            }
+        </Card>
+    </Stack>
+
+    <!-- Supported types table -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">Supported property types</Heading>
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Property type</TableHead>
+                    <TableHead>Generated component</TableHead>
+                    <TableHead>Notes</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell><code>string</code></TableCell>
+                    <TableCell><code>&lt;Input /&gt;</code></TableCell>
+                    <TableCell>Also honours <code>[DataType(DataType.EmailAddress)]</code> → <code>type="email"</code>.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>string</code> + <code>[DataType(Password)]</code></TableCell>
+                    <TableCell><code>&lt;PasswordInput /&gt;</code></TableCell>
+                    <TableCell>Masked entry, strength meter.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>int</code>, <code>long</code>, <code>double</code>, <code>decimal</code>, …</TableCell>
+                    <TableCell><code>&lt;NumberInput /&gt;</code></TableCell>
+                    <TableCell>Coerces to/from <code>double?</code> internally.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>bool</code></TableCell>
+                    <TableCell><code>&lt;Checkbox /&gt;</code></TableCell>
+                    <TableCell>Bound via <code>Checked</code> / <code>CheckedChanged</code>.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>DateTime</code>, <code>DateTimeOffset</code></TableCell>
+                    <TableCell><code>&lt;DatePicker /&gt;</code></TableCell>
+                    <TableCell>Uses the picker's <code>DateTimeValue</code> binding.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>DateOnly</code></TableCell>
+                    <TableCell><code>&lt;DatePicker /&gt;</code></TableCell>
+                    <TableCell>Default <code>DateOnly?</code> binding.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>enum</code></TableCell>
+                    <TableCell><code>&lt;Select /&gt;</code> + one <code>&lt;SelectItem /&gt;</code> per member</TableCell>
+                    <TableCell>Labels PascalCase-split to "Sms Message".</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </Stack>
+
+    <!-- Validation -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">Validation attributes</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The generator wires the built-in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataAnnotationsFormValidator</code>
+            into every generated form, so any standard <code>System.ComponentModel.DataAnnotations</code> attribute runs at submit time without extra code:
+        </Lumeo.Text>
+        <ul class="list-disc pl-6 space-y-1 text-muted-foreground text-sm">
+            <li><code>[Required]</code> — also marks the field visually via <code>FormField.Required</code>.</li>
+            <li><code>[StringLength(max, MinimumLength = n)]</code></li>
+            <li><code>[Range(min, max)]</code></li>
+            <li><code>[DataType(DataType.EmailAddress)]</code> / <code>[DataType(DataType.Password)]</code> — influences input choice.</li>
+            <li><code>[Display(Name = "…", Description = "…")]</code> — <code>Name</code> → field label, <code>Description</code> → help text.</li>
+        </ul>
+    </Stack>
+
+    <!-- Attribute options -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">Attribute options</Heading>
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell><code>Title</code></TableCell>
+                    <TableCell><code>string?</code></TableCell>
+                    <TableCell><code>null</code></TableCell>
+                    <TableCell>Optional heading rendered above the form.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>IncludeSubmitButton</code></TableCell>
+                    <TableCell><code>bool</code></TableCell>
+                    <TableCell><code>true</code></TableCell>
+                    <TableCell>Whether to append a submit button at the end.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code>SubmitLabel</code></TableCell>
+                    <TableCell><code>string</code></TableCell>
+                    <TableCell><code>"Submit"</code></TableCell>
+                    <TableCell>Label on the generated submit button.</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </Stack>
+
+    <!-- Limitations -->
+    <Stack Gap="4">
+        <Heading Level="2" Size="xl">Known limitations</Heading>
+        <ul class="list-disc pl-6 space-y-1 text-muted-foreground text-sm">
+            <li>Target classes must be marked <code>partial</code>.</li>
+            <li>Only public read/write properties with a public setter are rendered.</li>
+            <li>Collections, nested records, and custom value types are skipped — use a hand-written form for those.</li>
+            <li>Flag enums render as a single <code>Select</code>; use a hand-written <code>ToggleGroup</code> if you need multi-select.</li>
+            <li>Horizontal layout, field ordering, and custom input components require a manual form (the generator emits a vertical stack).</li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private readonly ContactFormModel _model = new();
+    private string? _submittedName;
+
+    private void OnValidSubmit(ContactFormModel m)
+    {
+        _submittedName = m.Name;
+        StateHasChanged();
+    }
+
+    private const string _pocoCode = @"using System.ComponentModel.DataAnnotations;
+using Lumeo;
+
+[LumeoForm(Title = ""Contact us"", SubmitLabel = ""Send message"")]
+public partial class ContactFormModel
+{
+    [Required, StringLength(80, MinimumLength = 2)]
+    [Display(Name = ""Full name"", Description = ""As it should appear on the invoice."")]
+    public string Name { get; set; } = """";
+
+    [Required, DataType(DataType.EmailAddress)]
+    public string Email { get; set; } = """";
+
+    [DataType(DataType.Password), StringLength(64, MinimumLength = 8)]
+    public string Password { get; set; } = """";
+
+    [Range(1, 120)]
+    public int Age { get; set; } = 25;
+
+    public bool Subscribe { get; set; }
+    public ContactPreference Preference { get; set; }
+}
+
+public enum ContactPreference { Email, Phone, SmsMessage }";
+
+    private const string _usageCode = @"@page ""/contact""
+@using MyApp.Models
+
+<h1>Contact</h1>
+
+@ContactFormModel.RenderForm(_model, EventCallback.Factory.Create<ContactFormModel>(this, HandleSubmit))
+
+@code {
+    private readonly ContactFormModel _model = new();
+
+    private Task HandleSubmit(ContactFormModel m)
+    {
+        // _model is validated — persist it.
+        return Task.CompletedTask;
+    }
+}";
+}
