@@ -80,7 +80,8 @@
             </div>
         </div>
 
-        @* Grid OR selected-icon detail — side-by-side on desktop, stacked on mobile *@
+        @* Grid OR selected-icon detail — side-by-side on desktop, stacked on mobile.
+           `relative` + explicit `bg-card` on the aside prevents background bleed-through. *@
         <div class="flex flex-col lg:flex-row">
 
             @* Icon grid *@
@@ -99,7 +100,9 @@
                 }
                 else
                 {
-                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 xl:grid-cols-10 gap-1">
+                    @* Tile size is fixed — the size picker only affects the selected-icon code snippet,
+                       so changing to Xs doesn't squish every tile in the grid. *@
+                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-7 xl:grid-cols-8 gap-2">
                         @foreach (var name in Filtered)
                         {
                             var n = name;
@@ -107,72 +110,70 @@
                             <button type="button"
                                     @onclick="@(() => _selected = n)"
                                     title="@n"
-                                    class="@($"group relative flex flex-col items-center justify-center gap-1.5 aspect-square rounded-md border transition-colors {(isActive ? "border-primary bg-primary/5 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
-                                <DynamicIcon Name="@n" Class="@PreviewIconClass" />
-                                <span class="text-[10px] truncate max-w-full px-1 leading-none">@n</span>
+                                    class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
+                                <DynamicIcon Name="@n" Class="h-5 w-5 shrink-0" />
+                                <span class="text-[10px] leading-tight truncate w-full px-1">@n</span>
                             </button>
                         }
                     </div>
                 }
             </div>
 
-            @* Detail sidebar — appears when an icon is selected *@
+            @* Detail sidebar — appears when an icon is selected. Solid bg so the grid doesn't bleed through. *@
             @if (_selected is not null)
             {
-                <aside class="w-full lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-l border-border/40 bg-muted/20 p-5">
-                    <div class="sticky top-[200px]">
-                        <div class="flex items-center justify-between mb-4">
-                            <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wider font-medium">Selected</Lumeo.Text>
-                            <button type="button"
-                                    @onclick="() => _selected = null"
-                                    class="text-muted-foreground hover:text-foreground p-1 rounded">
-                                <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-
-                        @* Big preview *@
-                        <div class="flex items-center justify-center h-32 rounded-md border border-border/40 bg-background mb-4">
-                            <DynamicIcon Name="@_selected" Class="h-14 w-14 text-foreground" />
-                        </div>
-
-                        @* Name + library *@
-                        <Stack Gap="0" Class="mb-4">
-                            <Lumeo.Text Weight="medium" Class="text-base">@_selected</Lumeo.Text>
-                            <Lumeo.Text Size="xs" Color="muted">via @LibraryDisplayName(IconService.ActiveLibrary)</Lumeo.Text>
-                        </Stack>
-
-                        @* Size preview row *@
-                        <div class="mb-4">
-                            <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">Sizes</Lumeo.Text>
-                            <Flex Gap="4" Align="center" Class="rounded-md border border-border/40 bg-background px-3 py-2">
-                                <DynamicIcon Name="@_selected" Class="h-3 w-3" />
-                                <DynamicIcon Name="@_selected" Class="h-3.5 w-3.5" />
-                                <DynamicIcon Name="@_selected" Class="h-4 w-4" />
-                                <DynamicIcon Name="@_selected" Class="h-5 w-5" />
-                                <DynamicIcon Name="@_selected" Class="h-6 w-6" />
-                            </Flex>
-                        </div>
-
-                        @* Code snippet + copy *@
-                        <div class="mb-2 flex items-center justify-between">
-                            <Lumeo.Text Size="xs" Color="muted">Code</Lumeo.Text>
-                            <button type="button"
-                                    @onclick="CopySnippet"
-                                    class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                                @if (_copied)
-                                {
-                                    <DynamicIcon Name="Check" Class="h-3.5 w-3.5 text-success" />
-                                    <span class="text-success">Copied</span>
-                                }
-                                else
-                                {
-                                    <DynamicIcon Name="Copy" Class="h-3.5 w-3.5" />
-                                    <span>Copy</span>
-                                }
-                            </button>
-                        </div>
-                        <pre class="rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto whitespace-pre">@SnippetForSelected</pre>
+                <aside class="w-full lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-l border-border/40 bg-muted/40 p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wider font-medium">Selected</Lumeo.Text>
+                        <button type="button"
+                                @onclick="() => _selected = null"
+                                class="text-muted-foreground hover:text-foreground p-1 rounded">
+                            <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
+                        </button>
                     </div>
+
+                    @* Big preview — uses the selected size from the toolbar picker *@
+                    <div class="flex items-center justify-center h-32 rounded-md border border-border/40 bg-background mb-4">
+                        <DynamicIcon Name="@_selected" Class="@BigPreviewClass" />
+                    </div>
+
+                    @* Name + library *@
+                    <Stack Gap="0" Class="mb-4">
+                        <Lumeo.Text Weight="medium" Class="text-base">@_selected</Lumeo.Text>
+                        <Lumeo.Text Size="xs" Color="muted">via @LibraryDisplayName(IconService.ActiveLibrary)</Lumeo.Text>
+                    </Stack>
+
+                    @* Size preview row — all five presets side-by-side *@
+                    <div class="mb-4">
+                        <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">All sizes</Lumeo.Text>
+                        <div class="flex items-center justify-around rounded-md border border-border/40 bg-background px-3 py-3">
+                            <DynamicIcon Name="@_selected" Class="h-3 w-3" />
+                            <DynamicIcon Name="@_selected" Class="h-3.5 w-3.5" />
+                            <DynamicIcon Name="@_selected" Class="h-4 w-4" />
+                            <DynamicIcon Name="@_selected" Class="h-5 w-5" />
+                            <DynamicIcon Name="@_selected" Class="h-6 w-6" />
+                        </div>
+                    </div>
+
+                    @* Code snippet + copy *@
+                    <div class="mb-2 flex items-center justify-between">
+                        <Lumeo.Text Size="xs" Color="muted">Code</Lumeo.Text>
+                        <button type="button"
+                                @onclick="CopySnippet"
+                                class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                            @if (_copied)
+                            {
+                                <DynamicIcon Name="Check" Class="h-3.5 w-3.5 text-success" />
+                                <span class="text-success">Copied</span>
+                            }
+                            else
+                            {
+                                <DynamicIcon Name="Copy" Class="h-3.5 w-3.5" />
+                                <span>Copy</span>
+                            }
+                        </button>
+                    </div>
+                    <pre class="rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto whitespace-pre">@SnippetForSelected</pre>
                 </aside>
             }
         </div>
@@ -331,13 +332,16 @@
         ? _fullCatalog.ToList()
         : _fullCatalog.Where(n => n.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
 
-    private string PreviewIconClass => _previewSize switch
+    // The size picker only affects the selected-icon big preview + the emitted
+    // code snippet. Grid tiles stay at a fixed size so changing to Xs doesn't
+    // crush every tile and collide all the labels.
+    private string BigPreviewClass => _previewSize switch
     {
-        "xs" => "h-3 w-3",
-        "sm" => "h-3.5 w-3.5",
-        "lg" => "h-5 w-5",
-        "xl" => "h-6 w-6",
-        _ => "h-4 w-4",
+        "xs" => "h-6 w-6",
+        "sm" => "h-8 w-8",
+        "lg" => "h-16 w-16",
+        "xl" => "h-20 w-20",
+        _ => "h-12 w-12",
     };
 
     private string SnippetForSelected
