@@ -93,8 +93,13 @@
                Tailwind arbitrary class wasn't being emitted in the docs' pre-built
                CSS, so the grid blew out to its full intrinsic height (~7000 icons
                tall for Material Design). Inline style is bulletproof — no Tailwind
-               JIT dependency. *@
-            <div class="flex-1 p-3 min-w-0 overflow-y-auto" style="max-height: 600px">
+               JIT dependency.
+               @key on the library+query so the scroll container remounts fresh
+               (scrollTop 0) whenever you switch library or change the search —
+               avoids the first-row-cut-off look from a preserved scrollTop. *@
+            <div @key="@GridKey"
+                 class="flex-1 p-3 min-w-0 overflow-y-auto"
+                 style="max-height: 600px">
                 @if (Filtered.Count == 0)
                 {
                     <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -120,7 +125,7 @@
                                     @onclick="@(() => _selected = e)"
                                     title="@e.Name"
                                     class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
-                                <Blazicon Svg="@e.Svg" class="h-5 w-5 shrink-0" />
+                                <Blazicon Svg="@e.Svg" class="@($"{PreviewIconClass} shrink-0")" />
                                 <span class="text-[10px] leading-tight truncate w-full px-1">@e.Name</span>
                             </button>
                         }
@@ -359,6 +364,10 @@
     // list to keep in sync when Blazicons adds more.
     private static readonly Dictionary<string, IReadOnlyList<IconEntry>> _catalogsByLibrary = BuildCatalogs();
 
+    // Key that re-mounts the grid scroll container whenever the filter/library
+    // changes, so scrollTop resets to 0 and the first row is never cut off.
+    private string GridKey => $"grid-{IconService.ActiveLibrary}-{_query}";
+
     private IReadOnlyList<IconEntry> ActiveCatalog =>
         _catalogsByLibrary.TryGetValue(IconService.ActiveLibrary, out var list)
             ? list
@@ -389,9 +398,20 @@
             .ToList();
     }
 
-    // The size picker only affects the selected-icon big preview + the emitted
-    // code snippet. Grid tiles stay at a fixed size so changing to Xs doesn't
-    // crush every tile and collide all the labels.
+    // Tile dimensions stay fixed (h-20) regardless of size. The picker scales
+    // only the icon glyph inside each tile, so the layout never collapses and
+    // users can still preview how Xs vs Xl feels in the grid.
+    private string PreviewIconClass => _previewSize switch
+    {
+        "xs" => "h-3 w-3",
+        "sm" => "h-3.5 w-3.5",
+        "lg" => "h-5 w-5",
+        "xl" => "h-6 w-6",
+        _ => "h-4 w-4",
+    };
+
+    // Selected-icon big preview uses the picked size scaled up (Lg/Xl are
+    // unmissable, Xs is still big enough to inspect).
     private string BigPreviewClass => _previewSize switch
     {
         "xs" => "h-6 w-6",
