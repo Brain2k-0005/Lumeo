@@ -42,7 +42,7 @@
                 }
             </div>
         </div>
-        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)" @key="@($"line-h-{_index}-{status}")"></div>
+        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)" @key="@($"line-h-{_index}-{status}-{Context?.ReplayKey}")"></div>
     </div>
 }
 else
@@ -70,7 +70,7 @@ else
                     <span>@(_index + 1)</span>
                 }
             </button>
-            <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}")"></div>
+            <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}-{Context?.ReplayKey}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -156,12 +156,29 @@ else
             _ => "bg-border"
         };
 
-        if (IsAnimated && status == StepStatus.Completed)
+        if (!IsAnimated)
         {
-            var drawClass = Context?.Orientation == Steps.StepsOrientation.Vertical
-                ? "lumeo-steps-line-draw-y"
-                : "lumeo-steps-line-draw-x";
-            return $"{color} {drawClass}";
+            return color;
+        }
+
+        var isVertical = Context?.Orientation == Steps.StepsOrientation.Vertical;
+        var isBackward = Context?.Direction == Steps.StepsDirection.Backward;
+
+        // Play the forward draw-in animation when this connector is now
+        // completed (i.e. user advanced and this line lit up). Play the
+        // reverse unwind when the user went backward and this connector
+        // is now un-completed (pending) — visually the drawn line retracts.
+        if (status == StepStatus.Completed && !isBackward)
+        {
+            return $"{color} " + (isVertical ? "lumeo-steps-line-draw-y" : "lumeo-steps-line-draw-x");
+        }
+
+        if (status != StepStatus.Completed && isBackward && _index == Context!.CurrentStep)
+        {
+            // The connector immediately after the new current step is the
+            // one that was just "undrawn". Animate it unwinding from its
+            // completed paint to the pending state.
+            return $"{color} " + (isVertical ? "lumeo-steps-line-unwind-y" : "lumeo-steps-line-unwind-x");
         }
 
         return color;
