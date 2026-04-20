@@ -23,8 +23,11 @@
 <section id="browse" data-toc-entry data-toc-title="Browse icons" class="scroll-mt-24">
     <div class="rounded-[var(--radius-xl)] border border-border/40 bg-card overflow-hidden">
 
-        @* Sticky toolbar: search + library + size + code format *@
-        <div class="sticky top-[64px] z-10 border-b border-border/40 bg-card/95 backdrop-blur px-4 py-3">
+        @* Sticky toolbar: search + library + size. NO backdrop-filter here —
+           `backdrop-blur` creates a containing block for position:fixed
+           descendants, which breaks the Select dropdowns (they'd try to
+           position relative to this toolbar instead of the viewport). *@
+        <div class="sticky top-[64px] z-10 border-b border-border/40 bg-card px-4 py-3">
             <Flex Gap="2" Align="center" Class="flex-wrap">
                 <div class="flex-1 min-w-[240px] relative">
                     <div class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
@@ -72,7 +75,7 @@
                 </Select>
             </Flex>
             <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span><span class="font-medium text-foreground">@Filtered.Count</span> of @_fullCatalog.Length icons</span>
+                <span><span class="font-medium text-foreground">@Filtered.Count</span> of @ActiveCatalog.Count icons</span>
                 @if (IconService.ActiveLibrary != "lucide")
                 {
                     <span>Non-Lucide icons use <code class="font-mono text-[11px] px-1 rounded bg-muted">Svg=</code></span>
@@ -84,8 +87,8 @@
            `relative` + explicit `bg-card` on the aside prevents background bleed-through. *@
         <div class="flex flex-col lg:flex-row">
 
-            @* Icon grid *@
-            <div class="flex-1 p-3 min-w-0">
+            @* Icon grid — internal scroll so browsing a big catalog doesn't grow the page. *@
+            <div class="flex-1 p-3 min-w-0 max-h-[640px] overflow-y-auto">
                 @if (Filtered.Count == 0)
                 {
                     <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -328,9 +331,16 @@
     private string _usageTab = "basic";
     private Lumeo.Input? _searchInput;
 
+    // Catalog is intentionally the set of names `<Icon Name="...">` in the
+    // library recognizes — so every tile you see here is a name you can paste
+    // into the Name= form and get the right icon. Lucide has 1000+ icons total;
+    // for anything outside this set, the Other-libraries tab in Usage shows
+    // how to fall through to the Svg= escape hatch (Blazicons.Lucide.AnyName).
+    private IReadOnlyList<string> ActiveCatalog => _crossLibraryCatalog;
+
     private List<string> Filtered => string.IsNullOrWhiteSpace(_query)
-        ? _fullCatalog.ToList()
-        : _fullCatalog.Where(n => n.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
+        ? ActiveCatalog.ToList()
+        : ActiveCatalog.Where(n => n.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
 
     // The size picker only affects the selected-icon big preview + the emitted
     // code snippet. Grid tiles stay at a fixed size so changing to Xs doesn't
@@ -399,10 +409,10 @@
         IconService.OnChange -= OnLibChanged;
     }
 
-    // Full icon catalog supported across all 7 Blazicons libraries. These names
-    // are the ones DynamicIcon knows how to render in every library — so the
-    // library switcher can swap between them and every tile still renders.
-    private static readonly string[] _fullCatalog =
+    // Cross-library set — icons supported across all 7 Blazicons libraries.
+    // Used when a non-Lucide provider is active so every tile renders something
+    // meaningful (DynamicIcon only maps this set across providers).
+    private static readonly string[] _crossLibraryCatalog =
     {
         "Accessibility", "AlignCenter", "AlignLeft", "AlignRight", "Archive",
         "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "BarChart3", "Bell",
@@ -423,6 +433,179 @@
         "Slash", "SlidersHorizontal", "Smartphone", "Star", "Sun", "Tag", "Trash",
         "Trash2", "TrendingUp", "TriangleAlert", "Underline", "Upload", "User",
         "UserPlus", "Users", "Volume", "Volume1", "Volume2", "X", "Zap",
+    };
+
+    // Extended Lucide-only catalog kept for reference; not used yet. Wiring it
+    // up requires reflecting into Blazicons.Lucide at render time (DynamicIcon
+    // only maps the cross-library set), and updating Icon.razor's MapName so
+    // every name here resolves through `<Icon Name=>`. Tracked as a follow-up.
+    private static readonly string[] _lucideCatalogExtended = new[]
+    {
+        "Accessibility", "Activity", "Airplay", "AlarmClock", "Album",
+        "AlignCenter", "AlignEndHorizontal", "AlignJustify", "AlignLeft", "AlignRight",
+        "Anchor", "Aperture", "Apple", "Archive", "ArrowBigDown", "ArrowBigLeft",
+        "ArrowBigRight", "ArrowBigUp", "ArrowDown", "ArrowDownLeft", "ArrowDownRight",
+        "ArrowLeft", "ArrowLeftRight", "ArrowRight", "ArrowUp", "ArrowUpDown",
+        "ArrowUpLeft", "ArrowUpRight", "Asterisk", "AtSign", "Award", "Axe",
+        "Baby", "Backpack", "Badge", "BadgeCheck", "BadgeDollarSign", "BadgeInfo",
+        "BadgePercent", "Banknote", "BarChart3", "Barcode", "Baseline", "Battery",
+        "BatteryCharging", "BatteryFull", "BatteryLow", "Beaker", "Bed", "Bell",
+        "BellOff", "BellRing", "Binary", "Bitcoin", "Blocks", "Bluetooth",
+        "Bold", "Bolt", "Book", "BookOpen", "Bookmark", "BookmarkCheck",
+        "BookmarkPlus", "BookmarkX", "Bot", "Box", "Boxes", "Briefcase",
+        "Brush", "Bug", "Building", "Building2", "Bus", "Cake", "Calculator",
+        "Calendar", "CalendarCheck", "CalendarClock", "CalendarDays", "CalendarHeart",
+        "CalendarMinus", "CalendarOff", "CalendarPlus", "CalendarRange",
+        "CalendarSearch", "CalendarX", "Camera", "CameraOff", "Car", "Cast",
+        "Check", "CheckCheck", "ChefHat", "Chrome",
+        "ChartBar", "ChartLine", "ChartPie", "ChartScatter", "ChartArea",
+        "ChevronDown", "ChevronLeft", "ChevronRight", "ChevronUp",
+        "ChevronsDown", "ChevronsLeft", "ChevronsRight", "ChevronsUp",
+        "ChevronsUpDown", "Circle", "CircleAlert", "CircleCheck", "CircleDashed",
+        "CircleDollarSign", "CircleDot", "CircleEllipsis", "CircleHelp", "CircleMinus",
+        "CircleOff", "CirclePlus", "CircleSlash", "CircleStop", "CircleUser",
+        "CircleX", "Clapperboard", "Clipboard", "ClipboardCheck", "ClipboardCopy",
+        "ClipboardList", "ClipboardPaste", "Clock", "Cloud", "CloudDownload",
+        "CloudOff", "CloudRain", "CloudSnow", "CloudSun", "CloudUpload",
+        "Code", "Code2", "Coffee", "Cog", "Coins", "Columns2", "Columns3", "Command",
+        "Compass", "Component", "Contact", "Container", "Copy", "Copyright",
+        "CreditCard", "Crop", "Cross", "Crosshair", "Crown", "Cup",
+        "Database", "Delete", "Diamond", "Dice1", "Dice2", "Dice3", "Dice4", "Dice5", "Dice6",
+        "Disc", "Divide", "DollarSign", "Download", "DraftingCompass",
+        "Ear", "Eclipse", "Edit", "EggFried", "Ellipsis", "Equal", "Eraser",
+        "ExternalLink", "Eye", "EyeOff", "Facebook", "Factory", "Fan",
+        "File", "FileArchive", "FileAudio", "FileBadge", "FileBox", "FileChartColumn",
+        "FileCheck", "FileClock", "FileCode", "FileDiff", "FileDown", "FileEdit",
+        "FileHeart", "FileImage", "FileInput", "FileJson", "FileKey", "FileLock",
+        "FileMinus", "FileOutput", "FilePen", "FilePlus", "FileQuestion", "FileScan",
+        "FileSearch", "FileSpreadsheet", "FileSymlink", "FileTerminal", "FileText",
+        "FileType", "FileUp", "FileVideo", "FileVolume", "FileWarning", "FileX",
+        "Film", "Filter", "Fingerprint", "Fish", "Flag", "FlagOff", "FlagTriangleLeft",
+        "FlagTriangleRight", "Flame", "Flashlight", "Flask", "FlaskConical",
+        "Flower", "Flower2", "Focus", "FoldHorizontal", "FoldVertical", "Folder",
+        "FolderArchive", "FolderCheck", "FolderClosed", "FolderDown", "FolderGit",
+        "FolderHeart", "FolderInput", "FolderKanban", "FolderKey", "FolderLock",
+        "FolderMinus", "FolderOpen", "FolderOutput", "FolderPen", "FolderPlus",
+        "FolderRoot", "FolderSearch", "FolderSymlink", "FolderSync", "FolderTree",
+        "FolderUp", "FolderX", "Folders", "Footprints", "Forklift", "Forward",
+        "Frame", "Framer", "Frown", "Fuel", "Fullscreen", "GalleryHorizontal",
+        "GalleryVertical", "GalleryThumbnails", "Gamepad", "Gamepad2", "Gauge",
+        "Gavel", "Gem", "Ghost", "Gift", "GitBranch", "GitCommit", "GitCompare",
+        "GitFork", "GitGraph", "GitMerge", "GitPullRequest", "Github", "Gitlab",
+        "GlassWater", "Glasses", "Globe", "Goal", "Grab", "GraduationCap", "Grape",
+        "Grid2x2", "Grid3x3", "Grip", "GripHorizontal", "GripVertical", "Group",
+        "Hammer", "Hand", "HandCoins", "HandHeart", "HandMetal", "HardDrive",
+        "HardHat", "Hash", "Haze", "Headphones", "Headset", "Heart", "HeartCrack",
+        "HeartHandshake", "HeartOff", "HeartPulse", "Heater", "Hexagon", "Highlighter",
+        "History", "Home", "Hospital", "Hotel", "Hourglass", "House", "Ice",
+        "IceCream", "Image", "ImageDown", "ImageMinus", "ImageOff", "ImagePlay",
+        "ImagePlus", "ImageUp", "Images", "Import", "Inbox", "Indent", "IndianRupee",
+        "Infinity", "Info", "Inspect", "Instagram", "Italic", "IterationCcw",
+        "IterationCw", "JapaneseYen", "Joystick", "Key", "KeyRound", "Keyboard",
+        "Lamp", "LampCeiling", "LampDesk", "LampFloor", "LampWallDown", "LampWallUp",
+        "Landmark", "Languages", "Laptop", "Lasso", "Laugh", "Layers", "LayoutDashboard",
+        "LayoutGrid", "LayoutList", "LayoutPanelLeft", "LayoutPanelTop", "LayoutTemplate",
+        "Leaf", "LeafyGreen", "LibraryBig", "Library", "LifeBuoy", "Ligature", "Lightbulb",
+        "Link", "Link2", "Linkedin", "List", "ListCheck", "ListChecks", "ListCollapse",
+        "ListEnd", "ListFilter", "ListMinus", "ListMusic", "ListOrdered", "ListPlus",
+        "ListRestart", "ListStart", "ListTodo", "ListTree", "ListVideo", "ListX",
+        "Loader", "LoaderCircle", "LocateFixed", "LocateOff", "Locate", "Lock",
+        "LockKeyhole", "LockOpen", "LogIn", "LogOut", "Logs", "Loader2", "Lollipop",
+        "Luggage", "Magnet", "Mail", "MailCheck", "MailMinus", "MailOpen", "MailPlus",
+        "MailQuestion", "MailSearch", "MailWarning", "MailX", "Mailbox", "Mails",
+        "Map", "MapPin", "MapPinOff", "MapPinned", "Martini", "Maximize",
+        "Maximize2", "Medal", "Megaphone", "Meh", "MemoryStick", "Menu",
+        "MenuSquare", "Merge", "MessageCircle", "MessageCircleCode",
+        "MessageCircleHeart", "MessageCirclePlus", "MessageCircleQuestion",
+        "MessageCircleReply", "MessageCircleWarning", "MessageCircleX",
+        "MessageSquare", "MessageSquareCode", "MessageSquareDashed",
+        "MessageSquareDiff", "MessageSquareDot", "MessageSquareHeart",
+        "MessageSquareMore", "MessageSquareOff", "MessageSquarePlus",
+        "MessageSquareQuote", "MessageSquareReply", "MessageSquareShare",
+        "MessageSquareText", "MessageSquareWarning", "MessageSquareX", "MessagesSquare",
+        "Mic", "MicOff", "MicVocal", "Microscope", "Microwave", "Milestone",
+        "Milk", "Minimize", "Minimize2", "Minus", "Monitor", "MonitorCheck",
+        "MonitorDot", "MonitorDown", "MonitorOff", "MonitorPause", "MonitorPlay",
+        "MonitorSmartphone", "MonitorSpeaker", "MonitorStop", "MonitorUp", "MonitorX",
+        "Moon", "MoonStar", "Mountain", "MountainSnow", "Mouse", "MousePointer",
+        "MousePointerClick", "Move", "Move3d", "MoveDiagonal", "MoveDiagonal2",
+        "MoveDown", "MoveDownLeft", "MoveDownRight", "MoveHorizontal", "MoveLeft",
+        "MoveRight", "MoveUp", "MoveUpLeft", "MoveUpRight", "MoveVertical", "Music",
+        "Music2", "Music3", "Music4", "Navigation", "Network", "Newspaper", "Nfc",
+        "Notebook", "NotebookPen", "NotebookTabs", "NotebookText", "NotepadText",
+        "Nut", "Octagon", "Option", "Orbit", "Package", "Package2",
+        "PackageCheck", "PackageMinus", "PackageOpen", "PackagePlus", "PackageSearch",
+        "PackageX", "PaintBucket", "Paintbrush", "Paintbrush2", "Palette", "Palmtree",
+        "Panda", "PanelBottom", "PanelBottomClose", "PanelBottomOpen", "PanelLeft",
+        "PanelLeftClose", "PanelLeftOpen", "PanelRight", "PanelRightClose",
+        "PanelRightOpen", "PanelTop", "PanelTopClose", "PanelTopOpen", "Paperclip",
+        "Parentheses", "ParkingCircle", "ParkingMeter", "PartyPopper", "Pause",
+        "PawPrint", "PcCase", "Pen", "PenLine", "PenTool", "Pencil", "PencilLine",
+        "PencilRuler", "Pentagon", "Percent", "PersonStanding", "Phone", "PhoneCall",
+        "PhoneForwarded", "PhoneIncoming", "PhoneMissed", "PhoneOff", "PhoneOutgoing",
+        "Pi", "PictureInPicture", "PictureInPicture2", "PiggyBank", "Pill", "Pin",
+        "PinOff", "Pipette", "Pizza", "Plane", "PlaneLanding", "PlaneTakeoff", "Play",
+        "Plug", "Plug2", "PlugZap", "Plus", "Pocket", "PocketKnife", "Podcast",
+        "Pointer", "PointerOff", "Popcorn", "Popsicle", "PoundSterling", "Power",
+        "PowerOff", "Presentation", "Printer", "Projector", "Puzzle", "Pyramid",
+        "Qr", "Quote", "Rabbit", "Radar", "Radiation", "Radio", "RadioReceiver",
+        "RadioTower", "Radius", "Rainbow", "Rat", "Ratio", "Receipt", "RectangleHorizontal",
+        "RectangleVertical", "Recycle", "Redo", "Redo2", "RefreshCcw", "RefreshCw",
+        "Refrigerator", "Regex", "RemoveFormatting", "Repeat", "Repeat1", "Repeat2",
+        "Replace", "Reply", "ReplyAll", "Rewind", "Ribbon", "Rocket", "RockingChair",
+        "RollerCoaster", "Rotate3d", "RotateCcw", "RotateCw", "Route", "RouteOff",
+        "Router", "Rows2", "Rows3", "Rss", "Ruler", "RussianRuble", "Sailboat",
+        "Salad", "Sandwich", "Satellite", "Save", "SaveAll", "Scale", "Scale3d",
+        "Scaling", "Scan", "ScanBarcode", "ScanEye", "ScanFace", "ScanLine",
+        "ScanSearch", "ScanText", "School", "Scissors", "ScreenShare", "ScreenShareOff",
+        "Scroll", "ScrollText", "Search", "SearchCheck", "SearchCode", "SearchSlash",
+        "SearchX", "Send", "Server", "ServerCog", "ServerCrash", "ServerOff",
+        "Settings", "Settings2", "Shapes", "Share", "Share2", "Sheet", "Shell",
+        "Shield", "ShieldAlert", "ShieldBan", "ShieldCheck", "ShieldEllipsis",
+        "ShieldHalf", "ShieldMinus", "ShieldOff", "ShieldPlus", "ShieldQuestion",
+        "ShieldX", "Ship", "ShipWheel", "Shirt", "ShoppingBag", "ShoppingBasket",
+        "ShoppingCart", "Shovel", "ShowerHead", "Shrink", "Shrub", "Shuffle", "Sigma",
+        "Signal", "Signpost", "Siren", "SkipBack", "SkipForward", "Skull", "Slack",
+        "Slash", "Slice", "SlidersHorizontal", "Slice", "Smartphone", "Smile",
+        "SmilePlus", "Snail", "Snowflake", "Sofa", "Soup", "Space", "Spade", "Sparkle",
+        "Sparkles", "Speaker", "Speech", "SpellCheck", "Spline", "Split", "SprayCan",
+        "Sprout", "Square", "SquareActivity", "SquareArrowDown", "SquareArrowLeft",
+        "SquareArrowOutDownLeft", "SquareArrowOutDownRight", "SquareArrowOutUpLeft",
+        "SquareArrowOutUpRight", "SquareArrowRight", "SquareArrowUp", "SquareAsterisk",
+        "SquareCheck", "SquareChevronDown", "SquareChevronLeft", "SquareChevronRight",
+        "SquareChevronUp", "SquareCode", "SquareDashedBottomCode", "SquareDivide",
+        "SquareDot", "SquareEqual", "SquareKanban", "SquareMousePointer", "SquareParking",
+        "SquarePen", "SquarePi", "SquarePower", "SquareRadical", "SquareSigma",
+        "SquareSlash", "SquareStack", "SquareTerminal", "SquareUser", "SquareX",
+        "Squircle", "Squirrel", "Stamp", "Star", "StarHalf", "StarOff", "StepBack",
+        "StepForward", "Stethoscope", "Sticker", "StickyNote", "Store", "StretchHorizontal",
+        "StretchVertical", "Strikethrough", "Subscript", "Sun", "Sunrise", "Sunset",
+        "Superscript", "SwatchBook", "SwissFranc", "Sword", "Swords", "Syringe",
+        "Table", "Table2", "TableCellsMerge", "TableCellsSplit", "TableColumnsSplit",
+        "TableOfContents", "TableProperties", "TableRowsSplit", "Tablet", "Tablets",
+        "Tag", "Tags", "Tally1", "Tally2", "Tally3", "Tally4", "Tally5", "Tangent",
+        "Target", "Telescope", "Tent", "TentTree", "Terminal", "TerminalSquare",
+        "TestTube", "Text", "TextCursor", "TextQuote", "TextSelect", "Theater",
+        "Thermometer", "ThumbsDown", "ThumbsUp", "Ticket", "TicketCheck", "TicketMinus",
+        "TicketPercent", "TicketPlus", "TicketSlash", "TicketX", "Timer", "TimerOff",
+        "TimerReset", "ToggleLeft", "ToggleRight", "Toilet", "Tornado", "Torus",
+        "Touchpad", "TouchpadOff", "TowerControl", "ToyBrick", "Tractor", "TrafficCone",
+        "Train", "TrainFront", "TrainTrack", "TramFront", "Trash", "Trash2", "TreeDeciduous",
+        "TreePalm", "TreePine", "Trees", "Trello", "TrendingDown", "TrendingUp",
+        "Triangle", "TriangleAlert", "TriangleRight", "Trophy", "Truck", "Turtle", "Tv",
+        "Twitch", "Twitter", "Type", "Umbrella", "Underline", "Undo", "Undo2",
+        "UnfoldHorizontal", "UnfoldVertical", "Ungroup", "University", "Unlink",
+        "Unlink2", "Unlock", "UnlockKeyhole", "Upload", "Usb", "User", "UserCheck",
+        "UserCog", "UserMinus", "UserPlus", "UserRound", "UserRoundCheck", "UserRoundCog",
+        "UserRoundMinus", "UserRoundPlus", "UserRoundX", "UserSearch", "UserX", "Users",
+        "Utensils", "UtensilsCrossed", "UtilityPole", "Variable", "Vault", "Vegan",
+        "VenetianMask", "Verified", "Vibrate", "VibrateOff", "Video", "VideoOff",
+        "Videotape", "View", "Voicemail", "Volume", "Volume1", "Volume2", "VolumeX",
+        "Vote", "Wallet", "Wallet2", "WalletCards", "WalletMinimal", "Wallpaper",
+        "Wand", "Wand2", "Warehouse", "WashingMachine", "Watch", "Waves", "Waypoints",
+        "Webcam", "Webhook", "Weight", "Wheat", "Wifi", "WifiOff", "Wind", "Wine",
+        "WineOff", "Workflow", "WrapText", "Wrench", "X", "Youtube", "Zap", "ZapOff",
+        "ZoomIn", "ZoomOut",
     };
 
     // ── Tab snippets ──────────────────────────────────────────────────────────
