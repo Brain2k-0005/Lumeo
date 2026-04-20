@@ -66,10 +66,21 @@ await Export.DownloadAsync(bytes, "orders.xlsx",
                 <Button Variant="Button.ButtonVariant.Outline" OnClick="ExportExcel">
                     <Blazicon Svg="Lucide.Sheet" class="h-4 w-4 mr-2" /> Export Excel
                 </Button>
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="ExportPdf">
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="ExportPdf"
+                        Disabled="@_isWasm"
+                        title="@(_isWasm ? "PDF export needs a server-side runtime — this docs site is Blazor WASM. Try CSV or Excel." : null)">
                     <Blazicon Svg="Lucide.FileDown" class="h-4 w-4 mr-2" /> Export PDF
                 </Button>
             </Flex>
+
+            @if (_isWasm)
+            {
+                <Lumeo.Text Size="xs" Color="muted">
+                    The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Export PDF</code>
+                    button is disabled here because QuestPDF's renderer needs a native Skia dependency that isn't
+                    available under browser-wasm. CSV and Excel work on every runtime.
+                </Lumeo.Text>
+            }
 
             <Stack Class="rounded-lg border border-border overflow-x-auto">
                 <table class="w-full text-sm">
@@ -219,8 +230,17 @@ await Export.DownloadAsync(bytes, "orders.xlsx",
 
     private async Task ExportPdf()
     {
-        var bytes = Export.ToPdf(_products, GetColumns(), title: "Product Catalogue");
-        await Export.DownloadAsync(bytes, "products.pdf", "application/pdf");
-        Toast.Show("Exported products.pdf", variant: ToastVariant.Success);
+        try
+        {
+            var bytes = Export.ToPdf(_products, GetColumns(), title: "Product Catalogue");
+            await Export.DownloadAsync(bytes, "products.pdf", "application/pdf");
+            Toast.Show("Exported products.pdf", variant: ToastVariant.Success);
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            Toast.Show(ex.Message, variant: ToastVariant.Warning);
+        }
     }
+
+    private static readonly bool _isWasm = OperatingSystem.IsBrowser();
 }
