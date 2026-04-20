@@ -5,7 +5,7 @@
 @if (Scrollable)
 {
     <div class="overflow-hidden">
-        <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass overflow-x-auto scrollbar-none" style="@IndicatorStyle" @attributes="AdditionalAttributes">
+        <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass overflow-x-auto scrollbar-none" style="@IndicatorStyle" data-sliding-pill="@(UsePillIndicator ? "true" : null)" @attributes="AdditionalAttributes">
             @ChildContent
             @if (TrailingContent is not null)
             {
@@ -13,14 +13,14 @@
             }
             @if (RenderIndicator)
             {
-                <span aria-hidden="true" class="lumeo-tabs-underline" data-ready="@(_indicatorReady ? "true" : "false")"></span>
+                <span aria-hidden="true" class="@IndicatorClass" data-ready="@(_indicatorReady ? "true" : "false")"></span>
             }
         </div>
     </div>
 }
 else
 {
-    <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass" style="@IndicatorStyle" @attributes="AdditionalAttributes">
+    <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass" style="@IndicatorStyle" data-sliding-pill="@(UsePillIndicator ? "true" : null)" @attributes="AdditionalAttributes">
         @ChildContent
         @if (TrailingContent is not null)
         {
@@ -28,7 +28,7 @@ else
         }
         @if (RenderIndicator)
         {
-            <span aria-hidden="true" class="lumeo-tabs-underline" data-ready="@(_indicatorReady ? "true" : "false")"></span>
+            <span aria-hidden="true" class="@IndicatorClass" data-ready="@(_indicatorReady ? "true" : "false")"></span>
         }
     </div>
 }
@@ -53,6 +53,11 @@ else
     private string CurrentVariant => Context?.Variant ?? "Default";
 
     private bool RenderIndicator => Context?.AnimatedIndicator == true && !IsVertical;
+
+    // Default and Pill variants render a background pill that slides; Card uses an underline.
+    private bool UsePillIndicator => RenderIndicator && CurrentVariant != "Card";
+
+    private string IndicatorClass => UsePillIndicator ? "lumeo-tabs-indicator" : "lumeo-tabs-underline";
 
     private string? IndicatorStyle => RenderIndicator
         ? $"--lumeo-tabs-indicator-x: {_indicatorX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px; --lumeo-tabs-indicator-w: {_indicatorW.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;"
