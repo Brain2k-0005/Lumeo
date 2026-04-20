@@ -98,6 +98,7 @@
                (scrollTop 0) whenever you switch library or change the search —
                avoids the first-row-cut-off look from a preserved scrollTop. *@
             <div @key="@GridKey"
+                 @ref="_gridRef"
                  class="flex-1 p-3 min-w-0 overflow-y-auto"
                  style="max-height: 600px">
                 @if (Filtered.Count == 0)
@@ -125,7 +126,7 @@
                                     @onclick="@(() => _selected = e)"
                                     title="@e.Name"
                                     class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
-                                <Blazicon Svg="@e.Svg" class="@($"{PreviewIconClass} shrink-0")" />
+                                <Blazicon Svg="@e.Svg" class="shrink-0" style="@PreviewIconStyle" />
                                 <span class="text-[10px] leading-tight truncate w-full px-1">@e.Name</span>
                             </button>
                         }
@@ -354,6 +355,9 @@
     private int _displayLimit = _initialLimit;
     private string _usageTab = "basic";
     private Lumeo.Input? _searchInput;
+    private ElementReference _gridRef;
+    private bool _needsScrollReset;
+    private string _lastGridKey = "";
 
     // An icon entry the grid can render and the snippet can target.
     // Name is the Blazicons property name (e.g. "Search", "ChevronDown").
@@ -400,14 +404,17 @@
 
     // Tile dimensions stay fixed (h-20) regardless of size. The picker scales
     // only the icon glyph inside each tile, so the layout never collapses and
-    // users can still preview how Xs vs Xl feels in the grid.
-    private string PreviewIconClass => _previewSize switch
+    // users can still preview how Xs vs Xl feels in the grid. Deltas are
+    // deliberately wide (Xs=10px → Xl=32px) so the change is unmissable;
+    // classes like h-3.5 get dropped from some pre-built Tailwind outputs if
+    // nothing else references them, so the picker uses inline style instead.
+    private string PreviewIconStyle => _previewSize switch
     {
-        "xs" => "h-3 w-3",
-        "sm" => "h-3.5 w-3.5",
-        "lg" => "h-5 w-5",
-        "xl" => "h-6 w-6",
-        _ => "h-4 w-4",
+        "xs" => "width: 10px; height: 10px;",
+        "sm" => "width: 14px; height: 14px;",
+        "lg" => "width: 24px; height: 24px;",
+        "xl" => "width: 32px; height: 32px;",
+        _ => "width: 18px; height: 18px;",
     };
 
     // Selected-icon big preview uses the picked size scaled up (Lg/Xl are
@@ -475,6 +482,26 @@
     }
 
     private void OnLibChanged() => InvokeAsync(StateHasChanged);
+
+    // Browsers (especially Chrome) restore scrollTop of inner scroll
+    // containers across reloads and re-renders — which was leaving the grid
+    // mid-row. Detecting a key change on the scroll container and explicitly
+    // zeroing scrollTop via JS is the only bulletproof fix.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var currentKey = GridKey;
+        if (firstRender || currentKey != _lastGridKey)
+        {
+            _lastGridKey = currentKey;
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    "(function(el) { if (el) el.scrollTop = 0; })(arguments[0])",
+                    _gridRef);
+            }
+            catch (JSException) { /* element not yet connected — next render will catch it */ }
+        }
+    }
 
     public void Dispose()
     {
