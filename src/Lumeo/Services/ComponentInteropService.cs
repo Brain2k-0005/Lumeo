@@ -468,6 +468,23 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Tabs sliding indicator measurement ---
+
+    public record TabMeasurement(double X, double Width);
+
+    public async ValueTask<TabMeasurement?> TabsMeasure(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<TabMeasurement?>("tabs.measure", elementId);
+        }
+        catch (JSDisconnectedException)
+        {
+            return null;
+        }
+    }
+
     // --- AI primitives ---
 
     public async ValueTask AiAutosize(string elementId, int maxPx)

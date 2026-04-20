@@ -1,11 +1,12 @@
 @namespace Lumeo
 
 @{
-    var context = new TimelineContext(Orientation);
+    var context = new TimelineContext(Orientation, Animated, this);
+    _index = 0;
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
-    <CascadingValue Value="context" IsFixed="true">
+    <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
 </div>
@@ -13,8 +14,20 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public TimelineOrientation Orientation { get; set; } = TimelineOrientation.Vertical;
+
+    /// <summary>
+    /// When true, each <see cref="TimelineItem"/> fades+translates in with a
+    /// staggered delay, the active indicator pulses, and connector segments
+    /// between items draw themselves. Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool Animated { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private int _index;
+
+    internal int GetNextIndex() => _index++;
 
     private string CssClass => Orientation switch
     {
@@ -24,5 +37,8 @@
 
     public enum TimelineOrientation { Vertical, Horizontal }
 
-    public record TimelineContext(TimelineOrientation Orientation);
+    public record TimelineContext(TimelineOrientation Orientation, bool Animated, Timeline Parent)
+    {
+        public TimelineContext(TimelineOrientation Orientation) : this(Orientation, false, default!) { }
+    }
 }

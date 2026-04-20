@@ -1,24 +1,34 @@
 @namespace Lumeo
+@inject Lumeo.Services.ComponentInteropService Interop
+@implements IAsyncDisposable
 
 @if (Scrollable)
 {
     <div class="overflow-hidden">
-        <div role="tablist" aria-orientation="@OrientationStr" class="@CssClass overflow-x-auto scrollbar-none" @attributes="AdditionalAttributes">
+        <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass overflow-x-auto scrollbar-none" style="@IndicatorStyle" @attributes="AdditionalAttributes">
             @ChildContent
             @if (TrailingContent is not null)
             {
                 @TrailingContent
+            }
+            @if (RenderIndicator)
+            {
+                <span aria-hidden="true" class="lumeo-tabs-underline" data-ready="@(_indicatorReady ? "true" : "false")"></span>
             }
         </div>
     </div>
 }
 else
 {
-    <div role="tablist" aria-orientation="@OrientationStr" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass" style="@IndicatorStyle" @attributes="AdditionalAttributes">
         @ChildContent
         @if (TrailingContent is not null)
         {
             @TrailingContent
+        }
+        @if (RenderIndicator)
+        {
+            <span aria-hidden="true" class="lumeo-tabs-underline" data-ready="@(_indicatorReady ? "true" : "false")"></span>
         }
     </div>
 }
@@ -32,9 +42,54 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _listId = $"tabslist-{Guid.NewGuid():N}";
+    private double _indicatorX;
+    private double _indicatorW;
+    private bool _indicatorReady;
+    private string? _lastMeasuredValue;
+
     private bool IsVertical => Context?.Orientation == Tabs.TabsOrientation.Vertical;
     private string OrientationStr => IsVertical ? "vertical" : "horizontal";
     private string CurrentVariant => Context?.Variant ?? "Default";
+
+    private bool RenderIndicator => Context?.AnimatedIndicator == true && !IsVertical;
+
+    private string? IndicatorStyle => RenderIndicator
+        ? $"--lumeo-tabs-indicator-x: {_indicatorX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px; --lumeo-tabs-indicator-w: {_indicatorW.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;"
+        : null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!RenderIndicator || Context is null) return;
+
+        var active = Context.ActiveValue;
+        if (string.IsNullOrEmpty(active)) return;
+        if (!Context.TabIds.TryGetValue(active, out var ids)) return;
+        if (_lastMeasuredValue == active && _indicatorReady) return;
+
+        var measurement = await Interop.TabsMeasure(ids.TabId);
+        if (measurement is null) return;
+
+        var changed = Math.Abs(measurement.X - _indicatorX) > 0.5
+                     || Math.Abs(measurement.Width - _indicatorW) > 0.5
+                     || !_indicatorReady;
+
+        _indicatorX = measurement.X;
+        _indicatorW = measurement.Width;
+        _indicatorReady = true;
+        _lastMeasuredValue = active;
+
+        if (changed)
+        {
+            StateHasChanged();
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        // No persistent JS state to clean up — measure is a one-shot invocation.
+        return ValueTask.CompletedTask;
+    }
 
     private string CssClass
     {
@@ -52,7 +107,8 @@ else
                     ? "flex flex-col h-auto w-auto items-stretch justify-start rounded-lg bg-muted p-1 text-muted-foreground"
                     : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
             };
-            return $"{baseClasses} {Class}".Trim();
+            var indicatorWrapper = RenderIndicator ? "relative lumeo-tabs-list" : null;
+            return string.Join(" ", new[] { baseClasses, indicatorWrapper, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
         }
     }
 }
