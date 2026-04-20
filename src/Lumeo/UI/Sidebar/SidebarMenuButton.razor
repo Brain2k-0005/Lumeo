@@ -1,12 +1,18 @@
 @namespace Lumeo
 
 <a href="@Href" class="@CssClass" title="@Tooltip" @attributes="AdditionalAttributes">
-    @if (Icon is not null)
+    @{
+#pragma warning disable CS0618 // obsolete property read for fallback
+        var iconFrag = IconContent ?? Icon;
+        var labelFrag = LabelContent ?? Label;
+#pragma warning restore CS0618
+    }
+    @if (iconFrag is not null)
     {
-        <span class="shrink-0 inline-flex items-center justify-center">@Icon</span>
-        @if (Label is not null)
+        <span class="shrink-0 inline-flex items-center justify-center">@iconFrag</span>
+        @if (labelFrag is not null)
         {
-            <span class="@LabelCssClass">@Label</span>
+            <span class="@LabelCssClass">@labelFrag</span>
         }
     }
     else
@@ -18,8 +24,19 @@
 @code {
     [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public RenderFragment? Icon { get; set; }
-    [Parameter] public RenderFragment? Label { get; set; }
+
+    /// <summary>Icon slot. Use instead of <c>Icon</c> to avoid a name collision with the <c>&lt;Icon&gt;</c> component.</summary>
+    [Parameter] public RenderFragment? IconContent { get; set; }
+
+    /// <summary>Label slot. Use instead of <c>Label</c> to avoid a name collision with the <c>&lt;Label&gt;</c> component.</summary>
+    [Parameter] public RenderFragment? LabelContent { get; set; }
+
+    [Parameter, System.Obsolete("Use IconContent — 'Icon' collides with the <Icon> component. This alias will be removed in 2.0.")]
+    public RenderFragment? Icon { get; set; }
+
+    [Parameter, System.Obsolete("Use LabelContent — 'Label' collides with the <Label> component. This alias will be removed in 2.0.")]
+    public RenderFragment? Label { get; set; }
+
     [Parameter] public string? Href { get; set; }
     [Parameter] public string? Tooltip { get; set; }
     [Parameter] public bool IsActive { get; set; }
