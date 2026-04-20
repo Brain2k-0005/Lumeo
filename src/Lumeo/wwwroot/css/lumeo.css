@@ -753,7 +753,32 @@ input[type="range"]::-moz-range-thumb {
   animation: lumeo-steps-pulse 1.6s ease-in-out infinite;
 }
 
-/* --- Steps & Timeline: completed connector line draw-in --- */
+/* --- Steps & Timeline: completed connector line draw-in / unwind --- */
+/* Shared line-draw keyframes — used by Steps (forward direction) and Timeline
+   progression. Forward: scales from 0 to 1 with origin on the leading edge. */
+@keyframes lumeo-line-draw-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes lumeo-line-draw-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+/* Reverse: the drawn line retracts back to 0 with origin on the trailing edge,
+   so the visual reads as "rewinding" rather than "wiping out". */
+@keyframes lumeo-line-unwind-x {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+@keyframes lumeo-line-unwind-y {
+  from { transform: scaleY(1); }
+  to   { transform: scaleY(0); }
+}
+
+/* Legacy aliases (kept for back-compat) */
 @keyframes lumeo-steps-line-draw-x {
   from { transform: scaleX(0); }
   to   { transform: scaleX(1); }
@@ -766,12 +791,25 @@ input[type="range"]::-moz-range-thumb {
 
 .lumeo-steps-line-draw-x {
   transform-origin: left center;
-  animation: lumeo-steps-line-draw-x 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: lumeo-line-draw-x 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .lumeo-steps-line-draw-y {
   transform-origin: top center;
-  animation: lumeo-steps-line-draw-y 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: lumeo-line-draw-y 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Reverse (Steps Previous) — a drawn connector retracts when the user
+   navigates backward. Origin is on the far edge so the line shrinks toward
+   the still-completed step. */
+.lumeo-steps-line-unwind-x {
+  transform-origin: right center;
+  animation: lumeo-line-unwind-x 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lumeo-steps-line-unwind-y {
+  transform-origin: bottom center;
+  animation: lumeo-line-unwind-y 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* --- Timeline: staggered item entry --- */
@@ -816,20 +854,59 @@ input[type="range"]::-moz-range-thumb {
   animation: lumeo-progress-stripes 1s linear infinite;
 }
 
+/* --- Progress: indeterminate slider (narrow segment sweeping across) --- */
+@keyframes lumeo-progress-indeterminate {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(300%); }
+}
+
+.lumeo-progress-indeterminate {
+  position: relative;
+  overflow: hidden;
+}
+
+.lumeo-progress-indeterminate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  border-radius: inherit;
+  background: inherit;
+  animation: lumeo-progress-indeterminate 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* --- Progress: glow pulse (breathing box-shadow) --- */
+@keyframes lumeo-progress-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px 0 color-mix(in oklab, var(--color-primary) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 12px 2px color-mix(in oklab, var(--color-primary) 70%, transparent);
+  }
+}
+
+.lumeo-progress-glow {
+  animation: lumeo-progress-glow 1.6s ease-in-out infinite;
+}
+
 /* --- Tabs: sliding indicator --- */
 .lumeo-tabs-list {
   position: relative;
 }
 
-/* Pill indicator — rounded full-height background for Default/Pill variants */
+/* Pill indicator — rounded full-height background for Default/Pill variants.
+   Uses color-mix against the foreground to guarantee contrast against the
+   surrounding `bg-muted` track in *both* light and dark mode; prior rule used
+   `--color-background` which in dark themes is near-pure black and read as a
+   "dark blob" against the muted surface. */
 .lumeo-tabs-indicator {
   position: absolute;
   top: 0;
   left: 0;
   height: 100%;
   border-radius: calc(var(--radius-md) - 2px);
-  background: var(--color-background);
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  background: color-mix(in oklab, var(--color-background) 70%, var(--color-foreground) 8%);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   pointer-events: none;
   z-index: 0;
   transform: translateX(var(--lumeo-tabs-indicator-x, 0px));
@@ -887,14 +964,23 @@ input[type="range"]::-moz-range-thumb {
 
 .lumeo-checkbox-animated {
   animation: lumeo-checkbox-bounce 200ms ease-out;
+  /* Do NOT clip the check path while the box scale-bounces — a prior
+     overflow:hidden would have clipped the partially-rendered stroke. */
+  overflow: visible;
 }
 
+/* Draw the full check path regardless of the exact SVG path length. The
+   Lucide Check path is ~22 units long so a dasharray of 16 clipped the
+   tail of the stroke. We target the inline SVG that Blazicon renders via
+   pathLength="1" — every element with a pathLength attribute normalises
+   to 0..1 — falling back to a large fixed dasharray for any icon library
+   that doesn't set pathLength. */
 .lumeo-checkbox-animated svg path,
 .lumeo-checkbox-animated svg polyline,
 .lumeo-checkbox-animated svg line {
-  stroke-dasharray: 16;
-  stroke-dashoffset: 16;
-  animation: lumeo-checkbox-check 240ms ease-out forwards;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: lumeo-checkbox-check 260ms ease-out forwards;
 }
 
 /* --- Badge: entrance pop --- */
@@ -919,11 +1005,19 @@ input[type="range"]::-moz-range-thumb {
 /* Reduced motion — disable decorative loops */
 @media (prefers-reduced-motion: reduce) {
   .lumeo-steps-pulse,
-  .lumeo-progress-stripes {
+  .lumeo-progress-stripes,
+  .lumeo-progress-glow {
     animation: none;
+  }
+  .lumeo-progress-indeterminate::before {
+    animation: none;
+    transform: translateX(0);
+    width: 100%;
   }
   .lumeo-steps-line-draw-x,
   .lumeo-steps-line-draw-y,
+  .lumeo-steps-line-unwind-x,
+  .lumeo-steps-line-unwind-y,
   .lumeo-timeline-enter-vertical,
   .lumeo-timeline-enter-horizontal,
   .lumeo-checkbox-animated,

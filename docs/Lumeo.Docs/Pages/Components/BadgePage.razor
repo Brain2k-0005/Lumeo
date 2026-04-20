@@ -83,11 +83,48 @@
     </ComponentDemo>
 
     <ComponentDemo Title="Animated Entrance" Code="@_animatedCode">
-        <Flex Wrap="true" Align="center" Gap="2">
-            <Badge Animated="true">New</Badge>
-            <Badge Animated="true" Variant="Badge.BadgeVariant.Success">Success</Badge>
-            <Badge Animated="true" Variant="Badge.BadgeVariant.Destructive">Error</Badge>
-        </Flex>
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="4">
+                <Flex Wrap="true" Align="center" Gap="2">
+                    @if (_badgeVisible)
+                    {
+                        <Badge Animated="true">New</Badge>
+                        <Badge Animated="true" Variant="Badge.BadgeVariant.Success">Success</Badge>
+                        <Badge Animated="true" Variant="Badge.BadgeVariant.Destructive">Error</Badge>
+                    }
+                </Flex>
+                <Flex Align="center" Gap="2">
+                    <Button Size="Button.ButtonSize.Sm" OnClick="() => _badgeVisible = !_badgeVisible">
+                        @(_badgeVisible ? "Hide badges" : "Show badges")
+                    </Button>
+                    <Lumeo.Text Size="xs" Color="muted">Each toggle remounts the badges, replaying the pop-in.</Lumeo.Text>
+                </Flex>
+            </Stack>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Counter with Animated Badge" Code="@_counterCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Flex Align="center" Gap="3">
+                <Button Size="Button.ButtonSize.Sm" OnClick="() => _notificationCount++">
+                    <Blazicon Svg="Lucide.Bell" class="h-3.5 w-3.5 mr-2" />
+                    Add notification
+                </Button>
+                <Stack Class="relative">
+                    <DynamicIcon Name="Bell" Class="h-5 w-5" />
+                    @if (_notificationCount > 0)
+                    {
+                        <Badge @key="_notificationCount" Animated="true" Variant="Badge.BadgeVariant.Destructive" Class="absolute -top-2 -right-2 min-w-[1.25rem] justify-center px-1">
+                            @_notificationCount
+                        </Badge>
+                    }
+                </Stack>
+                @if (_notificationCount > 0)
+                {
+                    <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Ghost" OnClick="() => _notificationCount = 0">Clear</Button>
+                }
+            </Flex>
+        </Container>
     </ComponentDemo>
 </Stack>
 
@@ -203,6 +240,8 @@
 </Card>";
 
     private List<string> _tags = new() { "Blazor", "C#", ".NET", "Tailwind" };
+    private bool _badgeVisible = true;
+    private int _notificationCount = 1;
 
     private void RemoveTag(string tag) => _tags.Remove(tag);
 
@@ -215,9 +254,30 @@
     <Badge IsDot=""true"" Variant=""Badge.BadgeVariant.Destructive"" Class=""absolute -top-1 -right-1"" />
 </Stack>";
 
-    private string _animatedCode = @"<Badge Animated=""true"">New</Badge>
-<Badge Animated=""true"" Variant=""Badge.BadgeVariant.Success"">Success</Badge>
-<Badge Animated=""true"" Variant=""Badge.BadgeVariant.Destructive"">Error</Badge>";
+    private string _animatedCode = @"@if (_badgeVisible)
+{
+    <Badge Animated=""true"">New</Badge>
+    <Badge Animated=""true"" Variant=""Badge.BadgeVariant.Success"">Success</Badge>
+    <Badge Animated=""true"" Variant=""Badge.BadgeVariant.Destructive"">Error</Badge>
+}
+<Button OnClick=""() => _badgeVisible = !_badgeVisible"">Toggle badges</Button>
+
+@code { private bool _badgeVisible = true; }";
+
+    private string _counterCode = @"<Stack Class=""relative"">
+    <Blazicon Svg=""Lucide.Bell"" class=""h-5 w-5"" />
+    @if (_notificationCount > 0)
+    {
+        <Badge @key=""_notificationCount"" Animated=""true""
+               Variant=""Badge.BadgeVariant.Destructive""
+               Class=""absolute -top-2 -right-2"">
+            @_notificationCount
+        </Badge>
+    }
+</Stack>
+<Button OnClick=""() => _notificationCount++"">Add notification</Button>
+
+@code { private int _notificationCount = 1; }";
 
     private string _removableCode = @"@foreach (var tag in _tags)
 {

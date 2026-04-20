@@ -11,7 +11,7 @@
                 }
                 else
                 {
-                    <div class="h-2.5 w-2.5 rounded-full bg-primary"></div>
+                    <div class="h-2.5 w-2.5 rounded-full @DotInnerFillClass"></div>
                 }
             </div>
             <div class="mt-2 flex flex-col items-center text-center">
@@ -29,7 +29,7 @@
                 }
             </div>
         </div>
-        <div class="@HorizontalConnectorClasses"></div>
+        <div class="@HorizontalConnectorClasses" @key="@($"tl-h-{_index}-{Context?.ReplayKey}")"></div>
     </div>
 }
 else
@@ -43,10 +43,10 @@ else
                 }
                 else
                 {
-                    <div class="h-2.5 w-2.5 rounded-full bg-primary"></div>
+                    <div class="h-2.5 w-2.5 rounded-full @DotInnerFillClass"></div>
                 }
             </div>
-            <div class="@VerticalConnectorClasses"></div>
+            <div class="@VerticalConnectorClasses" @key="@($"tl-v-{_index}-{Context?.ReplayKey}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -78,7 +78,8 @@ else
     /// <summary>
     /// When set, marks this item as the "active" (current) item. When the
     /// parent <see cref="Timeline"/> has <c>Animated="true"</c>, this item's
-    /// indicator pulses.
+    /// indicator pulses. If the parent also sets <c>ActiveIndex</c>, that
+    /// value wins — use <c>IsActive</c> for static cases only.
     /// </summary>
     [Parameter] public bool IsActive { get; set; }
 
@@ -98,31 +99,105 @@ else
     private bool IsAnimated => Context?.Animated == true;
     private bool IsHorizontal => Context?.Orientation == Timeline.TimelineOrientation.Horizontal;
 
+    // Derived state, preferring the parent's ActiveIndex if set — otherwise
+    // falling back to the legacy per-item IsActive flag.
+    private enum ProgressState { Pending, Completed, Active }
+
+    private ProgressState State
+    {
+        get
+        {
+            if (Context?.ActiveIndex is int idx)
+            {
+                if (_index < idx) return ProgressState.Completed;
+                if (_index == idx) return ProgressState.Active;
+                return ProgressState.Pending;
+            }
+            return IsActive ? ProgressState.Active : ProgressState.Pending;
+        }
+    }
+
     private string DotClasses
     {
         get
         {
-            var baseClasses = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-primary";
-            return IsAnimated && IsActive ? $"{baseClasses} lumeo-steps-pulse" : baseClasses;
+            // When ActiveIndex is driving, "completed" items get a filled
+            // primary background (like Steps completed), "active" uses the
+            // bordered ring (readable as "you are here"), pending items fall
+            // back to muted.
+            string visual;
+            if (Context?.ActiveIndex is not null)
+            {
+                visual = State switch
+                {
+                    ProgressState.Completed => "border-2 border-primary bg-primary text-primary-foreground",
+                    ProgressState.Active => "border-2 border-primary bg-background text-primary",
+                    _ => "border-2 border-muted bg-background text-muted-foreground"
+                };
+            }
+            else
+            {
+                visual = "border-2 border-primary bg-background text-primary";
+            }
+            var baseClasses = $"flex h-8 w-8 shrink-0 items-center justify-center rounded-full {visual}";
+            return IsAnimated && State == ProgressState.Active ? $"{baseClasses} lumeo-steps-pulse" : baseClasses;
         }
     }
 
-    private string HorizontalConnectorClasses
+    // The inner filled dot (used when no IconContent is supplied). When
+    // ActiveIndex drives progression we colour it to match the ring.
+    private string DotInnerFillClass
     {
         get
         {
-            var baseClasses = "mx-2 mt-4 h-px flex-1 bg-border";
-            return IsAnimated ? $"{baseClasses} lumeo-steps-line-draw-x" : baseClasses;
+            if (Context?.ActiveIndex is null) return "bg-primary";
+            return State switch
+            {
+                ProgressState.Completed => "bg-primary-foreground",
+                ProgressState.Active => "bg-primary",
+                _ => "bg-muted-foreground/50"
+            };
         }
     }
 
-    private string VerticalConnectorClasses
+    private string HorizontalConnectorClasses => BuildConnectorClasses(horizontal: true);
+    private string VerticalConnectorClasses => BuildConnectorClasses(horizontal: false);
+
+    private string BuildConnectorClasses(bool horizontal)
     {
-        get
+        var baseLayout = horizontal ? "mx-2 mt-4 h-px flex-1" : "my-1 w-px flex-1";
+
+        // When ActiveIndex drives things, colour the connector primary IF it
+        // points into a completed segment (i.e. this item's index < ActiveIndex).
+        string color = "bg-border";
+        bool isCompletedConnector = false;
+        if (Context?.ActiveIndex is int idx)
         {
-            var baseClasses = "my-1 w-px flex-1 bg-border";
-            return IsAnimated ? $"{baseClasses} lumeo-steps-line-draw-y" : baseClasses;
+            isCompletedConnector = _index < idx;
+            color = isCompletedConnector ? "bg-primary" : "bg-border";
         }
+
+        var classes = $"{baseLayout} {color}";
+
+        if (!IsAnimated) return classes;
+
+        // Legacy (no ActiveIndex): keep the original always-draw-in behaviour.
+        if (Context?.ActiveIndex is null)
+        {
+            var drawClass = horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y";
+            return $"{classes} {drawClass}";
+        }
+
+        // ActiveIndex mode: only draw connectors that are currently completed,
+        // and only re-draw the connector that *just* became completed (the one
+        // leading into the new active index). This mirrors the Steps pattern.
+        if (isCompletedConnector)
+        {
+            var drawClass = horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y";
+            return $"{classes} {drawClass}";
+        }
+
+        return classes;
     }
 
     private string VerticalCssClass

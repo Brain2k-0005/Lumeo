@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TimelineContext(Orientation, Animated, this);
+    var context = new TimelineContext(Orientation, Animated, ActiveIndex, _lastActiveIndex, _replayKey, this);
     _index = 0;
 }
 
@@ -18,16 +18,44 @@
     /// <summary>
     /// When true, each <see cref="TimelineItem"/> fades+translates in with a
     /// staggered delay, the active indicator pulses, and connector segments
-    /// between items draw themselves. Default is <c>false</c>.
+    /// draw themselves as the active step advances. Default is <c>false</c>.
     /// </summary>
     [Parameter] public bool Animated { get; set; }
+
+    /// <summary>
+    /// When set AND <see cref="Animated"/> is true, drives the active-dot
+    /// progression: items with index &lt; ActiveIndex render as "completed"
+    /// (solid primary), the item at ActiveIndex pulses, later items are
+    /// pending (muted). Connectors up to the active index draw themselves.
+    /// Use together with <see cref="ActiveIndexChanged"/> for two-way binding.
+    /// </summary>
+    [Parameter] public int? ActiveIndex { get; set; }
+
+    /// <summary>Two-way binding callback for <see cref="ActiveIndex"/>.</summary>
+    [Parameter] public EventCallback<int> ActiveIndexChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _index;
 
+    // Track the previous ActiveIndex so children can tell whether THEIR
+    // connector should re-animate on this parameter change. `_replayKey`
+    // is bumped on every change so @key can force a re-render of affected
+    // connector elements.
+    private int? _lastActiveIndex;
+    private int _replayKey;
+
     internal int GetNextIndex() => _index++;
+
+    protected override void OnParametersSet()
+    {
+        if (ActiveIndex != _lastActiveIndex)
+        {
+            _replayKey++;
+            _lastActiveIndex = ActiveIndex;
+        }
+    }
 
     private string CssClass => Orientation switch
     {
@@ -37,8 +65,8 @@
 
     public enum TimelineOrientation { Vertical, Horizontal }
 
-    public record TimelineContext(TimelineOrientation Orientation, bool Animated, Timeline Parent)
+    public record TimelineContext(TimelineOrientation Orientation, bool Animated, int? ActiveIndex, int? PreviousActiveIndex, int ReplayKey, Timeline Parent)
     {
-        public TimelineContext(TimelineOrientation Orientation) : this(Orientation, false, default!) { }
+        public TimelineContext(TimelineOrientation Orientation) : this(Orientation, false, null, null, 0, default!) { }
     }
 }
