@@ -1,0 +1,224 @@
+@page "/docs/mcp"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>MCP Server — Lumeo</PageTitle>
+
+<PageHeader Title="MCP Server"
+            Description="Give Claude, Cursor, and Copilot first-class knowledge of the Lumeo API — so LLM-generated markup actually compiles." />
+
+<Stack Gap="10">
+
+    <!-- What is MCP -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">What is MCP?</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The <Lumeo.Link Href="https://modelcontextprotocol.io" Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">Model Context Protocol</Lumeo.Link>
+                is an open standard (from Anthropic) that lets LLM clients talk to external tool servers over a simple
+                JSON-RPC stream. Any MCP-aware client — Claude Desktop, Cursor, GitHub Copilot, Zed, Continue — can
+                spawn a local MCP server and call its <Lumeo.Text As="span" Weight="medium" Class="text-foreground">tools</Lumeo.Text> and read
+                its <Lumeo.Text As="span" Weight="medium" Class="text-foreground">resources</Lumeo.Text>.
+            </Lumeo.Text>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Lumeo ships an MCP server (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@lumeo/mcp-server</code>)
+                that exposes the component catalog. Once connected, your LLM can look up real parameters, slot names,
+                and working examples before it writes a single line of Razor — so prompts like
+                <Lumeo.Text As="span" Class="italic">"build a sign-in page with Lumeo"</Lumeo.Text> produce markup that uses
+                the correct <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@bind-Value</code> syntax,
+                the right variant enums, and matching slot names. No more hallucinated components.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- What it exposes -->
+    <Stack>
+        <Stack Gap="6">
+            <Heading Level="2">What it exposes</Heading>
+
+            <Stack Gap="3">
+                <Heading Level="3">Tools</Heading>
+                <ul class="space-y-2 text-base text-muted-foreground list-none">
+                    <li class="flex items-start gap-2">
+                        <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                        <span><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_list_components</code> — list the catalog, optionally filtered by category or free-text query.</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                        <span><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_get_component</code> — full reference for one component: parameters, slots, a ready-to-use Razor example, and the CSS variables it consumes.</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                        <span><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_search</code> — fuzzy search over component names, categories and descriptions.</span>
+                    </li>
+                </ul>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3">Resources</Heading>
+                <ul class="space-y-2 text-base text-muted-foreground list-none">
+                    <li class="flex items-start gap-2">
+                        <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                        <span><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo://component/{Name}</code> — markdown reference for a single component (readable by the LLM exactly like a doc page).</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                        <span><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo://category/{Name}</code> — overview of all components in a category (Forms, Layout, Overlay, Data, Navigation, AI, Motion).</span>
+                    </li>
+                </ul>
+            </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Install -->
+    <Stack>
+        <Stack Gap="6">
+            <Heading Level="2">Install</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The server lives in the Lumeo repo under
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/lumeo-mcp</code>.
+                Build it once:
+            </Lumeo.Text>
+
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">cd tools/lumeo-mcp
+npm install
+npm run build</Stack>
+
+            <Lumeo.Text Size="sm" Color="muted">
+                This produces <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dist/index.js</code>,
+                a self-contained Node ESM entrypoint. No persistent process — your MCP client spawns it on demand.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Configure -->
+    <Stack>
+        <Stack Gap="6">
+            <Heading Level="2">Configure your client</Heading>
+
+            <Stack Gap="3">
+                <Heading Level="3">Claude Desktop</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Open <Lumeo.Text As="span" Weight="medium" Class="text-foreground">Settings → Developer → Edit Config</Lumeo.Text>
+                    and merge this into <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">claude_desktop_config.json</code>:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">{
+  "mcpServers": {
+    "lumeo": {
+      "command": "node",
+      "args": ["C:/path/to/Lumeo/tools/lumeo-mcp/dist/index.js"]
+    }
+  }
+}</Stack>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Restart Claude Desktop. The Lumeo server should appear under the connectors panel with its tools
+                    and resources.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3">Cursor</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Add to your project's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.cursor/mcp.json</code>:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">{
+  "mcpServers": {
+    "lumeo": {
+      "command": "node",
+      "args": ["/absolute/path/to/lumeo-mcp/dist/index.js"]
+    }
+  }
+}</Stack>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3">VS Code (GitHub Copilot)</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Add to your workspace's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.vscode/mcp.json</code>:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">{
+  "servers": {
+    "lumeo": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/lumeo-mcp/dist/index.js"]
+    }
+  }
+}</Stack>
+            </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Try it -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Try it</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                After connecting, ask your LLM:
+            </Lumeo.Text>
+
+            <Stack Gap="3" Class="rounded-lg border border-border bg-card p-4">
+                <Lumeo.Text Size="sm" Color="muted" Class="italic">
+                    "Build me a dashboard with three KpiCards using Lumeo — revenue, active users, and churn.
+                    Use NumberTicker for the values and wrap them in a Bento grid."
+                </Lumeo.Text>
+            </Stack>
+
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Under the hood the model calls
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_search</code> for
+                "card", "ticker", "bento", then <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_get_component</code>
+                on each match — and emits Razor that uses the correct
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@bind-Value</code> pattern,
+                the right variant enums (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Button.ButtonVariant.Outline</code>,
+                not invented ones), and matching slot names
+                (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">LeftIcon</code> /
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IconContent</code>) as they
+                appear in the library.
+            </Lumeo.Text>
+
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Other good prompts to try:
+            </Lumeo.Text>
+            <ul class="space-y-2 text-base text-muted-foreground list-none">
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    "Sign-in page: email, password, remember-me switch, submit with validation."
+                </li>
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    "Users page with a DataGrid (sortable, paginated) and a Dialog for editing."
+                </li>
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    "Chat UI using AgentMessage, StreamingText, and PromptInput."
+                </li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Scope -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Scope</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The v2.0 catalog hand-curates the most-used components across Forms, Layout, Overlay, Data, Navigation,
+                AI, and Motion. If the registry generator has run
+                (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">src/Lumeo/registry/registry.json</code>),
+                the server loads it as a supplementary index so
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_search</code> can
+                surface any component — even ones without curated docs yet.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+
+</Stack>

@@ -120,6 +120,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task<string> SchedulerGetTitleAsync(string id);
     Task SchedulerDestroyAsync(string id);
 
+    // Gantt (Frappe Gantt wrapper)
+    Task<string> GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options);
+    Task GanttSetTasksAsync(string id, IEnumerable<object> tasks);
+    Task GanttChangeViewModeAsync(string id, string mode);
+    Task GanttDestroyAsync(string id);
+
     // Rich Text Editor (TipTap wrapper)
     ValueTask<string> RichTextInitAsync<T>(
         Microsoft.AspNetCore.Components.ElementReference elementRef,

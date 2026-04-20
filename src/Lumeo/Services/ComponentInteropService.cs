@@ -609,6 +609,55 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Gantt (Frappe Gantt wrapper) ---
+    // Frappe Gantt is a small SVG-based lib (~20KB gzip) but we still lazy-load
+    // it so apps without a Gantt anywhere don't pay the bundle cost.
+
+    private IJSObjectReference? _ganttModule;
+
+    private async Task<IJSObjectReference> GetGanttModuleAsync()
+    {
+        _ganttModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo/js/gantt.js");
+        return _ganttModule;
+    }
+
+    public async Task<string> GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)
+    {
+        var module = await GetGanttModuleAsync();
+        return await module.InvokeAsync<string>("gantt.init", el, dotNetRef, options);
+    }
+
+    public async Task GanttSetTasksAsync(string id, IEnumerable<object> tasks)
+    {
+        try
+        {
+            var module = await GetGanttModuleAsync();
+            await module.InvokeVoidAsync("gantt.setTasks", id, tasks);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttChangeViewModeAsync(string id, string mode)
+    {
+        try
+        {
+            var module = await GetGanttModuleAsync();
+            await module.InvokeVoidAsync("gantt.changeViewMode", id, mode);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttDestroyAsync(string id)
+    {
+        try
+        {
+            if (_ganttModule is null) return;
+            await _ganttModule.InvokeVoidAsync("gantt.destroy", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Rich Text Editor (TipTap) ---
 
     public async ValueTask<string> RichTextInitAsync<T>(
@@ -688,6 +737,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _schedulerModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_ganttModule is not null)
+        {
+            try
+            {
+                await _ganttModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
