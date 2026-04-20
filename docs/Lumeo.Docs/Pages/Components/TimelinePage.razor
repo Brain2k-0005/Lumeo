@@ -51,21 +51,23 @@
         <Container MaxWidth="md" Center="false" Padding="">
             <Stack Gap="4">
                 <div @key="@($"timeline-{_timelineReplay}")">
-                    <Timeline Animated="true">
+                    <Timeline Animated="true" @bind-ActiveIndex="_activeIndex">
                         <TimelineItem Title="Order placed" Description="Your order has been placed." Time="Jan 1, 2025" />
-                        <TimelineItem Title="Processing" Description="Your order is being processed." Time="Jan 2, 2025" IsActive="true" />
+                        <TimelineItem Title="Processing" Description="Your order is being processed." Time="Jan 2, 2025" />
                         <TimelineItem Title="Shipped" Description="Shipped via express." Time="Jan 3, 2025" />
                         <TimelineItem Title="Delivered" Description="Has been delivered." Time="Jan 5, 2025" />
                     </Timeline>
                 </div>
-                <Flex Justify="center">
-                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="() => _timelineReplay++">
+                <Flex Justify="center" Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="() => { if (_activeIndex > 0) _activeIndex--; }">Previous</Button>
+                    <Button Size="Button.ButtonSize.Sm" OnClick="() => { if (_activeIndex < 3) _activeIndex++; }">Next</Button>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="() => _timelineReplay++">
                         <Blazicon Svg="Lucide.RotateCcw" class="h-3.5 w-3.5 mr-2" />
-                        Replay animation
+                        Replay
                     </Button>
                 </Flex>
                 <Lumeo.Text Size="xs" Color="muted" Align="center">
-                    Items stagger-fade in on mount; the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsActive</code> dot keeps pulsing.
+                    Active dot pulses at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ActiveIndex</code>; earlier items fill in as completed, connectors draw in.
                 </Lumeo.Text>
             </Stack>
         </Container>
@@ -106,6 +108,18 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
                             <td class="p-3 text-muted-foreground">When true, items fade-in with staggered delay, connectors draw in, and the active item pulses.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ActiveIndex</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">When set with Animated, drives active-dot progression: items before the index are "completed", the item at ActiveIndex pulses, later items are pending. Connectors draw in as you advance.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ActiveIndexChanged</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;int&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Two-way binding callback for ActiveIndex.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -171,6 +185,7 @@
 
 @code {
     private int _timelineReplay;
+    private int _activeIndex = 1;
 
     private string _codeVertical = @"<Timeline>
     <TimelineItem Title=""Order placed"" Description=""Your order has been placed."" Time=""Jan 1, 2025"" />
@@ -195,10 +210,16 @@
     <TimelineItem Title=""Step 4"" Description=""Launch"" />
 </Timeline>";
 
-    private string _codeAnimated = @"<Timeline Animated=""true"">
+    private string _codeAnimated = @"<Timeline Animated=""true"" @bind-ActiveIndex=""_activeIndex"">
     <TimelineItem Title=""Order placed"" Time=""Jan 1, 2025"" />
-    <TimelineItem Title=""Processing"" Time=""Jan 2, 2025"" IsActive=""true"" />
+    <TimelineItem Title=""Processing"" Time=""Jan 2, 2025"" />
     <TimelineItem Title=""Shipped"" Time=""Jan 3, 2025"" />
     <TimelineItem Title=""Delivered"" Time=""Jan 5, 2025"" />
-</Timeline>";
+</Timeline>
+<Flex Gap=""2"">
+    <Button OnClick=""() => { if (_activeIndex > 0) _activeIndex--; }"">Previous</Button>
+    <Button OnClick=""() => { if (_activeIndex < 3) _activeIndex++; }"">Next</Button>
+</Flex>
+
+@code { private int _activeIndex = 1; }";
 }
