@@ -77,8 +77,11 @@ builder.Services.AddLumeo();
 Add to your `index.html` (WASM) or `_Host.cshtml` (Server):
 
 ```html
-<!-- Lumeo theme CSS -->
+<!-- Lumeo design tokens (CSS variables + keyframes) -->
 <link rel="stylesheet" href="_content/Lumeo/css/lumeo.css" />
+
+<!-- Pre-compiled Tailwind utilities Lumeo's components need (no local Tailwind build required) -->
+<link rel="stylesheet" href="_content/Lumeo/css/lumeo-utilities.css" />
 
 <!-- Theme initialization (prevents flash of unstyled content) -->
 <script src="_content/Lumeo/js/theme.js"></script>
@@ -87,9 +90,11 @@ Add to your `index.html` (WASM) or `_Host.cshtml` (Server):
 <script src="_content/Lumeo/js/components.js" type="module"></script>
 ```
 
-### 4. Configure Tailwind CSS
+That's enough to make every Lumeo component render correctly. **You don't need Tailwind installed in your app.**
 
-Lumeo components use Tailwind CSS v4 utility classes. In your Tailwind CSS entry file:
+### 4. (Optional) Use Tailwind in your own markup
+
+If you want to write Tailwind classes yourself (in your pages / your own components), install Tailwind CSS v4 in your app and import Lumeo's tokens so utilities like `bg-primary` resolve against Lumeo's theme:
 
 ```css
 @import "tailwindcss";
@@ -109,6 +114,8 @@ Lumeo components use Tailwind CSS v4 utility classes. In your Tailwind CSS entry
   /* ... see lumeo.css for full variable list */
 }
 ```
+
+In this setup you can drop `lumeo-utilities.css` from step 3 — your own Tailwind build will emit every utility Lumeo uses, plus anything you use in your app.
 
 For alternate color themes, import additional theme files:
 
