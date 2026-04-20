@@ -61,14 +61,28 @@
             int[] outerCorners = Horizontal
                 ? new[] { 0, r, r, 0 }   // round right side
                 : new[] { r, r, 0, 0 };  // round top side
+            int[] flat = { 0, 0, 0, 0 };
 
+            // Use the array form everywhere — ECharts merges theme + series
+            // itemStyle and a scalar `borderRadius: 0` doesn't reliably replace
+            // the theme's array default; an all-zero array always wins.
             for (int i = 0; i < seriesList.Count; i++)
             {
                 var isOuter = i == seriesList.Count - 1;
-                seriesList[i].ItemStyle = isOuter
-                    ? new EChartItemStyle { BorderRadiusCorners = outerCorners }
-                    : new EChartItemStyle { BorderRadius = 0 };
+                seriesList[i].ItemStyle = new EChartItemStyle
+                {
+                    BorderRadiusCorners = isOuter ? outerCorners : flat
+                };
             }
+        }
+        else if (Horizontal)
+        {
+            // Non-stacked horizontal: theme default `[r, r, 0, 0]` rounds the
+            // TOP edge (rectangle corners), which looks wrong for a horizontal
+            // bar. Override so every bar's right end is rounded instead.
+            const int r = 6;
+            foreach (var s in seriesList)
+                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = new[] { 0, r, r, 0 } };
         }
 
         if (ShowDataLabels)
