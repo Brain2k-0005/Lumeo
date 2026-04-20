@@ -44,16 +44,31 @@
             Stack = Stacked ? "total" : null
         }).ToList();
 
-        // When stacked, the global theme's rounded corners on every segment
-        // make the stack look like floating pills (each segment rounds all
-        // 4 corners and adjacent segments meet at the arc). Flatten every
-        // segment so they sit flush. Single-value BorderRadius rounds all
-        // 4 corners, so we can't selectively round only the stack top here
-        // without per-corner array support.
-        if (Stacked)
+        // When stacked, the theme's rounded corners on every segment make
+        // the stack look like floating pills (each segment rounds its own
+        // 4 corners, so adjacent segments meet at the arc). We flatten
+        // the inner segments and round only the outermost end of the stack:
+        //
+        //   Vertical stacked   → last series (top) rounds top corners
+        //   Horizontal stacked → last series (right) rounds right corners
+        //
+        // Radius is derived from --radius (fallback 6 px if unavailable
+        // from the CSS side since we're in C#). Consumers who want a
+        // different value can override via OptionOverride on the series.
+        if (Stacked && seriesList.Count > 0)
         {
-            foreach (var s in seriesList)
-                s.ItemStyle = new EChartItemStyle { BorderRadius = 0 };
+            const int r = 6;
+            int[] outerCorners = Horizontal
+                ? new[] { 0, r, r, 0 }   // round right side
+                : new[] { r, r, 0, 0 };  // round top side
+
+            for (int i = 0; i < seriesList.Count; i++)
+            {
+                var isOuter = i == seriesList.Count - 1;
+                seriesList[i].ItemStyle = isOuter
+                    ? new EChartItemStyle { BorderRadiusCorners = outerCorners }
+                    : new EChartItemStyle { BorderRadius = 0 };
+            }
         }
 
         if (ShowDataLabels)
