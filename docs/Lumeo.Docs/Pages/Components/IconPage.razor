@@ -98,7 +98,7 @@
                (scrollTop 0) whenever you switch library or change the search —
                avoids the first-row-cut-off look from a preserved scrollTop. *@
             <div @key="@GridKey"
-                 @ref="_gridRef"
+                 id="@_gridId"
                  class="flex-1 p-3 min-w-0 overflow-y-auto"
                  style="max-height: 600px">
                 @if (Filtered.Count == 0)
@@ -355,8 +355,7 @@
     private int _displayLimit = _initialLimit;
     private string _usageTab = "basic";
     private Lumeo.Input? _searchInput;
-    private ElementReference _gridRef;
-    private bool _needsScrollReset;
+    private readonly string _gridId = $"icon-grid-{Guid.NewGuid():N}";
     private string _lastGridKey = "";
 
     // An icon entry the grid can render and the snippet can target.
@@ -483,10 +482,10 @@
 
     private void OnLibChanged() => InvokeAsync(StateHasChanged);
 
-    // Browsers (especially Chrome) restore scrollTop of inner scroll
-    // containers across reloads and re-renders — which was leaving the grid
-    // mid-row. Detecting a key change on the scroll container and explicitly
-    // zeroing scrollTop via JS is the only bulletproof fix.
+    // Browsers restore scrollTop of inner scroll containers across reloads and
+    // re-renders. @key alone doesn't reliably clear it. Resolve the element by
+    // id in JS (not via ElementReference — Blazor's marshalled form of an
+    // ElementReference isn't the live HTMLElement, so writes to it no-op).
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         var currentKey = GridKey;
@@ -496,10 +495,9 @@
             try
             {
                 await JS.InvokeVoidAsync("eval",
-                    "(function(el) { if (el) el.scrollTop = 0; })(arguments[0])",
-                    _gridRef);
+                    $"(function(){{var el=document.getElementById('{_gridId}');if(el)el.scrollTop=0;}})()");
             }
-            catch (JSException) { /* element not yet connected — next render will catch it */ }
+            catch (JSException) { /* transient — next render will catch it */ }
         }
     }
 
