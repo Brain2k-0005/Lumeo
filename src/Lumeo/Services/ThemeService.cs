@@ -2,7 +2,7 @@ using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
 
-public sealed class ThemeService
+public sealed class ThemeService : IThemeService
 {
     private readonly IJSRuntime _jsRuntime;
 

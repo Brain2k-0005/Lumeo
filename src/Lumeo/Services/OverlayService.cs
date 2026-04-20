@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace Lumeo.Services;
 
-public sealed class OverlayService
+public sealed class OverlayService : IOverlayService
 {
     public event Action<OverlayInstance>? OnShow;
     public event Action<string, object?, bool>? OnClose;

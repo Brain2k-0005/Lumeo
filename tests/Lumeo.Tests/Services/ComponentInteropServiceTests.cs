@@ -408,7 +408,7 @@ public class ComponentInteropServiceTests : IAsyncLifetime
     [Fact]
     public void ElementRect_Record_Properties_Are_Correct()
     {
-        var rect = new ComponentInteropService.ElementRect(10, 20, 300, 150);
+        var rect = new ElementRect(10, 20, 300, 150);
 
         Assert.Equal(10, rect.X);
         Assert.Equal(20, rect.Y);
