@@ -24,10 +24,25 @@
     /// <summary>Visual variant. <c>Default</c> is a solid bar with a top border; <c>Pill</c> is a floating centered pill.</summary>
     [Parameter] public BottomNavVariant Variant { get; set; } = BottomNavVariant.Default;
 
+    /// <summary>
+    /// When true, each <see cref="BottomNavItem"/> gets smooth background-color
+    /// and color transitions, and the small active pill transitions its transform
+    /// with a spring easing. Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool AnimatedIndicator { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly BottomNavContext _context = new();
+    private BottomNavContext? _context;
+
+    protected override void OnParametersSet()
+    {
+        if (_context is null || _context.AnimatedIndicator != AnimatedIndicator)
+        {
+            _context = new BottomNavContext(AnimatedIndicator);
+        }
+    }
 
     private string CssClass => string.Join(" ", new[] {
         Fixed ? "fixed bottom-0 left-0 right-0 z-40" : "w-full",
@@ -45,7 +60,12 @@
 
     public class BottomNavContext
     {
-        // Reserved for future shared state (e.g. active index override). Keep the
-        // cascading scaffolding so items can subscribe without an API break later.
+        public BottomNavContext(bool animatedIndicator = false)
+        {
+            AnimatedIndicator = animatedIndicator;
+        }
+
+        /// <summary>True when parent <see cref="BottomNav"/> was configured with <c>AnimatedIndicator="true"</c>.</summary>
+        public bool AnimatedIndicator { get; }
     }
 }
