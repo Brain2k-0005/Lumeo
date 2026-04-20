@@ -1,0 +1,48 @@
+@namespace Lumeo
+
+<span class="@RootClass" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(_alreadyRendered))
+    {
+        <span>@_alreadyRendered</span>
+    }
+    @if (!string.IsNullOrEmpty(_newSuffix))
+    {
+        <span class="animate-in fade-in duration-200">@_newSuffix</span>
+    }
+    @if (IsStreaming)
+    {
+        <span class="ml-0.5 inline-block w-[2px] align-baseline bg-current animate-pulse" style="height: 1em;">&nbsp;</span>
+    }
+</span>
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public bool IsStreaming { get; set; }
+    [Parameter] public bool Prose { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _alreadyRendered = string.Empty;
+    private string _newSuffix = string.Empty;
+    private int _previousLength;
+
+    private string RootClass =>
+        $"{(Prose ? "prose prose-sm dark:prose-invert max-w-none " : string.Empty)}whitespace-pre-wrap break-words text-foreground {Class}".Trim();
+
+    protected override void OnParametersSet()
+    {
+        var text = Text ?? string.Empty;
+        if (text.Length >= _previousLength)
+        {
+            _alreadyRendered = text.Substring(0, _previousLength);
+            _newSuffix = text.Substring(_previousLength);
+        }
+        else
+        {
+            // Text shrank or was replaced — reset the diff window entirely.
+            _alreadyRendered = text;
+            _newSuffix = string.Empty;
+        }
+        _previousLength = text.Length;
+    }
+}
