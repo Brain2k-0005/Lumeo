@@ -550,3 +550,182 @@ input[type="range"]::-moz-range-thumb {
 .animate-toast-in {
   animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* =====================================================
+ * === motion ===
+ * Keyframes and utilities for the motion primitives:
+ * Marquee, BorderBeam, ShimmerButton, Sparkles, TextReveal, BlurFade.
+ * ===================================================== */
+
+/* --- Marquee --- */
+@keyframes lumeo-marquee-x {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes lumeo-marquee-x-reverse {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes lumeo-marquee-y {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}
+
+@keyframes lumeo-marquee-y-reverse {
+  from { transform: translateY(-50%); }
+  to   { transform: translateY(0); }
+}
+
+.lumeo-marquee {
+  overflow: hidden;
+  display: flex;
+  position: relative;
+  --lumeo-marquee-duration: 30s;
+}
+.lumeo-marquee[data-vertical="true"] { flex-direction: column; }
+
+.lumeo-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  gap: 1rem;
+  animation: lumeo-marquee-x var(--lumeo-marquee-duration) linear infinite;
+  min-width: 100%;
+}
+.lumeo-marquee[data-direction="right"] .lumeo-marquee-track {
+  animation-name: lumeo-marquee-x-reverse;
+}
+.lumeo-marquee[data-vertical="true"] .lumeo-marquee-track {
+  flex-direction: column;
+  animation-name: lumeo-marquee-y;
+  min-width: 0;
+  min-height: 100%;
+}
+.lumeo-marquee[data-vertical="true"][data-direction="right"] .lumeo-marquee-track {
+  animation-name: lumeo-marquee-y-reverse;
+}
+.lumeo-marquee[data-pause-hover="true"]:hover .lumeo-marquee-track {
+  animation-play-state: paused;
+}
+
+/* --- BorderBeam --- */
+@property --lumeo-beam-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes lumeo-border-beam {
+  to { --lumeo-beam-angle: 360deg; }
+}
+
+.lumeo-border-beam {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.lumeo-border-beam::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: var(--lumeo-beam-size, 1.5px);
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--lumeo-beam-angle),
+    transparent 0deg,
+    var(--lumeo-beam-from, var(--color-primary)) 90deg,
+    var(--lumeo-beam-to, var(--color-primary)) 180deg,
+    transparent 270deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: lumeo-border-beam var(--lumeo-beam-duration, 8s) linear infinite;
+  pointer-events: none;
+}
+
+/* --- ShimmerButton --- */
+@keyframes lumeo-shimmer-sweep {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(250%); }
+}
+
+.lumeo-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.lumeo-shimmer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--lumeo-shimmer-color, rgb(255 255 255 / 0.45)) 50%,
+    transparent 80%
+  );
+  transform: translateX(-150%);
+  animation: lumeo-shimmer-sweep 2.5s linear infinite;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* --- Sparkles --- */
+@keyframes lumeo-sparkle-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0); }
+  50%      { opacity: 1; transform: scale(1); }
+}
+
+.lumeo-sparkles {
+  position: relative;
+  display: inline-block;
+}
+.lumeo-sparkle {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  animation: lumeo-sparkle-twinkle 2.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* --- TextReveal --- */
+.lumeo-reveal [data-motion-word] {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.35em);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.lumeo-reveal[data-motion-revealed="true"] [data-motion-word] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- BlurFade --- */
+.lumeo-blur-fade {
+  opacity: 0;
+  filter: blur(var(--lumeo-blur-px, 8px));
+  transform: translateY(var(--lumeo-blur-y, 8px));
+  transition:
+    opacity var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1),
+    filter var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, filter, transform;
+}
+.lumeo-blur-fade[data-motion-visible="true"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}

@@ -30,6 +30,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);
 
+    // Pointer Capture (used by Splitter dividers)
+    ValueTask SetPointerCaptureOnElement(string elementId, long pointerId);
+    ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId);
+
     // Drawer Swipe
     ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler);
     ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler);
@@ -89,4 +93,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask SaveToLocalStorage(string key, string value);
     ValueTask<string?> LoadFromLocalStorage(string key);
     ValueTask RemoveFromLocalStorage(string key);
+
+    // Motion primitives
+    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals);
+    ValueTask MotionDisposeTicker(string elementId);
+    ValueTask MotionRevealText(string elementId, int staggerMs, double threshold);
+    ValueTask MotionBlurFade(string elementId, int delayMs, bool once);
+    ValueTask MotionDisposeObserver(string elementId);
+
+    // AI primitives
+    ValueTask AiAutosize(string elementId, int maxPx);
+    ValueTask AiObserveAutoScroll(string elementId);
+    ValueTask AiDisposeAutoScroll(string elementId);
+    ValueTask AiScrollToBottom(string elementId);
 }

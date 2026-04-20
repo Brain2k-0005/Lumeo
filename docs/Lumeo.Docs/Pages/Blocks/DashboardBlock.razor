@@ -1,0 +1,240 @@
+@page "/blocks/dashboard-block"
+@namespace Lumeo.Docs.Pages.Blocks
+
+<PageTitle>Dashboard Block — Lumeo Blocks</PageTitle>
+
+<PageHeader Title="Dashboard"
+            Description="Full admin dashboard layout — 4 KPI cards, a revenue chart + activity sidebar, and a recent-orders grid. Replace the fake data with real endpoints." />
+
+<ComponentDemo Title="Dashboard Block" Code="@_code">
+    <Stack Class="w-full min-w-[960px]" Gap="6">
+
+        <!-- Header row -->
+        <Flex Align="center" Justify="between" Class="flex-wrap gap-3">
+            <Stack Gap="1">
+                <Heading Level="1" Class="text-2xl font-bold tracking-tight">Dashboard</Heading>
+                <Lumeo.Text Color="muted" Size="sm">Welcome back — here's what's happening today.</Lumeo.Text>
+            </Stack>
+            <Flex Align="center" Gap="2">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="gap-2 h-9">
+                    <Icon Name="Download" Class="h-4 w-4" />
+                    Export
+                </Button>
+                <Button Size="Button.ButtonSize.Sm" Class="gap-2 h-9">
+                    <Icon Name="Plus" Class="h-4 w-4" />
+                    New report
+                </Button>
+            </Flex>
+        </Flex>
+
+        <!-- KPI Row -->
+        <Grid Class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            @foreach (var k in _kpis)
+            {
+                <KpiCard Label="@k.Label" Value="@k.Value" Delta="@k.DeltaValue"
+                         DeltaPositive="@(k.InvertedDelta ? KpiCard.KpiDeltaDirection.Bad : KpiCard.KpiDeltaDirection.Good)">
+                    <IconContent>
+                        <Icon Name="@k.Icon" Class="h-4 w-4" />
+                    </IconContent>
+                </KpiCard>
+            }
+        </Grid>
+
+        <!-- Chart + Activity -->
+        <Grid Class="grid-cols-1 lg:grid-cols-7 gap-4">
+            <Card Class="lg:col-span-5 border-border/60">
+                <CardHeader Class="pb-2">
+                    <Flex Align="start" Justify="between">
+                        <Stack Gap="1">
+                            <Heading Level="3" Class="text-base font-semibold tracking-tight">Revenue</Heading>
+                            <Lumeo.Text Size="sm" Color="muted">Last 12 months vs. prior year</Lumeo.Text>
+                        </Stack>
+                        <Flex Align="center" Gap="3">
+                            <Flex Align="center" Gap="1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-primary"></span>
+                                <Lumeo.Text Size="xs" Color="muted">2025</Lumeo.Text>
+                            </Flex>
+                            <Flex Align="center" Gap="1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-muted-foreground/40"></span>
+                                <Lumeo.Text Size="xs" Color="muted">2024</Lumeo.Text>
+                            </Flex>
+                        </Flex>
+                    </Flex>
+                </CardHeader>
+                <CardContent Class="pt-2">
+                    <AreaChart
+                        Categories="@_chartCategories"
+                        Series="@_chartSeries"
+                        Smooth="true"
+                        Gradient="true"
+                        Height="300px" />
+                </CardContent>
+            </Card>
+
+            <Card Class="lg:col-span-2 border-border/60">
+                <CardHeader Class="pb-3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-semibold tracking-tight">Recent activity</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px]">Live</Badge>
+                    </Flex>
+                </CardHeader>
+                <CardContent Class="pt-0">
+                    <Stack Gap="0">
+                        @foreach (var a in _activities)
+                        {
+                            <Flex Class="gap-3 py-3 border-b border-border/40 last:border-0" Align="start">
+                                <Avatar Class="h-8 w-8 shrink-0 mt-0.5">
+                                    <AvatarFallback Class="text-[10px] font-semibold">@a.Initials</AvatarFallback>
+                                </Avatar>
+                                <Stack Class="flex-1 min-w-0" Gap="0.5">
+                                    <Lumeo.Text Size="xs" Class="leading-snug">@a.Text</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">@a.Time</Lumeo.Text>
+                                </Stack>
+                            </Flex>
+                        }
+                    </Stack>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="w-full mt-3 h-8 text-xs text-muted-foreground gap-1">
+                        View all activity
+                        <Icon Name="ArrowRight" Class="h-3 w-3" />
+                    </Button>
+                </CardContent>
+            </Card>
+        </Grid>
+
+        <!-- Recent Orders -->
+        <Card Class="border-border/60">
+            <CardHeader Class="pb-3">
+                <Flex Align="center" Justify="between">
+                    <Stack Gap="1">
+                        <Heading Level="3" Class="text-base font-semibold tracking-tight">Recent orders</Heading>
+                        <Lumeo.Text Size="sm" Color="muted">The last 6 orders placed today.</Lumeo.Text>
+                    </Stack>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 gap-2 text-xs">
+                        View all
+                        <Icon Name="ArrowRight" Class="h-3 w-3" />
+                    </Button>
+                </Flex>
+            </CardHeader>
+            <CardContent Class="pt-0">
+                <DataGrid TItem="OrderRow" Items="@_orders" PageSize="6" ShowPagination="false">
+                    <DataGridColumnDef TItem="OrderRow" Title="Order" Field="Id" />
+                    <DataGridColumnDef TItem="OrderRow" Title="Customer" Field="Customer" />
+                    <DataGridColumnDef TItem="OrderRow" Title="Status" Field="Status">
+                        <CellTemplate Context="row">
+                            @{
+                                var variant = row.Status switch
+                                {
+                                    "Paid" => Badge.BadgeVariant.Default,
+                                    "Pending" => Badge.BadgeVariant.Secondary,
+                                    "Refunded" => Badge.BadgeVariant.Destructive,
+                                    _ => Badge.BadgeVariant.Outline
+                                };
+                            }
+                            <Badge Variant="@variant" Class="text-[10px]">@row.Status</Badge>
+                        </CellTemplate>
+                    </DataGridColumnDef>
+                    <DataGridColumnDef TItem="OrderRow" Title="Amount" Field="Amount" Format="C0" />
+                    <DataGridColumnDef TItem="OrderRow" Title="Date" Field="Date" Format="MMM d" />
+                </DataGrid>
+            </CardContent>
+        </Card>
+    </Stack>
+</ComponentDemo>
+
+@code {
+    private record KpiItem(string Label, string Value, double DeltaValue, string Icon, bool InvertedDelta);
+
+    private readonly KpiItem[] _kpis =
+    [
+        new("Revenue",    "$284,729",  18.3, "DollarSign",  false),
+        new("Users",      "12,438",    9.7,  "Users",       false),
+        new("Orders",     "1,812",     4.2,  "ShoppingBag", false),
+        new("Churn",      "1.8%",      -0.4, "TrendingDown", true),
+    ];
+
+    private readonly List<string> _chartCategories =
+        ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    private readonly List<AreaChart.ChartSeriesData> _chartSeries =
+    [
+        new AreaChart.ChartSeriesData
+        {
+            Name = "2025",
+            Values = [21400, 26800, 23700, 34200, 39100, 47800, 43500, 51200, 56400, 61900, 58300, 72100]
+        },
+        new AreaChart.ChartSeriesData
+        {
+            Name = "2024",
+            Values = [14200, 16500, 15100, 19800, 21600, 25300, 22700, 26400, 28900, 31200, 29100, 34700]
+        }
+    ];
+
+    private record Activity(string Initials, string Text, string Time);
+
+    private readonly Activity[] _activities =
+    [
+        new("AO", "Aisha upgraded to Enterprise plan", "just now"),
+        new("SP", "Stripe payment of $4,299 cleared", "4m ago"),
+        new("MF", "Mateus submitted refund request #8841", "22m ago"),
+        new("YT", "Yuki invited 3 team members", "1h ago"),
+        new("SD", "Weekly digest report generated", "yesterday"),
+    ];
+
+    public record OrderRow(string Id, string Customer, string Status, decimal Amount, DateTime Date);
+
+    private readonly OrderRow[] _orders =
+    [
+        new("#ORD-3421", "Priya Kapoor",    "Paid",     1_299m, new DateTime(2026, 4, 20)),
+        new("#ORD-3420", "Marcus Lee",      "Paid",     449m,   new DateTime(2026, 4, 20)),
+        new("#ORD-3419", "Riley Tanaka",    "Pending",  89m,    new DateTime(2026, 4, 19)),
+        new("#ORD-3418", "Sofia Navarro",   "Paid",     2_450m, new DateTime(2026, 4, 19)),
+        new("#ORD-3417", "Jordan Rivera",   "Refunded", 199m,   new DateTime(2026, 4, 18)),
+        new("#ORD-3416", "Mateus Ferreira", "Paid",     675m,   new DateTime(2026, 4, 18)),
+    ];
+
+    private readonly string _code = @"<Stack Gap=""6"">
+    <!-- 4 KPI cards -->
+    <Grid Class=""grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"">
+        @foreach (var k in _kpis)
+        {
+            <KpiCard Label=""@k.Label"" Value=""@k.Value"" Delta=""@k.DeltaValue"">
+                <IconContent><Icon Name=""@k.Icon"" Class=""h-4 w-4"" /></IconContent>
+            </KpiCard>
+        }
+    </Grid>
+
+    <!-- Chart + activity feed -->
+    <Grid Class=""grid-cols-1 lg:grid-cols-7 gap-4"">
+        <Card Class=""lg:col-span-5"">
+            <CardHeader><Heading Level=""3"">Revenue</Heading></CardHeader>
+            <CardContent>
+                <AreaChart Categories=""@_chartCategories"" Series=""@_chartSeries"" Smooth=""true"" Gradient=""true"" Height=""300px"" />
+            </CardContent>
+        </Card>
+        <Card Class=""lg:col-span-2"">
+            <CardHeader><Heading Level=""3"">Recent activity</Heading></CardHeader>
+            <CardContent>
+                @foreach (var a in _activities)
+                {
+                    <Flex Gap=""3"">
+                        <Avatar><AvatarFallback>@a.Initials</AvatarFallback></Avatar>
+                        <Stack><Lumeo.Text Size=""xs"">@a.Text</Lumeo.Text></Stack>
+                    </Flex>
+                }
+            </CardContent>
+        </Card>
+    </Grid>
+
+    <!-- Orders DataGrid -->
+    <Card>
+        <CardContent>
+            <DataGrid TItem=""OrderRow"" Items=""@_orders"" PageSize=""6"">
+                <DataGridColumnDef TItem=""OrderRow"" Title=""Order"" Field=""Id"" />
+                <DataGridColumnDef TItem=""OrderRow"" Title=""Customer"" Field=""Customer"" />
+                <DataGridColumnDef TItem=""OrderRow"" Title=""Status"" Field=""Status"" />
+                <DataGridColumnDef TItem=""OrderRow"" Title=""Amount"" Field=""Amount"" Format=""C0"" />
+            </DataGrid>
+        </CardContent>
+    </Card>
+</Stack>";
+}

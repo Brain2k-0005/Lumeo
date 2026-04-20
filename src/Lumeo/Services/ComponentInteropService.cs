@@ -155,6 +155,28 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _floatingPosition.GetElementDimension(module, elementId, dimension);
     }
 
+    // --- Pointer Capture (used by Splitter dividers) ---
+
+    public async ValueTask SetPointerCaptureOnElement(string elementId, long pointerId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setPointerCaptureOnElement", elementId, pointerId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("releasePointerCaptureOnElement", elementId, pointerId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Drawer Swipe ---
 
     public async ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
@@ -403,6 +425,88 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _utility.RemoveFromLocalStorage(module, key);
+    }
+
+    // --- Motion primitives ---
+
+    public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals);
+    }
+
+    public async ValueTask MotionDisposeTicker(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeTicker", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionRevealText(string elementId, int staggerMs, double threshold)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("motion.revealText", elementId, new { stagger = staggerMs, threshold });
+    }
+
+    public async ValueTask MotionBlurFade(string elementId, int delayMs, bool once)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("motion.blurFade", elementId, new { delayMs, once });
+    }
+
+    public async ValueTask MotionDisposeObserver(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeObserver", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- AI primitives ---
+
+    public async ValueTask AiAutosize(string elementId, int maxPx)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.autosize", elementId, maxPx);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiObserveAutoScroll(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.observeAutoScroll", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiDisposeAutoScroll(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.disposeAutoScroll", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiScrollToBottom(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.scrollToBottom", elementId);
+        }
+        catch (JSDisconnectedException) { }
     }
 
     public void Dispose()

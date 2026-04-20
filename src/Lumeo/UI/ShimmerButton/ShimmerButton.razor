@@ -1,0 +1,57 @@
+@namespace Lumeo
+
+<button class="@CssClass"
+        style="@StyleString"
+        disabled="@Disabled"
+        @attributes="AdditionalAttributes"
+        @onclick="OnClick">
+    <span class="relative z-10 inline-flex items-center justify-center gap-2">
+        @ChildContent
+    </span>
+</button>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+    [Parameter] public bool Shimmer { get; set; } = true;
+
+    /// <summary>CSS color used for the shimmer sweep — defaults to a translucent foreground.</summary>
+    [Parameter] public string? ShimmerColor { get; set; }
+
+    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;
+    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+    private string VariantClasses => Variant switch
+    {
+        Button.ButtonVariant.Default => "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+        Button.ButtonVariant.Destructive => "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+        Button.ButtonVariant.Outline => "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Secondary => "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        Button.ButtonVariant.Ghost => "hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Link => "text-primary underline-offset-4 hover:underline",
+        _ => ""
+    };
+
+    private string SizeClasses => Size switch
+    {
+        Button.ButtonSize.Default => "h-9 px-4 py-2",
+        Button.ButtonSize.Sm => "h-8 rounded-md px-3 text-xs",
+        Button.ButtonSize.Lg => "h-10 rounded-md px-8",
+        Button.ButtonSize.Icon => "h-9 w-9",
+        _ => ""
+    };
+
+    private string CssClass => string.Join(" ",
+        new[] { BaseClasses, VariantClasses, SizeClasses, Shimmer ? "lumeo-shimmer" : null, Class }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string StyleString =>
+        !string.IsNullOrWhiteSpace(ShimmerColor)
+            ? $"--lumeo-shimmer-color: {ShimmerColor};"
+            : string.Empty;
+}

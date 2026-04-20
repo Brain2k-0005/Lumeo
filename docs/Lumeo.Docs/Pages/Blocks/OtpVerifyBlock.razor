@@ -1,0 +1,132 @@
+@page "/blocks/otp-verify"
+@namespace Lumeo.Docs.Pages.Blocks
+@implements IDisposable
+
+<PageTitle>OTP Verify — Lumeo Blocks</PageTitle>
+
+<PageHeader Title="OTP Verification"
+            Description="Email / SMS verification block with a 6-digit OTP input, resend countdown, and helper links." />
+
+<ComponentDemo Title="OTP Verify Block" Code="@_code">
+    <div class="flex items-center justify-center w-full min-h-[600px] bg-muted/30 rounded-[var(--radius-lg)] border border-border/40 p-8">
+        <Card Class="w-full max-w-md border-border/60 shadow-lg">
+            <CardContent Class="p-8">
+                <Stack Gap="6">
+                    <Stack Gap="4" Class="items-center text-center">
+                        <Flex Class="h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-primary/10">
+                            <Icon Name="ShieldCheck" Class="h-6 w-6 text-primary" />
+                        </Flex>
+                        <Stack Gap="1.5">
+                            <Heading Level="1" Class="text-2xl font-bold tracking-tight">Verify your email</Heading>
+                            <Lumeo.Text Color="muted" Size="sm" Class="max-w-xs">
+                                Enter the 6-digit code we sent to
+                                <Lumeo.Text As="span" Weight="medium" Color="foreground">j••••&#64;acme.com</Lumeo.Text>
+                            </Lumeo.Text>
+                        </Stack>
+                    </Stack>
+
+                    <Stack Gap="3">
+                        <Label Class="text-sm font-medium text-center block">Verification code</Label>
+                        <Flex Justify="center">
+                            <OtpInput Length="6" @bind-Value="_otp" />
+                        </Flex>
+                    </Stack>
+
+                    <Button Class="w-full" Disabled="@(_otp.Length < 6)">
+                        <Icon Name="ShieldCheck" Class="h-4 w-4" />
+                        Verify email
+                    </Button>
+
+                    <Flex Align="center" Justify="center" Gap="2" Class="text-sm">
+                        <Lumeo.Text Color="muted" Size="sm">Didn't get the code?</Lumeo.Text>
+                        @if (_secondsLeft > 0)
+                        {
+                            <Lumeo.Text Size="sm" Color="muted">Resend in @($"0:{_secondsLeft:D2}")</Lumeo.Text>
+                        }
+                        else
+                        {
+                            <button type="button" class="text-sm text-primary hover:underline" @onclick="Resend">
+                                Resend code
+                            </button>
+                        }
+                    </Flex>
+
+                    <Separator />
+
+                    <Flex Align="center" Justify="center" Gap="2">
+                        <Icon Name="ChevronLeft" Class="h-3.5 w-3.5 text-muted-foreground" />
+                        <Lumeo.Link Href="/blocks/sign-in" Class="text-sm text-muted-foreground hover:text-foreground no-underline">
+                            Back to sign in
+                        </Lumeo.Link>
+                    </Flex>
+                </Stack>
+            </CardContent>
+        </Card>
+    </div>
+</ComponentDemo>
+
+@code {
+    private string _otp = string.Empty;
+    private int _secondsLeft = 30;
+    private System.Threading.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        _timer = new System.Threading.Timer(_ =>
+        {
+            if (_secondsLeft > 0)
+            {
+                _secondsLeft--;
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, 1000, 1000);
+    }
+
+    private void Resend()
+    {
+        _secondsLeft = 30;
+        _otp = string.Empty;
+    }
+
+    public void Dispose() => _timer?.Dispose();
+
+    private readonly string _code = @"<Card Class=""w-full max-w-md"">
+    <CardContent Class=""p-8"">
+        <Stack Gap=""6"">
+            <Stack Gap=""4"" Class=""items-center text-center"">
+                <Flex Class=""h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-primary/10"">
+                    <Icon Name=""ShieldCheck"" Class=""h-6 w-6 text-primary"" />
+                </Flex>
+                <Heading Level=""1"">Verify your email</Heading>
+                <Lumeo.Text Color=""muted"">Enter the 6-digit code we sent.</Lumeo.Text>
+            </Stack>
+
+            <Flex Justify=""center"">
+                <OtpInput Length=""6"" @bind-Value=""_otp"" />
+            </Flex>
+
+            <Button Class=""w-full"" Disabled=""@(_otp.Length < 6)"">
+                <Icon Name=""ShieldCheck"" Class=""h-4 w-4"" /> Verify email
+            </Button>
+
+            <Flex Align=""center"" Justify=""center"" Gap=""2"">
+                <Lumeo.Text Color=""muted"" Size=""sm"">Didn't get the code?</Lumeo.Text>
+                @if (_secondsLeft > 0)
+                {
+                    <Lumeo.Text Size=""sm"" Color=""muted"">Resend in 0:@_secondsLeft</Lumeo.Text>
+                }
+                else
+                {
+                    <button @onclick=""Resend"" class=""text-primary hover:underline"">Resend code</button>
+                }
+            </Flex>
+        </Stack>
+    </CardContent>
+</Card>
+
+@code {
+    private string _otp = """";
+    private int _secondsLeft = 30;
+    private void Resend() { _secondsLeft = 30; _otp = """"; }
+}";
+}

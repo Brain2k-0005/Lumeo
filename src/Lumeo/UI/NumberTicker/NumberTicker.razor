@@ -1,0 +1,66 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<span class="@CssClass" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Prefix))
+    {
+        <span>@Prefix</span>
+    }
+    <span id="@_elementId">@InitialNumberText</span>
+    @if (!string.IsNullOrEmpty(Suffix))
+    {
+        <span>@Suffix</span>
+    }
+</span>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double StartValue { get; set; } = 0;
+    [Parameter] public int DurationMs { get; set; } = 1500;
+    [Parameter] public int Decimals { get; set; } = 0;
+    [Parameter] public string? Prefix { get; set; }
+    [Parameter] public string? Suffix { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-ticker-{Guid.NewGuid():N}";
+    private double _lastRenderedValue;
+    private bool _initialized;
+
+    private string CssClass => string.Join(" ", new[] { "tabular-nums inline-flex items-baseline", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string InitialNumberText => StartValue.ToString("N" + Decimals);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _lastRenderedValue = Value;
+            _initialized = true;
+            await Tick(StartValue, Value);
+        }
+        else if (_initialized && !AreClose(_lastRenderedValue, Value))
+        {
+            var from = _lastRenderedValue;
+            _lastRenderedValue = Value;
+            await Tick(from, Value);
+        }
+    }
+
+    private async Task Tick(double from, double to)
+    {
+        try
+        {
+            await Interop.MotionTickNumber(_elementId, from, to, DurationMs, Decimals);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private static bool AreClose(double a, double b) => Math.Abs(a - b) < 1e-9;
+
+    public async ValueTask DisposeAsync()
+    {
+        await Interop.MotionDisposeTicker(_elementId);
+    }
+}

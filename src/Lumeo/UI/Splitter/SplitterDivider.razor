@@ -1,0 +1,76 @@
+@namespace Lumeo
+@implements IDisposable
+
+<div id="@_dividerId"
+     role="separator"
+     tabindex="0"
+     class="@CssClass"
+     @onpointerdown="OnPointerDown"
+     @onpointerdown:preventDefault="true"
+     @onpointermove="OnPointerMove"
+     @onpointerup="OnPointerUp"
+     @onpointercancel="OnPointerUp"
+     @attributes="AdditionalAttributes">
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public Splitter.SplitterContext Context { get; set; } = default!;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _dividerId = $"splitter-divider-{Guid.NewGuid():N}";
+    private readonly Splitter.SplitterDividerToken _token = new();
+    private bool _dragging;
+    private long _pointerId;
+    private double _lastX;
+    private double _lastY;
+
+    private bool IsHorizontal => Context?.Orientation == Splitter.SplitterOrientation.Horizontal;
+
+    private string CssClass =>
+        IsHorizontal
+            ? $"shrink-0 w-1 self-stretch bg-border hover:bg-primary/50 transition-colors cursor-col-resize touch-none select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring {Class}".Trim()
+            : $"shrink-0 h-1 w-full bg-border hover:bg-primary/50 transition-colors cursor-row-resize touch-none select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        Context?.RegisterChild(_token);
+    }
+
+    private async Task OnPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        _dragging = true;
+        _pointerId = e.PointerId;
+        _lastX = e.ClientX;
+        _lastY = e.ClientY;
+        await Interop.SetPointerCaptureOnElement(_dividerId, _pointerId);
+    }
+
+    private async Task OnPointerMove(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!_dragging) return;
+        if (Context is null) return;
+
+        var delta = IsHorizontal ? e.ClientX - _lastX : e.ClientY - _lastY;
+        _lastX = e.ClientX;
+        _lastY = e.ClientY;
+
+        if (Math.Abs(delta) < 0.001) return;
+
+        await Context.ResizeNeighbors(_token, delta);
+    }
+
+    private async Task OnPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        await Interop.ReleasePointerCaptureOnElement(_dividerId, _pointerId);
+    }
+
+    public void Dispose()
+    {
+        Context?.UnregisterChild(_token);
+    }
+}

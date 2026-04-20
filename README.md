@@ -1,12 +1,16 @@
 # Lumeo
 
-A beautiful, accessible Blazor component library inspired by [shadcn/ui](https://ui.shadcn.com). 103 production-ready components with Tailwind CSS theming, dark mode, and 8 color schemes.
+A beautiful, accessible Blazor component library inspired by [shadcn/ui](https://ui.shadcn.com). 130+ production-ready components with Tailwind CSS theming, dark mode, 8 color schemes, AI-chat primitives, motion primitives, and full-page block templates.
 
 **[Live Demo](https://lumeo.nativ.sh)** | [![NuGet](https://img.shields.io/nuget/v/Lumeo)](https://www.nuget.org/packages/Lumeo) | [![Live Demo](https://img.shields.io/badge/Live%20Demo-lumeo.nativ.sh-blue)](https://lumeo.nativ.sh)
 
 ## Features
 
-- **103 Components** — Fully accessible, production-ready UI primitives
+- **130+ Components** — Fully accessible, production-ready UI primitives
+- **AI Chat Primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay` — SignalR-native token streaming
+- **Motion Primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`
+- **Dashboard Tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`
+- **Block Templates** — SignIn, SignUp, ResetPassword, OtpVerify, PricingTable, HeroSection, Dashboard, SettingsPage
 - **8 Color Themes** — Zinc, Blue, Green, Rose, Orange, Violet, Amber, Teal
 - **Dark Mode** — Class-based with system preference detection
 - **Tailwind CSS v4** — CSS variable architecture, zero hardcoded colors
@@ -39,7 +43,16 @@ Toast, Alert, Progress, Spinner, Skeleton, EmptyState, Result
 Dialog, Sheet, Drawer, AlertDialog, Popover, Tooltip, HoverCard, ContextMenu, DropdownMenu, Command, PopConfirm, Tour
 
 ### Navigation
-Tabs, Breadcrumb, Pagination, Sidebar, Menubar, NavigationMenu, MegaMenu, Accordion, Collapsible, Scrollspy, BackToTop, Affix, SpeedDial
+Tabs, Breadcrumb, Pagination, Sidebar, BottomNav, Menubar, NavigationMenu, MegaMenu, Accordion, Collapsible, Scrollspy, BackToTop, Affix, SpeedDial, Splitter
+
+### AI
+PromptInput, StreamingText, AgentMessageList, AgentMessage, ToolCallCard, ReasoningDisplay
+
+### Motion
+Marquee, NumberTicker, TextReveal, BlurFade, BorderBeam, ShimmerButton, Sparkles
+
+### Dashboard / Layout
+Bento, BentoTile, KpiCard, SparkCard, Delta, PickList
 
 ### Drag & Drop
 Kanban, SortableList, Transfer

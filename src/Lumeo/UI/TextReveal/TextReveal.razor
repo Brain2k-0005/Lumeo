@@ -1,0 +1,56 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<span id="@_elementId" class="@CssClass" @attributes="AdditionalAttributes">
+    @for (var i = 0; i < _words.Length; i++)
+    {
+        <span data-motion-word>@_words[i]</span>
+        @if (i < _words.Length - 1)
+        {
+            @(" ")
+        }
+    }
+</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public int Stagger { get; set; } = 80;
+    [Parameter] public double Threshold { get; set; } = 0.3;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-reveal-{Guid.NewGuid():N}";
+    private string[] _words = Array.Empty<string>();
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-reveal", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override void OnParametersSet()
+    {
+        _words = string.IsNullOrEmpty(Text)
+            ? Array.Empty<string>()
+            : Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionRevealText(_elementId, Stagger, Threshold);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            await Interop.MotionDisposeObserver(_elementId);
+        }
+    }
+}

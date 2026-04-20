@@ -1,0 +1,282 @@
+@page "/blocks/settings-page"
+@namespace Lumeo.Docs.Pages.Blocks
+
+<PageTitle>Settings Page — Lumeo Blocks</PageTitle>
+
+<PageHeader Title="Settings Page"
+            Description="Tabbed settings layout with Profile, Account, Appearance, Notifications, and Billing panels — each a card with form fields and a save bar." />
+
+<ComponentDemo Title="Settings Page Block" Code="@_code">
+    <div class="w-full min-w-[840px] bg-card rounded-[var(--radius-lg)] border border-border/60 p-6 lg:p-8">
+        <Stack Gap="6">
+            <Stack Gap="1">
+                <Heading Level="1" Class="text-2xl font-bold tracking-tight">Settings</Heading>
+                <Lumeo.Text Color="muted" Size="sm">Manage your account, preferences, and billing.</Lumeo.Text>
+            </Stack>
+
+            <Tabs @bind-ActiveValue="_activeTab">
+                <TabsList Class="grid w-full grid-cols-5 max-w-xl">
+                    <TabsTrigger Value="profile"><Icon Name="User" Class="h-3.5 w-3.5 mr-1.5" />Profile</TabsTrigger>
+                    <TabsTrigger Value="account"><Icon Name="Lock" Class="h-3.5 w-3.5 mr-1.5" />Account</TabsTrigger>
+                    <TabsTrigger Value="appearance"><Icon Name="Palette" Class="h-3.5 w-3.5 mr-1.5" />Appearance</TabsTrigger>
+                    <TabsTrigger Value="notifications"><Icon Name="Bell" Class="h-3.5 w-3.5 mr-1.5" />Notifications</TabsTrigger>
+                    <TabsTrigger Value="billing"><Icon Name="CreditCard" Class="h-3.5 w-3.5 mr-1.5" />Billing</TabsTrigger>
+                </TabsList>
+
+                <!-- Profile -->
+                <TabsContent Value="profile">
+                    <Card Class="border-border/60 mt-4">
+                        <CardHeader>
+                            <Stack Gap="1">
+                                <Heading Level="3" Class="text-base font-semibold">Profile</Heading>
+                                <Lumeo.Text Size="sm" Color="muted">This is how others see you on the platform.</Lumeo.Text>
+                            </Stack>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="5">
+                                <Flex Align="center" Gap="4">
+                                    <Avatar Class="h-16 w-16">
+                                        <AvatarFallback Class="text-lg font-semibold">AR</AvatarFallback>
+                                    </Avatar>
+                                    <Stack Gap="2">
+                                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 gap-2 text-xs">
+                                            <Icon Name="Upload" Class="h-3.5 w-3.5" />
+                                            Upload photo
+                                        </Button>
+                                        <Lumeo.Text Size="xs" Color="muted">JPG or PNG. 1 MB max.</Lumeo.Text>
+                                    </Stack>
+                                </Flex>
+
+                                <Grid Class="grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Stack Gap="2">
+                                        <Label for="s-first">First name</Label>
+                                        <Input id="s-first" @bind-Value="_firstName" />
+                                    </Stack>
+                                    <Stack Gap="2">
+                                        <Label for="s-last">Last name</Label>
+                                        <Input id="s-last" @bind-Value="_lastName" />
+                                    </Stack>
+                                </Grid>
+                                <Stack Gap="2">
+                                    <Label for="s-bio">Bio</Label>
+                                    <Textarea id="s-bio" @bind-Value="_bio" rows="3" />
+                                    <Lumeo.Text Size="xs" Color="muted">Brief description for your profile. URLs are hyperlinked.</Lumeo.Text>
+                                </Stack>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <!-- Account -->
+                <TabsContent Value="account">
+                    <Card Class="border-border/60 mt-4">
+                        <CardHeader>
+                            <Stack Gap="1">
+                                <Heading Level="3" Class="text-base font-semibold">Account</Heading>
+                                <Lumeo.Text Size="sm" Color="muted">Update your email and password.</Lumeo.Text>
+                            </Stack>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="5">
+                                <Stack Gap="2">
+                                    <Label for="s-email">Email</Label>
+                                    <Lumeo.Input id="s-email" type="email"
+                                                 Value="@_email"
+                                                 OnInput="@(e => _email = e.Value?.ToString() ?? string.Empty)">
+                                        <Prefix><Icon Name="Mail" Class="h-4 w-4 text-muted-foreground" /></Prefix>
+                                    </Lumeo.Input>
+                                </Stack>
+                                <Stack Gap="2">
+                                    <Label for="s-pass">New password</Label>
+                                    <PasswordInput id="s-pass" @bind-Value="_newPassword" ShowStrength="true" Placeholder="Leave blank to keep current" />
+                                </Stack>
+                                <Separator />
+                                <Flex Align="center" Justify="between">
+                                    <Stack Gap="0.5">
+                                        <Lumeo.Text Size="sm" Weight="medium">Two-factor authentication</Lumeo.Text>
+                                        <Lumeo.Text Size="xs" Color="muted">Adds an extra layer of security to your account.</Lumeo.Text>
+                                    </Stack>
+                                    <Switch @bind-Checked="_twoFactor" />
+                                </Flex>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <!-- Appearance -->
+                <TabsContent Value="appearance">
+                    <Card Class="border-border/60 mt-4">
+                        <CardHeader>
+                            <Stack Gap="1">
+                                <Heading Level="3" Class="text-base font-semibold">Appearance</Heading>
+                                <Lumeo.Text Size="sm" Color="muted">Customize the look and feel.</Lumeo.Text>
+                            </Stack>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="5">
+                                <Stack Gap="2">
+                                    <Label>Theme</Label>
+                                    <RadioGroup @bind-Value="_theme">
+                                        <Grid Class="grid-cols-3 gap-3">
+                                            @foreach (var t in new[] { "Light", "Dark", "System" })
+                                            {
+                                                <label class="flex items-center gap-2 rounded-md border border-border/60 p-3 cursor-pointer hover:bg-accent transition-colors">
+                                                    <RadioGroupItem Value="@t" />
+                                                    <Lumeo.Text Size="sm">@t</Lumeo.Text>
+                                                </label>
+                                            }
+                                        </Grid>
+                                    </RadioGroup>
+                                </Stack>
+                                <Stack Gap="2">
+                                    <Label>Density</Label>
+                                    <Select @bind-Value="_density" Placeholder="Comfortable">
+                                        <SelectItem Value="comfortable">Comfortable</SelectItem>
+                                        <SelectItem Value="compact">Compact</SelectItem>
+                                        <SelectItem Value="spacious">Spacious</SelectItem>
+                                    </Select>
+                                </Stack>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <!-- Notifications -->
+                <TabsContent Value="notifications">
+                    <Card Class="border-border/60 mt-4">
+                        <CardHeader>
+                            <Stack Gap="1">
+                                <Heading Level="3" Class="text-base font-semibold">Notifications</Heading>
+                                <Lumeo.Text Size="sm" Color="muted">Choose what you want to be notified about.</Lumeo.Text>
+                            </Stack>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="4">
+                                @foreach (var n in _notificationPrefs)
+                                {
+                                    <Flex Align="center" Justify="between" Class="py-1">
+                                        <Stack Gap="0.5">
+                                            <Lumeo.Text Size="sm" Weight="medium">@n.Title</Lumeo.Text>
+                                            <Lumeo.Text Size="xs" Color="muted">@n.Body</Lumeo.Text>
+                                        </Stack>
+                                        <Switch Checked="@n.Enabled" CheckedChanged="@(v => n.Enabled = v)" />
+                                    </Flex>
+                                }
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <!-- Billing -->
+                <TabsContent Value="billing">
+                    <Card Class="border-border/60 mt-4">
+                        <CardHeader>
+                            <Stack Gap="1">
+                                <Heading Level="3" Class="text-base font-semibold">Billing</Heading>
+                                <Lumeo.Text Size="sm" Color="muted">Plan, payment method, and invoice history.</Lumeo.Text>
+                            </Stack>
+                        </CardHeader>
+                        <CardContent>
+                            <Stack Gap="5">
+                                <Flex Align="center" Justify="between" Class="rounded-[var(--radius-lg)] border border-border/60 bg-muted/30 p-4">
+                                    <Stack Gap="0.5">
+                                        <Flex Align="center" Gap="2">
+                                            <Lumeo.Text Size="sm" Weight="semibold">Pro plan</Lumeo.Text>
+                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px]">Active</Badge>
+                                        </Flex>
+                                        <Lumeo.Text Size="xs" Color="muted">Next invoice: May 20, 2026 — $24.00</Lumeo.Text>
+                                    </Stack>
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">Change plan</Button>
+                                </Flex>
+
+                                <Stack Gap="2">
+                                    <Label>Payment method</Label>
+                                    <Flex Align="center" Justify="between" Class="rounded-md border border-border/60 p-3">
+                                        <Flex Align="center" Gap="3">
+                                            <Flex Class="h-9 w-12 items-center justify-center rounded-md bg-muted border border-border/60">
+                                                <Icon Name="CreditCard" Class="h-4 w-4 text-muted-foreground" />
+                                            </Flex>
+                                            <Stack Gap="0">
+                                                <Lumeo.Text Size="sm" Weight="medium">Visa ending in 4242</Lumeo.Text>
+                                                <Lumeo.Text Size="xs" Color="muted">Expires 12/2028</Lumeo.Text>
+                                            </Stack>
+                                        </Flex>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-8 text-xs">Update</Button>
+                                    </Flex>
+                                </Stack>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+
+            <!-- Save bar -->
+            <Flex Align="center" Justify="end" Gap="2" Class="pt-4 border-t border-border/40">
+                <Button Variant="Button.ButtonVariant.Ghost">Cancel</Button>
+                <Button>
+                    <Icon Name="Check" Class="h-4 w-4" />
+                    Save changes
+                </Button>
+            </Flex>
+        </Stack>
+    </div>
+</ComponentDemo>
+
+@code {
+    private string _activeTab = "profile";
+    private string _firstName = "Ada";
+    private string _lastName = "Lovelace";
+    private string _bio = "Building tools at the edge of what's possible.";
+    private string _email = "ada@example.com";
+    private string _newPassword = string.Empty;
+    private bool _twoFactor = true;
+    private string _theme = "System";
+    private string _density = "comfortable";
+
+    private class NotifPref
+    {
+        public string Title { get; init; } = string.Empty;
+        public string Body { get; init; } = string.Empty;
+        public bool Enabled { get; set; }
+    }
+
+    private readonly NotifPref[] _notificationPrefs =
+    [
+        new() { Title = "Product updates", Body = "New features, improvements, and fixes.", Enabled = true },
+        new() { Title = "Security alerts", Body = "Sign-ins from new devices, password changes.", Enabled = true },
+        new() { Title = "Weekly digest",   Body = "Summary of your activity every Monday.",   Enabled = false },
+        new() { Title = "Marketing emails",Body = "Tips, offers, and product announcements.",  Enabled = false },
+    ];
+
+    private readonly string _code = @"<Tabs @bind-Value=""_activeTab"">
+    <TabsList Class=""grid grid-cols-5"">
+        <TabsTrigger Value=""profile"">Profile</TabsTrigger>
+        <TabsTrigger Value=""account"">Account</TabsTrigger>
+        <TabsTrigger Value=""appearance"">Appearance</TabsTrigger>
+        <TabsTrigger Value=""notifications"">Notifications</TabsTrigger>
+        <TabsTrigger Value=""billing"">Billing</TabsTrigger>
+    </TabsList>
+
+    <TabsContent Value=""profile"">
+        <Card>
+            <CardHeader><Heading Level=""3"">Profile</Heading></CardHeader>
+            <CardContent>
+                <Stack Gap=""5"">
+                    <Grid Class=""grid-cols-2 gap-4"">
+                        <Stack Gap=""2""><Label>First name</Label><Input @bind-Value=""_firstName"" /></Stack>
+                        <Stack Gap=""2""><Label>Last name</Label><Input @bind-Value=""_lastName"" /></Stack>
+                    </Grid>
+                    <Stack Gap=""2""><Label>Bio</Label><Textarea @bind-Value=""_bio"" Rows=""3"" /></Stack>
+                </Stack>
+            </CardContent>
+        </Card>
+    </TabsContent>
+
+    <!-- other tabs… -->
+</Tabs>
+
+<Flex Justify=""end"" Gap=""2"">
+    <Button Variant=""Button.ButtonVariant.Ghost"">Cancel</Button>
+    <Button><Icon Name=""Check"" Class=""h-4 w-4"" /> Save changes</Button>
+</Flex>";
+}
