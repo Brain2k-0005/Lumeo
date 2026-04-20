@@ -13,7 +13,6 @@ else
 }
 
 @inject IJSRuntime JSRuntime
-@inject Lumeo.Services.ThemeService ThemeService
 
 @code {
     [Parameter] public EChartOption? Option { get; set; }
@@ -49,31 +48,11 @@ else
         ? $"width: {Width}; aspect-ratio: {AspectRatio};"
         : $"width: {Width}; height: {Height};";
 
-    protected override void OnInitialized()
-    {
-        ThemeService.OnThemeChanged += OnAppThemeChanged;
-    }
-
-    // ThemeService fires when the app flips light/dark or swaps the palette.
-    // ECharts draws to canvas — it doesn't re-read CSS variables on its own —
-    // so we dispose + re-init the chart with the freshly-read Lumeo theme.
-    private void OnAppThemeChanged()
-    {
-        if (!_initialized || _module is null) return;
-        InvokeAsync(async () =>
-        {
-            try
-            {
-                var json = _lastJson ?? GetOptionsJson();
-                await _module.InvokeVoidAsync("disposeChart", _chartId);
-                await _module.InvokeVoidAsync("resetLumeoTheme");
-                await _module.InvokeVoidAsync("initChart", _chartId, json, Theme, EChartsSource);
-                await RegisterChartEventsAsync();
-            }
-            catch (JSDisconnectedException) { }
-            catch (JSException) { /* chart disposed mid-flight */ }
-        });
-    }
+    // Chart repaint on theme change is handled entirely in JS:
+    // theme.js dispatches a `lumeo:theme-changed` event after every setter,
+    // and echarts-interop.js listens for it and calls refreshAllCharts().
+    // That covers every code path (ThemeService, CustomizerSidebar's direct
+    // themeManager.* calls, manual JS) uniformly.
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -223,7 +202,6 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        ThemeService.OnThemeChanged -= OnAppThemeChanged;
         if (_module is not null && _initialized)
         {
             try

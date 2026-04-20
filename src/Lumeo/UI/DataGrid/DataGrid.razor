@@ -274,6 +274,13 @@
     {
         _columnDefs.Add(column);
         SyncOrderedColumns();
+        // DataGridColumnDef children register themselves from their own
+        // OnInitialized, which runs AFTER the parent has already built its
+        // render tree with an empty column list. Without this nudge the
+        // header + body render blank until some other state change retriggers
+        // a render. InvokeAsync defers the re-render to the next dispatcher
+        // cycle so we don't recurse during the child's init.
+        _ = InvokeAsync(StateHasChanged);
     }
 
     public void UpdateColumnWidth(string columnId, double width)

@@ -71,6 +71,15 @@ window.themeManager = {
             localStorage.setItem('theme', 'light');
             document.documentElement.classList.remove('dark');
         }
+        this._notifyThemeChanged();
+    },
+    _notifyThemeChanged: function () {
+        // Fires after ANY theme-related change (mode, scheme, radius, style,
+        // base color, menu color, menu accent, font). Consumers like the chart
+        // module listen to this to re-read CSS variables and repaint.
+        try {
+            document.dispatchEvent(new CustomEvent('lumeo:theme-changed'));
+        } catch (_) { /* older browsers — intentionally silent */ }
     },
     getMode: function () {
         var mode = localStorage.getItem('theme-mode') || localStorage.getItem('theme');
@@ -85,6 +94,7 @@ window.themeManager = {
         var isDark = document.documentElement.classList.toggle('dark');
         localStorage.setItem('theme-mode', isDark ? 'dark' : 'light');
         localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        this._notifyThemeChanged();
     },
     setScheme: function (scheme) {
         if (!scheme || scheme === 'zinc') {
@@ -94,6 +104,7 @@ window.themeManager = {
             localStorage.setItem('theme-scheme', scheme);
             document.documentElement.setAttribute('data-theme', scheme);
         }
+        this._notifyThemeChanged();
     },
     getScheme: function () {
         return localStorage.getItem('theme-scheme') || 'zinc';
@@ -101,6 +112,7 @@ window.themeManager = {
     setRadius: function (radius) {
         localStorage.setItem('theme-radius', radius);
         document.documentElement.style.setProperty('--radius', radius + 'rem');
+        this._notifyThemeChanged();
     },
     getRadius: function () {
         return localStorage.getItem('theme-radius') !== null ? localStorage.getItem('theme-radius') : '0.75';
@@ -113,6 +125,7 @@ window.themeManager = {
             localStorage.removeItem('theme-style');
             document.documentElement.classList.remove('style-new-york');
         }
+        this._notifyThemeChanged();
     },
     getStyle: function () {
         return localStorage.getItem('theme-style') || 'default';
@@ -125,6 +138,7 @@ window.themeManager = {
             localStorage.setItem('theme-base-color', baseColor);
             document.documentElement.setAttribute('data-base-color', baseColor);
         }
+        this._notifyThemeChanged();
     },
     getBaseColor: function () {
         return localStorage.getItem('theme-base-color') || 'slate';
@@ -144,6 +158,7 @@ window.themeManager = {
                 document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)');
             }
         }
+        this._notifyThemeChanged();
     },
     getMenuColor: function () {
         return localStorage.getItem('theme-menu-color') || 'default';
@@ -156,6 +171,7 @@ window.themeManager = {
             localStorage.setItem('theme-menu-accent', accent);
             document.documentElement.setAttribute('data-menu-accent', accent);
         }
+        this._notifyThemeChanged();
     },
     getMenuAccent: function () {
         return localStorage.getItem('theme-menu-accent') || 'subtle';
@@ -175,6 +191,7 @@ window.themeManager = {
             document.head.appendChild(el);
         }
         el.textContent = fontCss;
+        this._notifyThemeChanged();
     },
     getFont: function () {
         return localStorage.getItem('theme-font') || 'system';

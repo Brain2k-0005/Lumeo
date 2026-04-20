@@ -3,6 +3,22 @@ let echartsLoaded = false;
 let echartsLoadPromise = null;
 let lumeoThemeRegistered = false;
 
+// Auto-repaint all existing charts when the app theme changes.
+// theme.js fires this event after setMode / setScheme / setRadius / setStyle /
+// setBaseColor / setMenuColor / setMenuAccent / setFont / toggle — so any path
+// the consumer takes (ThemeService, CustomizerSidebar, manual JS) repaints.
+// Deferred with queueMicrotask so DOM class / CSS-var updates are already
+// committed before we read them back in registerLumeoTheme().
+if (typeof document !== 'undefined' && !window.__lumeoChartThemeListener) {
+    document.addEventListener('lumeo:theme-changed', () => {
+        if (charts.size === 0) return;
+        queueMicrotask(() => {
+            try { refreshAllCharts(); } catch (_) { /* ignore */ }
+        });
+    });
+    window.__lumeoChartThemeListener = true;
+}
+
 function loadECharts(src) {
     if (echartsLoaded && window.echarts) return Promise.resolve();
     if (echartsLoadPromise) return echartsLoadPromise;
