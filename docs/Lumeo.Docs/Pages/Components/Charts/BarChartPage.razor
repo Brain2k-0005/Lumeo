@@ -5,15 +5,39 @@
 <PageHeader Title="Bar Chart" Description="Compare discrete categories side-by-side. Ideal for monthly comparisons, ranking, or showing multiple series over the same categories." />
 
 <Stack Gap="8">
-    <ComponentDemo Title="Basic Bar Chart" Code="@_basicCode">
+    <ComponentDemo Title="Basic Bar Chart" Description="Side-by-side grouped bars comparing this year's revenue against last year across twelve months." Code="@_basicCode">
         <Container>
             <BarChart Categories="_categories" Series="_series" />
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="Horizontal Stacked" Code="@_stackedCode">
+    <ComponentDemo Title="Stacked Vertical" Description="Stack two product lines to show combined monthly revenue and relative contribution of each." Code="@_stackedVerticalCode">
+        <Container>
+            <BarChart Categories="_categories" Series="_stackedSeries" Stacked="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Horizontal Bar" Description="Horizontal orientation works well for ranking category labels that are too long to fit on a vertical axis." Code="@_horizontalCode">
+        <Container>
+            <BarChart Categories="_regions" Series="_regionSeries" Horizontal="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Horizontal Stacked" Description="Combine horizontal layout with stacking to show part-to-whole breakdowns across departments." Code="@_stackedCode">
         <Container>
             <BarChart Categories="_categories" Series="_series" Horizontal="true" Stacked="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Data Labels" Description="Display the exact value on top of each bar — useful for presentations where reading specific numbers matters." Code="@_labelsCode">
+        <Container>
+            <BarChart Categories="_shortCategories" Series="_labelSeries" ShowDataLabels="true" LabelPosition="top" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom Color Palette + DataZoom" Description="Override the default palette with brand colors and enable the DataZoom slider to scroll through a dense dataset." Code="@_zoomCode">
+        <Container>
+            <BarChart Categories="_months24" Series="_zoom24Series" Colors="_brandColors" DataZoom="true" />
         </Container>
     </ComponentDemo>
 </Stack>
@@ -88,6 +112,18 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
                             <td class="p-3 text-muted-foreground">Shows save/restore/zoom toolbox.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowDataLabels</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Renders value labels on each bar.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">LabelPosition</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">"top"</td>
+                            <td class="p-3 text-muted-foreground">Label position: "top", "inside", "bottom".</td>
+                        </tr>
                     </tbody>
                 </table>
             </Stack>
@@ -97,12 +133,57 @@
 
 @code {
     private List<string> _categories = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    private List<string> _shortCategories = new() { "Q1", "Q2", "Q3", "Q4" };
+    private List<string> _regions = new() { "North America", "Western Europe", "Asia Pacific", "Latin America", "Middle East", "Africa" };
+
     private List<BarChart.ChartSeriesData> _series = new()
     {
         new() { Name = "This Year",  Values = new() { 41200, 38400, 52100, 61800, 57300, 74200, 68900, 72500, 81300, 88700, 79400, 95600 } },
         new() { Name = "Last Year",  Values = new() { 35000, 31200, 44800, 53100, 48900, 62400, 58700, 61200, 69800, 74300, 65100, 82200 } }
     };
 
+    private List<BarChart.ChartSeriesData> _stackedSeries = new()
+    {
+        new() { Name = "SaaS",       Values = new() { 28400, 31100, 38700, 42300, 45800, 51200, 53600, 58900, 62100, 67400, 71800, 79300 } },
+        new() { Name = "On-Premise", Values = new() { 19700, 17600, 21400, 18900, 17200, 16300, 15800, 14700, 13900, 12800, 11600, 10400 } }
+    };
+
+    private List<BarChart.ChartSeriesData> _regionSeries = new()
+    {
+        new() { Name = "Revenue ($K)", Values = new() { 184300, 142700, 211500, 63200, 47800, 28900 } }
+    };
+
+    private List<BarChart.ChartSeriesData> _labelSeries = new()
+    {
+        new() { Name = "Actual",  Values = new() { 142800, 161300, 154700, 178200 } },
+        new() { Name = "Target",  Values = new() { 150000, 155000, 160000, 175000 } }
+    };
+
+    private List<string> _months24 = new()
+    {
+        "Jan 24", "Feb 24", "Mar 24", "Apr 24", "May 24", "Jun 24",
+        "Jul 24", "Aug 24", "Sep 24", "Oct 24", "Nov 24", "Dec 24",
+        "Jan 25", "Feb 25", "Mar 25", "Apr 25", "May 25", "Jun 25",
+        "Jul 25", "Aug 25", "Sep 25", "Oct 25", "Nov 25", "Dec 25"
+    };
+
+    private List<BarChart.ChartSeriesData> _zoom24Series = new()
+    {
+        new() { Name = "New Customers", Values = new() { 312, 287, 341, 398, 423, 512, 487, 531, 604, 672, 598, 741, 328, 304, 367, 421, 448, 539, 513, 557, 631, 698, 624, 779 } },
+        new() { Name = "Renewals",      Values = new() { 891, 843, 912, 967, 1034, 1128, 1087, 1142, 1213, 1289, 1198, 1347, 1024, 968, 1047, 1103, 1171, 1264, 1224, 1278, 1352, 1428, 1334, 1491 } }
+    };
+
+    private List<string> _brandColors = new() { "#6366f1", "#f59e0b" };
+
     private string _basicCode = @"<BarChart Categories=""_categories"" Series=""_series"" />";
+
+    private string _stackedVerticalCode = @"<BarChart Categories=""_categories"" Series=""_stackedSeries"" Stacked=""true"" />";
+
+    private string _horizontalCode = @"<BarChart Categories=""_regions"" Series=""_regionSeries"" Horizontal=""true"" />";
+
     private string _stackedCode = @"<BarChart Categories=""_categories"" Series=""_series"" Horizontal=""true"" Stacked=""true"" />";
+
+    private string _labelsCode = @"<BarChart Categories=""_shortCategories"" Series=""_labelSeries"" ShowDataLabels=""true"" LabelPosition=""top"" />";
+
+    private string _zoomCode = @"<BarChart Categories=""_months24"" Series=""_zoom24Series"" Colors=""_brandColors"" DataZoom=""true"" />";
 }
