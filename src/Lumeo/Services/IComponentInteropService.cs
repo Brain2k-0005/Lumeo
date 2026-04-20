@@ -1,3 +1,5 @@
+using Microsoft.JSInterop;
+
 namespace Lumeo.Services;
 
 /// <summary>
@@ -106,4 +108,27 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask AiObserveAutoScroll(string elementId);
     ValueTask AiDisposeAutoScroll(string elementId);
     ValueTask AiScrollToBottom(string elementId);
+
+    // Scheduler (FullCalendar wrapper)
+    Task<string> SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options);
+    Task SchedulerSetEventsAsync(string id, IEnumerable<object> events);
+    Task SchedulerChangeViewAsync(string id, string view);
+    Task SchedulerGotoDateAsync(string id, string dateIso);
+    Task SchedulerPrevAsync(string id);
+    Task SchedulerNextAsync(string id);
+    Task SchedulerTodayAsync(string id);
+    Task<string> SchedulerGetTitleAsync(string id);
+    Task SchedulerDestroyAsync(string id);
+
+    // Rich Text Editor (TipTap wrapper)
+    ValueTask<string> RichTextInitAsync<T>(
+        Microsoft.AspNetCore.Components.ElementReference elementRef,
+        DotNetObjectReference<T> dotNetRef,
+        object options) where T : class;
+    ValueTask RichTextSetContentAsync(string id, string? html);
+    ValueTask RichTextCommandAsync(string id, string name, params object?[]? args);
+    ValueTask<Interop.RichTextActiveState?> RichTextGetActiveAsync(string id);
+    ValueTask RichTextSetDisabledAsync(string id, bool disabled);
+    ValueTask RichTextDestroyAsync(string id);
+    ValueTask<string?> RichTextPromptLinkAsync(string? initial);
 }

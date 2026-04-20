@@ -1,14 +1,16 @@
 namespace Lumeo.Services.Localization;
 
 /// <summary>
-/// Built-in English and German translations for Lumeo component UI text.
+/// Built-in translations for Lumeo component UI text. Ships with EN, DE, ES, FR,
+/// IT, PT, NL, PL, JA, ZH-Hans (Simplified Chinese), KO, AR, RU, TR out of the box.
 /// Applied by <see cref="LumeoServiceExtensions.AddLumeo"/> before any consumer
-/// override callback runs — so consumers can replace individual keys without
-/// having to redefine everything.
+/// override callback runs — so consumers can replace individual keys or add whole
+/// cultures without having to redefine everything.
 /// Keys are namespaced by component: "DataGrid.NoData", "Pagination.Previous", etc.
-/// Use {0}, {1}... for formatted values.
+/// Use {0}, {1}... for formatted values. Per-locale dictionaries live as partial
+/// types under <c>Services/Localization/Locales/</c>.
 /// </summary>
-internal static class LumeoDefaultStrings
+internal static partial class LumeoDefaultStrings
 {
     internal static readonly IReadOnlyDictionary<string, string> En = new Dictionary<string, string>
     {
@@ -450,5 +452,20 @@ internal static class LumeoDefaultStrings
     {
         options.AddMany("en", new Dictionary<string, string>(En));
         options.AddMany("de", new Dictionary<string, string>(De));
+        options.AddMany("es", new Dictionary<string, string>(Es));
+        options.AddMany("fr", new Dictionary<string, string>(Fr));
+        options.AddMany("it", new Dictionary<string, string>(It));
+        options.AddMany("pt", new Dictionary<string, string>(Pt));
+        options.AddMany("nl", new Dictionary<string, string>(Nl));
+        options.AddMany("pl", new Dictionary<string, string>(Pl));
+        options.AddMany("ja", new Dictionary<string, string>(Ja));
+        // Simplified Chinese — both the neutral "zh" and the region/script variants.
+        options.AddMany("zh-Hans", new Dictionary<string, string>(ZhCn));
+        options.AddMany("zh-CN", new Dictionary<string, string>(ZhCn));
+        options.AddMany("zh", new Dictionary<string, string>(ZhCn));
+        options.AddMany("ko", new Dictionary<string, string>(Ko));
+        options.AddMany("ar", new Dictionary<string, string>(Ar));
+        options.AddMany("ru", new Dictionary<string, string>(Ru));
+        options.AddMany("tr", new Dictionary<string, string>(Tr));
     }
 }

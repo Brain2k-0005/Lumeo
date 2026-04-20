@@ -75,7 +75,7 @@ public class EmptyStateTests : IAsyncLifetime
     public void Renders_Icon_When_Provided()
     {
         var cut = _ctx.Render<Lumeo.EmptyState>(p => p
-            .Add(e => e.Icon, builder =>
+            .Add(e => e.IconContent, builder =>
             {
                 builder.OpenElement(0, "svg");
                 builder.AddAttribute(1, "data-testid", "icon");
@@ -89,7 +89,7 @@ public class EmptyStateTests : IAsyncLifetime
     public void Icon_Wrapper_Has_Muted_Class()
     {
         var cut = _ctx.Render<Lumeo.EmptyState>(p => p
-            .Add(e => e.Icon, builder =>
+            .Add(e => e.IconContent, builder =>
             {
                 builder.OpenElement(0, "span");
                 builder.AddContent(1, "icon");
@@ -156,7 +156,7 @@ public class EmptyStateTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.EmptyState>(p => p
             .Add(e => e.Title, "Nothing here")
             .Add(e => e.Description, "No items found.")
-            .Add(e => e.Icon, builder =>
+            .Add(e => e.IconContent, builder =>
             {
                 builder.OpenElement(0, "span");
                 builder.AddContent(1, "icon");

@@ -17,6 +17,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private readonly ResizeInterop _resize = new();
     private readonly ScrollInterop _scroll = new();
     private readonly UtilityInterop _utility = new();
+    private readonly RichTextInterop _richText = new();
 
     public ComponentInteropService(IJSRuntime jsRuntime)
     {
@@ -509,6 +510,132 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Scheduler (FullCalendar wrapper) ---
+    // Scheduler ships its own JS module (scheduler.js) loaded lazily on first
+    // use; the library is hefty (>200KB gzip) and many apps never touch it.
+
+    private IJSObjectReference? _schedulerModule;
+
+    private async Task<IJSObjectReference> GetSchedulerModuleAsync()
+    {
+        _schedulerModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo/js/scheduler.js");
+        return _schedulerModule;
+    }
+
+    public async Task<string> SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)
+    {
+        var module = await GetSchedulerModuleAsync();
+        return await module.InvokeAsync<string>("scheduler.init", el, dotNetRef, options);
+    }
+
+    public async Task SchedulerSetEventsAsync(string id, IEnumerable<object> events)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.setEvents", id, events);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerChangeViewAsync(string id, string view)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.changeView", id, view);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerGotoDateAsync(string id, string dateIso)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.gotoDate", id, dateIso);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerPrevAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.prev", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerNextAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.next", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerTodayAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.today", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task<string> SchedulerGetTitleAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            return await module.InvokeAsync<string>("scheduler.getTitle", id) ?? string.Empty;
+        }
+        catch (JSDisconnectedException) { return string.Empty; }
+    }
+
+    public async Task SchedulerDestroyAsync(string id)
+    {
+        try
+        {
+            if (_schedulerModule is null) return;
+            await _schedulerModule.InvokeVoidAsync("scheduler.destroy", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Rich Text Editor (TipTap) ---
+
+    public async ValueTask<string> RichTextInitAsync<T>(
+        Microsoft.AspNetCore.Components.ElementReference elementRef,
+        DotNetObjectReference<T> dotNetRef,
+        object options)
+        where T : class
+        => await _richText.InitAsync(_jsRuntime, elementRef, dotNetRef, options);
+
+    public ValueTask RichTextSetContentAsync(string id, string? html)
+        => _richText.SetContentAsync(_jsRuntime, id, html);
+
+    public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args)
+        => _richText.CommandAsync(_jsRuntime, id, name, args);
+
+    public ValueTask<Interop.RichTextActiveState?> RichTextGetActiveAsync(string id)
+        => _richText.GetActiveAsync(_jsRuntime, id);
+
+    public ValueTask RichTextSetDisabledAsync(string id, bool disabled)
+        => _richText.SetDisabledAsync(_jsRuntime, id, disabled);
+
+    public ValueTask RichTextDestroyAsync(string id)
+        => _richText.DestroyAsync(_jsRuntime, id);
+
+    public ValueTask<string?> RichTextPromptLinkAsync(string? initial)
+        => _richText.PromptLinkAsync(_jsRuntime, initial);
+
     public void Dispose()
     {
         _clickOutside.Clear();
@@ -542,11 +669,25 @@ public sealed class ComponentInteropService : IComponentInteropService
         _scroll.Clear();
         _utility.Clear();
 
+        await _richText.DisposeAsync();
+
         if (_module is not null)
         {
             try
             {
                 await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_schedulerModule is not null)
+        {
+            try
+            {
+                await _schedulerModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

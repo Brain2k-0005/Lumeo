@@ -1,0 +1,308 @@
+@page "/components/scheduler"
+
+<PageTitle>Scheduler — Lumeo</PageTitle>
+
+<PageHeader Title="Scheduler"
+            Description="A calendar & event scheduler with month, week, day, and list views. Drag events to reschedule, resize to change duration, or drag across the grid to create new ones." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Displaying appointments, meetings, shifts, or any time-based event grid.</li>
+        <li>Giving users direct manipulation controls — drag to reschedule, drag-to-select to create.</li>
+        <li>Switching between month overviews and focused day/week planning within the same view.</li>
+    </ul>
+</div>
+
+<Stack Gap="8">
+    <ComponentDemo Title="Month View (basic)" Code="@_monthCode">
+        <Scheduler Events="_monthEvents" InitialView="SchedulerView.Month" Height="620px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Week View (timed + all-day)" Code="@_weekCode">
+        <Scheduler Events="_weekEvents" InitialView="SchedulerView.Week" Height="620px" BusinessHours="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Click to Create" Code="@_createCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">Drag across the calendar grid to pick a time range — a dialog will ask for a title.</Lumeo.Text>
+            <Scheduler Events="_createEvents" InitialView="SchedulerView.Week" Height="560px"
+                       OnDateSelect="HandleDateSelect" />
+        </Stack>
+
+        <Dialog @bind-IsOpen="_createDialogOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>New event</DialogTitle>
+                    <DialogDescription>
+                        @if (_pendingRange is not null)
+                        {
+                            @($"{_pendingRange.Start:MMM d, HH:mm} — {_pendingRange.End:MMM d, HH:mm}")
+                        }
+                    </DialogDescription>
+                </DialogHeader>
+                <Stack Gap="3" Class="py-4">
+                    <Label>Title</Label>
+                    <Input @bind-Value="_newEventTitle" placeholder="e.g. Design review" />
+                </Stack>
+                <DialogFooter>
+                    <DialogClose>
+                        <Button Variant="Button.ButtonVariant.Outline">Cancel</Button>
+                    </DialogClose>
+                    <Button OnClick="AddPendingEvent">Add event</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Drag to Reschedule" Code="@_dragCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">Drag an event to move it. The component emits <Lumeo.Code>OnEventChange</Lumeo.Code> and updates the bound collection.</Lumeo.Text>
+            <Scheduler @bind-Events="_dragEvents" InitialView="SchedulerView.Week" Height="560px" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-1">Last change</div>
+                @if (_lastChange is null)
+                {
+                    <span class="text-muted-foreground">Drag an event to see it here.</span>
+                }
+                else
+                {
+                    <span class="font-mono text-xs">@_lastChange.Title — @_lastChange.Start:g → @_lastChange.End:g</span>
+                }
+            </div>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="scheduler" Level="3" Class="mt-8 scroll-mt-20">Scheduler</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[140px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Events</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;SchedulerEvent&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>The events to render. Use with @@bind-Events for two-way binding.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">EventsChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;IEnumerable&lt;SchedulerEvent&gt;&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated collection after the user drags or resizes an event.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">InitialView</TableCell><TableCell Class="font-mono text-xs">SchedulerView</TableCell><TableCell Class="font-mono text-xs">Month</TableCell><TableCell>Which view to show on first render. Values: Month, Week, Day, List.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">InitialDate</TableCell><TableCell Class="font-mono text-xs">DateTime?</TableCell><TableCell Class="font-mono text-xs">today</TableCell><TableCell>Anchor date the calendar centers on at mount.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Editable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>When true the user can drag events to move/resize them.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Selectable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>When true the user can drag-select a range to create a new event.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">BusinessHours</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shade Mon–Fri, 9–5 as business hours in time-grid views.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Height</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"640px"</TableCell><TableCell>CSS height for the calendar canvas (the toolbar sits above it).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FirstDayOfWeek</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">1</TableCell><TableCell>First visible day of the week. 0 = Sunday, 1 = Monday, … 6 = Saturday.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnEventClick</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;SchedulerEvent&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the user clicks an event.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnDateSelect</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;SchedulerDateRange&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the user drag-selects a range — typical usage is to open a "new event" dialog.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnEventChange</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;SchedulerEvent&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated event after a drag or resize completes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes applied to the outer wrapper.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="scheduler-event" Level="3" Class="mt-8 scroll-mt-20">SchedulerEvent</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Field</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Id</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Stable identifier used to reconcile edits back into the caller's collection.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Title</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>The label rendered on the event chip.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Start</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>Start timestamp (inclusive).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">End</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>End timestamp (exclusive, per FullCalendar convention).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AllDay</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>When true the event is rendered in the all-day lane.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>CSS color or variable reference like <Lumeo.Code>"var(--color-primary)"</Lumeo.Code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Url</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Optional link opened on click instead of firing <Lumeo.Code>OnEventClick</Lumeo.Code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ExtendedProps</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell>Arbitrary app-level metadata round-tripped through the JS layer.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="scheduler-date-range" Level="3" Class="mt-8 scroll-mt-20">SchedulerDateRange</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Field</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Start</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>Range start timestamp.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">End</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>Range end timestamp (exclusive).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AllDay</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>True when the user selected whole days in a day-grid.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="scheduler-view" Level="3" Class="mt-8 scroll-mt-20">SchedulerView</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Value</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Month</TableCell><TableCell>Day-grid month view — best for an at-a-glance overview.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Week</TableCell><TableCell>Time-grid week view with hourly rows.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Day</TableCell><TableCell>Time-grid single-day view.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">List</TableCell><TableCell>Agenda-style list of the current week's events.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/calendar" class="text-primary hover:underline">Calendar</a> — picker-only date grid without events.</li>
+        <li><a href="/components/date-picker" class="text-primary hover:underline">DatePicker</a> — single-date input with a calendar dropdown.</li>
+    </ul>
+</div>
+
+@code {
+    // ── Month demo ───────────────────────────────────────────────────────
+    private List<SchedulerEvent> _monthEvents = BuildMonthEvents();
+
+    private static List<SchedulerEvent> BuildMonthEvents()
+    {
+        var today = DateTime.Today;
+        var first = new DateTime(today.Year, today.Month, 1);
+        return new List<SchedulerEvent>
+        {
+            new("m1", "Sprint planning", first.AddDays(2).AddHours(10), first.AddDays(2).AddHours(11), Color: "var(--color-primary)"),
+            new("m2", "Product review", first.AddDays(3).AddHours(14), first.AddDays(3).AddHours(15).AddMinutes(30), Color: "var(--color-primary)"),
+            new("m3", "Design crit", first.AddDays(5).AddHours(9), first.AddDays(5).AddHours(10), Color: "var(--color-destructive)"),
+            new("m4", "Client call", first.AddDays(7).AddHours(11), first.AddDays(7).AddHours(12), Color: "var(--color-primary)"),
+            new("m5", "1:1 w/ Alex", first.AddDays(9).AddHours(15), first.AddDays(9).AddHours(15).AddMinutes(30), Color: "var(--color-accent)"),
+            new("m6", "Quarterly review", first.AddDays(10), first.AddDays(10), AllDay: true, Color: "var(--color-destructive)"),
+            new("m7", "Engineering demo", first.AddDays(12).AddHours(13), first.AddDays(12).AddHours(14), Color: "var(--color-primary)"),
+            new("m8", "Offsite", first.AddDays(16), first.AddDays(18), AllDay: true, Color: "var(--color-accent)"),
+            new("m9", "Hackathon", first.AddDays(22).AddHours(9), first.AddDays(22).AddHours(17), Color: "var(--color-destructive)"),
+            new("m10", "Retro", first.AddDays(25).AddHours(16), first.AddDays(25).AddHours(17), Color: "var(--color-primary)")
+        };
+    }
+
+    // ── Week demo ────────────────────────────────────────────────────────
+    private List<SchedulerEvent> _weekEvents = BuildWeekEvents();
+
+    private static List<SchedulerEvent> BuildWeekEvents()
+    {
+        var today = DateTime.Today;
+        // Anchor to Monday of this week
+        var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        return new List<SchedulerEvent>
+        {
+            new("w1", "Team standup", monday.AddHours(9), monday.AddHours(9).AddMinutes(15), Color: "var(--color-primary)"),
+            new("w2", "Focus block", monday.AddHours(10), monday.AddHours(12), Color: "var(--color-accent)"),
+            new("w3", "All-hands", monday.AddDays(1).AddHours(14), monday.AddDays(1).AddHours(15), Color: "var(--color-destructive)"),
+            new("w4", "Interview", monday.AddDays(2).AddHours(11), monday.AddDays(2).AddHours(12), Color: "var(--color-primary)"),
+            new("w5", "Conference", monday.AddDays(3), monday.AddDays(4), AllDay: true, Color: "var(--color-destructive)"),
+            new("w6", "Pair coding", monday.AddDays(4).AddHours(13), monday.AddDays(4).AddHours(15), Color: "var(--color-primary)")
+        };
+    }
+
+    // ── Click-to-create demo ─────────────────────────────────────────────
+    private List<SchedulerEvent> _createEvents = new();
+    private bool _createDialogOpen;
+    private SchedulerDateRange? _pendingRange;
+    private string _newEventTitle = "";
+
+    private Task HandleDateSelect(SchedulerDateRange range)
+    {
+        _pendingRange = range;
+        _newEventTitle = "";
+        _createDialogOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private void AddPendingEvent()
+    {
+        if (_pendingRange is null) return;
+        var title = string.IsNullOrWhiteSpace(_newEventTitle) ? "Untitled" : _newEventTitle.Trim();
+        var ev = new SchedulerEvent(
+            Id: Guid.NewGuid().ToString("N"),
+            Title: title,
+            Start: _pendingRange.Start,
+            End: _pendingRange.End,
+            AllDay: _pendingRange.AllDay,
+            Color: "var(--color-primary)"
+        );
+        _createEvents = _createEvents.Append(ev).ToList();
+        _createDialogOpen = false;
+        _pendingRange = null;
+    }
+
+    // ── Drag-to-reschedule demo ──────────────────────────────────────────
+    private IEnumerable<SchedulerEvent> _dragEvents = BuildWeekEvents();
+    private SchedulerEvent? _lastChange;
+
+    private Task OnDragEventChange(SchedulerEvent ev)
+    {
+        _lastChange = ev;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── Code snippets ────────────────────────────────────────────────────
+    private string _monthCode = @"<Scheduler Events=""_events"" InitialView=""SchedulerView.Month"" Height=""620px"" />";
+
+    private string _weekCode = @"<Scheduler Events=""_events""
+           InitialView=""SchedulerView.Week""
+           Height=""620px""
+           BusinessHours=""true"" />";
+
+    private string _createCode = @"<Scheduler Events=""_events""
+           InitialView=""SchedulerView.Week""
+           OnDateSelect=""HandleDateSelect"" />
+
+<Dialog @bind-IsOpen=""_open"">
+    <DialogContent>
+        <DialogHeader><DialogTitle>New event</DialogTitle></DialogHeader>
+        <Input @bind-Value=""_title"" placeholder=""Title"" />
+        <DialogFooter>
+            <Button OnClick=""Add"">Add event</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@code {
+    private bool _open;
+    private SchedulerDateRange? _range;
+    private string _title = """";
+    private List<SchedulerEvent> _events = new();
+
+    void HandleDateSelect(SchedulerDateRange r) { _range = r; _open = true; }
+    void Add() {
+        _events = _events.Append(new SchedulerEvent(
+            Id: Guid.NewGuid().ToString(""N""),
+            Title: _title,
+            Start: _range!.Start,
+            End: _range.End,
+            AllDay: _range.AllDay
+        )).ToList();
+        _open = false;
+    }
+}";
+
+    private string _dragCode = @"<Scheduler @bind-Events=""_events"" InitialView=""SchedulerView.Week"" />
+
+@code {
+    private IEnumerable<SchedulerEvent> _events = new List<SchedulerEvent> { /* ... */ };
+}";
+}

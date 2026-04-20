@@ -10,6 +10,7 @@ public sealed class ThemeService : IThemeService
     public ThemeMode CurrentMode { get; private set; } = ThemeMode.System;
     public string CurrentScheme { get; private set; } = "zinc";
     public bool IsDark { get; private set; }
+    public LayoutDirection CurrentDirection { get; private set; } = LayoutDirection.Ltr;
 
     public static readonly IReadOnlyList<ThemeSchemeInfo> AvailableSchemes =
     [
@@ -40,6 +41,8 @@ public sealed class ThemeService : IThemeService
 
         CurrentScheme = await _jsRuntime.InvokeAsync<string>("themeManager.getScheme");
         IsDark = await _jsRuntime.InvokeAsync<bool>("themeManager.isDark");
+        var dir = await _jsRuntime.InvokeAsync<string>("themeManager.getDirection");
+        CurrentDirection = dir == "rtl" ? LayoutDirection.Rtl : LayoutDirection.Ltr;
     }
 
     public async Task SetModeAsync(ThemeMode mode)
@@ -69,6 +72,21 @@ public sealed class ThemeService : IThemeService
         IsDark = await _jsRuntime.InvokeAsync<bool>("themeManager.isDark");
         CurrentMode = IsDark ? ThemeMode.Dark : ThemeMode.Light;
         OnThemeChanged?.Invoke();
+    }
+
+    public async Task SetDirectionAsync(LayoutDirection direction)
+    {
+        CurrentDirection = direction;
+        var value = direction == LayoutDirection.Rtl ? "rtl" : "ltr";
+        await _jsRuntime.InvokeVoidAsync("themeManager.setDirection", value);
+        OnThemeChanged?.Invoke();
+    }
+
+    public async Task<LayoutDirection> GetDirectionAsync()
+    {
+        var dir = await _jsRuntime.InvokeAsync<string>("themeManager.getDirection");
+        CurrentDirection = dir == "rtl" ? LayoutDirection.Rtl : LayoutDirection.Ltr;
+        return CurrentDirection;
     }
 }
 

@@ -41,6 +41,14 @@ window.themeManager = {
             document.documentElement.style.setProperty('--color-sidebar', 'hsl(0 0% 100%)');
             document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)');
         }
+        // Direction (RTL / LTR). Applied early so first paint is correct and
+        // browser-native logical properties flip with no visible reflow.
+        const dir = localStorage.getItem('lumeo.direction');
+        if (dir === 'rtl') {
+            document.documentElement.setAttribute('dir', 'rtl');
+        } else if (dir === 'ltr') {
+            document.documentElement.setAttribute('dir', 'ltr');
+        }
         // Font
         const fontCss = localStorage.getItem('theme-font-css');
         if (fontCss) {
@@ -195,6 +203,18 @@ window.themeManager = {
     },
     getFont: function () {
         return localStorage.getItem('theme-font') || 'system';
+    },
+    setDirection: function (dir) {
+        var normalized = dir === 'rtl' ? 'rtl' : 'ltr';
+        localStorage.setItem('lumeo.direction', normalized);
+        document.documentElement.setAttribute('dir', normalized);
+        this._notifyThemeChanged();
+    },
+    getDirection: function () {
+        var attr = document.documentElement.getAttribute('dir');
+        if (attr === 'rtl' || attr === 'ltr') return attr;
+        var stored = localStorage.getItem('lumeo.direction');
+        return stored === 'rtl' ? 'rtl' : 'ltr';
     },
     copyText: function (text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
