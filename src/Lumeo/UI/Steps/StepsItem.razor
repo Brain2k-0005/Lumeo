@@ -42,7 +42,7 @@
                 }
             </div>
         </div>
-        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)"></div>
+        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)" @key="@($"line-h-{_index}-{status}")"></div>
     </div>
 }
 else
@@ -70,7 +70,7 @@ else
                     <span>@(_index + 1)</span>
                 }
             </button>
-            <div class="my-1 w-px flex-1 @GetLineClasses(status)"></div>
+            <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -108,6 +108,7 @@ else
     }
 
     private bool IsClickable => Context?.Clickable == true;
+    private bool IsAnimated => Context?.Animated == true;
 
     private StepStatus GetStatus()
     {
@@ -117,8 +118,9 @@ else
         return StepStatus.Future;
     }
 
-    private string GetIndicatorClasses(StepStatus status, bool isError) =>
-        isError
+    private string GetIndicatorClasses(StepStatus status, bool isError)
+    {
+        var baseClasses = isError
             ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-background text-destructive"
             : status switch
             {
@@ -126,6 +128,15 @@ else
                 StepStatus.Current => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-sm font-semibold text-primary",
                 _ => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground"
             };
+
+        // Only the Current (active) indicator pulses, and only when not in an error state.
+        if (IsAnimated && status == StepStatus.Current && !isError)
+        {
+            baseClasses += " lumeo-steps-pulse";
+        }
+
+        return baseClasses;
+    }
 
     private string GetTitleClasses(StepStatus status, bool isError) =>
         isError
@@ -137,11 +148,24 @@ else
                 _ => "text-sm text-muted-foreground"
             };
 
-    private string GetLineClasses(StepStatus status) => status switch
+    private string GetLineClasses(StepStatus status)
     {
-        StepStatus.Completed => "bg-primary",
-        _ => "bg-border"
-    };
+        var color = status switch
+        {
+            StepStatus.Completed => "bg-primary",
+            _ => "bg-border"
+        };
+
+        if (IsAnimated && status == StepStatus.Completed)
+        {
+            var drawClass = Context?.Orientation == Steps.StepsOrientation.Vertical
+                ? "lumeo-steps-line-draw-y"
+                : "lumeo-steps-line-draw-x";
+            return $"{color} {drawClass}";
+        }
+
+        return color;
+    }
 
     private async Task HandleClick()
     {

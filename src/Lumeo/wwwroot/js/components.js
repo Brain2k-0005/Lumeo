@@ -1367,3 +1367,17 @@ export const ai = {
         el.scrollTop = el.scrollHeight;
     }
 };
+
+/* =============================================================
+ * Tabs — measurement helper for the sliding underline indicator.
+ * Returns the x-offset (relative to its offsetParent) and the width
+ * of the currently-active trigger so Blazor can set the CSS vars
+ * `--lumeo-tabs-indicator-x` / `--lumeo-tabs-indicator-w`.
+ * ============================================================= */
+export const tabs = {
+    measure(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return { x: 0, width: 0 };
+        return { x: el.offsetLeft, width: el.offsetWidth };
+    }
+};
