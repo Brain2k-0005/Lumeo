@@ -1,0 +1,197 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
+
+<div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 {Class}".Trim())" @attributes="AdditionalAttributes">
+    @* Lumeo-styled toolbar above the Frappe Gantt canvas. We suppress
+       Quarter Day / Half Day from the control bar to keep the common case
+       simple — power users can still pass them through the `ViewMode` param. *@
+    <div class="flex flex-wrap items-center justify-between gap-2">
+        <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
+                     Variant="ToggleGroup.ToggleGroupVariant.Outline"
+                     Size="ToggleGroup.ToggleGroupSize.Sm"
+                     Value="@_toolbarViewValue"
+                     ValueChanged="OnViewModeChangedAsync">
+            <ToggleGroupItem Value="Day">Day</ToggleGroupItem>
+            <ToggleGroupItem Value="Week">Week</ToggleGroupItem>
+            <ToggleGroupItem Value="Month">Month</ToggleGroupItem>
+            <ToggleGroupItem Value="Year">Year</ToggleGroupItem>
+        </ToggleGroup>
+        @if (TrailingContent is not null)
+        {
+            <div class="flex items-center gap-2">
+                @TrailingContent
+            </div>
+        }
+    </div>
+
+    <div @ref="_hostRef" class="lumeo-gantt-host w-full overflow-x-auto" style="height: @Height;"></div>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
+    [Parameter] public EventCallback<IEnumerable<GanttTask>> TasksChanged { get; set; }
+    [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+    [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
+    [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
+    [Parameter] public string Height { get; set; } = "500px";
+    [Parameter] public bool Readonly { get; set; }
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private ElementReference _hostRef;
+    private DotNetObjectReference<Gantt>? _selfRef;
+    private string? _instanceId;
+    private bool _initialized;
+    private int _lastTasksHash;
+    private GanttViewMode _currentViewMode;
+
+    // Snapshot of the current tasks used when the JS layer reports a drag
+    // or progress change — avoids reaching back into `Tasks` (which may have
+    // been replaced by the parent between render cycles).
+    private List<GanttTask> _tasks = new();
+
+    // The toolbar only exposes Day/Week/Month/Year. When the caller passes a
+    // QuarterDay / HalfDay view mode, we keep the toggle group unselected.
+    private string? _toolbarViewValue => _currentViewMode switch
+    {
+        GanttViewMode.Day => "Day",
+        GanttViewMode.Week => "Week",
+        GanttViewMode.Month => "Month",
+        GanttViewMode.Year => "Year",
+        _ => null,
+    };
+
+    protected override void OnInitialized()
+    {
+        _currentViewMode = ViewMode;
+        _tasks = Tasks?.ToList() ?? new List<GanttTask>();
+        _lastTasksHash = ComputeTasksHash(_tasks);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_initialized || _instanceId is null) return;
+
+        if (Tasks is not null)
+        {
+            var incoming = Tasks.ToList();
+            var hash = ComputeTasksHash(incoming);
+            if (hash != _lastTasksHash)
+            {
+                _lastTasksHash = hash;
+                _tasks = incoming;
+                await Interop.GanttSetTasksAsync(_instanceId, incoming.Select(ToJsTask).Cast<object>());
+            }
+        }
+
+        if (ViewMode != _currentViewMode)
+        {
+            _currentViewMode = ViewMode;
+            await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+
+        _selfRef = DotNetObjectReference.Create(this);
+
+        var options = new
+        {
+            tasks = _tasks.Select(ToJsTask).ToArray(),
+            viewMode = ViewMode.ToString(),
+            @readonly = Readonly,
+        };
+
+        try
+        {
+            _instanceId = await Interop.GanttInitAsync(_hostRef, _selfRef, options);
+            _initialized = true;
+        }
+        catch (Microsoft.JSInterop.JSException ex)
+        {
+            Console.Error.WriteLine($"[Lumeo Gantt] Init failed: {ex.Message}");
+        }
+    }
+
+    private static object ToJsTask(GanttTask t) => new
+    {
+        id = t.Id,
+        name = t.Name,
+        start = t.Start.ToString("yyyy-MM-dd"),
+        end = t.End.ToString("yyyy-MM-dd"),
+        progress = t.Progress,
+        dependencies = t.Dependencies ?? Array.Empty<string>(),
+        custom_class = t.CustomClass,
+    };
+
+    private static int ComputeTasksHash(IEnumerable<GanttTask> tasks)
+    {
+        // Cheap identity hash — good enough to detect "did the caller swap the
+        // tasks list?" without a JS round-trip on every render.
+        var hash = new HashCode();
+        foreach (var t in tasks)
+        {
+            hash.Add(t.Id);
+            hash.Add(t.Name);
+            hash.Add(t.Start);
+            hash.Add(t.End);
+            hash.Add(t.Progress);
+            hash.Add(t.CustomClass);
+            if (t.Dependencies is not null)
+                foreach (var d in t.Dependencies) hash.Add(d);
+        }
+        return hash.ToHashCode();
+    }
+
+    private async Task OnViewModeChangedAsync(string? v)
+    {
+        if (_instanceId is null || string.IsNullOrEmpty(v)) return;
+        if (!Enum.TryParse<GanttViewMode>(v, out var parsed)) return;
+        _currentViewMode = parsed;
+        await Interop.GanttChangeViewModeAsync(_instanceId, parsed.ToString());
+    }
+
+    [JSInvokable]
+    public async Task JsOnTaskClick(GanttTask t)
+    {
+        if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(t);
+    }
+
+    [JSInvokable]
+    public async Task JsOnDateChange(GanttTask t)
+    {
+        ReplaceTask(t);
+        if (OnDateChange.HasDelegate) await OnDateChange.InvokeAsync(t);
+        if (TasksChanged.HasDelegate) await TasksChanged.InvokeAsync(_tasks.ToList());
+    }
+
+    [JSInvokable]
+    public async Task JsOnProgressChange(GanttTask t)
+    {
+        ReplaceTask(t);
+        if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(t);
+        if (TasksChanged.HasDelegate) await TasksChanged.InvokeAsync(_tasks.ToList());
+    }
+
+    private void ReplaceTask(GanttTask t)
+    {
+        var idx = _tasks.FindIndex(x => x.Id == t.Id);
+        if (idx >= 0) _tasks[idx] = t;
+        _lastTasksHash = ComputeTasksHash(_tasks);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_instanceId is not null)
+        {
+            try { await Interop.GanttDestroyAsync(_instanceId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+}
