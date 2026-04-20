@@ -6,98 +6,46 @@
 
 <PageTitle>Icon — Lumeo</PageTitle>
 
-<PageHeader Title="Icon" Description="A thin wrapper around Blazicons that gives Lumeo a native icon API. Pick from ~100 common icons by name, size via presets, or pass any Blazicons SvgIcon through the Svg parameter." />
-
-<div class="mt-10 space-y-3">
-    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
-    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
-        <li>Any place you'd otherwise write <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;Blazicon Svg="Lucide.X"&gt;</code> — use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;Icon Name="X"&gt;</code> instead.</li>
-        <li>Hides the Blazicons dependency from your component code.</li>
-        <li>Consistent <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Class</code> convention (rather than lowercase <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">class</code>).</li>
-        <li>Lets Lumeo swap the icon provider in a future release without breaking consumer code.</li>
-    </ul>
+@* ────────────────────────────────────────────────────────────────────── *@
+@* Intro — compact header so the browser dominates the page               *@
+@* ────────────────────────────────────────────────────────────────────── *@
+<div class="mb-6">
+    <Heading Id="top" Level="1" Size="3xl" Class="tracking-tight">Icon</Heading>
+    <Lumeo.Text Size="base" Color="muted" Class="mt-2 max-w-2xl">
+        Lumeo-native icon wrapper. Search, pick, copy. Uses <span class="text-foreground font-medium">Lucide</span> by default
+        — switch libraries via the selector to preview alternatives.
+    </Lumeo.Text>
 </div>
 
-<Stack Gap="8">
+@* ────────────────────────────────────────────────────────────────────── *@
+@* Icon browser — the primary content of this page                        *@
+@* ────────────────────────────────────────────────────────────────────── *@
+<section id="browse" data-toc-entry data-toc-title="Browse icons" class="scroll-mt-24">
+    <div class="rounded-[var(--radius-xl)] border border-border/40 bg-card overflow-hidden">
 
-    <ComponentDemo Title="Basic" Description="Pass a Lucide icon name in PascalCase." Code="@_basicCode">
-        <Flex Gap="3" Align="center">
-            <Icon Name="Search" />
-            <Icon Name="Heart" />
-            <Icon Name="Star" />
-            <Icon Name="Bell" />
-            <Icon Name="Settings" />
-            <Icon Name="ChevronDown" />
-        </Flex>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Sizes" Description="Presets via the Size parameter: Xs (h-3), Sm (h-3.5), Md (h-4, default), Lg (h-5), Xl (h-6)." Code="@_sizesCode">
-        <Flex Gap="4" Align="center">
-            <Icon Name="Heart" Size="Icon.IconSize.Xs" />
-            <Icon Name="Heart" Size="Icon.IconSize.Sm" />
-            <Icon Name="Heart" />
-            <Icon Name="Heart" Size="Icon.IconSize.Lg" />
-            <Icon Name="Heart" Size="Icon.IconSize.Xl" />
-        </Flex>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Color via Class" Description="Icons inherit currentColor, so any Tailwind text-* class tints them." Code="@_colorCode">
-        <Flex Gap="4" Align="center">
-            <Icon Name="CircleCheck" Class="text-success" />
-            <Icon Name="CircleAlert" Class="text-destructive" />
-            <Icon Name="TriangleAlert" Class="text-warning" />
-            <Icon Name="Info" Class="text-info" />
-            <Icon Name="Star" Class="text-primary" />
-            <Icon Name="BadgeCheck" Class="text-muted-foreground" />
-        </Flex>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Inside buttons" Description="Drop into any Lumeo component that takes a RenderFragment — Button, Badge, Alert, Card, etc." Code="@_buttonCode">
-        <Flex Gap="3" Align="center" Class="flex-wrap">
-            <Button>
-                <Icon Name="Plus" Class="mr-2" />
-                New project
-            </Button>
-            <Button Variant="Button.ButtonVariant.Outline">
-                <Icon Name="Download" Class="mr-2" />
-                Download
-            </Button>
-            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                <Icon Name="Settings" />
-            </Button>
-            <Button Variant="Button.ButtonVariant.Destructive">
-                <Icon Name="Trash" Class="mr-2" />
-                Delete
-            </Button>
-        </Flex>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Direct Svg escape hatch" Description="Pass any Blazicons SvgIcon through the Svg parameter — works across Lucide, Bootstrap, FluentUI, Material, FontAwesome, Ionicons, and MDI." Code="@_svgCode">
-        <Flex Gap="4" Align="center">
-            <Icon Svg="Blazicons.Lucide.Search" />
-            <Icon Svg="Blazicons.BootstrapIcon.Archive" />
-            <Icon Svg="Blazicons.FluentUiIcon.Alert" />
-            <Icon Svg="Blazicons.GoogleMaterialOutlinedIcon.Home" />
-            <Icon Svg="Blazicons.FontAwesomeSolidIcon.Heart" />
-        </Flex>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Browse &amp; search" Description="Find an icon by name, preview it across every Blazicons library, and copy a ready-to-paste snippet for your code." OverflowVisible="true">
-        <Stack Gap="4" Class="w-full">
-
-            @* Search + library selector *@
+        @* Sticky toolbar: search + library + size + code format *@
+        <div class="sticky top-[64px] z-10 border-b border-border/40 bg-card/95 backdrop-blur px-4 py-3">
             <Flex Gap="2" Align="center" Class="flex-wrap">
-                <div class="flex-1 min-w-[220px] relative">
+                <div class="flex-1 min-w-[240px] relative">
                     <div class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
                         <DynamicIcon Name="Search" Class="h-4 w-4" />
                     </div>
-                    <Input Value="@_query"
+                    <Input @ref="_searchInput"
+                           Value="@_query"
                            ValueChanged="@((string v) => { _query = v; _selected = null; })"
-                           Placeholder="Search 130+ icons — try 'chevron', 'chart', 'user'…"
+                           Placeholder="Search icons — chevron, heart, chart, user…"
                            Class="pl-9" />
+                    @if (!string.IsNullOrEmpty(_query))
+                    {
+                        <button type="button"
+                                @onclick='@(() => { _query = ""; _selected = null; })'
+                                class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded">
+                            <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
+                        </button>
+                    }
                 </div>
                 <Select Value="@IconService.ActiveLibrary" ValueChanged="@((string v) => IconService.SetLibrary(v))">
-                    <SelectTrigger Class="w-[180px]">
+                    <SelectTrigger Class="h-9 w-[170px]">
                         <span class="text-sm">@LibraryDisplayName(IconService.ActiveLibrary)</span>
                     </SelectTrigger>
                     <SelectContent>
@@ -110,79 +58,227 @@
                         <SelectItem Value="material-design">Material Design</SelectItem>
                     </SelectContent>
                 </Select>
+                <Select Value="@_previewSize" ValueChanged="@((string v) => _previewSize = v)">
+                    <SelectTrigger Class="h-9 w-[120px]">
+                        <span class="text-sm">@_previewSize</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value="xs">Xs (h-3)</SelectItem>
+                        <SelectItem Value="sm">Sm (h-3.5)</SelectItem>
+                        <SelectItem Value="md">Md (h-4)</SelectItem>
+                        <SelectItem Value="lg">Lg (h-5)</SelectItem>
+                        <SelectItem Value="xl">Xl (h-6)</SelectItem>
+                    </SelectContent>
+                </Select>
             </Flex>
-
-            <Lumeo.Text Size="xs" Color="muted">
-                Showing @Filtered.Count of @_fullCatalog.Length icons via @LibraryDisplayName(IconService.ActiveLibrary).
+            <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                <span><span class="font-medium text-foreground">@Filtered.Count</span> of @_fullCatalog.Length icons</span>
                 @if (IconService.ActiveLibrary != "lucide")
                 {
-                    <span>Non-Lucide icons use the <code class="font-mono text-[11px]">Svg</code> escape hatch.</span>
+                    <span>Non-Lucide icons use <code class="font-mono text-[11px] px-1 rounded bg-muted">Svg=</code></span>
                 }
-            </Lumeo.Text>
+            </div>
+        </div>
+
+        @* Grid OR selected-icon detail — side-by-side on desktop, stacked on mobile *@
+        <div class="flex flex-col lg:flex-row">
 
             @* Icon grid *@
-            <div class="rounded-md border border-border/40 p-3 max-h-[360px] overflow-y-auto">
+            <div class="flex-1 p-3 min-w-0">
                 @if (Filtered.Count == 0)
                 {
-                    <div class="flex flex-col items-center gap-2 py-8 text-muted-foreground">
-                        <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground/50" />
+                    <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+                        <DynamicIcon Name="SearchX" Class="h-10 w-10 text-muted-foreground/40" />
                         <Lumeo.Text Size="sm">No icons match "<span class="text-foreground">@_query</span>"</Lumeo.Text>
+                        <button type="button"
+                                class="text-xs text-primary hover:underline"
+                                @onclick='@(() => _query = "")'>
+                            Clear search
+                        </button>
                     </div>
                 }
                 else
                 {
-                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1">
+                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 xl:grid-cols-10 gap-1">
                         @foreach (var name in Filtered)
                         {
                             var n = name;
                             var isActive = _selected == n;
                             <button type="button"
                                     @onclick="@(() => _selected = n)"
-                                    class="@($"flex flex-col items-center gap-1 p-2 rounded-md transition-colors text-xs {(isActive ? "bg-accent text-foreground" : "hover:bg-accent/60 text-muted-foreground hover:text-foreground")}")">
-                                <DynamicIcon Name="@n" Class="h-5 w-5" />
-                                <span class="truncate max-w-full">@n</span>
+                                    title="@n"
+                                    class="@($"group relative flex flex-col items-center justify-center gap-1.5 aspect-square rounded-md border transition-colors {(isActive ? "border-primary bg-primary/5 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
+                                <DynamicIcon Name="@n" Class="@PreviewIconClass" />
+                                <span class="text-[10px] truncate max-w-full px-1 leading-none">@n</span>
                             </button>
                         }
                     </div>
                 }
             </div>
 
-            @* Selected icon detail + copy-paste snippet *@
+            @* Detail sidebar — appears when an icon is selected *@
             @if (_selected is not null)
             {
-                <div class="rounded-md border border-border/40 bg-muted/30 p-4">
-                    <Flex Align="center" Justify="between" Gap="3" Class="mb-3 flex-wrap">
-                        <Flex Align="center" Gap="3">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-md bg-background border border-border/40">
+                <aside class="w-full lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-l border-border/40 bg-muted/20 p-5">
+                    <div class="sticky top-[200px]">
+                        <div class="flex items-center justify-between mb-4">
+                            <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wider font-medium">Selected</Lumeo.Text>
+                            <button type="button"
+                                    @onclick="() => _selected = null"
+                                    class="text-muted-foreground hover:text-foreground p-1 rounded">
+                                <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+
+                        @* Big preview *@
+                        <div class="flex items-center justify-center h-32 rounded-md border border-border/40 bg-background mb-4">
+                            <DynamicIcon Name="@_selected" Class="h-14 w-14 text-foreground" />
+                        </div>
+
+                        @* Name + library *@
+                        <Stack Gap="0" Class="mb-4">
+                            <Lumeo.Text Weight="medium" Class="text-base">@_selected</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">via @LibraryDisplayName(IconService.ActiveLibrary)</Lumeo.Text>
+                        </Stack>
+
+                        @* Size preview row *@
+                        <div class="mb-4">
+                            <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">Sizes</Lumeo.Text>
+                            <Flex Gap="4" Align="center" Class="rounded-md border border-border/40 bg-background px-3 py-2">
+                                <DynamicIcon Name="@_selected" Class="h-3 w-3" />
+                                <DynamicIcon Name="@_selected" Class="h-3.5 w-3.5" />
+                                <DynamicIcon Name="@_selected" Class="h-4 w-4" />
+                                <DynamicIcon Name="@_selected" Class="h-5 w-5" />
                                 <DynamicIcon Name="@_selected" Class="h-6 w-6" />
-                            </div>
-                            <Stack Gap="0">
-                                <Lumeo.Text Weight="medium">@_selected</Lumeo.Text>
-                                <Lumeo.Text Size="xs" Color="muted">via @LibraryDisplayName(IconService.ActiveLibrary)</Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="CopySnippet">
-                            @if (_copied)
-                            {
-                                <Icon Name="Check" Class="mr-2" /> <text>Copied</text>
-                            }
-                            else
-                            {
-                                <Icon Name="Copy" Class="mr-2" /> <text>Copy</text>
-                            }
-                        </Button>
-                    </Flex>
-                    <pre class="rounded bg-background border border-border/40 p-3 text-xs font-mono overflow-x-auto whitespace-pre">@SnippetForSelected</pre>
-                </div>
+                            </Flex>
+                        </div>
+
+                        @* Code snippet + copy *@
+                        <div class="mb-2 flex items-center justify-between">
+                            <Lumeo.Text Size="xs" Color="muted">Code</Lumeo.Text>
+                            <button type="button"
+                                    @onclick="CopySnippet"
+                                    class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                @if (_copied)
+                                {
+                                    <DynamicIcon Name="Check" Class="h-3.5 w-3.5 text-success" />
+                                    <span class="text-success">Copied</span>
+                                }
+                                else
+                                {
+                                    <DynamicIcon Name="Copy" Class="h-3.5 w-3.5" />
+                                    <span>Copy</span>
+                                }
+                            </button>
+                        </div>
+                        <pre class="rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto whitespace-pre">@SnippetForSelected</pre>
+                    </div>
+                </aside>
             }
-        </Stack>
-    </ComponentDemo>
+        </div>
+    </div>
+</section>
 
-</Stack>
+@* ────────────────────────────────────────────────────────────────────── *@
+@* Usage examples — tabs keep the page compact                            *@
+@* ────────────────────────────────────────────────────────────────────── *@
+<section id="usage" data-toc-entry data-toc-title="Usage" class="scroll-mt-24 mt-10">
+    <Heading Level="2" Class="mb-4">Usage</Heading>
 
-<div class="mt-12">
-    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
-    <div class="mt-4 rounded-lg border border-border/40 overflow-hidden">
+    <Tabs @bind-Value="_usageTab">
+        <TabsList>
+            <TabsTrigger Value="basic">Basic</TabsTrigger>
+            <TabsTrigger Value="sizes">Sizes</TabsTrigger>
+            <TabsTrigger Value="colors">Colors</TabsTrigger>
+            <TabsTrigger Value="buttons">In buttons</TabsTrigger>
+            <TabsTrigger Value="svg">Other libraries</TabsTrigger>
+        </TabsList>
+
+        <TabsContent Value="basic">
+            <div class="rounded-md border border-border/40 p-6 bg-muted/20">
+                <Flex Gap="4" Align="center">
+                    <Icon Name="Search" />
+                    <Icon Name="Heart" />
+                    <Icon Name="Star" />
+                    <Icon Name="Bell" />
+                    <Icon Name="Settings" />
+                    <Icon Name="ChevronDown" />
+                </Flex>
+            </div>
+            <pre class="mt-3 rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto">@_basicCode</pre>
+        </TabsContent>
+
+        <TabsContent Value="sizes">
+            <div class="rounded-md border border-border/40 p-6 bg-muted/20">
+                <Flex Gap="5" Align="center">
+                    <Icon Name="Heart" Size="Icon.IconSize.Xs" />
+                    <Icon Name="Heart" Size="Icon.IconSize.Sm" />
+                    <Icon Name="Heart" />
+                    <Icon Name="Heart" Size="Icon.IconSize.Lg" />
+                    <Icon Name="Heart" Size="Icon.IconSize.Xl" />
+                </Flex>
+            </div>
+            <pre class="mt-3 rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto">@_sizesCode</pre>
+        </TabsContent>
+
+        <TabsContent Value="colors">
+            <div class="rounded-md border border-border/40 p-6 bg-muted/20">
+                <Flex Gap="4" Align="center">
+                    <Icon Name="CircleCheck" Class="text-success" />
+                    <Icon Name="CircleAlert" Class="text-destructive" />
+                    <Icon Name="TriangleAlert" Class="text-warning" />
+                    <Icon Name="Info" Class="text-info" />
+                    <Icon Name="Star" Class="text-primary" />
+                    <Icon Name="BadgeCheck" Class="text-muted-foreground" />
+                </Flex>
+            </div>
+            <pre class="mt-3 rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto">@_colorCode</pre>
+        </TabsContent>
+
+        <TabsContent Value="buttons">
+            <div class="rounded-md border border-border/40 p-6 bg-muted/20">
+                <Flex Gap="3" Align="center" Class="flex-wrap">
+                    <Button>
+                        <Icon Name="Plus" Class="mr-2" />
+                        New project
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline">
+                        <Icon Name="Download" Class="mr-2" />
+                        Download
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
+                        <Icon Name="Settings" />
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Destructive">
+                        <Icon Name="Trash" Class="mr-2" />
+                        Delete
+                    </Button>
+                </Flex>
+            </div>
+            <pre class="mt-3 rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto">@_buttonCode</pre>
+        </TabsContent>
+
+        <TabsContent Value="svg">
+            <div class="rounded-md border border-border/40 p-6 bg-muted/20">
+                <Flex Gap="5" Align="center">
+                    <Icon Svg="Blazicons.Lucide.Search" />
+                    <Icon Svg="Blazicons.BootstrapIcon.Archive" />
+                    <Icon Svg="Blazicons.FluentUiIcon.Alert" />
+                    <Icon Svg="Blazicons.GoogleMaterialOutlinedIcon.Home" />
+                    <Icon Svg="Blazicons.FontAwesomeSolidIcon.Heart" />
+                </Flex>
+            </div>
+            <pre class="mt-3 rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto">@_svgCode</pre>
+        </TabsContent>
+    </Tabs>
+</section>
+
+@* ────────────────────────────────────────────────────────────────────── *@
+@* API reference                                                          *@
+@* ────────────────────────────────────────────────────────────────────── *@
+<section id="api-reference" data-toc-entry data-toc-title="API reference" class="scroll-mt-24 mt-10">
+    <Heading Level="2" Class="mb-4">API reference</Heading>
+    <div class="rounded-lg border border-border/40 overflow-hidden">
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b border-border/40 bg-muted/40">
@@ -220,41 +316,46 @@
             </tbody>
         </table>
     </div>
-</div>
-
-<div class="mt-12">
-    <Heading Id="related" Level="2" Class="scroll-mt-20">Related</Heading>
-    <ul class="mt-4 space-y-2 text-sm">
-        <li><a href="/components/dynamic-icon" class="text-primary hover:underline">DynamicIcon</a> — docs-only multi-library variant used by the theme customizer.</li>
-        <li><a href="https://github.com/AlenToma/Blazicons" class="text-primary hover:underline" target="_blank">Blazicons</a> — the underlying icon library Lumeo wraps.</li>
-    </ul>
-</div>
+</section>
 
 @code {
-    // ── Icon browser state ────────────────────────────────────────────────────
+    // ── Browser state ─────────────────────────────────────────────────────────
     private string _query = "";
     private string? _selected;
+    private string _previewSize = "md";
     private bool _copied;
+    private string _usageTab = "basic";
+    private Lumeo.Input? _searchInput;
 
     private List<string> Filtered => string.IsNullOrWhiteSpace(_query)
         ? _fullCatalog.ToList()
         : _fullCatalog.Where(n => n.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private string PreviewIconClass => _previewSize switch
+    {
+        "xs" => "h-3 w-3",
+        "sm" => "h-3.5 w-3.5",
+        "lg" => "h-5 w-5",
+        "xl" => "h-6 w-6",
+        _ => "h-4 w-4",
+    };
 
     private string SnippetForSelected
     {
         get
         {
             if (_selected is null) return "";
+            var sizeAttr = _previewSize == "md" ? "" : $" Size=\"Icon.IconSize.{char.ToUpper(_previewSize[0])}{_previewSize[1..]}\"";
             return IconService.ActiveLibrary switch
             {
-                "lucide"          => $"<Icon Name=\"{_selected}\" />",
-                "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{_selected}\" />          @* via Svg escape hatch *@",
-                "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{_selected}\" />",
-                "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{_selected}\" />",
-                "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{_selected}\" />",
-                "ionicons"        => $"<Icon Svg=\"Ionicon.{_selected}\" />",
-                "material-design" => $"<Icon Svg=\"MdiIcon.{_selected}\" />",
-                _ => $"<Icon Name=\"{_selected}\" />",
+                "lucide"          => $"<Icon Name=\"{_selected}\"{sizeAttr} />",
+                "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{_selected}\"{sizeAttr} />",
+                "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{_selected}\"{sizeAttr} />",
+                "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{_selected}\"{sizeAttr} />",
+                "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{_selected}\"{sizeAttr} />",
+                "ionicons"        => $"<Icon Svg=\"Ionicon.{_selected}\"{sizeAttr} />",
+                "material-design" => $"<Icon Svg=\"MdiIcon.{_selected}\"{sizeAttr} />",
+                _ => $"<Icon Name=\"{_selected}\"{sizeAttr} />",
             };
         }
     }
@@ -294,8 +395,9 @@
         IconService.OnChange -= OnLibChanged;
     }
 
-    // Full icon catalog — the complete set of names supported by DynamicIcon
-    // across all 7 Blazicons libraries. These are the names the browser surfaces.
+    // Full icon catalog supported across all 7 Blazicons libraries. These names
+    // are the ones DynamicIcon knows how to render in every library — so the
+    // library switcher can swap between them and every tile still renders.
     private static readonly string[] _fullCatalog =
     {
         "Accessibility", "AlignCenter", "AlignLeft", "AlignRight", "Archive",
@@ -319,26 +421,27 @@
         "UserPlus", "Users", "Volume", "Volume1", "Volume2", "X", "Zap",
     };
 
-    private string _basicCode = @"<Icon Name=""Search"" />
+    // ── Tab snippets ──────────────────────────────────────────────────────────
+    private const string _basicCode = @"<Icon Name=""Search"" />
 <Icon Name=""Heart"" />
 <Icon Name=""Star"" />
 <Icon Name=""Bell"" />
 <Icon Name=""Settings"" />
 <Icon Name=""ChevronDown"" />";
 
-    private string _sizesCode = @"<Icon Name=""Heart"" Size=""Icon.IconSize.Xs"" />
+    private const string _sizesCode = @"<Icon Name=""Heart"" Size=""Icon.IconSize.Xs"" />
 <Icon Name=""Heart"" Size=""Icon.IconSize.Sm"" />
-<Icon Name=""Heart"" />                      @* Md (default) *@
+<Icon Name=""Heart"" />                   @* Md (default) *@
 <Icon Name=""Heart"" Size=""Icon.IconSize.Lg"" />
 <Icon Name=""Heart"" Size=""Icon.IconSize.Xl"" />";
 
-    private string _colorCode = @"<Icon Name=""CircleCheck""   Class=""text-success"" />
+    private const string _colorCode = @"<Icon Name=""CircleCheck""   Class=""text-success"" />
 <Icon Name=""CircleAlert""   Class=""text-destructive"" />
 <Icon Name=""TriangleAlert"" Class=""text-warning"" />
 <Icon Name=""Info""          Class=""text-info"" />
 <Icon Name=""Star""          Class=""text-primary"" />";
 
-    private string _buttonCode = @"<Button>
+    private const string _buttonCode = @"<Button>
     <Icon Name=""Plus"" Class=""mr-2"" />
     New project
 </Button>
@@ -347,12 +450,11 @@
     <Icon Name=""Settings"" />
 </Button>";
 
-    private string _svgCode = @"@using Blazicons
+    private const string _svgCode = @"@using Blazicons
 
 <Icon Svg=""Lucide.Search"" />
 <Icon Svg=""BootstrapIcon.Archive"" />
 <Icon Svg=""FluentUiIcon.Alert"" />
 <Icon Svg=""GoogleMaterialOutlinedIcon.Home"" />
 <Icon Svg=""FontAwesomeSolidIcon.Heart"" />";
-
 }
