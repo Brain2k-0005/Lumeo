@@ -37,7 +37,7 @@
                     </div>
                     <Input @ref="_searchInput"
                            Value="@_query"
-                           ValueChanged="@((string v) => { _query = v; _selected = null; _displayLimit = 500; })"
+                           ValueChanged="@((string v) => { _query = v; _selected = null; _displayLimit = _initialLimit; })"
                            Placeholder="Search icons — chevron, heart, chart, user…"
                            Class="pl-9" />
                     @if (!string.IsNullOrEmpty(_query))
@@ -49,7 +49,7 @@
                         </button>
                     }
                 </div>
-                <Select Value="@IconService.ActiveLibrary" ValueChanged="@((string v) => { IconService.SetLibrary(v); _selected = null; _displayLimit = 500; })">
+                <Select Value="@IconService.ActiveLibrary" ValueChanged="@((string v) => { IconService.SetLibrary(v); _selected = null; _displayLimit = _initialLimit; })">
                     <SelectTrigger Class="h-9 w-[170px]">
                         <span class="text-sm">@LibraryDisplayName(IconService.ActiveLibrary)</span>
                     </SelectTrigger>
@@ -89,8 +89,12 @@
            `relative` + explicit `bg-card` on the aside prevents background bleed-through. *@
         <div class="flex flex-col lg:flex-row">
 
-            @* Icon grid — internal scroll so browsing a big catalog doesn't grow the page. *@
-            <div class="flex-1 p-3 min-w-0 max-h-[640px] overflow-y-auto">
+            @* Icon grid — inline style for the height cap because the `max-h-[Npx]`
+               Tailwind arbitrary class wasn't being emitted in the docs' pre-built
+               CSS, so the grid blew out to its full intrinsic height (~7000 icons
+               tall for Material Design). Inline style is bulletproof — no Tailwind
+               JIT dependency. *@
+            <div class="flex-1 p-3 min-w-0 overflow-y-auto" style="max-height: 600px">
                 @if (Filtered.Count == 0)
                 {
                     <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -125,9 +129,9 @@
                     {
                         <div class="mt-4 flex justify-center">
                             <button type="button"
-                                    @onclick="() => _displayLimit += 500"
+                                    @onclick="() => _displayLimit += _pageStep"
                                     class="text-sm text-primary hover:underline">
-                                Load @Math.Min(500, Filtered.Count - _displayLimit) more — showing @_displayLimit of @Filtered.Count
+                                Load @Math.Min(_pageStep, Filtered.Count - _displayLimit) more — showing @_displayLimit of @Filtered.Count
                             </button>
                         </div>
                     }
@@ -340,7 +344,9 @@
     private IconEntry? _selected;
     private string _previewSize = "md";
     private bool _copied;
-    private int _displayLimit = 500;
+    private const int _initialLimit = 120;
+    private const int _pageStep = 240;
+    private int _displayLimit = _initialLimit;
     private string _usageTab = "basic";
     private Lumeo.Input? _searchInput;
 
