@@ -1,4 +1,8 @@
 @page "/components/icon"
+@inject Lumeo.Docs.Services.IconService IconService
+@inject IJSRuntime JS
+@implements IDisposable
+@using Lumeo.Docs.Shared
 
 <PageTitle>Icon — Lumeo</PageTitle>
 
@@ -78,16 +82,100 @@
         </Flex>
     </ComponentDemo>
 
-    <ComponentDemo Title="Common icon names" Description="PascalCase names map 1:1 to Lucide icons. Unknown names fall back to Circle." Code="@_catalogCode">
-        <Grid Class="grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
-            @foreach (var name in _catalog)
+    <ComponentDemo Title="Browse &amp; search" Description="Find an icon by name, preview it across every Blazicons library, and copy a ready-to-paste snippet for your code." OverflowVisible="true">
+        <Stack Gap="4" Class="w-full">
+
+            @* Search + library selector *@
+            <Flex Gap="2" Align="center" Class="flex-wrap">
+                <div class="flex-1 min-w-[220px] relative">
+                    <div class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+                        <DynamicIcon Name="Search" Class="h-4 w-4" />
+                    </div>
+                    <Input Value="@_query"
+                           ValueChanged="@((string v) => { _query = v; _selected = null; })"
+                           Placeholder="Search 130+ icons — try 'chevron', 'chart', 'user'…"
+                           Class="pl-9" />
+                </div>
+                <Select Value="@IconService.ActiveLibrary" ValueChanged="@((string v) => IconService.SetLibrary(v))">
+                    <SelectTrigger Class="w-[180px]">
+                        <span class="text-sm">@LibraryDisplayName(IconService.ActiveLibrary)</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value="lucide">Lucide (default)</SelectItem>
+                        <SelectItem Value="bootstrap">Bootstrap Icons</SelectItem>
+                        <SelectItem Value="fluentui">Fluent UI</SelectItem>
+                        <SelectItem Value="google-material">Google Material</SelectItem>
+                        <SelectItem Value="font-awesome">Font Awesome</SelectItem>
+                        <SelectItem Value="ionicons">Ionicons</SelectItem>
+                        <SelectItem Value="material-design">Material Design</SelectItem>
+                    </SelectContent>
+                </Select>
+            </Flex>
+
+            <Lumeo.Text Size="xs" Color="muted">
+                Showing @Filtered.Count of @_fullCatalog.Length icons via @LibraryDisplayName(IconService.ActiveLibrary).
+                @if (IconService.ActiveLibrary != "lucide")
+                {
+                    <span>Non-Lucide icons use the <code class="font-mono text-[11px]">Svg</code> escape hatch.</span>
+                }
+            </Lumeo.Text>
+
+            @* Icon grid *@
+            <div class="rounded-md border border-border/40 p-3 max-h-[360px] overflow-y-auto">
+                @if (Filtered.Count == 0)
+                {
+                    <div class="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                        <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground/50" />
+                        <Lumeo.Text Size="sm">No icons match "<span class="text-foreground">@_query</span>"</Lumeo.Text>
+                    </div>
+                }
+                else
+                {
+                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1">
+                        @foreach (var name in Filtered)
+                        {
+                            var n = name;
+                            var isActive = _selected == n;
+                            <button type="button"
+                                    @onclick="@(() => _selected = n)"
+                                    class="@($"flex flex-col items-center gap-1 p-2 rounded-md transition-colors text-xs {(isActive ? "bg-accent text-foreground" : "hover:bg-accent/60 text-muted-foreground hover:text-foreground")}")">
+                                <DynamicIcon Name="@n" Class="h-5 w-5" />
+                                <span class="truncate max-w-full">@n</span>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* Selected icon detail + copy-paste snippet *@
+            @if (_selected is not null)
             {
-                <Stack Gap="1" Align="center" Class="text-center">
-                    <Icon Name="@name" Size="Icon.IconSize.Lg" Class="text-muted-foreground" />
-                    <Lumeo.Text Size="xs" Color="muted" Class="truncate">@name</Lumeo.Text>
-                </Stack>
+                <div class="rounded-md border border-border/40 bg-muted/30 p-4">
+                    <Flex Align="center" Justify="between" Gap="3" Class="mb-3 flex-wrap">
+                        <Flex Align="center" Gap="3">
+                            <div class="flex h-12 w-12 items-center justify-center rounded-md bg-background border border-border/40">
+                                <DynamicIcon Name="@_selected" Class="h-6 w-6" />
+                            </div>
+                            <Stack Gap="0">
+                                <Lumeo.Text Weight="medium">@_selected</Lumeo.Text>
+                                <Lumeo.Text Size="xs" Color="muted">via @LibraryDisplayName(IconService.ActiveLibrary)</Lumeo.Text>
+                            </Stack>
+                        </Flex>
+                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="CopySnippet">
+                            @if (_copied)
+                            {
+                                <Icon Name="Check" Class="mr-2" /> <text>Copied</text>
+                            }
+                            else
+                            {
+                                <Icon Name="Copy" Class="mr-2" /> <text>Copy</text>
+                            }
+                        </Button>
+                    </Flex>
+                    <pre class="rounded bg-background border border-border/40 p-3 text-xs font-mono overflow-x-auto whitespace-pre">@SnippetForSelected</pre>
+                </div>
             }
-        </Grid>
+        </Stack>
     </ComponentDemo>
 
 </Stack>
@@ -143,18 +231,92 @@
 </div>
 
 @code {
-    private readonly string[] _catalog =
+    // ── Icon browser state ────────────────────────────────────────────────────
+    private string _query = "";
+    private string? _selected;
+    private bool _copied;
+
+    private List<string> Filtered => string.IsNullOrWhiteSpace(_query)
+        ? _fullCatalog.ToList()
+        : _fullCatalog.Where(n => n.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private string SnippetForSelected
     {
-        "Home", "Search", "Settings", "Bell", "User", "Users", "Mail", "Calendar",
-        "Clock", "Heart", "Star", "Bookmark", "Flag", "Tag", "MapPin", "Phone",
-        "ShoppingCart", "ShoppingBag", "CreditCard", "Wallet", "DollarSign", "Package", "Truck", "Activity",
-        "ChevronUp", "ChevronDown", "ChevronLeft", "ChevronRight", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-        "Plus", "Minus", "X", "Check", "CheckCheck", "Copy", "Download", "Upload",
-        "Edit", "Trash", "Eye", "EyeOff", "Filter", "Menu", "Ellipsis", "ExternalLink",
-        "Info", "CircleCheck", "CircleAlert", "TriangleAlert", "Shield", "Lock", "LogIn", "LogOut",
-        "FileText", "Folder", "Image", "Video", "Music", "Mic", "Camera", "Paperclip",
-        "MessageCircle", "Send", "Share2", "Smile", "Sun", "Moon", "Palette", "Zap",
-        "TrendingUp", "TrendingDown", "BarChart3", "LineChart", "PieChart", "LayoutDashboard", "LayoutGrid", "Github",
+        get
+        {
+            if (_selected is null) return "";
+            return IconService.ActiveLibrary switch
+            {
+                "lucide"          => $"<Icon Name=\"{_selected}\" />",
+                "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{_selected}\" />          @* via Svg escape hatch *@",
+                "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{_selected}\" />",
+                "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{_selected}\" />",
+                "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{_selected}\" />",
+                "ionicons"        => $"<Icon Svg=\"Ionicon.{_selected}\" />",
+                "material-design" => $"<Icon Svg=\"MdiIcon.{_selected}\" />",
+                _ => $"<Icon Name=\"{_selected}\" />",
+            };
+        }
+    }
+
+    private static string LibraryDisplayName(string key) => key switch
+    {
+        "lucide"          => "Lucide",
+        "bootstrap"       => "Bootstrap Icons",
+        "fluentui"        => "Fluent UI",
+        "google-material" => "Google Material",
+        "font-awesome"    => "Font Awesome",
+        "ionicons"        => "Ionicons",
+        "material-design" => "Material Design",
+        _ => key,
+    };
+
+    private async Task CopySnippet()
+    {
+        if (_selected is null) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", SnippetForSelected); } catch { }
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(1500);
+        _copied = false;
+        StateHasChanged();
+    }
+
+    protected override void OnInitialized()
+    {
+        IconService.OnChange += OnLibChanged;
+    }
+
+    private void OnLibChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        IconService.OnChange -= OnLibChanged;
+    }
+
+    // Full icon catalog — the complete set of names supported by DynamicIcon
+    // across all 7 Blazicons libraries. These are the names the browser surfaces.
+    private static readonly string[] _fullCatalog =
+    {
+        "Accessibility", "AlignCenter", "AlignLeft", "AlignRight", "Archive",
+        "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "BarChart3", "Bell",
+        "BellOff", "Blocks", "Bold", "Box", "Calendar", "CalendarDays", "Camera",
+        "ChartBar", "Check", "CheckCheck", "CheckSquare", "ChevronDown",
+        "ChevronLeft", "ChevronRight", "ChevronUp", "ChevronsUpDown", "Chrome",
+        "CircleAlert", "CircleCheck", "CircleDot", "Clipboard", "ClipboardList",
+        "Code", "Columns3", "Copy", "Disc", "Download", "Ellipsis", "ExternalLink",
+        "Eye", "FileText", "Flag", "FolderOpen", "Github", "Globe", "Heart",
+        "Home", "House", "Image", "Inbox", "Info", "Italic", "LayoutDashboard",
+        "LayoutGrid", "LayoutTemplate", "List", "ListMusic", "Loader",
+        "LoaderCircle", "Lock", "LogIn", "LogOut", "Mail", "Menu", "MessageCircle",
+        "MessageSquare", "Mic", "Minus", "Moon", "MousePointerClick", "Music",
+        "Package", "Paintbrush", "Palette", "PanelRightClose", "PanelRightOpen",
+        "Pause", "Pencil", "Phone", "Pin", "Play", "Plus", "Radio", "RefreshCw",
+        "RotateCcw", "Search", "SearchX", "Send", "Settings", "Share", "Share2",
+        "Shield", "ShieldCheck", "ShoppingCart", "SkipBack", "SkipForward",
+        "Slash", "SlidersHorizontal", "Smartphone", "Star", "Sun", "Tag", "Trash",
+        "Trash2", "TrendingUp", "TriangleAlert", "Underline", "Upload", "User",
+        "UserPlus", "Users", "Volume", "Volume1", "Volume2", "X", "Zap",
     };
 
     private string _basicCode = @"<Icon Name=""Search"" />
@@ -193,8 +355,4 @@
 <Icon Svg=""GoogleMaterialOutlinedIcon.Home"" />
 <Icon Svg=""FontAwesomeSolidIcon.Heart"" />";
 
-    private string _catalogCode = @"@foreach (var name in names)
-{
-    <Icon Name=""@name"" Size=""Icon.IconSize.Lg"" />
-}";
 }
