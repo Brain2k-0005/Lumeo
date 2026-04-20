@@ -383,6 +383,13 @@ export function disposeChart(elementId) {
     }
 }
 
+// Invalidate the cached Lumeo theme so the next registerLumeoTheme() re-reads
+// CSS variables. Call this after the app swaps theme class (dark/light/palette)
+// and before re-initializing a chart.
+export function resetLumeoTheme() {
+    lumeoThemeRegistered = false;
+}
+
 // Re-register theme and refresh all charts (call when theme changes)
 export function refreshAllCharts() {
     lumeoThemeRegistered = false;

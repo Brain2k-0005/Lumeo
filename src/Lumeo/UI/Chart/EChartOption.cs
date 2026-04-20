@@ -491,8 +491,25 @@ public class EChartItemStyle
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? BorderWidth { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public int? BorderRadius { get; set; }
+
+    /// <summary>
+    /// Per-corner border radius as [top-left, top-right, bottom-right, bottom-left].
+    /// Takes precedence over <see cref="BorderRadius"/> when set. Useful for
+    /// stacked bar charts where only the outermost segment should be rounded.
+    /// </summary>
+    [JsonIgnore]
+    public int[]? BorderRadiusCorners { get; set; }
+
+    // ECharts accepts either a number or a 4-element array for `borderRadius`.
+    // We expose two strongly-typed setters and pick the right one at serialization time.
+    [JsonPropertyName("borderRadius")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? BorderRadiusSerialized =>
+        BorderRadiusCorners is { Length: > 0 } corners ? corners :
+        BorderRadius is int r ? r :
+        null;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? Opacity { get; set; }
