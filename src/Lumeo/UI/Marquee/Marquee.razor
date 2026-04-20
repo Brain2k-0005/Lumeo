@@ -1,0 +1,51 @@
+@namespace Lumeo
+
+<div class="@CssClass"
+     style="@StyleString"
+     data-direction="@DirectionAttr"
+     data-vertical="@(Vertical ? "true" : "false")"
+     data-pause-hover="@(PauseOnHover ? "true" : "false")"
+     @attributes="AdditionalAttributes">
+    <div class="lumeo-marquee-track">
+        @ChildContent
+    </div>
+    <div class="lumeo-marquee-track" aria-hidden="true">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public MarqueeSpeed Speed { get; set; } = MarqueeSpeed.Normal;
+    [Parameter] public MarqueeDirection Direction { get; set; } = MarqueeDirection.Left;
+    [Parameter] public bool PauseOnHover { get; set; }
+    [Parameter] public bool Reverse { get; set; }
+    [Parameter] public bool Vertical { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-marquee", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string DurationCss => Speed switch
+    {
+        MarqueeSpeed.Slow => "60s",
+        MarqueeSpeed.Fast => "12s",
+        _ => "30s"
+    };
+
+    private string StyleString => $"--lumeo-marquee-duration: {DurationCss};";
+
+    // Reverse inverts the Direction parameter.
+    private string DirectionAttr
+    {
+        get
+        {
+            var dir = Direction;
+            if (Reverse) dir = dir == MarqueeDirection.Left ? MarqueeDirection.Right : MarqueeDirection.Left;
+            return dir == MarqueeDirection.Right ? "right" : "left";
+        }
+    }
+
+    public enum MarqueeSpeed { Slow, Normal, Fast }
+    public enum MarqueeDirection { Left, Right }
+}

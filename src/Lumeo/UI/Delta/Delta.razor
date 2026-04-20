@@ -1,0 +1,67 @@
+@namespace Lumeo
+
+<span class="@RootClasses" @attributes="AdditionalAttributes">
+    @if (ShowArrow)
+    {
+        @if (IsUp)
+        {
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+        }
+        else if (IsDown)
+        {
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        }
+    }
+    <span>@FormattedValue</span>
+</span>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public DeltaFormat Format { get; set; } = DeltaFormat.Percent;
+    [Parameter] public DeltaDirection Positive { get; set; } = DeltaDirection.Good;
+    [Parameter] public bool ShowArrow { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsUp => Value > 0;
+    private bool IsDown => Value < 0;
+
+    private string FormattedValue
+    {
+        get
+        {
+            var sign = Value > 0 ? "+" : "";
+            var absFormat = Format switch
+            {
+                DeltaFormat.Percent =>
+                    $"{sign}{Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}%",
+                _ =>
+                    $"{sign}{Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}"
+            };
+            return absFormat;
+        }
+    }
+
+    private string ColorClasses
+    {
+        get
+        {
+            // Good = positive delta is "good" (green), negative is "bad" (red)
+            // Bad = inverted (e.g. churn rate where lower is better)
+            var goodColor = "bg-emerald-500/15 text-emerald-600";
+            var badColor = "bg-rose-500/15 text-rose-600";
+            var neutral = "bg-muted text-muted-foreground";
+
+            if (Value == 0) return neutral;
+
+            var isGood = Positive == DeltaDirection.Good ? IsUp : IsDown;
+            return isGood ? goodColor : badColor;
+        }
+    }
+
+    private string RootClasses =>
+        $"inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium {ColorClasses} {Class}".Trim();
+
+    public enum DeltaFormat { Percent, Absolute }
+    public enum DeltaDirection { Good, Bad }
+}
