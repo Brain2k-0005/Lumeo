@@ -5,15 +5,39 @@
 <PageHeader Title="Line Chart" Description="Show trends over time. Use when continuity between data points matters, such as revenue tracking or performance monitoring." />
 
 <Stack Gap="8">
-    <ComponentDemo Title="Smooth Line with Dots" Code="@_basicCode">
+    <ComponentDemo Title="Smooth Line with Dots" Description="Bezier-smoothed curves with dot markers — a clean default for multi-series trend comparisons." Code="@_basicCode">
         <Container>
             <LineChart Categories="_categories" Series="_series" Smooth="true" ShowDots="true" />
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="Straight Line" Code="@_straightCode">
+    <ComponentDemo Title="Straight Line, No Dots" Description="Precise straight-line segments without markers keep focus on broad trends rather than individual data points." Code="@_straightCode">
         <Container>
             <LineChart Categories="_categories" Series="_series" Smooth="false" ShowDots="false" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Three-Series Comparison" Description="Compare three key metrics simultaneously. Smooth curves reduce noise when datasets overlap frequently." Code="@_threeSeriesCode">
+        <Container>
+            <LineChart Categories="_categories" Series="_threeSeries" Smooth="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Data Labels" Description="Show the exact value at each data point — useful for executive summaries or printable reports." Code="@_labelsCode">
+        <Container>
+            <LineChart Categories="_shortCategories" Series="_labelSeries" Smooth="true" ShowDataLabels="true" LabelPosition="top" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Daily Time-Series with DataZoom" Description="A 60-day daily view with the DataZoom slider so users can zoom into any specific window." Code="@_zoomCode">
+        <Container>
+            <LineChart Categories="_days60" Series="_dailySeries" Smooth="true" ShowDots="false" DataZoom="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom Colors, No Legend" Description="Override the palette with brand colors and hide the legend for a minimal single-focus layout." Code="@_minimalCode">
+        <Container>
+            <LineChart Categories="_categories" Series="_minimalSeries" Smooth="true" ShowLegend="false" Colors="_brandColors" />
         </Container>
     </ComponentDemo>
 </Stack>
@@ -66,6 +90,18 @@
                             <td class="p-3 text-muted-foreground">Shows or hides the chart legend.</td>
                         </tr>
                         <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowDataLabels</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Renders value labels at each data point.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DataZoom</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Enables zoom slider for long time-series.</td>
+                        </tr>
+                        <tr>
                             <td class="p-3 font-mono text-xs text-primary">Colors</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;string&gt;?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
@@ -80,12 +116,55 @@
 
 @code {
     private List<string> _categories = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    private List<string> _shortCategories = new() { "Q1", "Q2", "Q3", "Q4" };
+
     private List<LineChart.ChartSeriesData> _series = new()
     {
         new() { Name = "Revenue",  Values = new() { 18200, 21500, 19800, 27300, 31600, 44800, 40100, 37700, 42600, 48400, 51900, 60200 } },
         new() { Name = "Expenses", Values = new() { 12100, 13800, 13200, 15900, 17600, 20800, 19400, 16900, 19700, 21500, 23800, 26400 } }
     };
 
+    private List<LineChart.ChartSeriesData> _threeSeries = new()
+    {
+        new() { Name = "Gross Revenue",   Values = new() { 84200, 79400, 96700, 112300, 108600, 131400, 124800, 138700, 151200, 164900, 149300, 178600 } },
+        new() { Name = "Net Revenue",     Values = new() { 61300, 57800, 70400, 81600, 78900, 95500, 90700, 100900, 109900, 119800, 108600, 129700 } },
+        new() { Name = "Operating Costs", Values = new() { 22900, 21600, 26300, 30700, 29700, 35900, 34100, 37800, 41300, 45100, 40700, 48900 } }
+    };
+
+    private List<LineChart.ChartSeriesData> _labelSeries = new()
+    {
+        new() { Name = "ARR ($K)", Values = new() { 2840, 3170, 3490, 3820 } }
+    };
+
+    private List<string> _days60 = Enumerable.Range(1, 60)
+        .Select(i => new DateTime(2025, 1, 1).AddDays(i - 1).ToString("MMM d"))
+        .ToList();
+
+    private List<LineChart.ChartSeriesData> _dailySeries = new()
+    {
+        new() { Name = "Active Sessions", Values = new()
+        {
+            4821, 5103, 4967, 5312, 5874, 6201, 5943, 6418, 6782, 7034,
+            6891, 7213, 7548, 7892, 7634, 8012, 8347, 8691, 8423, 8978,
+            9213, 9547, 9389, 9812, 10134, 10478, 10221, 10689, 11012, 11356,
+            11098, 11534, 11867, 12201, 11943, 12478, 12813, 13157, 12899, 13434,
+            13769, 14113, 13855, 14390, 14725, 15069, 14811, 15346, 15681, 16025,
+            15767, 16302, 16637, 16981, 16723, 17258, 17593, 17937, 17679, 18214
+        }}
+    };
+
+    private List<LineChart.ChartSeriesData> _minimalSeries = new()
+    {
+        new() { Name = "Monthly Recurring Revenue",
+            Values = new() { 48300, 51200, 53800, 57400, 61900, 67200, 64800, 69300, 74100, 79600, 76200, 83900 } }
+    };
+
+    private List<string> _brandColors = new() { "#10b981" };
+
     private string _basicCode = @"<LineChart Categories=""_categories"" Series=""_series"" Smooth=""true"" ShowDots=""true"" />";
     private string _straightCode = @"<LineChart Categories=""_categories"" Series=""_series"" Smooth=""false"" ShowDots=""false"" />";
+    private string _threeSeriesCode = @"<LineChart Categories=""_categories"" Series=""_threeSeries"" Smooth=""true"" />";
+    private string _labelsCode = @"<LineChart Categories=""_shortCategories"" Series=""_labelSeries"" Smooth=""true"" ShowDataLabels=""true"" LabelPosition=""top"" />";
+    private string _zoomCode = @"<LineChart Categories=""_days60"" Series=""_dailySeries"" Smooth=""true"" ShowDots=""false"" DataZoom=""true"" />";
+    private string _minimalCode = @"<LineChart Categories=""_categories"" Series=""_minimalSeries"" Smooth=""true"" ShowLegend=""false"" Colors=""_brandColors"" />";
 }
