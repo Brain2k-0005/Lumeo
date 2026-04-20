@@ -5,9 +5,28 @@
 <PageHeader Title="Mixed Chart" Description="Combine multiple chart types (bar, line) in a single view. Useful for overlaying a trend line on top of bar data, such as actual vs. target comparisons." />
 
 <Stack Gap="8">
-    <ComponentDemo Title="Sales vs Target" Code="@_basicCode">
+    <ComponentDemo Title="Sales vs Target" Description="Monthly actual sales (bar) overlaid with a rolling sales target line. The cross-type tooltip makes it easy to read both values simultaneously." Code="@_basicCode">
         <Container>
             <MixedChart Categories="_categories" Series="_series" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Revenue &amp; Growth Rate" Description="Quarterly revenue bars with a year-over-year growth rate line. The line series communicates momentum without a secondary axis." Code="@_growthCode">
+        <Container>
+            <MixedChart Categories="_quarterCats" Series="_growthSeries" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Support Volume &amp; Resolution Rate" Description="Weekly ticket volume (bar) alongside resolution rate % (line). Data labels enabled on both series; DataZoom allows drilling into specific weeks." Code="@_supportCode">
+        <Container>
+            <MixedChart Categories="_weekCats" Series="_supportSeries"
+                        ShowDataLabels="true" DataZoom="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multi-Product Revenue with Trend" Description="Three product revenue streams as bars plus a total trend line. Custom palette and Toolbox for export." Code="@_multiCode">
+        <Container>
+            <MixedChart Categories="_categories" Series="_multiSeries" Toolbox="true" Colors="_multiColors" />
         </Container>
     </ComponentDemo>
 </Stack>
@@ -61,6 +80,7 @@
 </Stack>
 
 @code {
+    // Demo 1 — monthly sales vs target
     private List<string> _categories = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
     private List<MixedChart.MixedSeriesData> _series = new()
     {
@@ -68,5 +88,35 @@
         new() { Name = "Sales Target", Values = new() { 45000, 45000, 50000, 55000, 60000, 65000, 65000, 65000, 70000, 75000, 75000, 85000 }, Type = "line" }
     };
 
-    private string _basicCode = @"<MixedChart Categories=""_categories"" Series=""_series"" />";
+    // Demo 2 — quarterly revenue & growth rate
+    private List<string> _quarterCats = new() { "Q1 '23", "Q2 '23", "Q3 '23", "Q4 '23", "Q1 '24", "Q2 '24", "Q3 '24", "Q4 '24" };
+    private List<MixedChart.MixedSeriesData> _growthSeries = new()
+    {
+        new() { Name = "Revenue ($k)",    Values = new() { 1820, 2050, 2310, 2680, 2950, 3340, 3610, 4020 }, Type = "bar"  },
+        new() { Name = "YoY Growth (%)",  Values = new() { 12, 18, 22, 28, 62, 63, 56, 50 },                 Type = "line" }
+    };
+
+    // Demo 3 — weekly support tickets & resolution rate
+    private List<string> _weekCats = new() { "Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5", "Wk 6", "Wk 7", "Wk 8" };
+    private List<MixedChart.MixedSeriesData> _supportSeries = new()
+    {
+        new() { Name = "Tickets",         Values = new() { 142, 168, 155, 190, 178, 162, 145, 138 }, Type = "bar"  },
+        new() { Name = "Resolution Rate", Values = new() { 88, 84, 91, 79, 85, 90, 93, 95 },         Type = "line" }
+    };
+
+    // Demo 4 — multi-product with total trend line
+    private List<MixedChart.MixedSeriesData> _multiSeries = new()
+    {
+        new() { Name = "Core",       Values = new() { 18200, 19500, 17800, 22100, 26400, 30300, 29700, 31800, 35100, 38400, 34200, 42600 }, Type = "bar"  },
+        new() { Name = "Pro",        Values = new() { 8400,  9100,  8600,  11200, 13800, 16400, 15200, 17100, 19600, 22300, 20100, 25400 }, Type = "bar"  },
+        new() { Name = "Enterprise", Values = new() { 4200,  4800,  4400,   6100,  7200,  8900,  8600,  9400, 10500, 12100, 11400, 14200 }, Type = "bar"  },
+        new() { Name = "Total",      Values = new() { 30800, 33400, 30800, 39400, 47400, 55600, 53500, 58300, 65200, 72800, 65700, 82200 }, Type = "line" }
+    };
+
+    private List<string> _multiColors = new() { "#6366f1", "#10b981", "#f59e0b", "#64748b" };
+
+    private string _basicCode    = @"<MixedChart Categories=""_categories"" Series=""_series"" />";
+    private string _growthCode   = @"<MixedChart Categories=""_quarterCats"" Series=""_growthSeries"" />";
+    private string _supportCode  = @"<MixedChart Categories=""_weekCats"" Series=""_supportSeries"" ShowDataLabels=""true"" DataZoom=""true"" />";
+    private string _multiCode    = @"<MixedChart Categories=""_categories"" Series=""_multiSeries"" Toolbox=""true"" Colors=""_multiColors"" />";
 }

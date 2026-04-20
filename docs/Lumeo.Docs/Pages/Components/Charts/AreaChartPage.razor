@@ -5,15 +5,33 @@
 <PageHeader Title="Area Chart" Description="Emphasize the magnitude of change over time. The filled area makes it easy to visualize volume or cumulative data." />
 
 <Stack Gap="8">
-    <ComponentDemo Title="Gradient Area" Code="@_basicCode">
+    <ComponentDemo Title="Gradient Area" Description="Smooth curves with a gradient fill — the default look that works well for a single metric like total visits." Code="@_basicCode">
         <Container>
             <AreaChart Categories="_categories" Series="_series" Smooth="true" Gradient="true" />
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="Stacked Area" Code="@_stackedCode">
+    <ComponentDemo Title="Stacked Area" Description="Stack multiple series to show cumulative volume. The filled areas make the combined total immediately visible." Code="@_stackedCode">
         <Container>
             <AreaChart Categories="_categories" Series="_series" Smooth="true" Stacked="true" Gradient="false" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multi-Channel Traffic" Description="Compare three traffic channels over a full year with gradient fills. Overlapping areas reveal seasonality patterns." Code="@_multiCode">
+        <Container>
+            <AreaChart Categories="_months" Series="_channelSeries" Smooth="true" Gradient="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Stacked Gradient — Revenue Breakdown" Description="Stacked gradient fill shows how three revenue streams compose total ARR month over month." Code="@_stackedGradientCode">
+        <Container>
+            <AreaChart Categories="_months" Series="_revenueSeries" Smooth="true" Stacked="true" Gradient="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Daily Bandwidth with DataZoom" Description="Dense daily data becomes navigable with the DataZoom slider. Disable dots to keep the chart clean." Code="@_zoomCode">
+        <Container>
+            <AreaChart Categories="_days" Series="_bandwidthSeries" Smooth="true" Gradient="true" ShowDots="false" DataZoom="true" />
         </Container>
     </ComponentDemo>
 </Stack>
@@ -71,6 +89,12 @@
                             <td class="p-3 text-muted-foreground">Shows dot markers on the line.</td>
                         </tr>
                         <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DataZoom</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Enables zoom slider for long time-series.</td>
+                        </tr>
+                        <tr>
                             <td class="p-3 font-mono text-xs text-primary">Colors</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;string&gt;?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
@@ -85,12 +109,55 @@
 
 @code {
     private List<string> _categories = new() { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    private List<string> _months = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
     private List<AreaChart.ChartSeriesData> _series = new()
     {
         new() { Name = "Unique Visitors", Values = new() { 3240, 4180, 3870, 5120, 6340, 4980, 3650 } },
         new() { Name = "Page Views",      Values = new() { 9810, 12540, 11200, 15870, 19420, 14730, 10900 } }
     };
 
+    private List<AreaChart.ChartSeriesData> _channelSeries = new()
+    {
+        new() { Name = "Organic Search", Values = new() { 18400, 21300, 19800, 24700, 28100, 32600, 30200, 34800, 38400, 41900, 37600, 44200 } },
+        new() { Name = "Direct",         Values = new() { 9200,  10800, 9900,  12300, 14100, 16400, 15100, 17400, 19200, 20900, 18800, 22100 } },
+        new() { Name = "Paid Social",    Values = new() { 5100,  6300,  5800,  7200,  8400,  9700,  8900,  10300, 11400, 12600, 11100, 13400 } }
+    };
+
+    private List<AreaChart.ChartSeriesData> _revenueSeries = new()
+    {
+        new() { Name = "Enterprise",     Values = new() { 48300, 51200, 53700, 57400, 61800, 67200, 64900, 70300, 75800, 81400, 77200, 85600 } },
+        new() { Name = "Professional",   Values = new() { 22100, 24300, 25800, 27600, 29900, 32400, 31200, 34100, 36800, 39500, 37400, 41800 } },
+        new() { Name = "Starter",        Values = new() { 8400,  9100,  9700,  10400, 11200, 12100, 11700, 12800, 13700, 14700, 13900, 15600 } }
+    };
+
+    private List<string> _days = Enumerable.Range(1, 45)
+        .Select(i => new DateTime(2025, 3, 1).AddDays(i - 1).ToString("MMM d"))
+        .ToList();
+
+    private List<AreaChart.ChartSeriesData> _bandwidthSeries = new()
+    {
+        new() { Name = "Inbound (GB)", Values = new()
+        {
+            1843, 2012, 1934, 2178, 2341, 2589, 2467, 2712, 2934, 3187,
+            3042, 3298, 3512, 3789, 3634, 3912, 4123, 4389, 4234, 4523,
+            4712, 4934, 4789, 5123, 5312, 5589, 5434, 5723, 5912, 6189,
+            6034, 6323, 6512, 6789, 6634, 6923, 7112, 7389, 7234, 7523,
+            7712, 7934, 7789, 8123, 8312
+        }},
+        new() { Name = "Outbound (GB)", Values = new()
+        {
+            921, 1006, 967, 1089, 1171, 1295, 1234, 1356, 1467, 1594,
+            1521, 1649, 1756, 1895, 1817, 1956, 2062, 2195, 2117, 2262,
+            2356, 2467, 2395, 2562, 2656, 2795, 2717, 2862, 2956, 3095,
+            3017, 3162, 3256, 3395, 3317, 3462, 3556, 3695, 3617, 3762,
+            3856, 3967, 3895, 4062, 4156
+        }}
+    };
+
     private string _basicCode = @"<AreaChart Categories=""_categories"" Series=""_series"" Smooth=""true"" Gradient=""true"" />";
     private string _stackedCode = @"<AreaChart Categories=""_categories"" Series=""_series"" Smooth=""true"" Stacked=""true"" Gradient=""false"" />";
+    private string _multiCode = @"<AreaChart Categories=""_months"" Series=""_channelSeries"" Smooth=""true"" Gradient=""true"" />";
+    private string _stackedGradientCode = @"<AreaChart Categories=""_months"" Series=""_revenueSeries"" Smooth=""true"" Stacked=""true"" Gradient=""true"" />";
+    private string _zoomCode = @"<AreaChart Categories=""_days"" Series=""_bandwidthSeries"" Smooth=""true"" Gradient=""true"" ShowDots=""false"" DataZoom=""true"" />";
 }
