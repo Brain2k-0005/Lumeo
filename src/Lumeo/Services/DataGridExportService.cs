@@ -26,7 +26,8 @@ public sealed class DataGridExportService : IDataGridExportService
     public DataGridExportService(IComponentInteropService interop)
     {
         _interop = interop;
-        EnsureQuestPdfLicense();
+        // QuestPDF license init is deferred to ToPdf() — touching QuestPDF.Settings
+        // at construction triggers a native-library probe that throws on browser-wasm.
     }
 
     private static void EnsureQuestPdfLicense()
@@ -174,6 +175,13 @@ public sealed class DataGridExportService : IDataGridExportService
 
     public byte[] ToPdf<TItem>(IEnumerable<TItem> items, IEnumerable<DataGridExportColumn<TItem>> columns, string title = "Export")
     {
+        if (OperatingSystem.IsBrowser())
+        {
+            throw new PlatformNotSupportedException(
+                "QuestPDF-backed PDF export requires a server-side runtime — browser-wasm is not supported. " +
+                "Use ToCsv / ToExcel on WASM, or perform PDF generation in a Blazor Server / API host.");
+        }
+        EnsureQuestPdfLicense();
         var cols = columns.ToList();
         var data = items.ToList();
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
