@@ -139,6 +139,14 @@
 @code {
     [Parameter] public DateOnly? Value { get; set; }
     [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Optional DateTime? binding. When set, takes precedence over <see cref="Value"/>.
+    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/> (DateTime? at midnight).
+    /// </summary>
+    [Parameter] public DateTime? DateTimeValue { get; set; }
+    [Parameter] public EventCallback<DateTime?> DateTimeValueChanged { get; set; }
+
     [Parameter] public string? Placeholder { get; set; }
 
     private string EffectivePlaceholder => Placeholder ?? (Mode == "Range" ? L["DateRange.Placeholder"] : L["DatePicker.Placeholder"]);
@@ -162,6 +170,17 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
+    private DateTime? _prevDateTimeValue;
+
+    protected override void OnParametersSet()
+    {
+        // DateTimeValue wins when it changes — sync Value from it.
+        if (DateTimeValue != _prevDateTimeValue)
+        {
+            _prevDateTimeValue = DateTimeValue;
+            Value = DateTimeValue.HasValue ? DateOnly.FromDateTime(DateTimeValue.Value) : null;
+        }
+    }
 
     private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == "Range" ? 2 : 1);
 
@@ -175,18 +194,21 @@
         {
             Value = new DateOnly(date.Value.Year, date.Value.Month, 1);
             await ValueChanged.InvokeAsync(Value);
+            await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
         }
         else if (Mode == "Year" && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, 1, 1);
             await ValueChanged.InvokeAsync(Value);
+            await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
         }
         else
         {
             Value = date;
             await ValueChanged.InvokeAsync(date);
+            await RaiseDateTimeValueChanged(date);
             if (!ShowTimePicker)
             {
                 _isOpen = false;
@@ -220,6 +242,7 @@
     {
         Value = preset.Date;
         await ValueChanged.InvokeAsync(preset.Date);
+        await RaiseDateTimeValueChanged(preset.Date);
         _isOpen = false;
     }
 
@@ -236,11 +259,22 @@
         {
             Value = null;
             await ValueChanged.InvokeAsync(null);
+            await RaiseDateTimeValueChanged(null);
         }
         if (ShowTimePicker)
         {
             Time = null;
             await TimeChanged.InvokeAsync(null);
+        }
+    }
+
+    private async Task RaiseDateTimeValueChanged(DateOnly? date)
+    {
+        if (DateTimeValueChanged.HasDelegate)
+        {
+            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(TimeOnly.MinValue) : null;
+            _prevDateTimeValue = dt;
+            await DateTimeValueChanged.InvokeAsync(dt);
         }
     }
 

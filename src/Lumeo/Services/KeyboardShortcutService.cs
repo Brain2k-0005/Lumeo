@@ -2,7 +2,7 @@ using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
 
-public sealed class KeyboardShortcutService : IAsyncDisposable
+public sealed class KeyboardShortcutService : IKeyboardShortcutService
 {
     private readonly IJSRuntime _jsRuntime;
     private IJSObjectReference? _module;

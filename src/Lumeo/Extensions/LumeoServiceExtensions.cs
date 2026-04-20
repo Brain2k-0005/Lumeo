@@ -34,10 +34,15 @@ public static class LumeoServiceExtensions
         Action<LumeoLocalizationOptions>? configureLocalization)
     {
         services.AddScoped<ComponentInteropService>();
+        services.AddScoped<IComponentInteropService>(sp => sp.GetRequiredService<ComponentInteropService>());
         services.AddScoped<ToastService>();
+        services.AddScoped<IToastService>(sp => sp.GetRequiredService<ToastService>());
         services.AddScoped<OverlayService>();
+        services.AddScoped<IOverlayService>(sp => sp.GetRequiredService<OverlayService>());
         services.AddScoped<ThemeService>();
+        services.AddScoped<IThemeService>(sp => sp.GetRequiredService<ThemeService>());
         services.AddScoped<KeyboardShortcutService>();
+        services.AddScoped<IKeyboardShortcutService>(sp => sp.GetRequiredService<KeyboardShortcutService>());
 
         services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
         {

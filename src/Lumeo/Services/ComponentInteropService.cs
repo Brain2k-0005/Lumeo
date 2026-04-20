@@ -3,7 +3,7 @@ using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
 
-public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
+public sealed class ComponentInteropService : IComponentInteropService
 {
     private readonly IJSRuntime _jsRuntime;
     private IJSObjectReference? _module;
@@ -404,8 +404,6 @@ public sealed class ComponentInteropService : IAsyncDisposable, IDisposable
         var module = await GetModuleAsync();
         await _utility.RemoveFromLocalStorage(module, key);
     }
-
-    public record ElementRect(double X, double Y, double Width, double Height);
 
     public void Dispose()
     {

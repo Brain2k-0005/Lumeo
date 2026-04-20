@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace Lumeo.Services;
 
-public sealed class ToastService
+public sealed class ToastService : IToastService
 {
     public event Action<ToastMessage>? OnShow;
     public event Action<string>? OnDismiss;
