@@ -2,6 +2,7 @@
 @typeparam TItem
 @implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.ToastService Toast
 
 @{
     var context = new DataGridContext<TItem>(
@@ -51,7 +52,7 @@
 
 <CascadingValue Value="this" IsFixed="true">
 <CascadingValue Value="context" IsFixed="false">
-    <div class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
+    <div data-slot="datagrid" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
 
         @* Declarative column definitions *@
         <div class="hidden">@ChildContent</div>
@@ -1132,12 +1133,20 @@
 
     private async Task RequestServerData()
     {
+        var previousError = _serverService!.Error;
+
         await _serverService!.RequestDataAsync(
             _currentPage, PageSize,
             _sorts.Count > 0 ? _sorts : null,
             _filters.Count > 0 ? _filters : null,
             _globalSearch, GroupBy,
             OnServerRequest, OnError, StateHasChanged);
+
+        // When no OnError handler is wired and a new error occurred, show a default toast
+        if (!OnError.HasDelegate && _serverService.Error is not null && _serverService.Error != previousError)
+        {
+            Toast.Error(L["DataGrid.ErrorLoadingData", ""], _serverService.Error);
+        }
     }
 
     private IReadOnlyDictionary<string, double> ComputePinnedLeftOffsets()

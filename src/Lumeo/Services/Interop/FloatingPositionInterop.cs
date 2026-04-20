@@ -21,18 +21,18 @@ internal sealed class FloatingPositionInterop
         await module.InvokeVoidAsync("unpositionFixed", contentId);
     }
 
-    public async ValueTask<ComponentInteropService.ElementRect?> GetElementRect(
+    public async ValueTask<ElementRect?> GetElementRect(
         IJSObjectReference module,
         string elementId)
     {
-        return await module.InvokeAsync<ComponentInteropService.ElementRect?>("getElementRect", elementId);
+        return await module.InvokeAsync<ElementRect?>("getElementRect", elementId);
     }
 
-    public async ValueTask<ComponentInteropService.ElementRect?> GetElementRectBySelector(
+    public async ValueTask<ElementRect?> GetElementRectBySelector(
         IJSObjectReference module,
         string selector)
     {
-        return await module.InvokeAsync<ComponentInteropService.ElementRect?>("getElementRectBySelector", selector);
+        return await module.InvokeAsync<ElementRect?>("getElementRectBySelector", selector);
     }
 
     public async ValueTask<double> GetElementDimension(
