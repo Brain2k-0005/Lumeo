@@ -10,14 +10,15 @@
 else
 {
     <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
-        <div id="@_chartId" class="lumeo-chart-host w-full h-full @(ShouldShowSkeleton ? "invisible" : "")"></div>
-        @if (ShouldShowSkeleton)
+        <div id="@_chartId" class="lumeo-chart-host w-full h-full"
+             style="transition: opacity 350ms ease-out; opacity: @ChartHostOpacity;"></div>
+        @if (ShowLoadingSkeleton)
         {
-            @* Wrap the skeleton in a plain div with inline positioning so we
-               guarantee the overlay pins to this chart box regardless of whether
-               tailwind's `absolute inset-0` utilities are in the compiled bundle.
-               (Without this, rc.3 consumers saw skeletons offset by one card.) *@
-            <div style="position: absolute; inset: 0; pointer-events: none;">
+            @* Skeleton stays mounted while ShowLoadingSkeleton is on — we cross-fade
+               via opacity so the handoff to the real chart feels continuous instead
+               of snapping. Inline positioning guarantees the overlay pins to THIS
+               chart box regardless of the compiled Tailwind bundle. *@
+            <div style="position: absolute; inset: 0; pointer-events: none; transition: opacity 350ms ease-out; opacity: @SkeletonOpacity;">
                 <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
             </div>
         }
@@ -86,6 +87,13 @@ else
     /// mount — prevents an empty-whitespace flash on initial paint. ShowLoadingSkeleton=false
     /// opts out entirely.</summary>
     private bool ShouldShowSkeleton => ShowLoadingSkeleton && (IsLoading || !_hasFirstRendered);
+
+    // Cross-fade handoff: the chart host starts at opacity 0 and fades to 1 once the real
+    // ECharts canvas has mounted; the skeleton stays in the DOM (so its opacity can
+    // transition) and fades out in the same 350ms window. Pointer-events:none on the
+    // skeleton layer means the faded-out overlay doesn't swallow hover/click events.
+    private string ChartHostOpacity => ShouldShowSkeleton ? "0" : "1";
+    private string SkeletonOpacity => ShouldShowSkeleton ? "1" : "0";
 
     // Chart repaint on theme change is handled entirely in JS:
     // theme.js dispatches a `lumeo:theme-changed` event after every setter,
