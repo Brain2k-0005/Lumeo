@@ -9,7 +9,13 @@
 }
 else
 {
-    <div id="@_chartId" class="@CssClass" style="@StyleStr" @attributes="AdditionalAttributes"></div>
+    <div class="@RootCssClass" style="@StyleStr" @attributes="AdditionalAttributes">
+        <div id="@_chartId" class="lumeo-chart-host w-full h-full"></div>
+        @if (ShouldShowSkeleton)
+        {
+            <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="absolute inset-0 !rounded-none !bg-transparent animate-in fade-in duration-200 pointer-events-none" />
+        }
+    </div>
 }
 
 @inject IJSRuntime JSRuntime
@@ -33,10 +39,24 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>When true, forces the loading skeleton to render on top of the chart
+    /// (consumer is refetching data). Independent of the JS-driven ECharts loading
+    /// indicator controlled by <see cref="ShowLoading"/>.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>When true (default), renders a shape-aware skeleton while the chart
+    /// has not yet rendered for the first time, and whenever <see cref="IsLoading"/>
+    /// is true. Set to <c>false</c> to opt out entirely.</summary>
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    /// <summary>Shape family for the skeleton. Each chart wrapper presets a sensible
+    /// default (bars for Bar, pie ring for Pie, etc.) — consumers only override when
+    /// they want a different silhouette.</summary>
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Generic;
+
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private DotNetObjectReference<Chart>? _selfRef;
     private bool _initialized;
+    private bool _hasFirstRendered;
     private string? _lastJson;
     private bool _lastShowLoading;
     private string? _lastTheme;
@@ -47,6 +67,16 @@ else
     private string StyleStr => AspectRatio is not null
         ? $"width: {Width}; aspect-ratio: {AspectRatio};"
         : $"width: {Width}; height: {Height};";
+
+    // Root now hosts both the ECharts canvas (rendered via JS into this div) and the
+    // skeleton overlay (absolute-positioned child). `relative` is required so the
+    // overlay pins to the chart box; ECharts is fine rendering children inside it.
+    private string RootCssClass => $"relative {Class}".Trim();
+
+    /// <summary>Skeleton shows when explicitly loading OR before the first successful ECharts
+    /// mount — prevents an empty-whitespace flash on initial paint. ShowLoadingSkeleton=false
+    /// opts out entirely.</summary>
+    private bool ShouldShowSkeleton => ShowLoadingSkeleton && (IsLoading || !_hasFirstRendered);
 
     // Chart repaint on theme change is handled entirely in JS:
     // theme.js dispatches a `lumeo:theme-changed` event after every setter,
@@ -88,6 +118,12 @@ else
                 _lastShowLoading = true;
                 await _module.InvokeVoidAsync("showLoading", _chartId, null);
             }
+
+            // Flip the flag and re-render so the shape-aware skeleton overlay fades out
+            // now that the real ECharts canvas is mounted. Only triggers when the consumer
+            // isn't still forcing IsLoading=true for a refetch cycle.
+            _hasFirstRendered = true;
+            StateHasChanged();
         }
         else if (_initialized)
         {
