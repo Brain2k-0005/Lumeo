@@ -19,6 +19,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<int> GetMenuItemCount(string containerId);
     ValueTask LockScroll();
     ValueTask UnlockScroll();
+    /// <summary>Toggles a class on <c>document.documentElement</c>. Useful for
+    /// global modes (e.g. hiding floating chrome while a DataGrid is fullscreen).</summary>
+    ValueTask SetHtmlClass(string className, bool active);
     ValueTask SetupFocusTrap(string elementId);
     ValueTask RemoveFocusTrap(string elementId);
 
@@ -90,6 +93,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Clipboard
     ValueTask CopyToClipboard(string text);
+
+    // Press feedback (Ripple)
+    ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
 
     // LocalStorage
     ValueTask SaveToLocalStorage(string key, string value);

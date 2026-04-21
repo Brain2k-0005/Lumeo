@@ -24,6 +24,9 @@ public static class TestContextExtensions
 
         // Register all Lumeo services — they'll use bUnit's fake IJSRuntime
         ctx.Services.AddScoped<ComponentInteropService>();
+        // Some components (e.g. Button) inject the interface type — bind it
+        // to the same concrete instance so tests keep working.
+        ctx.Services.AddScoped<IComponentInteropService>(sp => sp.GetRequiredService<ComponentInteropService>());
         ctx.Services.AddScoped<ToastService>();
         ctx.Services.AddScoped<ThemeService>();
         ctx.Services.AddScoped<KeyboardShortcutService>();

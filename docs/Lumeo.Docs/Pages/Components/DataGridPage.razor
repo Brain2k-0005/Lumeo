@@ -35,6 +35,48 @@
         </DataGrid>
     </ComponentDemo>
 
+    <div class="space-y-3">
+        <Heading Id="filtering-extensibility" Level="2" Class="scroll-mt-20">Filtering Extensibility</Heading>
+        <Text Size="sm" Color="muted">
+            Column filters pick sensible defaults from <code>FilterType</code>, but two extension points let you customize the experience per-column without forking the grid.
+        </Text>
+
+        <Heading Level="3" Class="mt-4">Restricting operators per column</Heading>
+        <Text Size="sm" Color="muted">
+            Pass a <code>List&lt;FilterOperator&gt;</code> to the <code>Operators</code> parameter to limit which operators the built-in filter popover shows. The grid intersects this list with the defaults for the column's FilterType, so nonsensical combinations (e.g. <code>StartsWith</code> on a Number column) are filtered out automatically.
+        </Text>
+        <pre class="rounded-md border border-border/40 bg-muted/30 p-3 text-xs overflow-x-auto"><code>&lt;DataGridColumnDef TItem="Employee"
+                   Title="Name"
+                   Field="Name"
+                   Filterable="true"
+                   Operators="@@(new List&lt;FilterOperator&gt; { FilterOperator.Equals, FilterOperator.StartsWith })" /&gt;</code></pre>
+
+        <Heading Level="3" Class="mt-4">Custom filter UI via FilterTemplate</Heading>
+        <Text Size="sm" Color="muted">
+            For columns that need a bespoke experience (range sliders, relative-date pickers, tag pickers, ...), supply a <code>FilterTemplate</code>. The render fragment receives a <code>DataGridFilterTemplateContext</code> exposing the field name, the currently-applied <code>FilterDescriptor</code> (or null), and an <code>Apply</code> callback. Invoke <code>Apply</code> with a descriptor to commit the filter, or with <code>null</code> to clear it.
+        </Text>
+        <pre class="rounded-md border border-border/40 bg-muted/30 p-3 text-xs overflow-x-auto"><code>&lt;DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Filterable="true"&gt;
+    &lt;FilterTemplate Context="ctx"&gt;
+        &lt;Slider Min="0" Max="200000" Value="_min" ValueChanged="v =&gt; _min = v" /&gt;
+        &lt;Button OnClick="@@(async () =&gt; await ctx.Apply(
+            new FilterDescriptor(ctx.Field!, FilterOperator.GreaterThanOrEqual, _min, FilterType: DataGridFilterType.Number)))"&gt;
+            Apply
+        &lt;/Button&gt;
+        &lt;Button Variant="Button.ButtonVariant.Ghost" OnClick="@@(async () =&gt; await ctx.Apply(null))"&gt;
+            Clear
+        &lt;/Button&gt;
+    &lt;/FilterTemplate&gt;
+&lt;/DataGridColumnDef&gt;</code></pre>
+
+        <Text Size="sm" Color="muted" Class="mt-2">
+            What is <em>not</em> pluggable today (tracked for a future release):
+            registering brand-new <code>FilterOperator</code> values,
+            combining column filters with OR logic,
+            and LINQ-expression compilation for server-side evaluation.
+            Filters are always AND-combined across columns; within a column you get one operator + value at a time.
+        </Text>
+    </div>
+
     <ComponentDemo Title="Multi-Select with Checkboxes" Description="Select multiple rows with checkboxes. The header checkbox toggles select all." Code="@_multiSelectCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
                   SelectionMode="DataGridSelectionMode.Multiple"
@@ -567,6 +609,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Groupable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Whether column can be used for grouping.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilterType</td><td class="px-4 py-2 font-mono text-xs">DataGridFilterType</td><td class="px-4 py-2 text-xs">Text</td><td class="px-4 py-2 text-muted-foreground">Filter input type: Text, Number, Date, Select, Boolean.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilterOptions</td><td class="px-4 py-2 font-mono text-xs">List&lt;FilterOption&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Options for Select filter type (label + value pairs).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Operators</td><td class="px-4 py-2 font-mono text-xs">List&lt;FilterOperator&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Optional whitelist of operators to show in the filter UI for this column. When null, defaults for the FilterType are used.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilterTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;DataGridFilterTemplateContext&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom filter UI for this column. Replaces the built-in operator + value inputs when provided. Invoke the context's Apply callback with a FilterDescriptor to commit, or null to clear.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Format</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Format string (e.g., "C0", "yyyy-MM-dd", "N2").</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Aggregate</td><td class="px-4 py-2 font-mono text-xs">AggregateType</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Footer aggregate: None, Sum, Average, Count, Min, Max.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">CustomSort</td><td class="px-4 py-2 font-mono text-xs">Comparison&lt;object?&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom sort comparison function for this column.</td></tr>

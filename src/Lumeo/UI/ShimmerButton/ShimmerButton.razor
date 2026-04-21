@@ -1,6 +1,8 @@
 @namespace Lumeo
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<button class="@CssClass"
+<button @ref="_el"
+        class="@CssClass"
         style="@StyleString"
         disabled="@Disabled"
         @attributes="AdditionalAttributes"
@@ -21,8 +23,17 @@
     [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;
     [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Visual feedback when the button is pressed down. Default is <see cref="Button.ButtonPressEffect.None"/>
+    /// (no press animation — original behaviour).
+    /// </summary>
+    [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private Microsoft.AspNetCore.Components.ElementReference _el;
 
     private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
@@ -46,12 +57,32 @@
         _ => ""
     };
 
+    private string? PressEffectClass => PressEffect switch
+    {
+        Button.ButtonPressEffect.Scale => "lumeo-press-scale",
+        Button.ButtonPressEffect.Brightness => "lumeo-press-brightness",
+        Button.ButtonPressEffect.Ripple => "lumeo-press-ripple",
+        _ => null
+    };
+
     private string CssClass => string.Join(" ",
-        new[] { BaseClasses, VariantClasses, SizeClasses, Shimmer ? "lumeo-shimmer" : null, Class }
+        new[] { BaseClasses, VariantClasses, SizeClasses, "cursor-pointer disabled:cursor-not-allowed", Shimmer ? "lumeo-shimmer" : null, PressEffectClass, Class }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private string StyleString =>
         !string.IsNullOrWhiteSpace(ShimmerColor)
             ? $"--lumeo-shimmer-color: {ShimmerColor};"
             : string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && PressEffect == Button.ButtonPressEffect.Ripple)
+        {
+            try
+            {
+                await Interop.RippleAttachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 }

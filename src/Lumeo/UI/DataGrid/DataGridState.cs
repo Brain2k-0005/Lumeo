@@ -12,6 +12,18 @@ public record FilterDescriptor(
 
 public record FilterOption(string Label, object Value);
 
+/// <summary>
+/// Context passed to <see cref="DataGridColumn{TItem}.FilterTemplate"/> when a consumer
+/// provides a custom filter UI for a column. The template is responsible for rendering its
+/// own controls and invoking <see cref="Apply"/> with the new <see cref="FilterDescriptor"/>
+/// when the user commits, or null to clear the filter.
+/// </summary>
+public record DataGridFilterTemplateContext(
+    string? Field,
+    FilterDescriptor? CurrentFilter,
+    Func<FilterDescriptor?, Task> Apply
+);
+
 public record DataGridServerRequest(
     int Page,
     int PageSize,
