@@ -98,6 +98,97 @@
 
     <Separator Class="my-4" />
 
+    <!-- Setup paths -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Setup paths</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                When you run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init</code>, the CLI walks up from the current
+                directory looking for a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.csproj</code> that references the
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> NuGet. What happens next depends on the result.
+            </Lumeo.Text>
+
+            <Stack Gap="3">
+                <Heading Level="3">NuGet already installed — default</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    If <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;PackageReference Include="Lumeo" /&gt;</code> (or a
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ProjectReference</code> to the Lumeo library) is found, nothing
+                    extra is written. CSS tokens, utility classes, and the JS interop ship with the package. The
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--with-css</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--with-tailwind</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--no-assets</code>
+                    flags are ignored with a soft warning.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3">No NuGet — Option 1: pre-built CSS (recommended)</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Zero build tooling. The CLI copies Lumeo's pre-compiled stylesheets and JS modules into your
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/</code>:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">wwwroot/css/lumeo.css
+wwwroot/css/lumeo-utilities.css
+wwwroot/js/theme.js
+wwwroot/js/components.js</Stack>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Then add these tags to your <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">index.html</code> or
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_Host.cshtml</code>:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">&lt;link rel="stylesheet" href="css/lumeo.css" /&gt;
+&lt;link rel="stylesheet" href="css/lumeo-utilities.css" /&gt;
+&lt;script src="js/theme.js"&gt;&lt;/script&gt;
+&lt;script src="js/components.js" type="module"&gt;&lt;/script&gt;</Stack>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Pick this path via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init --with-css</code>, or just press
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">1</code> when prompted.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3">No NuGet — Option 2: Tailwind v4 scaffold</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    If you're already writing Tailwind classes in your own markup, let the CLI wire up Tailwind v4 so it scans both
+                    your pages and the vendored Lumeo components. It writes <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Styles/input.css</code>:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">@@import "tailwindcss";
+@@import "./_content/Lumeo/css/lumeo.css" layer(base);  /* tokens */
+
+@@source "./**/*.razor";
+@@source "./Components/Ui/**/*.razor";</Stack>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    and either creates or merges into <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">package.json</code> a pair of
+                    scripts + the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@tailwindcss/cli</code> devDependency:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">"scripts": @("{")
+  "build:css": "tailwindcss -i Styles/input.css -o wwwroot/css/app.css --minify",
+  "watch:css": "tailwindcss -i Styles/input.css -o wwwroot/css/app.css --watch"
+@("}")</Stack>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Then:
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">npm install
+npm run watch:css</Stack>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Pick this path via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init --with-tailwind</code>.
+                    You'll link <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">css/app.css</code> in your host HTML instead of
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.css</code>.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3">Keeping pre-built assets fresh</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    When Lumeo ships CSS/JS tweaks, run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update-assets</code>.
+                    It re-downloads the files listed under <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">assets.files</code> in
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.json</code> and prompts per-file on drift — the same flow as
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update &lt;component&gt;</code>. Only runs when
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">assets.mode == "prebuilt"</code>; Tailwind users rebuild their own bundle.
+                </Lumeo.Text>
+            </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- Commands -->
     <Stack>
         <Stack Gap="6">
@@ -116,7 +207,24 @@
 --path &lt;path&gt;        Components folder (skips prompt).
 --registry &lt;url&gt;     Override registry URL.
 --yes, -y            Accept all defaults, skip prompts (CI mode).
---force              Overwrite existing lumeo.json.</Stack>
+--force              Overwrite existing lumeo.json.
+--with-css           Copy Lumeo's pre-built CSS/JS into wwwroot/.
+--with-tailwind      Scaffold Tailwind v4 (Styles/input.css + package.json).
+--no-assets          Skip asset setup entirely.
+--local              Copy assets from a local Lumeo checkout (dev only).</Stack>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo update-assets</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Refreshes the copied CSS/JS files (applies only when <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">assets.mode == "prebuilt"</code>).
+                    Walks the same files <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">init --with-css</code> wrote and prompts per-file on drift —
+                    overwrite, skip, or view a diff. Tailwind and skip modes are no-ops (tailwind users rebuild via
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">npm run build:css</code>).
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read assets from a local Lumeo checkout.
+--force              Overwrite all files without prompting.
+--dry-run            Print what would happen; don&apos;t touch the filesystem.</Stack>
             </Stack>
 
             <Stack Gap="3">
@@ -207,11 +315,29 @@
   "namespace": "MyApp.Components",
   "componentsPath": "Components/Ui",
   "registry": "https://lumeo.nativ.sh/registry/registry.json",
+  "assets": @("{")
+    "mode": "prebuilt",
+    "version": "2.0.0",
+    "files": [
+      "wwwroot/css/lumeo.css",
+      "wwwroot/css/lumeo-utilities.css",
+      "wwwroot/js/theme.js",
+      "wwwroot/js/components.js"
+    ]
+  @("}"),
   "components": @("{")
     "button":  @("{") "version": "2.0.0", "files": ["UI/Button/Button.razor"] @("}"),
     "spinner": @("{") "version": "2.0.0", "files": ["UI/Spinner/Spinner.razor"] @("}")
   @("}")
 @("}")</Stack>
+            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                <Lumeo.Text As="span" Weight="medium" Class="text-foreground">assets.mode</Lumeo.Text> is one of
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"prebuilt"</code> (Option 1 — copied CSS/JS),
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"tailwind"</code> (Option 2 — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Styles/input.css</code> +
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">package.json</code>), or
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"none"</code> (skipped).
+                When the NuGet is detected, the whole <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">assets</code> block is omitted.
+            </Lumeo.Text>
         </Stack>
     </Stack>
 

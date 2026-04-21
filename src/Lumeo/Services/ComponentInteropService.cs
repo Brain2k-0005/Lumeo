@@ -86,6 +86,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _focus.UnlockScroll(module);
     }
 
+    public async ValueTask SetHtmlClass(string className, bool active)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setHtmlClass", className, active);
+    }
+
     public async ValueTask SetupFocusTrap(string elementId)
     {
         var module = await GetModuleAsync();
@@ -406,6 +412,18 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _utility.CopyToClipboard(module, text);
+    }
+
+    // --- Press feedback (Ripple) ---
+
+    public async ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ripple.attach", element);
+        }
+        catch (JSDisconnectedException) { }
     }
 
     // --- LocalStorage ---

@@ -17,11 +17,29 @@ var initPathOpt = new Option<string?>("--path", "Components folder relative to t
 var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: https://lumeo.nativ.sh/registry/registry.json");
 var initForceOpt = new Option<bool>("--force", "Overwrite an existing lumeo.json.");
 var initYesOpt = new Option<bool>(new[] { "--yes", "-y" }, "Accept all defaults, skip prompts (CI mode).");
+var initWithCssOpt = new Option<bool>("--with-css", "Copy Lumeo's pre-built CSS/JS into wwwroot/ (no Tailwind required).");
+var initWithTailwindOpt = new Option<bool>("--with-tailwind", "Scaffold Tailwind v4 setup (Styles/input.css + package.json).");
+var initNoAssetsOpt = new Option<bool>("--no-assets", "Skip asset setup entirely (you'll wire CSS up yourself).");
+var initLocalOpt = new Option<bool>("--local", "Copy assets from a local Lumeo checkout (dev only).");
 var initCmd = new Command("init", "Create a lumeo.json in the current directory.")
 {
     initNamespaceOpt, initPathOpt, initRegistryOpt, initForceOpt, initYesOpt,
+    initWithCssOpt, initWithTailwindOpt, initNoAssetsOpt, initLocalOpt,
 };
-initCmd.SetHandler(Commands.Init, initNamespaceOpt, initPathOpt, initRegistryOpt, initForceOpt, initYesOpt);
+initCmd.SetHandler(async ctx =>
+{
+    var opts = new Commands.InitOptions(
+        Namespace: ctx.ParseResult.GetValueForOption(initNamespaceOpt),
+        Path: ctx.ParseResult.GetValueForOption(initPathOpt),
+        Registry: ctx.ParseResult.GetValueForOption(initRegistryOpt),
+        Force: ctx.ParseResult.GetValueForOption(initForceOpt),
+        Yes: ctx.ParseResult.GetValueForOption(initYesOpt),
+        WithCss: ctx.ParseResult.GetValueForOption(initWithCssOpt),
+        WithTailwind: ctx.ParseResult.GetValueForOption(initWithTailwindOpt),
+        NoAssets: ctx.ParseResult.GetValueForOption(initNoAssetsOpt),
+        Local: ctx.ParseResult.GetValueForOption(initLocalOpt));
+    await Commands.Init(opts);
+});
 
 // --- add ---
 var addNameArg = new Argument<string>("component", "Component name (kebab-case), e.g. 'button'.");
@@ -79,12 +97,23 @@ var diffCmd = new Command("diff", "Show files that have drifted from the registr
 };
 diffCmd.SetHandler(Commands.Diff, diffNameArg, diffLocalOpt);
 
+// --- update-assets ---
+var updateAssetsLocalOpt = new Option<bool>("--local", "Read assets from a local Lumeo checkout.");
+var updateAssetsForceOpt = new Option<bool>("--force", "Overwrite all files without prompting.");
+var updateAssetsDryOpt = new Option<bool>("--dry-run", "Print what would happen without writing files.");
+var updateAssetsCmd = new Command("update-assets", "Refresh copied CSS/JS assets (when assets.mode == prebuilt).")
+{
+    updateAssetsLocalOpt, updateAssetsForceOpt, updateAssetsDryOpt,
+};
+updateAssetsCmd.SetHandler(Commands.UpdateAssets, updateAssetsLocalOpt, updateAssetsForceOpt, updateAssetsDryOpt);
+
 root.AddCommand(initCmd);
 root.AddCommand(addCmd);
 root.AddCommand(updateCmd);
 root.AddCommand(removeCmd);
 root.AddCommand(listCmd);
 root.AddCommand(diffCmd);
+root.AddCommand(updateAssetsCmd);
 
 var parseExit = await root.InvokeAsync(args);
 // Respect handler-set Environment.ExitCode (e.g. `update --check` → 1 on drift).
@@ -114,11 +143,22 @@ namespace Lumeo.Cli
         [JsonPropertyName("files")] public List<string> Files { get; set; } = new();
     }
 
+    internal sealed class AssetsConfig
+    {
+        /// <summary>One of: "prebuilt", "tailwind", "none".</summary>
+        [JsonPropertyName("mode")] public string Mode { get; set; } = "none";
+        [JsonPropertyName("version")] public string? Version { get; set; }
+        [JsonPropertyName("files")] public List<string>? Files { get; set; }
+        [JsonPropertyName("stylesEntry")] public string? StylesEntry { get; set; }
+        [JsonPropertyName("output")] public string? Output { get; set; }
+    }
+
     internal sealed class LumeoConfig
     {
         [JsonPropertyName("namespace")] public string Namespace { get; set; } = "MyApp.Components";
         [JsonPropertyName("componentsPath")] public string ComponentsPath { get; set; } = "Components/Ui";
         [JsonPropertyName("registry")] public string Registry { get; set; } = "https://lumeo.nativ.sh/registry/registry.json";
+        [JsonPropertyName("assets")] public AssetsConfig? Assets { get; set; }
         [JsonPropertyName("components")] public Dictionary<string, InstalledComponent>? Components { get; set; }
     }
 
@@ -246,6 +286,34 @@ namespace Lumeo.Cli
                 ? registryUrl.Replace("/registry.json", "/raw/")
                 : registryUrl.TrimEnd('/') + "/raw/";
             return await s_http.GetStringAsync(baseUrl + relativePath);
+        }
+
+        /// <summary>Fetch a static asset under _content/Lumeo/*. Local mode maps to src/Lumeo/wwwroot/*.</summary>
+        public static async Task<byte[]> GetAssetBytesAsync(string assetRelPath, bool local, string registryUrl)
+        {
+            // assetRelPath is like "_content/Lumeo/css/lumeo.css".
+            if (local)
+            {
+                var repoRoot = Paths.FindRepoRoot(Environment.CurrentDirectory)
+                               ?? throw new InvalidOperationException("--local requires running inside the Lumeo repo.");
+                // Strip the "_content/Lumeo/" prefix to map to src/Lumeo/wwwroot.
+                var stripped = assetRelPath;
+                const string prefix = "_content/Lumeo/";
+                if (stripped.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    stripped = stripped.Substring(prefix.Length);
+                var abs = Path.Combine(Paths.LocalSourceRoot(repoRoot), "wwwroot",
+                    stripped.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(abs)) throw new FileNotFoundException($"Local asset not found: {abs}");
+                return await File.ReadAllBytesAsync(abs);
+            }
+            // Base site URL, derived from registry URL. Registry is https://lumeo.nativ.sh/registry/registry.json;
+            // strip "registry/registry.json" to get the site root.
+            var siteBase = registryUrl;
+            var idx = siteBase.IndexOf("/registry/", StringComparison.OrdinalIgnoreCase);
+            if (idx > 0) siteBase = siteBase.Substring(0, idx);
+            siteBase = siteBase.TrimEnd('/');
+            var url = $"{siteBase}/{assetRelPath}";
+            return await s_http.GetByteArrayAsync(url);
         }
     }
 
