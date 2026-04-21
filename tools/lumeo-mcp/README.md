@@ -1,4 +1,4 @@
-# @lumeo/mcp-server
+# @lumeo-ui/mcp-server
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that
 exposes the [Lumeo](https://github.com/Brain2k-0005/Lumeo) Blazor component
@@ -39,7 +39,7 @@ npm run build
 
 This produces `dist/index.js`, a Node ESM entrypoint.
 
-> Future: `npx -y @lumeo/mcp-server` once published to npm.
+> Future: `npx -y @lumeo-ui/mcp-server` once published to npm.
 
 ## Configure your MCP client
 

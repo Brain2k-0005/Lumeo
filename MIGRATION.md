@@ -118,10 +118,10 @@ dotnet new lumeo-form       -n RegisterForm
 dotnet new lumeo-component  -n FancyCard
 ```
 
-### `@lumeo/mcp-server` — MCP server for LLM codegen
+### `@lumeo-ui/mcp-server` — MCP server for LLM codegen
 
 ```bash
-npm install -g @lumeo/mcp-server
+npm install -g @lumeo-ui/mcp-server
 # then wire into Claude Desktop / Cursor / your MCP client config
 ```
 
