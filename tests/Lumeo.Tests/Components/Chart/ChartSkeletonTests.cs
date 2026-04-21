@@ -84,11 +84,12 @@ public class ChartSkeletonTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Pie_Kind_Renders_Single_Donut_Circle()
+    public void Pie_Kind_Renders_Four_Slices()
     {
         var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Pie));
 
-        Assert.Single(cut.FindAll("circle.lumeo-chart-skel-shape"));
+        // Pie renders 4 <path> wedges — one per 90° slice — each tagged as a pie-slice.
+        Assert.Equal(4, cut.FindAll("path[data-skel-shape='pie-slice']").Count);
     }
 
     [Fact]
