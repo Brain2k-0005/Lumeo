@@ -65,21 +65,22 @@ public class ChartSkeletonTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Line_Kind_Renders_Polyline_Only()
+    public void Line_Kind_Renders_Multi_Line_Polylines()
     {
         var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Line));
 
-        Assert.Single(cut.FindAll("polyline.lumeo-chart-skel-shape"));
+        // Three overlapping polylines give the skeleton a multi-series look.
+        Assert.Equal(3, cut.FindAll("polyline.lumeo-chart-skel-shape").Count);
         // Line variant has no filled area polygon.
         Assert.Empty(cut.FindAll("polygon.lumeo-chart-skel-shape"));
     }
 
     [Fact]
-    public void Area_Kind_Renders_Polyline_And_Polygon()
+    public void Area_Kind_Renders_Polylines_And_Polygon()
     {
         var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Area));
 
-        Assert.Single(cut.FindAll("polyline.lumeo-chart-skel-shape"));
+        Assert.Equal(3, cut.FindAll("polyline.lumeo-chart-skel-shape").Count);
         Assert.Single(cut.FindAll("polygon.lumeo-chart-skel-shape"));
     }
 
