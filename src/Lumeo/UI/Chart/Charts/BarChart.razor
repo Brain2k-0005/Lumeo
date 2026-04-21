@@ -20,22 +20,28 @@
     [Parameter] public string LabelPosition { get; set; } = "top";
     [Parameter] public string? LabelFormat { get; set; }
 
-    /// <summary>Forces every category-axis label to display.
+    /// <summary>Controls how category-axis labels are rendered.
     /// <list type="bullet">
-    ///   <item><c>null</c> (default): smart — shows every label when there are ≤ 10 categories, otherwise lets ECharts auto-thin to avoid overlap.</item>
-    ///   <item><c>true</c>: always show every label (may overlap on dense datasets — combine with <see cref="LabelRotate"/>).</item>
-    ///   <item><c>false</c>: always let ECharts auto-thin labels.</item>
+    ///   <item><c>Smart</c> (default): show every label; auto-rotate -30° at 11–20 categories and -45° above 20 so every label stays visible and readable.</item>
+    ///   <item><c>ShowAll</c>: force every label with no rotation (may overlap on dense datasets).</item>
+    ///   <item><c>Auto</c>: let ECharts auto-thin labels that would overlap (original ECharts default — hides every second label when crowded).</item>
     /// </list>
     /// </summary>
-    [Parameter] public bool? ShowAllLabels { get; set; }
+    [Parameter] public BarLabelStrategy LabelStrategy { get; set; } = BarLabelStrategy.Smart;
 
-    /// <summary>Rotation of category-axis labels in degrees (e.g. -30, -45). Useful when
-    /// <see cref="ShowAllLabels"/> is true and labels are too long to fit horizontally.</summary>
+    /// <summary>Manual override for category-label rotation in degrees (e.g. -30, -45). When set,
+    /// takes precedence over the rotation implied by <see cref="LabelStrategy"/>.</summary>
     [Parameter] public int? LabelRotate { get; set; }
 
-    /// <summary>Threshold used by the smart default of <see cref="ShowAllLabels"/>.
-    /// Datasets with more categories than this fall back to ECharts auto-thinning.</summary>
-    [Parameter] public int DenseLabelThreshold { get; set; } = 10;
+    public enum BarLabelStrategy
+    {
+        /// <summary>Show every label; auto-rotate when density grows so text doesn't overlap.</summary>
+        Smart,
+        /// <summary>Force every label with no rotation.</summary>
+        ShowAll,
+        /// <summary>Let ECharts auto-thin overlapping labels.</summary>
+        Auto,
+    }
     [Parameter] public bool DataZoom { get; set; }
     [Parameter] public bool Toolbox { get; set; }
     [Parameter] public List<string>? ColorPalette { get; set; }
@@ -51,15 +57,36 @@
     protected override void OnParametersSet()
     {
         var categoryAxis = new EChartAxis { Type = "category", Data = Categories };
-        // Smart default: show every label when there are few categories, otherwise
-        // fall back to ECharts auto-thinning. Explicit true/false overrides the smart default.
-        var showAll = ShowAllLabels ?? (Categories.Count <= DenseLabelThreshold);
-        if (showAll || LabelRotate.HasValue)
+
+        // Label strategy → interval + rotation.
+        int? interval = null;
+        int? autoRotate = null;
+        switch (LabelStrategy)
+        {
+            case BarLabelStrategy.Smart:
+                interval = 0; // show all
+                autoRotate = Categories.Count switch
+                {
+                    <= 10 => null,   // fits horizontally
+                    <= 20 => -30,    // starting to crowd
+                    _     => -45,    // dense
+                };
+                break;
+            case BarLabelStrategy.ShowAll:
+                interval = 0;
+                break;
+            case BarLabelStrategy.Auto:
+                // leave interval null — ECharts auto-thins
+                break;
+        }
+
+        var effectiveRotate = LabelRotate ?? autoRotate;
+        if (interval.HasValue || effectiveRotate.HasValue)
         {
             categoryAxis.AxisLabel = new EChartAxisLabel
             {
-                Interval = showAll ? 0 : null,
-                Rotate = LabelRotate
+                Interval = interval,
+                Rotate = effectiveRotate
             };
         }
         var valueAxis = new EChartAxis { Type = "value" };
