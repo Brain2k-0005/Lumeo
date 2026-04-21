@@ -50,9 +50,8 @@
     );
 }
 
-<CascadingValue Value="this" IsFixed="true">
-<CascadingValue Value="context" IsFixed="false">
-    <div data-slot="datagrid" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
+@{
+    RenderFragment gridRoot = @<div data-slot="datagrid" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
 
         @* Declarative column definitions *@
         <div class="hidden">@ChildContent</div>
@@ -91,7 +90,10 @@
                              OnDeleteNamedLayout="OnDeleteNamedLayout"
                              OnApplyNamedLayout="HandleApplyNamedLayout"
                              LayoutStorageKey="LayoutStorageKey"
-                             OnError="OnError" />
+                             OnError="OnError"
+                             Expandable="Expandable"
+                             IsExpanded="_isExpanded"
+                             OnToggleExpanded="ToggleExpanded" />
         }
 
         @if (_contextMenuVisible)
@@ -137,7 +139,38 @@
                                 PageChanged="HandlePageChanged"
                                 PageSizeChanged="HandlePageSizeChanged" />
         }
-    </div>
+    </div>;
+}
+
+<CascadingValue Value="this" IsFixed="true">
+<CascadingValue Value="context" IsFixed="false">
+    @if (_isExpanded)
+    {
+        <div class="fixed inset-0 z-[60] bg-background flex flex-col"
+             role="dialog"
+             aria-modal="true"
+             aria-label="@(FullscreenTitle ?? "Expanded data grid")"
+             tabindex="-1"
+             @ref="_fullscreenRef"
+             @onkeydown="HandleFullscreenKeyDown">
+            <div class="flex items-center justify-between border-b border-border/40 px-4 py-2">
+                <Heading Level="3" Class="text-sm font-semibold m-0">@(FullscreenTitle ?? "Data Grid")</Heading>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                        OnClick="ToggleExpanded"
+                        title="Exit fullscreen (Esc)"
+                        aria-label="Exit fullscreen">
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                </Button>
+            </div>
+            <div class="flex-1 overflow-auto p-4">
+                @gridRoot
+            </div>
+        </div>
+    }
+    else
+    {
+        @gridRoot
+    }
 </CascadingValue>
 </CascadingValue>
 
@@ -164,6 +197,27 @@
     [Parameter] public bool RowReorderable { get; set; }
     [Parameter] public string? GroupBy { get; set; }
     [Parameter] public bool GroupsExpandedByDefault { get; set; } = true;
+
+    // --- Fullscreen / Expandable ---
+    /// <summary>
+    /// When true, adds a small Expand icon to the toolbar. Clicking it
+    /// renders the grid in a fullscreen modal overlay. Default false.
+    /// </summary>
+    [Parameter] public bool Expandable { get; set; }
+
+    /// <summary>
+    /// When true, the grid is currently rendered in fullscreen. Bind this
+    /// for programmatic control, or leave unbound to let the grid manage
+    /// its own state via the toolbar button.
+    /// </summary>
+    [Parameter] public bool IsExpanded { get; set; }
+
+    [Parameter] public EventCallback<bool> IsExpandedChanged { get; set; }
+
+    /// <summary>
+    /// Optional title shown in the fullscreen header bar. Defaults to "Data Grid".
+    /// </summary>
+    [Parameter] public string? FullscreenTitle { get; set; }
 
     // --- Conditional Row Styling ---
     [Parameter] public Func<TItem, string>? RowClass { get; set; }
@@ -233,6 +287,10 @@
     private double _contextMenuY;
     private TItem? _contextMenuItem;
     private string _contextMenuId = $"dg-ctx-{Guid.NewGuid():N}";
+    private bool _isExpanded;
+    private bool _lastIsExpandedParam;
+    private bool _fullscreenNeedsFocus;
+    private ElementReference _fullscreenRef;
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -317,6 +375,25 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // Sync IsExpanded parameter with internal state (allow external binding to drive it)
+        if (IsExpanded != _lastIsExpandedParam)
+        {
+            _lastIsExpandedParam = IsExpanded;
+            if (_isExpanded != IsExpanded)
+            {
+                _isExpanded = IsExpanded;
+                if (_isExpanded)
+                {
+                    _fullscreenNeedsFocus = true;
+                    try { await Interop.LockScroll(); } catch { /* best-effort */ }
+                }
+                else
+                {
+                    try { await Interop.UnlockScroll(); } catch { /* best-effort */ }
+                }
+            }
+        }
+
         SyncOrderedColumns();
 
         // Snapshot default layout once (before any external SavedLayout is applied)
@@ -420,6 +497,47 @@
                 var key = LayoutStorageKey ?? _layoutId;
                 await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
             }
+        }
+
+        if (_isExpanded && _fullscreenNeedsFocus)
+        {
+            _fullscreenNeedsFocus = false;
+            try { await _fullscreenRef.FocusAsync(); } catch { /* element may not be ready */ }
+        }
+    }
+
+    /// <summary>
+    /// Toggles fullscreen expand mode for the grid. No-op when Expandable is false.
+    /// Preserves grid state (selection, filters, sorts, pagination) across the transition
+    /// because the underlying grid markup is rendered as the same render-tree sub-tree.
+    /// </summary>
+    public async Task ToggleExpanded()
+    {
+        _isExpanded = !_isExpanded;
+        _lastIsExpandedParam = _isExpanded;
+        IsExpanded = _isExpanded;
+
+        if (_isExpanded)
+        {
+            _fullscreenNeedsFocus = true;
+            try { await Interop.LockScroll(); } catch { /* best-effort */ }
+        }
+        else
+        {
+            try { await Interop.UnlockScroll(); } catch { /* best-effort */ }
+        }
+
+        if (IsExpandedChanged.HasDelegate)
+            await IsExpandedChanged.InvokeAsync(_isExpanded);
+
+        StateHasChanged();
+    }
+
+    private async Task HandleFullscreenKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _isExpanded)
+        {
+            await ToggleExpanded();
         }
     }
 
@@ -1177,10 +1295,18 @@
         return offsets;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _layoutService?.Dispose();
         _serverService?.Dispose();
-        return ValueTask.CompletedTask;
+
+        // Defensive: if disposed while still in fullscreen, unlock scroll so the host page
+        // isn't left with a locked body.
+        if (_isExpanded)
+        {
+            try { await Interop.UnlockScroll(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+        }
     }
 }
