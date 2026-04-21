@@ -17,6 +17,13 @@ public class DataGridColumn<TItem>
     public bool Resizable { get; set; } = true;
     public bool Visible { get; set; } = true;
     public bool Groupable { get; set; }
+    /// <summary>
+    /// Whether this column can be reordered via header drag-and-drop or the
+    /// Toggle Columns menu arrows. When false, the column is pinned to its
+    /// current position regardless of the grid-level <c>Reorderable</c> flag.
+    /// Defaults to <c>true</c>.
+    /// </summary>
+    public bool Reorderable { get; set; } = true;
     public PinDirection Pin { get; set; } = PinDirection.None;
     public DataGridFilterType FilterType { get; set; } = DataGridFilterType.Text;
     public AggregateType Aggregate { get; set; } = AggregateType.None;

@@ -365,6 +365,72 @@
         </Stack>
     </ComponentDemo>
 
+    <div class="space-y-3">
+        <Heading Id="saving-and-loading-layouts" Level="2" Class="scroll-mt-20">Saving and loading layouts</Heading>
+        <Text Size="sm" Color="muted">
+            For full control over where layouts are stored (your own database, a REST API, cookies, etc.), use the programmatic JSON API. Capture a grid reference with <code>@@ref</code>, then call <code>ExportLayout()</code> to get a JSON string and <code>ApplyLayoutJsonAsync(json)</code> to round-trip it later. The snapshot covers column order, widths, visibility, pin state, sorts, filters, global search, current page, page size, and group-by.
+        </Text>
+        <pre class="rounded-md border border-border/40 bg-muted/30 p-3 text-xs overflow-x-auto"><code>&lt;DataGrid @@ref="_grid" TItem="Order" Items="_orders"&gt;
+    &lt;DataGridColumnDef TItem="Order" Field="Id" Title="ID" /&gt;
+    &lt;DataGridColumnDef TItem="Order" Field="Customer" Title="Customer" /&gt;
+    &lt;DataGridColumnDef TItem="Order" Field="Total" Title="Total" Format="C2" /&gt;
+&lt;/DataGrid&gt;
+
+&lt;Button OnClick="SaveLayout"&gt;Save layout&lt;/Button&gt;
+&lt;Button OnClick="LoadLayout"&gt;Load layout&lt;/Button&gt;
+
+@@code {
+    private DataGrid&lt;Order&gt;? _grid;
+    [Inject] MyAppDbContext Db { get; set; } = default!;
+
+    private async Task SaveLayout()
+    {
+        if (_grid is null) return;
+        var json = _grid.ExportLayout();
+        await Db.UserLayouts.AddAsync(new UserLayout {
+            UserId = CurrentUserId,
+            GridKey = "orders",
+            Json = json,
+            SavedAt = DateTime.UtcNow
+        });
+        await Db.SaveChangesAsync();
+    }
+
+    private async Task LoadLayout()
+    {
+        if (_grid is null) return;
+        var latest = await Db.UserLayouts
+            .Where(l =&gt; l.UserId == CurrentUserId &amp;&amp; l.GridKey == "orders")
+            .OrderByDescending(l =&gt; l.SavedAt)
+            .FirstOrDefaultAsync();
+        if (latest is not null)
+            await _grid.ApplyLayoutJsonAsync(latest.Json);
+    }
+}</code></pre>
+        <Text Size="sm" Color="muted">
+            The JSON shape is the public <code>DataGridLayoutSnapshot</code> record. The snapshot is versioned (<code>Version: 1</code> today) so future breaking changes can be migrated. Columns referenced in a snapshot that no longer exist on the grid are silently ignored; columns present on the grid but missing from the snapshot are appended at the end.
+        </Text>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="reorder-columns" Level="2" Class="scroll-mt-20">Reorder columns</Heading>
+        <Text Size="sm" Color="muted">
+            Set <code>Reorderable="true"</code> on the grid to enable column reordering. Users can reorder columns two ways:
+        </Text>
+        <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+            <li><strong>Drag-and-drop</strong>: grab a column header and drag it left or right. A 2px vertical drop indicator renders at the nearest column boundary to show where the column will land when released.</li>
+            <li><strong>Keyboard / menu arrows</strong>: open the Toggle Columns popover from the toolbar and use the up/down arrow buttons next to each column. This path is the accessible fallback for users who can't use pointer drag-and-drop.</li>
+        </ul>
+        <Text Size="sm" Color="muted">
+            To pin an individual column so it cannot be reordered (for example, a required identifier column), set <code>Reorderable="false"</code> on that <code>DataGridColumnDef</code>. Both the drag handle and the menu arrows respect this flag.
+        </Text>
+        <pre class="rounded-md border border-border/40 bg-muted/30 p-3 text-xs overflow-x-auto"><code>&lt;DataGrid TItem="Order" Items="_orders" Reorderable="true"&gt;
+    &lt;DataGridColumnDef TItem="Order" Field="Id" Title="ID" Reorderable="false" /&gt;
+    &lt;DataGridColumnDef TItem="Order" Field="Customer" Title="Customer" /&gt;
+    &lt;DataGridColumnDef TItem="Order" Field="Total" Title="Total" Format="C2" /&gt;
+&lt;/DataGrid&gt;</code></pre>
+    </div>
+
     <ComponentDemo Title="Custom Toolbar Content" Description="Add custom buttons and controls to the toolbar using the ToolbarContent slot." Code="@_toolbarContentCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ShowToolbar="true">
             <ToolbarContent>
@@ -577,6 +643,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">IsExpandedChanged</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;bool&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires whenever the fullscreen state toggles.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">FullscreenTitle</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Optional title shown in the fullscreen header bar. Defaults to "Data Grid".</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Class</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Additional CSS classes for the root element.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ExportLayout()</td><td class="px-4 py-2 font-mono text-xs">string</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Serializes the current layout (column order, widths, visibility, pin state, sorts, filters, global search, page, page size, group-by) to a JSON string. Call via <code>@@ref</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ApplyLayoutJsonAsync(json)</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Deserializes a JSON layout produced by <code>ExportLayout</code> and applies it. Throws <code>JsonException</code> on malformed input; silently ignores columns that no longer exist.</td></tr>
                     </tbody>
                 </table>
             </Stack>
@@ -607,6 +675,7 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Pin</td><td class="px-4 py-2 font-mono text-xs">PinDirection</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Pin column: None, Left, or Right.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Pinnable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Whether column can be pinned/unpinned via the UI.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Groupable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Whether column can be used for grouping.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Reorderable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Whether this column can be reordered (via header drag-and-drop or the Toggle Columns menu arrows). Set to <code>false</code> to pin an individual column's position even when the grid-level <code>Reorderable</code> is true.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilterType</td><td class="px-4 py-2 font-mono text-xs">DataGridFilterType</td><td class="px-4 py-2 text-xs">Text</td><td class="px-4 py-2 text-muted-foreground">Filter input type: Text, Number, Date, Select, Boolean.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilterOptions</td><td class="px-4 py-2 font-mono text-xs">List&lt;FilterOption&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Options for Select filter type (label + value pairs).</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Operators</td><td class="px-4 py-2 font-mono text-xs">List&lt;FilterOperator&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Optional whitelist of operators to show in the filter UI for this column. When null, defaults for the FilterType are used.</td></tr>
@@ -643,6 +712,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">DataGridServerRequest</td><td class="px-4 py-2 font-mono text-xs">Page, PageSize, Sorts?, Filters?, GlobalSearch?, GroupBy?, CancellationToken</td><td class="px-4 py-2 text-muted-foreground">Sent to OnServerRequest with current grid state. GroupBy contains the current group field if set. CancellationToken should be passed to your HTTP client to abort superseded requests.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">DataGridLayout</td><td class="px-4 py-2 font-mono text-xs">Columns, Sorts?, Filters?, PageSize?, GlobalSearch?</td><td class="px-4 py-2 text-muted-foreground">Serializable layout snapshot for persistence.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">DataGridNamedLayout</td><td class="px-4 py-2 font-mono text-xs">Id, Name, Scope, Layout</td><td class="px-4 py-2 text-muted-foreground">A named layout entry. Scope is "Personal", "Global", or "SystemDefault".</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">DataGridLayoutSnapshot</td><td class="px-4 py-2 font-mono text-xs">Version, Columns, Sorts, Filters, GlobalSearch?, CurrentPage, PageSize, GroupBy?</td><td class="px-4 py-2 text-muted-foreground">Public, JSON-serializable shape used by <code>ExportLayout</code>/<code>ApplyLayoutJsonAsync</code>. Version is bumped on schema changes.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">DataGridColumnLayout</td><td class="px-4 py-2 font-mono text-xs">Field, Order, Visible, Width?, Pin?</td><td class="px-4 py-2 text-muted-foreground">Per-column entry inside a <code>DataGridLayoutSnapshot</code>.</td></tr>
                     </tbody>
                 </table>
             </Stack>
