@@ -30,6 +30,24 @@ public class DataGridColumn<TItem>
     public Comparison<object?>? CustomSort { get; set; }
     public List<FilterOption>? FilterOptions { get; set; }
 
+    /// <summary>
+    /// Optional whitelist of filter operators shown in the column filter UI.
+    /// When null, the grid exposes the default set for the column's <see cref="FilterType"/>.
+    /// When set, only operators present in this list are offered (still intersected with the
+    /// built-in defaults so unsupported combinations are not surfaced accidentally).
+    /// </summary>
+    public List<FilterOperator>? Operators { get; set; }
+
+    /// <summary>
+    /// Optional custom filter UI for this column. When provided, the default filter body
+    /// (operator + value inputs) is replaced with this render fragment, allowing the consumer
+    /// to implement any filter experience (sliders, multi-selects, relative-date pickers, ...).
+    /// The context exposes the current <see cref="FilterDescriptor"/> for the column
+    /// (or null) and an Apply callback the consumer invokes to commit the filter.
+    /// Passing null to Apply clears the filter.
+    /// </summary>
+    public RenderFragment<DataGridFilterTemplateContext>? FilterTemplate { get; set; }
+
     private System.Reflection.PropertyInfo? _cachedProperty;
     private string? _cachedPropertyField;
 

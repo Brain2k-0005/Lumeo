@@ -1,10 +1,11 @@
 @namespace Lumeo
 @implements IDisposable
 @inject NavigationManager Nav
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @if (string.IsNullOrEmpty(Href))
 {
-    <button type="button" class="@CssClass"
+    <button @ref="_el" type="button" class="@CssClass"
             aria-current="@(_active ? "page" : null)"
             aria-label="@Label"
             @onclick="HandleClick"
@@ -14,7 +15,7 @@
 }
 else
 {
-    <a href="@Href" class="@CssClass"
+    <a @ref="_el" href="@Href" class="@CssClass"
        aria-current="@(_active ? "page" : null)"
        aria-label="@Label"
        @attributes="AdditionalAttributes">
@@ -43,10 +44,18 @@ else
     /// <summary>Click handler — fires for both <c>&lt;a&gt;</c> and <c>&lt;button&gt;</c> renderings (link navigation still proceeds).</summary>
     [Parameter] public EventCallback OnClick { get; set; }
 
+    /// <summary>
+    /// Visual feedback when the item is pressed. Default is
+    /// <see cref="Button.ButtonPressEffect.None"/>. <c>Scale</c> is recommended
+    /// for a tactile feel on mobile.
+    /// </summary>
+    [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _active;
+    private Microsoft.AspNetCore.Components.ElementReference _el;
 
     protected override void OnInitialized()
     {
@@ -83,13 +92,34 @@ else
 
     private bool IsAnimated => Context?.AnimatedIndicator == true;
 
+    private string? PressEffectClass => PressEffect switch
+    {
+        Button.ButtonPressEffect.Scale => "lumeo-press-scale",
+        Button.ButtonPressEffect.Brightness => "lumeo-press-brightness",
+        Button.ButtonPressEffect.Ripple => "lumeo-press-ripple",
+        _ => null
+    };
+
     private string CssClass => string.Join(" ", new[] {
-        "group relative flex min-w-0 flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 text-xs",
+        "group relative flex min-w-0 flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 text-xs cursor-pointer",
         "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         IsActiveResolved ? "text-foreground" : "text-muted-foreground hover:text-foreground",
         IsAnimated ? "lumeo-bottom-nav-animated" : null,
+        PressEffectClass,
         Class
     }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && PressEffect == Button.ButtonPressEffect.Ripple)
+        {
+            try
+            {
+                await Interop.RippleAttachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 
     private RenderFragment RenderBody => __builder =>
     {

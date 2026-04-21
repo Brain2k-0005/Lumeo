@@ -47,6 +47,13 @@ export function unlockScroll() {
     }
 }
 
+// Toggles a class on <html>. Used by DataGrid fullscreen to signal consumers
+// (e.g. a docs navbar) that they should hide floating chrome.
+export function setHtmlClass(className, active) {
+    if (!className) return;
+    document.documentElement.classList.toggle(className, !!active);
+}
+
 const focusTrapHandlers = new Map();
 
 export function setupFocusTrap(elementId) {
@@ -1381,3 +1388,28 @@ export const tabs = {
         return { x: el.offsetLeft, width: el.offsetWidth };
     }
 };
+
+/* =============================================================
+ * Ripple — press-feedback helper for buttons and other tactile
+ * surfaces. Attaches a pointerdown listener that spawns a scaling
+ * circle at the cursor point. Driven by CSS keyframes + cleanup
+ * via the animationend event. Honours `prefers-reduced-motion`
+ * through CSS (the .lumeo-ripple-dot animation is disabled there).
+ * ============================================================= */
+function attachRipple(el) {
+    if (!el || el.__lumeoRippleBound) return;
+    el.__lumeoRippleBound = true;
+    el.addEventListener('pointerdown', (e) => {
+        const rect = el.getBoundingClientRect();
+        const span = document.createElement('span');
+        span.className = 'lumeo-ripple-dot';
+        const size = Math.max(rect.width, rect.height);
+        span.style.width = span.style.height = size + 'px';
+        span.style.left = (e.clientX - rect.left - size / 2) + 'px';
+        span.style.top = (e.clientY - rect.top - size / 2) + 'px';
+        el.appendChild(span);
+        span.addEventListener('animationend', () => span.remove(), { once: true });
+    });
+}
+
+export const ripple = { attach: attachRipple };

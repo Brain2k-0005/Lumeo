@@ -1,49 +1,120 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
 namespace Lumeo.Cli;
 
 internal static class Commands
 {
-    // ---------------------------------------------------------------- init
-    public static Task Init(string? ns, string? path, string? registry, bool force, bool yes)
+    public sealed record InitOptions(
+        string? Namespace,
+        string? Path,
+        string? Registry,
+        bool Force,
+        bool Yes,
+        bool WithCss,
+        bool WithTailwind,
+        bool NoAssets,
+        bool Local);
+
+    // Files copied in prebuilt asset mode. Kept here so `init` and `update-assets` stay in sync.
+    private static readonly (string Src, string Dest)[] s_prebuiltAssets =
     {
-        var target = Path.Combine(Environment.CurrentDirectory, Paths.ConfigFile);
-        if (File.Exists(target) && !force)
+        ("_content/Lumeo/css/lumeo.css",           "wwwroot/css/lumeo.css"),
+        ("_content/Lumeo/css/lumeo-utilities.css", "wwwroot/css/lumeo-utilities.css"),
+        ("_content/Lumeo/js/theme.js",             "wwwroot/js/theme.js"),
+        ("_content/Lumeo/js/components.js",        "wwwroot/js/components.js"),
+    };
+
+    // ---------------------------------------------------------------- init
+    public static async Task Init(InitOptions opts)
+    {
+        var target = System.IO.Path.Combine(Environment.CurrentDirectory, Paths.ConfigFile);
+        if (File.Exists(target) && !opts.Force)
         {
             Console.Error.WriteLine(Ansi.Yellow("lumeo.json already exists. Pass --force to overwrite."));
-            return Task.CompletedTask;
+            return;
         }
 
         // Auto-detect namespace from .csproj when no --namespace supplied.
+        var ns = opts.Namespace;
         var detectedNs = ns ?? DetectProjectNamespace(Environment.CurrentDirectory);
         var defaultNs = !string.IsNullOrEmpty(detectedNs) ? $"{detectedNs}.Components" : "MyApp.Components";
         if (ns is null)
-            ns = yes ? defaultNs : Prompts.Ask("Target namespace", defaultNs);
+            ns = opts.Yes ? defaultNs : Prompts.Ask("Target namespace", defaultNs);
 
+        var path = opts.Path;
         var defaultPath = "Components/Ui";
         if (path is null)
-            path = yes ? defaultPath : Prompts.Ask("Components path", defaultPath);
+            path = opts.Yes ? defaultPath : Prompts.Ask("Components path", defaultPath);
 
+        var registry = opts.Registry;
         var defaultRegistry = "https://lumeo.nativ.sh/registry/registry.json";
         if (registry is null)
-            registry = yes ? defaultRegistry : Prompts.Ask("Registry URL", defaultRegistry);
+            registry = opts.Yes ? defaultRegistry : Prompts.Ask("Registry URL", defaultRegistry);
+
+        // --- NuGet detection -------------------------------------------------
+        var nugetDetected = DetectLumeoNuGet(Environment.CurrentDirectory);
+
+        AssetsConfig? assets = null;
+
+        if (nugetDetected)
+        {
+            if (opts.WithCss || opts.WithTailwind || opts.NoAssets)
+            {
+                Console.WriteLine(Ansi.Yellow("! NuGet detected — asset flags ignored (package provides CSS/JS)."));
+            }
+            else
+            {
+                Console.WriteLine(Ansi.Dim("Lumeo NuGet detected — no extra CSS/JS setup needed."));
+            }
+        }
+        else
+        {
+            // Pick a setup mode: flag > interactive prompt > (--yes default = css).
+            char mode;
+            if (opts.WithCss)            mode = '1';
+            else if (opts.WithTailwind)  mode = '2';
+            else if (opts.NoAssets)      mode = '3';
+            else if (opts.Yes)           mode = '1'; // safest CI default
+            else                         mode = PromptAssetSetup();
+
+            Console.WriteLine();
+            switch (mode)
+            {
+                case '1':
+                    Console.WriteLine(Ansi.Cyan("→ Option 1: Copy pre-built CSS/JS into wwwroot/"));
+                    try { assets = await CopyPrebuiltAssetsAsync(registry, opts.Local); }
+                    catch { return; } // message + exit code already set
+                    break;
+                case '2':
+                    Console.WriteLine(Ansi.Cyan("→ Option 2: Scaffold Tailwind v4 setup"));
+                    assets = ScaffoldTailwind(ns);
+                    break;
+                default:
+                    Console.WriteLine(Ansi.Cyan("→ Option 3: Skip CSS setup"));
+                    assets = new AssetsConfig { Mode = "none" };
+                    PrintSkipReminder();
+                    break;
+            }
+        }
 
         var cfg = new LumeoConfig
         {
             Namespace = ns,
             ComponentsPath = path,
             Registry = registry,
+            Assets = assets,
             Components = new Dictionary<string, InstalledComponent>(StringComparer.OrdinalIgnoreCase),
         };
         ConfigIO.Save(cfg);
 
-        var uiDir = Path.Combine(Environment.CurrentDirectory, path);
+        var uiDir = System.IO.Path.Combine(Environment.CurrentDirectory, path);
         Directory.CreateDirectory(uiDir);
-        var gitkeep = Path.Combine(uiDir, ".gitkeep");
+        var gitkeep = System.IO.Path.Combine(uiDir, ".gitkeep");
         if (!File.Exists(gitkeep)) File.WriteAllText(gitkeep, "");
-        var readme = Path.Combine(uiDir, "README.md");
+        var readme = System.IO.Path.Combine(uiDir, "README.md");
         if (!File.Exists(readme)) File.WriteAllText(readme, BuildReadme(ns, path));
 
         Console.WriteLine();
@@ -51,9 +122,10 @@ internal static class Commands
         Console.WriteLine($"  namespace       {ns}");
         Console.WriteLine($"  componentsPath  {path}");
         Console.WriteLine($"  registry        {registry}");
+        if (assets is not null)
+            Console.WriteLine($"  assets.mode     {assets.Mode}");
         Console.WriteLine();
         Console.WriteLine($"Next: {Ansi.Cyan("lumeo add button")}");
-        return Task.CompletedTask;
     }
 
     private static string? DetectProjectNamespace(string cwd)
@@ -69,9 +141,344 @@ internal static class Commands
                 if (!string.IsNullOrEmpty(rootNs)) return rootNs;
             }
             catch { /* fall back to filename */ }
-            return Path.GetFileNameWithoutExtension(csproj);
+            return System.IO.Path.GetFileNameWithoutExtension(csproj);
         }
         catch { return null; }
+    }
+
+    /// <summary>Walk up from cwd looking for .csproj files. Scan each for a Lumeo package/project reference.
+    /// Stops at git root or after 5 levels.</summary>
+    private static bool DetectLumeoNuGet(string cwd)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(cwd);
+            for (int depth = 0; dir is not null && depth < 6; depth++, dir = dir.Parent)
+            {
+                foreach (var csproj in Directory.EnumerateFiles(dir.FullName, "*.csproj", SearchOption.TopDirectoryOnly))
+                {
+                    if (CsprojReferencesLumeo(csproj)) return true;
+                }
+                if (Directory.Exists(System.IO.Path.Combine(dir.FullName, ".git"))) break; // at repo root
+            }
+        }
+        catch { /* swallow — detection is best-effort */ }
+        return false;
+    }
+
+    private static bool CsprojReferencesLumeo(string csprojPath)
+    {
+        try
+        {
+            var doc = XDocument.Load(csprojPath);
+            foreach (var pr in doc.Descendants("PackageReference"))
+            {
+                var include = pr.Attribute("Include")?.Value?.Trim();
+                if (string.Equals(include, "Lumeo", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            // Monorepo case: <ProjectReference Include="..\Lumeo\Lumeo.csproj" />.
+            foreach (var pr in doc.Descendants("ProjectReference"))
+            {
+                var include = pr.Attribute("Include")?.Value;
+                if (string.IsNullOrEmpty(include)) continue;
+                var fileName = System.IO.Path.GetFileNameWithoutExtension(include);
+                if (string.Equals(fileName, "Lumeo", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch { /* unreadable csproj — skip */ }
+        return false;
+    }
+
+    private static char PromptAssetSetup()
+    {
+        Console.WriteLine();
+        Console.WriteLine("Lumeo NuGet was not detected in any nearby .csproj.");
+        Console.WriteLine();
+        Console.WriteLine("Vendored components need Lumeo's CSS tokens and a Tailwind utility bundle to");
+        Console.WriteLine("render correctly. Pick a setup path:");
+        Console.WriteLine();
+        Console.WriteLine("  [1] Copy pre-built CSS/JS into wwwroot/   (recommended — zero dependencies,");
+        Console.WriteLine("      no Tailwind, no Node)");
+        Console.WriteLine("  [2] Scaffold Tailwind v4 setup             (for devs who also want to write");
+        Console.WriteLine("      their own Tailwind classes; uses @tailwindcss/cli)");
+        Console.WriteLine("  [3] Skip                                   (I'll wire CSS up myself)");
+        Console.WriteLine();
+
+        if (!Prompts.Interactive) return '1';
+        var choice = Prompts.Choice("Choice [1/2/3]: ", "123");
+        return choice ?? '1';
+    }
+
+    private static async Task<AssetsConfig> CopyPrebuiltAssetsAsync(string registryUrl, bool local)
+    {
+        var written = new List<string>();
+        foreach (var (src, dest) in s_prebuiltAssets)
+        {
+            var abs = System.IO.Path.Combine(Environment.CurrentDirectory, dest.Replace('/', System.IO.Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(abs)!);
+            byte[] bytes;
+            try
+            {
+                bytes = await RegistryLoader.GetAssetBytesAsync(src, local, registryUrl);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(Ansi.Red($"Failed to fetch {src}: {ex.Message}"));
+                Console.Error.WriteLine(Ansi.Red("Asset setup aborted. Fix connectivity and re-run `lumeo init --with-css`."));
+                Environment.ExitCode = 1;
+                throw;
+            }
+            await File.WriteAllBytesAsync(abs, bytes);
+            Console.WriteLine(Ansi.Green("  +   ") + dest);
+            written.Add(dest);
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Add these to your index.html / _Host.cshtml:");
+        Console.WriteLine(Ansi.Dim("  <link rel=\"stylesheet\" href=\"css/lumeo.css\" />"));
+        Console.WriteLine(Ansi.Dim("  <link rel=\"stylesheet\" href=\"css/lumeo-utilities.css\" />"));
+        Console.WriteLine(Ansi.Dim("  <script src=\"js/theme.js\"></script>"));
+        Console.WriteLine(Ansi.Dim("  <script src=\"js/components.js\" type=\"module\"></script>"));
+
+        return new AssetsConfig
+        {
+            Mode = "prebuilt",
+            Version = "2.0.0",
+            Files = written,
+        };
+    }
+
+    private static AssetsConfig ScaffoldTailwind(string ns)
+    {
+        // Slug from namespace — strip trailing .Components, lower-case, dashes.
+        var slug = ns.EndsWith(".Components", StringComparison.OrdinalIgnoreCase)
+            ? ns.Substring(0, ns.Length - ".Components".Length)
+            : ns;
+        slug = slug.ToLowerInvariant().Replace('.', '-');
+
+        // Styles/input.css
+        var stylesDir = System.IO.Path.Combine(Environment.CurrentDirectory, "Styles");
+        Directory.CreateDirectory(stylesDir);
+        var inputCssPath = System.IO.Path.Combine(stylesDir, "input.css");
+        const string inputCss = """
+@import "tailwindcss";
+@import "./_content/Lumeo/css/lumeo.css" layer(base);  /* tokens */
+
+/* Let Tailwind scan your own markup AND your vendored Lumeo components. */
+@source "./**/*.razor";
+@source "./Components/Ui/**/*.razor";
+""";
+        File.WriteAllText(inputCssPath, inputCss);
+        Console.WriteLine(Ansi.Green("  +   ") + "Styles/input.css");
+
+        // package.json — merge-or-create.
+        var pkgPath = System.IO.Path.Combine(Environment.CurrentDirectory, "package.json");
+        if (File.Exists(pkgPath))
+        {
+            MergeIntoPackageJson(pkgPath);
+            Console.WriteLine(Ansi.Green("  ✓   ") + "package.json (merged Tailwind scripts + devDependency)");
+        }
+        else
+        {
+            var pkg = new JsonObject
+            {
+                ["name"] = slug,
+                ["private"] = true,
+                ["scripts"] = new JsonObject
+                {
+                    ["build:css"] = "tailwindcss -i Styles/input.css -o wwwroot/css/app.css --minify",
+                    ["watch:css"] = "tailwindcss -i Styles/input.css -o wwwroot/css/app.css --watch",
+                },
+                ["devDependencies"] = new JsonObject
+                {
+                    ["@tailwindcss/cli"] = "^4.0.0",
+                },
+            };
+            File.WriteAllText(pkgPath, pkg.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine(Ansi.Green("  +   ") + "package.json");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(Ansi.Green("✓ Wrote Styles/input.css"));
+        Console.WriteLine(Ansi.Green("✓ Updated package.json with Tailwind build scripts"));
+        Console.WriteLine();
+        Console.WriteLine("Next:");
+        Console.WriteLine("  " + Ansi.Cyan("npm install"));
+        Console.WriteLine("  " + Ansi.Cyan("npm run watch:css"));
+        Console.WriteLine();
+        Console.WriteLine("Then add to your index.html:");
+        Console.WriteLine(Ansi.Dim("  <link rel=\"stylesheet\" href=\"css/app.css\" />"));
+
+        return new AssetsConfig
+        {
+            Mode = "tailwind",
+            StylesEntry = "Styles/input.css",
+            Output = "wwwroot/css/app.css",
+        };
+    }
+
+    private static void MergeIntoPackageJson(string pkgPath)
+    {
+        var raw = File.ReadAllText(pkgPath);
+        JsonNode? root;
+        try { root = JsonNode.Parse(raw); }
+        catch
+        {
+            Console.WriteLine(Ansi.Yellow("! package.json is not valid JSON; leaving it untouched."));
+            return;
+        }
+        if (root is not JsonObject obj)
+        {
+            Console.WriteLine(Ansi.Yellow("! package.json root is not an object; leaving it untouched."));
+            return;
+        }
+
+        var scripts = obj["scripts"] as JsonObject;
+        if (scripts is null) { scripts = new JsonObject(); obj["scripts"] = scripts; }
+        if (scripts["build:css"] is null)
+            scripts["build:css"] = "tailwindcss -i Styles/input.css -o wwwroot/css/app.css --minify";
+        if (scripts["watch:css"] is null)
+            scripts["watch:css"] = "tailwindcss -i Styles/input.css -o wwwroot/css/app.css --watch";
+
+        var devDeps = obj["devDependencies"] as JsonObject;
+        if (devDeps is null) { devDeps = new JsonObject(); obj["devDependencies"] = devDeps; }
+        if (devDeps["@tailwindcss/cli"] is null)
+            devDeps["@tailwindcss/cli"] = "^4.0.0";
+
+        File.WriteAllText(pkgPath, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static void PrintSkipReminder()
+    {
+        Console.WriteLine();
+        Console.WriteLine(Ansi.Yellow("! Skipped CSS setup. Your vendored components will render without styling"));
+        Console.WriteLine(Ansi.Yellow("  until you import Lumeo's CSS or wire up Tailwind yourself. See:"));
+        Console.WriteLine(Ansi.Dim("  https://lumeo.nativ.sh/docs/introduction#step-5-include-styles-and-scripts"));
+    }
+
+    // ------------------------------------------------------ update-assets
+    public static async Task UpdateAssets(bool local, bool force, bool dryRun)
+    {
+        var cfg = ConfigIO.TryLoad();
+        if (cfg is null)
+        {
+            Console.Error.WriteLine(Ansi.Red("No lumeo.json found. Run `lumeo init` first."));
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        var mode = cfg.Assets?.Mode ?? "none";
+        if (!string.Equals(mode, "prebuilt", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(Ansi.Yellow($"assets.mode is '{mode}'. `update-assets` only applies to 'prebuilt' — nothing to do."));
+            if (string.Equals(mode, "tailwind", StringComparison.OrdinalIgnoreCase))
+                Console.WriteLine(Ansi.Dim("  (Tailwind users rebuild their own bundle via `npm run build:css`.)"));
+            return;
+        }
+
+        int updated = 0, skipped = 0, unchanged = 0;
+        foreach (var (src, dest) in s_prebuiltAssets)
+        {
+            var abs = System.IO.Path.Combine(Environment.CurrentDirectory, dest.Replace('/', System.IO.Path.DirectorySeparatorChar));
+            byte[] upstream;
+            try
+            {
+                upstream = await RegistryLoader.GetAssetBytesAsync(src, local, cfg.Registry);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(Ansi.Red($"  fail    {dest} — {ex.Message}"));
+                Environment.ExitCode = 1;
+                continue;
+            }
+
+            if (!File.Exists(abs))
+            {
+                if (dryRun)
+                {
+                    Console.WriteLine(Ansi.Green("  new     ") + dest + Ansi.Dim("  (dry-run)"));
+                }
+                else
+                {
+                    Directory.CreateDirectory(System.IO.Path.GetDirectoryName(abs)!);
+                    await File.WriteAllBytesAsync(abs, upstream);
+                    Console.WriteLine(Ansi.Green("  new     ") + dest);
+                }
+                updated++;
+                continue;
+            }
+
+            var localBytes = await File.ReadAllBytesAsync(abs);
+            if (BytesEqual(localBytes, upstream))
+            {
+                Console.WriteLine(Ansi.Green("  ok      ") + dest);
+                unchanged++;
+                continue;
+            }
+
+            if (force)
+            {
+                if (!dryRun) await File.WriteAllBytesAsync(abs, upstream);
+                Console.WriteLine(Ansi.Green("  update  ") + dest + (dryRun ? Ansi.Dim("  (dry-run)") : ""));
+                updated++;
+                continue;
+            }
+            if (dryRun)
+            {
+                Console.WriteLine(Ansi.Magenta("  drift   ") + dest + Ansi.Dim("  (dry-run; would prompt)"));
+                continue;
+            }
+
+            char? choice = null;
+            while (choice is null)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"{Ansi.Yellow(dest)} has upstream changes.");
+                choice = Prompts.Choice("  [o]verwrite  [s]kip  [d]iff: ", "osd");
+                if (choice == 'd')
+                {
+                    var localText = SafeText(localBytes);
+                    var upstreamText = SafeText(upstream);
+                    Diffing.PrintUnified(localText, upstreamText);
+                    choice = null;
+                    continue;
+                }
+                if (choice is null) { Console.WriteLine(Ansi.Red("Aborted.")); Environment.ExitCode = 130; return; }
+            }
+            if (choice == 's')
+            {
+                Console.WriteLine(Ansi.Yellow("  skip    ") + dest);
+                skipped++;
+                continue;
+            }
+            await File.WriteAllBytesAsync(abs, upstream);
+            Console.WriteLine(Ansi.Green("  update  ") + dest);
+            updated++;
+        }
+
+        // Refresh the recorded version/files.
+        cfg.Assets!.Version = "2.0.0";
+        cfg.Assets.Files = s_prebuiltAssets.Select(a => a.Dest).ToList();
+        if (!dryRun) ConfigIO.Save(cfg);
+
+        Console.WriteLine();
+        var prefix = dryRun ? Ansi.Yellow("DRY-RUN") : Ansi.Green("OK");
+        Console.WriteLine($"{prefix} {updated} updated, {skipped} skipped, {unchanged} unchanged.");
+    }
+
+    private static bool BytesEqual(byte[] a, byte[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+        return true;
+    }
+
+    private static string SafeText(byte[] bytes)
+    {
+        try { return Encoding.UTF8.GetString(bytes); }
+        catch { return "(binary)"; }
     }
 
     // ----------------------------------------------------------------- add
