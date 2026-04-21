@@ -12,13 +12,11 @@ else
     <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
         <div id="@_chartId" class="lumeo-chart-host w-full h-full"
              style="transition: opacity 350ms ease-out; opacity: @ChartHostOpacity;"></div>
-        @if (ShowLoadingSkeleton)
+        @if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette)
         {
-            @* Skeleton stays mounted while ShowLoadingSkeleton is on — we cross-fade
-               via opacity so the handoff to the real chart feels continuous instead
-               of snapping. Inline positioning guarantees the overlay pins to THIS
-               chart box regardless of the compiled Tailwind bundle. *@
-            <div style="position: absolute; inset: 0; pointer-events: none; transition: opacity 350ms ease-out; opacity: @SkeletonOpacity;">
+            @* Silhouette mode (legacy SVG skeleton overlay). Phantom mode renders the real
+               ECharts with placeholder data instead — no DOM element needed here. *@
+            <div style="position: absolute; inset: 0; pointer-events: none;">
                 <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
             </div>
         }
@@ -46,11 +44,11 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    /// <summary>When true, forces the loading skeleton to render on top of the chart
+    /// <summary>When true, forces the loading state on top of the chart
     /// (consumer is refetching data). Independent of the JS-driven ECharts loading
     /// indicator controlled by <see cref="ShowLoading"/>.</summary>
     [Parameter] public bool IsLoading { get; set; }
-    /// <summary>When true (default), renders a shape-aware skeleton while the chart
+    /// <summary>When true (default), renders the loading state while the chart
     /// has not yet rendered for the first time, and whenever <see cref="IsLoading"/>
     /// is true. Set to <c>false</c> to opt out entirely.</summary>
     [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
@@ -58,6 +56,10 @@ else
     /// default (bars for Bar, pie ring for Pie, etc.) — consumers only override when
     /// they want a different silhouette.</summary>
     [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Generic;
+    /// <summary>Phantom (default) renders the real chart with synthesized placeholder
+    /// data in a muted palette; ECharts animates the option swap to real data.
+    /// Silhouette falls back to the legacy SVG overlay skeleton.</summary>
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
@@ -75,31 +77,29 @@ else
         ? $"width: {Width}; aspect-ratio: {AspectRatio};"
         : $"width: {Width}; height: {Height};";
 
-    // Root now hosts both the ECharts canvas (rendered via JS into this div) and the
-    // skeleton overlay (absolute-positioned child). position: relative is required
-    // so the overlay pins to THIS chart's box (not an outer ancestor); we use inline
-    // style because the Tailwind `relative` utility can be purged from pre-compiled
-    // bundles — which caused a skeleton-offset-by-one-card regression during rc.3.
     private string RootCssClass => $"relative {Class}".Trim();
     private string RootStyleStr => $"position: relative; {StyleStr}";
 
-    /// <summary>Skeleton shows when explicitly loading OR before the first successful ECharts
-    /// mount — prevents an empty-whitespace flash on initial paint. ShowLoadingSkeleton=false
-    /// opts out entirely.</summary>
+    /// <summary>True when we should be showing *some form* of loading state. This is the
+    /// "is-loading" signal — separate from *how* we present it (Phantom vs Silhouette).</summary>
     private bool ShouldShowSkeleton => ShowLoadingSkeleton && (IsLoading || !_hasFirstRendered);
 
-    // Cross-fade handoff: the chart host starts at opacity 0 and fades to 1 once the real
-    // ECharts canvas has mounted; the skeleton stays in the DOM (so its opacity can
-    // transition) and fades out in the same 350ms window. Pointer-events:none on the
-    // skeleton layer means the faded-out overlay doesn't swallow hover/click events.
-    private string ChartHostOpacity => ShouldShowSkeleton ? "0" : "1";
-    private string SkeletonOpacity => ShouldShowSkeleton ? "1" : "0";
+    // Silhouette mode hides the real chart while the SVG overlay takes its place.
+    // Phantom mode keeps the chart host fully visible — the "skeleton" IS the chart
+    // (with fake data), and the option-swap tween handles the handoff to real data.
+    private string ChartHostOpacity => (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette) ? "0" : "1";
 
-    // Chart repaint on theme change is handled entirely in JS:
-    // theme.js dispatches a `lumeo:theme-changed` event after every setter,
-    // and echarts-interop.js listens for it and calls refreshAllCharts().
-    // That covers every code path (ThemeService, CustomizerSidebar's direct
-    // themeManager.* calls, manual JS) uniformly.
+    /// <summary>Returns the JSON that actually goes to ECharts. In Phantom mode, when we're
+    /// in loading state, this is the placeholder option — swapping to the real option later
+    /// triggers an ECharts option-change animation from phantom → real.</summary>
+    private string GetEffectiveJson()
+    {
+        if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton)
+        {
+            return ChartPlaceholderFactory.CreateJson(SkeletonKind);
+        }
+        return GetOptionsJson();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -108,7 +108,7 @@ else
             _module = await JSRuntime.InvokeAsync<IJSObjectReference>(
                 "import", "./_content/Lumeo/js/echarts-interop.js");
 
-            var json = GetOptionsJson();
+            var json = GetEffectiveJson();
             _lastJson = json;
             _lastTheme = Theme;
             _lastGroup = Group;
@@ -136,18 +136,18 @@ else
                 await _module.InvokeVoidAsync("showLoading", _chartId, null);
             }
 
-            // Flip the flag and re-render so the shape-aware skeleton overlay fades out
-            // now that the real ECharts canvas is mounted. Only triggers when the consumer
-            // isn't still forcing IsLoading=true for a refetch cycle.
             _hasFirstRendered = true;
             StateHasChanged();
         }
         else if (_initialized)
         {
-            var json = GetOptionsJson();
+            var json = GetEffectiveJson();
             if (json != _lastJson)
             {
                 _lastJson = json;
+                // notMerge=false so ECharts diffs the new option against the old and
+                // tweens series values — this is what turns the phantom → real swap
+                // into a morph animation rather than a snap.
                 await _module!.InvokeVoidAsync("updateChart", _chartId, json, false);
             }
 
@@ -163,11 +163,9 @@ else
             if (Theme != _lastTheme)
             {
                 _lastTheme = Theme;
-                // Re-initialize chart with new theme — echarts requires dispose+init for theme changes
                 await _module!.InvokeVoidAsync("disposeChart", _chartId);
-                var currentJson = _lastJson ?? GetOptionsJson();
+                var currentJson = _lastJson ?? GetEffectiveJson();
                 await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
-                // Re-register events and groups lost during dispose+init
                 await RegisterChartEventsAsync();
             }
 
