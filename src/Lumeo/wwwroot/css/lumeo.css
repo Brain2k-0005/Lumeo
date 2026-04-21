@@ -550,3 +550,727 @@ input[type="range"]::-moz-range-thumb {
 .animate-toast-in {
   animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* =====================================================
+ * === motion ===
+ * Keyframes and utilities for the motion primitives:
+ * Marquee, BorderBeam, ShimmerButton, Sparkles, TextReveal, BlurFade.
+ * ===================================================== */
+
+/* --- Marquee --- */
+@keyframes lumeo-marquee-x {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes lumeo-marquee-x-reverse {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes lumeo-marquee-y {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}
+
+@keyframes lumeo-marquee-y-reverse {
+  from { transform: translateY(-50%); }
+  to   { transform: translateY(0); }
+}
+
+.lumeo-marquee {
+  overflow: hidden;
+  display: flex;
+  position: relative;
+  --lumeo-marquee-duration: 30s;
+}
+.lumeo-marquee[data-vertical="true"] { flex-direction: column; }
+
+.lumeo-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  gap: 1rem;
+  animation: lumeo-marquee-x var(--lumeo-marquee-duration) linear infinite;
+  min-width: 100%;
+}
+.lumeo-marquee[data-direction="right"] .lumeo-marquee-track {
+  animation-name: lumeo-marquee-x-reverse;
+}
+.lumeo-marquee[data-vertical="true"] .lumeo-marquee-track {
+  flex-direction: column;
+  animation-name: lumeo-marquee-y;
+  min-width: 0;
+  min-height: 100%;
+}
+.lumeo-marquee[data-vertical="true"][data-direction="right"] .lumeo-marquee-track {
+  animation-name: lumeo-marquee-y-reverse;
+}
+.lumeo-marquee[data-pause-hover="true"]:hover .lumeo-marquee-track {
+  animation-play-state: paused;
+}
+
+/* --- BorderBeam --- */
+@property --lumeo-beam-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes lumeo-border-beam {
+  to { --lumeo-beam-angle: 360deg; }
+}
+
+.lumeo-border-beam {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.lumeo-border-beam::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: var(--lumeo-beam-size, 1.5px);
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--lumeo-beam-angle),
+    transparent 0deg,
+    var(--lumeo-beam-from, var(--color-primary)) 90deg,
+    var(--lumeo-beam-to, var(--color-primary)) 180deg,
+    transparent 270deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: lumeo-border-beam var(--lumeo-beam-duration, 8s) linear infinite;
+  pointer-events: none;
+}
+
+/* --- ShimmerButton --- */
+@keyframes lumeo-shimmer-sweep {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(250%); }
+}
+
+.lumeo-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.lumeo-shimmer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--lumeo-shimmer-color, rgb(255 255 255 / 0.45)) 50%,
+    transparent 80%
+  );
+  transform: translateX(-150%);
+  animation: lumeo-shimmer-sweep 2.5s linear infinite;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* --- Sparkles --- */
+@keyframes lumeo-sparkle-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0); }
+  50%      { opacity: 1; transform: scale(1); }
+}
+
+.lumeo-sparkles {
+  position: relative;
+  display: inline-block;
+}
+.lumeo-sparkle {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  animation: lumeo-sparkle-twinkle 2.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* --- TextReveal --- */
+.lumeo-reveal [data-motion-word] {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.35em);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.lumeo-reveal[data-motion-revealed="true"] [data-motion-word] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- BlurFade --- */
+.lumeo-blur-fade {
+  opacity: 0;
+  filter: blur(var(--lumeo-blur-px, 8px));
+  transform: translateY(var(--lumeo-blur-y, 8px));
+  transition:
+    opacity var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1),
+    filter var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, filter, transform;
+}
+.lumeo-blur-fade[data-motion-visible="true"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+
+/* =====================================================
+ * === motion: component integrations ===
+ * Opt-in animations for Steps, Timeline, Progress, Tabs,
+ * Switch, Checkbox, Badge, and BottomNav. Enabled via
+ * per-component parameters (Animated, AnimatedIndicator,
+ * Animation = Stripe). All keyframe names are prefixed
+ * with lumeo- to avoid collisions.
+ * ===================================================== */
+
+/* --- Steps & Timeline: active-dot pulse --- */
+@keyframes lumeo-steps-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary) 0%, transparent);
+  }
+}
+
+.lumeo-steps-pulse {
+  animation: lumeo-steps-pulse 1.6s ease-in-out infinite;
+}
+
+/* --- Steps & Timeline: completed connector line draw-in / unwind --- */
+/* Shared line-draw keyframes — used by Steps (forward direction) and Timeline
+   progression. Forward: scales from 0 to 1 with origin on the leading edge. */
+@keyframes lumeo-line-draw-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes lumeo-line-draw-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+/* Reverse: the drawn line retracts back to 0 with origin on the trailing edge,
+   so the visual reads as "rewinding" rather than "wiping out". */
+@keyframes lumeo-line-unwind-x {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+@keyframes lumeo-line-unwind-y {
+  from { transform: scaleY(1); }
+  to   { transform: scaleY(0); }
+}
+
+/* Legacy aliases (kept for back-compat) */
+@keyframes lumeo-steps-line-draw-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes lumeo-steps-line-draw-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+.lumeo-steps-line-draw-x {
+  transform-origin: left center;
+  animation: lumeo-line-draw-x 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lumeo-steps-line-draw-y {
+  transform-origin: top center;
+  animation: lumeo-line-draw-y 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Reverse (Steps Previous) — a drawn connector retracts toward its origin,
+   collapsing back into the still-completed step. Matches the forward origin
+   so the animation reads as "rewind". */
+.lumeo-steps-line-unwind-x {
+  transform-origin: left center;
+  animation: lumeo-line-unwind-x 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lumeo-steps-line-unwind-y {
+  transform-origin: top center;
+  animation: lumeo-line-unwind-y 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* --- Timeline: staggered item entry --- */
+@keyframes lumeo-timeline-enter-x {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lumeo-timeline-enter-y {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.lumeo-timeline-enter-vertical {
+  animation: lumeo-timeline-enter-y 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 0;
+}
+
+.lumeo-timeline-enter-horizontal {
+  animation: lumeo-timeline-enter-x 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 0;
+}
+
+/* --- Progress: animated diagonal stripes --- */
+@keyframes lumeo-progress-stripes {
+  from { background-position: 0 0; }
+  to   { background-position: 20px 0; }
+}
+
+.lumeo-progress-stripes {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 20px 20px;
+  animation: lumeo-progress-stripes 1s linear infinite;
+}
+
+/* --- Progress: indeterminate slider (narrow segment sweeping across) --- */
+@keyframes lumeo-progress-indeterminate {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(300%); }
+}
+
+.lumeo-progress-indeterminate {
+  position: relative;
+  overflow: hidden;
+}
+
+.lumeo-progress-indeterminate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  border-radius: inherit;
+  background: inherit;
+  animation: lumeo-progress-indeterminate 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* --- Progress: glow pulse (breathing box-shadow) --- */
+@keyframes lumeo-progress-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px 0 color-mix(in oklab, var(--color-primary) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 12px 2px color-mix(in oklab, var(--color-primary) 70%, transparent);
+  }
+}
+
+.lumeo-progress-glow {
+  animation: lumeo-progress-glow 1.6s ease-in-out infinite;
+}
+
+/* --- Tabs: sliding indicator --- */
+.lumeo-tabs-list {
+  position: relative;
+}
+
+/* Pill indicator — rounded full-height background for Default/Pill variants.
+   Uses color-mix against the foreground to guarantee contrast against the
+   surrounding `bg-muted` track in *both* light and dark mode; prior rule used
+   `--color-background` which in dark themes is near-pure black and read as a
+   "dark blob" against the muted surface. */
+.lumeo-tabs-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: color-mix(in oklab, var(--color-background) 70%, var(--color-foreground) 8%);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  pointer-events: none;
+  z-index: 0;
+  transform: translateX(var(--lumeo-tabs-indicator-x, 0px));
+  width: var(--lumeo-tabs-indicator-w, 0px);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 0;
+}
+.lumeo-tabs-indicator[data-ready="true"] {
+  opacity: 1;
+}
+
+/* Underline indicator — 2px bar at the bottom for Card variant */
+.lumeo-tabs-underline {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  pointer-events: none;
+  transform: translateX(var(--lumeo-tabs-indicator-x, 0px));
+  width: var(--lumeo-tabs-indicator-w, 0px);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 0;
+}
+.lumeo-tabs-underline[data-ready="true"] {
+  opacity: 1;
+}
+
+/* Hide the active trigger's default background when the sliding pill is in charge */
+.lumeo-tabs-list[data-sliding-pill="true"] [data-state="active"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Switch: spring thumb --- */
+.lumeo-switch-spring {
+  transition: transform 360ms cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+/* --- Checkbox: draw-in check + bounce --- */
+@keyframes lumeo-checkbox-check {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes lumeo-checkbox-bounce {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.lumeo-checkbox-animated {
+  animation: lumeo-checkbox-bounce 200ms ease-out;
+  /* Do NOT clip the check path while the box scale-bounces — a prior
+     overflow:hidden would have clipped the partially-rendered stroke. */
+  overflow: visible;
+}
+
+/* Draw the full check path regardless of the exact SVG path length. The
+   Lucide Check path is ~22 units long so a dasharray of 16 clipped the
+   tail of the stroke. We target the inline SVG that Blazicon renders via
+   pathLength="1" — every element with a pathLength attribute normalises
+   to 0..1 — falling back to a large fixed dasharray for any icon library
+   that doesn't set pathLength. */
+.lumeo-checkbox-animated svg path,
+.lumeo-checkbox-animated svg polyline,
+.lumeo-checkbox-animated svg line {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: lumeo-checkbox-check 260ms ease-out forwards;
+}
+
+/* --- Badge: entrance pop --- */
+@keyframes lumeo-badge-enter {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.lumeo-badge-animated {
+  animation: lumeo-badge-enter 280ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+/* --- BottomNav: smooth role transitions --- */
+.lumeo-bottom-nav-animated {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+.lumeo-bottom-nav-animated > span[aria-hidden="true"] {
+  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 200ms ease;
+}
+
+/* Reduced motion — disable decorative loops */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-steps-pulse,
+  .lumeo-progress-stripes,
+  .lumeo-progress-glow {
+    animation: none;
+  }
+  .lumeo-progress-indeterminate::before {
+    animation: none;
+    transform: translateX(0);
+    width: 100%;
+  }
+  .lumeo-steps-line-draw-x,
+  .lumeo-steps-line-draw-y,
+  .lumeo-steps-line-unwind-x,
+  .lumeo-steps-line-unwind-y,
+  .lumeo-timeline-enter-vertical,
+  .lumeo-timeline-enter-horizontal,
+  .lumeo-checkbox-animated,
+  .lumeo-badge-animated {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .lumeo-checkbox-animated svg path,
+  .lumeo-checkbox-animated svg polyline,
+  .lumeo-checkbox-animated svg line {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+  .lumeo-switch-spring {
+    transition: transform 120ms ease !important;
+  }
+}
+
+/* =====================================================
+ * RTL Support
+ *
+ * Tailwind v4 logical utilities (ms-*, me-*, ps-*, pe-*, start-*, end-*,
+ * text-start / text-end, border-s, border-e) already flip automatically in
+ * RTL because they resolve to CSS logical properties. The rules below fix
+ * the few hand-written slide / translate animations that use the *physical*
+ * X axis and therefore look wrong when the document direction is flipped.
+ *
+ * Icons with inherent directional meaning (ChevronLeft/Right, ArrowLeft/Right,
+ * breadcrumb chevrons) are NOT mirrored automatically — consumers should
+ * swap those at the component level if desired.
+ * ===================================================== */
+
+[dir="rtl"] .animate-slide-in-from-left {
+  animation-name: slide-in-from-right-rtl;
+}
+[dir="rtl"] .animate-slide-in-from-right {
+  animation-name: slide-in-from-left-rtl;
+}
+
+@keyframes slide-in-from-right-rtl {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slide-in-from-left-rtl {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Toast default slides from the right-hand edge. In RTL the visual edge
+ * that the toast emerges from is the left, so flip the X direction. */
+[dir="rtl"] .toast-enter,
+[dir="rtl"] .animate-toast-in {
+  animation-name: toast-in-rtl;
+}
+
+@keyframes toast-in-rtl {
+  from { opacity: 0; transform: translateX(-100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ===== RichTextEditor (TipTap / ProseMirror) =====================================
+ * TipTap replaces the mount element with a .ProseMirror contenteditable div.
+ * We scope all styles under .lumeo-rte-content so nothing leaks into the host app.
+ */
+.lumeo-rte-content .ProseMirror {
+  min-height: inherit;
+  padding: 1rem;
+  outline: none;
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.lumeo-rte-content .ProseMirror > * + * {
+  margin-top: 0.75em;
+}
+.lumeo-rte-content .ProseMirror h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.25; }
+.lumeo-rte-content .ProseMirror h2 { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+.lumeo-rte-content .ProseMirror h3 { font-size: 1.125rem; font-weight: 600; line-height: 1.35; }
+.lumeo-rte-content .ProseMirror p { margin: 0; }
+.lumeo-rte-content .ProseMirror ul,
+.lumeo-rte-content .ProseMirror ol { padding-left: 1.25rem; }
+.lumeo-rte-content .ProseMirror ul { list-style: disc; }
+.lumeo-rte-content .ProseMirror ol { list-style: decimal; }
+.lumeo-rte-content .ProseMirror li > p { margin: 0; }
+.lumeo-rte-content .ProseMirror blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 0.75rem;
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+.lumeo-rte-content .ProseMirror code {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.lumeo-rte-content .ProseMirror pre {
+  background: var(--color-muted);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+}
+.lumeo-rte-content .ProseMirror pre code { background: transparent; padding: 0; }
+.lumeo-rte-content .ProseMirror hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 1rem 0;
+}
+.lumeo-rte-content .ProseMirror a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* TipTap placeholder: rendered on the first empty node via the Placeholder extension. */
+.lumeo-rte-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Frappe Gantt — blend the upstream blue defaults into the Lumeo theme.
+   Only the high-contrast visuals are overridden; grid spacing and typography
+   rely on Frappe's own CSS, which is injected once in gantt.js. */
+.lumeo-gantt-host .gantt .grid-background { fill: var(--color-card); }
+.lumeo-gantt-host .gantt .grid-header { fill: var(--color-muted); stroke: var(--color-border); }
+.lumeo-gantt-host .gantt .grid-row { fill: var(--color-card); }
+.lumeo-gantt-host .gantt .grid-row:nth-child(even) { fill: var(--color-muted); }
+.lumeo-gantt-host .gantt .row-line { stroke: var(--color-border); }
+.lumeo-gantt-host .gantt .tick { stroke: var(--color-border); }
+.lumeo-gantt-host .gantt .today-highlight { fill: var(--color-accent); opacity: 0.35; }
+.lumeo-gantt-host .gantt .lower-text,
+.lumeo-gantt-host .gantt .upper-text { fill: var(--color-muted-foreground); }
+.lumeo-gantt-host .gantt .bar-wrapper .bar { fill: var(--color-primary); }
+.lumeo-gantt-host .gantt .bar-wrapper .bar-progress { fill: var(--color-primary); filter: brightness(0.75); }
+.lumeo-gantt-host .gantt .bar-wrapper .bar-label { fill: var(--color-primary-foreground); }
+.lumeo-gantt-host .gantt .arrow { stroke: var(--color-muted-foreground); }
+
+/* === datagrid fullscreen === */
+/* Ensures the grid inside the fullscreen modal fills the available width and
+   height regardless of any Height / max-width the host set on the grid. */
+.lumeo-datagrid-fullscreen [data-slot="datagrid"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+/* Inner scroll region should expand too, so the table occupies the overlay. */
+.lumeo-datagrid-fullscreen [data-slot="datagrid"] > div,
+.lumeo-datagrid-fullscreen [data-slot="datagrid"] table {
+  width: 100%;
+}
+
+/* =============================================================
+ * Press feedback — opt-in via PressEffect param on Button,
+ * ShimmerButton, Card (when OnClick bound), BottomNavItem,
+ * ToggleGroupItem, Chip (when Clickable). The classes are
+ * neutral so they can be applied to any tactile surface.
+ * Respects `prefers-reduced-motion`.
+ * ============================================================= */
+
+.lumeo-press-scale {
+  transition: transform 120ms ease-out;
+}
+.lumeo-press-scale:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.lumeo-press-brightness {
+  transition: filter 120ms ease-out;
+}
+.lumeo-press-brightness:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.lumeo-press-ripple {
+  position: relative;
+  overflow: hidden;
+}
+.lumeo-ripple-dot {
+  position: absolute;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-foreground) 20%, transparent);
+  pointer-events: none;
+  transform: scale(0);
+  animation: lumeo-ripple 500ms ease-out forwards;
+}
+@keyframes lumeo-ripple {
+  from { transform: scale(0); opacity: 0.6; }
+  to   { transform: scale(2.5); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-press-scale,
+  .lumeo-press-brightness {
+    transition: none;
+  }
+  .lumeo-press-scale:active:not(:disabled) {
+    transform: none;
+  }
+  .lumeo-press-brightness:active:not(:disabled) {
+    filter: none;
+  }
+  .lumeo-ripple-dot {
+    animation: none;
+    display: none;
+  }
+}
+
+
+/* === datagrid fullscreen: open animation === */
+.lumeo-datagrid-fullscreen-backdrop {
+  background-color: color-mix(in oklab, var(--color-background) 70%, var(--color-foreground) 8%);
+  backdrop-filter: blur(2px);
+  animation: lumeo-datagrid-fs-backdrop-in 200ms ease-out both;
+}
+.lumeo-datagrid-fullscreen-panel {
+  animation: lumeo-datagrid-fs-panel-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center;
+}
+@keyframes lumeo-datagrid-fs-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes lumeo-datagrid-fs-panel-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-datagrid-fullscreen-backdrop,
+  .lumeo-datagrid-fullscreen-panel {
+    animation: none;
+  }
+}
+.lumeo-datagrid-fullscreen-backdrop-out {
+  animation: lumeo-datagrid-fs-backdrop-out 180ms ease-in both !important;
+}
+.lumeo-datagrid-fullscreen-panel-out {
+  animation: lumeo-datagrid-fs-panel-out 180ms cubic-bezier(0.55, 0, 0.68, 0) both !important;
+}
+@keyframes lumeo-datagrid-fs-backdrop-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes lumeo-datagrid-fs-panel-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}

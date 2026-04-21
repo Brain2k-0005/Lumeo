@@ -1,11 +1,15 @@
-name: Publish to NuGet
+# Required secrets (set in GitHub repo settings):
+#   NUGET_API_KEY - existing, used by Lumeo / Lumeo.Cli / Lumeo.Templates
+#   NPM_TOKEN     - new, required for @lumeo-ui/mcp-server (https://www.npmjs.com/ -> Access Tokens -> Automation)
+
+name: Publish 2.0 packages
 
 on:
   release:
     types: [published]
 
 jobs:
-  publish:
+  publish-lumeo:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,3 +45,79 @@ jobs:
 
       - name: Push to NuGet
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  publish-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore tools/Lumeo.Cli/Lumeo.Cli.csproj
+
+      - name: Pack
+        run: dotnet pack tools/Lumeo.Cli/Lumeo.Cli.csproj -c Release -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Push to NuGet
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  publish-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pack
+        run: dotnet pack templates/Lumeo.Templates/Lumeo.Templates.csproj -c Release -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Push to NuGet
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  publish-mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install deps
+        working-directory: tools/lumeo-mcp
+        run: npm ci
+
+      - name: Sync registry + build
+        working-directory: tools/lumeo-mcp
+        run: npm run build
+
+      - name: Set version
+        working-directory: tools/lumeo-mcp
+        run: npm version ${{ steps.ver.outputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        working-directory: tools/lumeo-mcp
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

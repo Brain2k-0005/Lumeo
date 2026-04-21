@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo;
@@ -17,6 +18,13 @@ public class DataGridColumn<TItem>
     public bool Resizable { get; set; } = true;
     public bool Visible { get; set; } = true;
     public bool Groupable { get; set; }
+    /// <summary>
+    /// Whether this column can be reordered via header drag-and-drop or the
+    /// Toggle Columns menu arrows. When false, the column is pinned to its
+    /// current position regardless of the grid-level <c>Reorderable</c> flag.
+    /// Defaults to <c>true</c>.
+    /// </summary>
+    public bool Reorderable { get; set; } = true;
     public PinDirection Pin { get; set; } = PinDirection.None;
     public DataGridFilterType FilterType { get; set; } = DataGridFilterType.Text;
     public AggregateType Aggregate { get; set; } = AggregateType.None;
@@ -29,6 +37,24 @@ public class DataGridColumn<TItem>
     public Func<TItem, string>? CellClass { get; set; }
     public Comparison<object?>? CustomSort { get; set; }
     public List<FilterOption>? FilterOptions { get; set; }
+
+    /// <summary>
+    /// Optional whitelist of filter operators shown in the column filter UI.
+    /// When null, the grid exposes the default set for the column's <see cref="FilterType"/>.
+    /// When set, only operators present in this list are offered (still intersected with the
+    /// built-in defaults so unsupported combinations are not surfaced accidentally).
+    /// </summary>
+    public List<FilterOperator>? Operators { get; set; }
+
+    /// <summary>
+    /// Optional custom filter UI for this column. When provided, the default filter body
+    /// (operator + value inputs) is replaced with this render fragment, allowing the consumer
+    /// to implement any filter experience (sliders, multi-selects, relative-date pickers, ...).
+    /// The context exposes the current <see cref="FilterDescriptor"/> for the column
+    /// (or null) and an Apply callback the consumer invokes to commit the filter.
+    /// Passing null to Apply clears the filter.
+    /// </summary>
+    public RenderFragment<DataGridFilterTemplateContext>? FilterTemplate { get; set; }
 
     private System.Reflection.PropertyInfo? _cachedProperty;
     private string? _cachedPropertyField;
@@ -47,11 +73,24 @@ public class DataGridColumn<TItem>
         return _cachedProperty?.GetValue(item);
     }
 
+    /// <summary>
+    /// Formats a row's value for display, using <see cref="CultureInfo.CurrentCulture"/>
+    /// so ASP.NET request localization affects dates/numbers automatically.
+    /// </summary>
     public string GetFormattedValue(TItem item)
+        => GetFormattedValue(item, CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// Formats a row's value for display using the supplied culture. Prefers
+    /// <see cref="IFormattable"/> to guarantee culture-aware output for numbers
+    /// and dates; falls back to <see cref="object.ToString"/> for other types.
+    /// </summary>
+    public string GetFormattedValue(TItem item, CultureInfo culture)
     {
         var value = GetValue(item);
         if (value is null) return "";
-        if (Format is not null) return string.Format($"{{0:{Format}}}", value);
+        if (value is IFormattable f)
+            return f.ToString(Format, culture);
         return value.ToString() ?? "";
     }
 }

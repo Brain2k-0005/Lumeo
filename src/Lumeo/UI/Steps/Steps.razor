@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new StepsContext(CurrentStep, Clickable, EventCallback.Factory.Create<int>(this, OnStepClick), Orientation, this);
+    var context = new StepsContext(CurrentStep, Clickable, EventCallback.Factory.Create<int>(this, OnStepClick), Orientation, Animated, _direction, _replayKey, this);
     _index = 0;
 }
 
@@ -17,12 +17,46 @@
     [Parameter] public EventCallback<int> CurrentStepChanged { get; set; }
     [Parameter] public bool Clickable { get; set; }
     [Parameter] public StepsOrientation Orientation { get; set; } = StepsOrientation.Horizontal;
+
+    /// <summary>
+    /// When true, enables opt-in motion: the current step's indicator pulses,
+    /// connector lines draw in on advance, and retract on reverse. Default is
+    /// <c>false</c> (no animation, original behaviour).
+    /// </summary>
+    [Parameter] public bool Animated { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _index;
 
+    // Direction tracking for opt-in Animated mode. `_direction` drives which
+    // keyframe the connector plays (forward draw-in vs. backward unwind).
+    // `_replayKey` is bumped every time CurrentStep actually changes so that
+    // `@key` on the connector forces the animation to re-fire on each click.
+    private int _lastCurrentStep;
+    private StepsDirection _direction = StepsDirection.Forward;
+    private int _replayKey;
+    private bool _initialized;
+
     internal int GetNextIndex() => _index++;
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            _lastCurrentStep = CurrentStep;
+            _initialized = true;
+            return;
+        }
+
+        if (CurrentStep != _lastCurrentStep)
+        {
+            _direction = CurrentStep < _lastCurrentStep ? StepsDirection.Backward : StepsDirection.Forward;
+            _lastCurrentStep = CurrentStep;
+            _replayKey++;
+        }
+    }
 
     private string CssClass => Orientation switch
     {
@@ -40,6 +74,7 @@
     }
 
     public enum StepsOrientation { Horizontal, Vertical }
+    public enum StepsDirection { Forward, Backward }
 
-    public record StepsContext(int CurrentStep, bool Clickable, EventCallback<int> OnStepClick, StepsOrientation Orientation, Steps Parent);
+    public record StepsContext(int CurrentStep, bool Clickable, EventCallback<int> OnStepClick, StepsOrientation Orientation, bool Animated, StepsDirection Direction, int ReplayKey, Steps Parent);
 }

@@ -8,23 +8,22 @@
         var isFull = Value >= starIndex;
         var isHalf = AllowHalf && !isFull && Value >= starIndex - 0.5;
 
-        var iconFrag = EffectiveIcon;
-        @if (iconFrag is not null)
+        @if (IconContent is not null)
         {
             <button type="button"
-                    class="@GetStarClasses(isFull || isHalf) @SizeClasses"
+                    class="@GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
                     @onmouseover="() => HandleHover(starIndex)"
                     @onmouseout="HandleMouseLeave">
-                @iconFrag
+                @IconContent
             </button>
         }
         else
         {
             <button type="button"
-                    class="@SizeClasses relative"
+                    class="@SizeClasses @StarInteractClasses relative"
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
@@ -59,21 +58,14 @@
     [Parameter] public bool AllowHalf { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
 
-    /// <summary>Icon slot. Use instead of <c>Icon</c> to avoid a name collision with the <c>&lt;Icon&gt;</c> component.</summary>
+    /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>
     [Parameter] public RenderFragment? IconContent { get; set; }
-
-    [Parameter, System.Obsolete("Use IconContent — 'Icon' collides with the <Icon> component. This alias will be removed in 2.0.")]
-    public RenderFragment? Icon { get; set; }
 
     [Parameter] public RatingSize Size { get; set; } = RatingSize.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _hoverValue;
-
-#pragma warning disable CS0618 // obsolete property read for fallback
-    private RenderFragment? EffectiveIcon => IconContent ?? Icon;
-#pragma warning restore CS0618
 
     private string CssClass => $"inline-flex items-center gap-0.5 {Class}".Trim();
 
@@ -87,6 +79,10 @@
     private string GetStarClasses(bool isActive) => isActive
         ? "text-[var(--color-rating)]"
         : "text-muted-foreground/30";
+
+    private string StarInteractClasses => ReadOnly
+        ? "cursor-default"
+        : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm";
 
     private async Task HandleClick(int index)
     {

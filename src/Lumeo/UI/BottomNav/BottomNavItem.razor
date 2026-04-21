@@ -1,0 +1,147 @@
+@namespace Lumeo
+@implements IDisposable
+@inject NavigationManager Nav
+@inject Lumeo.Services.IComponentInteropService Interop
+
+@if (string.IsNullOrEmpty(Href))
+{
+    <button @ref="_el" type="button" class="@CssClass"
+            aria-current="@(_active ? "page" : null)"
+            aria-label="@Label"
+            @onclick="HandleClick"
+            @attributes="AdditionalAttributes">
+        @RenderBody
+    </button>
+}
+else
+{
+    <a @ref="_el" href="@Href" class="@CssClass"
+       aria-current="@(_active ? "page" : null)"
+       aria-label="@Label"
+       @attributes="AdditionalAttributes">
+        @RenderBody
+    </a>
+}
+
+@code {
+    [CascadingParameter] public BottomNav.BottomNavContext? Context { get; set; }
+
+    /// <summary>Destination URL. When set, item renders as an <c>&lt;a&gt;</c>; otherwise as a <c>&lt;button&gt;</c>.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>Text label shown under the icon. Also used as the accessible name.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Icon slot (use <see cref="Lumeo.Icon"/> or Blazicon). The <c>Content</c> suffix avoids colliding with the <c>&lt;Icon&gt;</c> component.</summary>
+    [Parameter] public RenderFragment? IconContent { get; set; }
+
+    /// <summary>Optional badge (count, dot, or any content) shown on the icon. Int, string, or RenderFragment.</summary>
+    [Parameter] public RenderFragment? Badge { get; set; }
+
+    /// <summary>Manual active-state override. When null, active is inferred from the current route matching <see cref="Href"/>.</summary>
+    [Parameter] public bool? IsActive { get; set; }
+
+    /// <summary>Click handler — fires for both <c>&lt;a&gt;</c> and <c>&lt;button&gt;</c> renderings (link navigation still proceeds).</summary>
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    /// <summary>
+    /// Visual feedback when the item is pressed. Default is
+    /// <see cref="Button.ButtonPressEffect.None"/>. <c>Scale</c> is recommended
+    /// for a tactile feel on mobile.
+    /// </summary>
+    [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _active;
+    private Microsoft.AspNetCore.Components.ElementReference _el;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += HandleLocationChanged;
+        RecomputeActive();
+    }
+
+    protected override void OnParametersSet() => RecomputeActive();
+
+    public void Dispose() => Nav.LocationChanged -= HandleLocationChanged;
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        RecomputeActive();
+        StateHasChanged();
+    }
+
+    private void RecomputeActive()
+    {
+        if (IsActive is not null) { _active = IsActive.Value; return; }
+        if (string.IsNullOrEmpty(Href)) { _active = false; return; }
+        var current = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        var target = Href.StartsWith('/') ? Href.TrimEnd('/') : "/" + Href.TrimEnd('/');
+        _active = string.Equals(current, target, StringComparison.OrdinalIgnoreCase)
+                  || (target != "/" && current.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+    }
+
+    private bool IsActiveResolved => _active;
+
+    private bool IsAnimated => Context?.AnimatedIndicator == true;
+
+    private string? PressEffectClass => PressEffect switch
+    {
+        Button.ButtonPressEffect.Scale => "lumeo-press-scale",
+        Button.ButtonPressEffect.Brightness => "lumeo-press-brightness",
+        Button.ButtonPressEffect.Ripple => "lumeo-press-ripple",
+        _ => null
+    };
+
+    private string CssClass => string.Join(" ", new[] {
+        "group relative flex min-w-0 flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 text-xs cursor-pointer",
+        "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        IsActiveResolved ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+        IsAnimated ? "lumeo-bottom-nav-animated" : null,
+        PressEffectClass,
+        Class
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && PressEffect == Button.ButtonPressEffect.Ripple)
+        {
+            try
+            {
+                await Interop.RippleAttachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    private RenderFragment RenderBody => __builder =>
+    {
+        <span class="relative flex h-5 w-5 items-center justify-center">
+            @if (IconContent is not null)
+            {
+                @IconContent
+            }
+            @if (Badge is not null)
+            {
+                <span class="absolute -right-2 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground leading-none h-4">
+                    @Badge
+                </span>
+            }
+        </span>
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="truncate font-medium">@Label</span>
+        }
+        @if (IsActiveResolved)
+        {
+            <span aria-hidden="true" class="absolute left-1/2 top-0 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary"></span>
+        }
+    };
+}

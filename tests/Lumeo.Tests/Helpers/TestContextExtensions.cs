@@ -24,9 +24,18 @@ public static class TestContextExtensions
 
         // Register all Lumeo services — they'll use bUnit's fake IJSRuntime
         ctx.Services.AddScoped<ComponentInteropService>();
+        // Some components (e.g. Button) inject the interface type — bind it
+        // to the same concrete instance so tests keep working.
+        ctx.Services.AddScoped<IComponentInteropService>(sp => sp.GetRequiredService<ComponentInteropService>());
         ctx.Services.AddScoped<ToastService>();
+        ctx.Services.AddScoped<IToastService>(sp => sp.GetRequiredService<ToastService>());
+        ctx.Services.AddScoped<OverlayService>();
+        ctx.Services.AddScoped<IOverlayService>(sp => sp.GetRequiredService<OverlayService>());
         ctx.Services.AddScoped<ThemeService>();
+        ctx.Services.AddScoped<IThemeService>(sp => sp.GetRequiredService<ThemeService>());
         ctx.Services.AddScoped<KeyboardShortcutService>();
+        ctx.Services.AddScoped<IKeyboardShortcutService>(sp => sp.GetRequiredService<KeyboardShortcutService>());
+        ctx.Services.AddScoped<IDataGridExportService, Lumeo.Services.DataGridExportService>();
 
         // Localization — apply defaults so components can resolve strings in tests
         ctx.Services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>

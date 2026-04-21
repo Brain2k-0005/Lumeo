@@ -1,0 +1,160 @@
+@page "/components/sparkline"
+
+<PageTitle>Sparkline — Lumeo</PageTitle>
+
+<PageHeader Title="Sparkline" Description="Compact inline SVG trend chart — drop anywhere: table cells, KPI strips, notification badges." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Show a trend inline next to a number, label, or status</li>
+        <li>Add tiny charts to DataGrid/Table cells without reaching for the full Chart component</li>
+        <li>Compose Tremor-style KPI strips where space is limited</li>
+        <li>Prefer <a class="text-primary hover:underline" href="/components/spark-card">SparkCard</a> when you need a framed tile, or <a class="text-primary hover:underline" href="/components/chart">Chart</a> for axes, tooltips, and legends</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic line" Code="@_basicCode">
+        <div class="flex items-center gap-4">
+            <div class="text-2xl font-semibold tracking-tight">$12,450</div>
+            <div class="text-emerald-500 text-sm font-medium">+4.2%</div>
+            <div class="w-40">
+                <Sparkline Values="_seriesA" />
+            </div>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Area variant" Code="@_areaCode">
+        <div class="w-64">
+            <Sparkline Values="_seriesA" Type="Sparkline.SparkType.Area" Height="40" />
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Bars variant" Code="@_barsCode">
+        <div class="w-64">
+            <Sparkline Values="_seriesA" Type="Sparkline.SparkType.Bars" Height="40" />
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With last-point dot" Code="@_dotCode">
+        <div class="w-64">
+            <Sparkline Values="_seriesA" ShowLast="true" Height="40" />
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="In a table cell" Code="@_tableCode">
+        <Stack Class="rounded-lg border border-border overflow-hidden">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b bg-muted/40">
+                        <th class="text-left p-3 font-medium">Ticker</th>
+                        <th class="text-left p-3 font-medium">Price</th>
+                        <th class="text-left p-3 font-medium">Change</th>
+                        <th class="text-left p-3 font-medium w-40">Trend</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border/40">
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td class="p-3 font-mono text-xs">@row.Ticker</td>
+                            <td class="p-3">@row.Price</td>
+                            <td class="p-3 @(row.Up ? "text-emerald-500" : "text-destructive")">@row.Change</td>
+                            <td class="p-3"><Sparkline Values="row.Series" Color="@(row.Up ? "var(--color-success, #10b981)" : "var(--color-destructive, #ef4444)")" Height="28" ShowLast="true" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Color variants" Code="@_colorCode">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div class="rounded-lg border border-border p-4">
+                <div class="text-xs text-muted-foreground mb-2">Revenue</div>
+                <div class="text-xl font-semibold mb-2">$48,290</div>
+                <Sparkline Values="_up" Color="var(--color-success, #10b981)" Type="Sparkline.SparkType.Area" Height="36" />
+            </div>
+            <div class="rounded-lg border border-border p-4">
+                <div class="text-xs text-muted-foreground mb-2">Errors</div>
+                <div class="text-xl font-semibold mb-2">1,204</div>
+                <Sparkline Values="_down" Color="var(--color-destructive, #ef4444)" Type="Sparkline.SparkType.Area" Height="36" />
+            </div>
+            <div class="rounded-lg border border-border p-4">
+                <div class="text-xs text-muted-foreground mb-2">Sessions</div>
+                <div class="text-xl font-semibold mb-2">8,492</div>
+                <Sparkline Values="_flat" Height="36" />
+            </div>
+        </div>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Class="rounded-lg border border-border overflow-x-auto">
+        <table class="w-full min-w-[600px] text-sm">
+            <thead>
+                <tr class="border-b bg-muted/40">
+                    <th class="text-left p-3 font-medium text-foreground">Property</th>
+                    <th class="text-left p-3 font-medium text-foreground">Type</th>
+                    <th class="text-left p-3 font-medium text-foreground">Default</th>
+                    <th class="text-left p-3 font-medium text-foreground">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border/40">
+                <tr><td class="p-3 font-mono text-xs text-primary">Values</td><td class="p-3 font-mono text-xs">IEnumerable&lt;double&gt;?</td><td class="p-3 font-mono text-xs">null</td><td class="p-3 text-muted-foreground">Series to plot. If null/empty, a muted baseline is rendered.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">Height</td><td class="p-3 font-mono text-xs">int</td><td class="p-3 font-mono text-xs">32</td><td class="p-3 text-muted-foreground">Rendered pixel height (also the viewBox Y).</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">Color</td><td class="p-3 font-mono text-xs">string?</td><td class="p-3 font-mono text-xs">var(--color-primary)</td><td class="p-3 text-muted-foreground">CSS color for stroke/fill. Accepts any CSS color or var().</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">Type</td><td class="p-3 font-mono text-xs">SparkType</td><td class="p-3 font-mono text-xs">Line</td><td class="p-3 text-muted-foreground">Line, Area, or Bars.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">ShowArea</td><td class="p-3 font-mono text-xs">bool</td><td class="p-3 font-mono text-xs">false</td><td class="p-3 text-muted-foreground">Shortcut — fill under the line when Type=Line.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">ShowLast</td><td class="p-3 font-mono text-xs">bool</td><td class="p-3 font-mono text-xs">false</td><td class="p-3 text-muted-foreground">Render a small dot at the last value.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">StrokeWidth</td><td class="p-3 font-mono text-xs">double</td><td class="p-3 font-mono text-xs">1.5</td><td class="p-3 text-muted-foreground">Line stroke width (unscaled via vector-effect).</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">AriaLabel</td><td class="p-3 font-mono text-xs">string?</td><td class="p-3 font-mono text-xs">"Trend"</td><td class="p-3 text-muted-foreground">Accessible label for the SVG role=img.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">Class</td><td class="p-3 font-mono text-xs">string?</td><td class="p-3 font-mono text-xs">null</td><td class="p-3 text-muted-foreground">Extra classes appended to the root SVG.</td></tr>
+            </tbody>
+        </table>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/spark-card" class="text-primary hover:underline">SparkCard</a> — Framed tile wrapping a sparkline with label/value</li>
+        <li><a href="/components/kpi-card" class="text-primary hover:underline">KpiCard</a> — KPI tile with a SparkContent slot</li>
+        <li><a href="/components/chart" class="text-primary hover:underline">Chart</a> — Full-featured charting for when a sparkline is not enough</li>
+    </ul>
+</div>
+
+@code {
+    private readonly double[] _seriesA = { 12, 18, 9, 22, 28, 19, 34, 30, 42, 38, 46, 52 };
+    private readonly double[] _up = { 4, 7, 5, 9, 12, 11, 16, 14, 18, 22, 25, 30 };
+    private readonly double[] _down = { 30, 26, 28, 22, 24, 19, 16, 18, 13, 11, 9, 6 };
+    private readonly double[] _flat = { 20, 22, 19, 21, 20, 23, 19, 21, 20, 22, 21, 20 };
+
+    private record Row(string Ticker, string Price, string Change, bool Up, double[] Series);
+
+    private readonly Row[] _rows =
+    {
+        new("AAPL", "$189.42", "+1.8%", true, new double[] { 180, 182, 181, 184, 183, 186, 188, 189 }),
+        new("MSFT", "$412.90", "+0.6%", true, new double[] { 405, 407, 408, 410, 409, 411, 412, 413 }),
+        new("TSLA", "$243.11", "-2.3%", false, new double[] { 250, 248, 252, 249, 246, 245, 244, 243 }),
+        new("NVDA", "$916.55", "+3.4%", true, new double[] { 880, 885, 890, 900, 905, 908, 912, 916 }),
+    };
+
+    private const string _basicCode = @"<Sparkline Values=""data"" />";
+    private const string _areaCode = @"<Sparkline Values=""data"" Type=""Sparkline.SparkType.Area"" Height=""40"" />";
+    private const string _barsCode = @"<Sparkline Values=""data"" Type=""Sparkline.SparkType.Bars"" Height=""40"" />";
+    private const string _dotCode = @"<Sparkline Values=""data"" ShowLast=""true"" Height=""40"" />";
+    private const string _tableCode = @"<td>
+    <Sparkline Values=""row.Series""
+               Color=""@(row.Up ? ""var(--color-success)"" : ""var(--color-destructive)"")""
+               Height=""28""
+               ShowLast=""true"" />
+</td>";
+    private const string _colorCode = @"<Sparkline Values=""up"" Color=""var(--color-success)"" Type=""Sparkline.SparkType.Area"" />
+<Sparkline Values=""down"" Color=""var(--color-destructive)"" Type=""Sparkline.SparkType.Area"" />
+<Sparkline Values=""flat"" />";
+}

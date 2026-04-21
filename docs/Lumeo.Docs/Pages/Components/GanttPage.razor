@@ -1,0 +1,252 @@
+@page "/components/gantt"
+
+<PageTitle>Gantt — Lumeo</PageTitle>
+
+<PageHeader Title="Gantt"
+            Description="A project timeline with draggable task bars, dependencies, and progress tracking. Powered by Frappe Gantt under the hood." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Planning a project with ordered phases and cross-task dependencies.</li>
+        <li>Letting stakeholders see "what blocks what" at a glance.</li>
+        <li>Allowing team leads to drag tasks to reschedule, and drag the progress handle to mark completion.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic project plan" Code="@_basicCode">
+        <Gantt Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="420px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="With progress bars" Code="@_progressCode">
+        <Gantt Tasks="_progressTasks" ViewMode="GanttViewMode.Day" Height="420px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Drag to reschedule + change progress" Code="@_dragCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Drag a bar to move it, or drag the right edge to resize. Drag the progress handle (bottom of the bar) to change completion.
+            </Lumeo.Text>
+            <Gantt @bind-Tasks="_dragTasks"
+                   ViewMode="GanttViewMode.Day"
+                   Height="420px"
+                   OnDateChange="HandleDateChange"
+                   OnProgressChange="HandleProgressChange" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-2">Last change</div>
+                @if (_lastChange is null)
+                {
+                    <span class="text-muted-foreground">Drag a bar to see it here.</span>
+                }
+                else
+                {
+                    <span class="font-mono text-xs">@_lastChange.Name — @_lastChange.Start:d → @_lastChange.End:d (@_lastChange.Progress%)</span>
+                }
+            </div>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-2">Current tasks</div>
+                <ul class="space-y-1 font-mono text-xs">
+                    @foreach (var t in _dragTasks)
+                    {
+                        <li>@t.Id — @t.Name (@t.Start:d → @t.End:d, @t.Progress%)</li>
+                    }
+                </ul>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="View modes" Code="@_viewModesCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">Use the built-in toolbar above the chart to toggle between Day, Week, Month, and Year.</Lumeo.Text>
+            <Gantt Tasks="_viewModesTasks" ViewMode="GanttViewMode.Week" Height="420px" />
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="gantt" Level="3" Class="mt-8 scroll-mt-20">Gantt</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[240px]">Type</TableHead>
+                    <TableHead Class="w-[140px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Tasks</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;GanttTask&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>The tasks to render. Use with @@bind-Tasks for two-way binding.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">TasksChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;IEnumerable&lt;GanttTask&gt;&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated collection after the user drags a bar or changes its progress.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ViewMode</TableCell><TableCell Class="font-mono text-xs">GanttViewMode</TableCell><TableCell Class="font-mono text-xs">Day</TableCell><TableCell>Timeline zoom level. Can be changed at runtime via the toolbar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnTaskClick</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;GanttTask&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the user clicks a task bar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnDateChange</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;GanttTask&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated task after a drag or resize completes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnProgressChange</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;GanttTask&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated task after its progress handle is dragged.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Height</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"500px"</TableCell><TableCell>CSS height applied to the Gantt canvas (the toolbar sits above it).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Readonly</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>When true the user can no longer drag bars or change progress.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">TrailingContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Optional slot on the right side of the toolbar — typical usage is an "Add task" button.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes applied to the outer wrapper.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes forwarded to the root element.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="gantt-task" Level="3" Class="mt-8 scroll-mt-20">GanttTask</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Field</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Id</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Stable identifier used to reconcile drag edits back into the caller's collection.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>The label rendered on the task bar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Start</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>Start date (inclusive). Frappe Gantt works at day granularity.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">End</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>End date.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Progress</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell>Completion percentage, 0–100. Drives the progress fill inside the bar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Dependencies</TableCell><TableCell Class="font-mono text-xs">string[]?</TableCell><TableCell>Ids of tasks this task depends on. Rendered as arrows in the chart.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CustomClass</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Extra CSS class applied to the bar — use to color-code milestones or delayed work.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="gantt-view-mode" Level="3" Class="mt-8 scroll-mt-20">GanttViewMode</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Value</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">QuarterDay</TableCell><TableCell>6-hour columns — useful for hour-scale shift scheduling. Not exposed in the toolbar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HalfDay</TableCell><TableCell>12-hour columns. Not exposed in the toolbar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Day</TableCell><TableCell>One column per day — the default.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Week</TableCell><TableCell>One column per week.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Month</TableCell><TableCell>One column per month — best for multi-quarter plans.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Year</TableCell><TableCell>One column per year — best for roadmap-style views.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/scheduler" class="text-primary hover:underline">Scheduler</a> — calendar-style event grid when you care about time-of-day rather than project phases.</li>
+        <li><a href="/components/datagrid" class="text-primary hover:underline">Data Grid</a> — tabular view of the same task data when a timeline isn't needed.</li>
+    </ul>
+</div>
+
+@code {
+    // ── Basic demo ───────────────────────────────────────────────────────
+    private List<GanttTask> _basicTasks = BuildBasicTasks();
+
+    private static List<GanttTask> BuildBasicTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("research",    "Research",    d,                 d.AddDays(5)),
+            new("design",      "Design",      d.AddDays(5),      d.AddDays(12), Dependencies: new[] { "research" }),
+            new("development", "Development", d.AddDays(12),     d.AddDays(25), Dependencies: new[] { "design" }),
+            new("testing",     "Testing",     d.AddDays(22),     d.AddDays(30), Dependencies: new[] { "development" }),
+            new("launch",      "Launch",      d.AddDays(30),     d.AddDays(32), Dependencies: new[] { "testing" }),
+        };
+    }
+
+    // ── Progress demo ────────────────────────────────────────────────────
+    private List<GanttTask> _progressTasks = BuildProgressTasks();
+
+    private static List<GanttTask> BuildProgressTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("research",    "Research",    d,                 d.AddDays(5),  Progress: 100, Dependencies: null),
+            new("design",      "Design",      d.AddDays(5),      d.AddDays(12), Progress: 60,  Dependencies: new[] { "research" }),
+            new("development", "Development", d.AddDays(12),     d.AddDays(25), Progress: 30,  Dependencies: new[] { "design" }),
+            new("testing",     "Testing",     d.AddDays(22),     d.AddDays(30), Progress: 0,   Dependencies: new[] { "development" }),
+            new("launch",      "Launch",      d.AddDays(30),     d.AddDays(32), Progress: 0,   Dependencies: new[] { "testing" }),
+        };
+    }
+
+    // ── Drag demo ────────────────────────────────────────────────────────
+    private IEnumerable<GanttTask> _dragTasks = BuildProgressTasks();
+    private GanttTask? _lastChange;
+
+    private Task HandleDateChange(GanttTask t)
+    {
+        _lastChange = t;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task HandleProgressChange(GanttTask t)
+    {
+        _lastChange = t;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── View modes demo ──────────────────────────────────────────────────
+    private List<GanttTask> _viewModesTasks = BuildViewModesTasks();
+
+    private static List<GanttTask> BuildViewModesTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("discovery", "Discovery",  d,                  d.AddDays(14)),
+            new("mvp",       "MVP Build",  d.AddDays(14),      d.AddDays(45),  Dependencies: new[] { "discovery" }),
+            new("beta",      "Beta",       d.AddDays(45),      d.AddDays(75),  Dependencies: new[] { "mvp" }),
+            new("ga",        "GA Launch",  d.AddDays(75),      d.AddDays(90),  Dependencies: new[] { "beta" }),
+        };
+    }
+
+    // ── Code snippets ────────────────────────────────────────────────────
+    private string _basicCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""420px"" />
+
+@code {
+    private List<GanttTask> _tasks = new() {
+        new(""research"",    ""Research"",    DateTime.Today,              DateTime.Today.AddDays(5)),
+        new(""design"",      ""Design"",      DateTime.Today.AddDays(5),   DateTime.Today.AddDays(12), Dependencies: new[] { ""research"" }),
+        new(""development"", ""Development"", DateTime.Today.AddDays(12),  DateTime.Today.AddDays(25), Dependencies: new[] { ""design"" }),
+        new(""testing"",     ""Testing"",     DateTime.Today.AddDays(22),  DateTime.Today.AddDays(30), Dependencies: new[] { ""development"" }),
+        new(""launch"",      ""Launch"",      DateTime.Today.AddDays(30),  DateTime.Today.AddDays(32), Dependencies: new[] { ""testing"" }),
+    };
+}";
+
+    private string _progressCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""420px"" />
+
+@code {
+    private List<GanttTask> _tasks = new() {
+        new(""research"",    ""Research"",    DateTime.Today,             DateTime.Today.AddDays(5),  Progress: 100),
+        new(""design"",      ""Design"",      DateTime.Today.AddDays(5),  DateTime.Today.AddDays(12), Progress: 60,  Dependencies: new[] { ""research"" }),
+        new(""development"", ""Development"", DateTime.Today.AddDays(12), DateTime.Today.AddDays(25), Progress: 30,  Dependencies: new[] { ""design"" }),
+        // ...
+    };
+}";
+
+    private string _dragCode = @"<Gantt @bind-Tasks=""_tasks""
+       ViewMode=""GanttViewMode.Day""
+       OnDateChange=""HandleDateChange""
+       OnProgressChange=""HandleProgressChange"" />
+
+@code {
+    private IEnumerable<GanttTask> _tasks = new List<GanttTask> { /* ... */ };
+    private GanttTask? _last;
+
+    Task HandleDateChange(GanttTask t)     { _last = t; StateHasChanged(); return Task.CompletedTask; }
+    Task HandleProgressChange(GanttTask t) { _last = t; StateHasChanged(); return Task.CompletedTask; }
+}";
+
+    private string _viewModesCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Week"" Height=""420px"" />";
+}

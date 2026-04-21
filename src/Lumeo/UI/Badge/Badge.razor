@@ -16,14 +16,9 @@
     else
     {
         <div class="@CssClass" @attributes="AdditionalAttributes">
-            @{
-#pragma warning disable CS0618 // obsolete property read for fallback
-                var iconFrag = IconContent ?? Icon;
-#pragma warning restore CS0618
-            }
-            @if (iconFrag != null)
+            @if (IconContent != null)
             {
-                <span class="mr-1 inline-flex items-center">@iconFrag</span>
+                <span class="mr-1 inline-flex items-center">@IconContent</span>
             }
             @ChildContent
             @if (IsRemovable)
@@ -39,25 +34,36 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Icon slot. Use instead of <c>Icon</c> to avoid a name collision with the <c>&lt;Icon&gt;</c> component.</summary>
+    /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>
     [Parameter] public RenderFragment? IconContent { get; set; }
-
-    [Parameter, System.Obsolete("Use IconContent — 'Icon' collides with the <Icon> component. This alias will be removed in 2.0.")]
-    public RenderFragment? Icon { get; set; }
 
     [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Default;
     [Parameter] public bool IsDot { get; set; }
     [Parameter] public bool Pulse { get; set; }
     [Parameter] public bool IsRemovable { get; set; }
     [Parameter] public EventCallback OnRemove { get; set; }
+
+    /// <summary>
+    /// When true, the badge plays a one-shot pop-in entrance animation
+    /// (scale + opacity) on mount. Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool Animated { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isRemoved;
 
-    private string CssClass => IsDot
-        ? $"inline-flex h-2 w-2 rounded-full p-0 {VariantClasses} {Class}".Trim()
-        : $"{BaseClasses} {VariantClasses} {Class}".Trim();
+    private string CssClass
+    {
+        get
+        {
+            var animatedClass = Animated ? "lumeo-badge-animated" : null;
+            return IsDot
+                ? string.Join(" ", new[] { "inline-flex h-2 w-2 rounded-full p-0", VariantClasses, animatedClass, Class }.Where(s => !string.IsNullOrWhiteSpace(s)))
+                : string.Join(" ", new[] { BaseClasses, VariantClasses, animatedClass, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        }
+    }
 
     private const string BaseClasses = "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none";
 

@@ -47,6 +47,13 @@ export function unlockScroll() {
     }
 }
 
+// Toggles a class on <html>. Used by DataGrid fullscreen to signal consumers
+// (e.g. a docs navbar) that they should hide floating chrome.
+export function setHtmlClass(className, active) {
+    if (!className) return;
+    document.documentElement.classList.toggle(className, !!active);
+}
+
 const focusTrapHandlers = new Map();
 
 export function setupFocusTrap(elementId) {
@@ -266,6 +273,24 @@ export function getElementDimension(elementId, dimension) {
     if (!el) return 0;
     const rect = el.getBoundingClientRect();
     return dimension === 'width' ? rect.width : rect.height;
+}
+
+// --- Pointer Capture (used by Splitter dividers) ---
+
+export function setPointerCaptureOnElement(elementId, pointerId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    try { el.setPointerCapture(pointerId); } catch (_) { /* noop */ }
+}
+
+export function releasePointerCaptureOnElement(elementId, pointerId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    try {
+        if (el.hasPointerCapture && el.hasPointerCapture(pointerId)) {
+            el.releasePointerCapture(pointerId);
+        }
+    } catch (_) { /* noop */ }
 }
 
 // --- Drawer Swipe ---
@@ -1168,3 +1193,223 @@ export function onThisPageUnobserve(id) {
         onThisPageObservers.delete(id);
     }
 }
+
+/* ===================================================== *
+ * Motion primitives                                     *
+ * ----------------------------------------------------- *
+ * NumberTicker, TextReveal, BlurFade helpers.           *
+ * All are RAF / IntersectionObserver driven and         *
+ * deregister cleanly via dispose helpers.               *
+ * ===================================================== */
+
+const motionTickers = new Map();       // elementId -> rafId
+const motionObservers = new Map();     // elementId -> IntersectionObserver
+
+function formatNumber(value, decimals) {
+    const fixed = value.toFixed(decimals);
+    // Locale-aware thousands separators without forcing a locale — use browser default.
+    const [whole, frac] = fixed.split('.');
+    const withSep = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return frac !== undefined ? `${withSep}.${frac}` : withSep;
+}
+
+export const motion = {
+    /* ---------- NumberTicker ---------- */
+    tickNumber(elementId, from, to, durationMs, decimals) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        // Cancel any in-flight animation on the same element.
+        const prev = motionTickers.get(elementId);
+        if (prev) cancelAnimationFrame(prev);
+
+        const start = performance.now();
+        const delta = to - from;
+        const dur = Math.max(1, durationMs | 0);
+        const dec = Math.max(0, decimals | 0);
+
+        const step = (now) => {
+            const t = Math.min(1, (now - start) / dur);
+            // easeOutCubic — snappy, settles nicely
+            const eased = 1 - Math.pow(1 - t, 3);
+            const current = from + delta * eased;
+            el.textContent = formatNumber(current, dec);
+            if (t < 1) {
+                const id = requestAnimationFrame(step);
+                motionTickers.set(elementId, id);
+            } else {
+                el.textContent = formatNumber(to, dec);
+                motionTickers.delete(elementId);
+            }
+        };
+        const id = requestAnimationFrame(step);
+        motionTickers.set(elementId, id);
+    },
+
+    disposeTicker(elementId) {
+        const id = motionTickers.get(elementId);
+        if (id) cancelAnimationFrame(id);
+        motionTickers.delete(elementId);
+    },
+
+    /* ---------- TextReveal ---------- */
+    revealText(elementId, options) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const stagger = (options && options.stagger) || 80;
+        const threshold = (options && options.threshold) || 0.3;
+
+        const words = el.querySelectorAll('[data-motion-word]');
+        words.forEach((w, i) => {
+            w.style.transitionDelay = `${i * stagger}ms`;
+        });
+
+        const observer = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    el.setAttribute('data-motion-revealed', 'true');
+                    observer.disconnect();
+                    motionObservers.delete(elementId);
+                    break;
+                }
+            }
+        }, { threshold });
+        observer.observe(el);
+        motionObservers.set(elementId, observer);
+    },
+
+    /* ---------- BlurFade ---------- */
+    blurFade(elementId, options) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const delayMs = (options && options.delayMs) || 0;
+        const once = !options || options.once !== false;
+
+        const observer = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    setTimeout(() => {
+                        el.setAttribute('data-motion-visible', 'true');
+                    }, delayMs);
+                    if (once) {
+                        observer.disconnect();
+                        motionObservers.delete(elementId);
+                    }
+                } else if (!once) {
+                    el.setAttribute('data-motion-visible', 'false');
+                }
+            }
+        }, { threshold: 0.15 });
+        observer.observe(el);
+        motionObservers.set(elementId, observer);
+    },
+
+    disposeObserver(elementId) {
+        const obs = motionObservers.get(elementId);
+        if (obs) {
+            obs.disconnect();
+            motionObservers.delete(elementId);
+        }
+    }
+};
+
+/* ===== AI primitives ===== */
+
+const aiListObservers = new Map();
+
+export const ai = {
+    /* ---------- PromptInput auto-size ---------- */
+    autosize(elementId, maxPx) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        const max = Math.max(0, maxPx | 0);
+        el.style.height = 'auto';
+        const next = max > 0 ? Math.min(el.scrollHeight, max) : el.scrollHeight;
+        el.style.height = next + 'px';
+        el.style.overflowY = (max > 0 && el.scrollHeight > max) ? 'auto' : 'hidden';
+    },
+
+    /* ---------- AgentMessageList auto-scroll ---------- */
+    observeAutoScroll(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        // Dispose any previous observer on the same id
+        const prev = aiListObservers.get(elementId);
+        if (prev) prev.disconnect();
+
+        const isNearBottom = () => (el.scrollHeight - el.scrollTop - el.clientHeight) < 96;
+        let stick = true;
+
+        el.addEventListener('scroll', () => { stick = isNearBottom(); }, { passive: true });
+
+        const scrollToBottom = () => {
+            el.scrollTop = el.scrollHeight;
+        };
+
+        // Initial pin to bottom
+        scrollToBottom();
+
+        const observer = new MutationObserver(() => {
+            if (stick) scrollToBottom();
+        });
+        observer.observe(el, { childList: true, subtree: true, characterData: true });
+        aiListObservers.set(elementId, observer);
+    },
+
+    disposeAutoScroll(elementId) {
+        const obs = aiListObservers.get(elementId);
+        if (obs) {
+            obs.disconnect();
+            aiListObservers.delete(elementId);
+        }
+    },
+
+    /* ---------- Scroll helper used by StreamingText / message list ---------- */
+    scrollToBottom(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        el.scrollTop = el.scrollHeight;
+    }
+};
+
+/* =============================================================
+ * Tabs — measurement helper for the sliding underline indicator.
+ * Returns the x-offset (relative to its offsetParent) and the width
+ * of the currently-active trigger so Blazor can set the CSS vars
+ * `--lumeo-tabs-indicator-x` / `--lumeo-tabs-indicator-w`.
+ * ============================================================= */
+export const tabs = {
+    measure(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return { x: 0, width: 0 };
+        return { x: el.offsetLeft, width: el.offsetWidth };
+    }
+};
+
+/* =============================================================
+ * Ripple — press-feedback helper for buttons and other tactile
+ * surfaces. Attaches a pointerdown listener that spawns a scaling
+ * circle at the cursor point. Driven by CSS keyframes + cleanup
+ * via the animationend event. Honours `prefers-reduced-motion`
+ * through CSS (the .lumeo-ripple-dot animation is disabled there).
+ * ============================================================= */
+function attachRipple(el) {
+    if (!el || el.__lumeoRippleBound) return;
+    el.__lumeoRippleBound = true;
+    el.addEventListener('pointerdown', (e) => {
+        const rect = el.getBoundingClientRect();
+        const span = document.createElement('span');
+        span.className = 'lumeo-ripple-dot';
+        const size = Math.max(rect.width, rect.height);
+        span.style.width = span.style.height = size + 'px';
+        span.style.left = (e.clientX - rect.left - size / 2) + 'px';
+        span.style.top = (e.clientY - rect.top - size / 2) + 'px';
+        el.appendChild(span);
+        span.addEventListener('animationend', () => span.remove(), { once: true });
+    });
+}
+
+export const ripple = { attach: attachRipple };

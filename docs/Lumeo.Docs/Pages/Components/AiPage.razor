@@ -1,0 +1,405 @@
+@page "/components/ai"
+@implements IDisposable
+
+<PageTitle>AI Chat Primitives — Lumeo</PageTitle>
+
+<PageHeader Title="AI Chat Primitives"
+            Description="Streaming-ready building blocks for LLM-powered chat interfaces. Render tokens as they arrive, show tool calls, surface reasoning, and let users send prompts — all over Blazor Server's SignalR pipe." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Building any chat, copilot, or agentic UI on top of a streaming LLM.</li>
+        <li>You want token-by-token rendering without the SSE plumbing React apps require — Blazor Server pipes chunks over SignalR with one <code class="font-mono text-xs">StateHasChanged()</code>.</li>
+        <li>Displaying tool calls (function calls, RAG lookups, SQL runs) as collapsible cards inline with the conversation.</li>
+        <li>Showing chain-of-thought / reasoning segments that users can expand on demand.</li>
+        <li>Giving users a prompt input with auto-grow, Enter-to-send, attach slot, and a token counter.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    <ComponentDemo Title="Live Demo — full chat transcript" Code="@_demoCode">
+        <div class="flex h-[520px] flex-col gap-3 rounded-lg border border-border/60 bg-background p-3">
+            <AgentMessageList Class="flex-1 pr-1">
+                <AgentMessage Role="AgentMessage.AgentMessageRole.System">
+                    Session started @DateTime.Now.ToString("HH:mm")
+                </AgentMessage>
+
+                <AgentMessage Role="AgentMessage.AgentMessageRole.User" Name="You" Timestamp="DateTimeOffset.Now.AddMinutes(-2)">
+                    Summarise the quarterly revenue numbers for EMEA and tell me which region grew fastest.
+                </AgentMessage>
+
+                <AgentMessage Role="AgentMessage.AgentMessageRole.Assistant" Name="Lumeo Copilot" Timestamp="DateTimeOffset.Now.AddMinutes(-2)">
+                    <ReasoningDisplay Text="User wants EMEA revenue breakdown. I should call the sales tool to pull Q1–Q4 numbers, then compute growth per sub-region. DACH looked strong last quarter."
+                                      DurationMs="2400" />
+                </AgentMessage>
+
+                <AgentMessage Role="AgentMessage.AgentMessageRole.Tool">
+                    <ToolCallCard ToolName="query_sales_db"
+                                  Status="ToolCallCard.ToolCallStatus.Success"
+                                  Input="@("{\n  \"region\": \"EMEA\",\n  \"period\": \"2026-Q1\"\n}")"
+                                  Output="@("{\n  \"DACH\": 12_400_000,\n  \"UK\": 9_800_000,\n  \"Nordics\": 4_200_000,\n  \"Iberia\": 3_100_000\n}")"
+                                  DurationMs="842" />
+                </AgentMessage>
+
+                <AgentMessage Role="AgentMessage.AgentMessageRole.Assistant" Name="Lumeo Copilot" IsStreaming="@_isStreaming">
+                    <StreamingText Text="@_streamedText" IsStreaming="@_isStreaming" />
+                </AgentMessage>
+            </AgentMessageList>
+
+            <PromptInput @bind-Value="_promptValue"
+                         Placeholder="Ask a follow-up…"
+                         IsLoading="@_isStreaming"
+                         OnSend="HandleSend">
+                <LeadingContent>
+                    <button type="button" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Attach file">
+                        <Icon Name="Paperclip" Size="Icon.IconSize.Sm" />
+                    </button>
+                </LeadingContent>
+                <TrailingContent>
+                    <span class="tabular-nums">@(_promptValue?.Length ?? 0) / 2000</span>
+                </TrailingContent>
+            </PromptInput>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="PromptInput" Code="@_promptCode">
+        <div class="w-full max-w-xl">
+            <PromptInput @bind-Value="_standalonePrompt" Placeholder="Ask anything…" OnSend="HandleStandaloneSend">
+                <TrailingContent>
+                    <span class="tabular-nums">@(_standalonePrompt?.Length ?? 0) tokens</span>
+                </TrailingContent>
+            </PromptInput>
+            @if (!string.IsNullOrWhiteSpace(_lastStandaloneSend))
+            {
+                <div class="mt-2 text-xs text-muted-foreground">Last sent: <span class="font-mono text-foreground">@_lastStandaloneSend</span></div>
+            }
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="StreamingText" Code="@_streamingCode">
+        <div class="w-full max-w-xl space-y-3">
+            <StreamingText Text="@_pulseText" IsStreaming="true" Class="text-sm" />
+            <div class="text-xs text-muted-foreground">The caret and suffix fade-in re-render as chunks append.</div>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="ToolCallCard" Code="@_toolCallCode">
+        <div class="w-full max-w-xl space-y-3">
+            <ToolCallCard ToolName="search_web"
+                          Status="ToolCallCard.ToolCallStatus.Running"
+                          Input="@("{\n  \"query\": \"blazor server streaming\"\n}")" />
+            <ToolCallCard ToolName="fetch_url"
+                          Status="ToolCallCard.ToolCallStatus.Success"
+                          Input="@("{\n  \"url\": \"https://example.com\"\n}")"
+                          Output="@("200 OK — 14.2KB payload")"
+                          DurationMs="312"
+                          DefaultOpen="true" />
+            <ToolCallCard ToolName="run_python"
+                          Status="ToolCallCard.ToolCallStatus.Error"
+                          Input="@("print(x)")"
+                          ErrorMessage="NameError: name 'x' is not defined"
+                          DurationMs="28" />
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="ReasoningDisplay" Code="@_reasoningCode">
+        <div class="w-full max-w-xl space-y-3">
+            <ReasoningDisplay Summary="Thinking…" IsStreaming="true"
+                              Text="Let me break this down — first I need to identify the entities, then decide which tool to invoke. Given the user asked about EMEA revenue…" />
+            <ReasoningDisplay DurationMs="3800" DefaultOpen="true"
+                              Text="Fast path: query_sales_db with region=EMEA, period=2026-Q1. That returns per-sub-region totals. Then rank by YoY growth." />
+        </div>
+    </ComponentDemo>
+
+</Stack>
+
+<div class="mt-12 space-y-3">
+    <Heading Id="signalr-wiring" Level="2" Class="scroll-mt-20">Wiring StreamingText to a SignalR hub</Heading>
+    <p class="text-sm text-muted-foreground">
+        Blazor Server already runs each circuit over SignalR. Capture a <code class="font-mono text-xs">@@ref</code> to your parent component's streaming state
+        and call <code class="font-mono text-xs">InvokeAsync(StateHasChanged)</code> when a new chunk arrives. That's the whole streaming story.
+    </p>
+    <pre class="rounded-md border border-border bg-muted/40 p-3 text-xs font-mono overflow-x-auto"><code>@_hubCode</code></pre>
+</div>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">PromptInput</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Value</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Current text. Two-way bindable via <code class="font-mono text-xs">@@bind-Value</code>.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Placeholder</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 font-mono text-xs text-muted-foreground">"Ask anything…"</td><td class="p-3 text-muted-foreground">Placeholder when empty.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">MaxHeight</td><td class="p-3 font-mono text-xs text-muted-foreground">int</td><td class="p-3 font-mono text-xs text-muted-foreground">240</td><td class="p-3 text-muted-foreground">Pixel cap before the textarea scrolls internally.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">MinHeight</td><td class="p-3 font-mono text-xs text-muted-foreground">int</td><td class="p-3 font-mono text-xs text-muted-foreground">56</td><td class="p-3 text-muted-foreground">Minimum pixel height of the textarea.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsLoading</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Disables input and shows a spinner on the send button.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnSend</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires with the current Value on Enter or Send click.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">DisableSendOnEmpty</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Disables the send button when Value is blank.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">LeadingContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Slot on the left of the toolbar (attach button, etc.).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">TrailingContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Slot on the right of the toolbar (token count, model selector).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Class</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Extra CSS classes on the root container.</td></tr>
+                                            <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ValueChanged</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string?&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Two-way binding callback; fires as the user types.</td>
+                        </tr>
+</tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">StreamingText</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Text</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Full accumulated text. Newly-appended suffix fades in.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsStreaming</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">When true, shows a pulsing caret at the end of the text.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Prose</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Applies prose typography (Tailwind) to the content.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">AgentMessageList</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">ChildContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Usually one or more <code class="font-mono text-xs">&lt;AgentMessage&gt;</code> children.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">AutoScroll</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Sticks to the bottom when new content arrives, using a MutationObserver.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">AgentMessage</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Role</td><td class="p-3 font-mono text-xs text-muted-foreground">AgentMessageRole</td><td class="p-3 font-mono text-xs text-muted-foreground">Assistant</td><td class="p-3 text-muted-foreground">One of User, Assistant, System, Tool.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Avatar</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Optional avatar rendered alongside the bubble.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Name</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Display name shown above the bubble.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Timestamp</td><td class="p-3 font-mono text-xs text-muted-foreground">DateTimeOffset?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Optional timestamp shown next to the name.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsStreaming</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Appends a pulsing caret to the body.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ChildContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Message body. Usually plain text or <code class="font-mono text-xs">&lt;StreamingText&gt;</code>.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">ToolCallCard</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">ToolName</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 font-mono text-xs text-muted-foreground">""</td><td class="p-3 text-muted-foreground">Name of the tool being invoked (e.g. <code class="font-mono text-xs">search_web</code>).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Status</td><td class="p-3 font-mono text-xs text-muted-foreground">ToolCallStatus</td><td class="p-3 font-mono text-xs text-muted-foreground">Pending</td><td class="p-3 text-muted-foreground">Pending, Running, Success, or Error. Drives chip colors and icons.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Input</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Arguments to the tool call, shown in a <code class="font-mono text-xs">&lt;pre&gt;</code> block.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Output</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Tool result shown when expanded.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ErrorMessage</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Error details shown when Status=Error.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">DurationMs</td><td class="p-3 font-mono text-xs text-muted-foreground">long?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Wall-clock duration of the call.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">DefaultOpen</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Whether the card starts expanded.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">ReasoningDisplay</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Text</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Reasoning / chain-of-thought text.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsStreaming</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Applies a subtle opacity pulse while the model is still thinking.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Summary</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Override the default summary label.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">DurationMs</td><td class="p-3 font-mono text-xs text-muted-foreground">long?</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">When set, summary becomes "Reasoned for Xs".</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">DefaultOpen</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Whether the reasoning section starts expanded.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+    </Stack>
+</Stack>
+
+@code {
+    private string? _promptValue;
+    private string? _standalonePrompt;
+    private string? _lastStandaloneSend;
+    private string _streamedText = "The fastest grower was DACH at +18% YoY, driven mainly by…";
+    private string _pulseText = "Lumeo streams tokens straight through SignalR — no SSE plumbing, no fetch() wrappers, just one StateHasChanged() per chunk.";
+    private bool _isStreaming;
+
+    private System.Threading.Timer? _timer;
+    private static readonly string[] _chunks =
+    {
+        " enterprise licenses", " from two", " Fortune-500 accounts", ". UK grew +11%", ", Nordics held flat", ", and Iberia slipped", " -3% after a channel reshuffle."
+    };
+    private int _chunkIndex;
+
+    protected override void OnInitialized()
+    {
+        _timer = new System.Threading.Timer(_ =>
+        {
+            if (!_isStreaming) return;
+            if (_chunkIndex < _chunks.Length)
+            {
+                _streamedText += _chunks[_chunkIndex++];
+                InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                _isStreaming = false;
+                _chunkIndex = 0;
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, dueTime: System.Threading.Timeout.Infinite, period: 600);
+    }
+
+    private void HandleSend(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        _promptValue = string.Empty;
+        _streamedText = $"Received: \"{value}\". Let me pull the numbers…";
+        _chunkIndex = 0;
+        _isStreaming = true;
+        _timer?.Change(0, 600);
+    }
+
+    private void HandleStandaloneSend(string value)
+    {
+        _lastStandaloneSend = value;
+        _standalonePrompt = string.Empty;
+    }
+
+    public void Dispose() => _timer?.Dispose();
+
+    // --- code snippets ---
+
+    private const string _demoCode = """
+<AgentMessageList>
+    <AgentMessage Role="AgentMessage.AgentMessageRole.User" Name="You">
+        Summarise the quarterly revenue for EMEA.
+    </AgentMessage>
+    <AgentMessage Role="AgentMessage.AgentMessageRole.Assistant" Name="Copilot" IsStreaming="@_isStreaming">
+        <StreamingText Text="@_streamedText" IsStreaming="@_isStreaming" />
+    </AgentMessage>
+</AgentMessageList>
+
+<PromptInput @bind-Value="_prompt" OnSend="HandleSend" IsLoading="@_isStreaming" />
+""";
+
+    private const string _promptCode = """
+<PromptInput @bind-Value="_prompt" Placeholder="Ask anything…" OnSend="HandleSend">
+    <TrailingContent>
+        <span>@(_prompt?.Length ?? 0) tokens</span>
+    </TrailingContent>
+</PromptInput>
+""";
+
+    private const string _streamingCode = """
+<StreamingText Text="@_text" IsStreaming="@_isStreaming" />
+""";
+
+    private const string _toolCallCode = """
+<ToolCallCard ToolName="search_web"
+              Status="ToolCallCard.ToolCallStatus.Running"
+              Input='{"query": "blazor streaming"}' />
+
+<ToolCallCard ToolName="fetch_url"
+              Status="ToolCallCard.ToolCallStatus.Success"
+              Input='{"url": "https://example.com"}'
+              Output="200 OK — 14.2KB"
+              DurationMs="312"
+              DefaultOpen="true" />
+""";
+
+    private const string _reasoningCode = """
+<ReasoningDisplay Text="@_thinking" IsStreaming="true" />
+
+<ReasoningDisplay Text="@_thinking" DurationMs="3800" DefaultOpen="true" />
+""";
+
+    private const string _hubCode = """
+// In your Blazor component:
+@inject IHubContext<ChatHub> Hub
+
+private string _assistantText = "";
+private bool _isStreaming;
+
+protected override void OnInitialized()
+{
+    ChatHub.OnChunk += async chunk =>
+    {
+        _assistantText += chunk;
+        await InvokeAsync(StateHasChanged);  // Blazor Server pushes over SignalR automatically
+    };
+    ChatHub.OnComplete += async () =>
+    {
+        _isStreaming = false;
+        await InvokeAsync(StateHasChanged);
+    };
+}
+
+// In your markup:
+<StreamingText Text="@_assistantText" IsStreaming="@_isStreaming" />
+""";
+}

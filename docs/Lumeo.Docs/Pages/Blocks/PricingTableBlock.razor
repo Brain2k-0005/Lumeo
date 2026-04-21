@@ -1,0 +1,216 @@
+@page "/blocks/pricing"
+@namespace Lumeo.Docs.Pages.Blocks
+
+<PageTitle>Pricing — Lumeo Blocks</PageTitle>
+
+<PageHeader Title="Pricing Table"
+            Description="Three-tier pricing section with a monthly / annual toggle, highlighted popular tier, and feature bullets." />
+
+<ComponentDemo Title="Pricing Table Block" Code="@_code">
+    <div class="w-full min-w-[700px] bg-muted/30 rounded-[var(--radius-lg)] border border-border/40 px-6 py-12 lg:px-10 lg:py-16">
+        <Stack Gap="10">
+            <Stack Gap="4" Class="items-center text-center">
+                <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs font-medium">Pricing</Badge>
+                <Stack Gap="2" Class="items-center">
+                    <Heading Level="2" Class="text-3xl md:text-4xl font-bold tracking-tight max-w-xl">
+                        Simple, transparent pricing
+                    </Heading>
+                    <Lumeo.Text Color="muted" Class="max-w-md text-base">
+                        Choose a plan that scales with your team. Cancel or upgrade any time.
+                    </Lumeo.Text>
+                </Stack>
+
+                <Flex Align="center" Gap="3" Class="mt-2">
+                    <Lumeo.Text Size="sm" Weight="@(_annual ? "normal" : "semibold")" Color="@(_annual ? "muted" : "foreground")">
+                        Monthly
+                    </Lumeo.Text>
+                    <Switch @bind-Checked="_annual" />
+                    <Flex Align="center" Gap="2">
+                        <Lumeo.Text Size="sm" Weight="@(_annual ? "semibold" : "normal")" Color="@(_annual ? "foreground" : "muted")">
+                            Annual
+                        </Lumeo.Text>
+                        <Badge Variant="Badge.BadgeVariant.Default" Class="text-[10px] h-5 px-1.5">Save 20%</Badge>
+                    </Flex>
+                </Flex>
+            </Stack>
+
+            <Grid Class="grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+                @foreach (var tier in _tiers)
+                {
+                    var highlighted = tier.Highlighted;
+                    var cardClass = highlighted
+                        ? "relative border-2 border-primary shadow-xl shadow-primary/10 bg-card"
+                        : "relative border-border/60 bg-card";
+                    <Card Class="@cardClass">
+                        @if (highlighted)
+                        {
+                            <div class="absolute -top-3 left-1/2 -translate-x-1/2">
+                                <Badge Variant="Badge.BadgeVariant.Default" Class="px-3 py-1 text-xs font-semibold shadow-md">
+                                    Most popular
+                                </Badge>
+                            </div>
+                        }
+                        <CardContent Class="p-8">
+                            <Stack Gap="6">
+                                <Stack Gap="2">
+                                    <Flex Align="center" Gap="2">
+                                        <Icon Name="@tier.Icon" Class="h-5 w-5 text-primary" />
+                                        <Heading Level="3" Class="text-lg font-semibold">@tier.Name</Heading>
+                                    </Flex>
+                                    <Lumeo.Text Color="muted" Size="sm">@tier.Tagline</Lumeo.Text>
+                                </Stack>
+
+                                <Stack Gap="1">
+                                    <Flex Align="end" Gap="1">
+                                        <Heading Level="2" Class="text-4xl font-bold tracking-tight">
+                                            @FormatPrice(tier)
+                                        </Heading>
+                                        @if (tier.MonthlyPrice > 0)
+                                        {
+                                            <Lumeo.Text Size="sm" Color="muted" Class="mb-1.5">
+                                                /@(_annual ? "yr" : "mo")
+                                            </Lumeo.Text>
+                                        }
+                                    </Flex>
+                                    @if (_annual && tier.MonthlyPrice > 0)
+                                    {
+                                        <Lumeo.Text Size="xs" Color="muted">
+                                            Billed annually — @tier.MonthlyPrice.ToString("C0")/mo equivalent
+                                        </Lumeo.Text>
+                                    }
+                                </Stack>
+
+                                <Button Class="w-full"
+                                        Variant="@(highlighted ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)">
+                                    @tier.Cta
+                                    <Icon Name="ArrowRight" Class="h-4 w-4" />
+                                </Button>
+
+                                <Separator />
+
+                                <Stack Gap="3">
+                                    <Lumeo.Text Size="xs" Weight="semibold" Class="uppercase tracking-wider text-muted-foreground">
+                                        @tier.FeaturesHeader
+                                    </Lumeo.Text>
+                                    @foreach (var feature in tier.Features)
+                                    {
+                                        <Flex Align="start" Gap="2.5">
+                                            <Flex Class="h-5 w-5 items-center justify-center rounded-full bg-primary/10 shrink-0 mt-0.5">
+                                                <Icon Name="Check" Class="h-3 w-3 text-primary" />
+                                            </Flex>
+                                            <Lumeo.Text Size="sm" Class="leading-relaxed">@feature</Lumeo.Text>
+                                        </Flex>
+                                    }
+                                </Stack>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                }
+            </Grid>
+
+            <Flex Align="center" Justify="center" Gap="2" Class="text-muted-foreground">
+                <Icon Name="Shield" Class="h-4 w-4" />
+                <Lumeo.Text Size="sm" Color="muted">
+                    All plans include SOC 2, SSO, and 99.9% uptime SLA.
+                </Lumeo.Text>
+            </Flex>
+        </Stack>
+    </div>
+</ComponentDemo>
+
+@code {
+    private bool _annual = true;
+
+    private record Tier(
+        string Name,
+        string Icon,
+        string Tagline,
+        decimal MonthlyPrice,
+        string Cta,
+        bool Highlighted,
+        string FeaturesHeader,
+        string[] Features);
+
+    private readonly Tier[] _tiers =
+    [
+        new("Starter", "Zap", "For individuals getting started", 0m, "Start free", false,
+            "Includes",
+            [
+                "Up to 3 projects",
+                "10 GB storage",
+                "Community support",
+                "Basic analytics"
+            ]),
+        new("Pro", "Star", "For growing teams and businesses", 24m, "Start 14-day trial", true,
+            "Everything in Starter, plus",
+            [
+                "Unlimited projects",
+                "100 GB storage",
+                "Priority email support",
+                "Advanced analytics & reports",
+                "Custom domains & SSO",
+                "Team collaboration"
+            ]),
+        new("Enterprise", "Shield", "For organizations at scale", 0m, "Contact sales", false,
+            "Everything in Pro, plus",
+            [
+                "Unlimited storage",
+                "Dedicated CSM",
+                "24/7 phone support",
+                "Advanced security & audit log",
+                "Custom contracts & invoicing",
+                "On-prem deployment option"
+            ])
+    ];
+
+    private string FormatPrice(Tier tier)
+    {
+        if (tier.MonthlyPrice == 0)
+        {
+            return tier.Name == "Starter" ? "$0" : "Custom";
+        }
+        var monthly = tier.MonthlyPrice;
+        var amount = _annual ? monthly * 12m * 0.8m : monthly;
+        return amount.ToString("C0");
+    }
+
+    private readonly string _code = @"<Stack Gap=""10"">
+    <Flex Align=""center"" Gap=""3"">
+        <Lumeo.Text Size=""sm"">Monthly</Lumeo.Text>
+        <Switch @bind-Checked=""_annual"" />
+        <Lumeo.Text Size=""sm"">Annual</Lumeo.Text>
+        <Badge>Save 20%</Badge>
+    </Flex>
+
+    <Grid Class=""grid-cols-1 md:grid-cols-3 gap-6"">
+        @foreach (var tier in _tiers)
+        {
+            <Card Class=""@(tier.Highlighted ? ""border-2 border-primary shadow-xl"" : """")"">
+                @if (tier.Highlighted)
+                {
+                    <Badge Class=""absolute -top-3 left-1/2 -translate-x-1/2"">Most popular</Badge>
+                }
+                <CardContent Class=""p-8"">
+                    <Stack Gap=""6"">
+                        <Heading Level=""3"">@tier.Name</Heading>
+                        <Lumeo.Text Color=""muted"">@tier.Tagline</Lumeo.Text>
+                        <Heading Level=""2"" Class=""text-4xl font-bold"">@FormatPrice(tier)</Heading>
+                        <Button Class=""w-full"" Variant=""@(tier.Highlighted ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"">
+                            @tier.Cta
+                        </Button>
+                        <Stack Gap=""3"">
+                            @foreach (var feature in tier.Features)
+                            {
+                                <Flex Gap=""2.5"">
+                                    <Icon Name=""Check"" Class=""h-4 w-4 text-primary"" />
+                                    <Lumeo.Text Size=""sm"">@feature</Lumeo.Text>
+                                </Flex>
+                            }
+                        </Stack>
+                    </Stack>
+                </CardContent>
+            </Card>
+        }
+    </Grid>
+</Stack>";
+}

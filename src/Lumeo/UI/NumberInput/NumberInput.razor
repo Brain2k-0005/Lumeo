@@ -49,6 +49,17 @@
     [Parameter] public bool UseMouseWheel { get; set; }
     [Parameter] public string? Prefix { get; set; }
     [Parameter] public string? Suffix { get; set; }
+
+    /// <summary>
+    /// Culture used to parse typed input. Display of the value inside the native
+    /// <c>&lt;input type="number"&gt;</c> element uses <see cref="System.Globalization.CultureInfo.InvariantCulture"/>
+    /// because HTML5 requires period-as-decimal — browsers will not accept a comma decimal
+    /// in this input type. Leave null to honour ASP.NET request localization for parsing
+    /// (lets a <c>de-DE</c> user paste <c>1,5</c> and have it round-trip to <c>1.5</c>).
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -105,7 +116,12 @@
 
     private async Task OnInputChange(ChangeEventArgs e)
     {
-        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+        var raw = e.Value?.ToString();
+        // Try invariant first (what the native <input type="number"> reports), then the
+        // effective culture as a fallback for consumers that render via FormatType=Text
+        // or feed values programmatically.
+        if (double.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            || double.TryParse(raw, System.Globalization.NumberStyles.Any, EffectiveCulture, out parsed))
         {
             await SetValue(parsed);
         }

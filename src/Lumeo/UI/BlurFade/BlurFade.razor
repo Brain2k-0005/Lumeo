@@ -1,0 +1,47 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<div id="@_elementId" class="@CssClass" style="@StyleString" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int DelayMs { get; set; } = 0;
+    [Parameter] public int DurationMs { get; set; } = 600;
+    [Parameter] public int BlurPx { get; set; } = 8;
+    [Parameter] public int Yoffset { get; set; } = 8;
+    [Parameter] public bool Once { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-blurfade-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-blur-fade", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string StyleString =>
+        $"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionBlurFade(_elementId, DelayMs, Once);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            await Interop.MotionDisposeObserver(_elementId);
+        }
+    }
+}

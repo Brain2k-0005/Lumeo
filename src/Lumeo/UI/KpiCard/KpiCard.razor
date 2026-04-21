@@ -1,0 +1,68 @@
+@namespace Lumeo
+
+<div class="@RootClasses" @attributes="AdditionalAttributes">
+    <div class="flex items-center gap-2">
+        @if (IconContent is not null)
+        {
+            <div class="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
+                @IconContent
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <div class="text-sm text-muted-foreground">@Label</div>
+        }
+    </div>
+
+    <div class="mt-3 text-3xl font-semibold tracking-tight text-foreground">@Value</div>
+
+    @if (Delta.HasValue || SparkContent is not null)
+    {
+        <div class="mt-3 flex items-center justify-between gap-2">
+            @if (Delta.HasValue)
+            {
+                <Lumeo.Delta Value="Delta.Value"
+                             Format="DeltaFormatValue"
+                             Positive="DeltaPositiveValue" />
+            }
+            else
+            {
+                <span></span>
+            }
+            @if (SparkContent is not null)
+            {
+                <div class="flex-1 min-w-0" style="max-width: 140px">
+                    @SparkContent
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public double? Delta { get; set; }
+    [Parameter] public KpiDeltaFormat DeltaFormat { get; set; } = KpiDeltaFormat.Percent;
+    [Parameter] public KpiDeltaDirection DeltaPositive { get; set; } = KpiDeltaDirection.Good;
+    [Parameter] public RenderFragment? IconContent { get; set; }
+    [Parameter] public RenderFragment? SparkContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClasses =>
+        $"rounded-xl border border-border bg-card text-card-foreground p-5 {Class}".Trim();
+
+    private Lumeo.Delta.DeltaFormat DeltaFormatValue =>
+        DeltaFormat == KpiDeltaFormat.Absolute
+            ? Lumeo.Delta.DeltaFormat.Absolute
+            : Lumeo.Delta.DeltaFormat.Percent;
+
+    private Lumeo.Delta.DeltaDirection DeltaPositiveValue =>
+        DeltaPositive == KpiDeltaDirection.Bad
+            ? Lumeo.Delta.DeltaDirection.Bad
+            : Lumeo.Delta.DeltaDirection.Good;
+
+    public enum KpiDeltaFormat { Percent, Absolute }
+    public enum KpiDeltaDirection { Good, Bad }
+}

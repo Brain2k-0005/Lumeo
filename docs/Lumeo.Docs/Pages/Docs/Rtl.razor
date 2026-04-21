@@ -1,0 +1,258 @@
+@page "/docs/rtl"
+@namespace Lumeo.Docs.Pages.Docs
+
+@implements IDisposable
+@using Lumeo.Services
+@inject IThemeService ThemeService
+
+<PageTitle>RTL Support — Lumeo</PageTitle>
+
+<PageHeader Title="Right-to-Left (RTL) Support"
+            Description="Lumeo flips automatically for RTL scripts (Arabic, Hebrew, Persian, Urdu). Flip the whole page with a single service call." />
+
+<Stack Gap="10">
+
+    <!-- Quick Start -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Quick Start</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Direction is a property of <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ThemeService</code>.
+                Call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SetDirectionAsync(LayoutDirection.Rtl)</code>
+                once — it sets <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">document.documentElement.dir = "rtl"</code>,
+                persists the choice to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">localStorage</code>,
+                and raises <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnThemeChanged</code>.
+            </Lumeo.Text>
+
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject IThemeService ThemeService
+
+// Flip to RTL (persisted across reloads)
+await ThemeService.SetDirectionAsync(LayoutDirection.Rtl);
+
+// Back to LTR
+await ThemeService.SetDirectionAsync(LayoutDirection.Ltr);
+
+// Read the current direction
+LayoutDirection dir = await ThemeService.GetDirectionAsync();</Stack>
+
+            <Alert Variant="Alert.AlertVariant.Info">
+                <Lumeo.Text Size="sm">
+                    The initial direction is applied inline by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">theme.js</code>
+                    on first paint, so there is no flash-of-wrong-direction when the page loads.
+                </Lumeo.Text>
+            </Alert>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Live Demo -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Live Demo</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                Toggle the button below to flip this whole page between LTR and RTL. Notice how padding,
+                margins, alignment and the arrows / chevrons on text all flow from the opposite side.
+            </Lumeo.Text>
+
+            <Flex Gap="3" Align="center">
+                <Button Variant="Button.ButtonVariant.Default" OnClick="ToggleDirectionAsync">
+                    <Blazicon Svg="Lucide.ArrowLeftRight" class="h-4 w-4 me-2" />
+                    @(ThemeService.CurrentDirection == LayoutDirection.Rtl ? "Switch to LTR" : "Switch to RTL")
+                </Button>
+                <Badge Variant="Badge.BadgeVariant.Secondary">
+                    dir = @(ThemeService.CurrentDirection == LayoutDirection.Rtl ? "rtl" : "ltr")
+                </Badge>
+            </Flex>
+
+            <!-- Representative components -->
+            <Stack Gap="4">
+                <Card Class="p-4">
+                    <Stack Gap="3">
+                        <Heading Level="3">Input with leading icon</Heading>
+                        <div class="relative" style="display:flex;align-items:center;">
+                            <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground pointer-events-none"
+                                      style="position:absolute;inset-inline-start:0.75rem;top:50%;transform:translateY(-50%);" />
+                            <input type="text" placeholder="Search…"
+                                   class="w-full rounded-md border border-border bg-background text-sm"
+                                   style="padding-inline-start:2.25rem;padding-inline-end:0.75rem;padding-block:0.5rem;" />
+                        </div>
+                    </Stack>
+                </Card>
+
+                <Card Class="p-4">
+                    <Stack Gap="3">
+                        <Heading Level="3">Alignment</Heading>
+                        <Lumeo.Text Size="sm" Class="text-start">Aligned to the logical start — flips in RTL.</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Class="text-end">Aligned to the logical end — flips in RTL.</Lumeo.Text>
+                    </Stack>
+                </Card>
+
+                <Card Class="p-4">
+                    <Stack Gap="3">
+                        <Heading Level="3">Logical spacing</Heading>
+                        <div class="flex items-center gap-2 ps-4 border-s-2 border-primary bg-muted/40 rounded-md py-2">
+                            <Blazicon Svg="Lucide.Info" class="h-4 w-4 text-primary" />
+                            <Lumeo.Text Size="sm">
+                                Border, padding and icon all sit on the start edge — swap automatically.
+                            </Lumeo.Text>
+                        </div>
+                    </Stack>
+                </Card>
+            </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Which components flip -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">What flips automatically?</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Lumeo is built on Tailwind v4 logical utilities, which compile to CSS logical properties
+                (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">padding-inline-start</code>,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">margin-inline-end</code>,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">inset-inline-start</code>, …).
+                The browser flips these automatically when <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dir="rtl"</code>.
+            </Lumeo.Text>
+
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-start p-3 font-medium">Category</th>
+                            <th class="text-start p-3 font-medium">Status</th>
+                            <th class="text-start p-3 font-medium">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3">Layout / spacing (<code class="font-mono text-xs">ps-*</code>, <code class="font-mono text-xs">me-*</code>, <code class="font-mono text-xs">border-s</code>…)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Default">Auto</Badge></td>
+                            <td class="p-3 text-muted-foreground">Resolves to CSS logical properties.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3">Text alignment (<code class="font-mono text-xs">text-start</code>, <code class="font-mono text-xs">text-end</code>)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Default">Auto</Badge></td>
+                            <td class="p-3 text-muted-foreground">Flips based on document direction.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3">Overlay / sheet / drawer slide animations</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Default">Auto</Badge></td>
+                            <td class="p-3 text-muted-foreground">Lumeo overrides the X-axis keyframes under <code class="font-mono text-xs">[dir="rtl"]</code>.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3">Arrow / chevron icons (<code class="font-mono text-xs">ChevronLeft</code>, <code class="font-mono text-xs">ArrowRight</code>…)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline">Manual</Badge></td>
+                            <td class="p-3 text-muted-foreground">You decide. A "back" chevron has directional <em>meaning</em>, so we don't flip it for you.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3">Charts (ECharts)</td>
+                            <td class="p-3"><Badge Variant="Badge.BadgeVariant.Outline">Manual</Badge></td>
+                            <td class="p-3 text-muted-foreground">Pass <code class="font-mono text-xs">xAxis.inverse: true</code> or flip the series order if you want bars to read from right to left.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+
+            <Alert Variant="Alert.AlertVariant.Warning">
+                <Lumeo.Text Size="sm">
+                    If you've hand-written CSS with physical properties
+                    (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">padding-left</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">margin-right</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">translateX(100%)</code>), migrate to logical variants
+                    (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">padding-inline-start</code>, …)
+                    or add a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[dir="rtl"]</code> override.
+                </Lumeo.Text>
+            </Alert>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- API Reference -->
+    <Stack>
+        <Stack Gap="6">
+            <Heading Level="2">API Reference</Heading>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">IThemeService (direction members)</Heading>
+                <Stack Class="rounded-lg border border-border overflow-x-auto">
+                    <table class="w-full min-w-[600px] text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-start p-3 font-medium">Member</th>
+                                <th class="text-start p-3 font-medium">Type</th>
+                                <th class="text-start p-3 font-medium">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">CurrentDirection</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">LayoutDirection</td>
+                                <td class="p-3 text-muted-foreground">The resolved active direction.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">SetDirectionAsync(LayoutDirection)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task</td>
+                                <td class="p-3 text-muted-foreground">Sets <code class="font-mono text-xs">dir</code> on <code class="font-mono text-xs">&lt;html&gt;</code>, persists to localStorage, fires OnThemeChanged.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">GetDirectionAsync()</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;LayoutDirection&gt;</td>
+                                <td class="p-3 text-muted-foreground">Reads the current direction from <code class="font-mono text-xs">document.documentElement.dir</code>.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </Stack>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">LayoutDirection Enum</Heading>
+                <Stack Class="rounded-lg border border-border overflow-x-auto">
+                    <table class="w-full min-w-[600px] text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-start p-3 font-medium">Value</th>
+                                <th class="text-start p-3 font-medium">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Ltr</td>
+                                <td class="p-3 text-muted-foreground">Left-to-right (English, German, Spanish, …). Default.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Rtl</td>
+                                <td class="p-3 text-muted-foreground">Right-to-left (Arabic, Hebrew, Persian, Urdu).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </Stack>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+@code {
+    protected override void OnInitialized()
+    {
+        ThemeService.OnThemeChanged += HandleThemeChanged;
+    }
+
+    private void HandleThemeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task ToggleDirectionAsync()
+    {
+        var next = ThemeService.CurrentDirection == LayoutDirection.Rtl
+            ? LayoutDirection.Ltr
+            : LayoutDirection.Rtl;
+        await ThemeService.SetDirectionAsync(next);
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= HandleThemeChanged;
+    }
+}

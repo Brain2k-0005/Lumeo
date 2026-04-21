@@ -1,0 +1,202 @@
+@namespace Lumeo
+@typeparam TItem
+
+<div class="@CssClass"
+     style="display:grid;grid-template-columns:1fr auto 1fr;gap:0.75rem;align-items:stretch;"
+     @attributes="AdditionalAttributes">
+
+    @* Source panel *@
+    <div class="flex flex-col border border-border/40 rounded-lg overflow-hidden bg-card" style="min-width:0;">
+        <div class="px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between">
+            <span class="text-sm font-medium">@SourceTitle</span>
+            <span class="text-xs text-muted-foreground">@_sourceSelected.Count / @_sourceItems.Count</span>
+        </div>
+        @if (ShowSearch)
+        {
+            <div class="px-2 py-1.5 border-b border-border/40">
+                <input type="text" placeholder="Search…"
+                       class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       value="@_sourceSearch"
+                       @oninput="OnSourceSearch" />
+            </div>
+        }
+        <div class="overflow-y-auto p-1" style="height:@Height;">
+            @if (FilteredSourceItems.Count > 0)
+            {
+                @foreach (var item in FilteredSourceItems)
+                {
+                    var selected = _sourceSelected.Contains(item);
+                    <button type="button"
+                            class="@RowClass(selected)"
+                            @onclick="() => ToggleSource(item)">
+                        @if (ItemTemplate != null)
+                        {
+                            @ItemTemplate(item)
+                        }
+                        else
+                        {
+                            <span class="truncate">@(item?.ToString() ?? "")</span>
+                        }
+                    </button>
+                }
+            }
+            else
+            {
+                <div class="text-center text-xs text-muted-foreground py-6">No items</div>
+            }
+        </div>
+    </div>
+
+    @* Middle buttons *@
+    <div class="flex flex-col items-center justify-center gap-1.5">
+        <button type="button" class="@ButtonClass" @onclick="MoveAllToTarget" disabled="@(_sourceItems.Count == 0)" title="Move all">
+            <Blazicon Svg="Lucide.ChevronsRight" class="h-4 w-4" />
+        </button>
+        <button type="button" class="@ButtonClass" @onclick="MoveSelectedToTarget" disabled="@(_sourceSelected.Count == 0)" title="Move selected">
+            <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+        </button>
+        <button type="button" class="@ButtonClass" @onclick="MoveSelectedToSource" disabled="@(_targetSelected.Count == 0)" title="Move back selected">
+            <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+        </button>
+        <button type="button" class="@ButtonClass" @onclick="MoveAllToSource" disabled="@(_targetItems.Count == 0)" title="Move back all">
+            <Blazicon Svg="Lucide.ChevronsLeft" class="h-4 w-4" />
+        </button>
+    </div>
+
+    @* Target panel *@
+    <div class="flex flex-col border border-border/40 rounded-lg overflow-hidden bg-card" style="min-width:0;">
+        <div class="px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between">
+            <span class="text-sm font-medium">@TargetTitle</span>
+            <span class="text-xs text-muted-foreground">@_targetSelected.Count / @_targetItems.Count</span>
+        </div>
+        @if (ShowSearch)
+        {
+            <div class="px-2 py-1.5 border-b border-border/40">
+                <input type="text" placeholder="Search…"
+                       class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       value="@_targetSearch"
+                       @oninput="OnTargetSearch" />
+            </div>
+        }
+        <div class="overflow-y-auto p-1" style="height:@Height;">
+            @if (FilteredTargetItems.Count > 0)
+            {
+                @foreach (var item in FilteredTargetItems)
+                {
+                    var selected = _targetSelected.Contains(item);
+                    <button type="button"
+                            class="@RowClass(selected)"
+                            @onclick="() => ToggleTarget(item)">
+                        @if (ItemTemplate != null)
+                        {
+                            @ItemTemplate(item)
+                        }
+                        else
+                        {
+                            <span class="truncate">@(item?.ToString() ?? "")</span>
+                        }
+                    </button>
+                }
+            }
+            else
+            {
+                <div class="text-center text-xs text-muted-foreground py-6">No items</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = [];
+    [Parameter] public IEnumerable<TItem> SelectedItems { get; set; } = [];
+    [Parameter] public EventCallback<IEnumerable<TItem>> SelectedItemsChanged { get; set; }
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+    [Parameter] public string SourceTitle { get; set; } = "Available";
+    [Parameter] public string TargetTitle { get; set; } = "Selected";
+    [Parameter] public bool ShowSearch { get; set; } = true;
+    [Parameter] public string Height { get; set; } = "320px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private List<TItem> _sourceItems = new();
+    private List<TItem> _targetItems = new();
+    private readonly HashSet<TItem> _sourceSelected = new();
+    private readonly HashSet<TItem> _targetSelected = new();
+    private string _sourceSearch = "";
+    private string _targetSearch = "";
+
+    private string CssClass => $"w-full {Class}".Trim();
+
+    private const string ButtonClass = "inline-flex items-center justify-center h-8 w-8 rounded-md border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+
+    private string RowClass(bool selected) =>
+        selected
+            ? "w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm bg-accent text-accent-foreground transition-colors"
+            : "w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-accent/50 transition-colors";
+
+    protected override void OnParametersSet()
+    {
+        var all = (Items ?? []).ToList();
+        var sel = (SelectedItems ?? []).ToList();
+        var selSet = new HashSet<TItem>(sel);
+
+        _targetItems = sel;
+        _sourceItems = all.Where(i => !selSet.Contains(i)).ToList();
+
+        // Clean out selections that are no longer in their side
+        _sourceSelected.RemoveWhere(i => !_sourceItems.Contains(i));
+        _targetSelected.RemoveWhere(i => !_targetItems.Contains(i));
+    }
+
+    private List<TItem> FilteredSourceItems =>
+        string.IsNullOrWhiteSpace(_sourceSearch)
+            ? _sourceItems
+            : _sourceItems.Where(i => (i?.ToString() ?? "").Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private List<TItem> FilteredTargetItems =>
+        string.IsNullOrWhiteSpace(_targetSearch)
+            ? _targetItems
+            : _targetItems.Where(i => (i?.ToString() ?? "").Contains(_targetSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? "";
+    private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? "";
+
+    private void ToggleSource(TItem item)
+    {
+        if (!_sourceSelected.Add(item)) _sourceSelected.Remove(item);
+    }
+
+    private void ToggleTarget(TItem item)
+    {
+        if (!_targetSelected.Add(item)) _targetSelected.Remove(item);
+    }
+
+    private Task MoveSelectedToTarget() => MoveToTarget(_sourceSelected.ToList());
+    private Task MoveAllToTarget() => MoveToTarget(_sourceItems.ToList());
+    private Task MoveSelectedToSource() => MoveToSource(_targetSelected.ToList());
+    private Task MoveAllToSource() => MoveToSource(_targetItems.ToList());
+
+    private async Task MoveToTarget(List<TItem> toMove)
+    {
+        if (toMove.Count == 0) return;
+        foreach (var i in toMove)
+        {
+            _sourceItems.Remove(i);
+            if (!_targetItems.Contains(i)) _targetItems.Add(i);
+        }
+        _sourceSelected.Clear();
+        await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
+    }
+
+    private async Task MoveToSource(List<TItem> toMove)
+    {
+        if (toMove.Count == 0) return;
+        foreach (var i in toMove)
+        {
+            _targetItems.Remove(i);
+            if (!_sourceItems.Contains(i)) _sourceItems.Add(i);
+        }
+        _targetSelected.Clear();
+        await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
+    }
+}
