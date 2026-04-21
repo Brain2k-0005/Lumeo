@@ -2,13 +2,14 @@
 /**
  * Lumeo MCP Server
  *
- * Exposes Lumeo's component catalog to MCP-compatible LLM clients
- * (Claude Desktop, Cursor, Copilot, etc.) as:
+ * Exposes Lumeo's full 125-component catalog (sourced from the generated
+ * registry.json, enriched by hand-curated rich entries for the top 35)
+ * to MCP-compatible LLM clients (Claude Desktop, Cursor, Copilot, etc.):
  *
  *   Tools:
- *     - lumeo_list_components  — list/filter the catalog
- *     - lumeo_get_component    — full reference for one component
- *     - lumeo_search           — fuzzy text search
+ *     - lumeo_list_components  — list/filter the full catalog
+ *     - lumeo_get_component    — rich schema when curated, thin otherwise
+ *     - lumeo_search           — fuzzy text search across all 125
  *
  *   Resources (URI template):
  *     - lumeo://component/{name}   — markdown reference per component
@@ -27,22 +28,26 @@ import {
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { components, CATEGORIES, type ComponentDoc } from "./components.js";
-import { tryLoadRegistry } from "./registry.js";
+import {
+  catalog,
+  CATEGORIES,
+  registry,
+  type CatalogEntry,
+} from "./components.js";
+
+const DOCS_BASE = "https://lumeo.nativ.sh";
 
 // ───────────────── Helpers ─────────────────
 
-const byName = new Map<string, ComponentDoc>(
-  components.map(c => [c.name.toLowerCase(), c]),
+const byName = new Map<string, CatalogEntry>(
+  catalog.map((c) => [c.name.toLowerCase(), c]),
 );
 
-const registry = tryLoadRegistry();
-
-function findComponent(name: string): ComponentDoc | undefined {
+function findComponent(name: string): CatalogEntry | undefined {
   return byName.get(name.toLowerCase());
 }
 
-function score(c: ComponentDoc, q: string): number {
+function score(c: CatalogEntry, q: string): number {
   const needle = q.toLowerCase();
   if (!needle) return 0;
   let s = 0;
@@ -54,28 +59,32 @@ function score(c: ComponentDoc, q: string): number {
   return s;
 }
 
-function searchComponents(query: string, category?: string): ComponentDoc[] {
-  let pool = components;
+function searchCatalog(query: string, category?: string): CatalogEntry[] {
+  let pool = catalog;
   if (category) {
-    pool = pool.filter(c => c.category.toLowerCase() === category.toLowerCase());
+    pool = pool.filter((c) => c.category.toLowerCase() === category.toLowerCase());
   }
   if (!query) return pool;
   return pool
-    .map(c => ({ c, s: score(c, query) }))
-    .filter(x => x.s > 0)
+    .map((c) => ({ c, s: score(c, query) }))
+    .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s)
-    .map(x => x.c);
+    .map((x) => x.c);
 }
 
-function toComponentMarkdown(c: ComponentDoc): string {
+function docsUrl(c: CatalogEntry): string {
+  return `${DOCS_BASE}/components/${c.slug}`;
+}
+
+function toRichMarkdown(c: Extract<CatalogEntry, { thin: false }>): string {
   const paramRows = c.params
-    .map(p => `| \`${p.name}\` | \`${p.type}\` | \`${p.default}\` | ${p.description} |`)
+    .map((p) => `| \`${p.name}\` | \`${p.type}\` | \`${p.default}\` | ${p.description} |`)
     .join("\n");
   const slotRows = c.slots
-    .map(s => `| \`${s.name}\` | ${s.description} |`)
+    .map((s) => `| \`${s.name}\` | ${s.description} |`)
     .join("\n");
   const cssVarsBlock = c.cssVars.length
-    ? `## CSS Variables\n\n${c.cssVars.map(v => `- \`${v}\``).join("\n")}\n\n`
+    ? `## CSS Variables\n\n${c.cssVars.map((v) => `- \`${v}\``).join("\n")}\n\n`
     : "";
 
   return [
@@ -99,16 +108,48 @@ function toComponentMarkdown(c: ComponentDoc): string {
     "```",
     ``,
     cssVarsBlock,
+    `_Docs: ${docsUrl(c)}_`,
   ].filter(Boolean).join("\n");
 }
 
+function toThinMarkdown(c: Extract<CatalogEntry, { thin: true }>): string {
+  const filesBlock = c.files.length
+    ? `## Files\n\n${c.files.map((f) => `- \`${f}\``).join("\n")}\n\n`
+    : "";
+  const cssVarsBlock = c.cssVars.length
+    ? `## CSS Variables\n\n${c.cssVars.map((v) => `- \`${v}\``).join("\n")}\n\n`
+    : "";
+  const depsBlock = c.dependencies.length
+    ? `## Dependencies\n\n${c.dependencies.map((d) => `- \`${d}\``).join("\n")}\n\n`
+    : "";
+
+  return [
+    `# ${c.name}`,
+    ``,
+    `**Category:** ${c.category}`,
+    ``,
+    c.description,
+    ``,
+    `> Rich schema (parameters, slots, Razor example) is coming soon for this component.`,
+    `> See the docs site for full usage: [${docsUrl(c)}](${docsUrl(c)})`,
+    ``,
+    filesBlock,
+    depsBlock,
+    cssVarsBlock,
+  ].filter(Boolean).join("\n");
+}
+
+function toComponentMarkdown(c: CatalogEntry): string {
+  return c.thin ? toThinMarkdown(c) : toRichMarkdown(c);
+}
+
 function toCategoryMarkdown(category: string): string {
-  const inCat = components.filter(c => c.category.toLowerCase() === category.toLowerCase());
+  const inCat = catalog.filter((c) => c.category.toLowerCase() === category.toLowerCase());
   if (inCat.length === 0) {
     return `# ${category}\n\nNo components documented in this category yet.`;
   }
   const rows = inCat
-    .map(c => `| [\`${c.name}\`](lumeo://component/${c.name}) | ${c.description} |`)
+    .map((c) => `| [\`${c.name}\`](lumeo://component/${c.name}) | ${c.thin ? "" : "*"}${c.description}${c.thin ? "" : "*"} |`)
     .join("\n");
   return [
     `# ${category}`,
@@ -120,6 +161,14 @@ function toCategoryMarkdown(category: string): string {
     rows,
     ``,
   ].join("\n");
+}
+
+function toListPayload(c: CatalogEntry) {
+  return {
+    name: c.name,
+    category: c.category,
+    description: c.description,
+  };
 }
 
 // ───────────────── Server setup ─────────────────
@@ -144,7 +193,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "lumeo_list_components",
       description:
-        "List Lumeo components, optionally filtered by category or a free-text query. " +
+        `List all ${catalog.length} Lumeo components, optionally filtered by category or a free-text query. ` +
         "Returns an array of { name, category, description }. " +
         `Known categories: ${CATEGORIES.join(", ")}.`,
       inputSchema: {
@@ -164,7 +213,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "lumeo_get_component",
       description:
-        "Get the full reference for a single Lumeo component: parameters, slots, a ready-to-use Razor example, and the CSS variables it consumes.",
+        "Get the reference for a single Lumeo component. " +
+        "For the ~35 hand-curated components this returns full schema " +
+        "(parameters, slots, Razor example, CSS variables). " +
+        "For the remaining components, returns { name, category, description, files, cssVars, dependencies, note } with a link to the docs site.",
       inputSchema: {
         type: "object",
         required: ["name"],
@@ -179,7 +231,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "lumeo_search",
       description:
-        "Fuzzy search across component names, categories, and descriptions. Returns best matches first.",
+        `Fuzzy search across all ${catalog.length} Lumeo components (names, categories, descriptions). Returns best matches first.`,
       inputSchema: {
         type: "object",
         required: ["query"],
@@ -202,11 +254,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "lumeo_list_components": {
       const category = typeof a.category === "string" ? a.category : undefined;
       const query = typeof a.query === "string" ? a.query : "";
-      const results = searchComponents(query, category).map(c => ({
-        name: c.name,
-        category: c.category,
-        description: c.description,
-      }));
+      const results = searchCatalog(query, category).map(toListPayload);
       return {
         content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
       };
@@ -224,15 +272,26 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           }],
         };
       }
-      const payload = {
-        name: c.name,
-        category: c.category,
-        description: c.description,
-        params: c.params,
-        slots: c.slots,
-        example: c.example,
-        cssVars: c.cssVars,
-      };
+      const payload = c.thin
+        ? {
+            name: c.name,
+            category: c.category,
+            description: c.description,
+            files: c.files,
+            cssVars: c.cssVars,
+            dependencies: c.dependencies,
+            note: `Rich schema coming soon — see ${docsUrl(c)}`,
+          }
+        : {
+            name: c.name,
+            category: c.category,
+            description: c.description,
+            params: c.params,
+            slots: c.slots,
+            example: c.example,
+            cssVars: c.cssVars,
+            docs: docsUrl(c),
+          };
       return {
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
       };
@@ -240,30 +299,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     case "lumeo_search": {
       const query = typeof a.query === "string" ? a.query : "";
-      const results = searchComponents(query).map(c => ({
-        name: c.name,
-        category: c.category,
-        description: c.description,
-      }));
-      // Also surface registry-only components, if the registry exists and
-      // the query hits something we don't have curated docs for yet.
-      if (registry && query) {
-        const q = query.toLowerCase();
-        const extras = registry.components
-          .filter(r => r.name && !byName.has(r.name.toLowerCase()))
-          .filter(r =>
-            r.name.toLowerCase().includes(q) ||
-            (r.description ?? "").toLowerCase().includes(q) ||
-            (r.category ?? "").toLowerCase().includes(q),
-          )
-          .slice(0, 20)
-          .map(r => ({
-            name: r.name,
-            category: r.category ?? "Unknown",
-            description: r.description ?? "(from registry — no curated docs yet)",
-          }));
-        results.push(...extras);
-      }
+      const results = searchCatalog(query).map(toListPayload);
       return {
         content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
       };
@@ -281,13 +317,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => ({
   resources: [
-    ...components.map(c => ({
+    ...catalog.map((c) => ({
       uri: `lumeo://component/${c.name}`,
       name: `${c.name} (Lumeo component)`,
       description: c.description,
       mimeType: "text/markdown",
     })),
-    ...CATEGORIES.map(cat => ({
+    ...CATEGORIES.map((cat) => ({
       uri: `lumeo://category/${cat}`,
       name: `Lumeo ${cat} components`,
       description: `Overview of all Lumeo components in the ${cat} category.`,
@@ -301,7 +337,8 @@ server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
     {
       uriTemplate: "lumeo://component/{name}",
       name: "Lumeo component reference",
-      description: "Markdown reference (parameters, slots, example) for a single Lumeo component.",
+      description:
+        "Markdown reference for a single Lumeo component. Rich (params/slots/example) for curated components, thin (files/cssVars + docs link) otherwise.",
       mimeType: "text/markdown",
     },
     {
@@ -352,8 +389,14 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stderr is safe; stdout is the MCP transport
+  const richCount = catalog.filter((c) => !c.thin).length;
+  const thinCount = catalog.length - richCount;
+  const registryNote = registry
+    ? `, registry v${registry.version}`
+    : " (no registry — curated-only mode)";
   process.stderr.write(
-    `[lumeo-mcp] ready — ${components.length} components, ${CATEGORIES.length} categories${registry ? `, registry (${registry.components.length} entries) loaded` : ""}\n`,
+    `[lumeo-mcp] ready — ${catalog.length} components, ${CATEGORIES.length} categories ` +
+    `(${richCount} rich, ${thinCount} thin)${registryNote}\n`,
   );
 }
 

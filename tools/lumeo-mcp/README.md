@@ -11,11 +11,18 @@ actually compiles.
 
 ## What it exposes
 
+The server covers **all 125 components** from Lumeo's generated
+`registry.json`. The top ~35 most-used components ship with rich, hand-curated
+schemas (parameters, slots, ready-to-use Razor examples, CSS variables); the
+remaining ~90 are still discoverable and returned with category / description /
+files / dependencies / CSS variables plus a link back to the docs site for full
+reference. As more components get curated, the rich count grows automatically.
+
 ### Tools
 
-- `lumeo_list_components({ category?, query? })` — list the catalog
-- `lumeo_get_component({ name })` — full reference (params, slots, example, CSS variables)
-- `lumeo_search({ query })` — fuzzy search over names, categories, descriptions
+- `lumeo_list_components({ category?, query? })` — list all 125 components
+- `lumeo_get_component({ name })` — rich schema if curated; thin + docs link otherwise
+- `lumeo_search({ query })` — fuzzy search across all 125
 
 ### Resources
 
@@ -106,11 +113,16 @@ npm run dev   # tsc --watch
 npm start     # run the built server
 ```
 
-The server is ~300 lines total. The component catalog lives in
-`src/components.ts` and is hand-curated — add entries there as Lumeo grows.
-If `src/Lumeo/registry/registry.json` exists, it is also loaded as a
-supplementary index so `lumeo_search` can surface components that don't yet
-have curated docs.
+The component catalog is built at startup by merging two sources:
+
+- `src/components.ts` — hand-curated rich entries (top ~35) with full
+  `params`, `slots`, and `example` fields
+- `src/registry.json` — the full 125-component registry, copied from
+  `src/Lumeo/registry/registry.json` at `prebuild` time by
+  `scripts/sync-registry.mjs`
+
+To enrich a thin entry, add a full entry for it in `src/components.ts` — the
+merge layer will automatically upgrade it to the rich schema.
 
 ## License
 

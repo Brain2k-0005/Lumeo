@@ -65,4 +65,19 @@
           Condition="Exists('..\Lumeo.SourceGenerators\bin\$(Configuration)\netstandard2.0\Lumeo.SourceGenerators.dll')" />
   </ItemGroup>
 
+  <!--
+    Ship the generated component registry as a static web asset so consumers
+    (docs site, tooling, third-party apps) can fetch it at runtime from
+    `/_content/Lumeo/registry/registry.json`. The Razor SDK auto-globs
+    `wwwroot/`, so we sync registry/registry.json into wwwroot/registry/ at
+    the start of the build.
+  -->
+  <Target Name="SyncRegistryIntoWwwroot" BeforeTargets="BeforeBuild"
+          Inputs="registry/registry.json" Outputs="wwwroot/registry/registry.json">
+    <MakeDir Directories="wwwroot/registry" />
+    <Copy SourceFiles="registry/registry.json"
+          DestinationFiles="wwwroot/registry/registry.json"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
