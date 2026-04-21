@@ -21,6 +21,13 @@
     [Parameter] public bool ShowDataLabels { get; set; }
     [Parameter] public string LabelPosition { get; set; } = "top";
     [Parameter] public string? LabelFormat { get; set; }
+
+    /// <summary>Controls category-axis label rendering. Smart auto-rotates at higher
+    /// densities; ShowAll forces all horizontal; Auto thins overlapping labels.</summary>
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+
+    /// <summary>Manual rotation override (degrees) for category-axis labels.</summary>
+    [Parameter] public int? LabelRotate { get; set; }
     [Parameter] public bool DataZoom { get; set; }
     [Parameter] public bool Toolbox { get; set; }
     [Parameter] public List<string>? ColorPalette { get; set; }
@@ -60,12 +67,12 @@
             if (MarkArea is not null) seriesList[0].MarkArea = MarkArea;
         }
 
+        var categoryAxis = new EChartAxis { Type = "category", Data = Categories, BoundaryGap = false };
+        ChartLabelHelper.ApplyTo(categoryAxis, LabelStrategy, Categories.Count, LabelRotate);
+
         _option = new EChartOption
         {
-            XAxis = new List<EChartAxis>
-            {
-                new() { Type = "category", Data = Categories, BoundaryGap = false }
-            },
+            XAxis = new List<EChartAxis> { categoryAxis },
             YAxis = new List<EChartAxis>
             {
                 new() { Type = "value" }
