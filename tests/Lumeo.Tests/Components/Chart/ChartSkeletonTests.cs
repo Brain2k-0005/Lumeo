@@ -126,9 +126,15 @@ public class ChartSkeletonTests : IAsyncLifetime
         // The `.lumeo-chart-skel-shape` class is the sole hook for both the pulse
         // animation and the reduced-motion override. Missing class = no animation
         // AND no reduced-motion safeguard — hence guarding it with a test.
+        //
+        // Scoped to `rect.lumeo-chart-skel-shape` because the skeleton also renders
+        // static axis/legend hint rects (tagged via `data-skel-axis`) that intentionally
+        // do NOT animate — they're background structure, not the pulsing shapes.
         var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Bars));
 
-        foreach (var rect in cut.FindAll("rect"))
+        var shapeRects = cut.FindAll("rect.lumeo-chart-skel-shape");
+        Assert.NotEmpty(shapeRects);
+        foreach (var rect in shapeRects)
         {
             Assert.Contains("lumeo-chart-skel-shape", rect.GetAttribute("class") ?? "");
         }
@@ -142,6 +148,40 @@ public class ChartSkeletonTests : IAsyncLifetime
 
         Assert.Contains("my-skel", root.GetAttribute("class"));
         Assert.Contains("lumeo-chart-skeleton", root.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Cartesian_Kinds_Render_Axis_And_Legend_Hints()
+    {
+        // Top 14%: 3 legend pills. Left 10%: 4 y-tick labels. Bottom 12%: 6 x-tick labels.
+        // These reserve plot-area space so the real chart can swap in without a layout jump.
+        var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Bars));
+
+        Assert.Equal(3, cut.FindAll("rect[data-skel-axis='legend']").Count);
+        Assert.Equal(4, cut.FindAll("rect[data-skel-axis='y']").Count);
+        Assert.Equal(6, cut.FindAll("rect[data-skel-axis='x']").Count);
+    }
+
+    [Fact]
+    public void Pie_Kind_Renders_Legend_And_External_Label_Anchors()
+    {
+        // Pie reserves a top-strip legend and 4 external label anchor lines (one per quadrant).
+        var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Pie));
+
+        Assert.Equal(3, cut.FindAll("rect[data-skel-axis='legend']").Count);
+        Assert.Equal(4, cut.FindAll("line[data-skel-axis='pie-label']").Count);
+    }
+
+    [Fact]
+    public void Generic_Kind_Has_No_Axis_Or_Legend_Hints()
+    {
+        // Generic shapes fill the box; no reserved axis/legend space — keeps the skeleton
+        // minimal for kinds where the real chart has no cartesian grid (Radar, Sankey, Tree, etc.).
+        var cut = _ctx.Render<L.ChartSkeleton>(p => p.Add(b => b.Kind, L.ChartSkeletonKind.Generic));
+
+        Assert.Empty(cut.FindAll("rect[data-skel-axis='legend']"));
+        Assert.Empty(cut.FindAll("rect[data-skel-axis='x']"));
+        Assert.Empty(cut.FindAll("rect[data-skel-axis='y']"));
     }
 
     [Fact]
