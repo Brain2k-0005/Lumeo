@@ -19,6 +19,15 @@
     [Parameter] public bool ShowDataLabels { get; set; }
     [Parameter] public string LabelPosition { get; set; } = "top";
     [Parameter] public string? LabelFormat { get; set; }
+
+    /// <summary>When true (default), every category-axis label is displayed — fixes ECharts' default
+    /// behaviour of auto-hiding overlapping labels which makes alternating labels disappear.
+    /// Set false to let ECharts auto-thin labels when they would overlap.</summary>
+    [Parameter] public bool ShowAllLabels { get; set; } = true;
+
+    /// <summary>Rotation of category-axis labels in degrees (e.g. -30, -45). Useful when
+    /// <see cref="ShowAllLabels"/> is true and labels are too long to fit horizontally.</summary>
+    [Parameter] public int? LabelRotate { get; set; }
     [Parameter] public bool DataZoom { get; set; }
     [Parameter] public bool Toolbox { get; set; }
     [Parameter] public List<string>? ColorPalette { get; set; }
@@ -34,6 +43,14 @@
     protected override void OnParametersSet()
     {
         var categoryAxis = new EChartAxis { Type = "category", Data = Categories };
+        if (ShowAllLabels || LabelRotate.HasValue)
+        {
+            categoryAxis.AxisLabel = new EChartAxisLabel
+            {
+                Interval = ShowAllLabels ? 0 : null,
+                Rotate = LabelRotate
+            };
+        }
         var valueAxis = new EChartAxis { Type = "value" };
 
         var seriesList = Series.Select(s => new EChartSeries
