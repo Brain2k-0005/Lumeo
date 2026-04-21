@@ -1,14 +1,29 @@
 /**
- * Optional secondary source: Lumeo's generated registry.json.
+ * Loads Lumeo's generated registry.json (synced into src/registry.json at
+ * prebuild time — see `scripts/sync-registry.mjs`). All 125 components are
+ * surfaced to the MCP server through this file so `lumeo_list_components`,
+ * `lumeo_get_component`, and `lumeo_search` can cover the full catalog.
  *
- * The registry is produced by the `Lumeo.RegistryGen` MSBuild tool
- * (at src/Lumeo/registry/registry.json). If it exists we load it as a
- * lightweight supplementary index — today that just means exposing the
- * full component name list so `lumeo_search` can surface components the
- * hand-curated catalog doesn't cover yet.
+ * Shape of the file:
+ *   {
+ *     "$schema": "...",
+ *     "version": "...",
+ *     "generated": "...",
+ *     "components": {
+ *       "<slug>": {
+ *         "name": "ComponentName",
+ *         "category": "Forms",
+ *         "description": "...",
+ *         "files": [...],
+ *         "dependencies": [...],
+ *         "cssVars": [...],
+ *         "registryUrl": "https://lumeo.nativ.sh/registry/<slug>.json"
+ *       }
+ *     }
+ *   }
  *
- * Failures are swallowed — the MCP server stays fully functional using
- * only `components.ts` when the registry isn't present.
+ * Failures are swallowed — the MCP server stays functional (just with the
+ * hand-curated catalog only) when the sync step didn't run.
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -16,28 +31,50 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 export interface RegistryComponent {
+  /** Kebab-case slug key from the registry.json map (e.g. "data-grid"). */
+  slug: string;
+  /** PascalCase component name (e.g. "DataGrid"). */
   name: string;
-  category?: string;
-  description?: string;
-  file?: string;
+  category: string;
+  description: string;
+  files: string[];
+  dependencies: string[];
+  cssVars: string[];
+  registryUrl?: string;
 }
 
-export interface Registry {
+export interface RegistryDocument {
+  version: string;
+  generated: string;
   components: RegistryComponent[];
 }
 
-/**
- * Walk upward from this file to find the Lumeo repo root, then look for
- * the registry. We expect this server to live at `<repo>/tools/lumeo-mcp`.
- */
+interface RawEntry {
+  name?: string;
+  category?: string;
+  description?: string;
+  files?: string[];
+  dependencies?: string[];
+  cssVars?: string[];
+  registryUrl?: string;
+}
+
+interface RawDocument {
+  version?: string;
+  generated?: string;
+  components?: Record<string, RawEntry>;
+}
+
 function findRegistryPath(): string | null {
   try {
     const here = dirname(fileURLToPath(import.meta.url));
-    // dist/ or src/ → tools/lumeo-mcp → tools → <repo root>
+    // dist/ → tools/lumeo-mcp; src/ → tools/lumeo-mcp
     const candidates = [
+      resolve(here, "../src/registry.json"),
+      resolve(here, "./registry.json"),
+      // Fall back to the monorepo source if the sync step never ran.
       resolve(here, "../../..", "src/Lumeo/registry/registry.json"),
       resolve(here, "../..", "src/Lumeo/registry/registry.json"),
-      resolve(here, "..", "src/Lumeo/registry/registry.json"),
     ];
     for (const c of candidates) {
       if (existsSync(c)) return c;
@@ -48,22 +85,36 @@ function findRegistryPath(): string | null {
   return null;
 }
 
-export function tryLoadRegistry(): Registry | null {
+export function loadRegistry(): RegistryDocument | null {
   const path = findRegistryPath();
   if (!path) return null;
   try {
     const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      "components" in parsed &&
-      Array.isArray((parsed as Registry).components)
-    ) {
-      return parsed as Registry;
+    const parsed = JSON.parse(raw) as RawDocument;
+    if (!parsed || typeof parsed !== "object" || !parsed.components) return null;
+
+    const components: RegistryComponent[] = [];
+    for (const [slug, entry] of Object.entries(parsed.components)) {
+      if (!entry || !entry.name) continue;
+      components.push({
+        slug,
+        name: entry.name,
+        category: entry.category ?? "Unknown",
+        description: entry.description ?? "",
+        files: entry.files ?? [],
+        dependencies: entry.dependencies ?? [],
+        cssVars: entry.cssVars ?? [],
+        registryUrl: entry.registryUrl,
+      });
     }
+
+    return {
+      version: parsed.version ?? "unknown",
+      generated: parsed.generated ?? "",
+      components,
+    };
   } catch {
-    // swallow — fall back to the hand-curated catalog
+    // swallow — fall back to the hand-curated catalog only
   }
   return null;
 }
