@@ -9,15 +9,17 @@
 }
 else
 {
-    <div class="@RootCssClass" style="@StyleStr" @attributes="AdditionalAttributes">
+    <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
         <div id="@_chartId" class="lumeo-chart-host w-full h-full @(ShouldShowSkeleton ? "invisible" : "")"></div>
         @if (ShouldShowSkeleton)
         {
-            @* Skeleton keeps its muted background so it visually fills the card
-               instead of looking like floating SVG on transparent. `inset-0` pins
-               it to the chart box; `!rounded-none` flattens its corners (the
-               parent card already provides the rounding). *@
-            <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="absolute inset-0 !rounded-none pointer-events-none" />
+            @* Wrap the skeleton in a plain div with inline positioning so we
+               guarantee the overlay pins to this chart box regardless of whether
+               tailwind's `absolute inset-0` utilities are in the compiled bundle.
+               (Without this, rc.3 consumers saw skeletons offset by one card.) *@
+            <div style="position: absolute; inset: 0; pointer-events: none;">
+                <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
+            </div>
         }
     </div>
 }
@@ -73,9 +75,12 @@ else
         : $"width: {Width}; height: {Height};";
 
     // Root now hosts both the ECharts canvas (rendered via JS into this div) and the
-    // skeleton overlay (absolute-positioned child). `relative` is required so the
-    // overlay pins to the chart box; ECharts is fine rendering children inside it.
+    // skeleton overlay (absolute-positioned child). position: relative is required
+    // so the overlay pins to THIS chart's box (not an outer ancestor); we use inline
+    // style because the Tailwind `relative` utility can be purged from pre-compiled
+    // bundles — which caused a skeleton-offset-by-one-card regression during rc.3.
     private string RootCssClass => $"relative {Class}".Trim();
+    private string RootStyleStr => $"position: relative; {StyleStr}";
 
     /// <summary>Skeleton shows when explicitly loading OR before the first successful ECharts
     /// mount — prevents an empty-whitespace flash on initial paint. ShowLoadingSkeleton=false
