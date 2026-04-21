@@ -63,6 +63,34 @@
             </Stack>
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Loading state" Description="Shape-aware skeletons render automatically before ECharts mounts and while IsLoading is true — no empty-whitespace flash, no layout shift. Click Simulate to fake a 2-second fetch, or flip the switch to pin the skeleton for inspection." Code="@_loadingCode">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulateLoadingAsync" Disabled="@_isLoading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepLoading" Id="keep-loading" />
+                        <label for="keep-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                </Stack>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Stack Gap="2">
+                        <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bars</span>
+                        <BarChart Categories="_shortCategories" Series="_labelSeries" IsLoading="@IsLoadingComputed" Height="220px" />
+                    </Stack>
+                    <Stack Gap="2">
+                        <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Line</span>
+                        <LineChart Categories="_shortCategories" Series="_loadingLineSeries" IsLoading="@IsLoadingComputed" Height="220px" />
+                    </Stack>
+                    <Stack Gap="2">
+                        <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pie</span>
+                        <PieChart Data="_loadingPieData" IsLoading="@IsLoadingComputed" Height="220px" ShowLegend="false" />
+                    </Stack>
+                </div>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <Stack Gap="6" Class="mt-12">
@@ -273,4 +301,54 @@
     <ToggleGroupItem Value=""Auto"">Auto</ToggleGroupItem>
 </ToggleGroup>
 <BarChart Categories=""@_interactiveLabels"" Series=""@_interactiveSeries"" LabelStrategy=""@_strategy"" Height=""300px"" />";
+
+    // --- Loading state demo ---
+    private bool _isLoading;
+    private bool _keepLoading;
+    // Skeleton shows whenever either toggle is active — simulate flips on for 2s, the switch
+    // latches it permanently for inspection/design-review.
+    private bool IsLoadingComputed => _isLoading || _keepLoading;
+
+    private List<LineChart.ChartSeriesData> _loadingLineSeries = new()
+    {
+        new() { Name = "Revenue", Values = new() { 120, 148, 135, 172 } }
+    };
+
+    private List<PieChart.PieChartData> _loadingPieData = new()
+    {
+        new() { Name = "Direct",  Value = 42 },
+        new() { Name = "Organic", Value = 31 },
+        new() { Name = "Referral",Value = 18 },
+        new() { Name = "Social",  Value = 9  }
+    };
+
+    private async Task SimulateLoadingAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _isLoading = false;
+        StateHasChanged();
+    }
+
+    private string _loadingCode = @"<Button OnClick=""SimulateLoadingAsync"" Disabled=""@_isLoading"">Simulate loading</Button>
+<Switch @bind-Value=""_keepLoading"" />
+
+<BarChart Categories=""_shortCategories"" Series=""_labelSeries"" IsLoading=""@IsLoadingComputed"" />
+<LineChart Categories=""_shortCategories"" Series=""_loadingLineSeries"" IsLoading=""@IsLoadingComputed"" />
+<PieChart Data=""_loadingPieData"" IsLoading=""@IsLoadingComputed"" />
+
+@code {
+    private bool _isLoading;
+    private bool _keepLoading;
+    private bool IsLoadingComputed => _isLoading || _keepLoading;
+
+    private async Task SimulateLoadingAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _isLoading = false;
+    }
+}";
 }

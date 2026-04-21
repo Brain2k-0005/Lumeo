@@ -1,0 +1,97 @@
+@namespace Lumeo
+@using System.Globalization
+
+<div class="@CssClass" style="@InlineStyle" role="status" aria-live="polite" aria-label="Loading chart" data-lumeo-chart-skeleton="@Kind.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+    <svg class="lumeo-chart-skel-svg w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        @if (Kind == ChartSkeletonKind.Bars)
+        {
+            @for (int i = 0; i < BarHeights.Length; i++)
+            {
+                var h = BarHeights[i];
+                var x = F(4 + i * (BarWidth + 2));
+                var y = F(100 - h - 4);
+                var delay = F(i * 0.12) + "s";
+                <rect class="lumeo-chart-skel-shape" x="@x" y="@y" width="@F(BarWidth)" height="@F(h)" rx="1.2" ry="1.2" fill="@MutedFill" style="animation-delay: @delay;" />
+            }
+        }
+        else if (Kind == ChartSkeletonKind.Line || Kind == ChartSkeletonKind.Area)
+        {
+            @if (Kind == ChartSkeletonKind.Area)
+            {
+                <polygon class="lumeo-chart-skel-shape" points="@(LinePoints + " 98,96 2,96")" fill="@SoftFill" />
+            }
+            <polyline class="lumeo-chart-skel-shape" points="@LinePoints" fill="none" stroke="@MutedFill" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+        }
+        else if (Kind == ChartSkeletonKind.Pie)
+        {
+            <circle class="lumeo-chart-skel-shape" cx="50" cy="50" r="30" fill="none" stroke="@MutedFill" stroke-width="14" vector-effect="non-scaling-stroke" />
+        }
+        else if (Kind == ChartSkeletonKind.Scatter)
+        {
+            @for (int i = 0; i < ScatterDots.Length; i++)
+            {
+                var (x, y, r) = ScatterDots[i];
+                <circle class="lumeo-chart-skel-shape" cx="@F(x)" cy="@F(y)" r="@F(r)" fill="@MutedFill" style="animation-delay: @(F(i * 0.07))s;" />
+            }
+        }
+        else if (Kind == ChartSkeletonKind.Grid)
+        {
+            @for (int r = 0; r < GridRows; r++)
+            {
+                @for (int c = 0; c < GridCols; c++)
+                {
+                    var x = F(4 + c * (GridCellW + 1.2));
+                    var y = F(4 + r * (GridCellH + 1.2));
+                    var delay = F(((r + c) % 5) * 0.1) + "s";
+                    var op = F(GridOpacities[(r * GridCols + c) % GridOpacities.Length]);
+                    <rect class="lumeo-chart-skel-shape" x="@x" y="@y" width="@F(GridCellW)" height="@F(GridCellH)" rx="0.6" ry="0.6" fill="@MutedFill" style="animation-delay: @delay; opacity: @op;" />
+                }
+            }
+        }
+        else
+        {
+            <rect class="lumeo-chart-skel-shape" x="6" y="6" width="88" height="88" rx="2" ry="2" fill="@SoftFill" />
+            <circle class="lumeo-chart-skel-shape" cx="50" cy="50" r="10" fill="none" stroke="@MutedFill" stroke-width="3" vector-effect="non-scaling-stroke" />
+        }
+    </svg>
+</div>
+
+@code {
+    [Parameter] public ChartSkeletonKind Kind { get; set; } = ChartSkeletonKind.Generic;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Muted fills derive from the app's foreground token so we look right in light and
+    // dark mode alike without hard-coding colors. 10% for shapes, 6% for area fills.
+    private const string MutedFill = "color-mix(in oklab, var(--color-foreground) 10%, transparent)";
+    private const string SoftFill = "color-mix(in oklab, var(--color-foreground) 6%, transparent)";
+    private const string LinePoints = "2,72 14,48 26,62 38,34 50,54 62,28 74,46 86,22 98,40";
+
+    // Bar layout — 8 bars across 100-unit viewBox with 4px padding and 2px gaps.
+    private static readonly double[] BarHeights = { 38, 62, 48, 78, 56, 82, 44, 70 };
+    private const double BarWidth = (100 - 4 * 2 - 2 * (8 - 1)) / 8.0;
+
+    // Grid layout — 5x5 heatmap-style cells.
+    private const int GridRows = 5;
+    private const int GridCols = 5;
+    private const double GridCellW = (100 - 4 * 2 - 1.2 * (GridCols - 1)) / GridCols;
+    private const double GridCellH = (100 - 4 * 2 - 1.2 * (GridRows - 1)) / GridRows;
+    private static readonly double[] GridOpacities = { 0.4,0.7,0.5,0.9,0.55,0.8,0.45,0.65,0.35,0.75,0.6,0.5,0.85,0.4,0.7,0.55,0.95,0.45,0.6,0.8,0.5,0.7,0.4,0.65,0.55 };
+
+    // Stable pseudo-random dots for Scatter — seeded so renders are deterministic.
+    private static readonly (double X, double Y, double R)[] ScatterDots =
+    {
+        (12, 78, 2.4), (22, 62, 3.1), (18, 88, 2.0), (32, 48, 2.8), (40, 70, 2.2),
+        (48, 35, 3.0), (54, 58, 2.6), (62, 82, 2.3), (70, 40, 3.2), (76, 66, 2.5),
+        (84, 28, 2.7), (90, 52, 2.1), (28, 25, 2.9), (58, 18, 2.4), (78, 12, 2.6),
+    };
+
+    private string CssClass => $"lumeo-chart-skeleton inline-block w-full rounded-lg overflow-hidden bg-muted/30 relative {Class}".Trim();
+    private string InlineStyle => $"width: {Width}; height: {Height};";
+
+    // Invariant culture so decimals serialize with dots, not locale-specific commas —
+    // SVG attribute parsing requires `.` as the separator.
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}
