@@ -40,6 +40,21 @@
             <LineChart Categories="_categories" Series="_minimalSeries" Smooth="true" ShowLegend="false" Colors="_brandColors" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Loading state" Description="Multi-series line skeleton draws itself across the path. IsLoading binds to your async fetch; ShowLoadingSkeleton=false opts out.">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulateLineLoadingAsync" Disabled="@_lineLoading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepLineLoading" Id="keep-line-loading" />
+                        <label for="keep-line-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                </Stack>
+                <LineChart Categories="_categories" Series="_minimalSeries" IsLoading="@LineLoadingComputed" Height="320px" />
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -127,6 +142,17 @@
 </Stack>
 
 @code {
+    private bool _lineLoading;
+    private bool _keepLineLoading;
+    private bool LineLoadingComputed => _lineLoading || _keepLineLoading;
+
+    private async Task SimulateLineLoadingAsync()
+    {
+        _lineLoading = true;
+        await Task.Delay(2000);
+        _lineLoading = false;
+    }
+
     private List<string> _categories = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
     private List<string> _shortCategories = new() { "Q1", "Q2", "Q3", "Q4" };
 
