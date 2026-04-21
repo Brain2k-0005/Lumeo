@@ -67,6 +67,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"]            = "Move down",
         ["DataGrid.Retry"]               = "Retry",
         ["DataGrid.ErrorLoadingData"]    = "Failed to load data: {0}",
+        ["DataGrid.ExpandFullscreen"]    = "Expand to fullscreen",
+        ["DataGrid.ExitFullscreen"]      = "Exit fullscreen",
         ["Filter.FilterTitle"]           = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
@@ -285,6 +287,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"]            = "Nach unten",
         ["DataGrid.Retry"]               = "Erneut versuchen",
         ["DataGrid.ErrorLoadingData"]    = "Fehler beim Laden: {0}",
+        ["DataGrid.ExpandFullscreen"]    = "Vollbild öffnen",
+        ["DataGrid.ExitFullscreen"]      = "Vollbild schließen",
         ["Filter.FilterTitle"]           = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
