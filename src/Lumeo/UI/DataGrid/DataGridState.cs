@@ -100,3 +100,33 @@ public record DataGridNamedLayout(
     string Scope,  // "Personal", "Global", "SystemDefault"
     DataGridLayout Layout
 );
+
+/// <summary>
+/// Public, JSON-serializable snapshot of a DataGrid's persistable state. This is
+/// the canonical shape used by <c>DataGrid&lt;TItem&gt;.ExportLayout()</c> and
+/// <c>DataGrid&lt;TItem&gt;.ApplyLayoutJsonAsync()</c>. Consumers can store the
+/// resulting JSON in any backend — DB, file, remote API, cookies — and round-trip
+/// it later. The <see cref="Version"/> field is bumped whenever the schema changes
+/// so older payloads can be migrated or rejected.
+/// </summary>
+public record DataGridLayoutSnapshot(
+    int Version,
+    List<DataGridColumnLayout> Columns,
+    List<SortDescriptor> Sorts,
+    List<FilterDescriptor> Filters,
+    string? GlobalSearch,
+    int CurrentPage,
+    int PageSize,
+    string? GroupBy
+);
+
+/// <summary>
+/// Per-column layout entry inside a <see cref="DataGridLayoutSnapshot"/>.
+/// </summary>
+public record DataGridColumnLayout(
+    string Field,
+    int Order,
+    bool Visible,
+    double? Width,
+    PinDirection? Pin
+);
