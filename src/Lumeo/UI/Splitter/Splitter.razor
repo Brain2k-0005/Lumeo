@@ -1,0 +1,146 @@
+@namespace Lumeo
+
+@{
+    var context = new SplitterContext(
+        _groupId,
+        Orientation,
+        _children,
+        RegisterChild,
+        UnregisterChild,
+        ResizeNeighbors
+    );
+}
+
+<div id="@_groupId"
+     class="@CssClass"
+     style="min-width:0;min-height:0;"
+     data-splitter-orientation="@OrientationString"
+     @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public SplitterOrientation Orientation { get; set; } = SplitterOrientation.Horizontal;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _groupId = $"splitter-{Guid.NewGuid():N}";
+    private readonly List<object> _children = new();
+    private bool _distributed;
+
+    private string OrientationString => Orientation == SplitterOrientation.Horizontal ? "horizontal" : "vertical";
+
+    private string CssClass =>
+        Orientation == SplitterOrientation.Horizontal
+            ? $"flex flex-row h-full w-full {Class}".Trim()
+            : $"flex flex-col h-full w-full {Class}".Trim();
+
+    private void RegisterChild(object child)
+    {
+        if (!_children.Contains(child))
+            _children.Add(child);
+    }
+
+    private void UnregisterChild(object child)
+    {
+        _children.Remove(child);
+    }
+
+    private IEnumerable<SplitterPaneHandle> Panes =>
+        _children.OfType<SplitterPaneHandle>();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender || !_distributed)
+        {
+            DistributeInitialSizes();
+        }
+    }
+
+    private void DistributeInitialSizes()
+    {
+        var panes = Panes.ToList();
+        if (panes.Count == 0) return;
+
+        var unsetPanes = panes.Where(p => p.Size <= 0).ToList();
+        if (unsetPanes.Count == 0)
+        {
+            _distributed = true;
+            return;
+        }
+
+        var usedSpace = panes.Where(p => p.Size > 0).Sum(p => p.Size);
+        var remaining = Math.Max(0, 100 - usedSpace);
+        var share = remaining / unsetPanes.Count;
+
+        foreach (var pane in unsetPanes)
+        {
+            pane.Size = share;
+        }
+
+        _distributed = true;
+        StateHasChanged();
+    }
+
+    internal async Task ResizeNeighbors(object dividerToken, double deltaPixels)
+    {
+        var idx = _children.IndexOf(dividerToken);
+        if (idx < 0) return;
+
+        SplitterPaneHandle? before = null;
+        for (var i = idx - 1; i >= 0; i--)
+        {
+            if (_children[i] is SplitterPaneHandle p) { before = p; break; }
+        }
+
+        SplitterPaneHandle? after = null;
+        for (var i = idx + 1; i < _children.Count; i++)
+        {
+            if (_children[i] is SplitterPaneHandle p) { after = p; break; }
+        }
+
+        if (before is null || after is null) return;
+
+        var dimension = Orientation == SplitterOrientation.Horizontal ? "width" : "height";
+        var totalSize = await Interop.GetElementDimension(_groupId, dimension);
+        if (totalSize <= 0) return;
+
+        var deltaPercent = (deltaPixels / totalSize) * 100.0;
+
+        var newBefore = before.Size + deltaPercent;
+        var newAfter = after.Size - deltaPercent;
+
+        if (newBefore < before.MinSize || newBefore > before.MaxSize) return;
+        if (newAfter < after.MinSize || newAfter > after.MaxSize) return;
+
+        before.Size = newBefore;
+        after.Size = newAfter;
+
+        StateHasChanged();
+    }
+
+    public enum SplitterOrientation { Horizontal, Vertical }
+
+    public class SplitterPaneHandle
+    {
+        public double Size { get; set; }
+        public double MinSize { get; set; } = 10;
+        public double MaxSize { get; set; } = 90;
+    }
+
+    public class SplitterDividerToken { }
+
+    public record SplitterContext(
+        string GroupId,
+        SplitterOrientation Orientation,
+        List<object> Children,
+        Action<object> RegisterChild,
+        Action<object> UnregisterChild,
+        Func<object, double, Task> ResizeNeighbors
+    );
+}

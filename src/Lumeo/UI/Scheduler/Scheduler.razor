@@ -1,0 +1,239 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
+
+<div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 {Class}".Trim())" @attributes="AdditionalAttributes">
+    @* Lumeo-styled toolbar above the FullCalendar canvas.
+       FullCalendar's built-in header is hidden in JS (headerToolbar: false). *@
+    <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-1">
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="PrevAsync" aria-label="Previous">
+                <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+            </Button>
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="TodayAsync">Today</Button>
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="NextAsync" aria-label="Next">
+                <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+            </Button>
+        </div>
+        <div class="flex-1 text-center text-sm font-medium text-foreground truncate px-2">
+            @_title
+        </div>
+        <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
+                     Variant="ToggleGroup.ToggleGroupVariant.Outline"
+                     Size="ToggleGroup.ToggleGroupSize.Sm"
+                     Value="@_currentViewValue"
+                     ValueChanged="OnViewChangedAsync">
+            <ToggleGroupItem Value="Month">Month</ToggleGroupItem>
+            <ToggleGroupItem Value="Week">Week</ToggleGroupItem>
+            <ToggleGroupItem Value="Day">Day</ToggleGroupItem>
+            <ToggleGroupItem Value="List">List</ToggleGroupItem>
+        </ToggleGroup>
+    </div>
+
+    <div @ref="_hostRef" style="height: @Height;"></div>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
+    [Parameter] public EventCallback<IEnumerable<SchedulerEvent>> EventsChanged { get; set; }
+    [Parameter] public SchedulerView InitialView { get; set; } = SchedulerView.Month;
+    [Parameter] public DateTime? InitialDate { get; set; }
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public bool Selectable { get; set; } = true;
+    [Parameter] public bool BusinessHours { get; set; }
+    [Parameter] public string Height { get; set; } = "640px";
+    [Parameter] public int FirstDayOfWeek { get; set; } = 1;
+    [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
+    [Parameter] public EventCallback<SchedulerDateRange> OnDateSelect { get; set; }
+    [Parameter] public EventCallback<SchedulerEvent> OnEventChange { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private ElementReference _hostRef;
+    private DotNetObjectReference<Scheduler>? _selfRef;
+    private string? _instanceId;
+    private bool _initialized;
+    private int _lastEventsHash;
+    private SchedulerView _currentView;
+    private string _currentViewValue => _currentView.ToString();
+    private string _title = "";
+
+    // Snapshot of the most recent events set — used by eventChange to build the
+    // updated collection without reaching back into `Events` (which may have
+    // been replaced by the parent since init).
+    private List<SchedulerEvent> _events = new();
+
+    protected override void OnInitialized()
+    {
+        _currentView = InitialView;
+        _events = Events?.ToList() ?? new List<SchedulerEvent>();
+        _lastEventsHash = ComputeEventsHash(_events);
+        _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_initialized && Events is not null)
+        {
+            var incoming = Events.ToList();
+            var hash = ComputeEventsHash(incoming);
+            if (hash != _lastEventsHash)
+            {
+                _lastEventsHash = hash;
+                _events = incoming;
+                await Interop.SchedulerSetEventsAsync(_instanceId!, incoming.Select(ToJsEvent).Cast<object>());
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+
+        _selfRef = DotNetObjectReference.Create(this);
+
+        var options = new
+        {
+            view = InitialView.ToString(),
+            initialDate = (InitialDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
+            events = _events.Select(ToJsEvent).ToArray(),
+            editable = Editable,
+            selectable = Selectable,
+            businessHours = BusinessHours,
+            height = Height,
+            firstDay = FirstDayOfWeek
+        };
+
+        try
+        {
+            _instanceId = await Interop.SchedulerInitAsync(_hostRef, _selfRef, options);
+            _initialized = true;
+            // Read the real title from FullCalendar now that the view is rendered.
+            _title = await Interop.SchedulerGetTitleAsync(_instanceId);
+            StateHasChanged();
+        }
+        catch (Microsoft.JSInterop.JSException ex)
+        {
+            Console.Error.WriteLine($"[Lumeo Scheduler] Init failed: {ex.Message}");
+        }
+    }
+
+    private static object ToJsEvent(SchedulerEvent ev) => new
+    {
+        id = ev.Id,
+        title = ev.Title,
+        start = ev.Start.ToString("o"),
+        end = ev.End.ToString("o"),
+        allDay = ev.AllDay,
+        color = ev.Color,
+        url = ev.Url,
+        extendedProps = ev.ExtendedProps
+    };
+
+    private static int ComputeEventsHash(IEnumerable<SchedulerEvent> events)
+    {
+        // Cheap identity hash good enough to detect "did the caller hand us a
+        // new event list?" without triggering a JS round-trip on every render.
+        var hash = new HashCode();
+        foreach (var ev in events)
+        {
+            hash.Add(ev.Id);
+            hash.Add(ev.Title);
+            hash.Add(ev.Start);
+            hash.Add(ev.End);
+            hash.Add(ev.AllDay);
+            hash.Add(ev.Color);
+        }
+        return hash.ToHashCode();
+    }
+
+    private string ComputeTitle(DateTime date, SchedulerView view) => view switch
+    {
+        SchedulerView.Month => date.ToString("MMMM yyyy"),
+        SchedulerView.Week => $"Week of {StartOfWeek(date):MMM d, yyyy}",
+        SchedulerView.Day => date.ToString("dddd, MMM d, yyyy"),
+        SchedulerView.List => date.ToString("MMMM yyyy"),
+        _ => date.ToString("MMMM yyyy")
+    };
+
+    private DateTime StartOfWeek(DateTime date)
+    {
+        // FirstDayOfWeek is 0-6 (Sun-Sat).
+        var first = (DayOfWeek)FirstDayOfWeek;
+        var diff = (7 + (date.DayOfWeek - first)) % 7;
+        return date.AddDays(-diff).Date;
+    }
+
+    private async Task PrevAsync()
+    {
+        if (_instanceId is null) return;
+        await Interop.SchedulerPrevAsync(_instanceId);
+        await RefreshTitleAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        if (_instanceId is null) return;
+        await Interop.SchedulerNextAsync(_instanceId);
+        await RefreshTitleAsync();
+    }
+
+    private async Task TodayAsync()
+    {
+        if (_instanceId is null) return;
+        await Interop.SchedulerTodayAsync(_instanceId);
+        await RefreshTitleAsync();
+    }
+
+    private async Task OnViewChangedAsync(string? v)
+    {
+        if (_instanceId is null || string.IsNullOrEmpty(v)) return;
+        if (!Enum.TryParse<SchedulerView>(v, out var parsed)) return;
+        _currentView = parsed;
+        await Interop.SchedulerChangeViewAsync(_instanceId, v);
+        await RefreshTitleAsync();
+    }
+
+    private async Task RefreshTitleAsync()
+    {
+        if (_instanceId is null) return;
+        _title = await Interop.SchedulerGetTitleAsync(_instanceId);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task JsOnEventClick(SchedulerEvent ev)
+    {
+        if (OnEventClick.HasDelegate) await OnEventClick.InvokeAsync(ev);
+    }
+
+    [JSInvokable]
+    public async Task JsOnDateSelect(SchedulerDateRange range)
+    {
+        if (OnDateSelect.HasDelegate) await OnDateSelect.InvokeAsync(range);
+    }
+
+    [JSInvokable]
+    public async Task JsOnEventChange(SchedulerEvent ev)
+    {
+        // Replace the matching event in our local snapshot, then bubble both
+        // the per-event change and the new collection up to the parent.
+        var idx = _events.FindIndex(e => e.Id == ev.Id);
+        if (idx >= 0) _events[idx] = ev;
+
+        _lastEventsHash = ComputeEventsHash(_events);
+
+        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(ev);
+        if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_instanceId is not null)
+        {
+            try { await Interop.SchedulerDestroyAsync(_instanceId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+}

@@ -46,13 +46,13 @@
         GroupBy: GroupBy,
         IsGrouped: !string.IsNullOrEmpty(GroupBy) && _groupedSections.Count > 0,
         IsGroupExpanded: IsGroupExpanded,
-        ToggleGroupExpand: ToggleGroupExpand
+        ToggleGroupExpand: ToggleGroupExpand,
+        Culture: EffectiveCulture
     );
 }
 
-<CascadingValue Value="this" IsFixed="true">
-<CascadingValue Value="context" IsFixed="false">
-    <div data-slot="datagrid" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
+@{
+    RenderFragment gridRoot = @<div data-slot="datagrid" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
 
         @* Declarative column definitions *@
         <div class="hidden">@ChildContent</div>
@@ -91,7 +91,14 @@
                              OnDeleteNamedLayout="OnDeleteNamedLayout"
                              OnApplyNamedLayout="HandleApplyNamedLayout"
                              LayoutStorageKey="LayoutStorageKey"
-                             OnError="OnError" />
+                             OnError="OnError"
+                             Expandable="Expandable"
+                             IsExpanded="_isExpanded"
+                             OnToggleExpanded="ToggleExpanded"
+                             ShowSearch="ShowSearch"
+                             ShowColumnChooser="ShowColumnChooser"
+                             ShowExport="ShowExport"
+                             ExportFormats="ExportFormats" />
         }
 
         @if (_contextMenuVisible)
@@ -137,7 +144,43 @@
                                 PageChanged="HandlePageChanged"
                                 PageSizeChanged="HandlePageSizeChanged" />
         }
-    </div>
+    </div>;
+}
+
+<CascadingValue Value="this" IsFixed="true">
+<CascadingValue Value="context" IsFixed="false">
+    @if (_isExpanded)
+    {
+        <div class="fixed inset-0 lumeo-datagrid-fullscreen-backdrop"
+             style="z-index: 99;"
+             aria-hidden="true"
+             @onclick="ToggleExpanded"></div>
+        <div class="fixed bg-background flex flex-col border border-border/60 rounded-xl shadow-2xl lumeo-datagrid-fullscreen lumeo-datagrid-fullscreen-panel"
+             style="z-index: 100; inset: 2.5rem;"
+             role="dialog"
+             aria-modal="true"
+             aria-label="@(FullscreenTitle ?? "Expanded data grid")"
+             tabindex="-1"
+             @ref="_fullscreenRef"
+             @onkeydown="HandleFullscreenKeyDown">
+            <div class="flex items-center justify-between border-b border-border/40 px-4 py-2 shrink-0">
+                <Heading Level="3" Class="text-sm font-semibold m-0">@(FullscreenTitle ?? "Data Grid")</Heading>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                        OnClick="ToggleExpanded"
+                        title="Exit fullscreen (Esc)"
+                        aria-label="Exit fullscreen">
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                </Button>
+            </div>
+            <div class="flex-1 overflow-auto p-4 min-h-0">
+                @gridRoot
+            </div>
+        </div>
+    }
+    else
+    {
+        @gridRoot
+    }
 </CascadingValue>
 </CascadingValue>
 
@@ -159,11 +202,52 @@
     [Parameter] public int PageSize { get; set; } = 10;
     [Parameter] public bool ShowPagination { get; set; } = true;
     [Parameter] public bool ShowToolbar { get; set; }
+
+    /// <summary>Show the global search box in the toolbar. Default true.</summary>
+    [Parameter] public bool ShowSearch { get; set; } = true;
+
+    /// <summary>Show the Columns button (visibility/reorder menu). Default true.</summary>
+    [Parameter] public bool ShowColumnChooser { get; set; } = true;
+
+    /// <summary>
+    /// Show the Export button and its format dropdown. Default true.
+    /// Set false to hide export entirely. For fine-grained per-format control see
+    /// <see cref="ExportFormats"/>.
+    /// </summary>
+    [Parameter] public bool ShowExport { get; set; } = true;
+
+    /// <summary>
+    /// Which export formats appear in the Export dropdown. Default <see cref="DataGridExportFormat.All"/>.
+    /// Set to e.g. <c>Csv | Excel</c> to hide PDF in WebAssembly where QuestPDF isn't supported.
+    /// When no flags are set (or <see cref="ShowExport"/> is false), the Export button is hidden.
+    /// </summary>
+    [Parameter] public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
     [Parameter] public int VirtualizeThreshold { get; set; } = 500;
     [Parameter] public bool Reorderable { get; set; }
     [Parameter] public bool RowReorderable { get; set; }
     [Parameter] public string? GroupBy { get; set; }
     [Parameter] public bool GroupsExpandedByDefault { get; set; } = true;
+
+    // --- Fullscreen / Expandable ---
+    /// <summary>
+    /// When true, adds a small Expand icon to the toolbar. Clicking it
+    /// renders the grid in a fullscreen modal overlay. Default false.
+    /// </summary>
+    [Parameter] public bool Expandable { get; set; }
+
+    /// <summary>
+    /// When true, the grid is currently rendered in fullscreen. Bind this
+    /// for programmatic control, or leave unbound to let the grid manage
+    /// its own state via the toolbar button.
+    /// </summary>
+    [Parameter] public bool IsExpanded { get; set; }
+
+    [Parameter] public EventCallback<bool> IsExpandedChanged { get; set; }
+
+    /// <summary>
+    /// Optional title shown in the fullscreen header bar. Defaults to "Data Grid".
+    /// </summary>
+    [Parameter] public string? FullscreenTitle { get; set; }
 
     // --- Conditional Row Styling ---
     [Parameter] public Func<TItem, string>? RowClass { get; set; }
@@ -210,6 +294,19 @@
 
     // --- Inject ---
     [Inject] private ComponentInteropService Interop { get; set; } = default!;
+    [Inject] private Lumeo.Services.IDataGridExportService Export { get; set; } = default!;
+
+    // --- Culture ---
+    /// <summary>
+    /// CultureInfo used for cell value formatting (dates/numbers) and exports.
+    /// When null (default), falls back to <see cref="System.Globalization.CultureInfo.CurrentCulture"/>.
+    /// Useful when your app sets a different culture than the UI locale — e.g. force
+    /// <c>de-DE</c> formatting in an English UI.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    internal System.Globalization.CultureInfo EffectiveCulture =>
+        Culture ?? System.Globalization.CultureInfo.CurrentCulture;
 
     // --- Internal state ---
     private List<DataGridColumn<TItem>> _columnDefs = new();
@@ -233,6 +330,10 @@
     private double _contextMenuY;
     private TItem? _contextMenuItem;
     private string _contextMenuId = $"dg-ctx-{Guid.NewGuid():N}";
+    private bool _isExpanded;
+    private bool _lastIsExpandedParam;
+    private bool _fullscreenNeedsFocus;
+    private ElementReference _fullscreenRef;
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -271,8 +372,55 @@
         }
     }
 
+    /// <summary>
+    /// Registers a column definition with the grid. Idempotent: if a column with
+    /// the same stable key (Field when available, else Id) is already registered
+    /// the existing entry is replaced in-place. This matters because Blazor can
+    /// re-initialize <see cref="DataGridColumnDef{TItem}"/> children on every
+    /// parent render when the ChildContent is captured inside a RenderFragment
+    /// local — without this dedup the column list would accumulate duplicates
+    /// (causing the filter popover to open N times, the "Toggle Columns" menu
+    /// to list every column N times, etc.).
+    /// </summary>
     public void AddColumnDef(DataGridColumn<TItem> column)
     {
+        var key = ColumnKey(column);
+        var existingIndex = _columnDefs.FindIndex(c => ColumnKey(c) == key);
+        if (existingIndex >= 0)
+        {
+            // Preserve user-mutable state on the existing column object so a
+            // re-init from the razor child doesn't blow away width/visibility/pin.
+            var existing = _columnDefs[existingIndex];
+            existing.Title = column.Title;
+            existing.Field = column.Field;
+            existing.FieldSelector = column.FieldSelector;
+            existing.Sortable = column.Sortable;
+            existing.Filterable = column.Filterable;
+            existing.Resizable = column.Resizable;
+            existing.FilterType = column.FilterType;
+            existing.Aggregate = column.Aggregate;
+            existing.Format = column.Format;
+            existing.CellTemplate = column.CellTemplate;
+            existing.HeaderTemplate = column.HeaderTemplate;
+            existing.EditTemplate = column.EditTemplate;
+            existing.FilterOptions = column.FilterOptions;
+            existing.Operators = column.Operators;
+            existing.FilterTemplate = column.FilterTemplate;
+            existing.MinWidth = column.MinWidth;
+            existing.MaxWidth = column.MaxWidth;
+            existing.Pinnable = column.Pinnable;
+            existing.Groupable = column.Groupable;
+            existing.Reorderable = column.Reorderable;
+            existing.CellClass = column.CellClass;
+            existing.HeaderCssClass = column.HeaderCssClass;
+            existing.CustomSort = column.CustomSort;
+            existing.CssClass = column.CssClass;
+            // Only apply width/pin from the redeclared column if the user has
+            // not customised them at runtime (e.g. via resize/toggle).
+            if (!existing.Visible && column.Visible) { /* keep user hidden */ }
+            return;
+        }
+
         _columnDefs.Add(column);
         SyncOrderedColumns();
         // DataGridColumnDef children register themselves from their own
@@ -283,6 +431,25 @@
         // cycle so we don't recurse during the child's init.
         _ = InvokeAsync(StateHasChanged);
     }
+
+    /// <summary>
+    /// Removes a previously-registered column definition (called when a
+    /// <see cref="DataGridColumnDef{TItem}"/> child is disposed).
+    /// </summary>
+    public void RemoveColumnDef(DataGridColumn<TItem> column)
+    {
+        var key = ColumnKey(column);
+        var removed = _columnDefs.RemoveAll(c => ColumnKey(c) == key) > 0;
+        if (removed)
+        {
+            _orderedColumns.RemoveAll(c => ColumnKey(c) == key);
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Stable identity for a column: prefer Field (user-declared), fallback to Id.</summary>
+    private static string ColumnKey(DataGridColumn<TItem> column) =>
+        !string.IsNullOrWhiteSpace(column.Field) ? column.Field! : column.Id;
 
     public void UpdateColumnWidth(string columnId, double width)
     {
@@ -317,6 +484,25 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // Sync IsExpanded parameter with internal state (allow external binding to drive it)
+        if (IsExpanded != _lastIsExpandedParam)
+        {
+            _lastIsExpandedParam = IsExpanded;
+            if (_isExpanded != IsExpanded)
+            {
+                _isExpanded = IsExpanded;
+                if (_isExpanded)
+                {
+                    _fullscreenNeedsFocus = true;
+                    try { await Interop.LockScroll(); } catch { /* best-effort */ }
+                }
+                else
+                {
+                    try { await Interop.UnlockScroll(); } catch { /* best-effort */ }
+                }
+            }
+        }
+
         SyncOrderedColumns();
 
         // Snapshot default layout once (before any external SavedLayout is applied)
@@ -420,6 +606,49 @@
                 var key = LayoutStorageKey ?? _layoutId;
                 await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
             }
+        }
+
+        if (_isExpanded && _fullscreenNeedsFocus)
+        {
+            _fullscreenNeedsFocus = false;
+            try { await _fullscreenRef.FocusAsync(); } catch { /* element may not be ready */ }
+        }
+    }
+
+    /// <summary>
+    /// Toggles fullscreen expand mode for the grid. No-op when Expandable is false.
+    /// Preserves grid state (selection, filters, sorts, pagination) across the transition
+    /// because the underlying grid markup is rendered as the same render-tree sub-tree.
+    /// </summary>
+    public async Task ToggleExpanded()
+    {
+        _isExpanded = !_isExpanded;
+        _lastIsExpandedParam = _isExpanded;
+        IsExpanded = _isExpanded;
+
+        if (_isExpanded)
+        {
+            _fullscreenNeedsFocus = true;
+            try { await Interop.LockScroll(); } catch { /* best-effort */ }
+            try { await Interop.SetHtmlClass("lumeo-fullscreen-active", true); } catch { /* best-effort */ }
+        }
+        else
+        {
+            try { await Interop.UnlockScroll(); } catch { /* best-effort */ }
+            try { await Interop.SetHtmlClass("lumeo-fullscreen-active", false); } catch { /* best-effort */ }
+        }
+
+        if (IsExpandedChanged.HasDelegate)
+            await IsExpandedChanged.InvokeAsync(_isExpanded);
+
+        StateHasChanged();
+    }
+
+    private async Task HandleFullscreenKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _isExpanded)
+        {
+            await ToggleExpanded();
         }
     }
 
@@ -937,17 +1166,63 @@
     private async Task HandleExport(string format)
     {
         var items = ServerMode ? _displayedItems : _processedItems;
-        switch (format)
+        var culture = EffectiveCulture;
+        var visibleColumns = EffectiveColumns.Where(c => c.Visible).ToList();
+        var exportColumns = visibleColumns.Select(c => new Lumeo.Services.DataGridExportColumn<TItem>(
+            Header: c.Title ?? c.Field ?? c.Id,
+            Accessor: row => c.GetValue(row),
+            Format: c.Format
+        )).ToList();
+
+        try
         {
-            case "json":
-                await DataGridExportService.ExportToJsonAsync(Interop, items, EffectiveColumns.AsReadOnly());
-                break;
-            case "excel":
-                await DataGridExportService.ExportToExcelAsync(Interop, items, EffectiveColumns.AsReadOnly());
-                break;
-            default:
-                await DataGridExportService.ExportToCsvAsync(Interop, items, EffectiveColumns.AsReadOnly());
-                break;
+            switch (format)
+            {
+                case "json":
+                    // JSON uses the formatted (culture-aware) string representation per column
+                    // so consumers get a row shape that mirrors the visible grid.
+                    {
+                        var rows = items.Select(item =>
+                        {
+                            var dict = new Dictionary<string, string?>();
+                            foreach (var col in visibleColumns)
+                            {
+                                var key = col.Title ?? col.Field ?? col.Id;
+                                dict[key] = col.GetFormattedValue(item, culture);
+                            }
+                            return dict;
+                        }).ToList();
+                        var json = System.Text.Json.JsonSerializer.Serialize(rows, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                        await Export.DownloadAsync(bytes, "export.json", "application/json");
+                        break;
+                    }
+                case "excel":
+                    {
+                        var bytes = Export.ToExcel(items, exportColumns, sheetName: "Data", culture: culture);
+                        await Export.DownloadAsync(bytes, "export.xlsx",
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                        break;
+                    }
+                case "pdf":
+                    {
+                        // QuestPDF isn't supported on browser-wasm — ToPdf throws PlatformNotSupportedException
+                        // on that runtime. Consumers should restrict ExportFormats to exclude Pdf on WASM.
+                        var bytes = Export.ToPdf(items, exportColumns, title: FullscreenTitle ?? "Export", culture: culture);
+                        await Export.DownloadAsync(bytes, "export.pdf", "application/pdf");
+                        break;
+                    }
+                default:
+                    {
+                        var bytes = Export.ToCsv(items, exportColumns, culture: culture);
+                        await Export.DownloadAsync(bytes, "export.csv", "text/csv; charset=utf-8");
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex) when (OnError.HasDelegate)
+        {
+            await OnError.InvokeAsync(ex);
         }
     }
 
@@ -1131,6 +1406,137 @@
         return await _layoutService!.GetPersonalLayoutsAsync(key);
     }
 
+    // --- Public JSON Layout API -----------------------------------------------
+    //
+    // These methods let dev consumers persist the grid's layout to any backend
+    // (database, file, REST API) by treating a JSON string as the canonical
+    // transport format. Use via @ref:
+    //
+    //     <DataGrid @ref="grid" ...> ... </DataGrid>
+    //     var json = grid.ExportLayout();
+    //     await grid.ApplyLayoutJsonAsync(json);
+
+    /// <summary>
+    /// Snapshot schema version — bump when <see cref="DataGridLayoutSnapshot"/>
+    /// changes in a breaking way.
+    /// </summary>
+    private const int LayoutSnapshotVersion = 1;
+
+    /// <summary>
+    /// Cached, shared JsonSerializerOptions used for every ExportLayout / ApplyLayoutJsonAsync
+    /// call. Reusing the instance avoids the documented perf pitfall of creating a fresh options
+    /// object per call (which rebuilds type metadata every time).
+    /// </summary>
+    private static readonly System.Text.Json.JsonSerializerOptions _layoutJsonOptions =
+        new(System.Text.Json.JsonSerializerDefaults.Web)
+        {
+            WriteIndented = false,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        };
+
+    /// <summary>
+    /// Serializes the current grid layout (column order, widths, visibility, pin state,
+    /// sorts, filters, global search, current page, page size, group-by) to a JSON string.
+    /// Dev consumers can persist this to any storage — DB, file, API. Round-trips via
+    /// <see cref="ApplyLayoutJsonAsync"/>.
+    /// </summary>
+    public string ExportLayout()
+    {
+        var snapshot = BuildLayoutSnapshot();
+        return System.Text.Json.JsonSerializer.Serialize(snapshot, _layoutJsonOptions);
+    }
+
+    /// <summary>
+    /// Deserializes a JSON layout produced by <see cref="ExportLayout"/> and applies it.
+    /// Throws <see cref="System.Text.Json.JsonException"/> on malformed input; silently
+    /// ignores columns the JSON references that no longer exist on the grid.
+    /// </summary>
+    public async Task ApplyLayoutJsonAsync(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            throw new System.Text.Json.JsonException("Empty or null layout JSON");
+
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<DataGridLayoutSnapshot>(json, _layoutJsonOptions)
+                       ?? throw new System.Text.Json.JsonException("Deserialized layout snapshot was null");
+
+        await ApplyLayoutSnapshotAsync(snapshot);
+    }
+
+    /// <summary>
+    /// Builds a <see cref="DataGridLayoutSnapshot"/> from the grid's current state.
+    /// </summary>
+    internal DataGridLayoutSnapshot BuildLayoutSnapshot()
+    {
+        var cols = _orderedColumns.Select((c, i) => new DataGridColumnLayout(
+            Field: c.Field ?? c.Id,
+            Order: i,
+            Visible: c.Visible,
+            Width: c.Width,
+            Pin: c.Pin
+        )).ToList();
+
+        return new DataGridLayoutSnapshot(
+            Version: LayoutSnapshotVersion,
+            Columns: cols,
+            Sorts: new List<SortDescriptor>(_sorts),
+            Filters: new List<FilterDescriptor>(_filters),
+            GlobalSearch: _globalSearch,
+            CurrentPage: _currentPage,
+            PageSize: PageSize,
+            GroupBy: GroupBy
+        );
+    }
+
+    /// <summary>
+    /// Applies a <see cref="DataGridLayoutSnapshot"/> to the grid. Columns referenced
+    /// by Field that no longer exist are silently skipped; columns present on the grid
+    /// but missing from the snapshot are appended at the end in their current order.
+    /// </summary>
+    internal async Task ApplyLayoutSnapshotAsync(DataGridLayoutSnapshot snapshot)
+    {
+        // Column state (order, visibility, width, pin)
+        if (snapshot.Columns.Count > 0)
+        {
+            var colByKey = EffectiveColumns.ToDictionary(c => c.Field ?? c.Id);
+            var ordered = snapshot.Columns
+                .OrderBy(cl => cl.Order)
+                .Select(cl =>
+                {
+                    if (!colByKey.TryGetValue(cl.Field, out var col)) return null;
+                    col.Visible = cl.Visible;
+                    if (cl.Pin.HasValue) col.Pin = cl.Pin.Value;
+                    if (cl.Width.HasValue) col.Width = cl.Width;
+                    return col;
+                })
+                .Where(c => c is not null)
+                .Select(c => c!)
+                .ToList();
+
+            // Append columns on the grid that weren't referenced in the snapshot
+            var snapshotKeys = snapshot.Columns.Select(cl => cl.Field).ToHashSet();
+            foreach (var col in EffectiveColumns)
+            {
+                if (!snapshotKeys.Contains(col.Field ?? col.Id))
+                    ordered.Add(col);
+            }
+            _orderedColumns = ordered;
+        }
+
+        _sorts = new List<SortDescriptor>(snapshot.Sorts);
+        _filters = new List<FilterDescriptor>(snapshot.Filters);
+        _globalSearch = snapshot.GlobalSearch;
+        if (snapshot.PageSize > 0) PageSize = snapshot.PageSize;
+        _currentPage = snapshot.CurrentPage > 0 ? snapshot.CurrentPage : 1;
+
+        if (ServerMode)
+            await RequestServerData();
+        else
+            ProcessClientData();
+
+        StateHasChanged();
+    }
+
     private async Task RequestServerData()
     {
         var previousError = _serverService!.Error;
@@ -1177,10 +1583,18 @@
         return offsets;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _layoutService?.Dispose();
         _serverService?.Dispose();
-        return ValueTask.CompletedTask;
+
+        // Defensive: if disposed while still in fullscreen, unlock scroll so the host page
+        // isn't left with a locked body.
+        if (_isExpanded)
+        {
+            try { await Interop.UnlockScroll(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+        }
     }
 }

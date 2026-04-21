@@ -1,0 +1,374 @@
+@page "/docs/registry"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Registry — Build your own — Lumeo</PageTitle>
+
+<Container MaxWidth="4xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <!-- 1. Header -->
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Registry</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            A registry is a static JSON file that catalogues components so
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo-cli</code>
+            and the MCP server can install them, search them, and help LLMs author code against them.
+            Lumeo ships one out of the box, but anyone can publish their own so
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add</code>
+            and Claude / Cursor work against a third-party library.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 2. Our built-in registry -->
+    <Stack Gap="4">
+        <Heading Level="2">Our built-in registry</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo maintains a reference registry for the components in this site. It's the same file
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add</code>
+            hits by default, and the same file our MCP server indexes at build time.
+        </Lumeo.Text>
+        <ul class="ml-6 list-disc space-y-2 text-sm text-muted-foreground leading-relaxed">
+            <li>
+                Raw JSON:
+                <Lumeo.Link Href="/_content/Lumeo/registry/registry.json"
+                            Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
+                    /_content/Lumeo/registry/registry.json
+                </Lumeo.Link>
+            </li>
+            <li>
+                Source on GitHub:
+                <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo/blob/master/src/Lumeo/registry/registry.json"
+                            Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
+                    src/Lumeo/registry/registry.json
+                </Lumeo.Link>
+            </li>
+        </ul>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            The registry is produced by
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/Lumeo.RegistryGen/</code> —
+            a small .NET CLI that walks <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">src/Lumeo/UI/</code>
+            and emits a JSON file. If you want to auto-produce your own registry instead of hand-authoring one, it's a reasonable
+            reference implementation to fork.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 3. Schema reference -->
+    <Stack Gap="6">
+        <Stack Gap="3">
+            <Heading Level="2">Schema reference</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The file has two top-level fields and an open-ended map of component entries.
+            </Lumeo.Text>
+        </Stack>
+
+        <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@("{")
+  "$schema": "https://lumeo.nativ.sh/registry-schema.json",
+  "version": "2.0.0",
+  "components": @("{")
+    "@("<")slug@(">")": @("{") ... @("}")
+  @("}")
+@("}")</Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Top-level fields</Heading>
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Field</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Required</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">$schema</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string (URL)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">recommended</td>
+                            <td class="p-3 text-muted-foreground">Pointer to the JSON schema for editor tooling.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">version</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string (SemVer)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">yes</td>
+                            <td class="p-3 text-muted-foreground">Registry version. Bump on breaking field changes so consumers can guard.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">components</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">object</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">yes</td>
+                            <td class="p-3 text-muted-foreground">Map of component slug &rarr; entry. The slug is what <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo add &lt;slug&gt;</code> uses.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Per-component entry</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Each value in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">components</code>
+                is a JSON object that looks like this:
+            </Lumeo.Text>
+
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@("{")
+  "name": "Button",
+  "category": "Forms",
+  "description": "Versatile button with variants, sizes, icons, loading states.",
+  "files": ["UI/Button/Button.razor"],
+  "dependencies": ["icon"],
+  "cssVars": ["--color-primary", "--color-primary-foreground"],
+  "registryUrl": "https://example.com/registry/button.json"
+@("}")</Stack>
+
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full min-w-[700px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Field</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Required</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">name</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">yes</td>
+                            <td class="p-3 text-muted-foreground">PascalCase component name (used in docs and code examples).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">category</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">yes</td>
+                            <td class="p-3 text-muted-foreground">Grouping for <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo list</code> and the MCP catalog (Forms, Layout, Feedback, etc.). Pick from a short controlled set or invent your own.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">description</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">yes</td>
+                            <td class="p-3 text-muted-foreground">One-line blurb shown by <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo list</code> and in MCP search results. Keep it under 120 chars.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">files</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string[]</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">yes</td>
+                            <td class="p-3 text-muted-foreground">Relative paths to every file needed for this component. <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo add</code> fetches each one.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">dependencies</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string[]</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">no</td>
+                            <td class="p-3 text-muted-foreground">Slugs of other components this one needs. <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo add</code> resolves them recursively.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">cssVars</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string[]</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">no</td>
+                            <td class="p-3 text-muted-foreground">Lumeo theme tokens the component reads. Helps <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo doctor</code> check the consumer's theme.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">registryUrl</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string (URL)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">no</td>
+                            <td class="p-3 text-muted-foreground">Per-component pointer useful when you split entries across multiple JSON files.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">requiresRuntime</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">no</td>
+                            <td class="p-3 text-muted-foreground"><Lumeo.Text As="span" Weight="medium" Class="text-foreground">New:</Lumeo.Text> set <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">true</code> if this component depends on Lumeo's runtime (services, interop, source generators). <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">lumeo-cli</code> will warn when installing without the <code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono text-foreground">Lumeo</code> NuGet. Defaults to false.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+
+            <Alert Variant="Alert.AlertVariant.Info">
+                <Stack Gap="1">
+                    <Lumeo.Text Size="sm" Weight="medium" Class="text-foreground">Tip</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Color="muted">
+                        Keep <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">description</code> under 120 chars —
+                        LLMs and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo list</code> truncate longer blurbs.
+                    </Lumeo.Text>
+                </Stack>
+            </Alert>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 4. How lumeo-cli consumes it -->
+    <Stack Gap="4">
+        <Heading Level="2">How <code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo-cli</code> consumes it</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The CLI treats your registry URL as the single source of truth. The install flow:
+        </Lumeo.Text>
+        <ul class="ml-6 list-disc space-y-2 text-sm text-muted-foreground leading-relaxed">
+            <li>
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init</code>
+                saves <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registry: "&lt;url&gt;"</code>
+                in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.json</code>.
+            </li>
+            <li>
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add &lt;slug&gt;</code>
+                fetches <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registry.json</code>,
+                finds the slug's entry, downloads each <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">files[]</code>
+                entry (base URL derived from the registry URL — see next bullet), recursively installs
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dependencies[]</code>,
+                and rewrites <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@namespace Lumeo</code>
+                to the consumer's namespace.
+            </li>
+            <li>
+                File URLs: by convention,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo-cli</code>
+                takes the registry URL, strips the filename, and joins each relative
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">files[]</code>
+                path against that base.
+            </li>
+        </ul>
+
+        <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">https://example.com/lumeo/registry.json  +  UI/Button/Button.razor
+  &rarr;  https://example.com/lumeo/UI/Button/Button.razor</Stack>
+
+        <Alert Variant="Alert.AlertVariant.Info">
+            <Stack Gap="1">
+                <Lumeo.Text Size="sm" Weight="medium" Class="text-foreground">Self-hosters</Lumeo.Text>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Serve your raw <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.razor</code>
+                    files from the same origin as the registry JSON. Relative paths won't work across origins.
+                </Lumeo.Text>
+            </Stack>
+        </Alert>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 5. How the MCP server consumes it -->
+    <Stack Gap="4">
+        <Heading Level="2">How the MCP server consumes it</Heading>
+        <ul class="ml-6 list-disc space-y-2 text-sm text-muted-foreground leading-relaxed">
+            <li>
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/lumeo-mcp/</code>
+                reads the registry at build time (via its
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">prebuild</code> script)
+                and exposes every entry through
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_list_components</code> /
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_get_component</code> /
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_search</code>
+                plus the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo://component/@("{")name@("}")</code> resource.
+            </li>
+            <li>
+                For third-party registries you want exposed to LLMs, fork
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/lumeo-mcp/</code>,
+                update the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">sync-registry.mjs</code> URL,
+                and publish your own npm package — the protocol stays the same.
+            </li>
+        </ul>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 6. Build your own -->
+    <Stack Gap="6">
+        <Stack Gap="3">
+            <Heading Level="2">Build your own — 5-step quickstart</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                The registry format is a contract, not a framework — any static host will do.
+            </Lumeo.Text>
+        </Stack>
+
+        <Stack Gap="5">
+            <Stack Gap="2">
+                <Heading Level="3">1. Create your component library</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Author a normal Blazor class library that targets
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">net10.0</code>
+                    with the Razor SDK. Each component is a regular
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.razor</code> file — no special conventions required.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="3">2. Author <code class="rounded bg-muted px-1.5 py-0.5 text-base font-mono text-foreground">registry.json</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Hand-write it for small libraries, or generate it. For a reference generator, see
+                    <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo/blob/master/tools/Lumeo.RegistryGen/Program.cs"
+                                Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
+                        tools/Lumeo.RegistryGen/Program.cs
+                    </Lumeo.Link> —
+                    it scans a components directory and emits a schema-compliant registry.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="3">3. Host the registry + raw files</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Any static host works: GitHub Pages, Cloudflare Pages, Netlify, a CDN, your own bucket. Make sure CORS
+                    allows fetches from arbitrary origins so
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo-cli</code>
+                    can hit it cross-origin if needed.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="3">4. Test with <code class="rounded bg-muted px-1.5 py-0.5 text-base font-mono text-foreground">lumeo-cli</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Point a consumer project at your registry and run
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add my-slug</code>.
+                    Verify files land with the right namespace and that dependencies resolve recursively.
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">lumeo init --registry https://example.com/lumeo/registry.json
+lumeo add my-slug</Stack>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="3">5. (Optional) Publish your own MCP server</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Fork <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/lumeo-mcp/</code>,
+                    point its <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">sync-registry.mjs</code>
+                    at your hosted JSON, build, and publish to npm. Claude / Cursor users can then install your server and
+                    get completions, docs, and examples for your components.
+                </Lumeo.Text>
+            </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 7. JSON Schema -->
+    <Stack Gap="4">
+        <Heading Level="2">JSON Schema</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The registry at
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">/_content/Lumeo/registry/registry.json</code>
+            is <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">$schema</code>-compatible with
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">https://lumeo.nativ.sh/registry-schema.json</code>.
+            Hosting that URL is planned; for now, the schema lives alongside the generator in
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/Lumeo.RegistryGen/</code>
+            in the repo, so you can copy it locally and validate with any standard JSON Schema tool.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- 8. Looking to browse our components? -->
+    <Alert Variant="Alert.AlertVariant.Info">
+        <Stack Gap="1">
+            <Lumeo.Text Size="sm" Weight="medium" Class="text-foreground">Looking for a list of Lumeo's own components?</Lumeo.Text>
+            <Lumeo.Text Size="sm" Color="muted">
+                Use the sidebar or the
+                <Lumeo.Link Href="components" Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
+                    Components index
+                </Lumeo.Link>.
+            </Lumeo.Text>
+        </Stack>
+    </Alert>
+
+</Stack>
+</Container>

@@ -17,6 +17,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private readonly ResizeInterop _resize = new();
     private readonly ScrollInterop _scroll = new();
     private readonly UtilityInterop _utility = new();
+    private readonly RichTextInterop _richText = new();
 
     public ComponentInteropService(IJSRuntime jsRuntime)
     {
@@ -83,6 +84,12 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _focus.UnlockScroll(module);
+    }
+
+    public async ValueTask SetHtmlClass(string className, bool active)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setHtmlClass", className, active);
     }
 
     public async ValueTask SetupFocusTrap(string elementId)
@@ -153,6 +160,28 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         return await _floatingPosition.GetElementDimension(module, elementId, dimension);
+    }
+
+    // --- Pointer Capture (used by Splitter dividers) ---
+
+    public async ValueTask SetPointerCaptureOnElement(string elementId, long pointerId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setPointerCaptureOnElement", elementId, pointerId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("releasePointerCaptureOnElement", elementId, pointerId);
+        }
+        catch (JSDisconnectedException) { }
     }
 
     // --- Drawer Swipe ---
@@ -385,6 +414,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _utility.CopyToClipboard(module, text);
     }
 
+    // --- Press feedback (Ripple) ---
+
+    public async ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ripple.attach", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- LocalStorage ---
 
     public async ValueTask SaveToLocalStorage(string key, string value)
@@ -404,6 +445,280 @@ public sealed class ComponentInteropService : IComponentInteropService
         var module = await GetModuleAsync();
         await _utility.RemoveFromLocalStorage(module, key);
     }
+
+    // --- Motion primitives ---
+
+    public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals);
+    }
+
+    public async ValueTask MotionDisposeTicker(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeTicker", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionRevealText(string elementId, int staggerMs, double threshold)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("motion.revealText", elementId, new { stagger = staggerMs, threshold });
+    }
+
+    public async ValueTask MotionBlurFade(string elementId, int delayMs, bool once)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("motion.blurFade", elementId, new { delayMs, once });
+    }
+
+    public async ValueTask MotionDisposeObserver(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeObserver", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Tabs sliding indicator measurement ---
+
+    public record TabMeasurement(double X, double Width);
+
+    public async ValueTask<TabMeasurement?> TabsMeasure(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<TabMeasurement?>("tabs.measure", elementId);
+        }
+        catch (JSDisconnectedException)
+        {
+            return null;
+        }
+    }
+
+    // --- AI primitives ---
+
+    public async ValueTask AiAutosize(string elementId, int maxPx)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.autosize", elementId, maxPx);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiObserveAutoScroll(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.observeAutoScroll", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiDisposeAutoScroll(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.disposeAutoScroll", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiScrollToBottom(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.scrollToBottom", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Scheduler (FullCalendar wrapper) ---
+    // Scheduler ships its own JS module (scheduler.js) loaded lazily on first
+    // use; the library is hefty (>200KB gzip) and many apps never touch it.
+
+    private IJSObjectReference? _schedulerModule;
+
+    private async Task<IJSObjectReference> GetSchedulerModuleAsync()
+    {
+        _schedulerModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo/js/scheduler.js");
+        return _schedulerModule;
+    }
+
+    public async Task<string> SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)
+    {
+        var module = await GetSchedulerModuleAsync();
+        return await module.InvokeAsync<string>("scheduler.init", el, dotNetRef, options);
+    }
+
+    public async Task SchedulerSetEventsAsync(string id, IEnumerable<object> events)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.setEvents", id, events);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerChangeViewAsync(string id, string view)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.changeView", id, view);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerGotoDateAsync(string id, string dateIso)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.gotoDate", id, dateIso);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerPrevAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.prev", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerNextAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.next", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerTodayAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.today", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task<string> SchedulerGetTitleAsync(string id)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            return await module.InvokeAsync<string>("scheduler.getTitle", id) ?? string.Empty;
+        }
+        catch (JSDisconnectedException) { return string.Empty; }
+    }
+
+    public async Task SchedulerDestroyAsync(string id)
+    {
+        try
+        {
+            if (_schedulerModule is null) return;
+            await _schedulerModule.InvokeVoidAsync("scheduler.destroy", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Gantt (Frappe Gantt wrapper) ---
+    // Frappe Gantt is a small SVG-based lib (~20KB gzip) but we still lazy-load
+    // it so apps without a Gantt anywhere don't pay the bundle cost.
+
+    private IJSObjectReference? _ganttModule;
+
+    private async Task<IJSObjectReference> GetGanttModuleAsync()
+    {
+        _ganttModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo/js/gantt.js");
+        return _ganttModule;
+    }
+
+    public async Task<string> GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)
+    {
+        var module = await GetGanttModuleAsync();
+        return await module.InvokeAsync<string>("gantt.init", el, dotNetRef, options);
+    }
+
+    public async Task GanttSetTasksAsync(string id, IEnumerable<object> tasks)
+    {
+        try
+        {
+            var module = await GetGanttModuleAsync();
+            await module.InvokeVoidAsync("gantt.setTasks", id, tasks);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttChangeViewModeAsync(string id, string mode)
+    {
+        try
+        {
+            var module = await GetGanttModuleAsync();
+            await module.InvokeVoidAsync("gantt.changeViewMode", id, mode);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttDestroyAsync(string id)
+    {
+        try
+        {
+            if (_ganttModule is null) return;
+            await _ganttModule.InvokeVoidAsync("gantt.destroy", id);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Rich Text Editor (TipTap) ---
+
+    public async ValueTask<string> RichTextInitAsync<T>(
+        Microsoft.AspNetCore.Components.ElementReference elementRef,
+        DotNetObjectReference<T> dotNetRef,
+        object options)
+        where T : class
+        => await _richText.InitAsync(_jsRuntime, elementRef, dotNetRef, options);
+
+    public ValueTask RichTextSetContentAsync(string id, string? html)
+        => _richText.SetContentAsync(_jsRuntime, id, html);
+
+    public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args)
+        => _richText.CommandAsync(_jsRuntime, id, name, args);
+
+    public ValueTask<Interop.RichTextActiveState?> RichTextGetActiveAsync(string id)
+        => _richText.GetActiveAsync(_jsRuntime, id);
+
+    public ValueTask RichTextSetDisabledAsync(string id, bool disabled)
+        => _richText.SetDisabledAsync(_jsRuntime, id, disabled);
+
+    public ValueTask RichTextDestroyAsync(string id)
+        => _richText.DestroyAsync(_jsRuntime, id);
+
+    public ValueTask<string?> RichTextPromptLinkAsync(string? initial)
+        => _richText.PromptLinkAsync(_jsRuntime, initial);
 
     public void Dispose()
     {
@@ -438,11 +753,37 @@ public sealed class ComponentInteropService : IComponentInteropService
         _scroll.Clear();
         _utility.Clear();
 
+        await _richText.DisposeAsync();
+
         if (_module is not null)
         {
             try
             {
                 await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_schedulerModule is not null)
+        {
+            try
+            {
+                await _schedulerModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_ganttModule is not null)
+        {
+            try
+            {
+                await _ganttModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

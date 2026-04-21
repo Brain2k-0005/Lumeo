@@ -1,0 +1,70 @@
+@namespace Lumeo
+
+<span class="@CssClass" @attributes="AdditionalAttributes">
+    @foreach (var sp in _sparkles)
+    {
+        <span class="lumeo-sparkle"
+              style="top:@(sp.Top)%; left:@(sp.Left)%; width:@(sp.Size)px; height:@(sp.Size)px; animation-delay:@(sp.Delay)ms; animation-duration:@(sp.Duration)ms; color:@Color;">
+            <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden="true">
+                <path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" />
+            </svg>
+        </span>
+    }
+    <span class="relative z-10">@ChildContent</span>
+</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int Count { get; set; } = 5;
+    [Parameter] public int MinSize { get; set; } = 6;
+    [Parameter] public int MaxSize { get; set; } = 14;
+
+    /// <summary>CSS color of the sparkles — defaults to <c>var(--color-primary)</c>.</summary>
+    [Parameter] public string Color { get; set; } = "var(--color-primary)";
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-sparkles-{Guid.NewGuid():N}";
+    private List<Sparkle> _sparkles = new();
+    private int _lastSeed;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-sparkles", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override void OnParametersSet()
+    {
+        // Seeded deterministic placement — stable across re-renders so sparkles do not "jump".
+        var seed = GetStableSeed();
+        if (_sparkles.Count == Count && seed == _lastSeed && _sparkles.All(s => s.Size >= MinSize && s.Size <= MaxSize))
+        {
+            return;
+        }
+        _lastSeed = seed;
+        var rng = new Random(seed);
+        _sparkles = Enumerable.Range(0, Math.Max(0, Count)).Select(_ => new Sparkle(
+            Top: Math.Round(rng.NextDouble() * 90 + 5, 2),
+            Left: Math.Round(rng.NextDouble() * 90 + 5, 2),
+            Size: rng.Next(MinSize, Math.Max(MinSize + 1, MaxSize + 1)),
+            Delay: rng.Next(0, 2000),
+            Duration: rng.Next(1600, 2800)
+        )).ToList();
+    }
+
+    private int GetStableSeed()
+    {
+        // Stable hash from element id + Count; avoids relying on GetHashCode which is randomized between runs.
+        var src = $"{_elementId}:{Count}:{MinSize}:{MaxSize}";
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var c in src)
+            {
+                hash ^= c;
+                hash *= 16777619u;
+            }
+            return (int)hash;
+        }
+    }
+
+    private record Sparkle(double Top, double Left, int Size, int Delay, int Duration);
+}

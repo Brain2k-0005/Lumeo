@@ -149,6 +149,13 @@ else
     [Parameter] public string? Label { get; set; }
     [Parameter] public bool Striped { get; set; }
     [Parameter] public bool Animated { get; set; }
+
+    /// <summary>
+    /// Opt-in animation variant for the linear progress fill. <c>None</c> (default)
+    /// leaves existing behaviour untouched. <c>Stripe</c> overlays translucent
+    /// diagonal stripes that sweep across the bar.
+    /// </summary>
+    [Parameter] public ProgressAnimation Animation { get; set; } = ProgressAnimation.None;
     [Parameter] public string? GradientFrom { get; set; }
     [Parameter] public string? GradientTo { get; set; }
     [Parameter] public string Size { get; set; } = "Default";
@@ -174,8 +181,11 @@ else
         {
             var stripeClasses = Striped || Animated ? "progress-striped" : null;
             var animClasses = Animated ? "progress-animated" : null;
+            var enumStripeClass = Animation == ProgressAnimation.Stripe ? "lumeo-progress-stripes" : null;
+            var enumIndeterminateClass = Animation == ProgressAnimation.Indeterminate ? "lumeo-progress-indeterminate" : null;
+            var enumGlowClass = Animation == ProgressAnimation.Glow ? "lumeo-progress-glow" : null;
             var colorClasses = (GradientFrom is not null && GradientTo is not null) ? null : VariantClasses;
-            return string.Join(" ", new[] { "h-full rounded-[var(--radius)] transition-all duration-300", colorClasses, stripeClasses, animClasses }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            return string.Join(" ", new[] { "h-full rounded-[var(--radius)] transition-all duration-300", colorClasses, stripeClasses, animClasses, enumStripeClass, enumIndeterminateClass, enumGlowClass }.Where(s => !string.IsNullOrWhiteSpace(s)));
         }
     }
 
@@ -183,6 +193,13 @@ else
     {
         get
         {
+            // `Indeterminate` animation hides the fill and lets a narrow
+            // pseudo-element slide across the track — so force 100% width and
+            // fully transparent background so only the ::before sweep shows.
+            if (Animation == ProgressAnimation.Indeterminate)
+            {
+                return "width: 100%; background: transparent";
+            }
             var width = $"width: {Percentage}%";
             if (GradientFrom is not null && GradientTo is not null)
             {
@@ -235,4 +252,16 @@ else
 
     public enum ProgressVariant { Default, Success, Warning, Destructive }
     public enum ProgressShape { Linear, Circular }
+
+    /// <summary>Animation variants for linear progress.</summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><c>None</c> — no animation (default).</item>
+    /// <item><c>Stripe</c> — translucent diagonal stripes sweep across the fill.</item>
+    /// <item><c>Indeterminate</c> — a narrow bright segment slides continuously.
+    /// The bound <c>Value</c> is visually ignored while this plays.</item>
+    /// <item><c>Glow</c> — the fill bar's box-shadow breathes, suggesting activity.</item>
+    /// </list>
+    /// </remarks>
+    public enum ProgressAnimation { None, Stripe, Indeterminate, Glow }
 }

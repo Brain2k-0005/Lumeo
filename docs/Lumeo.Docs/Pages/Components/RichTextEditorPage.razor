@@ -1,0 +1,151 @@
+@page "/components/rich-text-editor"
+
+<PageTitle>Rich Text Editor — Lumeo</PageTitle>
+
+<PageHeader Title="Rich Text Editor"
+            Description="WYSIWYG editor for formatted text. Wraps TipTap (ProseMirror) and emits HTML." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Content authoring — blog posts, knowledge-base articles, product descriptions</li>
+        <li>Long-form fields that benefit from headings, lists, quotes, and links</li>
+        <li>Comment or reply surfaces where users expect basic formatting (bold, italic, lists)</li>
+        <li>Anywhere you currently use a Textarea but want richer HTML output</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Default (Full toolbar)" Code="@_defaultCode">
+        <Container MaxWidth="xl" Center="false" Padding="">
+            <RichTextEditor @bind-Value="_content" Placeholder="Write your story…" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Basic toolbar" Code="@_basicCode">
+        <Container MaxWidth="xl" Center="false" Padding="">
+            <RichTextEditor @bind-Value="_basicContent"
+                            Toolbar="RichTextEditor.RichTextToolbarMode.Basic"
+                            Placeholder="Quick note…"
+                            MinHeight="140" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Read-only" Code="@_readOnlyCode">
+        <Container MaxWidth="xl" Center="false" Padding="">
+            <RichTextEditor Value="@_readOnlySample"
+                            ReadOnly="true"
+                            Toolbar="RichTextEditor.RichTextToolbarMode.None"
+                            MinHeight="120" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Bound value (HTML output)" Code="@_boundCode">
+        <Stack Gap="3" Class="w-full">
+            <RichTextEditor @bind-Value="_boundContent"
+                            Placeholder="Try bold, headings, lists, links…"
+                            MinHeight="160"
+                            MaxHeight="260" />
+            <div>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-1">HTML output</Lumeo.Text>
+                <pre class="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground overflow-x-auto max-h-48">@(_boundContent ?? "")</pre>
+            </div>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="rich-text-editor" Level="3" Class="mt-8 scroll-mt-20">RichTextEditor</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[180px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[120px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Value</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Current HTML content. Two-way bindable via <code>@@bind-Value</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ValueChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;string?&gt;</TableCell><TableCell Class="font-mono text-xs">-</TableCell><TableCell>Fired whenever the document changes. Contains the serialized HTML.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Placeholder</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Start writing…"</TableCell><TableCell>Placeholder shown when the editor is empty.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MinHeight</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">180</TableCell><TableCell>Minimum editor height in pixels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MaxHeight</TableCell><TableCell Class="font-mono text-xs">int?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Optional maximum height in pixels. When set, the editor scrolls internally past this height.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Disabled</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Disables editing and dims the toolbar.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ReadOnly</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Prevents edits but keeps text selectable.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Toolbar</TableCell><TableCell Class="font-mono text-xs">RichTextToolbarMode</TableCell><TableCell Class="font-mono text-xs">Full</TableCell><TableCell><code>None</code> hides the toolbar; <code>Basic</code> shows Bold/Italic/Strikethrough/Lists/Link/Undo; <code>Full</code> adds headings, underline, quote, code block, HR, clear formatting.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes for the root element.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Forwarded to the root element.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="keyboard" Level="3" Class="mt-10 scroll-mt-20">Keyboard Shortcuts</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Shortcut</TableHead>
+                    <TableHead>Action</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + B</TableCell><TableCell>Bold</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + I</TableCell><TableCell>Italic</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + U</TableCell><TableCell>Underline</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + Shift + X</TableCell><TableCell>Strikethrough</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + Z</TableCell><TableCell>Undo</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + Shift + Z</TableCell><TableCell>Redo</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Ctrl/⌘ + Alt + 1-3</TableCell><TableCell>Heading 1 / 2 / 3</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/textarea" class="text-primary hover:underline">Textarea</a> — Plain multi-line text input without formatting</li>
+        <li><a href="/components/form" class="text-primary hover:underline">Form</a> — Wrap the editor in a labelled form field with validation</li>
+        <li><a href="/components/mention" class="text-primary hover:underline">Mention</a> — Mention picker for lightweight rich inputs</li>
+    </ul>
+</div>
+
+@code {
+    private string? _content = "<p>Welcome to the <strong>Lumeo</strong> rich-text editor. Try <em>formatting</em> this text with the toolbar above.</p><ul><li>Headings, lists, and quotes</li><li>Bold, italic, underline, strikethrough</li><li>Inline code and code blocks</li></ul>";
+
+    private string? _basicContent = "<p>A minimal toolbar — just the essentials.</p>";
+
+    private string _readOnlySample = "<h3>Product description</h3><p>A compact WYSIWYG editor, ready for content authoring. The toolbar is hidden here so the document reads cleanly.</p>";
+
+    private string? _boundContent = "<p>Start editing to see the HTML on the right.</p>";
+
+    private const string _defaultCode = @"<RichTextEditor @bind-Value=""_content"" Placeholder=""Write your story…"" />
+
+@code {
+    private string? _content;
+}";
+
+    private const string _basicCode = @"<RichTextEditor @bind-Value=""_content""
+                Toolbar=""RichTextEditor.RichTextToolbarMode.Basic""
+                Placeholder=""Quick note…""
+                MinHeight=""140"" />";
+
+    private const string _readOnlyCode = @"<RichTextEditor Value=""@_html""
+                ReadOnly=""true""
+                Toolbar=""RichTextEditor.RichTextToolbarMode.None""
+                MinHeight=""120"" />";
+
+    private const string _boundCode = @"<RichTextEditor @bind-Value=""_html""
+                MinHeight=""160""
+                MaxHeight=""260"" />
+
+<pre>@_html</pre>
+
+@code {
+    private string? _html;
+}";
+}

@@ -1,0 +1,137 @@
+@page "/components/pick-list"
+
+<PageTitle>Pick List — Lumeo</PageTitle>
+
+<PageHeader Title="Pick List" Description="Dual-list picker for moving items between an available pool and a selected set. Supports strongly-typed items, custom row templates, and search." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Role, permission, or feature assignment UIs</li>
+        <li>Team member selection from a larger pool</li>
+        <li>Any scenario with a clear "available vs. selected" split</li>
+        <li>When you want a single two-way bound <code class="font-mono text-xs">SelectedItems</code> source of truth</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Strings" Code="@_codeStrings">
+        <div class="w-full max-w-2xl">
+            <PickList TItem="string"
+                      Items="_allDepartments"
+                      SelectedItems="_pickedDepartments"
+                      SelectedItemsChanged="OnDepartmentsChanged"
+                      SourceTitle="All Departments"
+                      TargetTitle="Assigned" />
+            <p class="text-xs text-muted-foreground mt-3">Assigned: @string.Join(", ", _pickedDepartments)</p>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Typed Records with Item Template" Code="@_codeTemplate">
+        <div class="w-full max-w-2xl">
+            <PickList TItem="UserInfo"
+                      Items="_allUsers"
+                      SelectedItems="_pickedUsers"
+                      SelectedItemsChanged="OnUsersChanged"
+                      SourceTitle="Users"
+                      TargetTitle="Team Members">
+                <ItemTemplate>
+                    <div class="flex flex-col">
+                        <span class="text-sm font-medium">@context.Name</span>
+                        <span class="text-xs text-muted-foreground">@context.Email</span>
+                    </div>
+                </ItemTemplate>
+            </PickList>
+            <p class="text-xs text-muted-foreground mt-3">Team: @string.Join(", ", _pickedUsers.Select(u => u.Name))</p>
+        </div>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+    <Heading Id="picklist" Level="3" Class="mt-8 scroll-mt-20">PickList&lt;TItem&gt;</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[140px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Items</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;TItem&gt;</TableCell><TableCell Class="font-mono text-xs">[]</TableCell><TableCell>The full set of items. The left panel shows items not currently in SelectedItems.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SelectedItems</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;TItem&gt;</TableCell><TableCell Class="font-mono text-xs">[]</TableCell><TableCell>Currently selected items (shown in the right panel). Two-way bindable.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SelectedItemsChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;IEnumerable&lt;TItem&gt;&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when items are moved between panels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ItemTemplate</TableCell><TableCell Class="font-mono text-xs">RenderFragment&lt;TItem&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Optional row template. Defaults to item.ToString().</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SourceTitle</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Available"</TableCell><TableCell>Header title for the source (left) panel.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">TargetTitle</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Selected"</TableCell><TableCell>Header title for the target (right) panel.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ShowSearch</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show search inputs in both panels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Height</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"320px"</TableCell><TableCell>CSS height for the scrollable list areas.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes on the root.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/transfer" class="text-primary hover:underline">Transfer</a> — Lighter label/value pair dual-list picker</li>
+        <li><a href="/components/combobox" class="text-primary hover:underline">Combobox</a> — Searchable single or multi-select dropdown</li>
+        <li><a href="/components/sortable-list" class="text-primary hover:underline">SortableList</a> — Reorderable list with drag-and-drop</li>
+    </ul>
+</div>
+
+@code {
+    public record UserInfo(string Name, string Email)
+    {
+        public override string ToString() => Name;
+    }
+
+    private List<string> _allDepartments = new()
+    {
+        "Engineering", "Design", "Product", "Marketing",
+        "Sales", "Support", "Finance", "Operations"
+    };
+    private IEnumerable<string> _pickedDepartments = new List<string> { "Engineering", "Design" };
+
+    private void OnDepartmentsChanged(IEnumerable<string> value) => _pickedDepartments = value.ToList();
+
+    private List<UserInfo> _allUsers = new()
+    {
+        new("Alice Johnson", "alice@example.com"),
+        new("Bob Smith", "bob@example.com"),
+        new("Charlie Diaz", "charlie@example.com"),
+        new("Diana Chen", "diana@example.com"),
+        new("Eve Patel", "eve@example.com"),
+        new("Frank Miller", "frank@example.com"),
+    };
+    private IEnumerable<UserInfo> _pickedUsers = new List<UserInfo>();
+
+    private void OnUsersChanged(IEnumerable<UserInfo> value) => _pickedUsers = value.ToList();
+
+    private string _codeStrings = @"<PickList TItem=""string""
+          Items=""_allDepartments""
+          SelectedItems=""_pickedDepartments""
+          SelectedItemsChanged=""OnDepartmentsChanged""
+          SourceTitle=""All Departments""
+          TargetTitle=""Assigned"" />";
+
+    private string _codeTemplate = @"<PickList TItem=""UserInfo""
+          Items=""_allUsers""
+          SelectedItems=""_pickedUsers""
+          SelectedItemsChanged=""OnUsersChanged""
+          SourceTitle=""Users""
+          TargetTitle=""Team Members"">
+    <ItemTemplate>
+        <div class=""flex flex-col"">
+            <span class=""text-sm font-medium"">@context.Name</span>
+            <span class=""text-xs text-muted-foreground"">@context.Email</span>
+        </div>
+    </ItemTemplate>
+</PickList>";
+}

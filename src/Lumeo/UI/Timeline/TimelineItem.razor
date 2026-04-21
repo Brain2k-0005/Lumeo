@@ -2,21 +2,16 @@
 
 @if (Context?.Orientation == Timeline.TimelineOrientation.Horizontal)
 {
-    <div class="@HorizontalCssClass" @attributes="AdditionalAttributes">
+    <div class="@HorizontalCssClass" style="@AnimationStyle" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
-            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-primary">
-                @{
-#pragma warning disable CS0618 // obsolete property read for fallback
-                    var iconFrag = IconContent ?? Icon;
-#pragma warning restore CS0618
-                }
-                @if (iconFrag is not null)
+            <div class="@DotClasses">
+                @if (IconContent is not null)
                 {
-                    @iconFrag
+                    @IconContent
                 }
                 else
                 {
-                    <div class="h-2.5 w-2.5 rounded-full bg-primary"></div>
+                    <div class="h-2.5 w-2.5 rounded-full @DotInnerFillClass"></div>
                 }
             </div>
             <div class="mt-2 flex flex-col items-center text-center">
@@ -34,29 +29,24 @@
                 }
             </div>
         </div>
-        <div class="mx-2 mt-4 h-px flex-1 bg-border"></div>
+        <div class="@HorizontalConnectorClasses" @key="@($"tl-h-{_index}-{ConnectorState}")"></div>
     </div>
 }
 else
 {
-    <div class="@VerticalCssClass" @attributes="AdditionalAttributes">
+    <div class="@VerticalCssClass" style="@AnimationStyle" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
-            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-primary">
-                @{
-#pragma warning disable CS0618 // obsolete property read for fallback
-                    var iconFragV = IconContent ?? Icon;
-#pragma warning restore CS0618
-                }
-                @if (iconFragV is not null)
+            <div class="@DotClasses">
+                @if (IconContent is not null)
                 {
-                    @iconFragV
+                    @IconContent
                 }
                 else
                 {
-                    <div class="h-2.5 w-2.5 rounded-full bg-primary"></div>
+                    <div class="h-2.5 w-2.5 rounded-full @DotInnerFillClass"></div>
                 }
             </div>
-            <div class="my-1 w-px flex-1 bg-border"></div>
+            <div class="@VerticalConnectorClasses" @key="@($"tl-v-{_index}-{ConnectorState}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -78,18 +68,172 @@ else
 @code {
     [CascadingParameter] public Timeline.TimelineContext? Context { get; set; }
 
-    /// <summary>Icon slot. Use instead of <c>Icon</c> to avoid a name collision with the <c>&lt;Icon&gt;</c> component.</summary>
+    /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>
     [Parameter] public RenderFragment? IconContent { get; set; }
-
-    [Parameter, System.Obsolete("Use IconContent — 'Icon' collides with the <Icon> component. This alias will be removed in 2.0.")]
-    public RenderFragment? Icon { get; set; }
 
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Description { get; set; }
     [Parameter] public string? Time { get; set; }
+
+    /// <summary>
+    /// When set, marks this item as the "active" (current) item. When the
+    /// parent <see cref="Timeline"/> has <c>Animated="true"</c>, this item's
+    /// indicator pulses. If the parent also sets <c>ActiveIndex</c>, that
+    /// value wins — use <c>IsActive</c> for static cases only.
+    /// </summary>
+    [Parameter] public bool IsActive { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string VerticalCssClass => $"flex flex-row {Class}".Trim();
-    private string HorizontalCssClass => $"flex flex-1 flex-row last:flex-initial {Class}".Trim();
+    private int _index;
+
+    protected override void OnParametersSet()
+    {
+        if (Context?.Parent is not null)
+        {
+            _index = Context.Parent.GetNextIndex();
+        }
+    }
+
+    private bool IsAnimated => Context?.Animated == true;
+    private bool IsHorizontal => Context?.Orientation == Timeline.TimelineOrientation.Horizontal;
+
+    // Derived state, preferring the parent's ActiveIndex if set — otherwise
+    // falling back to the legacy per-item IsActive flag.
+    private enum ProgressState { Pending, Completed, Active }
+
+    private ProgressState State
+    {
+        get
+        {
+            if (Context?.ActiveIndex is int idx)
+            {
+                if (_index < idx) return ProgressState.Completed;
+                if (_index == idx) return ProgressState.Active;
+                return ProgressState.Pending;
+            }
+            return IsActive ? ProgressState.Active : ProgressState.Pending;
+        }
+    }
+
+    private string DotClasses
+    {
+        get
+        {
+            // When ActiveIndex is driving, "completed" items get a filled
+            // primary background (like Steps completed), "active" uses the
+            // bordered ring (readable as "you are here"), pending items fall
+            // back to muted.
+            string visual;
+            if (Context?.ActiveIndex is not null)
+            {
+                visual = State switch
+                {
+                    ProgressState.Completed => "border-2 border-primary bg-primary text-primary-foreground",
+                    ProgressState.Active => "border-2 border-primary bg-background text-primary",
+                    _ => "border-2 border-muted bg-background text-muted-foreground"
+                };
+            }
+            else
+            {
+                visual = "border-2 border-primary bg-background text-primary";
+            }
+            var baseClasses = $"flex h-8 w-8 shrink-0 items-center justify-center rounded-full {visual}";
+            return IsAnimated && State == ProgressState.Active ? $"{baseClasses} lumeo-steps-pulse" : baseClasses;
+        }
+    }
+
+    // The inner filled dot (used when no IconContent is supplied). When
+    // ActiveIndex drives progression we colour it to match the ring.
+    private string DotInnerFillClass
+    {
+        get
+        {
+            if (Context?.ActiveIndex is null) return "bg-primary";
+            return State switch
+            {
+                ProgressState.Completed => "bg-primary-foreground",
+                ProgressState.Active => "bg-primary",
+                _ => "bg-muted-foreground/50"
+            };
+        }
+    }
+
+    private string HorizontalConnectorClasses => BuildConnectorClasses(horizontal: true);
+    private string VerticalConnectorClasses => BuildConnectorClasses(horizontal: false);
+
+    // Three-state key used for @key so only the transitioning connector remounts.
+    // "completed-drawing" / "completed-static" / "unwinding" / "pending"
+    private string ConnectorState
+    {
+        get
+        {
+            if (Context?.ActiveIndex is not int current) return IsCompletedLegacy ? "completed-static" : "pending";
+
+            var prev = Context.PreviousActiveIndex ?? current;
+            var isBackward = current < prev;
+            var isCompleted = _index < current;
+
+            if (!isBackward && isCompleted && _index == current - 1) return "completed-drawing";
+            if (isCompleted) return "completed-static";
+            if (isBackward && _index == current) return "unwinding";
+            return "pending";
+        }
+    }
+
+    // Legacy completed state for the no-ActiveIndex path.
+    private bool IsCompletedLegacy => Context?.ActiveIndex is null && false;
+
+    private string BuildConnectorClasses(bool horizontal)
+    {
+        var baseLayout = horizontal ? "mx-2 mt-4 h-px flex-1" : "my-1 w-px flex-1";
+
+        if (!IsAnimated)
+        {
+            // Static: colour based on ActiveIndex completion state.
+            var staticColor = (Context?.ActiveIndex is int si && _index < si) ? "bg-primary" : "bg-border";
+            return $"{baseLayout} {staticColor}";
+        }
+
+        // Legacy no-ActiveIndex animated path — always draw in on mount.
+        if (Context?.ActiveIndex is null)
+        {
+            var drawClass = horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y";
+            return $"{baseLayout} bg-border {drawClass}";
+        }
+
+        // ActiveIndex-driven: animate only the transitioning connector.
+        var state = ConnectorState;
+        return state switch
+        {
+            "completed-drawing" => $"{baseLayout} bg-primary " + (horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y"),
+            "completed-static" => $"{baseLayout} bg-primary",
+            // Force bg-primary so the unwinding line is visible (otherwise the
+            // retracting line is bg-border grey — invisible on muted bg).
+            "unwinding" => $"{baseLayout} bg-primary " + (horizontal ? "lumeo-steps-line-unwind-x" : "lumeo-steps-line-unwind-y"),
+            _ => $"{baseLayout} bg-border"
+        };
+    }
+
+    private string VerticalCssClass
+    {
+        get
+        {
+            var baseClasses = $"flex flex-row {Class}".Trim();
+            return IsAnimated ? $"{baseClasses} lumeo-timeline-enter-vertical" : baseClasses;
+        }
+    }
+
+    private string HorizontalCssClass
+    {
+        get
+        {
+            var baseClasses = $"flex flex-1 flex-row last:flex-initial {Class}".Trim();
+            return IsAnimated ? $"{baseClasses} lumeo-timeline-enter-horizontal" : baseClasses;
+        }
+    }
+
+    private string? AnimationStyle =>
+        IsAnimated ? $"animation-delay: {_index * 80}ms;" : null;
 }

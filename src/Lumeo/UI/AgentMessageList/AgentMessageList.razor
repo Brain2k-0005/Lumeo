@@ -1,0 +1,39 @@
+@namespace Lumeo
+@inject Services.ComponentInteropService Interop
+@implements IAsyncDisposable
+
+<div id="@_listId" class="@RootClass" @attributes="AdditionalAttributes">
+    <div class="flex flex-col gap-4">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool AutoScroll { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _listId = $"agent-message-list-{Guid.NewGuid():N}";
+    private bool _observerRegistered;
+
+    private string RootClass =>
+        $"flex w-full flex-col overflow-y-auto {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoScroll && !_observerRegistered)
+        {
+            _observerRegistered = true;
+            await Interop.AiObserveAutoScroll(_listId);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_observerRegistered)
+        {
+            await Interop.AiDisposeAutoScroll(_listId);
+        }
+    }
+}

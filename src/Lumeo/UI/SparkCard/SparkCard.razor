@@ -1,0 +1,81 @@
+@namespace Lumeo
+
+<div class="@RootClasses" @attributes="AdditionalAttributes">
+    <div class="flex items-baseline justify-between gap-3">
+        <div class="min-w-0">
+            @if (!string.IsNullOrEmpty(Label))
+            {
+                <div class="text-sm text-muted-foreground truncate">@Label</div>
+            }
+            @if (!string.IsNullOrEmpty(Value))
+            {
+                <div class="mt-1 text-2xl font-semibold tracking-tight text-foreground">@Value</div>
+            }
+        </div>
+    </div>
+
+    <div class="mt-3 h-10 w-full">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else if (Data is not null && _points is not null)
+        {
+            <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="h-full w-full overflow-visible" aria-hidden="true">
+                <polyline points="@_points"
+                          fill="none"
+                          stroke="var(--color-primary, currentColor)"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          vector-effect="non-scaling-stroke" />
+            </svg>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public IEnumerable<double>? Data { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string? _points;
+
+    protected override void OnParametersSet()
+    {
+        _points = ComputePoints(Data);
+    }
+
+    private static string? ComputePoints(IEnumerable<double>? data)
+    {
+        if (data is null) return null;
+        var list = data.ToList();
+        if (list.Count < 2) return null;
+
+        var min = list.Min();
+        var max = list.Max();
+        var range = max - min;
+        if (range == 0) range = 1;
+
+        var sb = new System.Text.StringBuilder();
+        var n = list.Count;
+        for (int i = 0; i < n; i++)
+        {
+            var x = (double)i / (n - 1) * 100.0;
+            // Invert Y so higher values are visually higher (SVG y goes down)
+            var yNorm = (list[i] - min) / range;
+            var y = 28.0 - yNorm * 26.0 + 1.0; // padding 1 top/bottom, area height 26
+            if (i > 0) sb.Append(' ');
+            sb.Append(x.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(',');
+            sb.Append(y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return sb.ToString();
+    }
+
+    private string RootClasses =>
+        $"rounded-xl border border-border bg-card text-card-foreground p-5 {Class}".Trim();
+}

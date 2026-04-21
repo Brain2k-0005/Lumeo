@@ -1,0 +1,246 @@
+@page "/docs/services/datagrid-export"
+@namespace Lumeo.Docs.Pages.Docs.Services
+
+@using Lumeo.Services
+@inject IDataGridExportService Export
+@inject IToastService Toast
+
+<PageTitle>DataGrid Export — Lumeo</PageTitle>
+
+<PageHeader Title="DataGrid Export"
+            Description="Export tabular data as CSV, Excel (.xlsx) or PDF (A4) from C#. Works with any IEnumerable — not just the DataGrid component." />
+
+<Stack Gap="10">
+
+    <!-- Quick Start -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Quick Start</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDataGridExportService</code>
+                is registered automatically by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AddLumeo()</code>.
+                Inject it, describe your columns once, then call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToCsv</code> /
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToExcel</code> /
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToPdf</code> to get the bytes,
+                and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DownloadAsync</code> to stream them to the browser.
+            </Lumeo.Text>
+
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@@inject IDataGridExportService Export
+
+var columns = new[]
+{
+    new DataGridExportColumn&lt;Order&gt;("Id",     o =&gt; o.Id),
+    new DataGridExportColumn&lt;Order&gt;("Date",   o =&gt; o.Date,   "yyyy-MM-dd"),
+    new DataGridExportColumn&lt;Order&gt;("Amount", o =&gt; o.Amount, "C2"),
+};
+
+var bytes = Export.ToExcel(orders, columns, sheetName: "Orders");
+await Export.DownloadAsync(bytes, "orders.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");</Stack>
+
+            <Alert Variant="Alert.AlertVariant.Info">
+                <Lumeo.Text Size="sm">
+                    PDF export is powered by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">QuestPDF</code> under its
+                    Community license. If your company has more than $1M in annual revenue you must purchase a QuestPDF Professional license and set
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">QuestPDF.Settings.License = LicenseType.Professional;</code>
+                    once at app startup.
+                </Lumeo.Text>
+            </Alert>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Live Demo -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">Live Demo</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                A small product catalogue. Click any export button to download the full table.
+            </Lumeo.Text>
+
+            <Flex Gap="2" Wrap="true">
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="ExportCsv">
+                    <Blazicon Svg="Lucide.FileText" class="h-4 w-4 mr-2" /> Export CSV
+                </Button>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="ExportExcel">
+                    <Blazicon Svg="Lucide.Sheet" class="h-4 w-4 mr-2" /> Export Excel
+                </Button>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="ExportPdf"
+                        Disabled="@_isWasm"
+                        title="@(_isWasm ? "PDF export needs a server-side runtime — this docs site is Blazor WASM. Try CSV or Excel." : null)">
+                    <Blazicon Svg="Lucide.FileDown" class="h-4 w-4 mr-2" /> Export PDF
+                </Button>
+            </Flex>
+
+            @if (_isWasm)
+            {
+                <Lumeo.Text Size="xs" Color="muted">
+                    The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Export PDF</code>
+                    button is disabled here because QuestPDF's renderer needs a native Skia dependency that isn't
+                    available under browser-wasm. CSV and Excel work on every runtime.
+                </Lumeo.Text>
+            }
+
+            <Stack Class="rounded-lg border border-border overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/40 text-left">
+                            <th class="p-3 font-medium">SKU</th>
+                            <th class="p-3 font-medium">Name</th>
+                            <th class="p-3 font-medium">Category</th>
+                            <th class="p-3 font-medium">Price</th>
+                            <th class="p-3 font-medium">Stock</th>
+                            <th class="p-3 font-medium">Added</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        @foreach (var p in _products)
+                        {
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">@p.Sku</td>
+                                <td class="p-3">@p.Name</td>
+                                <td class="p-3 text-muted-foreground">@p.Category</td>
+                                <td class="p-3 tabular-nums">@p.Price.ToString("C2")</td>
+                                <td class="p-3 tabular-nums">@p.Stock</td>
+                                <td class="p-3 text-muted-foreground">@p.Added.ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- API Reference -->
+    <Stack>
+        <Stack Gap="6">
+            <Heading Level="2">API Reference</Heading>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">IDataGridExportService</Heading>
+                <Stack Class="rounded-lg border border-border overflow-x-auto">
+                    <table class="w-full min-w-[600px] text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Method</th>
+                                <th class="text-left p-3 font-medium text-foreground">Returns</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ToCsv&lt;T&gt;(items, columns)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">byte[]</td>
+                                <td class="p-3 text-muted-foreground">UTF-8 CSV with BOM. Escapes commas, quotes, newlines.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ToExcel&lt;T&gt;(items, columns, sheetName)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">byte[]</td>
+                                <td class="p-3 text-muted-foreground">.xlsx with bolded header row, auto-fit columns, frozen first row.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">ToPdf&lt;T&gt;(items, columns, title)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">byte[]</td>
+                                <td class="p-3 text-muted-foreground">Portrait A4 with title, timestamp and page numbers.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">DownloadAsync(bytes, fileName, mimeType)</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Task</td>
+                                <td class="p-3 text-muted-foreground">Triggers a browser download via JS interop.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </Stack>
+            </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">DataGridExportColumn&lt;T&gt; Record</Heading>
+                <Stack Class="rounded-lg border border-border overflow-x-auto">
+                    <table class="w-full min-w-[600px] text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left p-3 font-medium text-foreground">Property</th>
+                                <th class="text-left p-3 font-medium text-foreground">Type</th>
+                                <th class="text-left p-3 font-medium text-foreground">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/40">
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Header</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                                <td class="p-3 text-muted-foreground">Text shown in the header row for CSV / Excel / PDF.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Accessor</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;T, object?&gt;</td>
+                                <td class="p-3 text-muted-foreground">Returns the raw cell value for a given row.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono text-xs text-primary">Format</td>
+                                <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                                <td class="p-3 text-muted-foreground">Optional format string applied to IFormattable values (e.g. "N2", "yyyy-MM-dd", "C2").</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </Stack>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+@code {
+    private record Product(string Sku, string Name, string Category, decimal Price, int Stock, DateTime Added);
+
+    private readonly List<Product> _products = new()
+    {
+        new("SKU-001", "Logitech MX Master 3S", "Electronics", 99.00m, 42, new DateTime(2025, 10, 12)),
+        new("SKU-002", "Herman Miller Aeron",   "Furniture",  1395.00m, 7,  new DateTime(2025, 11, 3)),
+        new("SKU-003", "Moleskine Classic",     "Stationery", 24.50m, 200, new DateTime(2026, 1, 8)),
+        new("SKU-004", "Nespresso Vertuo",      "Appliances", 199.00m, 18,  new DateTime(2026, 2, 14)),
+        new("SKU-005", "Sony WH-1000XM5",       "Electronics", 349.99m, 33, new DateTime(2026, 3, 22)),
+    };
+
+    private IEnumerable<DataGridExportColumn<Product>> GetColumns() => new[]
+    {
+        new DataGridExportColumn<Product>("SKU",      p => p.Sku),
+        new DataGridExportColumn<Product>("Name",     p => p.Name),
+        new DataGridExportColumn<Product>("Category", p => p.Category),
+        new DataGridExportColumn<Product>("Price",    p => p.Price, "C2"),
+        new DataGridExportColumn<Product>("Stock",    p => p.Stock),
+        new DataGridExportColumn<Product>("Added",    p => p.Added, "yyyy-MM-dd"),
+    };
+
+    private async Task ExportCsv()
+    {
+        var bytes = Export.ToCsv(_products, GetColumns());
+        await Export.DownloadAsync(bytes, "products.csv", "text/csv");
+        Toast.Show("Exported products.csv", variant: ToastVariant.Success);
+    }
+
+    private async Task ExportExcel()
+    {
+        var bytes = Export.ToExcel(_products, GetColumns(), sheetName: "Products");
+        await Export.DownloadAsync(bytes, "products.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        Toast.Show("Exported products.xlsx", variant: ToastVariant.Success);
+    }
+
+    private async Task ExportPdf()
+    {
+        try
+        {
+            var bytes = Export.ToPdf(_products, GetColumns(), title: "Product Catalogue");
+            await Export.DownloadAsync(bytes, "products.pdf", "application/pdf");
+            Toast.Show("Exported products.pdf", variant: ToastVariant.Success);
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            Toast.Show(ex.Message, variant: ToastVariant.Warning);
+        }
+    }
+
+    private static readonly bool _isWasm = OperatingSystem.IsBrowser();
+}

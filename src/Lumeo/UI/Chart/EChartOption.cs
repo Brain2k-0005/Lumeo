@@ -268,6 +268,11 @@ public class EChartAxisLabel
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Rotate { get; set; }
+
+    /// <summary>Interval between labels. 0 = show every label, 1 = every other, N = every (N+1)th.
+    /// Leave null for ECharts' default auto-thinning (hides overlapping labels).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Interval { get; set; }
 }
 
 public class EChartLineStyle

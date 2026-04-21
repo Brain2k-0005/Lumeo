@@ -3,6 +3,17 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
+    @if (Column?.FilterTemplate is not null)
+    {
+        <div class="p-3 space-y-3" data-slot="datagrid-filter-custom">
+            @Column.FilterTemplate(new DataGridFilterTemplateContext(
+                Column.Field,
+                CurrentFilter,
+                async desc => await OnApply.InvokeAsync(desc)))
+        </div>
+    }
+    else
+    {
     <div class="p-3 space-y-3">
         <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             @L["Filter.FilterTitle", Column?.Title ?? ""]
@@ -105,11 +116,13 @@
             </button>
         </div>
     </div>
+    }
 </div>
 
 @code {
     [Parameter] public DataGridColumn<TItem>? Column { get; set; }
     [Parameter] public List<FilterOption>? FilterOptions { get; set; }
+    [Parameter] public FilterDescriptor? CurrentFilter { get; set; }
     [Parameter] public EventCallback<FilterDescriptor?> OnApply { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -212,34 +225,50 @@
         await OnApply.InvokeAsync(null);
     }
 
-    private List<FilterOperator> GetAvailableOperators() => Column?.FilterType switch
+    private List<FilterOperator> GetAvailableOperators()
     {
-        DataGridFilterType.Number => new()
+        var defaults = Column?.FilterType switch
         {
-            FilterOperator.Equals, FilterOperator.NotEquals,
-            FilterOperator.GreaterThan, FilterOperator.GreaterThanOrEqual,
-            FilterOperator.LessThan, FilterOperator.LessThanOrEqual,
-            FilterOperator.Between, FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
-        },
-        DataGridFilterType.Date => new()
+            DataGridFilterType.Number => new List<FilterOperator>
+            {
+                FilterOperator.Equals, FilterOperator.NotEquals,
+                FilterOperator.GreaterThan, FilterOperator.GreaterThanOrEqual,
+                FilterOperator.LessThan, FilterOperator.LessThanOrEqual,
+                FilterOperator.Between, FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+            },
+            DataGridFilterType.Date => new List<FilterOperator>
+            {
+                FilterOperator.Equals, FilterOperator.NotEquals,
+                FilterOperator.GreaterThan, FilterOperator.GreaterThanOrEqual,
+                FilterOperator.LessThan, FilterOperator.LessThanOrEqual,
+                FilterOperator.Between, FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+            },
+            DataGridFilterType.Select => new List<FilterOperator>
+            {
+                FilterOperator.Contains, FilterOperator.Equals
+            },
+            _ => new List<FilterOperator>
+            {
+                FilterOperator.Contains, FilterOperator.NotContains,
+                FilterOperator.Equals, FilterOperator.NotEquals,
+                FilterOperator.StartsWith, FilterOperator.EndsWith,
+                FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+            }
+        };
+
+        // If the column restricts operators, intersect with the default set so
+        // unsupported combinations (e.g. StartsWith on a Number) aren't surfaced.
+        if (Column?.Operators is { Count: > 0 } whitelist)
         {
-            FilterOperator.Equals, FilterOperator.NotEquals,
-            FilterOperator.GreaterThan, FilterOperator.GreaterThanOrEqual,
-            FilterOperator.LessThan, FilterOperator.LessThanOrEqual,
-            FilterOperator.Between, FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
-        },
-        DataGridFilterType.Select => new()
-        {
-            FilterOperator.Contains, FilterOperator.Equals
-        },
-        _ => new()
-        {
-            FilterOperator.Contains, FilterOperator.NotContains,
-            FilterOperator.Equals, FilterOperator.NotEquals,
-            FilterOperator.StartsWith, FilterOperator.EndsWith,
-            FilterOperator.IsEmpty, FilterOperator.IsNotEmpty
+            var allowed = new HashSet<FilterOperator>(whitelist);
+            var filtered = defaults.Where(o => allowed.Contains(o)).ToList();
+            // If the intersection is empty, fall back to the whitelist verbatim
+            // (consumer clearly wants those operators even if we think they're odd).
+            return filtered.Count > 0 ? filtered : whitelist;
         }
-    };
+
+        return defaults;
+    }
 
     private string GetOperatorLabel(FilterOperator op) => op switch
     {

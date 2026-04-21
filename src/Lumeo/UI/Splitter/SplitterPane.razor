@@ -1,0 +1,52 @@
+@namespace Lumeo
+@implements IDisposable
+
+<div class="@CssClass"
+     style="@InlineStyle"
+     @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] public Splitter.SplitterContext Context { get; set; } = default!;
+    [Parameter] public double Size { get; set; }
+    [Parameter] public double MinSize { get; set; } = 10;
+    [Parameter] public double MaxSize { get; set; } = 90;
+    [Parameter] public bool Collapsible { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    internal Splitter.SplitterPaneHandle Handle { get; } = new();
+
+    private string CssClass => $"overflow-hidden {Class}".Trim();
+
+    private string InlineStyle
+    {
+        get
+        {
+            var size = Handle.Size.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+            return $"flex: 0 0 {size}%; min-width: 0; min-height: 0;";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Handle.Size = Size;
+        Handle.MinSize = MinSize;
+        Handle.MaxSize = MaxSize;
+        Context?.RegisterChild(Handle);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Track min/max updates but don't overwrite runtime-computed size
+        Handle.MinSize = MinSize;
+        Handle.MaxSize = MaxSize;
+    }
+
+    public void Dispose()
+    {
+        Context?.UnregisterChild(Handle);
+    }
+}

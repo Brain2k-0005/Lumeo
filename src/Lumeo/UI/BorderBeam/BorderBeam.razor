@@ -1,0 +1,46 @@
+@namespace Lumeo
+
+<div class="@CssClass" style="@StyleString" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public BeamSize Size { get; set; } = BeamSize.Md;
+    [Parameter] public int DurationMs { get; set; } = 8000;
+
+    /// <summary>Starting color of the beam. Accepts any CSS color — defaults to <c>var(--color-primary)</c>.</summary>
+    [Parameter] public string? ColorFrom { get; set; }
+
+    /// <summary>Ending color of the beam. Accepts any CSS color — defaults to <c>var(--color-primary)</c>.</summary>
+    [Parameter] public string? ColorTo { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-border-beam rounded-lg", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string BeamPx => Size switch
+    {
+        BeamSize.Sm => "1px",
+        BeamSize.Lg => "3px",
+        _ => "1.5px"
+    };
+
+    private string StyleString
+    {
+        get
+        {
+            var parts = new List<string>
+            {
+                $"--lumeo-beam-size: {BeamPx}",
+                $"--lumeo-beam-duration: {DurationMs}ms"
+            };
+            if (!string.IsNullOrWhiteSpace(ColorFrom)) parts.Add($"--lumeo-beam-from: {ColorFrom}");
+            if (!string.IsNullOrWhiteSpace(ColorTo)) parts.Add($"--lumeo-beam-to: {ColorTo}");
+            return string.Join("; ", parts) + ";";
+        }
+    }
+
+    public enum BeamSize { Sm, Md, Lg }
+}

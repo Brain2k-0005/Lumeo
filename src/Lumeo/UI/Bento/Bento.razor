@@ -1,0 +1,47 @@
+@namespace Lumeo
+
+<div class="@RootClasses" style="@RootStyle" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public int Columns { get; set; } = 4;
+    [Parameter] public BentoGap Gap { get; set; } = BentoGap.Md;
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GapClass => Gap switch
+    {
+        BentoGap.Sm => "gap-3",
+        BentoGap.Lg => "gap-6",
+        _ => "gap-4"
+    };
+
+    // Pre-approved columns use Tailwind utilities. Any other value falls back to inline style.
+    private string ColumnsClass => Columns switch
+    {
+        2 => "grid-cols-2",
+        3 => "grid-cols-3",
+        4 => "grid-cols-4",
+        6 => "grid-cols-6",
+        _ => ""
+    };
+
+    private string RootStyle
+    {
+        get
+        {
+            var baseStyle = "container-type: inline-size;";
+            if (string.IsNullOrEmpty(ColumnsClass))
+            {
+                baseStyle += $" grid-template-columns: repeat({Columns}, minmax(0, 1fr));";
+            }
+            return baseStyle;
+        }
+    }
+
+    private string RootClasses => $"grid {ColumnsClass} {GapClass} {Class}".Trim();
+
+    public enum BentoGap { Sm, Md, Lg }
+}

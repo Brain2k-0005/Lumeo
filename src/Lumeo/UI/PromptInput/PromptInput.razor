@@ -1,0 +1,113 @@
+@namespace Lumeo
+@inject Services.ComponentInteropService Interop
+@implements IAsyncDisposable
+
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    <textarea id="@_textareaId"
+              class="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              style="@TextareaStyle"
+              placeholder="@Placeholder"
+              rows="1"
+              disabled="@IsLoading"
+              value="@Value"
+              @oninput="HandleInput"
+              @onkeydown="HandleKeyDown"
+              @onkeydown:preventDefault="_suppressNextKey"></textarea>
+
+    <div class="mt-1 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1 text-muted-foreground">
+            @LeadingContent
+        </div>
+        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+            @TrailingContent
+            <button type="button"
+                    class="@SendButtonClass"
+                    disabled="@IsSendDisabled"
+                    aria-label="Send"
+                    @onclick="HandleSendClick">
+                @if (IsLoading)
+                {
+                    <Spinner Size="Spinner.SpinnerSize.Sm" Class="text-primary-foreground" />
+                }
+                else
+                {
+                    <Icon Name="ArrowUp" Size="Icon.IconSize.Sm" />
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Ask anything…";
+    [Parameter] public int MaxHeight { get; set; } = 240;
+    [Parameter] public int MinHeight { get; set; } = 56;
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+    [Parameter] public bool DisableSendOnEmpty { get; set; } = true;
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _textareaId = $"prompt-input-{Guid.NewGuid():N}";
+    private bool _autosizeReady;
+    private bool _suppressNextKey;
+
+    private string RootClass =>
+        $"flex flex-col rounded-xl border border-border bg-card p-2 shadow-sm transition-colors focus-within:border-ring/60 focus-within:ring-[1.5px] focus-within:ring-ring/40 {Class}".Trim();
+
+    private string TextareaStyle => $"min-height: {MinHeight}px; max-height: {MaxHeight}px;";
+
+    private string SendButtonClass =>
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50";
+
+    private bool IsSendDisabled =>
+        IsLoading || (DisableSendOnEmpty && string.IsNullOrWhiteSpace(Value));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _autosizeReady = true;
+            await Interop.AiAutosize(_textareaId, MaxHeight);
+        }
+    }
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(Value);
+        if (_autosizeReady)
+        {
+            await Interop.AiAutosize(_textareaId, MaxHeight);
+        }
+    }
+
+    private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        // Suppress the native newline insertion for plain Enter — Shift+Enter passes through for multiline.
+        _suppressNextKey = e.Key == "Enter" && !e.ShiftKey && !e.CtrlKey && !e.AltKey && !e.MetaKey;
+        if (_suppressNextKey)
+        {
+            await TrySendAsync();
+        }
+    }
+
+    private Task HandleSendClick() => TrySendAsync();
+
+    private async Task TrySendAsync()
+    {
+        if (IsSendDisabled) return;
+        var current = Value ?? string.Empty;
+        await OnSend.InvokeAsync(current);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // No JS observer to tear down for autosize; reserved for future use.
+        await ValueTask.CompletedTask;
+    }
+}

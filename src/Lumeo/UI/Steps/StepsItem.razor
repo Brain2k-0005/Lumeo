@@ -14,14 +14,9 @@
                     class="@GetIndicatorClasses(status, isError)"
                     disabled="@(!IsClickable)"
                     @onclick="HandleClick">
-                @{
-#pragma warning disable CS0618 // obsolete property read for fallback
-                    var iconFrag = IconContent ?? Icon;
-#pragma warning restore CS0618
-                }
-                @if (iconFrag is not null)
+                @if (IconContent is not null)
                 {
-                    @iconFrag
+                    @IconContent
                 }
                 else if (isError)
                 {
@@ -47,7 +42,7 @@
                 }
             </div>
         </div>
-        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)"></div>
+        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)" @key="@($"line-h-{_index}-{status}")"></div>
     </div>
 }
 else
@@ -58,14 +53,9 @@ else
                     class="@GetIndicatorClasses(status, isError)"
                     disabled="@(!IsClickable)"
                     @onclick="HandleClick">
-                @{
-#pragma warning disable CS0618 // obsolete property read for fallback
-                    var iconFragV = IconContent ?? Icon;
-#pragma warning restore CS0618
-                }
-                @if (iconFragV is not null)
+                @if (IconContent is not null)
                 {
-                    @iconFragV
+                    @IconContent
                 }
                 else if (isError)
                 {
@@ -80,7 +70,7 @@ else
                     <span>@(_index + 1)</span>
                 }
             </button>
-            <div class="my-1 w-px flex-1 @GetLineClasses(status)"></div>
+            <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -101,11 +91,8 @@ else
     [Parameter] public string? Description { get; set; }
     [Parameter] public StepsItemStatus Status { get; set; } = StepsItemStatus.Default;
 
-    /// <summary>Icon slot. Use instead of <c>Icon</c> to avoid a name collision with the <c>&lt;Icon&gt;</c> component.</summary>
+    /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>
     [Parameter] public RenderFragment? IconContent { get; set; }
-
-    [Parameter, System.Obsolete("Use IconContent — 'Icon' collides with the <Icon> component. This alias will be removed in 2.0.")]
-    public RenderFragment? Icon { get; set; }
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -121,6 +108,7 @@ else
     }
 
     private bool IsClickable => Context?.Clickable == true;
+    private bool IsAnimated => Context?.Animated == true;
 
     private StepStatus GetStatus()
     {
@@ -130,8 +118,9 @@ else
         return StepStatus.Future;
     }
 
-    private string GetIndicatorClasses(StepStatus status, bool isError) =>
-        isError
+    private string GetIndicatorClasses(StepStatus status, bool isError)
+    {
+        var baseClasses = isError
             ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-background text-destructive"
             : status switch
             {
@@ -139,6 +128,19 @@ else
                 StepStatus.Current => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-sm font-semibold text-primary",
                 _ => "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground"
             };
+
+        // Only the Current (active) indicator pulses, and only when not in an error state.
+        if (IsAnimated && status == StepStatus.Current && !isError)
+        {
+            baseClasses += " lumeo-steps-pulse";
+        }
+
+        baseClasses += IsClickable
+            ? " cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            : " cursor-default";
+
+        return baseClasses;
+    }
 
     private string GetTitleClasses(StepStatus status, bool isError) =>
         isError
@@ -150,11 +152,45 @@ else
                 _ => "text-sm text-muted-foreground"
             };
 
-    private string GetLineClasses(StepStatus status) => status switch
+    private string GetLineClasses(StepStatus status)
     {
-        StepStatus.Completed => "bg-primary",
-        _ => "bg-border"
-    };
+        var defaultColor = status switch
+        {
+            StepStatus.Completed => "bg-primary",
+            _ => "bg-border"
+        };
+
+        if (!IsAnimated)
+        {
+            return defaultColor;
+        }
+
+        var isVertical = Context?.Orientation == Steps.StepsOrientation.Vertical;
+        var isBackward = Context?.Direction == Steps.StepsDirection.Backward;
+
+        // Only animate the SINGLE connector that just transitioned state.
+        // Forward: connector at _index becomes completed when CurrentStep advances past it.
+        // Backward: connector at _index == new CurrentStep was just un-completed.
+        var current = Context?.CurrentStep ?? 0;
+
+        // Forward draw-in: this connector is now completed AND was just lit up
+        // (i.e. its index equals the new-current-1 — the one we just crossed).
+        if (!isBackward && status == StepStatus.Completed && _index == current - 1)
+        {
+            return $"{defaultColor} " + (isVertical ? "lumeo-steps-line-draw-y" : "lumeo-steps-line-draw-x");
+        }
+
+        // Backward unwind: connector at new CurrentStep was completed, now pending.
+        // Force bg-primary during the animation so the user sees a coloured
+        // line retracting (otherwise it's a bg-border grey line shrinking
+        // — invisible against the muted background).
+        if (isBackward && status != StepStatus.Completed && _index == current)
+        {
+            return "bg-primary " + (isVertical ? "lumeo-steps-line-unwind-y" : "lumeo-steps-line-unwind-x");
+        }
+
+        return defaultColor;
+    }
 
     private async Task HandleClick()
     {
