@@ -89,14 +89,23 @@ else
     // (with fake data), and the option-swap tween handles the handoff to real data.
     private string ChartHostOpacity => (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette) ? "0" : "1";
 
-    /// <summary>Returns the JSON that actually goes to ECharts. In Phantom mode, when we're
-    /// in loading state, this is the placeholder option — swapping to the real option later
-    /// triggers an ECharts option-change animation from phantom → real.</summary>
+    // Phantom-mode state: cycling random placeholder data while loading, then one
+    // clean "notMerge=true" swap to real data so the muted palette doesn't bleed.
+    private System.Threading.Timer? _phantomTimer;
+    private int _phantomTick;
+    private bool _lastWasPhantom;
+    private const int PhantomCycleMs = 1400;
+
+    private bool IsPhantomActive =>
+        ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
+
+    /// <summary>Returns the JSON that actually goes to ECharts. Phantom mode uses
+    /// the current cycling tick so each frame redistributes the random data.</summary>
     private string GetEffectiveJson()
     {
-        if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton)
+        if (IsPhantomActive)
         {
-            return ChartPlaceholderFactory.CreateJson(SkeletonKind);
+            return ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick);
         }
         return GetOptionsJson();
     }
@@ -137,19 +146,26 @@ else
             }
 
             _hasFirstRendered = true;
+            _lastWasPhantom = IsPhantomActive;
+            UpdatePhantomTimer();
             StateHasChanged();
         }
         else if (_initialized)
         {
+            UpdatePhantomTimer();
+
             var json = GetEffectiveJson();
+            var isPhantom = IsPhantomActive;
             if (json != _lastJson)
             {
                 _lastJson = json;
-                // notMerge=false so ECharts diffs the new option against the old and
-                // tweens series values — this is what turns the phantom → real swap
-                // into a morph animation rather than a snap.
-                await _module!.InvokeVoidAsync("updateChart", _chartId, json, false);
+                // When transitioning OUT of phantom mode, use notMerge=true so the muted
+                // palette and transparent axis labels don't bleed into the real chart.
+                // Phantom→phantom and real→real stay on notMerge=false for smooth tweens.
+                var notMerge = _lastWasPhantom && !isPhantom;
+                await _module!.InvokeVoidAsync("updateChart", _chartId, json, notMerge);
             }
+            _lastWasPhantom = isPhantom;
 
             if (ShowLoading != _lastShowLoading)
             {
@@ -175,6 +191,34 @@ else
                 if (!string.IsNullOrEmpty(Group))
                     await _module!.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
             }
+        }
+    }
+
+    private void UpdatePhantomTimer()
+    {
+        if (IsPhantomActive && _phantomTimer is null)
+        {
+            _phantomTimer = new System.Threading.Timer(_ =>
+            {
+                _phantomTick++;
+                _ = InvokeAsync(async () =>
+                {
+                    if (!_initialized || _module is null || !IsPhantomActive) return;
+                    var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick);
+                    _lastJson = json;
+                    try
+                    {
+                        await _module.InvokeVoidAsync("updateChart", _chartId, json, false);
+                    }
+                    catch (JSDisconnectedException) { }
+                    catch (ObjectDisposedException) { }
+                });
+            }, null, PhantomCycleMs, PhantomCycleMs);
+        }
+        else if (!IsPhantomActive && _phantomTimer is not null)
+        {
+            _phantomTimer.Dispose();
+            _phantomTimer = null;
         }
     }
 
@@ -253,6 +297,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _phantomTimer?.Dispose();
+        _phantomTimer = null;
         if (_module is not null && _initialized)
         {
             try
