@@ -12,8 +12,21 @@
 
 @import "tailwindcss";
 
-/* Only scan Lumeo's own component files. */
+/* Scan Lumeo's own component files for class usage. */
 @source "../UI/**/*.razor";
+
+/* Safelist every theme-token utility consumers may need at runtime.
+   Without this, any token class NOT literally present in Lumeo's .razor
+   files (e.g. `bg-background` when no internal component uses it) would be
+   missing from the pre-compiled bundle — leaving consumer-facing surfaces
+   like Dialog / Popover / Card transparent when installed via NuGet only.
+   `@source inline()` forces Tailwind to include these utilities regardless
+   of whether they appear in the scanned templates. */
+@source inline("{,dark:}{bg,text,border,ring,fill,stroke,outline,placeholder,caret,accent,decoration,divide}-{background,foreground,card,card-foreground,popover,popover-foreground,primary,primary-foreground,secondary,secondary-foreground,muted,muted-foreground,accent,accent-foreground,destructive,destructive-foreground,destructive-light,destructive-text,success,success-foreground,success-light,success-text,warning,warning-foreground,warning-light,warning-text,info,info-foreground,info-light,info-text,border,input,ring,rating,chart-1,chart-2,chart-3,chart-4,chart-5,sidebar,sidebar-foreground,sidebar-primary,sidebar-primary-foreground,sidebar-accent,sidebar-accent-foreground,sidebar-border}");
+@source inline("{bg,text,border,ring}-{primary,secondary,muted,accent,destructive,success,warning,info}/{5,10,15,20,25,30,40,50,60,70,80,90,95}");
+@source inline("rounded-{sm,md,lg,xl,2xl,3xl,full}");
+@source inline("shadow-{sm,DEFAULT,md,lg,xl,2xl,inner,none}");
+@source inline("animate-{fade-in,zoom-in,slide-in-from-top,slide-in-from-bottom,slide-in-from-left,slide-in-from-right,accordion-down,accordion-up,pulse,spin,ping,bounce}");
 
 /* Dark mode is activated by adding `.dark` to a parent element. */
 @variant dark (&:where(.dark, .dark *));
