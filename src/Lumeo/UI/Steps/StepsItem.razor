@@ -42,7 +42,7 @@
                 }
             </div>
         </div>
-        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)" @key="@($"line-h-{_index}-{status}-{Context?.ReplayKey}")"></div>
+        <div class="mx-2 mt-4 h-px flex-1 @GetLineClasses(status)" @key="@($"line-h-{_index}-{status}")"></div>
     </div>
 }
 else
@@ -70,7 +70,7 @@ else
                     <span>@(_index + 1)</span>
                 }
             </button>
-            <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}-{Context?.ReplayKey}")"></div>
+            <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -150,7 +150,7 @@ else
 
     private string GetLineClasses(StepStatus status)
     {
-        var color = status switch
+        var defaultColor = status switch
         {
             StepStatus.Completed => "bg-primary",
             _ => "bg-border"
@@ -158,30 +158,34 @@ else
 
         if (!IsAnimated)
         {
-            return color;
+            return defaultColor;
         }
 
         var isVertical = Context?.Orientation == Steps.StepsOrientation.Vertical;
         var isBackward = Context?.Direction == Steps.StepsDirection.Backward;
 
-        // Play the forward draw-in animation when this connector is now
-        // completed (i.e. user advanced and this line lit up). Play the
-        // reverse unwind when the user went backward and this connector
-        // is now un-completed (pending) — visually the drawn line retracts.
-        if (status == StepStatus.Completed && !isBackward)
+        // Only animate the SINGLE connector that just transitioned state.
+        // Forward: connector at _index becomes completed when CurrentStep advances past it.
+        // Backward: connector at _index == new CurrentStep was just un-completed.
+        var current = Context?.CurrentStep ?? 0;
+
+        // Forward draw-in: this connector is now completed AND was just lit up
+        // (i.e. its index equals the new-current-1 — the one we just crossed).
+        if (!isBackward && status == StepStatus.Completed && _index == current - 1)
         {
-            return $"{color} " + (isVertical ? "lumeo-steps-line-draw-y" : "lumeo-steps-line-draw-x");
+            return $"{defaultColor} " + (isVertical ? "lumeo-steps-line-draw-y" : "lumeo-steps-line-draw-x");
         }
 
-        if (status != StepStatus.Completed && isBackward && _index == Context!.CurrentStep)
+        // Backward unwind: connector at new CurrentStep was completed, now pending.
+        // Force bg-primary during the animation so the user sees a coloured
+        // line retracting (otherwise it's a bg-border grey line shrinking
+        // — invisible against the muted background).
+        if (isBackward && status != StepStatus.Completed && _index == current)
         {
-            // The connector immediately after the new current step is the
-            // one that was just "undrawn". Animate it unwinding from its
-            // completed paint to the pending state.
-            return $"{color} " + (isVertical ? "lumeo-steps-line-unwind-y" : "lumeo-steps-line-unwind-x");
+            return "bg-primary " + (isVertical ? "lumeo-steps-line-unwind-y" : "lumeo-steps-line-unwind-x");
         }
 
-        return color;
+        return defaultColor;
     }
 
     private async Task HandleClick()
