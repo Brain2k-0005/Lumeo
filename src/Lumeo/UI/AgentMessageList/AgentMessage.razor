@@ -1,0 +1,114 @@
+@namespace Lumeo
+
+@if (Role == AgentMessageRole.System)
+{
+    <div class="@SystemClass" style="@BubbleMaxWidthStyle" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+else if (Role == AgentMessageRole.Tool)
+{
+    <div class="@ToolWrapperClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+else if (Role == AgentMessageRole.User)
+{
+    <div class="@UserRowClass" @attributes="AdditionalAttributes">
+        <div class="flex min-w-0 flex-col items-end gap-1">
+            @if (!string.IsNullOrEmpty(Name) || Timestamp.HasValue)
+            {
+                <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    @if (Timestamp.HasValue)
+                    {
+                        <span>@FormatTimestamp(Timestamp.Value)</span>
+                    }
+                    @if (!string.IsNullOrEmpty(Name))
+                    {
+                        <span class="font-medium text-foreground">@Name</span>
+                    }
+                </div>
+            }
+            <div class="@UserBubbleClass" style="@BubbleMaxWidthStyle">
+                @ChildContent
+                @if (IsStreaming)
+                {
+                    <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
+                }
+            </div>
+        </div>
+        @if (Avatar is not null)
+        {
+            <div class="shrink-0">@Avatar</div>
+        }
+    </div>
+}
+else
+{
+    <div class="@AssistantRowClass" @attributes="AdditionalAttributes">
+        @if (Avatar is not null)
+        {
+            <div class="shrink-0 pt-0.5">@Avatar</div>
+        }
+        <div class="flex min-w-0 flex-1 flex-col gap-1">
+            @if (!string.IsNullOrEmpty(Name) || Timestamp.HasValue)
+            {
+                <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    @if (!string.IsNullOrEmpty(Name))
+                    {
+                        <span class="font-medium text-foreground">@Name</span>
+                    }
+                    @if (Timestamp.HasValue)
+                    {
+                        <span>@FormatTimestamp(Timestamp.Value)</span>
+                    }
+                </div>
+            }
+            <div class="min-w-0 w-full text-sm leading-relaxed text-foreground">
+                @ChildContent
+                @if (IsStreaming)
+                {
+                    <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public AgentMessageRole Role { get; set; } = AgentMessageRole.Assistant;
+    [Parameter] public RenderFragment? Avatar { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public DateTimeOffset? Timestamp { get; set; }
+    [Parameter] public bool IsStreaming { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string UserRowClass => $"flex items-start justify-end gap-3 {Class}".Trim();
+    private string UserBubbleClass => "rounded-2xl bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground shadow-sm";
+    // max-w-[80%] is an arbitrary Tailwind class not in the pre-compiled utility
+    // bundle — use inline style so the bubble actually caps.
+    private const string BubbleMaxWidthStyle = "max-width: 80%;";
+
+    private string AssistantRowClass => $"flex items-start gap-3 {Class}".Trim();
+
+    private string SystemClass =>
+        $"mx-auto rounded-full bg-muted/60 px-3 py-1.5 text-center text-xs italic text-muted-foreground {Class}".Trim();
+
+    private string ToolWrapperClass => $"w-full {Class}".Trim();
+
+    private static string FormatTimestamp(DateTimeOffset ts)
+    {
+        var local = ts.ToLocalTime();
+        return local.ToString("HH:mm");
+    }
+
+    public enum AgentMessageRole
+    {
+        User,
+        Assistant,
+        System,
+        Tool
+    }
+}

@@ -1,56 +1,102 @@
 # Lumeo
 
-A beautiful, accessible Blazor component library inspired by [shadcn/ui](https://ui.shadcn.com). 103 production-ready components with Tailwind CSS theming, dark mode, and 8 color schemes.
+**130+ accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
+
+~130 components · 1,687 tests · 14 locales · MIT · .NET 10
 
 **[Live Demo](https://lumeo.nativ.sh)** | [![NuGet](https://img.shields.io/nuget/v/Lumeo)](https://www.nuget.org/packages/Lumeo) | [![Live Demo](https://img.shields.io/badge/Live%20Demo-lumeo.nativ.sh-blue)](https://lumeo.nativ.sh)
 
-## Features
+> **v2.0 is currently `2.0.0-rc.1`.** The API is stable; we're gathering field feedback for a short window before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
 
-- **103 Components** — Fully accessible, production-ready UI primitives
-- **8 Color Themes** — Zinc, Blue, Green, Rose, Orange, Violet, Amber, Teal
-- **Dark Mode** — Class-based with system preference detection
+## What's new in 2.0
+
+- **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`. SignalR-native token streaming, sticky auto-scroll, collapsible chain-of-thought.
+- **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`. Opt-in `Animated` props on Steps, Timeline, Progress, Tabs, Switch, Checkbox, Badge, BottomNav.
+- **Scheduler + Gantt + RichTextEditor** — FullCalendar v6, Frappe Gantt, and TipTap v2 wrappers. Lazy-loaded JS so you pay only for what you use.
+- **Dashboard tiles + Bento** — `Bento`, `BentoTile`, `KpiCard`, `SparkCard`, `Delta`, and a standalone `Sparkline` primitive.
+- **Real Excel export** — `IDataGridExportService` emits real `.xlsx` via ClosedXML, PDF via QuestPDF, or CSV — with a browser download helper.
+- **14 locales + RTL** — `ILumeoLocalizer` ships EN, DE, ES, FR, IT, PT, NL, PL, JA, ZH-CN, KO, AR, RU, TR. `IThemeService.SetDirectionAsync()` flips the whole library to RTL.
+- **`[LumeoForm]` source generator** — annotate a POCO and get a compile-time `RenderForm(model, onSubmit)` method that emits a fully-bound, validated Lumeo Form.
+- **DataGrid upgrades** — expandable fullscreen, header drag-to-reorder, layout JSON round-trip, `ShowSearch` / `ShowColumnChooser` / `ShowExport` toggles, `Culture` parameter, `SetHtmlClass` for fullscreen navbar hiding.
+- **Companion packages** — see [Companion packages](#companion-packages) below.
+
+## Feature overview
+
+- **130+ components** — accessible UI primitives, Blazor WASM & Server
+- **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`
+- **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`, `Sparkline`
+- **Dashboard tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`, `PickList<T>`
+- **Scheduler + Gantt + RichTextEditor** — FullCalendar + Frappe Gantt + TipTap wrappers, lazy-loaded
+- **14 locales + RTL** — EN/DE/ES/FR/IT/PT/NL/PL/JA/ZH-CN/KO/AR/RU/TR via `ILumeoLocalizer`; `IThemeService.SetDirectionAsync()` for RTL
+- **Excel / PDF / CSV export** — `IDataGridExportService` (ClosedXML + QuestPDF)
+- **`[LumeoForm]` source generator** — annotate a POCO, get a fully-bound Form for free
+- **Culture-aware** — `Culture` on DataGrid, DatePicker, DateTimePicker, NumberInput, Slider, Statistic
+- **BottomNav + Splitter** — mobile tab bar (safe-area, optional FAB) and resizable multi-pane layouts
+- **Block templates** — SignIn, SignUp, ResetPassword, OtpVerify, Pricing, Hero, Dashboard, Settings
+- **8 color themes + dark mode** — Zinc, Blue, Green, Rose, Orange, Violet, Amber, Teal; class-based dark mode
 - **Tailwind CSS v4** — CSS variable architecture, zero hardcoded colors
-- **Programmatic OverlayService** — Open dialogs, sheets, drawers, and toasts from code
-- **30+ Chart Types** — Powered by ECharts (Bar, Line, Area, Pie, Donut, Radar, Scatter, and more)
-- **DataGrid** — Sort, filter, inline edit, column pin, row group, virtual scroll, and CSV/JSON export
-- **Form Validation** — DataAnnotations and custom validation with styled error states
-- **Accessible** — ARIA attributes, keyboard navigation, focus trapping, screen reader support
-- **1,316 Tests** — Comprehensive bUnit test coverage
-- **Blazor WASM & Server** — Works with both hosting models
+- **Programmatic OverlayService** — open dialogs, sheets, drawers, toasts from code
+- **30+ chart types** — ECharts-backed; BarChart `LabelStrategy="Smart"` auto-rotates dense labels
+- **DataGrid** — sort, filter, inline edit, column pin, row group, drag-to-reorder, fullscreen, layout JSON, Excel/PDF/CSV export
+- **Form validation** — DataAnnotations + custom validators with styled error states
+- **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
+- **1,687 bUnit tests**
 
 ## Component Categories
 
-### Layout
-Stack, Flex, Grid, Container, Center, Spacer, AspectRatio, Resizable, ScrollArea, Separator
-
-### Typography
-Text, Heading, Link, Code
-
-### Forms
-Input, Select, Combobox, DatePicker, DateRangePicker, DateTimePicker, TimePicker, NumberInput, PasswordInput, InputMask, Checkbox, Switch, RadioGroup, Slider, Toggle, ToggleGroup, FileUpload, OtpInput, TagInput, ColorPicker, Textarea, Form, Mention, Cascader
-
-### Data Display
-Table, DataTable, DataGrid, Card, Badge, Chip, Avatar, Calendar, Descriptions, Statistic, Timeline, Steps, Rating, Image, ImageCompare, TreeView, QRCode, Watermark
-
-### Feedback
-Toast, Alert, Progress, Spinner, Skeleton, EmptyState, Result
-
-### Overlay
-Dialog, Sheet, Drawer, AlertDialog, Popover, Tooltip, HoverCard, ContextMenu, DropdownMenu, Command, PopConfirm, Tour
-
-### Navigation
-Tabs, Breadcrumb, Pagination, Sidebar, Menubar, NavigationMenu, MegaMenu, Accordion, Collapsible, Scrollspy, BackToTop, Affix, SpeedDial
-
-### Drag & Drop
-Kanban, SortableList, Transfer
-
-### Charts
-30+ types via ECharts: Bar, Line, Area, Pie, Donut, Radar, Scatter, Heatmap, Treemap, Sankey, Funnel, Gauge, Candlestick, Boxplot, Calendar, Sunburst, Graph, Parallel, ThemeRiver, WordCloud, GeoMap, and more
+| Category | Components |
+|----------|------------|
+| **Layout** | Stack, Flex, Grid, Container, Center, Spacer, AspectRatio, Resizable, ScrollArea, Separator, Splitter |
+| **Typography** | Text, Heading, Link, Code |
+| **Forms** | Input, Select, Combobox, DatePicker, DateRangePicker, DateTimePicker, TimePicker, NumberInput, PasswordInput, InputMask, Checkbox, Switch, RadioGroup, Slider, Toggle, ToggleGroup, FileUpload, OtpInput, TagInput, ColorPicker, Textarea, Form, Mention, Cascader, PickList, RichTextEditor |
+| **Data Display** | Table, DataTable, DataGrid, Card, Badge, Chip, Avatar, Calendar, Scheduler, Gantt, Descriptions, Statistic, Timeline, Steps, Rating, Image, ImageCompare, TreeView, QRCode, Watermark, Sparkline |
+| **Feedback** | Toast, Alert, Progress, Spinner, Skeleton, EmptyState, Result |
+| **Overlay** | Dialog, Sheet, Drawer, AlertDialog, Popover, Tooltip, HoverCard, ContextMenu, DropdownMenu, Command, PopConfirm, Tour |
+| **Navigation** | Tabs, Breadcrumb, Pagination, Sidebar, BottomNav, Menubar, NavigationMenu, MegaMenu, Accordion, Collapsible, Scrollspy, BackToTop, Affix, SpeedDial |
+| **AI** | PromptInput, StreamingText, AgentMessageList, AgentMessage, ToolCallCard, ReasoningDisplay |
+| **Motion** | Marquee, NumberTicker, TextReveal, BlurFade, BorderBeam, ShimmerButton, Sparkles |
+| **Dashboard** | Bento, BentoTile, KpiCard, SparkCard, Delta |
+| **Drag & Drop** | Kanban, SortableList, Transfer |
+| **Charts** | 30+ ECharts types — Bar (smart labels), Line, Area, Pie, Donut, Radar, Scatter, Heatmap, Treemap, Sankey, Funnel, Gauge, Candlestick, Boxplot, Calendar, Sunburst, Graph, Parallel, ThemeRiver, WordCloud, GeoMap |
 
 ## Installation
 
 ```bash
 dotnet add package Lumeo
+```
+
+## Companion packages
+
+Lumeo 2.0 ships with three optional companion packages that extend the core library.
+
+### `Lumeo.Cli` — shadcn-style vendoring
+
+Copy component source into your own repo so you can fork and customize it — like shadcn/ui on the JS side.
+
+```bash
+dotnet tool install -g Lumeo.Cli
+lumeo init                # one-time — writes lumeo.config.json
+lumeo add button dialog   # copy components into your repo
+lumeo list                # list all registry entries
+lumeo diff button         # diff vendored copy vs registry
+```
+
+### `Lumeo.Templates` — `dotnet new` scaffolders
+
+```bash
+dotnet new install Lumeo.Templates
+dotnet new lumeo-page       -n SettingsPage
+dotnet new lumeo-form       -n RegisterForm
+dotnet new lumeo-component  -n FancyCard
+```
+
+### `@lumeo-ui/mcp-server` — MCP server for LLM codegen
+
+Give Claude, ChatGPT, Copilot, or Cursor the schemas + examples they need to write correct Lumeo markup.
+
+```bash
+npm install -g @lumeo-ui/mcp-server
+# then wire into Claude Desktop / Cursor / your MCP client config
 ```
 
 ## Setup
@@ -248,12 +294,14 @@ await Theme.ToggleModeAsync();              // Toggle current
 - **[Accessibility Guide](https://lumeo.nativ.sh/docs/accessibility)** — ARIA roles, keyboard patterns, focus management
 - **[Contributing Guide](https://lumeo.nativ.sh/docs/contributing)** — Setup, component creation, testing, code style
 - **[Changelog](https://lumeo.nativ.sh/docs/changelog)** — Full release history
+- **[Migration Guide](./MIGRATION.md)** — 1.x → 2.0 upgrade notes
 
 ## Tech Stack
 
 - .NET 10 / Blazor
 - Tailwind CSS v4
-- ECharts for charts
+- ECharts for charts, FullCalendar for Scheduler, Frappe Gantt for Gantt, TipTap for RichTextEditor
+- ClosedXML + QuestPDF for DataGrid export
 - [Blazicons.Lucide](https://github.com/nickvdyck/blazicons) for icons
 
 ## License

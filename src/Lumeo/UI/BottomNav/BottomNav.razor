@@ -1,0 +1,71 @@
+@namespace Lumeo
+
+<nav class="@CssClass"
+     role="navigation"
+     aria-label="@AriaLabel"
+     @attributes="AdditionalAttributes"
+     style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+    <CascadingValue Value="_context" IsFixed="false">
+        <div class="@InnerCssClass">
+            @ChildContent
+        </div>
+    </CascadingValue>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Accessible label for the nav landmark. Defaults to "Bottom navigation".</summary>
+    [Parameter] public string AriaLabel { get; set; } = "Bottom navigation";
+
+    /// <summary>When true (default), pins to the bottom of the viewport with <c>position: fixed</c>. Set false to render inline.</summary>
+    [Parameter] public bool Fixed { get; set; } = true;
+
+    /// <summary>Visual variant. <c>Default</c> is a solid bar with a top border; <c>Pill</c> is a floating centered pill.</summary>
+    [Parameter] public BottomNavVariant Variant { get; set; } = BottomNavVariant.Default;
+
+    /// <summary>
+    /// When true, each <see cref="BottomNavItem"/> gets smooth background-color
+    /// and color transitions, and the small active pill transitions its transform
+    /// with a spring easing. Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool AnimatedIndicator { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private BottomNavContext? _context;
+
+    protected override void OnParametersSet()
+    {
+        if (_context is null || _context.AnimatedIndicator != AnimatedIndicator)
+        {
+            _context = new BottomNavContext(AnimatedIndicator);
+        }
+    }
+
+    private string CssClass => string.Join(" ", new[] {
+        Fixed ? "fixed bottom-0 left-0 right-0 z-40" : "w-full",
+        Variant == BottomNavVariant.Pill
+            ? "px-4 pb-3"
+            : "bg-background border-t border-border",
+        Class
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string InnerCssClass => Variant == BottomNavVariant.Pill
+        ? "mx-auto flex max-w-md items-center justify-around gap-1 rounded-full border border-border bg-card/95 shadow-lg backdrop-blur px-2 py-1.5"
+        : "flex items-stretch justify-around gap-1 px-2 pt-1.5 pb-1.5";
+
+    public enum BottomNavVariant { Default, Pill }
+
+    public class BottomNavContext
+    {
+        public BottomNavContext(bool animatedIndicator = false)
+        {
+            AnimatedIndicator = animatedIndicator;
+        }
+
+        /// <summary>True when parent <see cref="BottomNav"/> was configured with <c>AnimatedIndicator="true"</c>.</summary>
+        public bool AnimatedIndicator { get; }
+    }
+}

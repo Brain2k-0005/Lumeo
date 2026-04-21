@@ -19,6 +19,30 @@
     [Parameter] public bool ShowDataLabels { get; set; }
     [Parameter] public string LabelPosition { get; set; } = "top";
     [Parameter] public string? LabelFormat { get; set; }
+
+    /// <summary>Controls how category-axis labels are rendered.
+    /// <list type="bullet">
+    ///   <item><c>Smart</c> (default): show every label; auto-rotate -30° at 11–16 categories, -60° at 17–24, -75° above 24.</item>
+    ///   <item><c>ShowAll</c>: force every label with no rotation (may overlap on dense datasets).</item>
+    ///   <item><c>Auto</c>: let ECharts auto-thin labels that would overlap (original ECharts default — hides every second label when crowded).</item>
+    /// </list>
+    /// </summary>
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+
+    /// <summary>Manual override for category-label rotation in degrees (e.g. -30, -45). When set,
+    /// takes precedence over the rotation implied by <see cref="LabelStrategy"/>.</summary>
+    [Parameter] public int? LabelRotate { get; set; }
+
+    /// <summary>Back-compat alias for <see cref="ChartLabelStrategy"/>. The enum was
+    /// originally defined per-chart as <c>BarChart.BarLabelStrategy</c>; it now lives
+    /// in the shared <see cref="ChartLabelHelper"/>. Existing references continue to
+    /// compile via this alias.</summary>
+    public enum BarLabelStrategy
+    {
+        Smart = ChartLabelStrategy.Smart,
+        ShowAll = ChartLabelStrategy.ShowAll,
+        Auto = ChartLabelStrategy.Auto,
+    }
     [Parameter] public bool DataZoom { get; set; }
     [Parameter] public bool Toolbox { get; set; }
     [Parameter] public List<string>? ColorPalette { get; set; }
@@ -34,6 +58,7 @@
     protected override void OnParametersSet()
     {
         var categoryAxis = new EChartAxis { Type = "category", Data = Categories };
+        ChartLabelHelper.ApplyTo(categoryAxis, LabelStrategy, Categories.Count, LabelRotate);
         var valueAxis = new EChartAxis { Type = "value" };
 
         var seriesList = Series.Select(s => new EChartSeries

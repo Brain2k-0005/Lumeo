@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo;
@@ -43,5 +44,6 @@ public record DataGridContext<TItem>(
     string? GroupBy,
     bool IsGrouped,
     Func<string, bool> IsGroupExpanded,
-    Action<string> ToggleGroupExpand
+    Action<string> ToggleGroupExpand,
+    CultureInfo Culture
 );

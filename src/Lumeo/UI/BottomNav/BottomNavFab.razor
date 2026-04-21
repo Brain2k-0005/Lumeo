@@ -1,0 +1,35 @@
+@namespace Lumeo
+
+@if (string.IsNullOrEmpty(Href))
+{
+    <button type="button" class="@CssClass" aria-label="@AriaLabel" @onclick="OnClick" @attributes="AdditionalAttributes">
+        @ChildContent
+    </button>
+}
+else
+{
+    <a href="@Href" class="@CssClass" aria-label="@AriaLabel" @attributes="AdditionalAttributes">
+        @ChildContent
+    </a>
+}
+
+@code {
+    /// <summary>Optional destination URL. When set, renders as an anchor; otherwise a button.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>Accessible label. Required because FABs are usually icon-only.</summary>
+    [Parameter, EditorRequired] public string AriaLabel { get; set; } = "Primary action";
+
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Raised above the bar so it visually "sits on top" of the nav.
+    private string CssClass => string.Join(" ", new[] {
+        "flex h-12 w-12 -translate-y-3 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg",
+        "transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-2 ring-offset-background",
+        Class
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+}

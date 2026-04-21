@@ -1,6 +1,7 @@
 @namespace Lumeo
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<button class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick">
+<button @ref="_el" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick">
     @if (IsLoading)
     {
         <Spinner Class="h-4 w-4" />
@@ -43,11 +44,28 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public string? LoadingText { get; set; }
+
+    /// <summary>
+    /// Visual feedback when the button is pressed down. Default is <see cref="ButtonPressEffect.None"/>
+    /// (no press animation — original behaviour).
+    /// </summary>
+    [Parameter] public ButtonPressEffect PressEffect { get; set; } = ButtonPressEffect.None;
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => string.Join(" ", new[] { VariantClasses, SizeClasses, BaseClasses, IsLoading ? "pointer-events-none opacity-70" : null, FullWidth ? "w-full" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private Microsoft.AspNetCore.Components.ElementReference _el;
+
+    private string CssClass => string.Join(" ", new[] { VariantClasses, SizeClasses, BaseClasses, PressEffectClass, "cursor-pointer disabled:cursor-not-allowed", IsLoading ? "pointer-events-none opacity-70" : null, FullWidth ? "w-full" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+    private string? PressEffectClass => PressEffect switch
+    {
+        ButtonPressEffect.Scale => "lumeo-press-scale",
+        ButtonPressEffect.Brightness => "lumeo-press-brightness",
+        ButtonPressEffect.Ripple => "lumeo-press-ripple",
+        _ => null
+    };
 
     private string VariantClasses => Variant switch
     {
@@ -69,6 +87,31 @@
         _ => ""
     };
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && PressEffect == ButtonPressEffect.Ripple)
+        {
+            try
+            {
+                await Interop.RippleAttachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
     public enum ButtonVariant { Default, Destructive, Outline, Secondary, Ghost, Link }
     public enum ButtonSize { Default, Sm, Lg, Icon }
+
+    /// <summary>Visual press feedback style for <see cref="Button"/>.</summary>
+    public enum ButtonPressEffect
+    {
+        /// <summary>No press animation (default).</summary>
+        None,
+        /// <summary>Button slightly scales down (~97%) while pressed.</summary>
+        Scale,
+        /// <summary>Button darkens/brightens slightly while pressed.</summary>
+        Brightness,
+        /// <summary>Click ripples outward from the cursor point (JS-interop, uses CSS mask).</summary>
+        Ripple
+    }
 }
