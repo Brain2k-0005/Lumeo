@@ -1,5 +1,27 @@
 window.themeManager = {
     init: function () {
+        // Ensure portal-rendered components (Dialog / Sheet / Drawer / Toast /
+        // Popover / Tooltip / DataGrid fullscreen) inherit Lumeo's theme tokens.
+        // These overlays sit at the document root, outside any app-level wrapper,
+        // so the theme classes MUST live on <body> — otherwise they render with
+        // the browser's default white/transparent background and look broken in
+        // dark mode. We apply this at init so consumers don't have to remember
+        // to add the classes to their index.html / _Host.cshtml manually.
+        if (document.body) {
+            if (!document.body.classList.contains('bg-background')) {
+                document.body.classList.add('bg-background');
+            }
+            if (!document.body.classList.contains('text-foreground')) {
+                document.body.classList.add('text-foreground');
+            }
+        } else {
+            // theme.js may load before <body> is parsed (head <script>). Re-run
+            // once DOM is ready so the classes still land.
+            document.addEventListener('DOMContentLoaded', function () {
+                document.body.classList.add('bg-background', 'text-foreground');
+            }, { once: true });
+        }
+
         // Dark mode
         const mode = localStorage.getItem('theme-mode') || localStorage.getItem('theme');
         if (mode === 'dark' || (!mode && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
