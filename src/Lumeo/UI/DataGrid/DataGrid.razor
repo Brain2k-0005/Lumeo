@@ -46,7 +46,8 @@
         GroupBy: GroupBy,
         IsGrouped: !string.IsNullOrEmpty(GroupBy) && _groupedSections.Count > 0,
         IsGroupExpanded: IsGroupExpanded,
-        ToggleGroupExpand: ToggleGroupExpand
+        ToggleGroupExpand: ToggleGroupExpand,
+        Culture: EffectiveCulture
     );
 }
 
@@ -93,7 +94,11 @@
                              OnError="OnError"
                              Expandable="Expandable"
                              IsExpanded="_isExpanded"
-                             OnToggleExpanded="ToggleExpanded" />
+                             OnToggleExpanded="ToggleExpanded"
+                             ShowSearch="ShowSearch"
+                             ShowColumnChooser="ShowColumnChooser"
+                             ShowExport="ShowExport"
+                             ExportFormats="ExportFormats" />
         }
 
         @if (_contextMenuVisible)
@@ -197,6 +202,26 @@
     [Parameter] public int PageSize { get; set; } = 10;
     [Parameter] public bool ShowPagination { get; set; } = true;
     [Parameter] public bool ShowToolbar { get; set; }
+
+    /// <summary>Show the global search box in the toolbar. Default true.</summary>
+    [Parameter] public bool ShowSearch { get; set; } = true;
+
+    /// <summary>Show the Columns button (visibility/reorder menu). Default true.</summary>
+    [Parameter] public bool ShowColumnChooser { get; set; } = true;
+
+    /// <summary>
+    /// Show the Export button and its format dropdown. Default true.
+    /// Set false to hide export entirely. For fine-grained per-format control see
+    /// <see cref="ExportFormats"/>.
+    /// </summary>
+    [Parameter] public bool ShowExport { get; set; } = true;
+
+    /// <summary>
+    /// Which export formats appear in the Export dropdown. Default <see cref="DataGridExportFormat.All"/>.
+    /// Set to e.g. <c>Csv | Excel</c> to hide PDF in WebAssembly where QuestPDF isn't supported.
+    /// When no flags are set (or <see cref="ShowExport"/> is false), the Export button is hidden.
+    /// </summary>
+    [Parameter] public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
     [Parameter] public int VirtualizeThreshold { get; set; } = 500;
     [Parameter] public bool Reorderable { get; set; }
     [Parameter] public bool RowReorderable { get; set; }
@@ -269,6 +294,19 @@
 
     // --- Inject ---
     [Inject] private ComponentInteropService Interop { get; set; } = default!;
+    [Inject] private Lumeo.Services.IDataGridExportService Export { get; set; } = default!;
+
+    // --- Culture ---
+    /// <summary>
+    /// CultureInfo used for cell value formatting (dates/numbers) and exports.
+    /// When null (default), falls back to <see cref="System.Globalization.CultureInfo.CurrentCulture"/>.
+    /// Useful when your app sets a different culture than the UI locale — e.g. force
+    /// <c>de-DE</c> formatting in an English UI.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    internal System.Globalization.CultureInfo EffectiveCulture =>
+        Culture ?? System.Globalization.CultureInfo.CurrentCulture;
 
     // --- Internal state ---
     private List<DataGridColumn<TItem>> _columnDefs = new();
@@ -1128,17 +1166,63 @@
     private async Task HandleExport(string format)
     {
         var items = ServerMode ? _displayedItems : _processedItems;
-        switch (format)
+        var culture = EffectiveCulture;
+        var visibleColumns = EffectiveColumns.Where(c => c.Visible).ToList();
+        var exportColumns = visibleColumns.Select(c => new Lumeo.Services.DataGridExportColumn<TItem>(
+            Header: c.Title ?? c.Field ?? c.Id,
+            Accessor: row => c.GetValue(row),
+            Format: c.Format
+        )).ToList();
+
+        try
         {
-            case "json":
-                await DataGridExportService.ExportToJsonAsync(Interop, items, EffectiveColumns.AsReadOnly());
-                break;
-            case "excel":
-                await DataGridExportService.ExportToExcelAsync(Interop, items, EffectiveColumns.AsReadOnly());
-                break;
-            default:
-                await DataGridExportService.ExportToCsvAsync(Interop, items, EffectiveColumns.AsReadOnly());
-                break;
+            switch (format)
+            {
+                case "json":
+                    // JSON uses the formatted (culture-aware) string representation per column
+                    // so consumers get a row shape that mirrors the visible grid.
+                    {
+                        var rows = items.Select(item =>
+                        {
+                            var dict = new Dictionary<string, string?>();
+                            foreach (var col in visibleColumns)
+                            {
+                                var key = col.Title ?? col.Field ?? col.Id;
+                                dict[key] = col.GetFormattedValue(item, culture);
+                            }
+                            return dict;
+                        }).ToList();
+                        var json = System.Text.Json.JsonSerializer.Serialize(rows, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                        await Export.DownloadAsync(bytes, "export.json", "application/json");
+                        break;
+                    }
+                case "excel":
+                    {
+                        var bytes = Export.ToExcel(items, exportColumns, sheetName: "Data", culture: culture);
+                        await Export.DownloadAsync(bytes, "export.xlsx",
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                        break;
+                    }
+                case "pdf":
+                    {
+                        // QuestPDF isn't supported on browser-wasm — ToPdf throws PlatformNotSupportedException
+                        // on that runtime. Consumers should restrict ExportFormats to exclude Pdf on WASM.
+                        var bytes = Export.ToPdf(items, exportColumns, title: FullscreenTitle ?? "Export", culture: culture);
+                        await Export.DownloadAsync(bytes, "export.pdf", "application/pdf");
+                        break;
+                    }
+                default:
+                    {
+                        var bytes = Export.ToCsv(items, exportColumns, culture: culture);
+                        await Export.DownloadAsync(bytes, "export.csv", "text/csv; charset=utf-8");
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex) when (OnError.HasDelegate)
+        {
+            await OnError.InvokeAsync(ex);
         }
     }
 

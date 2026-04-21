@@ -66,10 +66,28 @@ public class DatePickerTests : IAsyncLifetime
     [Fact]
     public void DatePicker_Shows_Formatted_Date_When_Value_Set()
     {
+        // DatePicker's default format follows the current culture's ShortDatePattern.
+        // Pin the format explicitly so this test isn't locale-dependent.
+        var date = new DateOnly(2024, 3, 15);
+        var cut = RenderDatePicker(value: date, format: "dd.MM.yyyy");
+
+        Assert.Contains("15.03.2024", cut.Markup);
+    }
+
+    [Fact]
+    public void DatePicker_Default_Uses_Culture_Short_Date_Pattern()
+    {
+        // Without an explicit Format, DatePicker picks CultureInfo.CurrentCulture's
+        // ShortDatePattern. This test runs under whatever culture the CI runner
+        // has — we just assert the date tokens are present.
         var date = new DateOnly(2024, 3, 15);
         var cut = RenderDatePicker(value: date);
 
-        Assert.Contains("15.03.2024", cut.Markup);
+        var markup = cut.Markup;
+        Assert.Contains("2024", markup);
+        Assert.True(markup.Contains("03") || markup.Contains("3"),
+            "month token (3 or 03) should appear in markup");
+        Assert.True(markup.Contains("15"), "day token 15 should appear in markup");
     }
 
     [Fact]

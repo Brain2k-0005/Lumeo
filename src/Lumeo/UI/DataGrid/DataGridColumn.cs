@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo;
@@ -72,11 +73,24 @@ public class DataGridColumn<TItem>
         return _cachedProperty?.GetValue(item);
     }
 
+    /// <summary>
+    /// Formats a row's value for display, using <see cref="CultureInfo.CurrentCulture"/>
+    /// so ASP.NET request localization affects dates/numbers automatically.
+    /// </summary>
     public string GetFormattedValue(TItem item)
+        => GetFormattedValue(item, CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// Formats a row's value for display using the supplied culture. Prefers
+    /// <see cref="IFormattable"/> to guarantee culture-aware output for numbers
+    /// and dates; falls back to <see cref="object.ToString"/> for other types.
+    /// </summary>
+    public string GetFormattedValue(TItem item, CultureInfo culture)
     {
         var value = GetValue(item);
         if (value is null) return "";
-        if (Format is not null) return string.Format($"{{0:{Format}}}", value);
+        if (value is IFormattable f)
+            return f.ToString(Format, culture);
         return value.ToString() ?? "";
     }
 }

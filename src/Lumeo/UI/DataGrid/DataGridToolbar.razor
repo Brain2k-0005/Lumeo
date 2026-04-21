@@ -4,14 +4,17 @@
 
 <div data-slot="datagrid-toolbar" class="@CssClass" @attributes="AdditionalAttributes">
     <div class="flex items-center gap-2 flex-1">
-        <div class="relative">
-            <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input type="text"
-                   placeholder="@L["DataGrid.SearchPlaceholder"]"
-                   class="h-8 w-56 rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                   value="@SearchText"
-                   @oninput="OnSearchInput" />
-        </div>
+        @if (ShowSearch)
+        {
+            <div class="relative">
+                <Blazicon Svg="Lucide.Search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input type="text"
+                       placeholder="@L["DataGrid.SearchPlaceholder"]"
+                       class="h-8 w-56 rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                       value="@SearchText"
+                       @oninput="OnSearchInput" />
+            </div>
+        }
 
         @if (Context is not null)
         {
@@ -68,59 +71,77 @@
         }
 
         @* Column visibility dropdown *@
-        <div class="relative">
-            <button type="button"
-                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                    @onclick="ToggleColumnPanel">
-                <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
-                <span>@L["DataGrid.Columns"]</span>
-            </button>
+        @if (ShowColumnChooser)
+        {
+            <div class="relative">
+                <button type="button"
+                        class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                        @onclick="ToggleColumnPanel">
+                    <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
+                    <span>@L["DataGrid.Columns"]</span>
+                </button>
 
-            @if (_columnPanelOpen && EffectiveColumns is not null)
-            {
-                <div class="absolute right-0 top-full mt-1 z-50">
-                    <DataGridColumnVisibility TItem="TItem"
-                                              Columns="EffectiveColumns"
-                                              OnColumnToggle="OnColumnToggle"
-                                              OnColumnReorder="OnColumnReorder" />
-                </div>
-            }
-        </div>
+                @if (_columnPanelOpen && EffectiveColumns is not null)
+                {
+                    <div class="absolute right-0 top-full mt-1 z-50">
+                        <DataGridColumnVisibility TItem="TItem"
+                                                  Columns="EffectiveColumns"
+                                                  OnColumnToggle="OnColumnToggle"
+                                                  OnColumnReorder="OnColumnReorder" />
+                    </div>
+                }
+            </div>
+        }
 
-        @* Export dropdown *@
-        <div class="relative">
-            <button type="button"
-                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                    @onclick="ToggleExportMenu">
-                <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
-                <span>@L["DataGrid.Export"]</span>
-                <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
-            </button>
+        @* Export dropdown — hidden when ShowExport=false OR ExportFormats has no flags set. *@
+        @if (ShowExport && ExportFormats != DataGridExportFormat.None)
+        {
+            <div class="relative">
+                <button type="button"
+                        class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                        @onclick="ToggleExportMenu">
+                    <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
+                    <span>@L["DataGrid.Export"]</span>
+                    <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
+                </button>
 
-            @if (_exportMenuOpen)
-            {
-                <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
-                    <button type="button"
-                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                            @onclick="@(() => Export("csv"))">
-                        <Blazicon Svg="Lucide.FileText" class="h-4 w-4" />
-                        <span>CSV</span>
-                    </button>
-                    <button type="button"
-                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                            @onclick="@(() => Export("excel"))">
-                        <Blazicon Svg="Lucide.Sheet" class="h-4 w-4" />
-                        <span>Excel</span>
-                    </button>
-                    <button type="button"
-                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                            @onclick="@(() => Export("json"))">
-                        <Blazicon Svg="Lucide.Braces" class="h-4 w-4" />
-                        <span>JSON</span>
-                    </button>
-                </div>
-            }
-        </div>
+                @if (_exportMenuOpen)
+                {
+                    <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
+                        @if (ExportFormats.HasFlag(DataGridExportFormat.Csv))
+                        {
+                            <button type="button"
+                                    data-export-format="csv"
+                                    class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                                    @onclick="@(() => Export("csv"))">
+                                <Blazicon Svg="Lucide.FileText" class="h-4 w-4" />
+                                <span>CSV</span>
+                            </button>
+                        }
+                        @if (ExportFormats.HasFlag(DataGridExportFormat.Excel))
+                        {
+                            <button type="button"
+                                    data-export-format="excel"
+                                    class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                                    @onclick="@(() => Export("excel"))">
+                                <Blazicon Svg="Lucide.Sheet" class="h-4 w-4" />
+                                <span>Excel</span>
+                            </button>
+                        }
+                        @if (ExportFormats.HasFlag(DataGridExportFormat.Pdf))
+                        {
+                            <button type="button"
+                                    data-export-format="pdf"
+                                    class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                                    @onclick="@(() => Export("pdf"))">
+                                <Blazicon Svg="Lucide.FileDown" class="h-4 w-4" />
+                                <span>PDF</span>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
 
         @* Layouts dropdown *@
         @if (EnableLayoutPersistence)
@@ -287,6 +308,19 @@
     [Parameter] public bool Expandable { get; set; }
     [Parameter] public bool IsExpanded { get; set; }
     [Parameter] public EventCallback OnToggleExpanded { get; set; }
+
+    /// <summary>Show the global search box. Default true.</summary>
+    [Parameter] public bool ShowSearch { get; set; } = true;
+
+    /// <summary>Show the Columns (visibility/reorder) button. Default true.</summary>
+    [Parameter] public bool ShowColumnChooser { get; set; } = true;
+
+    /// <summary>Show the Export dropdown. Default true. Combined with <see cref="ExportFormats"/>.</summary>
+    [Parameter] public bool ShowExport { get; set; } = true;
+
+    /// <summary>Which export formats to include in the dropdown. Default <see cref="DataGridExportFormat.All"/>.</summary>
+    [Parameter] public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

@@ -1,5 +1,27 @@
 namespace Lumeo;
 
+/// <summary>
+/// Flags enum controlling which export formats appear in the <see cref="DataGrid{TItem}"/>
+/// toolbar's Export dropdown. Defaults to <see cref="All"/> so existing grids keep
+/// listing every format. Set to a subset (e.g. <c>Csv | Excel</c>) to hide individual
+/// formats — useful in WebAssembly where QuestPDF's PDF export throws
+/// <see cref="System.PlatformNotSupportedException"/>.
+/// </summary>
+[Flags]
+public enum DataGridExportFormat
+{
+    /// <summary>No formats available — the Export button is hidden entirely.</summary>
+    None = 0,
+    /// <summary>Comma-separated values.</summary>
+    Csv = 1 << 0,
+    /// <summary>Excel spreadsheet (currently emitted as CSV with BOM).</summary>
+    Excel = 1 << 1,
+    /// <summary>Portable Document Format (requires host platform support).</summary>
+    Pdf = 1 << 2,
+    /// <summary>All supported export formats.</summary>
+    All = Csv | Excel | Pdf,
+}
+
 public record SortDescriptor(string Field, SortDirection Direction);
 
 public record FilterDescriptor(

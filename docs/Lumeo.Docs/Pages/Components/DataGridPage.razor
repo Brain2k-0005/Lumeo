@@ -36,6 +36,45 @@
     </ComponentDemo>
 
     <div class="space-y-3">
+        <Heading Id="toolbar-customization" Level="2" Class="scroll-mt-20">Toolbar customization</Heading>
+        <Text Size="sm" Color="muted">
+            The toolbar is composed of independent slots — Search, Columns, Export, and Expand — each togglable with its own parameter. Defaults preserve the full toolbar; opt-out by setting any of <code>ShowSearch</code>, <code>ShowColumnChooser</code>, <code>ShowExport</code>, or <code>Expandable</code> to <code>false</code>. For fine-grained control over which file formats appear in the Export dropdown, use the <code>ExportFormats</code> flags enum. This is especially useful in Blazor WebAssembly, where PDF generators like QuestPDF throw <code>PlatformNotSupportedException</code> — hide PDF by setting <code>ExportFormats="DataGridExportFormat.Csv | DataGridExportFormat.Excel"</code>.
+        </Text>
+    </div>
+
+    <ComponentDemo Title="Minimal toolbar (search only)" Description="Hide the Columns and Export buttons to give users a cleaner toolbar with just global search." Code="@_toolbarMinimalCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
+                  ShowToolbar="true"
+                  ShowColumnChooser="false"
+                  ShowExport="false">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Export-only toolbar" Description="Hide the search input and Columns button to keep only the Export dropdown — useful for read-only, report-style grids." Code="@_toolbarExportOnlyCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
+                  ShowToolbar="true"
+                  ShowSearch="false"
+                  ShowColumnChooser="false">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="CSV-only export (WASM-friendly)" Description="Restrict the Export dropdown to CSV. Use this pattern in Blazor WebAssembly where PDF export libraries aren't supported." Code="@_toolbarCsvOnlyCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
+                  ShowToolbar="true"
+                  ExportFormats="DataGridExportFormat.Csv">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <div class="space-y-3">
         <Heading Id="filtering-extensibility" Level="2" Class="scroll-mt-20">Filtering Extensibility</Heading>
         <Text Size="sm" Color="muted">
             Column filters pick sensible defaults from <code>FilterType</code>, but two extension points let you customize the experience per-column without forking the grid.
@@ -601,6 +640,10 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">PageSize</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">10</td><td class="px-4 py-2 text-muted-foreground">Number of rows per page.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowPagination</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Show pagination controls.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowToolbar</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show toolbar with search, export, and column visibility.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowSearch</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Show the global search box in the toolbar. Requires <code>ShowToolbar</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowColumnChooser</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Show the Columns (visibility/reorder) button in the toolbar.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowExport</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Show the Export button and its format dropdown. Set <code>false</code> to hide export entirely; for per-format control see <code>ExportFormats</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ExportFormats</td><td class="px-4 py-2 font-mono text-xs">DataGridExportFormat</td><td class="px-4 py-2 text-xs">All</td><td class="px-4 py-2 text-muted-foreground">Flags enum controlling which formats appear in the Export dropdown. Combine with bitwise OR, e.g. <code>DataGridExportFormat.Csv | DataGridExportFormat.Excel</code>. When no flags are set the Export button is hidden.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">SelectionMode</td><td class="px-4 py-2 font-mono text-xs">DataGridSelectionMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Row selection: None, Single, or Multiple.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditMode</td><td class="px-4 py-2 font-mono text-xs">DataGridEditMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Inline editing: None, Cell, or Row.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Striped</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Alternate row background colors.</td></tr>
@@ -997,6 +1040,32 @@
                        Filterable=""true"" FilterType=""DataGridFilterType.Number"" Format=""C0"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
                        Filterable=""true"" />
+</DataGrid>";
+
+    private string _toolbarMinimalCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          ShowToolbar=""true""
+          ShowColumnChooser=""false""
+          ShowExport=""false"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
+</DataGrid>";
+
+    private string _toolbarExportOnlyCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          ShowToolbar=""true""
+          ShowSearch=""false""
+          ShowColumnChooser=""false"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
+</DataGrid>";
+
+    private string _toolbarCsvOnlyCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          ShowToolbar=""true""
+          ExportFormats=""DataGridExportFormat.Csv"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
 </DataGrid>";
 
     private string _multiSelectCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""

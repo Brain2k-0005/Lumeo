@@ -1,0 +1,152 @@
+@page "/docs/culture"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Culture &amp; Localized Formatting — Lumeo</PageTitle>
+
+<PageHeader Title="Culture &amp; Localized Formatting"
+            Description="Dates, numbers, currency and exports respect CultureInfo.CurrentCulture out of the box. Override per-component when you need to." />
+
+<Stack Gap="10">
+
+    <!-- How it works -->
+    <Stack>
+        <Heading Level="2">How it works</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Every Lumeo component that renders a date or a number (DataGrid cells,
+            DatePicker, DateTimePicker, NumberInput, Slider, Statistic, DataGrid exports …)
+            formats its output with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CultureInfo.CurrentCulture</code>
+            by default. That means ASP.NET's request-localization middleware drives
+            the look of dates and numbers with zero extra wiring — a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">de-DE</code>
+            user sees <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">15.03.2026</code>
+            and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">1.234,56&nbsp;€</code>,
+            an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">en-US</code> user sees
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">3/15/2026</code> and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">$1,234.56</code>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- ASP.NET wiring -->
+    <Stack>
+        <Heading Level="2">Wiring ASP.NET request localization</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            In <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Program.cs</code>,
+            configure the supported cultures and add the middleware — this is the standard
+            ASP.NET Core pattern and nothing in Lumeo is required beyond it:
+        </Lumeo.Text>
+
+        <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@_programSnippet</Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Per-component override -->
+    <Stack>
+        <Heading Level="2">Overriding per component</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Every component listed below exposes a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Culture</code>
+            parameter that wins over <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CurrentCulture</code>.
+            This is useful when the app locale and the UI locale differ — e.g. render a German-formatted
+            KPI inside an English admin console.
+        </Lumeo.Text>
+
+        <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@_overrideSnippet</Stack>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Components honouring the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Culture</code>
+            parameter today: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataGrid</code>,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DatePicker</code>,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DateTimePicker</code>,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">NumberInput</code>,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Slider</code>,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Statistic</code>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Exports -->
+    <Stack>
+        <Heading Level="2">Culture in exports</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IDataGridExportService.ToCsv / ToExcel / ToPdf</code>
+            all accept an optional <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CultureInfo</code>.
+            The DataGrid passes its effective culture automatically, so the downloaded
+            CSV, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.xlsx</code>,
+            and PDF match what the user sees on screen.
+        </Lumeo.Text>
+
+        <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@_exportSnippet</Stack>
+
+        <Alert Variant="Alert.AlertVariant.Info">
+            <Lumeo.Text Size="sm">
+                ClosedXML writes native date / number cells with a format string — Excel
+                then renders them using the workbook locale when the file is opened.
+                Lumeo picks sensible defaults based on the supplied culture's
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShortDatePattern</code>
+                and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShortTimePattern</code>.
+            </Lumeo.Text>
+        </Alert>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Formatting vs text -->
+    <Stack>
+        <Heading Level="2">Formatting vs. translated UI text</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Culture</strong> controls how <em>values</em> render (dates, numbers,
+            currency). <strong>Localization</strong> controls how <em>UI chrome text</em>
+            renders (buttons, placeholders, empty-state copy). They are two separate axes —
+            you can ship an app with English UI that still formats numbers as <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">1.234,56</code>
+            for a German user.
+        </Lumeo.Text>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            UI text translation lives in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ILumeoLocalizer</code>
+            (registered by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AddLumeo()</code>).
+            Lumeo ships English and German strings out of the box — add or override any key via the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AddLumeo(opts =&gt; …)</code> overload.
+        </Lumeo.Text>
+    </Stack>
+
+</Stack>
+
+@code {
+    private const string _programSnippet = @"builder.Services.Configure<RequestLocalizationOptions>(opts =>
+{
+    var supported = new[] { ""en-US"", ""de-DE"", ""fr-FR"" };
+    opts.SetDefaultCulture(supported[0])
+        .AddSupportedCultures(supported)
+        .AddSupportedUICultures(supported);
+});
+
+var app = builder.Build();
+app.UseRequestLocalization();";
+
+    private const string _overrideSnippet = @"@using System.Globalization
+
+<DataGrid TItem=""Invoice""
+          Items=""_invoices""
+          Columns=""_columns""
+          Culture=""@_de"" />
+
+<DatePicker @bind-Value=""_date"" Culture=""@_de"" />
+
+<NumberInput @bind-Value=""_amount"" Culture=""@_de"" />
+
+<Statistic Title=""Revenue"" Value=""1234.56"" Precision=""2"" Culture=""@_de"" />
+
+@code {
+    private readonly CultureInfo _de = CultureInfo.GetCultureInfo(""de-DE"");
+}";
+
+    private const string _exportSnippet = @"@inject IDataGridExportService Export
+
+var bytes = Export.ToExcel(items, exportColumns,
+    sheetName: ""Invoices"",
+    culture: CultureInfo.GetCultureInfo(""de-DE""));
+
+await Export.DownloadAsync(bytes, ""invoices.xlsx"",
+    ""application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"");";
+}
