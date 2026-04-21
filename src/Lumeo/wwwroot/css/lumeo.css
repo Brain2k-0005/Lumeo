@@ -1300,9 +1300,65 @@ input[type="range"]::-moz-range-thumb {
   0%, 100% { opacity: 0.3; }
   50%      { opacity: 0.7; }
 }
+
+/* Bars — grow/shrink in height from the bottom, keeping the opacity pulse. */
+.lumeo-chart-skel-svg [data-skel-shape="bar"] {
+  transform-origin: center bottom;
+  transform-box: fill-box;
+  animation:
+    lumeo-chart-skel-pulse 1.4s ease-in-out infinite,
+    lumeo-chart-skel-bar-grow 1.8s ease-in-out infinite;
+}
+@keyframes lumeo-chart-skel-bar-grow {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+
+/* Line / Area — stroke 'draws itself' across the path with stroke-dasharray.
+   We use a generous dasharray so the effect reads regardless of exact path length. */
+.lumeo-chart-skel-svg [data-skel-shape="line"] {
+  stroke-dasharray: 220;
+  animation: lumeo-chart-skel-line-draw 2.4s ease-in-out infinite;
+  opacity: 0.6;
+}
+@keyframes lumeo-chart-skel-line-draw {
+  0%       { stroke-dashoffset: 220; opacity: 0.3; }
+  40%      { stroke-dashoffset: 0;   opacity: 0.7; }
+  60%      { stroke-dashoffset: 0;   opacity: 0.7; }
+  100%     { stroke-dashoffset: -220; opacity: 0.3; }
+}
+
+/* Pie ring — stroke fills around the circle like a circular progress. */
+.lumeo-chart-skel-svg [data-skel-shape="pie-ring"] {
+  stroke-dasharray: 188.5; /* 2π * r (r=30) ≈ 188.5 */
+  transform-origin: 50px 50px;
+  transform-box: view-box;
+  animation: lumeo-chart-skel-pie-fill 2.2s ease-in-out infinite;
+  opacity: 0.6;
+}
+@keyframes lumeo-chart-skel-pie-fill {
+  0%   { stroke-dashoffset: 188.5; opacity: 0.35; transform: rotate(-90deg); }
+  50%  { stroke-dashoffset: 47;    opacity: 0.75; transform: rotate(180deg); }
+  100% { stroke-dashoffset: 188.5; opacity: 0.35; transform: rotate(270deg); }
+}
+
+/* Scatter dots — different pace, slight travel to feel alive. */
+.lumeo-chart-skel-svg [data-skel-shape="dot"] {
+  animation:
+    lumeo-chart-skel-pulse 1.4s ease-in-out infinite,
+    lumeo-chart-skel-dot-breath 2s ease-in-out infinite;
+}
+@keyframes lumeo-chart-skel-dot-breath {
+  0%, 100% { transform: scale(0.8); }
+  50%      { transform: scale(1.15); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lumeo-chart-skel-shape {
+  .lumeo-chart-skel-shape,
+  .lumeo-chart-skel-svg [data-skel-shape] {
     animation: none !important;
     opacity: 0.4 !important;
+    transform: none !important;
+    stroke-dashoffset: 0 !important;
   }
 }
