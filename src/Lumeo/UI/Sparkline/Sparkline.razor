@@ -1,0 +1,136 @@
+@namespace Lumeo
+
+<svg viewBox="0 0 100 @Height"
+     preserveAspectRatio="none"
+     class="@CssClass"
+     style="@InlineStyle"
+     aria-label="@AriaLabel"
+     role="img"
+     @attributes="AdditionalAttributes">
+    @((MarkupString)_shapesHtml)
+</svg>
+
+@code {
+    public enum SparkType { Line, Area, Bars }
+
+    [Parameter] public IEnumerable<double>? Values { get; set; }
+    [Parameter] public int Height { get; set; } = 32;
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public SparkType Type { get; set; } = SparkType.Line;
+    [Parameter] public bool ShowArea { get; set; }
+    [Parameter] public bool ShowLast { get; set; }
+    [Parameter] public double StrokeWidth { get; set; } = 1.5;
+    [Parameter] public string? AriaLabel { get; set; } = "Trend";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _shapesHtml = string.Empty;
+
+    private string CssClass => $"inline-block w-full align-middle {Class}".Trim();
+
+    private string InlineStyle
+    {
+        get
+        {
+            var style = $"height: {Height}px;";
+            if (!string.IsNullOrEmpty(Color)) style += $" color: {Color};";
+            return style;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        _shapesHtml = BuildShapes();
+    }
+
+    private string BuildShapes()
+    {
+        var list = Values?.ToList();
+        if (list is null || list.Count == 0)
+        {
+            // Baseline rect so the component has a visible footprint.
+            return $"<rect x=\"0\" y=\"{F(Height / 2.0 - 0.5)}\" width=\"100\" height=\"1\" fill=\"var(--color-muted-foreground, currentColor)\" opacity=\"0.35\" />";
+        }
+
+        var color = string.IsNullOrEmpty(Color) ? "var(--color-primary, currentColor)" : Color;
+        var min = list.Min();
+        var max = list.Max();
+        var range = max - min;
+        const double pad = 2.0;
+        var usable = Height - (pad * 2);
+
+        double ScaleY(double v)
+        {
+            if (range == 0) return Height / 2.0;
+            var norm = (v - min) / range;
+            return Height - pad - (norm * usable);
+        }
+
+        var sb = new System.Text.StringBuilder();
+
+        if (Type == SparkType.Bars)
+        {
+            var n = list.Count;
+            var slot = 100.0 / n;
+            var barWidth = Math.Max(0.5, slot - 1);
+            var zeroY = Height - pad;
+            for (int i = 0; i < n; i++)
+            {
+                var x = i * slot + (slot - barWidth) / 2.0;
+                var y = ScaleY(list[i]);
+                var h = Math.Max(0.5, zeroY - y);
+                sb.Append($"<rect x=\"{F(x)}\" y=\"{F(y)}\" width=\"{F(barWidth)}\" height=\"{F(h)}\" fill=\"{color}\" />");
+            }
+        }
+        else
+        {
+            var n = list.Count;
+            var pts = new System.Text.StringBuilder();
+            for (int i = 0; i < n; i++)
+            {
+                var x = n == 1 ? 50.0 : (double)i / (n - 1) * 100.0;
+                var y = ScaleY(list[i]);
+                if (i > 0) pts.Append(' ');
+                pts.Append($"{F(x)},{F(y)}");
+            }
+            var pointsStr = pts.ToString();
+
+            if (Type == SparkType.Area || ShowArea)
+            {
+                var lastX = n == 1 ? 50.0 : 100.0;
+                var firstX = n == 1 ? 50.0 : 0.0;
+                var polyPoints = $"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}";
+                sb.Append($"<polygon points=\"{polyPoints}\" fill=\"{color}\" fill-opacity=\"0.2\" stroke=\"none\" />");
+                sb.Append($"<polyline points=\"{pointsStr}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{F(StrokeWidth)}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" vector-effect=\"non-scaling-stroke\" />");
+            }
+            else
+            {
+                sb.Append($"<polyline points=\"{pointsStr}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{F(StrokeWidth)}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" vector-effect=\"non-scaling-stroke\" />");
+            }
+        }
+
+        if (ShowLast && list.Count > 0)
+        {
+            double lx, ly;
+            if (Type == SparkType.Bars)
+            {
+                var n = list.Count;
+                var slot = 100.0 / n;
+                lx = (n - 1) * slot + slot / 2.0;
+                ly = ScaleY(list[^1]);
+            }
+            else
+            {
+                var n = list.Count;
+                lx = n == 1 ? 50.0 : 100.0;
+                ly = ScaleY(list[^1]);
+            }
+            var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;
+            sb.Append($"<circle cx=\"{F(lx)}\" cy=\"{F(ly)}\" r=\"{F(r)}\" fill=\"{color}\" />");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

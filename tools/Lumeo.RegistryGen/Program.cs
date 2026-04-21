@@ -48,6 +48,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Image"] = "Data Display", ["ImageCompare"] = "Data Display", ["TreeView"] = "Data Display",
     ["TreeSelect"] = "Data Display", ["QRCode"] = "Data Display", ["Watermark"] = "Data Display",
     ["List"] = "Data Display", ["Scheduler"] = "Data Display", ["RichTextEditor"] = "Data Display",
+    ["Sparkline"] = "Data Display",
     // Feedback
     ["Toast"] = "Feedback", ["Alert"] = "Feedback", ["Progress"] = "Feedback",
     ["Spinner"] = "Feedback", ["Skeleton"] = "Feedback", ["EmptyState"] = "Feedback",
@@ -185,6 +186,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Sortable"] = "Drag-and-drop reorderable list.",
     ["Spacer"] = "Flex-grow spacer that pushes siblings apart.",
     ["SparkCard"] = "Small dashboard card with an inline sparkline chart.",
+    ["Sparkline"] = "Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.",
     ["Sparkles"] = "Decorative sparkle particle animation.",
     ["SpeedDial"] = "Floating action button that fans out sub-actions.",
     ["Spinner"] = "Indeterminate loading spinner with size variants.",

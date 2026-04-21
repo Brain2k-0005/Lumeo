@@ -20,14 +20,22 @@
     [Parameter] public string LabelPosition { get; set; } = "top";
     [Parameter] public string? LabelFormat { get; set; }
 
-    /// <summary>When true (default), every category-axis label is displayed — fixes ECharts' default
-    /// behaviour of auto-hiding overlapping labels which makes alternating labels disappear.
-    /// Set false to let ECharts auto-thin labels when they would overlap.</summary>
-    [Parameter] public bool ShowAllLabels { get; set; } = true;
+    /// <summary>Forces every category-axis label to display.
+    /// <list type="bullet">
+    ///   <item><c>null</c> (default): smart — shows every label when there are ≤ 10 categories, otherwise lets ECharts auto-thin to avoid overlap.</item>
+    ///   <item><c>true</c>: always show every label (may overlap on dense datasets — combine with <see cref="LabelRotate"/>).</item>
+    ///   <item><c>false</c>: always let ECharts auto-thin labels.</item>
+    /// </list>
+    /// </summary>
+    [Parameter] public bool? ShowAllLabels { get; set; }
 
     /// <summary>Rotation of category-axis labels in degrees (e.g. -30, -45). Useful when
     /// <see cref="ShowAllLabels"/> is true and labels are too long to fit horizontally.</summary>
     [Parameter] public int? LabelRotate { get; set; }
+
+    /// <summary>Threshold used by the smart default of <see cref="ShowAllLabels"/>.
+    /// Datasets with more categories than this fall back to ECharts auto-thinning.</summary>
+    [Parameter] public int DenseLabelThreshold { get; set; } = 10;
     [Parameter] public bool DataZoom { get; set; }
     [Parameter] public bool Toolbox { get; set; }
     [Parameter] public List<string>? ColorPalette { get; set; }
@@ -43,11 +51,14 @@
     protected override void OnParametersSet()
     {
         var categoryAxis = new EChartAxis { Type = "category", Data = Categories };
-        if (ShowAllLabels || LabelRotate.HasValue)
+        // Smart default: show every label when there are few categories, otherwise
+        // fall back to ECharts auto-thinning. Explicit true/false overrides the smart default.
+        var showAll = ShowAllLabels ?? (Categories.Count <= DenseLabelThreshold);
+        if (showAll || LabelRotate.HasValue)
         {
             categoryAxis.AxisLabel = new EChartAxisLabel
             {
-                Interval = ShowAllLabels ? 0 : null,
+                Interval = showAll ? 0 : null,
                 Rotate = LabelRotate
             };
         }
