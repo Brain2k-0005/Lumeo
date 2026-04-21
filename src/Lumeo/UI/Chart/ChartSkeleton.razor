@@ -5,13 +5,19 @@
     <svg class="lumeo-chart-skel-svg w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
         @if (Kind == ChartSkeletonKind.Bars)
         {
+            @* SVG-native animate elements — guaranteed to animate height/y across browsers. *@
             @for (int i = 0; i < BarHeights.Length; i++)
             {
                 var h = BarHeights[i];
+                var minH = h * 0.35;
                 var x = F(4 + i * (BarWidth + 2));
-                var y = F(100 - h - 4);
                 var delay = F(i * 0.12) + "s";
-                <rect class="lumeo-chart-skel-shape" data-skel-shape="bar" x="@x" y="@y" width="@F(BarWidth)" height="@F(h)" rx="1.2" ry="1.2" fill="@MutedFill" style="animation-delay: @delay, @delay;" />
+                var hValues = $"{F(h)};{F(minH)};{F(h)}";
+                var yValues = $"{F(100 - h - 4)};{F(100 - minH - 4)};{F(100 - h - 4)}";
+                <rect class="lumeo-chart-skel-shape" data-skel-shape="bar" x="@x" y="@F(100 - h - 4)" width="@F(BarWidth)" height="@F(h)" rx="1.2" ry="1.2" fill="@MutedFill" style="animation-delay: @delay;">
+                    <animate attributeName="height" values="@hValues" dur="1.6s" begin="@delay" repeatCount="indefinite" />
+                    <animate attributeName="y"      values="@yValues" dur="1.6s" begin="@delay" repeatCount="indefinite" />
+                </rect>
             }
         }
         else if (Kind == ChartSkeletonKind.Line || Kind == ChartSkeletonKind.Area)
@@ -20,11 +26,18 @@
             {
                 <polygon class="lumeo-chart-skel-shape" points="@(LinePoints + " 98,96 2,96")" fill="@SoftFill" />
             }
-            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LinePoints" fill="none" stroke="@MutedFill" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LinePoints" fill="none" stroke="@MutedFill" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
         }
         else if (Kind == ChartSkeletonKind.Pie)
         {
-            <circle class="lumeo-chart-skel-shape" data-skel-shape="pie-ring" cx="50" cy="50" r="30" fill="none" stroke="@MutedFill" stroke-width="14" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+            @* Real 4-slice pie — each slice gets a staggered scale+opacity pulse
+               so the whole pie reads as "slices shifting" rather than a static ring. *@
+            @for (int i = 0; i < PieSlices.Length; i++)
+            {
+                var d = PieSlices[i];
+                var delay = F(i * 0.18) + "s";
+                <path class="lumeo-chart-skel-shape" data-skel-shape="pie-slice" d="@d" fill="@MutedFill" style="animation-delay: @delay, @delay; transform-origin: 50px 50px;" />
+            }
         }
         else if (Kind == ChartSkeletonKind.Scatter)
         {
@@ -79,6 +92,17 @@
     private const double GridCellW = (100 - 4 * 2 - 1.2 * (GridCols - 1)) / GridCols;
     private const double GridCellH = (100 - 4 * 2 - 1.2 * (GridRows - 1)) / GridRows;
     private static readonly double[] GridOpacities = { 0.4,0.7,0.5,0.9,0.55,0.8,0.45,0.65,0.35,0.75,0.6,0.5,0.85,0.4,0.7,0.55,0.95,0.45,0.6,0.8,0.5,0.7,0.4,0.65,0.55 };
+
+    // Four pie slices covering 360° — 90° each. Pre-computed SVG arc paths
+    // centered at (50, 50) with radius 32. Each slice is a filled wedge.
+    // Arc endpoints at angles 0°, 90°, 180°, 270° = (82,50) (50,82) (18,50) (50,18).
+    private static readonly string[] PieSlices =
+    {
+        "M 50 50 L 82 50 A 32 32 0 0 1 50 82 Z",
+        "M 50 50 L 50 82 A 32 32 0 0 1 18 50 Z",
+        "M 50 50 L 18 50 A 32 32 0 0 1 50 18 Z",
+        "M 50 50 L 50 18 A 32 32 0 0 1 82 50 Z",
+    };
 
     // Stable pseudo-random dots for Scatter — seeded so renders are deterministic.
     private static readonly (double X, double Y, double R)[] ScatterDots =
