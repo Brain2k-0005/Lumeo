@@ -20,3 +20,13 @@ public enum ChartSkeletonKind
     /// <summary>Rounded rect + centered ring — fallback for Radar/Sankey/Tree/Graph/Geo/etc.</summary>
     Generic,
 }
+
+/// <summary>How the loading state is presented.
+/// Phantom = render the real chart with synthesized data in a muted palette and morph
+/// to real data via ECharts' option-change animation (default — feels continuous).
+/// Silhouette = fall back to the legacy SVG skeleton overlay.</summary>
+public enum ChartSkeletonStyle
+{
+    Phantom,
+    Silhouette,
+}
