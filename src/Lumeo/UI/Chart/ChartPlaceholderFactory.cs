@@ -1,15 +1,12 @@
-using System.Text.Json;
-
 namespace Lumeo;
 
 /// <summary>
 /// Builds "phantom" ECharts options — a real chart rendered with synthesized placeholder data
-/// in a muted palette. When the consumer flips <c>IsLoading</c> off, ECharts animates the option
-/// swap from phantom → real, giving a continuous morph instead of a skeleton → chart snap.
-///
-/// The placeholder palette is intentionally flat grayscale so the handoff reads as
-/// "data just arrived" rather than "new chart type appeared". All geometry (axes, legend slots,
-/// grid padding) matches the real chart's layout so the swap doesn't shift pixels.
+/// in a muted palette. Each <c>Create(kind, tick)</c> call produces a fresh random variation
+/// seeded on <c>tick</c>, so Chart.razor can cycle through phantom frames every ~1.5s while
+/// loading — the effect reads as "incoming data" rather than a static placeholder.
+/// When <c>IsLoading</c> flips off, Chart.razor swaps to the real option with
+/// <c>notMerge=true</c> so the muted palette doesn't bleed into real colors.
 /// </summary>
 internal static class ChartPlaceholderFactory
 {
@@ -33,22 +30,25 @@ internal static class ChartPlaceholderFactory
     private static readonly List<string> PieSliceNames =
         new() { "·", "·", "·", "·" };
 
-    public static EChartOption Create(ChartSkeletonKind kind) => kind switch
+    public static EChartOption Create(ChartSkeletonKind kind, int tick = 0)
     {
-        ChartSkeletonKind.Bars => BuildBars(),
-        ChartSkeletonKind.Line => BuildLine(false),
-        ChartSkeletonKind.Area => BuildLine(true),
-        ChartSkeletonKind.Pie => BuildPie(),
-        ChartSkeletonKind.Scatter => BuildScatter(),
-        ChartSkeletonKind.Grid => BuildHeatmap(),
-        _ => BuildBars()
-    };
+        var rng = new Random(unchecked(kind.GetHashCode() * 397 ^ tick));
+        return kind switch
+        {
+            ChartSkeletonKind.Bars => BuildBars(rng),
+            ChartSkeletonKind.Line => BuildLine(rng, filled: false),
+            ChartSkeletonKind.Area => BuildLine(rng, filled: true),
+            ChartSkeletonKind.Pie => BuildPie(rng),
+            ChartSkeletonKind.Scatter => BuildScatter(rng),
+            ChartSkeletonKind.Grid => BuildHeatmap(rng),
+            _ => BuildBars(rng)
+        };
+    }
 
-    private static EChartOption BuildBars()
+    private static EChartOption BuildBars(Random rng)
     {
-        // 8 staggered heights — same silhouette as the SVG skeleton so the morph from
-        // phantom to real feels like the bars just "settled" onto actual values.
-        var values = new List<double> { 38, 62, 28, 75, 45, 88, 52, 68 };
+        var values = new List<double>(8);
+        for (int i = 0; i < 8; i++) values.Add(20 + rng.Next(80));
 
         return new EChartOption
         {
@@ -71,12 +71,24 @@ internal static class ChartPlaceholderFactory
         };
     }
 
-    private static EChartOption BuildLine(bool filled)
+    private static EChartOption BuildLine(Random rng, bool filled)
     {
-        // 3 gently curved series — matches the "multi-line skeleton" silhouette.
-        var s1 = new List<double> { 30, 38, 34, 48, 55, 62, 58, 72, 78, 85, 80, 92 };
-        var s2 = new List<double> { 22, 28, 32, 38, 42, 48, 52, 58, 62, 68, 72, 78 };
-        var s3 = new List<double> { 15, 18, 22, 28, 32, 36, 40, 44, 48, 52, 56, 60 };
+        // Each series is a gentle random-walk so consecutive phantom frames morph smoothly.
+        List<double> Walk(double start, double drift, double noise)
+        {
+            var result = new List<double>(12);
+            double value = start;
+            for (int i = 0; i < 12; i++)
+            {
+                value += drift + (rng.NextDouble() - 0.5) * noise;
+                result.Add(Math.Round(Math.Clamp(value, 5, 95), 1));
+            }
+            return result;
+        }
+
+        var s1 = Walk(30, 5, 12);
+        var s2 = Walk(22, 4, 10);
+        var s3 = Walk(15, 3, 8);
 
         EChartSeries Line(string name, List<double> data) => new()
         {
@@ -100,15 +112,18 @@ internal static class ChartPlaceholderFactory
         };
     }
 
-    private static EChartOption BuildPie()
+    private static EChartOption BuildPie(Random rng)
     {
-        var data = new List<EChartPieData>
+        // Fresh random weights each tick — slices visibly redistribute between frames.
+        var weights = new double[4];
+        double total = 0;
+        for (int i = 0; i < 4; i++) { weights[i] = 10 + rng.NextDouble() * 40; total += weights[i]; }
+
+        var data = new List<EChartPieData>();
+        for (int i = 0; i < 4; i++)
         {
-            new() { Name = PieSliceNames[0], Value = 38 },
-            new() { Name = PieSliceNames[1], Value = 28 },
-            new() { Name = PieSliceNames[2], Value = 20 },
-            new() { Name = PieSliceNames[3], Value = 14 },
-        };
+            data.Add(new EChartPieData { Name = PieSliceNames[i], Value = Math.Round(weights[i] / total * 100, 1) });
+        }
 
         return new EChartOption
         {
@@ -130,17 +145,13 @@ internal static class ChartPlaceholderFactory
         };
     }
 
-    private static EChartOption BuildScatter()
+    private static EChartOption BuildScatter(Random rng)
     {
-        // 20 seeded positions — stable across renders so the morph to real data is smooth.
-        var pts = new List<double[]>
+        var pts = new List<double[]>(20);
+        for (int i = 0; i < 20; i++)
         {
-            new[] { 12.0, 44 }, new[] { 18.0, 38 }, new[] { 22.0, 52 }, new[] { 28.0, 48 },
-            new[] { 33.0, 60 }, new[] { 38.0, 55 }, new[] { 44.0, 68 }, new[] { 50.0, 62 },
-            new[] { 55.0, 74 }, new[] { 60.0, 70 }, new[] { 66.0, 82 }, new[] { 72.0, 78 },
-            new[] { 77.0, 85 }, new[] { 82.0, 80 }, new[] { 88.0, 92 }, new[] { 15.0, 62 },
-            new[] { 30.0, 40 }, new[] { 48.0, 50 }, new[] { 65.0, 58 }, new[] { 80.0, 68 },
-        };
+            pts.Add(new[] { Math.Round(5 + rng.NextDouble() * 90, 1), Math.Round(10 + rng.NextDouble() * 85, 1) });
+        }
 
         return new EChartOption
         {
@@ -156,17 +167,14 @@ internal static class ChartPlaceholderFactory
         };
     }
 
-    private static EChartOption BuildHeatmap()
+    private static EChartOption BuildHeatmap(Random rng)
     {
-        // 8×5 grid of values — heatmap placeholder works for CalendarHeatmap + Heatmap kinds.
         var points = new List<int[]>();
-        int seed = 0;
         for (int x = 0; x < 8; x++)
         {
             for (int y = 0; y < 5; y++)
             {
-                seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-                points.Add(new[] { x, y, 20 + seed % 60 });
+                points.Add(new[] { x, y, 15 + rng.Next(75) });
             }
         }
 
@@ -197,7 +205,5 @@ internal static class ChartPlaceholderFactory
         TextStyle = new() { Color = "transparent" }
     };
 
-    /// <summary>Serializes a placeholder option to JSON — callers pass this directly to
-    /// ECharts via <c>updateChart</c> so the option-swap animation fires.</summary>
-    public static string CreateJson(ChartSkeletonKind kind) => Create(kind).ToJson();
+    public static string CreateJson(ChartSkeletonKind kind, int tick = 0) => Create(kind, tick).ToJson();
 }
