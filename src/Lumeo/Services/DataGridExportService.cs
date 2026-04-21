@@ -43,8 +43,12 @@ public sealed class DataGridExportService : IDataGridExportService
 
     // ------------------------------------------------------------------ CSV
 
-    public byte[] ToCsv<TItem>(IEnumerable<TItem> items, IEnumerable<DataGridExportColumn<TItem>> columns)
+    public byte[] ToCsv<TItem>(
+        IEnumerable<TItem> items,
+        IEnumerable<DataGridExportColumn<TItem>> columns,
+        CultureInfo? culture = null)
     {
+        var effectiveCulture = culture ?? CultureInfo.CurrentCulture;
         var cols = columns.ToList();
         var sb = new StringBuilder();
 
@@ -62,7 +66,7 @@ public sealed class DataGridExportService : IDataGridExportService
             for (var i = 0; i < cols.Count; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append(EscapeCsv(FormatValue(cols[i].Accessor(item), cols[i].Format)));
+                sb.Append(EscapeCsv(FormatValue(cols[i].Accessor(item), cols[i].Format, effectiveCulture)));
             }
             sb.Append("\r\n");
         }
@@ -86,8 +90,13 @@ public sealed class DataGridExportService : IDataGridExportService
 
     // ---------------------------------------------------------------- Excel
 
-    public byte[] ToExcel<TItem>(IEnumerable<TItem> items, IEnumerable<DataGridExportColumn<TItem>> columns, string sheetName = "Sheet1")
+    public byte[] ToExcel<TItem>(
+        IEnumerable<TItem> items,
+        IEnumerable<DataGridExportColumn<TItem>> columns,
+        string sheetName = "Sheet1",
+        CultureInfo? culture = null)
     {
+        var effectiveCulture = culture ?? CultureInfo.CurrentCulture;
         var cols = columns.ToList();
 
         using var workbook = new XLWorkbook();
@@ -111,7 +120,7 @@ public sealed class DataGridExportService : IDataGridExportService
             {
                 var cell = sheet.Cell(row, c + 1);
                 var raw = cols[c].Accessor(item);
-                SetExcelCellValue(cell, raw, cols[c].Format);
+                SetExcelCellValue(cell, raw, cols[c].Format, effectiveCulture);
             }
             row++;
         }
@@ -124,7 +133,7 @@ public sealed class DataGridExportService : IDataGridExportService
         return ms.ToArray();
     }
 
-    private static void SetExcelCellValue(IXLCell cell, object? value, string? format)
+    private static void SetExcelCellValue(IXLCell cell, object? value, string? format, CultureInfo culture)
     {
         if (value is null)
         {
@@ -132,19 +141,23 @@ public sealed class DataGridExportService : IDataGridExportService
             return;
         }
 
+        // ClosedXML picks up the workbook/host locale for date and number formats. We pass the
+        // native typed value (DateTime, decimal, …) plus a format string — Excel renders those
+        // using the user's locale when opening the file. For text cells we format with the
+        // supplied culture so strings mirror the exported CSV.
         switch (value)
         {
             case DateTime dt:
                 cell.Value = dt;
-                cell.Style.DateFormat.Format = format ?? "yyyy-mm-dd hh:mm";
+                cell.Style.DateFormat.Format = format ?? DefaultDateFormat(culture);
                 break;
             case DateTimeOffset dto:
                 cell.Value = dto.DateTime;
-                cell.Style.DateFormat.Format = format ?? "yyyy-mm-dd hh:mm";
+                cell.Style.DateFormat.Format = format ?? DefaultDateFormat(culture);
                 break;
             case DateOnly dOnly:
                 cell.Value = dOnly.ToDateTime(TimeOnly.MinValue);
-                cell.Style.DateFormat.Format = format ?? "yyyy-mm-dd";
+                cell.Style.DateFormat.Format = format ?? DefaultDateOnlyFormat(culture);
                 break;
             case bool b:
                 cell.Value = b;
@@ -166,14 +179,34 @@ public sealed class DataGridExportService : IDataGridExportService
                 if (format is not null) cell.Style.NumberFormat.Format = format;
                 break;
             default:
-                cell.Value = FormatValue(value, format);
+                cell.Value = FormatValue(value, format, culture);
                 break;
         }
     }
 
+    private static string DefaultDateFormat(CultureInfo culture)
+    {
+        // Normalise .NET date format patterns (uppercase M for month) to the Excel variant
+        // (lowercase m for month) — Excel treats lowercase m as minutes inside a time context
+        // but as months outside it, which matches what .NET produces.
+        var shortDate = culture.DateTimeFormat.ShortDatePattern;
+        var shortTime = culture.DateTimeFormat.ShortTimePattern;
+        return ConvertToExcelPattern(shortDate) + " " + shortTime.Replace("tt", "AM/PM");
+    }
+
+    private static string DefaultDateOnlyFormat(CultureInfo culture)
+        => ConvertToExcelPattern(culture.DateTimeFormat.ShortDatePattern);
+
+    private static string ConvertToExcelPattern(string netPattern)
+        => netPattern.Replace("MMMM", "mmmm").Replace("MMM", "mmm").Replace("MM", "mm").Replace("M", "m");
+
     // ------------------------------------------------------------------ PDF
 
-    public byte[] ToPdf<TItem>(IEnumerable<TItem> items, IEnumerable<DataGridExportColumn<TItem>> columns, string title = "Export")
+    public byte[] ToPdf<TItem>(
+        IEnumerable<TItem> items,
+        IEnumerable<DataGridExportColumn<TItem>> columns,
+        string title = "Export",
+        CultureInfo? culture = null)
     {
         if (OperatingSystem.IsBrowser())
         {
@@ -182,9 +215,10 @@ public sealed class DataGridExportService : IDataGridExportService
                 "Use ToCsv / ToExcel on WASM, or perform PDF generation in a Blazor Server / API host.");
         }
         EnsureQuestPdfLicense();
+        var effectiveCulture = culture ?? CultureInfo.CurrentCulture;
         var cols = columns.ToList();
         var data = items.ToList();
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        var timestamp = DateTime.Now.ToString("g", effectiveCulture);
 
         var document = Document.Create(container =>
         {
@@ -221,7 +255,7 @@ public sealed class DataGridExportService : IDataGridExportService
                     {
                         foreach (var col in cols)
                         {
-                            var text = FormatValue(col.Accessor(item), col.Format);
+                            var text = FormatValue(col.Accessor(item), col.Format, effectiveCulture);
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(5).Text(text);
                         }
                     }
@@ -252,11 +286,13 @@ public sealed class DataGridExportService : IDataGridExportService
 
     // ---------------------------------------------------------- Formatting
 
-    private static string FormatValue(object? raw, string? format)
+    private static string FormatValue(object? raw, string? format, CultureInfo culture)
     {
         if (raw is null) return string.Empty;
         if (!string.IsNullOrEmpty(format) && raw is IFormattable f)
-            return f.ToString(format, CultureInfo.CurrentCulture);
+            return f.ToString(format, culture);
+        if (raw is IFormattable plainFormattable)
+            return plainFormattable.ToString(null, culture);
         return raw.ToString() ?? string.Empty;
     }
 }

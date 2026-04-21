@@ -124,6 +124,15 @@ else
     [Parameter] public List<double>? Marks { get; set; }
     [Parameter] public bool ShowTicks { get; set; }
     [Parameter] public Func<double, string>? FormatTooltip { get; set; }
+
+    /// <summary>
+    /// Culture used for the default tooltip/mark value formatting. When null (default)
+    /// falls back to <see cref="System.Globalization.CultureInfo.CurrentCulture"/>. Ignored
+    /// when <see cref="FormatTooltip"/> is supplied.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -141,7 +150,7 @@ else
 
     private double GetPercent(double value) => Max > Min ? ((value - Min) / (Max - Min)) * 100 : 0;
 
-    private string FormatValue(double value) => FormatTooltip is not null ? FormatTooltip(value) : value.ToString("G");
+    private string FormatValue(double value) => FormatTooltip is not null ? FormatTooltip(value) : value.ToString("G", EffectiveCulture);
 
     private List<double> GetTickValues()
     {
