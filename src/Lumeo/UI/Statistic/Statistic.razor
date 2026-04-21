@@ -41,6 +41,15 @@
     [Parameter] public RenderFragment? Prefix { get; set; }
     [Parameter] public RenderFragment? Suffix { get; set; }
     [Parameter] public int? Precision { get; set; }
+
+    /// <summary>
+    /// Culture used when <see cref="Precision"/> is set. Default (null) falls back to
+    /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/> so a <c>de-DE</c>
+    /// user sees <c>12,34</c> and an <c>en-US</c> user sees <c>12.34</c> automatically.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
     [Parameter] public bool ShowTrend { get; set; }
     [Parameter] public string? TrendValue { get; set; }
     [Parameter] public TrendType TrendDirection { get; set; } = TrendType.Up;
@@ -54,9 +63,16 @@
         get
         {
             if (Value is null) return "";
-            if (Precision.HasValue && double.TryParse(Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numericValue))
+            if (Precision.HasValue)
             {
-                return numericValue.ToString($"F{Precision.Value}", System.Globalization.CultureInfo.InvariantCulture);
+                // Accept either invariant or the user's culture for the input string (both
+                // "1234.5" and "1234,5" parse for a de-DE user). Render via the effective
+                // culture so the thousands/decimal separators match the request locale.
+                if (double.TryParse(Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numericValue)
+                    || double.TryParse(Value, System.Globalization.NumberStyles.Any, EffectiveCulture, out numericValue))
+                {
+                    return numericValue.ToString($"N{Precision.Value}", EffectiveCulture);
+                }
             }
             return Value;
         }

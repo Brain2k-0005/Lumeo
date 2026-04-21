@@ -12,11 +12,11 @@
             {
                 @if (RangeStart.HasValue && RangeEnd.HasValue)
                 {
-                    <span>@RangeStart.Value.ToString(Format) - @RangeEnd.Value.ToString(Format)</span>
+                    <span>@RangeStart.Value.ToString(EffectiveFormat, EffectiveCulture) - @RangeEnd.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
                 }
                 else if (RangeStart.HasValue)
                 {
-                    <span>@RangeStart.Value.ToString(Format) - ...</span>
+                    <span>@RangeStart.Value.ToString(EffectiveFormat, EffectiveCulture) - ...</span>
                 }
                 else
                 {
@@ -27,7 +27,7 @@
             {
                 @if (Value.HasValue)
                 {
-                    <span>@Value.Value.ToString("MMMM yyyy")</span>
+                    <span>@Value.Value.ToString("MMMM yyyy", EffectiveCulture)</span>
                 }
                 else
                 {
@@ -49,7 +49,7 @@
             {
                 @if (Value.HasValue)
                 {
-                    <span>@Value.Value.ToString(Format)</span>
+                    <span>@Value.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
                 }
                 else
                 {
@@ -150,7 +150,22 @@
     [Parameter] public string? Placeholder { get; set; }
 
     private string EffectivePlaceholder => Placeholder ?? (Mode == "Range" ? L["DateRange.Placeholder"] : L["DatePicker.Placeholder"]);
-    [Parameter] public string Format { get; set; } = "dd.MM.yyyy";
+    /// <summary>
+    /// Date format string. When null (default), the display falls back to the current
+    /// culture's <c>ShortDatePattern</c> — so a <c>de-DE</c> user sees <c>15.03.2026</c>
+    /// and an <c>en-US</c> user sees <c>3/15/2026</c> automatically.
+    /// </summary>
+    [Parameter] public string? Format { get; set; }
+
+    /// <summary>
+    /// Overrides <see cref="System.Globalization.CultureInfo.CurrentCulture"/> for
+    /// parsing and formatting within this picker. Leave null to honour ASP.NET
+    /// request localization.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+    private string EffectiveFormat => Format ?? EffectiveCulture.DateTimeFormat.ShortDatePattern;
     [Parameter] public DateOnly? MinDate { get; set; }
     [Parameter] public DateOnly? MaxDate { get; set; }
     [Parameter] public List<DatePickerPreset>? Presets { get; set; }

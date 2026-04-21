@@ -107,8 +107,21 @@
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
     [Parameter] public bool Use24Hour { get; set; } = true;
     [Parameter] public bool ShowSeconds { get; set; }
-    [Parameter] public string? DateFormat { get; set; } = "yyyy-MM-dd";
+    /// <summary>
+    /// Date portion format. When null (default) falls back to the effective culture's
+    /// <c>ShortDatePattern</c>.
+    /// </summary>
+    [Parameter] public string? DateFormat { get; set; }
     [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>
+    /// Overrides <see cref="System.Globalization.CultureInfo.CurrentCulture"/> for
+    /// date/time formatting. Leave null to honour ASP.NET request localization.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+    private string EffectiveDateFormat => DateFormat ?? EffectiveCulture.DateTimeFormat.ShortDatePattern;
 
     private string EffectivePlaceholder => Placeholder ?? L["DateTimePicker.Placeholder"];
     [Parameter] public bool Disabled { get; set; }
@@ -141,7 +154,7 @@
         var timeFormat = Use24Hour
             ? (ShowSeconds ? "HH:mm:ss" : "HH:mm")
             : (ShowSeconds ? "hh:mm:ss tt" : "hh:mm tt");
-        return $"{dt.ToString(DateFormat)} {dt.ToString(timeFormat)}";
+        return $"{dt.ToString(EffectiveDateFormat, EffectiveCulture)} {dt.ToString(timeFormat, EffectiveCulture)}";
     }
 
     private List<int> GetHours()
