@@ -686,4 +686,90 @@ export const components: ComponentDoc[] = [
   },
 ];
 
-export const CATEGORIES: string[] = Array.from(new Set(components.map(c => c.category))).sort();
+import { loadRegistry, type RegistryComponent, type RegistryDocument } from "./registry.js";
+
+/**
+ * Thin catalog entry for components that don't have hand-curated rich docs.
+ * They still show up in listings and search so LLMs can discover them,
+ * with a pointer back to the docs site for full reference.
+ */
+export interface ThinComponentDoc {
+  name: string;
+  category: string;
+  description: string;
+  files: string[];
+  dependencies: string[];
+  cssVars: string[];
+  registryUrl?: string;
+  /** Kebab-case slug used by the docs site / registry URL. */
+  slug: string;
+  /** True for registry-only entries (thin), false for hand-curated (rich). */
+  thin: true;
+}
+
+/** Either a hand-curated rich entry or a thin registry-only entry. */
+export type CatalogEntry = (ComponentDoc & { thin: false; slug: string }) | ThinComponentDoc;
+
+function slugify(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
+    .toLowerCase();
+}
+
+/** The loaded registry document (may be null if the JSON wasn't synced). */
+export const registry: RegistryDocument | null = loadRegistry();
+
+/**
+ * Build the unified catalog:
+ *   - All 125 components from the registry
+ *   - Hand-curated rich entries override the thin registry entries for their name
+ */
+function buildCatalog(): CatalogEntry[] {
+  const curated = new Map<string, ComponentDoc>(
+    components.map((c) => [c.name.toLowerCase(), c]),
+  );
+
+  const fromRegistry: RegistryComponent[] = registry?.components ?? [];
+  const seen = new Set<string>();
+  const out: CatalogEntry[] = [];
+
+  for (const r of fromRegistry) {
+    const key = r.name.toLowerCase();
+    seen.add(key);
+    const rich = curated.get(key);
+    if (rich) {
+      out.push({ ...rich, slug: r.slug, thin: false });
+    } else {
+      out.push({
+        name: r.name,
+        category: r.category,
+        description: r.description,
+        files: r.files,
+        dependencies: r.dependencies,
+        cssVars: r.cssVars,
+        registryUrl: r.registryUrl,
+        slug: r.slug,
+        thin: true,
+      });
+    }
+  }
+
+  // Include any curated entries that aren't in the registry (defensive —
+  // shouldn't happen if the registry is current, but keeps us safe).
+  for (const c of components) {
+    if (seen.has(c.name.toLowerCase())) continue;
+    out.push({ ...c, slug: slugify(c.name), thin: false });
+  }
+
+  // Stable alphabetical sort by name for predictable listings.
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+export const catalog: CatalogEntry[] = buildCatalog();
+
+export const CATEGORIES: string[] = Array.from(
+  new Set(catalog.map((c) => c.category)),
+).sort();
+

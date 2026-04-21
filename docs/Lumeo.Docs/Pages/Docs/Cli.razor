@@ -107,11 +107,15 @@
                 <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo init</code></Heading>
                 <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
                     Creates <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.json</code> in the current directory
-                    and scaffolds a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">README.md</code> under the components folder.
+                    and scaffolds <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">README.md</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.gitkeep</code> under the components folder.
+                    Interactive by default: if a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.csproj</code> is present, the
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;RootNamespace&gt;</code> (or the filename) is auto-detected and suggested
+                    as the default — just press Enter to accept.
                 </Lumeo.Text>
                 <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--namespace &lt;ns&gt;     Target namespace (skips prompt).
 --path &lt;path&gt;        Components folder (skips prompt).
 --registry &lt;url&gt;     Override registry URL.
+--yes, -y            Accept all defaults, skip prompts (CI mode).
 --force              Overwrite existing lumeo.json.</Stack>
             </Stack>
 
@@ -120,28 +124,94 @@
                 <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
                     Downloads a component (and its registry-declared dependencies), rewrites its namespace, and writes files under
                     <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">componentsPath</code>.
+                    Records the install in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.json</code> so
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">update</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">remove</code> know what&apos;s installed.
+                    When a target file already exists you get a per-file prompt — overwrite, skip, view diff, all-overwrite, or abort.
                 </Lumeo.Text>
                 <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read files from a local Lumeo checkout (dev only).
 --yes, -y            Skip dependency confirmation prompts.
---overwrite          Overwrite files that already exist.</Stack>
+--force              Overwrite all conflicts without prompting (CI).
+--skip-existing      Silently skip files that already exist.
+--dry-run            Print what would happen; don&apos;t touch the filesystem.
+--overwrite          Legacy alias of --force.</Stack>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo update [&lt;component&gt;]</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Refetches a component (or all installed components, when the name is omitted), computes a diff vs. the local vendored copy,
+                    and prompts per file: <Lumeo.Text As="span" Weight="medium" Class="text-foreground">update</Lumeo.Text>,
+                    <Lumeo.Text As="span" Weight="medium" Class="text-foreground">skip</Lumeo.Text>, or
+                    <Lumeo.Text As="span" Weight="medium" Class="text-foreground">diff</Lumeo.Text>.
+                    Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--check</code> in CI: exits
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">1</code> if any file has drifted,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">0</code> if clean.
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read from a local Lumeo checkout.
+--force              Update without prompting.
+--check              Report drift only; exit 1 if drift found.
+--force-reset        Restore to registry version, discarding local edits.
+--dry-run            Print what would happen; don&apos;t touch the filesystem.</Stack>
+            </Stack>
+
+            <Stack Gap="3">
+                <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo remove &lt;component&gt;</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Deletes the vendored files for a component and cleans up empty folders. Warns if other installed components depend on it
+                    (per the registry&apos;s <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dependencies</code> field) before asking for confirmation.
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--force              Skip the confirmation prompt.
+--dry-run            Print what would be deleted; don&apos;t touch the filesystem.</Stack>
             </Stack>
 
             <Stack Gap="3">
                 <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo list</code></Heading>
                 <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
                     Prints every component in the registry, grouped by category, with a one-line description.
+                    Filter to one category with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--category</code>,
+                    or emit JSON for tooling with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--json</code>.
                 </Lumeo.Text>
-                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read from the local registry file.</Stack>
+                <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read from the local registry file.
+--category &lt;name&gt;    Filter to one category (e.g. Forms).
+--json               Dump entries as JSON.</Stack>
             </Stack>
 
             <Stack Gap="3">
                 <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo diff &lt;component&gt;</code></Heading>
                 <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
                     Compares the vendored copy in your repo against the registry version and reports which files have drifted.
-                    Run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add &lt;component&gt; --overwrite</code> to pull the upstream version again.
+                    Run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update &lt;component&gt;</code> to pull the upstream version
+                    (or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">--force</code> to reset without prompting).
                 </Lumeo.Text>
                 <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Diff against local registry.</Stack>
             </Stack>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- lumeo.json -->
+    <Stack>
+        <Stack Gap="4">
+            <Heading Level="2">The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.json</code> manifest</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                After running <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add</code>, the config grows an
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">components</code> map recording what&apos;s installed.
+                It&apos;s used by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">update</code>,
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">remove</code>, and
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">diff</code>. The map is optional — if
+                missing, the CLI falls back to scanning <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">componentsPath</code> to infer installed
+                components (so older <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.json</code> files keep working).
+            </Lumeo.Text>
+            <Stack Class="code-block rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">@("{")
+  "namespace": "MyApp.Components",
+  "componentsPath": "Components/Ui",
+  "registry": "https://lumeo.nativ.sh/registry/registry.json",
+  "components": @("{")
+    "button":  @("{") "version": "2.0.0", "files": ["UI/Button/Button.razor"] @("}"),
+    "spinner": @("{") "version": "2.0.0", "files": ["UI/Spinner/Spinner.razor"] @("}")
+  @("}")
+@("}")</Stack>
         </Stack>
     </Stack>
 
