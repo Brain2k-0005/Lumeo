@@ -40,6 +40,29 @@
             <BarChart Categories="_months24" Series="_zoom24Series" Colors="_brandColors" DataZoom="true" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Interactive label density" Description="Drag the slider to change the number of categories and watch Smart rotate labels as the axis gets crowded." Code="@_interactiveCode">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="6" Wrap="true" Align="end">
+                    <Stack Gap="1" Class="min-w-[260px] flex-1">
+                        <span class="text-sm font-medium">Categories: @_categoryCount</span>
+                        <Slider Min="5" Max="36" Step="1" Value="_categoryCount" ValueChanged="OnSliderChanged" />
+                    </Stack>
+                    <Stack Gap="1">
+                        <span class="text-sm font-medium">Strategy</span>
+                        <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single" Variant="ToggleGroup.ToggleGroupVariant.Outline" Value="@_strategy.ToString()" ValueChanged="OnStrategyChanged">
+                            <ToggleGroupItem Value="Smart">Smart</ToggleGroupItem>
+                            <ToggleGroupItem Value="ShowAll">ShowAll</ToggleGroupItem>
+                            <ToggleGroupItem Value="Auto">Auto</ToggleGroupItem>
+                        </ToggleGroup>
+                    </Stack>
+                </Stack>
+                <BarChart Categories="@_interactiveLabels" Series="@_interactiveSeries" LabelStrategy="@_strategy" Height="300px" />
+                <span class="text-xs text-muted-foreground">Move the slider to see Smart's auto-rotate kick in at 11 / 17 / 25 categories.</span>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <Stack Gap="6" Class="mt-12">
@@ -124,6 +147,18 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">"top"</td>
                             <td class="p-3 text-muted-foreground">Label position: "top", "inside", "bottom".</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">LabelStrategy</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartLabelStrategy</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Smart</td>
+                            <td class="p-3 text-muted-foreground">How category-axis labels are rendered. Smart auto-rotates at higher densities; ShowAll forces all horizontal; Auto thins overlapping labels.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">LabelRotate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Manual rotation override in degrees on top of LabelStrategy.</td>
+                        </tr>
                     </tbody>
                 </table>
             </Stack>
@@ -186,4 +221,56 @@
     private string _labelsCode = @"<BarChart Categories=""_shortCategories"" Series=""_labelSeries"" ShowDataLabels=""true"" LabelPosition=""top"" />";
 
     private string _zoomCode = @"<BarChart Categories=""_months24"" Series=""_zoom24Series"" Colors=""_brandColors"" DataZoom=""true"" />";
+
+    // --- Interactive label density demo ---
+    private int _categoryCount = 12;
+    private ChartLabelStrategy _strategy = ChartLabelStrategy.Smart;
+    private List<string> _interactiveLabels = new();
+    private List<BarChart.ChartSeriesData> _interactiveSeries = new();
+
+    protected override void OnInitialized()
+    {
+        RebuildInteractive();
+    }
+
+    private void OnSliderChanged(double v)
+    {
+        _categoryCount = (int)v;
+        RebuildInteractive();
+    }
+
+    private void OnStrategyChanged(string? value)
+    {
+        if (!string.IsNullOrEmpty(value) && Enum.TryParse<ChartLabelStrategy>(value, out var parsed))
+        {
+            _strategy = parsed;
+        }
+    }
+
+    private void RebuildInteractive()
+    {
+        var months = new[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+        _interactiveLabels = new List<string>(_categoryCount);
+        var values = new List<double>(_categoryCount);
+        for (int i = 0; i < _categoryCount; i++)
+        {
+            var month = months[i % 12];
+            var year = 24 + (i / 12); // 'Jan 24', 'Feb 24', ..., 'Jan 25', ...
+            _interactiveLabels.Add($"{month} '{year}");
+            // Deterministic fake values so the chart renders a clear wave.
+            values.Add(Math.Round(60 + 40 * Math.Sin(i * 0.6) + (i * 1.5), 1));
+        }
+        _interactiveSeries = new List<BarChart.ChartSeriesData>
+        {
+            new() { Name = "Revenue (K)", Values = values }
+        };
+    }
+
+    private string _interactiveCode = @"<Slider Min=""5"" Max=""36"" Value=""_categoryCount"" ValueChanged=""OnSliderChanged"" />
+<ToggleGroup Value=""@_strategy.ToString()"" ValueChanged=""OnStrategyChanged"">
+    <ToggleGroupItem Value=""Smart"">Smart</ToggleGroupItem>
+    <ToggleGroupItem Value=""ShowAll"">ShowAll</ToggleGroupItem>
+    <ToggleGroupItem Value=""Auto"">Auto</ToggleGroupItem>
+</ToggleGroup>
+<BarChart Categories=""@_interactiveLabels"" Series=""@_interactiveSeries"" LabelStrategy=""@_strategy"" Height=""300px"" />";
 }
