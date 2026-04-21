@@ -29,7 +29,7 @@
                 }
             </div>
         </div>
-        <div class="@HorizontalConnectorClasses" @key="@($"tl-h-{_index}-{Context?.ReplayKey}")"></div>
+        <div class="@HorizontalConnectorClasses" @key="@($"tl-h-{_index}-{ConnectorState}")"></div>
     </div>
 }
 else
@@ -46,7 +46,7 @@ else
                     <div class="h-2.5 w-2.5 rounded-full @DotInnerFillClass"></div>
                 }
             </div>
-            <div class="@VerticalConnectorClasses" @key="@($"tl-v-{_index}-{Context?.ReplayKey}")"></div>
+            <div class="@VerticalConnectorClasses" @key="@($"tl-v-{_index}-{ConnectorState}")"></div>
         </div>
         <div class="ml-3 pb-6">
             @if (!string.IsNullOrEmpty(Title))
@@ -163,41 +163,57 @@ else
     private string HorizontalConnectorClasses => BuildConnectorClasses(horizontal: true);
     private string VerticalConnectorClasses => BuildConnectorClasses(horizontal: false);
 
+    // Three-state key used for @key so only the transitioning connector remounts.
+    // "completed-drawing" / "completed-static" / "unwinding" / "pending"
+    private string ConnectorState
+    {
+        get
+        {
+            if (Context?.ActiveIndex is not int current) return IsCompletedLegacy ? "completed-static" : "pending";
+
+            var prev = Context.PreviousActiveIndex ?? current;
+            var isBackward = current < prev;
+            var isCompleted = _index < current;
+
+            if (!isBackward && isCompleted && _index == current - 1) return "completed-drawing";
+            if (isCompleted) return "completed-static";
+            if (isBackward && _index == current) return "unwinding";
+            return "pending";
+        }
+    }
+
+    // Legacy completed state for the no-ActiveIndex path.
+    private bool IsCompletedLegacy => Context?.ActiveIndex is null && false;
+
     private string BuildConnectorClasses(bool horizontal)
     {
         var baseLayout = horizontal ? "mx-2 mt-4 h-px flex-1" : "my-1 w-px flex-1";
 
-        // When ActiveIndex drives things, colour the connector primary IF it
-        // points into a completed segment (i.e. this item's index < ActiveIndex).
-        string color = "bg-border";
-        bool isCompletedConnector = false;
-        if (Context?.ActiveIndex is int idx)
+        if (!IsAnimated)
         {
-            isCompletedConnector = _index < idx;
-            color = isCompletedConnector ? "bg-primary" : "bg-border";
+            // Static: colour based on ActiveIndex completion state.
+            var staticColor = (Context?.ActiveIndex is int si && _index < si) ? "bg-primary" : "bg-border";
+            return $"{baseLayout} {staticColor}";
         }
 
-        var classes = $"{baseLayout} {color}";
-
-        if (!IsAnimated) return classes;
-
-        // Legacy (no ActiveIndex): keep the original always-draw-in behaviour.
+        // Legacy no-ActiveIndex animated path — always draw in on mount.
         if (Context?.ActiveIndex is null)
         {
             var drawClass = horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y";
-            return $"{classes} {drawClass}";
+            return $"{baseLayout} bg-border {drawClass}";
         }
 
-        // ActiveIndex mode: only draw connectors that are currently completed,
-        // and only re-draw the connector that *just* became completed (the one
-        // leading into the new active index). This mirrors the Steps pattern.
-        if (isCompletedConnector)
+        // ActiveIndex-driven: animate only the transitioning connector.
+        var state = ConnectorState;
+        return state switch
         {
-            var drawClass = horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y";
-            return $"{classes} {drawClass}";
-        }
-
-        return classes;
+            "completed-drawing" => $"{baseLayout} bg-primary " + (horizontal ? "lumeo-steps-line-draw-x" : "lumeo-steps-line-draw-y"),
+            "completed-static" => $"{baseLayout} bg-primary",
+            // Force bg-primary so the unwinding line is visible (otherwise the
+            // retracting line is bg-border grey — invisible on muted bg).
+            "unwinding" => $"{baseLayout} bg-primary " + (horizontal ? "lumeo-steps-line-unwind-x" : "lumeo-steps-line-unwind-y"),
+            _ => $"{baseLayout} bg-border"
+        };
     }
 
     private string VerticalCssClass
