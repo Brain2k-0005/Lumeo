@@ -33,24 +33,30 @@
             {
                 <polygon class="lumeo-chart-skel-shape" points="@(LinePoints + " 98,96 2,96")" fill="@SoftFill" />
             }
+            @* Multiple overlapping polylines read as a multi-series line chart
+               instead of a single sparse line. Each gets its own draw stagger. *@
+            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LineSecondaryPoints" fill="none" stroke="@SoftFill" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" style="animation-delay: 0.4s;" />
+            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LineTertiaryPoints" fill="none" stroke="@SoftFill" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" style="animation-delay: 0.8s;" />
             <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LinePoints" fill="none" stroke="@MutedFill" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
         }
         else if (Kind == ChartSkeletonKind.Pie)
         {
-            @* Four pie wedges. Each slice pulses scale via SVG animateTransform
-               (reliable across browsers) anchored to the pie centre (50, 50),
-               with a staggered begin offset so the wedges breathe in sequence. *@
-            @for (int i = 0; i < PieSlices.Length; i++)
-            {
-                var d = PieSlices[i];
-                var delay = F(i * 0.18) + "s";
-                <path class="lumeo-chart-skel-shape" data-skel-shape="pie-slice" d="@d" fill="@MutedFill" style="animation-delay: @delay;">
-                    <animateTransform attributeName="transform" type="scale" additive="sum"
-                                      values="0.8;1.05;0.8" dur="1.6s" begin="@delay" repeatCount="indefinite" />
-                    <animateTransform attributeName="transform" type="translate" additive="sum"
-                                      values="10 10;-2.5 -2.5;10 10" dur="1.6s" begin="@delay" repeatCount="indefinite" />
-                </path>
-            }
+            @* Flat pie: 4 wedges at a fixed scale so the silhouette stays pie-shaped
+               (matches the real flat pie chart). We rotate the whole group slowly
+               around the centre while each slice pulses opacity at a stagger —
+               reads as 'loading' without the 3D burst the scale-out animation
+               previously implied. *@
+            <g>
+                @for (int i = 0; i < PieSlices.Length; i++)
+                {
+                    var d = PieSlices[i];
+                    var delay = F(i * 0.2) + "s";
+                    <path class="lumeo-chart-skel-shape" data-skel-shape="pie-slice" d="@d" fill="@MutedFill" style="animation-delay: @delay;" />
+                }
+                <animateTransform attributeName="transform" type="rotate"
+                                  values="0 50 50; 360 50 50"
+                                  dur="6s" repeatCount="indefinite" />
+            </g>
         }
         else if (Kind == ChartSkeletonKind.Scatter)
         {
@@ -95,6 +101,9 @@
     private const string SoftFill = "color-mix(in oklab, var(--color-foreground) 6%, transparent)";
     private const string GridFill = "color-mix(in oklab, var(--color-foreground) 8%, transparent)";
     private const string LinePoints = "2,72 14,48 26,62 38,34 50,54 62,28 74,46 86,22 98,40";
+    // Two secondary lines offset so the skeleton reads as multi-series, not a lone line.
+    private const string LineSecondaryPoints = "2,55 14,70 26,58 38,52 50,68 62,50 74,64 86,56 98,66";
+    private const string LineTertiaryPoints  = "2,82 14,78 26,80 38,72 50,84 62,76 74,82 86,74 98,78";
 
     // Bar layout — 8 bars across 100-unit viewBox with 4px padding and 2px gaps.
     private static readonly double[] BarHeights = { 38, 62, 48, 78, 56, 82, 44, 70 };

@@ -34,6 +34,21 @@
             <PieChart Data="_data" ShowLegend="false" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Loading state" Description="Four flat slices rotate slowly while the chart data arrives. Matches the shape of the real pie — no 3D burst.">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulatePieLoadingAsync" Disabled="@_pieLoading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepPieLoading" Id="keep-pie-loading" />
+                        <label for="keep-pie-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                </Stack>
+                <PieChart Data="_data" IsLoading="@PieLoadingComputed" Height="320px" />
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -91,6 +106,17 @@
 </Stack>
 
 @code {
+    private bool _pieLoading;
+    private bool _keepPieLoading;
+    private bool PieLoadingComputed => _pieLoading || _keepPieLoading;
+
+    private async Task SimulatePieLoadingAsync()
+    {
+        _pieLoading = true;
+        await Task.Delay(2000);
+        _pieLoading = false;
+    }
+
     private List<PieChart.PieChartData> _data = new()
     {
         new() { Name = "Products",      Value = 48 },
