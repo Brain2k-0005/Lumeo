@@ -1301,45 +1301,37 @@ input[type="range"]::-moz-range-thumb {
   50%      { opacity: 0.7; }
 }
 
-/* Bars — grow/shrink in height from the bottom, keeping the opacity pulse. */
+/* Bars — height/y animated via SVG <animate> elements in the markup, so
+   we only pulse opacity here (the height animation is browser-native SVG). */
 .lumeo-chart-skel-svg [data-skel-shape="bar"] {
-  transform-origin: center bottom;
-  transform-box: fill-box;
-  animation:
-    lumeo-chart-skel-pulse 1.4s ease-in-out infinite,
-    lumeo-chart-skel-bar-grow 1.8s ease-in-out infinite;
-}
-@keyframes lumeo-chart-skel-bar-grow {
-  0%, 100% { transform: scaleY(0.35); }
-  50%      { transform: scaleY(1); }
+  animation: lumeo-chart-skel-pulse 1.6s ease-in-out infinite;
 }
 
-/* Line / Area — stroke 'draws itself' across the path with stroke-dasharray.
-   We use a generous dasharray so the effect reads regardless of exact path length. */
+/* Line / Area — stroke 'draws itself' across the path with stroke-dasharray. */
 .lumeo-chart-skel-svg [data-skel-shape="line"] {
-  stroke-dasharray: 220;
-  animation: lumeo-chart-skel-line-draw 2.4s ease-in-out infinite;
-  opacity: 0.6;
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  animation: lumeo-chart-skel-line-draw 2.2s ease-in-out infinite;
+  opacity: 0.75;
 }
 @keyframes lumeo-chart-skel-line-draw {
-  0%       { stroke-dashoffset: 220; opacity: 0.3; }
-  40%      { stroke-dashoffset: 0;   opacity: 0.7; }
-  60%      { stroke-dashoffset: 0;   opacity: 0.7; }
-  100%     { stroke-dashoffset: -220; opacity: 0.3; }
+  0%   { stroke-dashoffset:  240; }
+  50%  { stroke-dashoffset:    0; }
+  100% { stroke-dashoffset: -240; }
 }
 
-/* Pie ring — stroke fills around the circle like a circular progress. */
-.lumeo-chart-skel-svg [data-skel-shape="pie-ring"] {
-  stroke-dasharray: 188.5; /* 2π * r (r=30) ≈ 188.5 */
-  transform-origin: 50px 50px;
+/* Pie slices — scale each wedge in and out from the pie center. Staggered
+   per slice (via inline animation-delay) so the whole pie reads as wedges
+   pushing in/out, not a static ring. */
+.lumeo-chart-skel-svg [data-skel-shape="pie-slice"] {
   transform-box: view-box;
-  animation: lumeo-chart-skel-pie-fill 2.2s ease-in-out infinite;
-  opacity: 0.6;
+  animation:
+    lumeo-chart-skel-pulse 1.6s ease-in-out infinite,
+    lumeo-chart-skel-pie-slice 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
-@keyframes lumeo-chart-skel-pie-fill {
-  0%   { stroke-dashoffset: 188.5; opacity: 0.35; transform: rotate(-90deg); }
-  50%  { stroke-dashoffset: 47;    opacity: 0.75; transform: rotate(180deg); }
-  100% { stroke-dashoffset: 188.5; opacity: 0.35; transform: rotate(270deg); }
+@keyframes lumeo-chart-skel-pie-slice {
+  0%, 100% { transform: scale(0.82); }
+  50%      { transform: scale(1.05); }
 }
 
 /* Scatter dots — different pace, slight travel to feel alive. */
