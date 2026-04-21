@@ -30,13 +30,19 @@
         }
         else if (Kind == ChartSkeletonKind.Pie)
         {
-            @* Real 4-slice pie — each slice gets a staggered scale+opacity pulse
-               so the whole pie reads as "slices shifting" rather than a static ring. *@
+            @* Four pie wedges. Each slice pulses scale via SVG animateTransform
+               (reliable across browsers) anchored to the pie centre (50, 50),
+               with a staggered begin offset so the wedges breathe in sequence. *@
             @for (int i = 0; i < PieSlices.Length; i++)
             {
                 var d = PieSlices[i];
                 var delay = F(i * 0.18) + "s";
-                <path class="lumeo-chart-skel-shape" data-skel-shape="pie-slice" d="@d" fill="@MutedFill" style="animation-delay: @delay, @delay; transform-origin: 50px 50px;" />
+                <path class="lumeo-chart-skel-shape" data-skel-shape="pie-slice" d="@d" fill="@MutedFill" style="animation-delay: @delay;">
+                    <animateTransform attributeName="transform" type="scale" additive="sum"
+                                      values="0.8;1.05;0.8" dur="1.6s" begin="@delay" repeatCount="indefinite" />
+                    <animateTransform attributeName="transform" type="translate" additive="sum"
+                                      values="10 10;-2.5 -2.5;10 10" dur="1.6s" begin="@delay" repeatCount="indefinite" />
+                </path>
             }
         }
         else if (Kind == ChartSkeletonKind.Scatter)
