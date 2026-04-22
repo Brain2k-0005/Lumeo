@@ -17,8 +17,26 @@ public enum ChartSkeletonKind
     Scatter,
     /// <summary>5x5 grid with varying opacities — for Treemap/Heatmap/CalendarHeatmap.</summary>
     Grid,
-    /// <summary>Rounded rect + centered ring — fallback for Radar/Sankey/Tree/Graph/Geo/etc.</summary>
+    /// <summary>Rounded rect + centered ring — fallback for unrecognized chart types.</summary>
     Generic,
+    /// <summary>Polygon web with radial axes — for RadarChart.</summary>
+    Radar,
+    /// <summary>Flow diagram (source → target nodes with curved links) — for SankeyChart.</summary>
+    Sankey,
+    /// <summary>Force-directed nodes + edges — for GraphChart.</summary>
+    Graph,
+    /// <summary>Branching hierarchy — for TreeChart.</summary>
+    Tree,
+    /// <summary>Parallel-coordinates lines across multiple axes — for ParallelChart.</summary>
+    Parallel,
+    /// <summary>Funnel-shaped stepped trapezoids — for FunnelChart.</summary>
+    Funnel,
+    /// <summary>Semi-circle dial with needle — for GaugeChart.</summary>
+    Gauge,
+    /// <summary>Radial bars around a polar origin — for PolarBar.</summary>
+    Polar,
+    /// <summary>OHLC-style wicks + boxes — for CandlestickChart.</summary>
+    Candlestick,
 }
 
 /// <summary>How the loading state is presented.
