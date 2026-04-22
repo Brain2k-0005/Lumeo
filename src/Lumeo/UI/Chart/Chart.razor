@@ -9,7 +9,18 @@
 }
 else
 {
-    <div id="@_chartId" class="@CssClass" style="@StyleStr" @attributes="AdditionalAttributes"></div>
+    <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
+        <div id="@_chartId" class="lumeo-chart-host w-full h-full"
+             style="@HostStyle"></div>
+        @if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette)
+        {
+            @* Silhouette mode (legacy SVG skeleton overlay). Phantom mode renders the real
+               ECharts with placeholder data instead — no DOM element needed here. *@
+            <div style="position: absolute; inset: 0; pointer-events: none;">
+                <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
+            </div>
+        }
+    </div>
 }
 
 @inject IJSRuntime JSRuntime
@@ -33,6 +44,31 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>When true, forces the loading state on top of the chart
+    /// (consumer is refetching data). Independent of the JS-driven ECharts loading
+    /// indicator controlled by <see cref="ShowLoading"/>.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>When true (default), renders the loading state while the chart
+    /// has not yet rendered for the first time, and whenever <see cref="IsLoading"/>
+    /// is true. Set to <c>false</c> to opt out entirely.</summary>
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    /// <summary>Shape family for the skeleton. Each chart wrapper presets a sensible
+    /// default (bars for Bar, pie ring for Pie, etc.) — consumers only override when
+    /// they want a different silhouette.</summary>
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Generic;
+    /// <summary>Phantom (default) renders the real chart with synthesized placeholder
+    /// data in a muted palette; ECharts animates the option swap to real data.
+    /// Silhouette falls back to the legacy SVG overlay skeleton.</summary>
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    /// <summary>Phantom-mode refresh interval in milliseconds — each tick regenerates
+    /// the placeholder dataset with a new random seed so bars/lines/slices visibly
+    /// redistribute while loading. Defaults to 1400ms; clamped to ≥200ms.</summary>
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    /// <summary>Explicit override for the phantom layout (category count, series count,
+    /// stacking, area fill). When null (default), the shape is inferred from the real
+    /// <see cref="Option"/> so the phantom mirrors the actual chart structure.</summary>
+    [Parameter] public PhantomShape? PhantomShapeOverride { get; set; }
+
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private DotNetObjectReference<Chart>? _selfRef;
@@ -48,11 +84,60 @@ else
         ? $"width: {Width}; aspect-ratio: {AspectRatio};"
         : $"width: {Width}; height: {Height};";
 
-    // Chart repaint on theme change is handled entirely in JS:
-    // theme.js dispatches a `lumeo:theme-changed` event after every setter,
-    // and echarts-interop.js listens for it and calls refreshAllCharts().
-    // That covers every code path (ThemeService, CustomizerSidebar's direct
-    // themeManager.* calls, manual JS) uniformly.
+    private string RootCssClass => $"relative {Class}".Trim();
+    private string RootStyleStr => $"position: relative; {StyleStr}";
+
+    /// <summary>True when we should be showing a loading state. Keyed strictly on
+    /// <c>IsLoading</c> — we do NOT show phantom/silhouette on initial mount, because
+    /// ECharts initializes synchronously and a ready chart should render its real data
+    /// on first paint. The loading state is reserved for explicit consumer refetches.</summary>
+    private bool ShouldShowSkeleton => ShowLoadingSkeleton && IsLoading;
+
+    // Silhouette mode hides the real chart while the SVG overlay takes its place.
+    // Phantom mode keeps the chart host fully visible — the "skeleton" IS the chart
+    // with placeholder data. To give phantom a "loading" look without polluting the
+    // option.color palette (which would bleed through the merge into the real chart),
+    // we apply a CSS grayscale+dim filter while phantom is active. The filter cleanly
+    // transitions off when real data arrives — bars keep their real hue throughout.
+    private string ChartHostOpacity => (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette) ? "0" : "1";
+
+    private bool IsPhantomStyled =>
+        ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
+
+    private string HostStyle => IsPhantomStyled
+        ? $"transition: opacity 350ms ease-out, filter 500ms ease-out; opacity: {ChartHostOpacity}; filter: grayscale(0.85) saturate(0.15) opacity(0.78);"
+        : $"transition: opacity 350ms ease-out, filter 500ms ease-out; opacity: {ChartHostOpacity}; filter: none;";
+
+    // Phantom-mode state: cycling random placeholder data while loading, then one
+    // clean "notMerge=true" swap to real data so the muted palette doesn't bleed.
+    private System.Threading.Timer? _phantomTimer;
+    private int _phantomTick;
+    private bool _lastWasPhantom;
+    private int _activePhantomCycleMs;
+    private int EffectivePhantomCycleMs => Math.Max(200, PhantomCycleMs);
+
+    // Components whose phantom styling (muted palette, transparent text, skeleton-box
+    // labels) must be wiped during the phantom↔real transition — otherwise they'd
+    // persist under setOption merge semantics and bleed into the real chart.
+    private const string PhantomTransitionReplaceMergeJson =
+        "[\"xAxis\",\"yAxis\",\"legend\",\"polar\",\"angleAxis\",\"radiusAxis\",\"radar\",\"parallel\",\"parallelAxis\",\"visualMap\",\"grid\"]";
+
+    private bool IsPhantomActive =>
+        ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
+
+    /// <summary>Returns the JSON that actually goes to ECharts. Phantom mode uses
+    /// the current cycling tick so each frame redistributes the random data, and
+    /// mirrors the real chart's structure (category count, series count, stacking)
+    /// via <see cref="ChartPlaceholderFactory.InferShape"/>.</summary>
+    private string GetEffectiveJson()
+    {
+        if (IsPhantomActive)
+        {
+            var shape = PhantomShapeOverride ?? ChartPlaceholderFactory.InferShape(Option);
+            return ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick, shape);
+        }
+        return GetOptionsJson();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -61,7 +146,7 @@ else
             _module = await JSRuntime.InvokeAsync<IJSObjectReference>(
                 "import", "./_content/Lumeo/js/echarts-interop.js");
 
-            var json = GetOptionsJson();
+            var json = GetEffectiveJson();
             _lastJson = json;
             _lastTheme = Theme;
             _lastGroup = Group;
@@ -88,15 +173,33 @@ else
                 _lastShowLoading = true;
                 await _module.InvokeVoidAsync("showLoading", _chartId, null);
             }
+
+            // Capture the phantom state that was actually passed to ECharts. Must be
+            // the value at init time (before any subsequent state change), so we can
+            // correctly decide notMerge on the next update.
+            _lastWasPhantom = IsPhantomActive;
+            UpdatePhantomTimer();
+            StateHasChanged();
         }
         else if (_initialized)
         {
-            var json = GetOptionsJson();
+            UpdatePhantomTimer();
+
+            var json = GetEffectiveJson();
+            var isPhantom = IsPhantomActive;
             if (json != _lastJson)
             {
                 _lastJson = json;
-                await _module!.InvokeVoidAsync("updateChart", _chartId, json, false);
+                // Phantom↔real transition: keep notMerge=false so SERIES values tween
+                // (bars move from phantom heights to real heights — feels like data
+                // loading, not a snap). Use replaceMerge to fully replace layout
+                // components (axes, legend, radar, polar, parallel, visualMap) so the
+                // muted skeleton-box styling doesn't bleed into the real chart.
+                var phantomFlipped = _lastWasPhantom != isPhantom;
+                string? replaceMergeJson = phantomFlipped ? PhantomTransitionReplaceMergeJson : null;
+                await _module!.InvokeVoidAsync("updateChart", _chartId, json, false, replaceMergeJson);
             }
+            _lastWasPhantom = isPhantom;
 
             if (ShowLoading != _lastShowLoading)
             {
@@ -110,11 +213,9 @@ else
             if (Theme != _lastTheme)
             {
                 _lastTheme = Theme;
-                // Re-initialize chart with new theme — echarts requires dispose+init for theme changes
                 await _module!.InvokeVoidAsync("disposeChart", _chartId);
-                var currentJson = _lastJson ?? GetOptionsJson();
+                var currentJson = _lastJson ?? GetEffectiveJson();
                 await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
-                // Re-register events and groups lost during dispose+init
                 await RegisterChartEventsAsync();
             }
 
@@ -124,6 +225,42 @@ else
                 if (!string.IsNullOrEmpty(Group))
                     await _module!.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
             }
+        }
+    }
+
+    private void UpdatePhantomTimer()
+    {
+        var cycle = EffectivePhantomCycleMs;
+        if (IsPhantomActive)
+        {
+            if (_phantomTimer is null || _activePhantomCycleMs != cycle)
+            {
+                _phantomTimer?.Dispose();
+                _activePhantomCycleMs = cycle;
+                _phantomTimer = new System.Threading.Timer(_ =>
+                {
+                    _phantomTick++;
+                    _ = InvokeAsync(async () =>
+                    {
+                        if (!_initialized || _module is null || !IsPhantomActive) return;
+                        var shape = PhantomShapeOverride ?? ChartPlaceholderFactory.InferShape(Option);
+                        var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick, shape);
+                        _lastJson = json;
+                        try
+                        {
+                            await _module.InvokeVoidAsync("updateChart", _chartId, json, false);
+                        }
+                        catch (JSDisconnectedException) { }
+                        catch (ObjectDisposedException) { }
+                    });
+                }, null, cycle, cycle);
+            }
+        }
+        else if (_phantomTimer is not null)
+        {
+            _phantomTimer.Dispose();
+            _phantomTimer = null;
+            _activePhantomCycleMs = 0;
         }
     }
 
@@ -202,6 +339,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _phantomTimer?.Dispose();
+        _phantomTimer = null;
         if (_module is not null && _initialized)
         {
             try

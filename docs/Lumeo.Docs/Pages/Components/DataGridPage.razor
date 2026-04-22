@@ -470,15 +470,35 @@
 &lt;/DataGrid&gt;</code></pre>
     </div>
 
-    <ComponentDemo Title="Custom Toolbar Content" Description="Add custom buttons and controls to the toolbar using the ToolbarContent slot." Code="@_toolbarContentCode">
+    <ComponentDemo Title="Custom Toolbar Content" Description="The ToolbarContent component slots your custom buttons next to the toolbar's filter chips. Use the Class attribute to tweak the wrapper (gap, flex-wrap, etc.)." Code="@_toolbarContentCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ShowToolbar="true">
-            <ToolbarContent>
-                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="gap-1.5">
-                    <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
-                    Add Employee
-                </Button>
-            </ToolbarContent>
             <ChildContent>
+                <ToolbarContent TItem="Employee" Class="gap-3">
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="gap-1.5">
+                        <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
+                        Add Employee
+                    </Button>
+                </ToolbarContent>
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+            </ChildContent>
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Composing Toolbar Tools" Description="Mix your own buttons with built-in tools. When you provide ToolbarContent, the default tool stack is suppressed — you pick exactly which tools to include and in what order. Each tool picks up the grid's state via a cascading context — no props needed." Code="@_toolbarComposedCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ShowToolbar="true">
+            <ChildContent>
+                <ToolbarContent TItem="Employee" Class="gap-2 flex-wrap">
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="gap-1.5">
+                        <DynamicIcon Name="RefreshCw" Class="h-3.5 w-3.5" />
+                        Refresh
+                    </Button>
+                    <DataGridToolbarColumns TItem="Employee" />
+                    <DataGridToolbarExport TItem="Employee" />
+                    <DataGridToolbarFullscreen TItem="Employee" />
+                </ToolbarContent>
                 <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
                 <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
                 <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" />
@@ -667,7 +687,7 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnDeleteNamedLayout</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;string&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when the user deletes a named layout. Receives the layout Id.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">DetailTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Template for expandable row details.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom content when no data.</td></tr>
-                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ToolbarContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom toolbar content slot (rendered alongside built-in toolbar items).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;ToolbarContent&gt;</td><td class="px-4 py-2 font-mono text-xs">component</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Nested component placed inside ChildContent. Takes Class for wrapper styling and ChildContent for custom buttons / built-in toolbar tools.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowContextMenu</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Right-click context menu template for rows.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRowClick</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;TItem&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when a row is clicked.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRowDoubleClick</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;TItem&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when a row is double-clicked.</td></tr>
@@ -691,6 +711,51 @@
                     </tbody>
                 </table>
             </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">ToolbarContent&lt;TItem&gt;</Heading>
+            <Lumeo.Text Size="sm" Color="muted" Class="mb-3">Place inside <code>&lt;ChildContent&gt;</code> of a DataGrid. Accepts custom buttons or built-in toolbar tool components (see below) that automatically pick up the grid's state via a cascading context.</Lumeo.Text>
+            <Stack Class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/30">
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Property</th>
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Type</th>
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Default</th>
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Class</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">CSS classes applied to the wrapper around ChildContent + the toolbar's filter chips.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ChildContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Your custom buttons and any of the built-in toolbar tool components.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">Toolbar Tool Components</Heading>
+            <Lumeo.Text Size="sm" Color="muted" Class="mb-3">Built-in tool components you can drop inside <code>&lt;ToolbarContent&gt;</code>. Each takes only <code>TItem</code> and reads everything else (selection, columns, export formats, layout config, Interop, Localizer) from a cascading <code>DataGridToolbarContext&lt;TItem&gt;</code>.</Lumeo.Text>
+            <Stack Class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/30">
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Component</th>
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Renders</th>
+                            <th class="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">Visible when</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;DataGridToolbarFullscreen&gt;</td><td class="px-4 py-2 text-muted-foreground">Fullscreen toggle icon button.</td><td class="px-4 py-2 text-muted-foreground"><code>Expandable="true"</code> on the grid.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;DataGridToolbarCopySelected&gt;</td><td class="px-4 py-2 text-muted-foreground">Copy-to-clipboard button (tab-separated, selected rows).</td><td class="px-4 py-2 text-muted-foreground">At least one row is selected.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;DataGridToolbarColumns&gt;</td><td class="px-4 py-2 text-muted-foreground">Column visibility + reorder dropdown.</td><td class="px-4 py-2 text-muted-foreground">Always (gate on the grid via <code>ShowColumnChooser</code>).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;DataGridToolbarExport&gt;</td><td class="px-4 py-2 text-muted-foreground">Export dropdown (CSV / Excel / PDF per <code>ExportFormats</code>).</td><td class="px-4 py-2 text-muted-foreground"><code>ExportFormats != None</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;DataGridToolbarLayouts&gt;</td><td class="px-4 py-2 text-muted-foreground">Saved-layouts panel (personal + global).</td><td class="px-4 py-2 text-muted-foreground"><code>EnableLayoutPersistence="true"</code>.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+            <Lumeo.Text Size="xs" Color="muted" Class="mt-2">Omit <code>&lt;ToolbarContent&gt;</code> and all five tools auto-render in the default order (Fullscreen, CopySelected, Columns, Export, Layouts) gated by their <code>Show*</code> flags on the DataGrid. Provide <code>&lt;ToolbarContent&gt;</code> and the default stack is suppressed entirely — you pick which tools to include and where, no duplicates.</Lumeo.Text>
         </Stack>
 
         <Stack>
@@ -1288,18 +1353,39 @@
 
     private string _toolbarContentCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
           ShowToolbar=""true"">
-    <ToolbarContent>
-        <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
-                Class=""gap-1.5"">
-            <DynamicIcon Name=""Plus"" Class=""h-3.5 w-3.5"" />
-            Add Employee
-        </Button>
-    </ToolbarContent>
     <ChildContent>
+        <ToolbarContent TItem=""Employee"" Class=""gap-3"">
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
+                    Class=""gap-1.5"">
+                <DynamicIcon Name=""Plus"" Class=""h-3.5 w-3.5"" />
+                Add Employee
+            </Button>
+        </ToolbarContent>
         <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
                            Sortable=""true"" Filterable=""true"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    </ChildContent>
+</DataGrid>";
+
+    private string _toolbarComposedCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          ShowToolbar=""true"">
+    <ChildContent>
+        @* Placing ToolbarContent suppresses the default right-hand tool stack — you
+           pick exactly which tools to include and where. No need for Expandable /
+           ShowExport / ShowColumnChooser flags; tools render wherever you place them. *@
+        <ToolbarContent TItem=""Employee"" Class=""gap-2 flex-wrap"">
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
+                    Class=""gap-1.5"">
+                <DynamicIcon Name=""RefreshCw"" Class=""h-3.5 w-3.5"" />
+                Refresh
+            </Button>
+            <DataGridToolbarColumns TItem=""Employee"" />
+            <DataGridToolbarExport TItem=""Employee"" />
+            <DataGridToolbarFullscreen TItem=""Employee"" />
+        </ToolbarContent>
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     </ChildContent>
 </DataGrid>";
 

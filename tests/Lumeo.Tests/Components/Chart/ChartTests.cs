@@ -72,8 +72,10 @@ public class ChartTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.Chart>();
 
-        var div = cut.Find("div");
-        var id = div.GetAttribute("id");
+        // Chart host is the nested div carrying the ECharts id; the outer wrapper
+        // owns styling so the skeleton overlay can pin absolute inside it.
+        var host = cut.Find("div.lumeo-chart-host");
+        var id = host.GetAttribute("id");
         Assert.NotNull(id);
         Assert.StartsWith("lumeo-chart-", id);
     }
@@ -84,8 +86,8 @@ public class ChartTests : IAsyncLifetime
         var cut1 = _ctx.Render<L.Chart>();
         var cut2 = _ctx.Render<L.Chart>();
 
-        var id1 = cut1.Find("div").GetAttribute("id");
-        var id2 = cut2.Find("div").GetAttribute("id");
+        var id1 = cut1.Find("div.lumeo-chart-host").GetAttribute("id");
+        var id2 = cut2.Find("div.lumeo-chart-host").GetAttribute("id");
         Assert.NotEqual(id1, id2);
     }
 

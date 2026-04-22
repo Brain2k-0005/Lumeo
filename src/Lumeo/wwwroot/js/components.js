@@ -805,15 +805,56 @@ export function unregisterOtpPaste(baseId, length) {
 
 const columnResizeHandlers = new Map();
 
-export function registerColumnResize(handleId, dotnetRef) {
+export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     const handle = document.getElementById(handleId);
     if (!handle) return;
+    const th = handle.closest('th');
+    if (!th) return;
+
     let startX = 0;
+    let startWidth = 0;
+    let currentWidth = 0;
     let isDragging = false;
+    let colBodyCells = [];
+
+    const min = Math.max(1, Number(minWidth) || 50);
+    const max = Number(maxWidth) > 0 ? Number(maxWidth) : Number.POSITIVE_INFINITY;
+
+    // Apply the width to the header + every body cell in the same column — using
+    // direct style writes so we can drag smoothly without a Blazor round-trip on
+    // every mouse move. We commit the final width ONCE on mouseup.
+    const applyWidth = (w) => {
+        const wpx = w + 'px';
+        th.style.width = wpx;
+        th.style.minWidth = wpx;
+        for (const cell of colBodyCells) {
+            cell.style.width = wpx;
+            cell.style.minWidth = wpx;
+        }
+    };
+
+    const gatherBodyCells = () => {
+        const table = th.closest('table');
+        if (!table) return [];
+        const headerRow = th.parentElement;
+        if (!headerRow) return [];
+        const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
+        if (colIndex < 0) return [];
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return [];
+        const cells = [];
+        for (const row of tbody.rows) {
+            if (row.children[colIndex]) cells.push(row.children[colIndex]);
+        }
+        return cells;
+    };
 
     const onMouseDown = (e) => {
         isDragging = true;
         startX = e.clientX;
+        startWidth = th.getBoundingClientRect().width;
+        currentWidth = startWidth;
+        colBodyCells = gatherBodyCells();
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
         e.preventDefault();
@@ -822,15 +863,19 @@ export function registerColumnResize(handleId, dotnetRef) {
     const onMouseMove = (e) => {
         if (!isDragging) return;
         const delta = e.clientX - startX;
-        startX = e.clientX;
-        dotnetRef.invokeMethodAsync('OnColumnResize', handleId, delta);
+        let w = startWidth + delta;
+        if (w < min) w = min;
+        else if (w > max) w = max;
+        if (w === currentWidth) return;
+        currentWidth = w;
+        applyWidth(w);
     };
     const onMouseUp = () => {
         if (!isDragging) return;
         isDragging = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        dotnetRef.invokeMethodAsync('OnColumnResizeEnd', handleId);
+        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth);
     };
     handle.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);

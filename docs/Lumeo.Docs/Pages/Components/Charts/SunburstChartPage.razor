@@ -10,6 +10,28 @@
             <SunburstChart Data="_data" />
         </Container>
     </ComponentDemo>
+    <ComponentDemo Title="Loading state" Description="Shape-aware skeleton with reserved space for legend and axes — no layout shift when real data arrives.">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulateLoadingAsync" Disabled="@_loading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepLoading" Id="keep-loading" />
+                        <label for="keep-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Duration: @(_simulateDurationMs / 1000.0)s</label>
+                        <input type="range" min="500" max="10000" step="500" @bind-value="_simulateDurationMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Cycle: @_phantomCycleMs ms</label>
+                        <input type="range" min="300" max="3000" step="100" @bind-value="_phantomCycleMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                </Stack>
+                <SunburstChart Data="_data" PhantomCycleMs="@_phantomCycleMs" IsLoading="@LoadingComputed" Height="320px" />
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -47,6 +69,30 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
                             <td class="p-3 text-muted-foreground">Custom color palette.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsLoading</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, renders a shape-matched loading skeleton in place of the chart. Bind to your async fetch state.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowLoadingSkeleton</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Set to false to opt out of the skeleton (chart area stays empty while IsLoading is true).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">(chart default)</td>
+                            <td class="p-3 text-muted-foreground">Override the skeleton silhouette (Bars, Line, Area, Pie, Scatter, Grid, Generic).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Phantom</td>
+                            <td class="p-3 text-muted-foreground">Phantom renders the real chart with placeholder data and morphs to real data via ECharts animation. Silhouette falls back to the legacy SVG skeleton overlay.</td>
+                        </tr>
                     </tbody>
                 </table>
             </Stack>
@@ -76,4 +122,17 @@
     };
 
     private string _basicCode = @"<SunburstChart Data=""_data"" />";
+
+    private bool _loading;
+    private bool _keepLoading;
+    private bool LoadingComputed => _loading || _keepLoading;
+    private int _simulateDurationMs = 2000;
+    private int _phantomCycleMs = 1400;
+
+    private async Task SimulateLoadingAsync()
+    {
+        _loading = true;
+        await Task.Delay(_simulateDurationMs);
+        _loading = false;
+    }
 }

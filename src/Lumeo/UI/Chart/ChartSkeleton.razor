@@ -1,0 +1,196 @@
+@namespace Lumeo
+@using System.Globalization
+
+<div class="@CssClass" style="@InlineStyle" role="status" aria-live="polite" aria-label="Loading chart" data-lumeo-chart-skeleton="@Kind.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+    <svg class="lumeo-chart-skel-svg w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        @* Legend/axis hints use opacity 0.35 so they're subtle background structure.
+           Plot area matches where ECharts renders: no layout jump on swap. *@
+        @if (IsCartesian)
+        {
+            @foreach (var (x, w) in LegendPills) { <rect data-skel-axis="legend" x="@F(x)" y="5" width="@F(w)" height="3" rx="1.5" ry="1.5" fill="@MutedFill" opacity="0.35" /> }
+            @foreach (var y in YTickYs)         { <rect data-skel-axis="y" x="2" y="@F(y)" width="5" height="1.4" rx="0.4" ry="0.4" fill="@MutedFill" opacity="0.35" /> }
+            @foreach (var x in XTickXs)         { <rect data-skel-axis="x" x="@F(x)" y="92" width="8" height="1.6" rx="0.4" ry="0.4" fill="@MutedFill" opacity="0.35" /> }
+        }
+
+        @* Guide lines at 25/50/75% of inner plot area. *@
+        @if (Kind == ChartSkeletonKind.Bars || Kind == ChartSkeletonKind.Line || Kind == ChartSkeletonKind.Area)
+        {
+            <line x1="10" y1="32.5" x2="98" y2="32.5" stroke="@GridFill" stroke-width="0.3" stroke-dasharray="1 2" vector-effect="non-scaling-stroke" />
+            <line x1="10" y1="51"   x2="98" y2="51"   stroke="@GridFill" stroke-width="0.3" stroke-dasharray="1 2" vector-effect="non-scaling-stroke" />
+            <line x1="10" y1="69.5" x2="98" y2="69.5" stroke="@GridFill" stroke-width="0.3" stroke-dasharray="1 2" vector-effect="non-scaling-stroke" />
+        }
+        @if (Kind == ChartSkeletonKind.Bars)
+        {
+            @* 8 bars inside plot area, floor at y=PlotBottom. *@
+            @for (int i = 0; i < BarHeights.Length; i++)
+            {
+                var hRatio = BarHeights[i] / 100.0;
+                var h = hRatio * PlotH;
+                var minH = h * 0.35;
+                var x = F(PlotX + 1 + i * (BarWidth + 1));
+                var delay = F(i * 0.12) + "s";
+                var hValues = $"{F(h)};{F(minH)};{F(h)}";
+                var yValues = $"{F(PlotBottom - h)};{F(PlotBottom - minH)};{F(PlotBottom - h)}";
+                <rect class="lumeo-chart-skel-shape" data-skel-shape="bar" x="@x" y="@F(PlotBottom - h)" width="@F(BarWidth)" height="@F(h)" rx="1.2" ry="1.2" fill="@MutedFill" style="animation-delay: @delay;">
+                    <animate attributeName="height" values="@hValues" dur="1.6s" begin="@delay" repeatCount="indefinite" />
+                    <animate attributeName="y"      values="@yValues" dur="1.6s" begin="@delay" repeatCount="indefinite" />
+                </rect>
+            }
+        }
+        else if (Kind == ChartSkeletonKind.Line || Kind == ChartSkeletonKind.Area)
+        {
+            @if (Kind == ChartSkeletonKind.Area)
+            {
+                <polygon class="lumeo-chart-skel-shape" points="@(LinePoints + $" {F(PlotRight)},{F(PlotBottom)} {F(PlotX)},{F(PlotBottom)}")" fill="@SoftFill" />
+            }
+            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LineSecondaryPoints" fill="none" stroke="@SoftFill" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" style="animation-delay: 0.4s;" />
+            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LineTertiaryPoints" fill="none" stroke="@SoftFill" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" style="animation-delay: 0.8s;" />
+            <polyline class="lumeo-chart-skel-shape" data-skel-shape="line" points="@LinePoints" fill="none" stroke="@MutedFill" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+        }
+        else if (Kind == ChartSkeletonKind.Pie)
+        {
+            @* Pie: top 10% reserves legend (3 pills), pie shifts down 5 and uses radius 26. *@
+            @foreach (var (x, w) in LegendPills) { <rect data-skel-axis="legend" x="@F(x)" y="3" width="@F(w)" height="3" rx="1.5" ry="1.5" fill="@MutedFill" opacity="0.35" /> }
+
+            @* External label-anchor lines at 45°/135°/225°/315° — radius 30 to 45 (after translate). *@
+            <g transform="translate(0 5)">
+                @foreach (var (x1, y1, x2, y2) in PieLabelLines) { <line data-skel-axis="pie-label" x1="@F(x1)" y1="@F(y1)" x2="@F(x2)" y2="@F(y2)" stroke="@MutedFill" stroke-width="0.5" opacity="0.35" vector-effect="non-scaling-stroke" /> }
+
+                <g>
+                    @for (int i = 0; i < PieSlices.Length; i++)
+                    {
+                        var d = PieSlices[i];
+                        var delay = F(i * 0.2) + "s";
+                        <path class="lumeo-chart-skel-shape" data-skel-shape="pie-slice" d="@d" fill="@MutedFill" style="animation-delay: @delay;" />
+                    }
+                    <animateTransform attributeName="transform" type="rotate"
+                                      values="0 50 50; 360 50 50"
+                                      dur="6s" repeatCount="indefinite" />
+                </g>
+            </g>
+        }
+        else if (Kind == ChartSkeletonKind.Scatter)
+        {
+            @for (int i = 0; i < ScatterDots.Length; i++)
+            {
+                var (x, y, r) = ScatterDots[i];
+                // Map dots from 0..100 space into the plot area (x 10..98, y 14..88).
+                var px = PlotX + x * (PlotW / 100.0);
+                var py = 14 + y * (PlotH / 100.0);
+                <circle class="lumeo-chart-skel-shape" data-skel-shape="dot" cx="@F(px)" cy="@F(py)" r="@F(r)" fill="@MutedFill" style="animation-delay: @(F(i * 0.07))s, @(F(i * 0.07))s;" />
+            }
+        }
+        else if (Kind == ChartSkeletonKind.Grid)
+        {
+            // Grid cells also live inside the plot area so heatmaps leave room for legend + axis ticks.
+            var cellW = (PlotW - 1.2 * (GridCols - 1)) / GridCols;
+            var cellH = (PlotH - 1.2 * (GridRows - 1)) / GridRows;
+            @for (int r = 0; r < GridRows; r++)
+            {
+                @for (int c = 0; c < GridCols; c++)
+                {
+                    var x = F(PlotX + c * (cellW + 1.2));
+                    var y = F(14 + r * (cellH + 1.2));
+                    var delay = F(((r + c) % 5) * 0.1) + "s";
+                    var op = F(GridOpacities[(r * GridCols + c) % GridOpacities.Length]);
+                    <rect class="lumeo-chart-skel-shape" x="@x" y="@y" width="@F(cellW)" height="@F(cellH)" rx="0.6" ry="0.6" fill="@MutedFill" style="animation-delay: @delay; opacity: @op;" />
+                }
+            }
+        }
+        else
+        {
+            <rect class="lumeo-chart-skel-shape" x="6" y="6" width="88" height="88" rx="2" ry="2" fill="@SoftFill" />
+            <circle class="lumeo-chart-skel-shape" cx="50" cy="50" r="10" fill="none" stroke="@MutedFill" stroke-width="3" vector-effect="non-scaling-stroke" />
+        }
+    </svg>
+</div>
+
+@code {
+    [Parameter] public ChartSkeletonKind Kind { get; set; } = ChartSkeletonKind.Generic;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Muted fills — 10%/6%/8% of the foreground token so light/dark mode both work.
+    private const string MutedFill = "color-mix(in oklab, var(--color-foreground) 10%, transparent)";
+    private const string SoftFill = "color-mix(in oklab, var(--color-foreground) 6%, transparent)";
+    private const string GridFill = "color-mix(in oklab, var(--color-foreground) 8%, transparent)";
+
+    // Inner plot area (matches real ECharts render box): 10% left, 12% bottom, 14% top, 2% right padding.
+    private const double PlotX = 10;
+    private const double PlotRight = 98;
+    private const double PlotTop = 14;
+    private const double PlotBottom = 88;
+    private const double PlotW = PlotRight - PlotX;   // 88
+    private const double PlotH = PlotBottom - PlotTop; // 74
+
+    // Polylines inside plot area — percentages map into the 14..88 vertical range.
+    private static readonly string LinePoints = BuildLine(new double[] { 72, 48, 62, 34, 54, 28, 46, 22, 40 });
+    private static readonly string LineSecondaryPoints = BuildLine(new double[] { 55, 70, 58, 52, 68, 50, 64, 56, 66 });
+    private static readonly string LineTertiaryPoints  = BuildLine(new double[] { 82, 78, 80, 72, 84, 76, 82, 74, 78 });
+
+    private static string BuildLine(double[] pct)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < pct.Length; i++)
+        {
+            var x = PlotX + (i / (double)(pct.Length - 1)) * PlotW;
+            var y = PlotTop + (pct[i] / 100.0) * PlotH;
+            if (i > 0) sb.Append(' ');
+            sb.Append(x.ToString("0.##", CultureInfo.InvariantCulture)).Append(',').Append(y.ToString("0.##", CultureInfo.InvariantCulture));
+        }
+        return sb.ToString();
+    }
+
+    // 8 bars, 1-unit gaps inside PlotW.
+    private static readonly double[] BarHeights = { 38, 62, 48, 78, 56, 82, 44, 70 };
+    private const double BarWidth = (PlotW - 2 - 1 * (8 - 1)) / 8.0;
+
+    // 5x5 heatmap grid.
+    private const int GridRows = 5;
+    private const int GridCols = 5;
+    private static readonly double[] GridOpacities = { 0.4,0.7,0.5,0.9,0.55,0.8,0.45,0.65,0.35,0.75,0.6,0.5,0.85,0.4,0.7,0.55,0.95,0.45,0.6,0.8,0.5,0.7,0.4,0.65,0.55 };
+
+    // 4 pie wedges centered at (50,50), radius 26.
+    private static readonly string[] PieSlices =
+    {
+        "M 50 50 L 76 50 A 26 26 0 0 1 50 76 Z",
+        "M 50 50 L 50 76 A 26 26 0 0 1 24 50 Z",
+        "M 50 50 L 24 50 A 26 26 0 0 1 50 24 Z",
+        "M 50 50 L 50 24 A 26 26 0 0 1 76 50 Z",
+    };
+
+    // Seeded scatter dots (0..100 space, remapped into plot area at render).
+    private static readonly (double X, double Y, double R)[] ScatterDots =
+    {
+        (12, 78, 2.4), (22, 62, 3.1), (18, 88, 2.0), (32, 48, 2.8), (40, 70, 2.2),
+        (48, 35, 3.0), (54, 58, 2.6), (62, 82, 2.3), (70, 40, 3.2), (76, 66, 2.5),
+        (84, 28, 2.7), (90, 52, 2.1), (28, 25, 2.9), (58, 18, 2.4), (78, 12, 2.6),
+    };
+
+    // Axis / legend hints.
+    private static readonly (double X, double W)[] LegendPills = { (32, 12), (46, 10), (58, 11) };
+    private static readonly double[] YTickYs = { 22, 40, 58, 76 };
+    private static readonly double[] XTickXs = { 14, 28, 42, 56, 70, 84 };
+    // Pie external label anchors at 45°/135°/225°/315°, r=30 → 45 relative to (50,50).
+    private static readonly (double X1, double Y1, double X2, double Y2)[] PieLabelLines =
+    {
+        (71.21, 28.79, 81.82, 18.18),
+        (28.79, 28.79, 18.18, 18.18),
+        (28.79, 71.21, 18.18, 81.82),
+        (71.21, 71.21, 81.82, 81.82),
+    };
+
+    private bool IsCartesian => Kind == ChartSkeletonKind.Bars
+                             || Kind == ChartSkeletonKind.Line
+                             || Kind == ChartSkeletonKind.Area
+                             || Kind == ChartSkeletonKind.Scatter
+                             || Kind == ChartSkeletonKind.Grid;
+
+    private string CssClass => $"lumeo-chart-skeleton inline-block w-full rounded-lg overflow-hidden bg-muted/30 relative {Class}".Trim();
+    private string InlineStyle => $"width: {Width}; height: {Height};";
+
+    // Invariant culture: SVG attributes require `.` as decimal separator.
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}

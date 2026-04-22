@@ -1,0 +1,69 @@
+@namespace Lumeo
+@typeparam TItem
+
+@if (Context is not null && Context.ExportFormats != DataGridExportFormat.None)
+{
+    <div class="relative">
+        <button type="button"
+                class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                @onclick="ToggleExportMenu">
+            <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
+            <span>@Context.Localizer["DataGrid.Export"]</span>
+            <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
+        </button>
+
+        @if (_exportMenuOpen)
+        {
+            <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
+                @if (Context.ExportFormats.HasFlag(DataGridExportFormat.Csv))
+                {
+                    <button type="button"
+                            data-export-format="csv"
+                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                            @onclick="@(() => Export("csv"))">
+                        <Blazicon Svg="Lucide.FileText" class="h-4 w-4" />
+                        <span>CSV</span>
+                    </button>
+                }
+                @if (Context.ExportFormats.HasFlag(DataGridExportFormat.Excel))
+                {
+                    <button type="button"
+                            data-export-format="excel"
+                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                            @onclick="@(() => Export("excel"))">
+                        <Blazicon Svg="Lucide.Sheet" class="h-4 w-4" />
+                        <span>Excel</span>
+                    </button>
+                }
+                @if (Context.ExportFormats.HasFlag(DataGridExportFormat.Pdf))
+                {
+                    <button type="button"
+                            data-export-format="pdf"
+                            class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                            @onclick="@(() => Export("pdf"))">
+                        <Blazicon Svg="Lucide.FileDown" class="h-4 w-4" />
+                        <span>PDF</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public DataGridToolbarContext<TItem>? Context { get; set; }
+
+    private bool _exportMenuOpen;
+
+    private void ToggleExportMenu()
+    {
+        _exportMenuOpen = !_exportMenuOpen;
+    }
+
+    private async Task Export(string format)
+    {
+        if (Context is null) return;
+        _exportMenuOpen = false;
+        await Context.OnExport.InvokeAsync(format);
+    }
+}

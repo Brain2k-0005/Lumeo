@@ -1,0 +1,38 @@
+@namespace Lumeo
+@typeparam TItem
+
+@if (Context is not null && Context.SelectedItems is { Count: > 0 } selected && Context.EffectiveColumns is not null)
+{
+    <button type="button"
+            class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+            title="@Context.Localizer["DataGrid.CopySelected", selected.Count]"
+            @onclick="CopySelected">
+        <Blazicon Svg="Lucide.Clipboard" class="h-4 w-4 mr-1.5" />
+        <span>@Context.Localizer["DataGrid.CopySelected", selected.Count]</span>
+    </button>
+}
+
+@code {
+    [CascadingParameter] public DataGridToolbarContext<TItem>? Context { get; set; }
+
+    private async Task CopySelected()
+    {
+        if (Context is null) return;
+        if (Context.SelectedItems is null || Context.SelectedItems.Count == 0 || Context.EffectiveColumns is null) return;
+
+        var visibleColumns = Context.EffectiveColumns.Where(c => c.Visible).ToList();
+        var lines = new List<string>();
+
+        // Header row
+        lines.Add(string.Join("\t", visibleColumns.Select(c => c.Title ?? c.Field ?? "")));
+
+        // Data rows
+        foreach (var item in Context.SelectedItems)
+        {
+            lines.Add(string.Join("\t", visibleColumns.Select(c => c.GetFormattedValue(item))));
+        }
+
+        var text = string.Join("\n", lines);
+        await Context.Interop.CopyToClipboard(text);
+    }
+}

@@ -34,6 +34,29 @@
             <PieChart Data="_data" ShowLegend="false" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Loading state" Description="Four flat slices rotate slowly while the chart data arrives. Matches the shape of the real pie — no 3D burst.">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulatePieLoadingAsync" Disabled="@_pieLoading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepPieLoading" Id="keep-pie-loading" />
+                        <label for="keep-pie-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Duration: @(_simulatePieDurationMs / 1000.0)s</label>
+                        <input type="range" min="500" max="10000" step="500" @bind-value="_simulatePieDurationMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Cycle: @_phantomPieCycleMs ms</label>
+                        <input type="range" min="300" max="3000" step="100" @bind-value="_phantomPieCycleMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                </Stack>
+                <PieChart Data="_data" PhantomCycleMs="@_phantomPieCycleMs" IsLoading="@PieLoadingComputed" Height="320px" />
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -83,6 +106,30 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
                             <td class="p-3 text-muted-foreground">Enables the hover tooltip.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsLoading</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, renders a shape-matched loading skeleton in place of the chart. Bind to your async fetch state.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowLoadingSkeleton</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Set to false to opt out of the skeleton (chart area stays empty while IsLoading is true).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">(chart default)</td>
+                            <td class="p-3 text-muted-foreground">Override the skeleton silhouette (Bars, Line, Area, Pie, Scatter, Grid, Generic).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Phantom</td>
+                            <td class="p-3 text-muted-foreground">Phantom renders the real chart with placeholder data and morphs to real data via ECharts animation. Silhouette falls back to the legacy SVG skeleton overlay.</td>
+                        </tr>
                     </tbody>
                 </table>
             </Stack>
@@ -91,6 +138,19 @@
 </Stack>
 
 @code {
+    private bool _pieLoading;
+    private bool _keepPieLoading;
+    private bool PieLoadingComputed => _pieLoading || _keepPieLoading;
+    private int _simulatePieDurationMs = 2000;
+    private int _phantomPieCycleMs = 1400;
+
+    private async Task SimulatePieLoadingAsync()
+    {
+        _pieLoading = true;
+        await Task.Delay(_simulatePieDurationMs);
+        _pieLoading = false;
+    }
+
     private List<PieChart.PieChartData> _data = new()
     {
         new() { Name = "Products",      Value = 48 },
