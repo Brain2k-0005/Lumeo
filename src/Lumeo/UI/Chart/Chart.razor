@@ -80,9 +80,11 @@ else
     private string RootCssClass => $"relative {Class}".Trim();
     private string RootStyleStr => $"position: relative; {StyleStr}";
 
-    /// <summary>True when we should be showing *some form* of loading state. This is the
-    /// "is-loading" signal — separate from *how* we present it (Phantom vs Silhouette).</summary>
-    private bool ShouldShowSkeleton => ShowLoadingSkeleton && (IsLoading || !_hasFirstRendered);
+    /// <summary>True when we should be showing a loading state. Keyed strictly on
+    /// <c>IsLoading</c> — we do NOT show phantom/silhouette on initial mount, because
+    /// ECharts initializes synchronously and a ready chart should render its real data
+    /// on first paint. The loading state is reserved for explicit consumer refetches.</summary>
+    private bool ShouldShowSkeleton => ShowLoadingSkeleton && IsLoading;
 
     // Silhouette mode hides the real chart while the SVG overlay takes its place.
     // Phantom mode keeps the chart host fully visible — the "skeleton" IS the chart
@@ -146,6 +148,9 @@ else
             }
 
             _hasFirstRendered = true;
+            // Capture the phantom state that was actually passed to ECharts. Must be
+            // the value at init time (before any subsequent state change), so we can
+            // correctly decide notMerge on the next update.
             _lastWasPhantom = IsPhantomActive;
             UpdatePhantomTimer();
             StateHasChanged();
@@ -159,10 +164,12 @@ else
             if (json != _lastJson)
             {
                 _lastJson = json;
-                // When transitioning OUT of phantom mode, use notMerge=true so the muted
-                // palette and transparent axis labels don't bleed into the real chart.
-                // Phantom→phantom and real→real stay on notMerge=false for smooth tweens.
-                var notMerge = _lastWasPhantom && !isPhantom;
+                // Whenever phantom state flips in either direction, use notMerge=true so
+                // muted palette / transparent axis labels / placeholder category names
+                // don't bleed into the real chart (or vice-versa). Same-mode updates
+                // (phantom→phantom cycling, real→real data refresh) stay on notMerge=false
+                // for smooth value tweens.
+                var notMerge = _lastWasPhantom != isPhantom;
                 await _module!.InvokeVoidAsync("updateChart", _chartId, json, notMerge);
             }
             _lastWasPhantom = isPhantom;
