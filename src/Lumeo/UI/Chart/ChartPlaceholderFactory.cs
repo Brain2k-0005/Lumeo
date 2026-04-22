@@ -124,7 +124,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             Legend = BuildLegendHint(seriesCount),
             XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(categories), AxisLabel = SkeletonBoxAxisLabel() } },
@@ -169,7 +168,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             Legend = BuildLegendHint(seriesCount),
             XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(categories), BoundaryGap = false, AxisLabel = SkeletonBoxAxisLabel() } },
@@ -193,7 +191,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Legend = BuildLegendHint(slices),
             Series = new()
             {
@@ -222,7 +219,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             Legend = BuildLegendHint(1),
             XAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
@@ -250,7 +246,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(cols), AxisLabel = SkeletonBoxAxisLabel() } },
             YAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(rows), AxisLabel = SkeletonBoxAxisLabel() } },
@@ -324,7 +319,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Legend = BuildLegendHint(seriesCount),
             Radar = new EChartRadar { Indicator = indicators, Shape = "polygon" },
             Series = new()
@@ -358,7 +352,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Series = new()
             {
                 new EChartSeries
@@ -406,7 +399,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Series = new()
             {
                 new EChartSeries
@@ -417,8 +409,7 @@ internal static class ChartPlaceholderFactory
                     Nodes = nodes,
                     Links = links,
                     Roam = false,
-                    Label = new() { Show = false },
-                    LineStyle = new() { Width = 1, Color = "rgba(148,163,184,0.35)" }
+                    Label = new() { Show = false }
                 }
             }
         };
@@ -454,7 +445,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Series = new()
             {
                 new EChartSeries
@@ -467,9 +457,7 @@ internal static class ChartPlaceholderFactory
                     Right = "18%",
                     Top = "5%",
                     Bottom = "5%",
-                    Label = new() { Show = false },
-                    LineStyle = new() { Width = 1, Color = "rgba(148,163,184,0.35)" },
-                    ItemStyle = new() { Color = "rgba(148,163,184,0.55)", BorderColor = "rgba(0,0,0,0)" }
+                    Label = new() { Show = false }
                 }
             }
         };
@@ -492,7 +480,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Parallel = new EChartParallel { Left = "6%", Right = "14%", Top = "10%", Bottom = "10%" },
             ParallelAxis = parallelAxis,
             Series = new()
@@ -501,8 +488,7 @@ internal static class ChartPlaceholderFactory
                 {
                     Name = "·",
                     Type = "parallel",
-                    Data = data,
-                    LineStyle = new() { Width = 1, Color = "rgba(148,163,184,0.45)" }
+                    Data = data
                 }
             }
         };
@@ -521,7 +507,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Series = new()
             {
                 new EChartSeries
@@ -546,7 +531,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Series = new()
             {
                 new EChartSeries
@@ -560,8 +544,7 @@ internal static class ChartPlaceholderFactory
                     Progress = new EChartSeriesProgress { Show = true, Width = 10 },
                     Pointer = new EChartPointer { Show = true },
                     Detail = new EChartSeriesDetail { FontSize = 0, Formatter = " " },
-                    Data = new List<EChartPieData> { new() { Name = " ", Value = value } },
-                    ItemStyle = new() { Color = "rgba(148,163,184,0.55)" }
+                    Data = new List<EChartPieData> { new() { Name = " ", Value = value } }
                 }
             }
         };
@@ -575,7 +558,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Polar = new { radius = new[] { "20%", "75%" } },
             AngleAxis = new() { new { type = "category", data = CategoryLabels(bars), axisLabel = new { color = "transparent", backgroundColor = SkeletonBoxColor, width = 18, height = 8, borderRadius = 2 } } },
             RadiusAxis = new() { new { axisLabel = new { color = "transparent", backgroundColor = SkeletonBoxColor, width = 18, height = 8, borderRadius = 2 } } },
@@ -610,7 +592,6 @@ internal static class ChartPlaceholderFactory
 
         return new EChartOption
         {
-            Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "10%", ContainLabel = true },
             XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(candles), AxisLabel = SkeletonBoxAxisLabel() } },
             YAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
@@ -620,12 +601,7 @@ internal static class ChartPlaceholderFactory
                 {
                     Name = "·",
                     Type = "candlestick",
-                    Data = data,
-                    ItemStyle = new()
-                    {
-                        Color = "rgba(148,163,184,0.55)",
-                        BorderColor = "rgba(148,163,184,0.70)"
-                    }
+                    Data = data
                 }
             }
         };
