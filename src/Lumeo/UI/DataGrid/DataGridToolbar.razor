@@ -16,6 +16,11 @@
             </div>
         }
 
+        @if (RegisteredContent?.ChildContent is not null)
+        {
+            @RegisteredContent.ChildContent
+        }
+
         @if (Context is not null)
         {
             @foreach (var filter in Context.Filters)
@@ -34,53 +39,50 @@
         }
     </div>
 
-    <CascadingValue Value="_toolbarContext" IsFixed="false">
-        <div class="flex items-center gap-2">
-            @if (ToolbarContent is not null)
-            {
-                @ToolbarContent
-            }
+    <div class="flex items-center gap-2">
+        @* Expand to fullscreen *@
+        @if (Expandable)
+        {
+            <DataGridToolbarFullscreen TItem="TItem" />
+        }
 
-            @* Expand to fullscreen *@
-            @if (Expandable)
-            {
-                <DataGridToolbarFullscreen TItem="TItem" />
-            }
+        @* Copy selected rows to clipboard *@
+        @if (SelectedItems is not null && SelectedItems.Count > 0 && EffectiveColumns is not null)
+        {
+            <DataGridToolbarCopySelected TItem="TItem" />
+        }
 
-            @* Copy selected rows to clipboard *@
-            @if (SelectedItems is not null && SelectedItems.Count > 0 && EffectiveColumns is not null)
-            {
-                <DataGridToolbarCopySelected TItem="TItem" />
-            }
+        @* Column visibility dropdown *@
+        @if (ShowColumnChooser)
+        {
+            <DataGridToolbarColumns TItem="TItem" />
+        }
 
-            @* Column visibility dropdown *@
-            @if (ShowColumnChooser)
-            {
-                <DataGridToolbarColumns TItem="TItem" />
-            }
+        @* Export dropdown — hidden when ShowExport=false OR ExportFormats has no flags set. *@
+        @if (ShowExport && ExportFormats != DataGridExportFormat.None)
+        {
+            <DataGridToolbarExport TItem="TItem" />
+        }
 
-            @* Export dropdown — hidden when ShowExport=false OR ExportFormats has no flags set. *@
-            @if (ShowExport && ExportFormats != DataGridExportFormat.None)
-            {
-                <DataGridToolbarExport TItem="TItem" />
-            }
-
-            @* Layouts dropdown *@
-            @if (EnableLayoutPersistence)
-            {
-                <DataGridToolbarLayouts TItem="TItem" />
-            }
-        </div>
-    </CascadingValue>
+        @* Layouts dropdown *@
+        @if (EnableLayoutPersistence)
+        {
+            <DataGridToolbarLayouts TItem="TItem" />
+        }
+    </div>
 </div>
 
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
-    [Inject] private ComponentInteropService Interop { get; set; } = default!;
 
     [Parameter] public string? SearchText { get; set; }
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
-    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>The <see cref="ToolbarContent{TItem}"/> component the consumer placed
+    /// inside the DataGrid, forwarded by the parent grid. When null, the toolbar's left
+    /// slot renders just the search + filter chips; when non-null, its Class styles the
+    /// wrapper and its ChildContent renders alongside the chips.</summary>
+    [Parameter] public ToolbarContent<TItem>? RegisteredContent { get; set; }
     [Parameter] public EventCallback OnColumnVisibilityToggle { get; set; }
     [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
@@ -114,44 +116,11 @@
     /// <summary>Which export formats to include in the dropdown. Default <see cref="DataGridExportFormat.All"/>.</summary>
     [Parameter] public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
 
-    /// <summary>Custom CSS classes applied to the toolbar content wrapper
-    /// (the flex row holding <see cref="ToolbarContent"/> + filter chips).</summary>
-    [Parameter] public string? ToolbarContentClass { get; set; }
-
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private DataGridToolbarContext<TItem> _toolbarContext = new();
     private string CssClass => $"flex items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();
-    private string ContentWrapperClass => $"flex items-center gap-2 flex-1 {ToolbarContentClass}".Trim();
-
-    protected override void OnParametersSet()
-    {
-        _toolbarContext.IsExpanded = IsExpanded;
-        _toolbarContext.Expandable = Expandable;
-        _toolbarContext.OnToggleExpanded = OnToggleExpanded;
-
-        _toolbarContext.SelectedItems = SelectedItems;
-        _toolbarContext.EffectiveColumns = EffectiveColumns;
-        _toolbarContext.OnColumnToggle = OnColumnToggle;
-        _toolbarContext.OnColumnReorder = OnColumnReorder;
-
-        _toolbarContext.ExportFormats = ExportFormats;
-        _toolbarContext.OnExport = OnExport;
-
-        _toolbarContext.EnableLayoutPersistence = EnableLayoutPersistence;
-        _toolbarContext.GlobalLayouts = GlobalLayouts;
-        _toolbarContext.OnSaveLayout = OnSaveLayout;
-        _toolbarContext.OnResetLayout = OnResetLayout;
-        _toolbarContext.OnSaveNamedLayout = OnSaveNamedLayout;
-        _toolbarContext.OnDeleteNamedLayout = OnDeleteNamedLayout;
-        _toolbarContext.OnApplyNamedLayout = OnApplyNamedLayout;
-        _toolbarContext.LayoutStorageKey = LayoutStorageKey;
-        _toolbarContext.OnError = OnError;
-
-        _toolbarContext.Interop = Interop;
-        _toolbarContext.Localizer = L;
-    }
+    private string ContentWrapperClass => $"flex items-center gap-2 flex-1 {RegisteredContent?.Class}".Trim();
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
