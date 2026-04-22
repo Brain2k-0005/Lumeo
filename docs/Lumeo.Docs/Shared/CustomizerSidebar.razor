@@ -1,5 +1,6 @@
 @namespace Lumeo.Docs.Shared
 @using Blazicons
+@using Lumeo.Theming
 @inject IJSRuntime JS
 @inject IconService _iconService
 @inject Lumeo.Services.ThemeService ThemeService
@@ -360,6 +361,28 @@
         </button>
     </div>
 
+    <!-- Preset code — shareable short code -->
+    <div class="px-4 py-2.5 border-t border-border/60 bg-card">
+        <Flex Class="items-center justify-between gap-2">
+            <Stack Gap="0" Class="min-w-0">
+                <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Preset code</Lumeo.Text>
+                <Lumeo.Text As="span" Class="mt-1 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">@GetPresetCode()</Lumeo.Text>
+            </Stack>
+            <button class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border/60 bg-background text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                    title="Copy CLI command"
+                    @onclick="CopyPresetCode">
+                @if (_presetCodeCopied)
+                {
+                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Copy" class="h-3.5 w-3.5" />
+                }
+            </button>
+        </Flex>
+    </div>
+
     <!-- Copy Theme — pinned bottom -->
     <div class="px-4 py-3 border-t border-border bg-card">
         <Button Class="w-full flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -388,6 +411,7 @@
     private string _expandedSection = "";
     private bool _darkMode;
     private bool _copied;
+    private bool _presetCodeCopied;
 
     private string _activeTheme = "";
     private string _activeRadius = "0.75";
@@ -708,6 +732,34 @@
         await JS.InvokeVoidAsync("themeManager.resetAll");
         if (_darkMode) await ToggleDarkMode();
         _expandedSection = "";
+    }
+
+    private string GetPresetCode()
+    {
+        var preset = new LumeoPreset(
+            Theme: LumeoPresetOptions.IndexOf(LumeoPresetOptions.Themes, _activeTheme),
+            Style: LumeoPresetOptions.IndexOf(LumeoPresetOptions.Styles, _activeStyle),
+            BaseColor: LumeoPresetOptions.IndexOf(LumeoPresetOptions.BaseColors, _activeBaseColor),
+            Radius: LumeoPresetOptions.IndexOf(LumeoPresetOptions.Radii, _activeRadius),
+            Font: LumeoPresetOptions.IndexOf(LumeoPresetOptions.Fonts, _activeFont),
+            IconLibrary: LumeoPresetOptions.IndexOf(LumeoPresetOptions.IconLibraries, _activeIconLibrary),
+            MenuColor: LumeoPresetOptions.IndexOf(LumeoPresetOptions.MenuColors, _activeMenuColor),
+            MenuAccent: LumeoPresetOptions.IndexOf(LumeoPresetOptions.MenuAccents, _activeMenuAccent),
+            Dark: _darkMode ? 1 : 0
+        );
+        return LumeoPresetCodec.Encode(preset);
+    }
+
+    private async Task CopyPresetCode()
+    {
+        var code = GetPresetCode();
+        var command = $"lumeo theme apply --preset {code}";
+        try { await JS.InvokeVoidAsync("themeManager.copyText", command); } catch (JSException) { /* clipboard API may be unavailable */ }
+        _presetCodeCopied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _presetCodeCopied = false;
+        StateHasChanged();
     }
 
     private async Task CopyTheme()
