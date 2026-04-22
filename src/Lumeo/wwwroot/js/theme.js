@@ -1,5 +1,27 @@
+// Project-level defaults written by `lumeo theme apply --preset <code>`. Synchronously
+// fetched on init (one-time per page load) so first paint uses the configured theme
+// without a flash. localStorage still wins — consumers who customize at runtime via
+// the floating Create sidebar keep their overrides across sessions.
+function loadLumeoThemeDefaults() {
+    try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/lumeo-theme.json', false); // sync — tiny file, prevents FOUC
+        xhr.send(null);
+        if (xhr.status >= 200 && xhr.status < 300) return JSON.parse(xhr.responseText);
+    } catch (_) { /* file missing / cross-origin / offline — defaults fall back to Lumeo built-ins */ }
+    return null;
+}
+
+function lumeoDefault(defaults, key) {
+    if (!defaults) return null;
+    const v = defaults[key];
+    return (v === undefined || v === null) ? null : String(v);
+}
+
 window.themeManager = {
     init: function () {
+        var defaults = loadLumeoThemeDefaults();
+
         // Ensure portal-rendered components (Dialog / Sheet / Drawer / Toast /
         // Popover / Tooltip / DataGrid fullscreen) inherit Lumeo's theme tokens.
         // These overlays sit at the document root, outside any app-level wrapper,
@@ -22,40 +44,46 @@ window.themeManager = {
             }, { once: true });
         }
 
-        // Dark mode
-        const mode = localStorage.getItem('theme-mode') || localStorage.getItem('theme');
+        // Dark mode — localStorage override wins; else JSON default; else OS preference.
+        var mode = localStorage.getItem('theme-mode') || localStorage.getItem('theme');
+        if (!mode) {
+            var d = lumeoDefault(defaults, 'dark');
+            if (d === 'true') mode = 'dark';
+            else if (d === 'false') mode = 'light';
+        }
         if (mode === 'dark' || (!mode && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         } else {
             document.documentElement.classList.remove('dark');
         }
-        // Color scheme
-        const scheme = localStorage.getItem('theme-scheme');
-        if (scheme && scheme !== 'zinc') {
+        // Color scheme — localStorage wins; else JSON default.
+        const scheme = localStorage.getItem('theme-scheme') || lumeoDefault(defaults, 'theme');
+        if (scheme && scheme !== 'zinc' && scheme !== '') {
             document.documentElement.setAttribute('data-theme', scheme);
         }
         // Radius
-        const radius = localStorage.getItem('theme-radius');
+        var radius = localStorage.getItem('theme-radius');
+        if (radius === null) radius = lumeoDefault(defaults, 'radius');
         if (radius !== null) {
             document.documentElement.style.setProperty('--radius', radius + 'rem');
         }
         // Style
-        const style = localStorage.getItem('theme-style');
+        const style = localStorage.getItem('theme-style') || lumeoDefault(defaults, 'style');
         if (style === 'new-york') {
             document.documentElement.classList.add('style-new-york');
         }
         // Base color
-        const baseColor = localStorage.getItem('theme-base-color');
+        const baseColor = localStorage.getItem('theme-base-color') || lumeoDefault(defaults, 'baseColor');
         if (baseColor && baseColor !== 'slate') {
             document.documentElement.setAttribute('data-base-color', baseColor);
         }
         // Menu accent
-        const menuAccent = localStorage.getItem('theme-menu-accent');
+        const menuAccent = localStorage.getItem('theme-menu-accent') || lumeoDefault(defaults, 'menuAccent');
         if (menuAccent && menuAccent !== 'subtle') {
             document.documentElement.setAttribute('data-menu-accent', menuAccent);
         }
         // Menu color
-        const menuColor = localStorage.getItem('theme-menu-color');
+        const menuColor = localStorage.getItem('theme-menu-color') || lumeoDefault(defaults, 'menuColor');
         if (menuColor === 'dark') {
             document.documentElement.style.setProperty('--color-sidebar', 'hsl(220 13% 10%)');
             document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(0 0% 95%)');
