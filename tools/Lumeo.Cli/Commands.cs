@@ -50,7 +50,7 @@ internal static class Commands
             path = opts.Yes ? defaultPath : Prompts.Ask("Components path", defaultPath);
 
         var registry = opts.Registry;
-        var defaultRegistry = "https://lumeo.nativ.sh/registry/registry.json";
+        var defaultRegistry = RegistryLoader.DefaultRegistryUrl;
         if (registry is null)
             registry = opts.Yes ? defaultRegistry : Prompts.Ask("Registry URL", defaultRegistry);
 
@@ -850,7 +850,7 @@ internal static class Commands
     public static async Task List(bool local, string? category, bool json)
     {
         var cfg = ConfigIO.TryLoad();
-        var registryUrl = cfg?.Registry ?? "https://lumeo.nativ.sh/registry/registry.json";
+        var registryUrl = cfg?.Registry ?? RegistryLoader.DefaultRegistryUrl;
         var registry = await RegistryLoader.LoadAsync(local, registryUrl);
 
         var filtered = registry.Components
