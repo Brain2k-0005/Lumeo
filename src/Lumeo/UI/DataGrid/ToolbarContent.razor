@@ -1,0 +1,30 @@
+@namespace Lumeo
+@typeparam TItem
+@implements IDisposable
+
+@* Renders nothing directly — the parent DataGrid reads Class + ChildContent
+   through the registration below and renders them in the toolbar slot. *@
+
+@code {
+    [CascadingParameter] public DataGrid<TItem>? Parent { get; set; }
+
+    /// <summary>Custom CSS classes applied to the wrapper around the toolbar content
+    /// (the flex row holding your custom buttons + the filter chips).</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Parent?.RegisterToolbarContent(this);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Re-register on each render in case Class or ChildContent changed — the
+        // parent treats re-registration as an update.
+        Parent?.RegisterToolbarContent(this);
+    }
+
+    public void Dispose() => Parent?.UnregisterToolbarContent(this);
+}

@@ -142,6 +142,22 @@ public class EChartTextStyle
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FontFamily { get; set; }
+
+    /// <summary>Background fill behind legend/text — used for phantom skeleton-box rendering.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BackgroundColor { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int[]? Padding { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? BorderRadius { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Width { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Height { get; set; }
 }
 
 public class EChartTooltip
@@ -273,6 +289,29 @@ public class EChartAxisLabel
     /// Leave null for ECharts' default auto-thinning (hides overlapping labels).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Interval { get; set; }
+
+    /// <summary>Background fill behind the label text — used by phantom-mode skeleton boxes
+    /// where we want label rectangles to show while the real text is transparent.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BackgroundColor { get; set; }
+
+    /// <summary>Padding inside the label background — [top, right, bottom, left].</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int[]? Padding { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? BorderRadius { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Width { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Height { get; set; }
+
+    /// <summary>When true (and a category label formatter returns the raw value), forces the
+    /// label to render as a formatted string — mainly a knob for phantom-box rendering.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Formatter { get; set; }
 }
 
 public class EChartLineStyle

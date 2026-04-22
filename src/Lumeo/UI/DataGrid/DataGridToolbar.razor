@@ -3,7 +3,7 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div data-slot="datagrid-toolbar" class="@CssClass" @attributes="AdditionalAttributes">
-    <div class="flex items-center gap-2 flex-1">
+    <div class="@ContentWrapperClass">
         @if (ShowSearch)
         {
             <div class="relative">
@@ -14,6 +14,11 @@
                        value="@SearchText"
                        @oninput="OnSearchInput" />
             </div>
+        }
+
+        @if (RegisteredContent?.ChildContent is not null)
+        {
+            @RegisteredContent.ChildContent
         }
 
         @if (Context is not null)
@@ -34,260 +39,56 @@
         }
     </div>
 
-    <div class="flex items-center gap-2">
-        @if (ToolbarContent is not null)
-        {
-            @ToolbarContent
-        }
+    @* When the consumer supplies a <ToolbarContent>, they take full control of the
+       tools — the default right-hand stack is suppressed to avoid duplicates. Each
+       tool inside ToolbarContent renders wherever the consumer places it. *@
+    @if (RegisteredContent is null)
+    {
+        <div class="flex items-center gap-2">
+            @* Expand to fullscreen *@
+            @if (Expandable)
+            {
+                <DataGridToolbarFullscreen TItem="TItem" />
+            }
 
-        @* Expand to fullscreen *@
-        @if (Expandable)
-        {
-            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
-                    OnClick="@(() => OnToggleExpanded.InvokeAsync())"
-                    title="@(IsExpanded ? L["DataGrid.ExitFullscreen"] : L["DataGrid.ExpandFullscreen"])"
-                    aria-label="@(IsExpanded ? L["DataGrid.ExitFullscreen"] : L["DataGrid.ExpandFullscreen"])">
-                @if (IsExpanded)
-                {
-                    <Blazicon Svg="Lucide.Minimize2" class="h-4 w-4" />
-                }
-                else
-                {
-                    <Blazicon Svg="Lucide.Maximize2" class="h-4 w-4" />
-                }
-            </Button>
-        }
+            @* Copy selected rows to clipboard *@
+            @if (SelectedItems is not null && SelectedItems.Count > 0 && EffectiveColumns is not null)
+            {
+                <DataGridToolbarCopySelected TItem="TItem" />
+            }
 
-        @* Copy selected rows to clipboard *@
-        @if (SelectedItems is not null && SelectedItems.Count > 0 && EffectiveColumns is not null)
-        {
-            <button type="button"
-                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                    title="@L["DataGrid.CopySelected", SelectedItems.Count]"
-                    @onclick="CopySelected">
-                <Blazicon Svg="Lucide.Clipboard" class="h-4 w-4 mr-1.5" />
-                <span>@L["DataGrid.CopySelected", SelectedItems.Count]</span>
-            </button>
-        }
+            @* Column visibility dropdown *@
+            @if (ShowColumnChooser)
+            {
+                <DataGridToolbarColumns TItem="TItem" />
+            }
 
-        @* Column visibility dropdown *@
-        @if (ShowColumnChooser)
-        {
-            <div class="relative">
-                <button type="button"
-                        class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                        @onclick="ToggleColumnPanel">
-                    <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
-                    <span>@L["DataGrid.Columns"]</span>
-                </button>
+            @* Export dropdown — hidden when ShowExport=false OR ExportFormats has no flags set. *@
+            @if (ShowExport && ExportFormats != DataGridExportFormat.None)
+            {
+                <DataGridToolbarExport TItem="TItem" />
+            }
 
-                @if (_columnPanelOpen && EffectiveColumns is not null)
-                {
-                    <div class="absolute right-0 top-full mt-1 z-50">
-                        <DataGridColumnVisibility TItem="TItem"
-                                                  Columns="EffectiveColumns"
-                                                  OnColumnToggle="OnColumnToggle"
-                                                  OnColumnReorder="OnColumnReorder" />
-                    </div>
-                }
-            </div>
-        }
-
-        @* Export dropdown — hidden when ShowExport=false OR ExportFormats has no flags set. *@
-        @if (ShowExport && ExportFormats != DataGridExportFormat.None)
-        {
-            <div class="relative">
-                <button type="button"
-                        class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                        @onclick="ToggleExportMenu">
-                    <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
-                    <span>@L["DataGrid.Export"]</span>
-                    <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
-                </button>
-
-                @if (_exportMenuOpen)
-                {
-                    <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
-                        @if (ExportFormats.HasFlag(DataGridExportFormat.Csv))
-                        {
-                            <button type="button"
-                                    data-export-format="csv"
-                                    class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                                    @onclick="@(() => Export("csv"))">
-                                <Blazicon Svg="Lucide.FileText" class="h-4 w-4" />
-                                <span>CSV</span>
-                            </button>
-                        }
-                        @if (ExportFormats.HasFlag(DataGridExportFormat.Excel))
-                        {
-                            <button type="button"
-                                    data-export-format="excel"
-                                    class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                                    @onclick="@(() => Export("excel"))">
-                                <Blazicon Svg="Lucide.Sheet" class="h-4 w-4" />
-                                <span>Excel</span>
-                            </button>
-                        }
-                        @if (ExportFormats.HasFlag(DataGridExportFormat.Pdf))
-                        {
-                            <button type="button"
-                                    data-export-format="pdf"
-                                    class="w-full flex items-center gap-2 rounded px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                                    @onclick="@(() => Export("pdf"))">
-                                <Blazicon Svg="Lucide.FileDown" class="h-4 w-4" />
-                                <span>PDF</span>
-                            </button>
-                        }
-                    </div>
-                }
-            </div>
-        }
-
-        @* Layouts dropdown *@
-        @if (EnableLayoutPersistence)
-        {
-            <div class="relative">
-                <button type="button"
-                        class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-                        @onclick="ToggleLayoutsPanel">
-                    <Blazicon Svg="Lucide.LayoutTemplate" class="h-4 w-4 mr-1.5" />
-                    <span>@L["DataGrid.Layouts"]</span>
-                    <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
-                </button>
-
-                @if (_layoutsPanelOpen)
-                {
-                    <div class="absolute right-0 top-full mt-1 z-50 w-72 rounded-md border border-border/40 bg-popover shadow-md overflow-hidden">
-
-                        @* Personal layouts *@
-                        <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/40 bg-muted/30">
-                            @L["DataGrid.Personal"]
-                        </div>
-                        <div class="p-1">
-                            @if (_personalLayouts.Count == 0)
-                            {
-                                <div class="px-3 py-1.5 text-xs text-muted-foreground italic">@L["DataGrid.NoSavedLayouts"]</div>
-                            }
-                            else
-                            {
-                                @foreach (var layout in _personalLayouts)
-                                {
-                                    var l = layout;
-                                    <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
-                                        <span class="flex-1 text-sm truncate">@l.Name</span>
-                                        <button type="button"
-                                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="@L["DataGrid.ApplyLayout"]"
-                                                @onclick="@(async () => await ApplyLayout(l))">
-                                            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                                        </button>
-                                        <button type="button"
-                                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="@L["DataGrid.Delete"]"
-                                                @onclick="@(async () => await DeletePersonalLayout(l.Id))">
-                                            <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
-                                }
-                            }
-
-                            @* Save current layout *@
-                            @if (_showSaveInput)
-                            {
-                                <div class="flex items-center gap-1 px-2 py-1 mt-0.5">
-                                    <input type="text"
-                                           class="flex-1 h-7 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                                           placeholder="@L["DataGrid.LayoutName"]"
-                                           @bind="_newLayoutName"
-                                           @bind:event="oninput"
-                                           @onkeydown="HandleSaveKeyDown" />
-                                    <button type="button"
-                                            class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
-                                            title="@L["DataGrid.Save"]"
-                                            @onclick="CommitSavePersonal">
-                                        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                                    </button>
-                                    <button type="button"
-                                            class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
-                                            title="@L["DataGrid.Cancel"]"
-                                            @onclick="@(() => { _showSaveInput = false; _newLayoutName = ""; })">
-                                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            }
-                            else
-                            {
-                                <button type="button"
-                                        class="w-full flex items-center gap-2 rounded px-3 py-1.5 mt-0.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                                        @onclick="@(() => _showSaveInput = true)">
-                                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
-                                    <span>@L["DataGrid.SaveCurrentLayout"]</span>
-                                </button>
-                            }
-                        </div>
-
-                        @* Global layouts *@
-                        @if (GlobalLayouts is not null && GlobalLayouts.Count > 0)
-                        {
-                            <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
-                                @L["DataGrid.Global"]
-                            </div>
-                            <div class="p-1">
-                                @foreach (var layout in GlobalLayouts.Where(l => l.Scope == "Global"))
-                                {
-                                    var l = layout;
-                                    <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
-                                        <span class="flex-1 text-sm truncate">@l.Name</span>
-                                        <button type="button"
-                                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="@L["DataGrid.ApplyLayout"]"
-                                                @onclick="@(async () => await ApplyLayout(l))">
-                                            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                                        </button>
-                                        @if (OnDeleteNamedLayout.HasDelegate)
-                                        {
-                                            <button type="button"
-                                                    class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    title="@L["DataGrid.Delete"]"
-                                                    @onclick="@(async () => { _layoutsPanelOpen = false; await OnDeleteNamedLayout.InvokeAsync(l.Id); })">
-                                                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
-                                            </button>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
-
-                        @* System Default *@
-                        <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
-                            @L["DataGrid.SystemDefault"]
-                        </div>
-                        <div class="p-1">
-                            <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
-                                <span class="flex-1 text-sm truncate">@L["DataGrid.Default"]</span>
-                                <button type="button"
-                                        class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="@L["DataGrid.ResetLayout"]"
-                                        @onclick="ResetLayout">
-                                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                                </button>
-                            </div>
-                        </div>
-
-                    </div>
-                }
-            </div>
-        }
-    </div>
+            @* Layouts dropdown *@
+            @if (EnableLayoutPersistence)
+            {
+                <DataGridToolbarLayouts TItem="TItem" />
+            }
+        </div>
+    }
 </div>
 
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
-    [Inject] private ComponentInteropService Interop { get; set; } = default!;
 
     [Parameter] public string? SearchText { get; set; }
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
-    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>The <see cref="ToolbarContent{TItem}"/> component the consumer placed
+    /// inside the DataGrid, forwarded by the parent grid. When null, the toolbar's left
+    /// slot renders just the search + filter chips; when non-null, its Class styles the
+    /// wrapper and its ChildContent renders alongside the chips.</summary>
+    [Parameter] public ToolbarContent<TItem>? RegisteredContent { get; set; }
     [Parameter] public EventCallback OnColumnVisibilityToggle { get; set; }
     [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
@@ -324,21 +125,8 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private bool _exportMenuOpen;
-    private bool _columnPanelOpen;
-    private bool _layoutsPanelOpen;
-    private bool _showSaveInput;
-    private string _newLayoutName = "";
-    private List<DataGridNamedLayout> _personalLayouts = new();
     private string CssClass => $"flex items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (EnableLayoutPersistence && _layoutsPanelOpen)
-        {
-            await LoadPersonalLayouts();
-        }
-    }
+    private string ContentWrapperClass => $"flex items-center gap-2 flex-1 {RegisteredContent?.Class}".Trim();
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
@@ -349,141 +137,6 @@
     private async Task RemoveFilter(FilterDescriptor filter)
     {
         await OnRemoveFilter.InvokeAsync(filter);
-    }
-
-    private void ToggleColumnPanel()
-    {
-        _columnPanelOpen = !_columnPanelOpen;
-        _exportMenuOpen = false;
-        _layoutsPanelOpen = false;
-    }
-
-    private void ToggleExportMenu()
-    {
-        _exportMenuOpen = !_exportMenuOpen;
-        _layoutsPanelOpen = false;
-        _columnPanelOpen = false;
-    }
-
-    private async Task Export(string format)
-    {
-        _exportMenuOpen = false;
-        await OnExport.InvokeAsync(format);
-    }
-
-    private async Task ToggleLayoutsPanel()
-    {
-        _exportMenuOpen = false;
-        _columnPanelOpen = false;
-        _layoutsPanelOpen = !_layoutsPanelOpen;
-        if (_layoutsPanelOpen)
-        {
-            await LoadPersonalLayouts();
-        }
-        else
-        {
-            _showSaveInput = false;
-            _newLayoutName = "";
-        }
-    }
-
-    private async Task LoadPersonalLayouts()
-    {
-        if (!EnableLayoutPersistence) return;
-        var key = (LayoutStorageKey ?? "datagrid") + "-named";
-        try
-        {
-            var json = await Interop.LoadFromLocalStorage(key);
-            if (!string.IsNullOrEmpty(json))
-                _personalLayouts = System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
-            else
-                _personalLayouts = new();
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load personal layouts: {ex.Message}");
-            _personalLayouts = new();
-            if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
-        }
-    }
-
-    private async Task CommitSavePersonal()
-    {
-        var name = _newLayoutName.Trim();
-        if (string.IsNullOrEmpty(name)) return;
-
-        _showSaveInput = false;
-        _newLayoutName = "";
-
-        await OnSaveNamedLayout.InvokeAsync(new DataGridNamedLayout(Guid.NewGuid().ToString("N"), name, "Personal", new DataGridLayout()));
-        await LoadPersonalLayouts();
-        StateHasChanged();
-    }
-
-    private async Task HandleSaveKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") await CommitSavePersonal();
-        else if (e.Key == "Escape") { _showSaveInput = false; _newLayoutName = ""; }
-    }
-
-    private async Task ApplyLayout(DataGridNamedLayout layout)
-    {
-        _layoutsPanelOpen = false;
-        _showSaveInput = false;
-        await OnApplyNamedLayout.InvokeAsync(layout);
-    }
-
-    private async Task DeletePersonalLayout(string id)
-    {
-        _personalLayouts.RemoveAll(l => l.Id == id);
-        var key = (LayoutStorageKey ?? "datagrid") + "-named";
-        try
-        {
-            var json = System.Text.Json.JsonSerializer.Serialize(_personalLayouts);
-            await Interop.SaveToLocalStorage(key, json);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save personal layouts: {ex.Message}");
-            if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
-        }
-
-        if (OnDeleteNamedLayout.HasDelegate)
-            await OnDeleteNamedLayout.InvokeAsync(id);
-
-        StateHasChanged();
-    }
-
-    private async Task SaveLayout()
-    {
-        _layoutsPanelOpen = false;
-        await OnSaveLayout.InvokeAsync();
-    }
-
-    private async Task ResetLayout()
-    {
-        _layoutsPanelOpen = false;
-        await OnResetLayout.InvokeAsync();
-    }
-
-    private async Task CopySelected()
-    {
-        if (SelectedItems is null || SelectedItems.Count == 0 || EffectiveColumns is null) return;
-
-        var visibleColumns = EffectiveColumns.Where(c => c.Visible).ToList();
-        var lines = new List<string>();
-
-        // Header row
-        lines.Add(string.Join("\t", visibleColumns.Select(c => c.Title ?? c.Field ?? "")));
-
-        // Data rows
-        foreach (var item in SelectedItems)
-        {
-            lines.Add(string.Join("\t", visibleColumns.Select(c => c.GetFormattedValue(item))));
-        }
-
-        var text = string.Join("\n", lines);
-        await Interop.CopyToClipboard(text);
     }
 
     private string GetOperatorLabel(FilterOperator op) => op switch

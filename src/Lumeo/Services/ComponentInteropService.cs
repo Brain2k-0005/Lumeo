@@ -322,10 +322,10 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- DataGrid Column Resize ---
 
-    public async ValueTask RegisterColumnResize(string handleId, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler)
+    public async ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
     {
         var module = await GetModuleAsync();
-        await _resize.RegisterColumnResize(module, GetSelfRef(), handleId, resizeHandler, resizeEndHandler);
+        await _resize.RegisterColumnResize(module, GetSelfRef(), handleId, minWidth, maxWidth, commitHandler);
     }
 
     public async ValueTask UnregisterColumnResize(string handleId)
@@ -339,6 +339,9 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     [JSInvokable]
     public async Task OnColumnResizeEnd(string handleId) => await _resize.OnColumnResizeEnd(handleId);
+
+    [JSInvokable]
+    public async Task OnColumnResizeCommit(string handleId, double finalWidth) => await _resize.OnColumnResizeCommit(handleId, finalWidth);
 
     // --- Tour: Element Rect By Selector ---
 

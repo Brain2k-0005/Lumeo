@@ -1,0 +1,253 @@
+@namespace Lumeo
+@typeparam TItem
+
+@* No EnableLayoutPersistence gate — consumers place this component explicitly when they want it. *@
+@if (Context is not null)
+{
+    <div class="relative">
+        <button type="button"
+                class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                @onclick="ToggleLayoutsPanel">
+            <Blazicon Svg="Lucide.LayoutTemplate" class="h-4 w-4 mr-1.5" />
+            <span>@Context.Localizer["DataGrid.Layouts"]</span>
+            <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
+        </button>
+
+        @if (_layoutsPanelOpen)
+        {
+            <div class="absolute right-0 top-full mt-1 z-50 w-72 rounded-md border border-border/40 bg-popover shadow-md overflow-hidden">
+
+                @* Personal layouts *@
+                <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/40 bg-muted/30">
+                    @Context.Localizer["DataGrid.Personal"]
+                </div>
+                <div class="p-1">
+                    @if (_personalLayouts.Count == 0)
+                    {
+                        <div class="px-3 py-1.5 text-xs text-muted-foreground italic">@Context.Localizer["DataGrid.NoSavedLayouts"]</div>
+                    }
+                    else
+                    {
+                        @foreach (var layout in _personalLayouts)
+                        {
+                            var l = layout;
+                            <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
+                                <span class="flex-1 text-sm truncate">@l.Name</span>
+                                <button type="button"
+                                        class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="@Context.Localizer["DataGrid.ApplyLayout"]"
+                                        @onclick="@(async () => await ApplyLayout(l))">
+                                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                                </button>
+                                <button type="button"
+                                        class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="@Context.Localizer["DataGrid.Delete"]"
+                                        @onclick="@(async () => await DeletePersonalLayout(l.Id))">
+                                    <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        }
+                    }
+
+                    @* Save current layout *@
+                    @if (_showSaveInput)
+                    {
+                        <div class="flex items-center gap-1 px-2 py-1 mt-0.5">
+                            <input type="text"
+                                   class="flex-1 h-7 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                                   placeholder="@Context.Localizer["DataGrid.LayoutName"]"
+                                   @bind="_newLayoutName"
+                                   @bind:event="oninput"
+                                   @onkeydown="HandleSaveKeyDown" />
+                            <button type="button"
+                                    class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
+                                    title="@Context.Localizer["DataGrid.Save"]"
+                                    @onclick="CommitSavePersonal">
+                                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button"
+                                    class="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent transition-colors"
+                                    title="@Context.Localizer["DataGrid.Cancel"]"
+                                    @onclick="@(() => { _showSaveInput = false; _newLayoutName = ""; })">
+                                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="w-full flex items-center gap-2 rounded px-3 py-1.5 mt-0.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                                @onclick="@(() => _showSaveInput = true)">
+                            <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                            <span>@Context.Localizer["DataGrid.SaveCurrentLayout"]</span>
+                        </button>
+                    }
+                </div>
+
+                @* Global layouts *@
+                @if (Context.GlobalLayouts is not null && Context.GlobalLayouts.Count > 0)
+                {
+                    <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
+                        @Context.Localizer["DataGrid.Global"]
+                    </div>
+                    <div class="p-1">
+                        @foreach (var layout in Context.GlobalLayouts.Where(l => l.Scope == "Global"))
+                        {
+                            var l = layout;
+                            <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
+                                <span class="flex-1 text-sm truncate">@l.Name</span>
+                                <button type="button"
+                                        class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="@Context.Localizer["DataGrid.ApplyLayout"]"
+                                        @onclick="@(async () => await ApplyLayout(l))">
+                                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                                </button>
+                                @if (Context.OnDeleteNamedLayout.HasDelegate)
+                                {
+                                    <button type="button"
+                                            class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="@Context.Localizer["DataGrid.Delete"]"
+                                            @onclick="@(async () => { _layoutsPanelOpen = false; await Context.OnDeleteNamedLayout.InvokeAsync(l.Id); })">
+                                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* System Default *@
+                <div class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-b border-border/40 bg-muted/30">
+                    @Context.Localizer["DataGrid.SystemDefault"]
+                </div>
+                <div class="p-1">
+                    <div class="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent group">
+                        <span class="flex-1 text-sm truncate">@Context.Localizer["DataGrid.Default"]</span>
+                        <button type="button"
+                                class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="@Context.Localizer["DataGrid.ResetLayout"]"
+                                @onclick="ResetLayout">
+                            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public DataGridToolbarContext<TItem>? Context { get; set; }
+
+    private bool _layoutsPanelOpen;
+    private bool _showSaveInput;
+    private string _newLayoutName = "";
+    private List<DataGridNamedLayout> _personalLayouts = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Context is not null && Context.EnableLayoutPersistence && _layoutsPanelOpen)
+        {
+            await LoadPersonalLayouts();
+        }
+    }
+
+    private async Task ToggleLayoutsPanel()
+    {
+        _layoutsPanelOpen = !_layoutsPanelOpen;
+        if (_layoutsPanelOpen)
+        {
+            await LoadPersonalLayouts();
+        }
+        else
+        {
+            _showSaveInput = false;
+            _newLayoutName = "";
+        }
+    }
+
+    private async Task LoadPersonalLayouts()
+    {
+        if (Context is null || !Context.EnableLayoutPersistence) return;
+        var key = (Context.LayoutStorageKey ?? "datagrid") + "-named";
+        try
+        {
+            var json = await Context.Interop.LoadFromLocalStorage(key);
+            if (!string.IsNullOrEmpty(json))
+                _personalLayouts = System.Text.Json.JsonSerializer.Deserialize<List<DataGridNamedLayout>>(json) ?? new();
+            else
+                _personalLayouts = new();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo DataGrid] Failed to load personal layouts: {ex.Message}");
+            _personalLayouts = new();
+            if (Context.OnError.HasDelegate) await Context.OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task CommitSavePersonal()
+    {
+        if (Context is null) return;
+        var name = _newLayoutName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        _showSaveInput = false;
+        _newLayoutName = "";
+
+        await Context.OnSaveNamedLayout.InvokeAsync(new DataGridNamedLayout(Guid.NewGuid().ToString("N"), name, "Personal", new DataGridLayout()));
+        await LoadPersonalLayouts();
+        StateHasChanged();
+    }
+
+    private async Task HandleSaveKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CommitSavePersonal();
+        else if (e.Key == "Escape") { _showSaveInput = false; _newLayoutName = ""; }
+    }
+
+    private async Task ApplyLayout(DataGridNamedLayout layout)
+    {
+        if (Context is null) return;
+        _layoutsPanelOpen = false;
+        _showSaveInput = false;
+        await Context.OnApplyNamedLayout.InvokeAsync(layout);
+    }
+
+    private async Task DeletePersonalLayout(string id)
+    {
+        if (Context is null) return;
+        _personalLayouts.RemoveAll(l => l.Id == id);
+        var key = (Context.LayoutStorageKey ?? "datagrid") + "-named";
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(_personalLayouts);
+            await Context.Interop.SaveToLocalStorage(key, json);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo DataGrid] Failed to save personal layouts: {ex.Message}");
+            if (Context.OnError.HasDelegate) await Context.OnError.InvokeAsync(ex);
+        }
+
+        if (Context.OnDeleteNamedLayout.HasDelegate)
+            await Context.OnDeleteNamedLayout.InvokeAsync(id);
+
+        StateHasChanged();
+    }
+
+    private async Task SaveLayout()
+    {
+        if (Context is null) return;
+        _layoutsPanelOpen = false;
+        await Context.OnSaveLayout.InvokeAsync();
+    }
+
+    private async Task ResetLayout()
+    {
+        if (Context is null) return;
+        _layoutsPanelOpen = false;
+        await Context.OnResetLayout.InvokeAsync();
+    }
+}

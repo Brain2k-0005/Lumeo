@@ -1,5 +1,6 @@
 @namespace Lumeo
 @typeparam TItem
+@attribute [CascadingTypeParameter(nameof(TItem))]
 @implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject Lumeo.Services.ToastService Toast
@@ -75,7 +76,7 @@
             <DataGridToolbar TItem="TItem"
                              SearchText="@_globalSearch"
                              SearchTextChanged="HandleGlobalSearch"
-                             ToolbarContent="ToolbarContent"
+                             RegisteredContent="@RegisteredToolbarContent"
                              OnColumnToggle="HandleColumnVisibilityChanged"
                              OnColumnReorder="HandleColumnReorder"
                              OnExport="HandleExport"
@@ -149,6 +150,7 @@
 
 <CascadingValue Value="this" IsFixed="true">
 <CascadingValue Value="context" IsFixed="false">
+<CascadingValue Value="_toolbarContext" IsFixed="false">
     @if (_isExpanded)
     {
         <div class="fixed inset-0 lumeo-datagrid-fullscreen-backdrop"
@@ -181,6 +183,7 @@
     {
         @gridRoot
     }
+</CascadingValue>
 </CascadingValue>
 </CascadingValue>
 
@@ -272,7 +275,6 @@
 
     // --- Templates ---
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public RenderFragment? ToolbarContent { get; set; }
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
     [Parameter] public RenderFragment? EmptyContent { get; set; }
     [Parameter] public RenderFragment<TItem>? RowContextMenu { get; set; }
@@ -344,6 +346,39 @@
     private bool _savedLayoutApplied; // tracks whether the SavedLayout parameter has been applied
     private DataGridLayoutService? _layoutService;
     private DataGridServerService? _serverService;
+    private DataGridToolbarContext<TItem> _toolbarContext = new();
+
+    // --- ToolbarContent component registration ---
+
+    /// <summary>
+    /// The <see cref="ToolbarContent{TItem}"/> component currently registered inside
+    /// this grid (at most one). Forwarded to <see cref="DataGridToolbar"/> so it can
+    /// render the custom ChildContent + Class in the toolbar's left-hand slot.
+    /// </summary>
+    internal ToolbarContent<TItem>? RegisteredToolbarContent { get; private set; }
+
+    internal void RegisterToolbarContent(ToolbarContent<TItem> tc)
+    {
+        // Re-registration from the child's OnParametersSet happens on every render;
+        // only flag a re-render when the instance actually changed, otherwise we'd
+        // loop (StateHasChanged → child re-renders → re-registers → StateHasChanged).
+        // Class/ChildContent updates on the SAME instance are already read by the
+        // next natural parent render (we dereference them at render time).
+        if (!ReferenceEquals(RegisteredToolbarContent, tc))
+        {
+            RegisteredToolbarContent = tc;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    internal void UnregisterToolbarContent(ToolbarContent<TItem> tc)
+    {
+        if (RegisteredToolbarContent == tc)
+        {
+            RegisteredToolbarContent = null;
+            InvokeAsync(StateHasChanged);
+        }
+    }
 
     private List<DataGridColumn<TItem>> SourceColumns =>
         Columns is not null && Columns.Count > 0 ? Columns : _columnDefs;
@@ -582,6 +617,42 @@
             _selectedItems = SelectedItems.ToList();
             _selectedSet = new HashSet<TItem>(_selectedItems);
         }
+
+        PopulateToolbarContext();
+    }
+
+    /// <summary>
+    /// Rebuilds the cascading <see cref="DataGridToolbarContext{TItem}"/> used by the
+    /// extracted toolbar tool components (Fullscreen, CopySelected, Columns, Export,
+    /// Layouts) as well as any custom tools placed inside <see cref="ToolbarContent{TItem}"/>.
+    /// Called from OnParametersSetAsync so dependent values reflect the latest parameters.
+    /// </summary>
+    private void PopulateToolbarContext()
+    {
+        _toolbarContext.IsExpanded = _isExpanded;
+        _toolbarContext.Expandable = Expandable;
+        _toolbarContext.OnToggleExpanded = EventCallback.Factory.Create(this, ToggleExpanded);
+
+        _toolbarContext.SelectedItems = _selectedItems;
+        _toolbarContext.EffectiveColumns = EffectiveColumns.AsReadOnly();
+        _toolbarContext.OnColumnToggle = EventCallback.Factory.Create<DataGridColumn<TItem>>(this, HandleColumnVisibilityChanged);
+        _toolbarContext.OnColumnReorder = EventCallback.Factory.Create<ColumnReorderEventArgs>(this, HandleColumnReorder);
+
+        _toolbarContext.ExportFormats = ExportFormats;
+        _toolbarContext.OnExport = EventCallback.Factory.Create<string>(this, HandleExport);
+
+        _toolbarContext.EnableLayoutPersistence = EnableLayoutPersistence;
+        _toolbarContext.GlobalLayouts = GlobalLayouts;
+        _toolbarContext.OnSaveLayout = EventCallback.Factory.Create(this, HandleSaveLayout);
+        _toolbarContext.OnResetLayout = EventCallback.Factory.Create(this, HandleResetLayout);
+        _toolbarContext.OnSaveNamedLayout = EventCallback.Factory.Create<DataGridNamedLayout>(this, HandleSaveNamedLayout);
+        _toolbarContext.OnDeleteNamedLayout = OnDeleteNamedLayout;
+        _toolbarContext.OnApplyNamedLayout = EventCallback.Factory.Create<DataGridNamedLayout>(this, HandleApplyNamedLayout);
+        _toolbarContext.LayoutStorageKey = LayoutStorageKey;
+        _toolbarContext.OnError = OnError;
+
+        _toolbarContext.Interop = Interop;
+        _toolbarContext.Localizer = L;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
