@@ -361,69 +361,21 @@
         </button>
     </div>
 
-    <!-- Preset code — client-side 6-char + hosted share ID -->
-    <div class="px-4 py-2.5 border-t border-border/60 bg-card">
-        <Stack Gap="2">
-            <Flex Class="items-center justify-between gap-2">
-                <Stack Gap="0" Class="min-w-0">
-                    <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Preset code</Lumeo.Text>
-                    <Lumeo.Text As="span" Class="mt-1 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">@GetPresetCode()</Lumeo.Text>
-                </Stack>
-                <button class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border/60 bg-background text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-                        title="Copy lumeo apply --preset command"
-                        @onclick="CopyPresetCode">
-                    @if (_presetCodeCopied)
-                    {
-                        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                    }
-                    else
-                    {
-                        <Blazicon Svg="Lucide.Copy" class="h-3.5 w-3.5" />
-                    }
-                </button>
-            </Flex>
-            @* Share — POSTs to api.lumeo.nativ.sh and copies the returned shareable URL.
-               Useful for custom brand palettes that can't be captured in the 6-char bitfield. *@
-            <button type="button"
-                    class="inline-flex items-center justify-center gap-1.5 h-7 w-full rounded-md border border-border/60 bg-background text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-60 disabled:cursor-wait"
-                    disabled="@_shareBusy"
-                    @onclick="SharePreset">
-                @if (_shareBusy)
-                {
-                    <Blazicon Svg="Lucide.LoaderCircle" class="h-3.5 w-3.5 animate-spin" />
-                    <span>Sharing…</span>
-                }
-                else if (_shareCopied)
-                {
-                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                    <span>Share link copied</span>
-                }
-                else
-                {
-                    <Blazicon Svg="Lucide.Share2" class="h-3.5 w-3.5" />
-                    <span>Share as link</span>
-                }
-            </button>
-            @if (!string.IsNullOrEmpty(_shareError))
-            {
-                <Lumeo.Text Class="text-[11px] text-destructive">@_shareError</Lumeo.Text>
-            }
-        </Stack>
-    </div>
-
-    <!-- Copy Theme — pinned bottom -->
+    <!-- Single share action — copies `lumeo apply --preset <code>` to the clipboard.
+         The 6-char code encodes every customizer selection deterministically, so the
+         same configuration always shares the same code. -->
     <div class="px-4 py-3 border-t border-border bg-card">
         <Button Class="w-full flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                OnClick="CopyTheme">
-            @if (_copied)
+                OnClick="SharePreset">
+            @if (_shareCopied)
             {
                 <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-                <Lumeo.Text As="span">Copied!</Lumeo.Text>
+                <Lumeo.Text As="span">Copied — <span class="font-mono text-xs opacity-80">@GetPresetCode()</span></Lumeo.Text>
             }
             else
             {
-                <Blazicon Svg="Lucide.Copy" class="h-3.5 w-3.5" />
-                <Lumeo.Text As="span">Copy Theme</Lumeo.Text>
+                <Blazicon Svg="Lucide.Share2" class="h-3.5 w-3.5" />
+                <Lumeo.Text As="span">Share preset <span class="font-mono text-xs opacity-70">(@GetPresetCode())</span></Lumeo.Text>
             }
         </Button>
     </div>
@@ -438,11 +390,7 @@
     private readonly List<IAsyncDisposable> _kbdShortcuts = new();
     private string _expandedSection = "";
     private bool _darkMode;
-    private bool _copied;
-    private bool _presetCodeCopied;
-    private bool _shareBusy;
     private bool _shareCopied;
-    private string? _shareError;
 
     private string _activeTheme = "";
     private string _activeRadius = "0.75";
@@ -781,100 +729,21 @@
         return LumeoPresetCodec.Encode(preset);
     }
 
-    private async Task CopyPresetCode()
-    {
-        var code = GetPresetCode();
-        var command = $"lumeo apply --preset {code}";
-        try { await JS.InvokeVoidAsync("themeManager.copyText", command); } catch (JSException) { /* clipboard API may be unavailable */ }
-        _presetCodeCopied = true;
-        StateHasChanged();
-        await Task.Delay(2000);
-        _presetCodeCopied = false;
-        StateHasChanged();
-    }
-
-    [Inject] private HttpClient Http { get; set; } = default!;
-
-    // POSTs the current customizer config to the Lumeo preset API, gets back a short ID,
-    // and puts `lumeo apply <id>` on the clipboard. Used when a consumer wants to share
-    // a config that can't fit in the 6-char client-side bitfield (e.g. a custom brand
-    // palette stored server-side).
+    // One-shot share: copies `lumeo apply --preset <code>` to the clipboard. The 6-char
+    // client-side bitfield fully encodes every customizer selection, so the same config
+    // deterministically produces the same code — safe to share in issues, docs, or chats.
+    // The Worker at api.lumeo.nativ.sh stays deployed for future configs that exceed the
+    // bitfield (custom HSL, user-authored fonts); the CLI handles both paths transparently.
     private async Task SharePreset()
     {
-        _shareBusy = true;
-        _shareError = null;
-        _shareCopied = false;
-        StateHasChanged();
-
-        var payload = new Dictionary<string, object?>
-        {
-            ["theme"]       = _activeTheme,
-            ["style"]       = _activeStyle,
-            ["baseColor"]   = _activeBaseColor,
-            ["radius"]      = _activeRadius,
-            ["font"]        = _activeFont,
-            ["iconLibrary"] = _activeIconLibrary,
-            ["menuColor"]   = _activeMenuColor,
-            ["menuAccent"]  = _activeMenuAccent,
-            ["dark"]        = _darkMode,
-        };
-
-        try
-        {
-            var res = await Http.PostAsJsonAsync($"{Lumeo.Theming.LumeoPresetApi.BaseUrl}/preset", payload);
-            if (!res.IsSuccessStatusCode)
-            {
-                _shareError = $"Share failed ({(int)res.StatusCode}).";
-            }
-            else
-            {
-                var body = await res.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-                var id = body is not null && body.TryGetValue("id", out var v) ? v : null;
-                if (string.IsNullOrEmpty(id))
-                {
-                    _shareError = "Share failed (server returned no id).";
-                }
-                else
-                {
-                    var cmd = $"lumeo apply --preset {id}";
-                    try { await JS.InvokeVoidAsync("themeManager.copyText", cmd); } catch (JSException) { }
-                    _shareCopied = true;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _shareError = $"Share failed — {ex.Message}";
-        }
-
-        _shareBusy = false;
-        StateHasChanged();
-        if (_shareCopied)
-        {
-            await Task.Delay(2500);
-            _shareCopied = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task CopyTheme()
-    {
-        var parts = new List<string> { "/* Lumeo Theme Configuration */", "@import \"lumeo/css/lumeo.css\";" };
-        if (!string.IsNullOrEmpty(_activeTheme)) parts.Add($"/* Theme: {GetActiveThemeName()} */\n@import \"lumeo/css/themes/_{_activeTheme}.css\";");
-        parts.Add($"\n:root {{\n  --radius: {_activeRadius}rem;\n}}");
-        if (_activeBaseColor != "slate") parts.Add($"\n/* Base Color: {GetActiveBaseColorName()} - add data-base-color=\"{_activeBaseColor}\" to <html> */");
-        if (_activeStyle == "new-york") parts.Add("\n/* Style: New York - add class=\"style-new-york\" to <html> */");
-        if (_activeFont != "system")
-        {
-            var fontOption = _fonts.FirstOrDefault(f => f.Value == _activeFont);
-            parts.Add($"\n:root {{\n  font-family: {fontOption?.Family};\n}}");
-        }
-        var css = string.Join("\n", parts);
-        try { await JS.InvokeVoidAsync("themeManager.copyText", css); } catch (JSException) { /* clipboard API may be unavailable */ }
-        _copied = true;
+        var code = GetPresetCode();
+        var cmd = $"lumeo apply --preset {code}";
+        try { await JS.InvokeVoidAsync("themeManager.copyText", cmd); } catch (JSException) { }
+        _shareCopied = true;
         StateHasChanged();
         await Task.Delay(2000);
-        _copied = false;
+        _shareCopied = false;
         StateHasChanged();
     }
+
 }
