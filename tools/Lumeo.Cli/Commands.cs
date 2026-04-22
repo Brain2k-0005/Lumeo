@@ -18,6 +18,18 @@ internal static class Commands
         bool NoAssets,
         bool Local);
 
+    public sealed record AddOptions(
+        string? Component,
+        bool Local,
+        bool Yes,
+        bool Force,
+        bool SkipExisting,
+        bool Overwrite,
+        bool DryRun,
+        bool All,
+        bool Diff,
+        bool View);
+
     // Files copied in prebuilt asset mode. Kept here so `init` and `update-assets` stay in sync.
     private static readonly (string Src, string Dest)[] s_prebuiltAssets =
     {
@@ -482,7 +494,7 @@ internal static class Commands
     }
 
     // ----------------------------------------------------------------- add
-    public static async Task Add(string component, bool local, bool yes, bool force, bool skipExisting, bool overwrite, bool dryRun)
+    public static async Task Add(AddOptions opts)
     {
         var cfg = ConfigIO.TryLoad();
         if (cfg is null)
@@ -492,11 +504,51 @@ internal static class Commands
             return;
         }
 
-        var registry = await RegistryLoader.LoadAsync(local, cfg.Registry);
-        var key = component.ToLowerInvariant();
+        var registry = await RegistryLoader.LoadAsync(opts.Local, cfg.Registry);
+
+        // --all: install everything. Skips dependency resolution (since we're doing all of them).
+        if (opts.All)
+        {
+            if (opts.Component is not null)
+            {
+                Console.Error.WriteLine(Ansi.Yellow("Both 'component' and --all provided; --all takes precedence."));
+            }
+            var allKeys = registry.Components.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+            if (allKeys.Count == 0)
+            {
+                Console.Error.WriteLine(Ansi.Red("Registry is empty."));
+                Environment.ExitCode = 1;
+                return;
+            }
+            if (!opts.Yes && !opts.Force && !opts.DryRun && Prompts.Interactive)
+            {
+                Console.WriteLine($"About to install {Ansi.Bold(allKeys.Count.ToString())} components from registry v{registry.Version}.");
+                if (!Prompts.Confirm("Continue?", defaultYes: false))
+                {
+                    Console.WriteLine(Ansi.Yellow("Aborted."));
+                    return;
+                }
+            }
+            foreach (var k in allKeys)
+            {
+                var single = opts with { Component = k, All = false };
+                await Add(single);
+                if (Environment.ExitCode != 0 && Environment.ExitCode != 1) return; // aborted
+            }
+            return;
+        }
+
+        if (string.IsNullOrEmpty(opts.Component))
+        {
+            Console.Error.WriteLine(Ansi.Red("Missing component name. Usage: lumeo add <component>  (or --all)"));
+            Environment.ExitCode = 2;
+            return;
+        }
+
+        var key = opts.Component.ToLowerInvariant();
         if (!registry.Components.TryGetValue(key, out var entry))
         {
-            Console.Error.WriteLine(Ansi.Red($"Unknown component '{component}'."));
+            Console.Error.WriteLine(Ansi.Red($"Unknown component '{opts.Component}'."));
             Console.Error.WriteLine($"Run {Ansi.Cyan("lumeo list")} to see available components.");
             Environment.ExitCode = 1;
             return;
@@ -517,7 +569,8 @@ internal static class Commands
                 if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
         }
 
-        if (toInstall.Count > 1 && !yes && !force && !dryRun && Prompts.Interactive)
+        if (toInstall.Count > 1 && !opts.Yes && !opts.Force && !opts.DryRun && Prompts.Interactive
+            && !opts.Diff && !opts.View)
         {
             Console.WriteLine($"{Ansi.Bold(entry.Name)} depends on:");
             foreach (var d in toInstall.Skip(1)) Console.WriteLine($"  - {d.Name}");
@@ -526,16 +579,18 @@ internal static class Commands
         }
 
         var outRoot = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath);
-        if (!dryRun) Directory.CreateDirectory(outRoot);
+        // --diff and --view without --yes are preview-only (no filesystem changes).
+        bool writeAllowed = !opts.DryRun && (!(opts.Diff || opts.View) || opts.Yes);
+        if (writeAllowed) Directory.CreateDirectory(outRoot);
 
-        var forceAll = force || overwrite;
-        var skipAll = skipExisting;
+        var forceAll = opts.Force || opts.Overwrite;
+        var skipAll = opts.SkipExisting;
         int written = 0, skipped = 0;
 
         foreach (var item in toInstall)
         {
             var folder = Path.Combine(outRoot, item.Name);
-            if (!dryRun) Directory.CreateDirectory(folder);
+            if (writeAllowed) Directory.CreateDirectory(folder);
             var recordedFiles = new List<string>();
 
             foreach (var relFile in item.Files)
@@ -544,17 +599,60 @@ internal static class Commands
                 var displayPath = Path.GetRelativePath(Environment.CurrentDirectory, dest);
                 recordedFiles.Add(relFile);
 
+                // --diff / --view preview modes (no prompts, no writes unless --yes).
+                if (opts.Diff || opts.View)
+                {
+                    var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                    upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
+
+                    if (File.Exists(dest))
+                    {
+                        var localContent = await File.ReadAllTextAsync(dest);
+                        if (Diffing.Normalize(localContent) == Diffing.Normalize(upstream))
+                        {
+                            Console.WriteLine(Ansi.Green("  ok      ") + displayPath);
+                        }
+                        else if (opts.Diff)
+                        {
+                            Console.WriteLine(Ansi.Magenta("  diff    ") + displayPath);
+                            Diffing.PrintUnified(localContent, upstream);
+                        }
+                        else
+                        {
+                            Console.WriteLine(Ansi.Magenta("  drift   ") + displayPath + Ansi.Dim(" (existing file differs — use --diff to view)"));
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine(Ansi.Green("  new     ") + displayPath);
+                        if (opts.View)
+                        {
+                            Console.WriteLine(Ansi.Dim($"=== {displayPath} ==="));
+                            Console.WriteLine(upstream);
+                            Console.WriteLine();
+                        }
+                    }
+
+                    if (writeAllowed)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                        await File.WriteAllTextAsync(dest, upstream, new UTF8Encoding(false));
+                        written++;
+                    }
+                    continue;
+                }
+
                 if (File.Exists(dest))
                 {
-                    if (skipAll || (!forceAll && dryRun))
+                    if (skipAll || (!forceAll && opts.DryRun))
                     {
-                        Console.WriteLine(Ansi.Yellow("  skip ") + displayPath + (dryRun ? Ansi.Dim("  (dry-run; would prompt)") : ""));
+                        Console.WriteLine(Ansi.Yellow("  skip ") + displayPath + (opts.DryRun ? Ansi.Dim("  (dry-run; would prompt)") : ""));
                         skipped++;
                         continue;
                     }
                     if (!forceAll)
                     {
-                        var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry);
+                        var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
                         upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                         char? choice = null;
@@ -577,24 +675,24 @@ internal static class Commands
                         }
                         if (choice == 's') { Console.WriteLine(Ansi.Yellow("  skip ") + displayPath); skipped++; continue; }
                         if (choice == 'a') { forceAll = true; }
-                        if (!dryRun)
+                        if (!opts.DryRun)
                         {
                             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                             await File.WriteAllTextAsync(dest, upstream, new UTF8Encoding(false));
                         }
-                        Console.WriteLine(Ansi.Green("  +   ") + displayPath + (dryRun ? Ansi.Dim("  (dry-run)") : ""));
+                        Console.WriteLine(Ansi.Green("  +   ") + displayPath + (opts.DryRun ? Ansi.Dim("  (dry-run)") : ""));
                         written++;
                         continue;
                     }
                 }
 
-                if (dryRun)
+                if (opts.DryRun)
                 {
                     Console.WriteLine(Ansi.Green("  +   ") + displayPath + Ansi.Dim("  (dry-run)"));
                     written++;
                     continue;
                 }
-                var content = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry);
+                var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
                 content = NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
@@ -602,7 +700,7 @@ internal static class Commands
                 written++;
             }
 
-            if (!dryRun)
+            if (writeAllowed)
             {
                 var installKey = ToKebab(item.Name);
                 ConfigIO.RecordInstall(cfg, installKey, registry.Version, recordedFiles);
@@ -611,7 +709,9 @@ internal static class Commands
 
         Console.WriteLine();
         var label = toInstall.Count == 1 ? entry.Name : $"{entry.Name} (+{toInstall.Count - 1} dep{(toInstall.Count - 1 == 1 ? "" : "s")})";
-        var prefix = dryRun ? Ansi.Yellow("DRY-RUN") : Ansi.Green("OK");
+        var prefix = opts.DryRun ? Ansi.Yellow("DRY-RUN")
+                   : (opts.Diff || opts.View) && !opts.Yes ? Ansi.Yellow("PREVIEW")
+                   : Ansi.Green("OK");
         var tail = skipped > 0 ? $", {skipped} skipped" : "";
         Console.WriteLine($"{prefix} Added {Ansi.Bold(label)} — {written} file{(written == 1 ? "" : "s")} written{tail} to {cfg.ComponentsPath}/");
         if (entry.CssVars.Count > 0)
@@ -951,6 +1051,163 @@ internal static class Commands
         Console.WriteLine($"{Ansi.Bold(entry.Name)}: {Ansi.Green($"{same} in sync")}, {Ansi.Magenta($"{drift} drifted")}, {Ansi.Yellow($"{missing} missing")}.");
         if (drift > 0)
             Console.WriteLine($"Run {Ansi.Cyan($"lumeo update {component}")} to pull upstream, or {Ansi.Cyan($"lumeo add {component} --force")} to reset.");
+    }
+
+    // ---------------------------------------------------------------- view
+    public static async Task View(string component, bool local, string? pathOverride)
+    {
+        // Config is optional — `view` should work even before `lumeo init`.
+        var cfg = ConfigIO.TryLoad();
+        var registryUrl = cfg?.Registry ?? RegistryLoader.DefaultRegistryUrl;
+        var targetNamespace = cfg?.Namespace ?? "Lumeo";
+
+        var registry = await RegistryLoader.LoadAsync(local, registryUrl);
+        var key = component.ToLowerInvariant();
+        if (!registry.Components.TryGetValue(key, out var entry))
+        {
+            Console.Error.WriteLine(Ansi.Red($"Unknown component '{component}'."));
+            Console.Error.WriteLine($"Run {Ansi.Cyan("lumeo list")} to see available components.");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        // Pretty header on stderr so stdout stays grep-friendly.
+        Console.Error.WriteLine(Ansi.Bold(entry.Name) + Ansi.Dim($" — {entry.Category}"));
+        if (!string.IsNullOrEmpty(entry.Description))
+            Console.Error.WriteLine(Ansi.Dim(entry.Description));
+        if (entry.Dependencies.Count > 0)
+            Console.Error.WriteLine(Ansi.Dim("Depends on: ") + string.Join(", ", entry.Dependencies));
+        Console.Error.WriteLine();
+
+        foreach (var relFile in entry.Files)
+        {
+            // --path overrides the default destination mapping purely for the banner.
+            var displayRel = pathOverride is not null
+                ? System.IO.Path.Combine(pathOverride, relFile.Substring(relFile.IndexOf('/') + 1)).Replace('\\', '/')
+                : relFile;
+            Console.WriteLine($"=== {displayRel} ===");
+            string content;
+            try
+            {
+                content = await RegistryLoader.GetFileAsync(relFile, local, registryUrl);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(Ansi.Red($"Failed to fetch {relFile}: {ex.Message}"));
+                Environment.ExitCode = 1;
+                continue;
+            }
+            // Only rewrite namespace if a config exists (so we show what `add` WOULD produce).
+            if (cfg is not null)
+                content = NamespaceRewriter.Rewrite(content, relFile, targetNamespace);
+            Console.WriteLine(content);
+            Console.WriteLine();
+        }
+    }
+
+    // ---------------------------------------------------------------- info
+    public static Task Info(bool json)
+    {
+        var cfg = ConfigIO.TryLoad();
+        var cwd = Environment.CurrentDirectory;
+
+        var themeJsonPath = System.IO.Path.Combine(cwd, "wwwroot", "lumeo-theme.json");
+        Dictionary<string, JsonElement>? themeJson = null;
+        if (File.Exists(themeJsonPath))
+        {
+            try { themeJson = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(themeJsonPath)); }
+            catch { /* malformed — leave null, surfaced as "invalid" in text mode */ }
+        }
+
+        if (json)
+        {
+            var payload = new Dictionary<string, object?>
+            {
+                ["cwd"] = cwd,
+                ["configFound"] = cfg is not null,
+                ["configPath"] = System.IO.Path.Combine(cwd, Paths.ConfigFile),
+                ["namespace"] = cfg?.Namespace,
+                ["componentsPath"] = cfg?.ComponentsPath,
+                ["registry"] = cfg?.Registry ?? RegistryLoader.DefaultRegistryUrl,
+                ["assets"] = cfg?.Assets,
+                ["theme"] = cfg?.Theme,
+                ["themeJsonPath"] = File.Exists(themeJsonPath) ? themeJsonPath : null,
+                ["themeJson"] = themeJson,
+                ["components"] = cfg?.Components,
+                ["presetApi"] = LumeoPresetApi.BaseUrl,
+            };
+            Console.WriteLine(JsonSerializer.Serialize(payload,
+                new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never }));
+            return Task.CompletedTask;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(Ansi.Bold("Lumeo project info"));
+        Console.WriteLine();
+        Console.WriteLine($"  {Ansi.Dim("cwd".PadRight(18))} {cwd}");
+        if (cfg is null)
+        {
+            Console.WriteLine($"  {Ansi.Dim("config".PadRight(18))} {Ansi.Yellow("not found")} — run `lumeo init` to create one");
+            Console.WriteLine($"  {Ansi.Dim("registry".PadRight(18))} {RegistryLoader.DefaultRegistryUrl}");
+            Console.WriteLine($"  {Ansi.Dim("preset api".PadRight(18))} {LumeoPresetApi.BaseUrl}");
+            return Task.CompletedTask;
+        }
+
+        Console.WriteLine($"  {Ansi.Dim("config".PadRight(18))} {System.IO.Path.Combine(cwd, Paths.ConfigFile)}");
+        Console.WriteLine($"  {Ansi.Dim("namespace".PadRight(18))} {cfg.Namespace}");
+        Console.WriteLine($"  {Ansi.Dim("componentsPath".PadRight(18))} {cfg.ComponentsPath}");
+        Console.WriteLine($"  {Ansi.Dim("registry".PadRight(18))} {cfg.Registry}");
+        Console.WriteLine($"  {Ansi.Dim("preset api".PadRight(18))} {LumeoPresetApi.BaseUrl}");
+        if (cfg.Assets is not null)
+            Console.WriteLine($"  {Ansi.Dim("assets.mode".PadRight(18))} {cfg.Assets.Mode}{(cfg.Assets.Version is not null ? $" (v{cfg.Assets.Version})" : "")}");
+
+        Console.WriteLine();
+        if (cfg.Theme is not null)
+        {
+            Console.WriteLine(Ansi.Bold("Theme (from lumeo.json)"));
+            ThemeRow("theme", cfg.Theme.Theme);
+            ThemeRow("style", cfg.Theme.Style);
+            ThemeRow("baseColor", cfg.Theme.BaseColor);
+            ThemeRow("radius", cfg.Theme.Radius);
+            ThemeRow("font", cfg.Theme.Font);
+            ThemeRow("iconLibrary", cfg.Theme.IconLibrary);
+            ThemeRow("menuColor", cfg.Theme.MenuColor);
+            ThemeRow("menuAccent", cfg.Theme.MenuAccent);
+            ThemeRow("dark", cfg.Theme.Dark?.ToString());
+            Console.WriteLine();
+        }
+        else
+        {
+            Console.WriteLine(Ansi.Dim("No theme recorded. Apply one with `lumeo apply <preset>`."));
+            Console.WriteLine();
+        }
+
+        if (themeJson is not null)
+        {
+            Console.WriteLine(Ansi.Bold("wwwroot/lumeo-theme.json") + Ansi.Dim($"  ({themeJsonPath})"));
+            foreach (var kv in themeJson)
+                Console.WriteLine($"  {Ansi.Dim(kv.Key.PadRight(16))} {kv.Value.ToString()}");
+            Console.WriteLine();
+        }
+
+        Console.WriteLine(Ansi.Bold("Installed components"));
+        if (cfg.Components is null || cfg.Components.Count == 0)
+        {
+            Console.WriteLine(Ansi.Dim("  (none yet — try `lumeo add button`)"));
+        }
+        else
+        {
+            int pad = Math.Max(14, cfg.Components.Keys.Max(k => k.Length) + 2);
+            foreach (var kv in cfg.Components.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            {
+                var name = kv.Key.PadRight(pad);
+                Console.WriteLine($"  {Ansi.Green(name)} {Ansi.Dim($"v{kv.Value.Version}")}  {Ansi.Dim($"({kv.Value.Files.Count} files)")}");
+            }
+        }
+        return Task.CompletedTask;
+
+        static void ThemeRow(string label, string? v)
+            => Console.WriteLine($"  {Ansi.Dim(label.PadRight(14))} {v ?? Ansi.Dim("(unset)")}");
     }
 
     // ------------------------------------------------------------- helpers
