@@ -375,12 +375,21 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
     chart._lumeoObserver = observer;
 }
 
-export function updateChart(elementId, optionsJson, notMerge) {
+export function updateChart(elementId, optionsJson, notMerge, replaceMergeJson) {
     const chart = charts.get(elementId);
     if (!chart) return;
     const options = JSON.parse(optionsJson);
     resolveCssVars(options);
-    chart.setOption(options, { notMerge: notMerge || false });
+    const opts = { notMerge: notMerge || false };
+    if (replaceMergeJson) {
+        try {
+            const replaceMerge = JSON.parse(replaceMergeJson);
+            if (Array.isArray(replaceMerge) && replaceMerge.length > 0) {
+                opts.replaceMerge = replaceMerge;
+            }
+        } catch { /* ignore bad input */ }
+    }
+    chart.setOption(options, opts);
 }
 
 export function resizeChart(elementId) {
