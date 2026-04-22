@@ -359,8 +359,16 @@
 
     internal void RegisterToolbarContent(ToolbarContent<TItem> tc)
     {
-        RegisteredToolbarContent = tc;
-        InvokeAsync(StateHasChanged);
+        // Re-registration from the child's OnParametersSet happens on every render;
+        // only flag a re-render when the instance actually changed, otherwise we'd
+        // loop (StateHasChanged → child re-renders → re-registers → StateHasChanged).
+        // Class/ChildContent updates on the SAME instance are already read by the
+        // next natural parent render (we dereference them at render time).
+        if (!ReferenceEquals(RegisteredToolbarContent, tc))
+        {
+            RegisteredToolbarContent = tc;
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     internal void UnregisterToolbarContent(ToolbarContent<TItem> tc)
