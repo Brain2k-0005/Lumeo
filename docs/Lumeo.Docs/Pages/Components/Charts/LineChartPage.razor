@@ -50,8 +50,16 @@
                         <Switch @bind-Value="_keepLineLoading" Id="keep-line-loading" />
                         <label for="keep-line-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
                     </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Duration: @(_simulateLineDurationMs / 1000.0)s</label>
+                        <input type="range" min="500" max="10000" step="500" @bind-value="_simulateLineDurationMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Cycle: @_phantomLineCycleMs ms</label>
+                        <input type="range" min="300" max="3000" step="100" @bind-value="_phantomLineCycleMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
                 </Stack>
-                <LineChart Categories="_categories" Series="_minimalSeries" IsLoading="@LineLoadingComputed" Height="320px" />
+                <LineChart Categories="_categories" Series="_minimalSeries" PhantomCycleMs="@_phantomLineCycleMs" IsLoading="@LineLoadingComputed" Height="320px" />
             </Stack>
         </Container>
     </ComponentDemo>
@@ -169,11 +177,13 @@
     private bool _lineLoading;
     private bool _keepLineLoading;
     private bool LineLoadingComputed => _lineLoading || _keepLineLoading;
+    private int _simulateLineDurationMs = 2000;
+    private int _phantomLineCycleMs = 1400;
 
     private async Task SimulateLineLoadingAsync()
     {
         _lineLoading = true;
-        await Task.Delay(2000);
+        await Task.Delay(_simulateLineDurationMs);
         _lineLoading = false;
     }
 

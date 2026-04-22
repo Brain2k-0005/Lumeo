@@ -60,6 +60,10 @@ else
     /// data in a muted palette; ECharts animates the option swap to real data.
     /// Silhouette falls back to the legacy SVG overlay skeleton.</summary>
     [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    /// <summary>Phantom-mode refresh interval in milliseconds — each tick regenerates
+    /// the placeholder dataset with a new random seed so bars/lines/slices visibly
+    /// redistribute while loading. Defaults to 1400ms; clamped to ≥200ms.</summary>
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
@@ -96,7 +100,8 @@ else
     private System.Threading.Timer? _phantomTimer;
     private int _phantomTick;
     private bool _lastWasPhantom;
-    private const int PhantomCycleMs = 1400;
+    private int _activePhantomCycleMs;
+    private int EffectivePhantomCycleMs => Math.Max(200, PhantomCycleMs);
 
     private bool IsPhantomActive =>
         ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
@@ -203,29 +208,36 @@ else
 
     private void UpdatePhantomTimer()
     {
-        if (IsPhantomActive && _phantomTimer is null)
+        var cycle = EffectivePhantomCycleMs;
+        if (IsPhantomActive)
         {
-            _phantomTimer = new System.Threading.Timer(_ =>
+            if (_phantomTimer is null || _activePhantomCycleMs != cycle)
             {
-                _phantomTick++;
-                _ = InvokeAsync(async () =>
+                _phantomTimer?.Dispose();
+                _activePhantomCycleMs = cycle;
+                _phantomTimer = new System.Threading.Timer(_ =>
                 {
-                    if (!_initialized || _module is null || !IsPhantomActive) return;
-                    var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick);
-                    _lastJson = json;
-                    try
+                    _phantomTick++;
+                    _ = InvokeAsync(async () =>
                     {
-                        await _module.InvokeVoidAsync("updateChart", _chartId, json, false);
-                    }
-                    catch (JSDisconnectedException) { }
-                    catch (ObjectDisposedException) { }
-                });
-            }, null, PhantomCycleMs, PhantomCycleMs);
+                        if (!_initialized || _module is null || !IsPhantomActive) return;
+                        var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick);
+                        _lastJson = json;
+                        try
+                        {
+                            await _module.InvokeVoidAsync("updateChart", _chartId, json, false);
+                        }
+                        catch (JSDisconnectedException) { }
+                        catch (ObjectDisposedException) { }
+                    });
+                }, null, cycle, cycle);
+            }
         }
-        else if (!IsPhantomActive && _phantomTimer is not null)
+        else if (_phantomTimer is not null)
         {
             _phantomTimer.Dispose();
             _phantomTimer = null;
+            _activePhantomCycleMs = 0;
         }
     }
 
