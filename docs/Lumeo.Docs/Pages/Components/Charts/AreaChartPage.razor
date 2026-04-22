@@ -44,8 +44,16 @@
                         <Switch @bind-Value="_keepLoading" Id="keep-loading" />
                         <label for="keep-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
                     </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Duration: @(_simulateDurationMs / 1000.0)s</label>
+                        <input type="range" min="500" max="10000" step="500" @bind-value="_simulateDurationMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Cycle: @_phantomCycleMs ms</label>
+                        <input type="range" min="300" max="3000" step="100" @bind-value="_phantomCycleMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
                 </Stack>
-                <AreaChart Categories="_categories" Series="_series" Smooth="true" Gradient="true" IsLoading="@LoadingComputed" Height="320px" />
+                <AreaChart Categories="_categories" Series="_series" Smooth="true" Gradient="true" PhantomCycleMs="@_phantomCycleMs" IsLoading="@LoadingComputed" Height="320px" />
             </Stack>
         </Container>
     </ComponentDemo>
@@ -215,11 +223,13 @@
     private bool _loading;
     private bool _keepLoading;
     private bool LoadingComputed => _loading || _keepLoading;
+    private int _simulateDurationMs = 2000;
+    private int _phantomCycleMs = 1400;
 
     private async Task SimulateLoadingAsync()
     {
         _loading = true;
-        await Task.Delay(2000);
+        await Task.Delay(_simulateDurationMs);
         _loading = false;
     }
 }
