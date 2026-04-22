@@ -64,12 +64,15 @@ else
     /// the placeholder dataset with a new random seed so bars/lines/slices visibly
     /// redistribute while loading. Defaults to 1400ms; clamped to ≥200ms.</summary>
     [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    /// <summary>Explicit override for the phantom layout (category count, series count,
+    /// stacking, area fill). When null (default), the shape is inferred from the real
+    /// <see cref="Option"/> so the phantom mirrors the actual chart structure.</summary>
+    [Parameter] public PhantomShape? PhantomShapeOverride { get; set; }
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private DotNetObjectReference<Chart>? _selfRef;
     private bool _initialized;
-    private bool _hasFirstRendered;
     private string? _lastJson;
     private bool _lastShowLoading;
     private string? _lastTheme;
@@ -107,12 +110,15 @@ else
         ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
 
     /// <summary>Returns the JSON that actually goes to ECharts. Phantom mode uses
-    /// the current cycling tick so each frame redistributes the random data.</summary>
+    /// the current cycling tick so each frame redistributes the random data, and
+    /// mirrors the real chart's structure (category count, series count, stacking)
+    /// via <see cref="ChartPlaceholderFactory.InferShape"/>.</summary>
     private string GetEffectiveJson()
     {
         if (IsPhantomActive)
         {
-            return ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick);
+            var shape = PhantomShapeOverride ?? ChartPlaceholderFactory.InferShape(Option);
+            return ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick, shape);
         }
         return GetOptionsJson();
     }
@@ -152,7 +158,6 @@ else
                 await _module.InvokeVoidAsync("showLoading", _chartId, null);
             }
 
-            _hasFirstRendered = true;
             // Capture the phantom state that was actually passed to ECharts. Must be
             // the value at init time (before any subsequent state change), so we can
             // correctly decide notMerge on the next update.
@@ -221,7 +226,8 @@ else
                     _ = InvokeAsync(async () =>
                     {
                         if (!_initialized || _module is null || !IsPhantomActive) return;
-                        var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick);
+                        var shape = PhantomShapeOverride ?? ChartPlaceholderFactory.InferShape(Option);
+                        var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick, shape);
                         _lastJson = json;
                         try
                         {
