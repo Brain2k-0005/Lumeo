@@ -106,6 +106,12 @@ else
     private int _activePhantomCycleMs;
     private int EffectivePhantomCycleMs => Math.Max(200, PhantomCycleMs);
 
+    // Components whose phantom styling (muted palette, transparent text, skeleton-box
+    // labels) must be wiped during the phantom↔real transition — otherwise they'd
+    // persist under setOption merge semantics and bleed into the real chart.
+    private const string PhantomTransitionReplaceMergeJson =
+        "[\"xAxis\",\"yAxis\",\"legend\",\"polar\",\"angleAxis\",\"radiusAxis\",\"radar\",\"parallel\",\"parallelAxis\",\"visualMap\",\"grid\"]";
+
     private bool IsPhantomActive =>
         ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
 
@@ -174,13 +180,14 @@ else
             if (json != _lastJson)
             {
                 _lastJson = json;
-                // Whenever phantom state flips in either direction, use notMerge=true so
-                // muted palette / transparent axis labels / placeholder category names
-                // don't bleed into the real chart (or vice-versa). Same-mode updates
-                // (phantom→phantom cycling, real→real data refresh) stay on notMerge=false
-                // for smooth value tweens.
-                var notMerge = _lastWasPhantom != isPhantom;
-                await _module!.InvokeVoidAsync("updateChart", _chartId, json, notMerge);
+                // Phantom↔real transition: keep notMerge=false so SERIES values tween
+                // (bars move from phantom heights to real heights — feels like data
+                // loading, not a snap). Use replaceMerge to fully replace layout
+                // components (axes, legend, radar, polar, parallel, visualMap) so the
+                // muted skeleton-box styling doesn't bleed into the real chart.
+                var phantomFlipped = _lastWasPhantom != isPhantom;
+                string? replaceMergeJson = phantomFlipped ? PhantomTransitionReplaceMergeJson : null;
+                await _module!.InvokeVoidAsync("updateChart", _chartId, json, false, replaceMergeJson);
             }
             _lastWasPhantom = isPhantom;
 
