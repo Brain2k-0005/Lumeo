@@ -11,7 +11,7 @@ else
 {
     <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
         <div id="@_chartId" class="lumeo-chart-host w-full h-full"
-             style="transition: opacity 350ms ease-out; opacity: @ChartHostOpacity;"></div>
+             style="@HostStyle"></div>
         @if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette)
         {
             @* Silhouette mode (legacy SVG skeleton overlay). Phantom mode renders the real
@@ -95,8 +95,18 @@ else
 
     // Silhouette mode hides the real chart while the SVG overlay takes its place.
     // Phantom mode keeps the chart host fully visible — the "skeleton" IS the chart
-    // (with fake data), and the option-swap tween handles the handoff to real data.
+    // with placeholder data. To give phantom a "loading" look without polluting the
+    // option.color palette (which would bleed through the merge into the real chart),
+    // we apply a CSS grayscale+dim filter while phantom is active. The filter cleanly
+    // transitions off when real data arrives — bars keep their real hue throughout.
     private string ChartHostOpacity => (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette) ? "0" : "1";
+
+    private bool IsPhantomStyled =>
+        ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Phantom && ShowLoadingSkeleton;
+
+    private string HostStyle => IsPhantomStyled
+        ? $"transition: opacity 350ms ease-out, filter 500ms ease-out; opacity: {ChartHostOpacity}; filter: grayscale(0.85) saturate(0.15) opacity(0.78);"
+        : $"transition: opacity 350ms ease-out, filter 500ms ease-out; opacity: {ChartHostOpacity}; filter: none;";
 
     // Phantom-mode state: cycling random placeholder data while loading, then one
     // clean "notMerge=true" swap to real data so the muted palette doesn't bleed.
