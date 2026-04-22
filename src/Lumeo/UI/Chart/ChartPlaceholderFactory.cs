@@ -76,6 +76,15 @@ internal static class ChartPlaceholderFactory
             ChartSkeletonKind.Pie => BuildPie(rng, shape),
             ChartSkeletonKind.Scatter => BuildScatter(rng, shape),
             ChartSkeletonKind.Grid => BuildHeatmap(rng, shape),
+            ChartSkeletonKind.Radar => BuildRadar(rng, shape),
+            ChartSkeletonKind.Sankey => BuildSankey(rng),
+            ChartSkeletonKind.Graph => BuildGraph(rng),
+            ChartSkeletonKind.Tree => BuildTree(rng),
+            ChartSkeletonKind.Parallel => BuildParallel(rng, shape),
+            ChartSkeletonKind.Funnel => BuildFunnel(rng, shape),
+            ChartSkeletonKind.Gauge => BuildGauge(rng),
+            ChartSkeletonKind.Polar => BuildPolar(rng, shape),
+            ChartSkeletonKind.Candlestick => BuildCandlestick(rng, shape),
             _ => BuildBars(rng, shape)
         };
     }
@@ -118,8 +127,8 @@ internal static class ChartPlaceholderFactory
             Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             Legend = BuildLegendHint(seriesCount),
-            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(categories), AxisLabel = new() { Color = "transparent" } } },
-            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = new() { Color = "transparent" } } },
+            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(categories), AxisLabel = SkeletonBoxAxisLabel() } },
+            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
             Series = series
         };
     }
@@ -163,8 +172,8 @@ internal static class ChartPlaceholderFactory
             Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             Legend = BuildLegendHint(seriesCount),
-            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(categories), BoundaryGap = false, AxisLabel = new() { Color = "transparent" } } },
-            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = new() { Color = "transparent" } } },
+            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(categories), BoundaryGap = false, AxisLabel = SkeletonBoxAxisLabel() } },
+            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
             Series = series
         };
     }
@@ -216,8 +225,8 @@ internal static class ChartPlaceholderFactory
             Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
             Legend = BuildLegendHint(1),
-            XAxis = new() { new EChartAxis { Type = "value", AxisLabel = new() { Color = "transparent" } } },
-            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = new() { Color = "transparent" } } },
+            XAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
+            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
             Series = new()
             {
                 new EChartSeries { Name = "·", Type = "scatter", Data = pts, SymbolSize = 12 }
@@ -243,8 +252,8 @@ internal static class ChartPlaceholderFactory
         {
             Color = MutedPalette,
             Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "14%", ContainLabel = true },
-            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(cols), AxisLabel = new() { Color = "transparent" } } },
-            YAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(rows), AxisLabel = new() { Color = "transparent" } } },
+            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(cols), AxisLabel = SkeletonBoxAxisLabel() } },
+            YAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(rows), AxisLabel = SkeletonBoxAxisLabel() } },
             VisualMap = new EChartVisualMap
             {
                 Min = 0,
@@ -259,6 +268,23 @@ internal static class ChartPlaceholderFactory
         };
     }
 
+    // Muted box color for axis/legend skeleton rectangles — a shade lighter than series bars
+    // so the "text boxes" don't compete with the data but still read as placeholders.
+    private const string SkeletonBoxColor = "rgba(148, 163, 184, 0.35)";
+
+    /// <summary>Axis label styled as a skeleton box — label text is transparent but the
+    /// label's backgroundColor / padding / borderRadius draw a muted rectangle. Width
+    /// tuned for typical tick labels; consumers can override if needed.</summary>
+    private static EChartAxisLabel SkeletonBoxAxisLabel(int width = 22, int height = 8) => new()
+    {
+        Color = "transparent",
+        BackgroundColor = SkeletonBoxColor,
+        Padding = new[] { 0, 0, 0, 0 },
+        BorderRadius = 2,
+        Width = width,
+        Height = height
+    };
+
     private static EChartLegend BuildLegendHint(int entries)
     {
         var data = new List<string>(entries);
@@ -267,7 +293,341 @@ internal static class ChartPlaceholderFactory
         {
             Data = data,
             Top = "3%",
-            TextStyle = new() { Color = "transparent" }
+            // Transparent text + muted pill per legend item reads as "loading legend entries".
+            TextStyle = new()
+            {
+                Color = "transparent",
+                BackgroundColor = SkeletonBoxColor,
+                BorderRadius = 3,
+                Width = 28,
+                Height = 8
+            }
+        };
+    }
+
+    // ---- dedicated phantom builders for complex chart types ----
+
+    private static EChartOption BuildRadar(Random rng, PhantomShape shape)
+    {
+        int dims = 5;
+        var indicators = new List<EChartRadarIndicator>(dims);
+        for (int i = 0; i < dims; i++) indicators.Add(new EChartRadarIndicator { Name = " ", Max = 100 });
+
+        int seriesCount = Math.Max(1, Math.Min(3, shape.SeriesCount));
+        var radarData = new List<EChartRadarData>(seriesCount);
+        for (int s = 0; s < seriesCount; s++)
+        {
+            var values = new List<double>(dims);
+            for (int i = 0; i < dims; i++) values.Add(Math.Round(30 + rng.NextDouble() * 60, 1));
+            radarData.Add(new EChartRadarData { Name = " ", Value = values, AreaStyle = new() { Opacity = 0.18 } });
+        }
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Legend = BuildLegendHint(seriesCount),
+            Radar = new EChartRadar { Indicator = indicators, Shape = "polygon" },
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "radar",
+                    Data = radarData
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildSankey(Random rng)
+    {
+        var nodes = new List<EChartSankeyNode>();
+        for (int i = 0; i < 7; i++) nodes.Add(new EChartSankeyNode { Name = $"n{i}" });
+
+        var links = new List<EChartSankeyLink>
+        {
+            new() { Source = "n0", Target = "n3", Value = Math.Round(20 + rng.NextDouble() * 30, 1) },
+            new() { Source = "n0", Target = "n4", Value = Math.Round(15 + rng.NextDouble() * 25, 1) },
+            new() { Source = "n1", Target = "n3", Value = Math.Round(10 + rng.NextDouble() * 20, 1) },
+            new() { Source = "n1", Target = "n5", Value = Math.Round(15 + rng.NextDouble() * 25, 1) },
+            new() { Source = "n2", Target = "n4", Value = Math.Round(20 + rng.NextDouble() * 30, 1) },
+            new() { Source = "n3", Target = "n6", Value = Math.Round(18 + rng.NextDouble() * 22, 1) },
+            new() { Source = "n4", Target = "n6", Value = Math.Round(15 + rng.NextDouble() * 25, 1) },
+            new() { Source = "n5", Target = "n6", Value = Math.Round(12 + rng.NextDouble() * 18, 1) },
+        };
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "sankey",
+                    Left = "5%",
+                    Right = "10%",
+                    Top = "5%",
+                    Bottom = "5%",
+                    Nodes = nodes,
+                    Links = links,
+                    Label = new() { Show = false },
+                    ItemStyle = new() { BorderColor = "rgba(0,0,0,0)" }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildGraph(Random rng)
+    {
+        int nodeCount = 10;
+        var nodes = new List<EChartGraphNode>();
+        for (int i = 0; i < nodeCount; i++)
+        {
+            nodes.Add(new EChartGraphNode
+            {
+                Name = $"g{i}",
+                X = Math.Round(rng.NextDouble() * 100, 1),
+                Y = Math.Round(rng.NextDouble() * 100, 1),
+                SymbolSize = 10 + rng.Next(18)
+            });
+        }
+
+        var links = new List<EChartGraphLink>();
+        for (int i = 0; i < nodeCount - 1; i++)
+        {
+            links.Add(new EChartGraphLink { Source = $"g{i}", Target = $"g{i + 1}" });
+        }
+        for (int extra = 0; extra < 4; extra++)
+        {
+            int a = rng.Next(nodeCount), b = rng.Next(nodeCount);
+            if (a != b) links.Add(new EChartGraphLink { Source = $"g{a}", Target = $"g{b}" });
+        }
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "graph",
+                    Layout = "none",
+                    Nodes = nodes,
+                    Links = links,
+                    Roam = false,
+                    Label = new() { Show = false },
+                    LineStyle = new() { Width = 1, Color = "rgba(148,163,184,0.35)" }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildTree(Random rng)
+    {
+        // 3-level tree with random branching factor.
+        var root = new EChartTreeData
+        {
+            Name = " ",
+            Children = new()
+            {
+                new() { Name = " ", Children = new()
+                {
+                    new() { Name = " " },
+                    new() { Name = " " },
+                    new() { Name = " " }
+                }},
+                new() { Name = " ", Children = new()
+                {
+                    new() { Name = " " },
+                    new() { Name = " " }
+                }},
+                new() { Name = " ", Children = new()
+                {
+                    new() { Name = " " },
+                    new() { Name = " " },
+                    new() { Name = " " }
+                }}
+            }
+        };
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "tree",
+                    Data = new List<EChartTreeData> { root },
+                    Orient = "LR",
+                    Left = "8%",
+                    Right = "18%",
+                    Top = "5%",
+                    Bottom = "5%",
+                    Label = new() { Show = false },
+                    LineStyle = new() { Width = 1, Color = "rgba(148,163,184,0.35)" },
+                    ItemStyle = new() { Color = "rgba(148,163,184,0.55)", BorderColor = "rgba(0,0,0,0)" }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildParallel(Random rng, PhantomShape shape)
+    {
+        int axes = Math.Max(3, Math.Min(8, shape.Categories > 3 ? shape.Categories : 5));
+        var parallelAxis = new List<EChartParallelAxis>(axes);
+        for (int i = 0; i < axes; i++) parallelAxis.Add(new EChartParallelAxis { Dim = i, Name = " ", Min = 0, Max = 100 });
+
+        int lines = 8;
+        var data = new List<double[]>(lines);
+        for (int i = 0; i < lines; i++)
+        {
+            var row = new double[axes];
+            for (int j = 0; j < axes; j++) row[j] = Math.Round(10 + rng.NextDouble() * 80, 1);
+            data.Add(row);
+        }
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Parallel = new EChartParallel { Left = "6%", Right = "14%", Top = "10%", Bottom = "10%" },
+            ParallelAxis = parallelAxis,
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "parallel",
+                    Data = data,
+                    LineStyle = new() { Width = 1, Color = "rgba(148,163,184,0.45)" }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildFunnel(Random rng, PhantomShape shape)
+    {
+        int steps = Math.Max(3, Math.Min(6, shape.SliceCount ?? 5));
+        var data = new List<EChartPieData>(steps);
+        double value = 100;
+        for (int i = 0; i < steps; i++)
+        {
+            value = Math.Max(8, value - (10 + rng.NextDouble() * 18));
+            data.Add(new EChartPieData { Name = " ", Value = Math.Round(value, 1) });
+        }
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "funnel",
+                    Left = "10%",
+                    Right = "10%",
+                    Top = "8%",
+                    Bottom = "8%",
+                    Data = data,
+                    Label = new() { Show = false },
+                    ItemStyle = new() { BorderColor = "rgba(0,0,0,0)", BorderWidth = 2 }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildGauge(Random rng)
+    {
+        double value = Math.Round(10 + rng.NextDouble() * 80, 0);
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "gauge",
+                    StartAngle = 210,
+                    EndAngle = -30,
+                    Min = 0,
+                    Max = 100,
+                    Progress = new EChartSeriesProgress { Show = true, Width = 10 },
+                    Pointer = new EChartPointer { Show = true },
+                    Detail = new EChartSeriesDetail { FontSize = 0, Formatter = " " },
+                    Data = new List<EChartPieData> { new() { Name = " ", Value = value } },
+                    ItemStyle = new() { Color = "rgba(148,163,184,0.55)" }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildPolar(Random rng, PhantomShape shape)
+    {
+        int bars = Math.Max(6, Math.Min(12, shape.Categories > 0 ? shape.Categories : 8));
+        var values = new List<double>(bars);
+        for (int i = 0; i < bars; i++) values.Add(20 + rng.Next(70));
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Polar = new { radius = new[] { "20%", "75%" } },
+            AngleAxis = new() { new { type = "category", data = CategoryLabels(bars), axisLabel = new { color = "transparent", backgroundColor = SkeletonBoxColor, width = 18, height = 8, borderRadius = 2 } } },
+            RadiusAxis = new() { new { axisLabel = new { color = "transparent", backgroundColor = SkeletonBoxColor, width = 18, height = 8, borderRadius = 2 } } },
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "bar",
+                    CoordinateSystem = "polar",
+                    Data = values,
+                    ItemStyle = new() { BorderRadius = 4 }
+                }
+            }
+        };
+    }
+
+    private static EChartOption BuildCandlestick(Random rng, PhantomShape shape)
+    {
+        int candles = Math.Max(8, Math.Min(40, shape.Categories > 0 ? shape.Categories : 16));
+        var data = new List<double[]>(candles);
+        double prev = 50;
+        for (int i = 0; i < candles; i++)
+        {
+            double open = prev;
+            double close = Math.Round(Math.Clamp(prev + (rng.NextDouble() - 0.5) * 18, 10, 90), 1);
+            double low = Math.Round(Math.Min(open, close) - rng.NextDouble() * 6, 1);
+            double high = Math.Round(Math.Max(open, close) + rng.NextDouble() * 6, 1);
+            data.Add(new[] { open, close, low, high });
+            prev = close;
+        }
+
+        return new EChartOption
+        {
+            Color = MutedPalette,
+            Grid = new EChartGrid { Left = "3%", Right = "4%", Bottom = "8%", Top = "10%", ContainLabel = true },
+            XAxis = new() { new EChartAxis { Type = "category", Data = CategoryLabels(candles), AxisLabel = SkeletonBoxAxisLabel() } },
+            YAxis = new() { new EChartAxis { Type = "value", AxisLabel = SkeletonBoxAxisLabel() } },
+            Series = new()
+            {
+                new EChartSeries
+                {
+                    Name = "·",
+                    Type = "candlestick",
+                    Data = data,
+                    ItemStyle = new()
+                    {
+                        Color = "rgba(148,163,184,0.55)",
+                        BorderColor = "rgba(148,163,184,0.70)"
+                    }
+                }
+            }
         };
     }
 }
