@@ -14,7 +14,7 @@ var root = new RootCommand("Lumeo CLI — vendorize Lumeo components into your p
 // --- init ---
 var initNamespaceOpt = new Option<string?>("--namespace", "Target namespace for generated components (e.g. MyApp.Components).");
 var initPathOpt = new Option<string?>("--path", "Components folder relative to the current directory. Default: Components/Ui");
-var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: https://lumeo.nativ.sh/registry/registry.json");
+var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: jsDelivr CDN at cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@<version>/src/Lumeo/wwwroot/registry/registry.json");
 var initForceOpt = new Option<bool>("--force", "Overwrite an existing lumeo.json.");
 var initYesOpt = new Option<bool>(new[] { "--yes", "-y" }, "Accept all defaults, skip prompts (CI mode).");
 var initWithCssOpt = new Option<bool>("--with-css", "Copy Lumeo's pre-built CSS/JS into wwwroot/ (no Tailwind required).");
@@ -174,7 +174,7 @@ namespace Lumeo.Cli
     {
         [JsonPropertyName("namespace")] public string Namespace { get; set; } = "MyApp.Components";
         [JsonPropertyName("componentsPath")] public string ComponentsPath { get; set; } = "Components/Ui";
-        [JsonPropertyName("registry")] public string Registry { get; set; } = "https://lumeo.nativ.sh/registry/registry.json";
+        [JsonPropertyName("registry")] public string Registry { get; set; } = RegistryLoader.DefaultRegistryUrl;
         [JsonPropertyName("assets")] public AssetsConfig? Assets { get; set; }
         [JsonPropertyName("components")] public Dictionary<string, InstalledComponent>? Components { get; set; }
     }
@@ -284,9 +284,35 @@ namespace Lumeo.Cli
                 return r ?? throw new InvalidOperationException("Failed to parse local registry.");
             }
 
-            var url = registryUrl ?? "https://lumeo.nativ.sh/registry/registry.json";
+            var url = registryUrl ?? DefaultRegistryUrl;
             var r2 = await s_http.GetFromJsonAsync<Registry>(url, s_opts);
             return r2 ?? throw new InvalidOperationException($"Failed to fetch registry: {url}");
+        }
+
+        /// <summary>Default registry URL — jsDelivr mirrors github content globally over CDN,
+        /// no hosting setup required. Pinned to an RC tag so the registry and the CLI binary
+        /// always agree on schema/shape.</summary>
+        public const string DefaultRegistryUrl =
+            "https://cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@v2.0.0-rc.6/src/Lumeo/wwwroot/registry/registry.json";
+
+        /// <summary>Derive the base URL to fetch component source files from the registry URL.
+        /// Supports three layouts:
+        ///   1) jsDelivr / raw.githubusercontent.com / any URL ending in ".../Lumeo/wwwroot/registry/registry.json"
+        ///      → strip trailing "wwwroot/registry/registry.json" so file paths resolve under src/Lumeo/
+        ///   2) Self-hosted with legacy "/raw/" convention (".../registry.json" → ".../raw/")
+        ///   3) Anything else: append "/raw/" to the trimmed URL
+        /// </summary>
+        public static string DeriveFileBaseUrl(string registryUrl)
+        {
+            const string marker = "/wwwroot/registry/registry.json";
+            if (registryUrl.EndsWith(marker, StringComparison.OrdinalIgnoreCase))
+            {
+                // Strip marker, keep trailing slash so relative path (e.g. "UI/Button/Button.razor") lands at src/Lumeo/UI/...
+                return registryUrl.Substring(0, registryUrl.Length - marker.Length + 1);
+            }
+            if (registryUrl.Contains("/registry.json", StringComparison.OrdinalIgnoreCase))
+                return registryUrl.Replace("/registry.json", "/raw/", StringComparison.OrdinalIgnoreCase);
+            return registryUrl.TrimEnd('/') + "/raw/";
         }
 
         public static async Task<string> GetFileAsync(string relativePath, bool local, string registryUrl)
@@ -299,9 +325,7 @@ namespace Lumeo.Cli
                 if (!File.Exists(abs)) throw new FileNotFoundException($"Local file not found: {abs}");
                 return await File.ReadAllTextAsync(abs);
             }
-            var baseUrl = registryUrl.Contains("/registry.json")
-                ? registryUrl.Replace("/registry.json", "/raw/")
-                : registryUrl.TrimEnd('/') + "/raw/";
+            var baseUrl = DeriveFileBaseUrl(registryUrl);
             return await s_http.GetStringAsync(baseUrl + relativePath);
         }
 
@@ -313,23 +337,22 @@ namespace Lumeo.Cli
             {
                 var repoRoot = Paths.FindRepoRoot(Environment.CurrentDirectory)
                                ?? throw new InvalidOperationException("--local requires running inside the Lumeo repo.");
-                // Strip the "_content/Lumeo/" prefix to map to src/Lumeo/wwwroot.
-                var stripped = assetRelPath;
                 const string prefix = "_content/Lumeo/";
-                if (stripped.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    stripped = stripped.Substring(prefix.Length);
+                var stripped = assetRelPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    ? assetRelPath.Substring(prefix.Length) : assetRelPath;
                 var abs = Path.Combine(Paths.LocalSourceRoot(repoRoot), "wwwroot",
                     stripped.Replace('/', Path.DirectorySeparatorChar));
                 if (!File.Exists(abs)) throw new FileNotFoundException($"Local asset not found: {abs}");
                 return await File.ReadAllBytesAsync(abs);
             }
-            // Base site URL, derived from registry URL. Registry is https://lumeo.nativ.sh/registry/registry.json;
-            // strip "registry/registry.json" to get the site root.
-            var siteBase = registryUrl;
-            var idx = siteBase.IndexOf("/registry/", StringComparison.OrdinalIgnoreCase);
-            if (idx > 0) siteBase = siteBase.Substring(0, idx);
-            siteBase = siteBase.TrimEnd('/');
-            var url = $"{siteBase}/{assetRelPath}";
+            // Strip "_content/Lumeo/" → relative wwwroot path, then fetch via the same base
+            // the file fetcher uses (which already knows how to resolve src/Lumeo/).
+            const string contentPrefix = "_content/Lumeo/";
+            var rel = assetRelPath.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase)
+                ? assetRelPath.Substring(contentPrefix.Length) : assetRelPath;
+            var baseUrl = DeriveFileBaseUrl(registryUrl);
+            // Assets live under src/Lumeo/wwwroot/; DeriveFileBaseUrl returns src/Lumeo/ so add wwwroot/.
+            var url = $"{baseUrl}wwwroot/{rel}";
             return await s_http.GetByteArrayAsync(url);
         }
     }

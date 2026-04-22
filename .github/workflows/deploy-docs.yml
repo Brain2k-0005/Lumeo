@@ -2,7 +2,7 @@ name: Deploy Docs to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [master, v2.0-dev]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,15 @@ jobs:
 
       - name: Add CNAME for custom domain
         run: echo 'lumeo.nativ.sh' > release/wwwroot/CNAME
+
+      - name: Copy registry to site root (for CLI --registry access at <site>/registry/*)
+        run: |
+          mkdir -p release/wwwroot/registry
+          cp -r src/Lumeo/wwwroot/registry/* release/wwwroot/registry/ || true
+          mkdir -p release/wwwroot/raw
+          # The CLI's default scheme resolves component files under <site>/raw/<relpath>.
+          # Copy src/Lumeo/* (sans wwwroot duplicates) so CLI file fetches work once Pages is live.
+          rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' src/Lumeo/ release/wwwroot/raw/
 
       - name: Copy index.html to 404.html for SPA routing
         run: cp release/wwwroot/index.html release/wwwroot/404.html
