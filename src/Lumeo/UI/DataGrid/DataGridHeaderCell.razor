@@ -108,7 +108,6 @@
             : Context.Filters.FirstOrDefault(f => f.Field == Column.Field);
 
     private string _resizeHandleId = $"dg-resize-{Guid.NewGuid():N}";
-    private double _startWidth;
     private bool _resizeRegistered;
     private bool _isDragOver;
     private string? _dropSide; // "left" or "right" — where the drop indicator is rendered
@@ -188,26 +187,18 @@
     {
         if (!Column.Resizable) return;
 
-        _startWidth = Column.Width ?? 150;
-
         if (!_resizeRegistered)
         {
+            // Register once, pass the column's min/max constraints up-front. JS drags the
+            // header + body cells in the DOM directly (smooth, no Blazor round-trips per
+            // pixel) and invokes the commit callback with the final width on mouseup.
             await Interop.RegisterColumnResize(
                 _resizeHandleId,
-                async delta =>
+                Column.MinWidth ?? 50,
+                Column.MaxWidth,
+                async finalWidth =>
                 {
-                    // delta is incremental (per mouse move), so accumulate it
-                    var currentWidth = Column.Width ?? 150;
-                    var newWidth = currentWidth + delta;
-                    if (Column.MinWidth.HasValue) newWidth = Math.Max(Column.MinWidth.Value, newWidth);
-                    else newWidth = Math.Max(50, newWidth);
-                    if (Column.MaxWidth.HasValue) newWidth = Math.Min(Column.MaxWidth.Value, newWidth);
-
-                    ParentGrid?.UpdateColumnWidth(Column.Id, newWidth);
-                },
-                async () =>
-                {
-                    _startWidth = Column.Width ?? 150;
+                    ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth);
                     await InvokeAsync(StateHasChanged);
                 });
             _resizeRegistered = true;

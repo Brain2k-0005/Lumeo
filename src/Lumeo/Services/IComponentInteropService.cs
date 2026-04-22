@@ -69,8 +69,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler);
     ValueTask UnregisterOtpPaste(string baseId, int length);
 
-    // DataGrid Column Resize
-    ValueTask RegisterColumnResize(string handleId, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler);
+    // DataGrid Column Resize — JS previews the drag directly in the DOM and invokes
+    // commitHandler once with the final width on mouseup.
+    ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler);
     ValueTask UnregisterColumnResize(string handleId);
 
     // Tour
