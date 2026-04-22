@@ -14,11 +14,30 @@ const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const MAX_BODY_BYTES = 8192; // presets are tiny; reject oversized payloads outright
 const ID_LEN = 6;
 
-function randomId() {
+// Canonical JSON: keys sorted alphabetically so order doesn't affect the hash.
+// Same logical config → same canonical string → same hash → same ID.
+function canonicalize(obj) {
+    if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return JSON.stringify(obj);
+    const keys = Object.keys(obj).sort();
+    const parts = keys.map(k => JSON.stringify(k) + ":" + canonicalize(obj[k]));
+    return "{" + parts.join(",") + "}";
+}
+
+// Content-addressed ID: SHA-256 of the canonical JSON, truncated to 36 bits,
+// base62-encoded to 6 chars. Same config → same ID every time.
+async function contentId(obj) {
+    const canonical = canonicalize(obj);
+    const bytes = new TextEncoder().encode(canonical);
+    const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
+    const hashBytes = new Uint8Array(hashBuf);
     let s = "";
-    const r = new Uint8Array(ID_LEN);
-    crypto.getRandomValues(r);
-    for (let i = 0; i < ID_LEN; i++) s += BASE62[r[i] % 62];
+    // Read the first 5 bytes → 40 bits → take 6 base62 chars.
+    let acc = 0n;
+    for (let i = 0; i < 5; i++) acc = (acc << 8n) | BigInt(hashBytes[i]);
+    for (let i = 0; i < ID_LEN; i++) {
+        s += BASE62[Number(acc % 62n)];
+        acc /= 62n;
+    }
     return s;
 }
 
@@ -68,18 +87,20 @@ export default {
                     return json({ error: `bad value for ${k}` }, 400);
                 }
             }
-            // Try 3 times in case of ID collision (astronomically unlikely at 56bits entropy).
-            for (let attempt = 0; attempt < 3; attempt++) {
-                const id = randomId();
-                const existing = await env.PRESETS.get(id);
-                if (existing) continue;
-                await env.PRESETS.put(id, JSON.stringify(body), {
+            // Content-addressed: same config always yields the same ID. If the ID already
+            // exists with the same payload, skip the write (saves KV writes). If it exists
+            // with a different payload we still overwrite — hash collisions are astronomically
+            // unlikely (1 in 2^36), but if it ever happens the newer payload wins.
+            const id = await contentId(body);
+            const canonicalValue = canonicalize(body);
+            const existing = await env.PRESETS.get(id);
+            if (existing !== canonicalValue) {
+                await env.PRESETS.put(id, canonicalValue, {
                     // 2 years — plenty for sharing a preset in an issue / forum post.
                     expirationTtl: 60 * 60 * 24 * 365 * 2,
                 });
-                return json({ id });
             }
-            return json({ error: "could not allocate id" }, 503);
+            return json({ id });
         }
 
         // GET /preset/:id — fetch a stored preset.
