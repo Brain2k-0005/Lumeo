@@ -8,6 +8,7 @@ internal sealed class ResizeInterop
     private readonly Dictionary<string, Func<Task>> _resizeEndHandlers = new();
     private readonly Dictionary<string, Func<double, Task>> _columnResizeHandlers = new();
     private readonly Dictionary<string, Func<Task>> _columnResizeEndHandlers = new();
+    private readonly Dictionary<string, Func<double, Task>> _columnResizeCommitHandlers = new();
 
     // --- Panel Resize ---
 
@@ -49,22 +50,26 @@ internal sealed class ResizeInterop
 
     // --- Column Resize ---
 
+    /// <summary>Registers a column resize handle. JS handles the drag entirely in the DOM
+    /// (preview by directly writing styles) and invokes <see cref="OnColumnResizeCommit"/>
+    /// once on mouseup — so we do ONE Blazor re-render per resize instead of one per pixel.</summary>
     public async ValueTask RegisterColumnResize(
         IJSObjectReference module,
         DotNetObjectReference<ComponentInteropService> selfRef,
         string handleId,
-        Func<double, Task> resizeHandler,
-        Func<Task> resizeEndHandler)
+        double minWidth,
+        double? maxWidth,
+        Func<double, Task> commitHandler)
     {
-        _columnResizeHandlers[handleId] = resizeHandler;
-        _columnResizeEndHandlers[handleId] = resizeEndHandler;
-        await module.InvokeVoidAsync("registerColumnResize", handleId, selfRef);
+        _columnResizeCommitHandlers[handleId] = commitHandler;
+        await module.InvokeVoidAsync("registerColumnResize", handleId, selfRef, minWidth, maxWidth ?? 0);
     }
 
     public async ValueTask UnregisterColumnResize(IJSObjectReference module, string handleId)
     {
         _columnResizeHandlers.Remove(handleId);
         _columnResizeEndHandlers.Remove(handleId);
+        _columnResizeCommitHandlers.Remove(handleId);
         await module.InvokeVoidAsync("unregisterColumnResize", handleId);
     }
 
@@ -84,11 +89,20 @@ internal sealed class ResizeInterop
         }
     }
 
+    public async Task OnColumnResizeCommit(string handleId, double finalWidth)
+    {
+        if (_columnResizeCommitHandlers.TryGetValue(handleId, out var handler))
+        {
+            await handler(finalWidth);
+        }
+    }
+
     public void Clear()
     {
         _resizeHandlers.Clear();
         _resizeEndHandlers.Clear();
         _columnResizeHandlers.Clear();
         _columnResizeEndHandlers.Clear();
+        _columnResizeCommitHandlers.Clear();
     }
 }

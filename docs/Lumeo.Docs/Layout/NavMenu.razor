@@ -279,18 +279,71 @@
     </text>;
 }
 
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Active-link highlight is applied to NavLink's auto-generated `.active` class via an
+   arbitrary Tailwind variant on the <nav>. Active-item scroll-into-view happens on
+   every render once we have the nav ref (see OnAfterRenderAsync). *@
+
 @if (IsMobile)
 {
-    <nav class="p-4 space-y-6 text-sm">@navContent</nav>
+    <nav class="p-4 space-y-6 text-sm [&_a.active]:bg-accent [&_a.active]:text-foreground [&_a.active]:font-medium" @ref="_navRef">@navContent</nav>
 }
 else
 {
     <aside class="hidden lg:block w-64 shrink-0 m-3 rounded-[var(--radius-xl)] border border-border/60 bg-card shadow-lg overflow-y-auto sticky top-[84px]" style="max-height: calc(100vh - 100px)">
-        <nav class="p-4 space-y-6 text-sm">@navContent</nav>
+        <nav class="p-4 space-y-6 text-sm [&_a.active]:bg-accent [&_a.active]:text-foreground [&_a.active]:font-medium" @ref="_navRef">@navContent</nav>
     </aside>
 }
 
 @code {
     [Parameter] public bool IsMobile { get; set; }
     private bool _chartsExpanded;
+    private ElementReference _navRef;
+    private string? _lastLocation;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        SyncChartsExpanded();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        SyncChartsExpanded();
+        InvokeAsync(StateHasChanged);
+    }
+
+    // When the user lands on any /components/charts/* URL, auto-open the Charts subtree
+    // so the active link is actually visible in the sidebar.
+    private void SyncChartsExpanded()
+    {
+        var uri = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        if (uri.StartsWith("components/charts", StringComparison.OrdinalIgnoreCase))
+        {
+            _chartsExpanded = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Scroll the active nav item into view after each location change.
+        if (Nav.Uri != _lastLocation)
+        {
+            _lastLocation = Nav.Uri;
+            try
+            {
+                await JS.InvokeVoidAsync("lumeoNavScrollActiveIntoView", _navRef);
+            }
+            catch (JSDisconnectedException) { }
+            catch (Microsoft.JSInterop.JSException) { /* nav ref not ready yet */ }
+        }
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 }

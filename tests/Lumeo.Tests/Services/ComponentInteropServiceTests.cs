@@ -506,38 +506,18 @@ public class ComponentInteropServiceTests : IAsyncLifetime
     // --- ColumnResize ---
 
     [Fact]
-    public async Task OnColumnResize_Calls_Only_Matching_Handler()
+    public async Task OnColumnResizeCommit_Calls_Only_Matching_Handler()
     {
-        double receivedDelta = 0;
+        double receivedWidth = 0;
         bool otherCalled = false;
-        await _service.RegisterColumnResize("col-1",
-            delta => { receivedDelta = delta; return Task.CompletedTask; },
-            () => Task.CompletedTask);
-        await _service.RegisterColumnResize("col-2",
-            _ => { otherCalled = true; return Task.CompletedTask; },
-            () => Task.CompletedTask);
+        await _service.RegisterColumnResize("col-1", 50, null,
+            w => { receivedWidth = w; return Task.CompletedTask; });
+        await _service.RegisterColumnResize("col-2", 50, null,
+            _ => { otherCalled = true; return Task.CompletedTask; });
 
-        await _service.OnColumnResize("col-1", 15.0);
+        await _service.OnColumnResizeCommit("col-1", 180.0);
 
-        Assert.Equal(15.0, receivedDelta);
-        Assert.False(otherCalled);
-    }
-
-    [Fact]
-    public async Task OnColumnResizeEnd_Calls_Only_Matching_Handler()
-    {
-        bool called = false;
-        bool otherCalled = false;
-        await _service.RegisterColumnResize("col-3",
-            _ => Task.CompletedTask,
-            () => { called = true; return Task.CompletedTask; });
-        await _service.RegisterColumnResize("col-4",
-            _ => Task.CompletedTask,
-            () => { otherCalled = true; return Task.CompletedTask; });
-
-        await _service.OnColumnResizeEnd("col-3");
-
-        Assert.True(called);
+        Assert.Equal(180.0, receivedWidth);
         Assert.False(otherCalled);
     }
 

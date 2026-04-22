@@ -40,6 +40,29 @@
             <LineChart Categories="_categories" Series="_minimalSeries" Smooth="true" ShowLegend="false" Colors="_brandColors" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Loading state" Description="Multi-series line skeleton draws itself across the path. IsLoading binds to your async fetch; ShowLoadingSkeleton=false opts out.">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulateLineLoadingAsync" Disabled="@_lineLoading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepLineLoading" Id="keep-line-loading" />
+                        <label for="keep-line-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Duration: @(_simulateLineDurationMs / 1000.0)s</label>
+                        <input type="range" min="500" max="10000" step="500" @bind-value="_simulateLineDurationMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Cycle: @_phantomLineCycleMs ms</label>
+                        <input type="range" min="300" max="3000" step="100" @bind-value="_phantomLineCycleMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                </Stack>
+                <LineChart Categories="_categories" Series="_minimalSeries" PhantomCycleMs="@_phantomLineCycleMs" IsLoading="@LineLoadingComputed" Height="320px" />
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -119,6 +142,30 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
                             <td class="p-3 text-muted-foreground">Manual rotation override in degrees on top of LabelStrategy.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsLoading</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, renders a shape-matched loading skeleton in place of the chart. Bind to your async fetch state.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowLoadingSkeleton</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Set to false to opt out of the skeleton (chart area stays empty while IsLoading is true).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">(chart default)</td>
+                            <td class="p-3 text-muted-foreground">Override the skeleton silhouette (Bars, Line, Area, Pie, Scatter, Grid, Generic).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Phantom</td>
+                            <td class="p-3 text-muted-foreground">Phantom renders the real chart with placeholder data and morphs to real data via ECharts animation. Silhouette falls back to the legacy SVG skeleton overlay.</td>
+                        </tr>
                     </tbody>
                 </table>
             </Stack>
@@ -127,6 +174,19 @@
 </Stack>
 
 @code {
+    private bool _lineLoading;
+    private bool _keepLineLoading;
+    private bool LineLoadingComputed => _lineLoading || _keepLineLoading;
+    private int _simulateLineDurationMs = 2000;
+    private int _phantomLineCycleMs = 1400;
+
+    private async Task SimulateLineLoadingAsync()
+    {
+        _lineLoading = true;
+        await Task.Delay(_simulateLineDurationMs);
+        _lineLoading = false;
+    }
+
     private List<string> _categories = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
     private List<string> _shortCategories = new() { "Q1", "Q2", "Q3", "Q4" };
 

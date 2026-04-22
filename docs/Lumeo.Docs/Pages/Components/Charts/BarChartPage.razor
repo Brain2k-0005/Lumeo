@@ -63,6 +63,29 @@
             </Stack>
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Loading state" Description="Shape-aware skeleton renders automatically before ECharts mounts and while IsLoading is true — no empty-whitespace flash, no layout shift. Click Simulate to fake a 2-second fetch, or flip the switch to pin the skeleton for inspection." Code="@_loadingCode">
+        <Container>
+            <Stack Gap="4">
+                <Stack Direction="Stack.StackDirection.Horizontal" Gap="4" Align="center" Wrap="true">
+                    <Button OnClick="SimulateLoadingAsync" Disabled="@_isLoading">Simulate loading</Button>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <Switch @bind-Value="_keepLoading" Id="keep-loading" />
+                        <label for="keep-loading" class="text-sm text-muted-foreground cursor-pointer">Hold skeleton open</label>
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Duration: @(_simulateBarDurationMs / 1000.0)s</label>
+                        <input type="range" min="500" max="10000" step="500" @bind-value="_simulateBarDurationMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                    <Stack Direction="Stack.StackDirection.Horizontal" Gap="2" Align="center">
+                        <label class="text-sm text-muted-foreground">Cycle: @_phantomBarCycleMs ms</label>
+                        <input type="range" min="300" max="3000" step="100" @bind-value="_phantomBarCycleMs" @bind-value:event="oninput" class="w-32 accent-primary" />
+                    </Stack>
+                </Stack>
+                <BarChart Categories="_shortCategories" Series="_labelSeries" PhantomCycleMs="@_phantomBarCycleMs" IsLoading="@IsLoadingComputed" Height="320px" />
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <Stack Gap="6" Class="mt-12">
@@ -158,6 +181,30 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">int?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
                             <td class="p-3 text-muted-foreground">Manual rotation override in degrees on top of LabelStrategy.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsLoading</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, renders a shape-matched loading skeleton in place of the chart. Bind to your async fetch state.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowLoadingSkeleton</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Set to false to opt out of the skeleton (chart area stays empty while IsLoading is true).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonKind</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">(chart default)</td>
+                            <td class="p-3 text-muted-foreground">Override the skeleton silhouette (Bars, Line, Area, Pie, Scatter, Grid, Generic).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ChartSkeletonStyle</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Phantom</td>
+                            <td class="p-3 text-muted-foreground">Phantom renders the real chart with placeholder data and morphs to real data via ECharts animation. Silhouette falls back to the legacy SVG skeleton overlay.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -273,4 +320,56 @@
     <ToggleGroupItem Value=""Auto"">Auto</ToggleGroupItem>
 </ToggleGroup>
 <BarChart Categories=""@_interactiveLabels"" Series=""@_interactiveSeries"" LabelStrategy=""@_strategy"" Height=""300px"" />";
+
+    // --- Loading state demo ---
+    private bool _isLoading;
+    private bool _keepLoading;
+    // Skeleton shows whenever either toggle is active — simulate flips on for 2s, the switch
+    // latches it permanently for inspection/design-review.
+    private bool IsLoadingComputed => _isLoading || _keepLoading;
+    private int _simulateBarDurationMs = 2000;
+    private int _phantomBarCycleMs = 1400;
+
+    private List<LineChart.ChartSeriesData> _loadingLineSeries = new()
+    {
+        new() { Name = "Revenue", Values = new() { 120, 148, 135, 172 } }
+    };
+
+    private List<PieChart.PieChartData> _loadingPieData = new()
+    {
+        new() { Name = "Direct",  Value = 42 },
+        new() { Name = "Organic", Value = 31 },
+        new() { Name = "Referral",Value = 18 },
+        new() { Name = "Social",  Value = 9  }
+    };
+
+    private async Task SimulateLoadingAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        await Task.Delay(_simulateBarDurationMs);
+        _isLoading = false;
+        StateHasChanged();
+    }
+
+    private string _loadingCode = @"<Button OnClick=""SimulateLoadingAsync"" Disabled=""@_isLoading"">Simulate loading</Button>
+<Switch @bind-Value=""_keepLoading"" />
+
+<BarChart Categories=""_shortCategories"" Series=""_labelSeries"" IsLoading=""@IsLoadingComputed"" />
+<LineChart Categories=""_shortCategories"" Series=""_loadingLineSeries"" IsLoading=""@IsLoadingComputed"" />
+<PieChart Data=""_loadingPieData"" IsLoading=""@IsLoadingComputed"" />
+
+@code {
+    private bool _isLoading;
+    private bool _keepLoading;
+    private bool IsLoadingComputed => _isLoading || _keepLoading;
+
+    private async Task SimulateLoadingAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _isLoading = false;
+    }
+}";
 }
