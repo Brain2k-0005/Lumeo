@@ -349,8 +349,8 @@ public class StrictInteropTests : IAsyncLifetime
     [Fact]
     public async Task RegisterColumnResize_Invokes_JS_With_HandleId()
     {
-        // JS call: registerColumnResize(handleId, selfRef) — no direction
-        await _service.RegisterColumnResize("handle-1", _ => Task.CompletedTask, () => Task.CompletedTask);
+        // JS call: registerColumnResize(handleId, selfRef, minWidth, maxWidth)
+        await _service.RegisterColumnResize("handle-1", 50, null, _ => Task.CompletedTask);
 
         var inv = _module.VerifyInvoke("registerColumnResize");
         Assert.Equal("handle-1", inv.Arguments[0]);
@@ -360,7 +360,7 @@ public class StrictInteropTests : IAsyncLifetime
     [Fact]
     public async Task UnregisterColumnResize_Invokes_JS_With_HandleId()
     {
-        await _service.RegisterColumnResize("handle-1", _ => Task.CompletedTask, () => Task.CompletedTask);
+        await _service.RegisterColumnResize("handle-1", 50, null, _ => Task.CompletedTask);
         await _service.UnregisterColumnResize("handle-1");
 
         var inv = _module.VerifyInvoke("unregisterColumnResize");
