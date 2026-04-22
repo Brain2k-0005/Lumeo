@@ -4,6 +4,13 @@
 
 namespace Lumeo.Cli;
 
+/// <summary>Duplicate of <c>Lumeo.Theming.LumeoPresetApi.BaseUrl</c>.
+/// KEEP IN SYNC with src/Lumeo/Theming/LumeoPresetApi.cs.</summary>
+internal static class LumeoPresetApi
+{
+    public const string BaseUrl = "https://api.lumeo.nativ.sh";
+}
+
 internal sealed record LumeoPreset(
     int Theme,
     int Style,
