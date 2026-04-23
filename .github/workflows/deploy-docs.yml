@@ -33,17 +33,37 @@ jobs:
       - name: Install wasm-tools workload
         run: dotnet workload install wasm-tools
 
-      - name: Rebuild Tailwind bundles
-        # The committed tailwind.out.css / lumeo-utilities.css can drift from the source
-        # (safelist, new utilities) between deploys. Rebuilding both on every deploy guarantees
-        # that classes referenced in .razor files and inline safelists are always in the shipped CSS.
+      - name: Install npm deps
         run: |
           npm install --no-audit --no-fund
-          npm run build:css
-          (cd docs/Lumeo.Docs && npm install --no-audit --no-fund && npm run css:build)
+          (cd docs/Lumeo.Docs && npm install --no-audit --no-fund)
 
       - name: Publish Blazor WASM
+        # Publish first — this writes release/wwwroot/ with whatever's in git. The CSS overwrite step
+        # below then replaces the stale tailwind bundles with a fresh build directly inside the release
+        # directory, bypassing MSBuild's static-web-asset manifest cache (which otherwise pinned the
+        # old bytes even when the source files were regenerated before publish).
         run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
+
+      - name: Rebuild Tailwind bundles into the release folder
+        run: |
+          npx @tailwindcss/cli \
+            -i ./src/Lumeo/Styles/lumeo-utilities.src.css \
+            -o ./release/wwwroot/_content/Lumeo/css/lumeo-utilities.css \
+            --minify
+          npx @tailwindcss/cli \
+            -i ./docs/Lumeo.Docs/Styles/tailwind.css \
+            -o ./release/wwwroot/css/tailwind.out.css \
+            --minify
+
+      - name: Remove pre-compressed CSS (stale copies from dotnet publish)
+        # MSBuild pre-compressed `.br` / `.gz` copies of every CSS file during publish. Those copies
+        # are built from the stale bytes that were in release/ before the Tailwind rebuild above, so
+        # if Fastly serves one of them, the client gets old CSS. Delete them; Fastly compresses at the
+        # edge anyway.
+        run: |
+          find release/wwwroot -name "*.br" -delete
+          find release/wwwroot -name "*.gz" -delete
 
       - name: Stamp CSS cache-busters with commit SHA
         # index.html (and its copy 404.html created later) reference CSS with `?v=__LUMEO_BUILD__`.
@@ -52,9 +72,6 @@ jobs:
         run: |
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           sed -i "s/__LUMEO_BUILD__/${SHORT_SHA}/g" release/wwwroot/index.html
-
-      - name: Remove pre-compressed files (Fastly handles compression at CDN edge)
-        run: find release/wwwroot/_framework -name "*.br" -o -name "*.gz" | xargs rm -f
 
       - name: Add CNAME for custom domain
         run: echo 'lumeo.nativ.sh' > release/wwwroot/CNAME
