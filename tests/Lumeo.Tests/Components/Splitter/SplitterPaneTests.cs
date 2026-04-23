@@ -53,11 +53,13 @@ public class SplitterPaneTests : IAsyncLifetime
     [Fact]
     public void Pane_With_Explicit_Size_Produces_Flex_Inline_Style()
     {
+        // Splitter switched from `flex: 0 0 X%` (broken in vertical mode without explicit parent height)
+        // to `flex: X 1 0` — grow ratio instead of flex-basis %.
         var cut = RenderWithPane(size: 40);
 
         var style = cut.Find("[data-testid='pane-body']").ParentElement!.GetAttribute("style");
-        Assert.Contains("flex: 0 0", style);
-        Assert.Contains("40", style); // size value appears
+        Assert.Contains("flex:", style);
+        Assert.Contains("40", style); // size value now appears as the grow ratio
     }
 
     [Fact]
@@ -66,9 +68,9 @@ public class SplitterPaneTests : IAsyncLifetime
         // Two panes, both size 0 → should each get 50% after distribution
         var cut = RenderWithPane(size: 0);
 
-        var panes = cut.FindAll("[style*='flex: 0 0']");
+        var panes = cut.FindAll("[style*='flex:']");
         Assert.Equal(2, panes.Count);
-        // Both should have ~50 in the style
+        // Both should have ~50 in the style (as the grow ratio)
         Assert.All(panes, p =>
         {
             var s = p.GetAttribute("style") ?? "";
