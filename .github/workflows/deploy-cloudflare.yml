@@ -160,3 +160,14 @@ jobs:
           # Deploy to the `master` branch of the CF Pages project (= production).
           # Other branches show up as preview deployments.
           branch: master
+
+      - name: Verify prerender on live site
+        # Post-deploy smoke test. Fetches a sample of live routes and checks
+        # that each response body contains content that only appears in
+        # prerendered HTML (not in the 3kB stock shell). Catches regressions
+        # where the prerender step silently produces empty pages.
+        working-directory: scripts/prerender
+        run: |
+          # Give CF edge a moment to propagate.
+          sleep 20
+          node verify.mjs https://lumeo.nativ.sh
