@@ -2,11 +2,16 @@
 
 **130+ accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-~130 components · 1,687 tests · 14 locales · MIT · .NET 10
+~130 components · 1,727 tests · 14 locales · MIT · .NET 10
 
-**[Live Demo](https://lumeo.nativ.sh)** | [![NuGet](https://img.shields.io/nuget/v/Lumeo)](https://www.nuget.org/packages/Lumeo) | [![Live Demo](https://img.shields.io/badge/Live%20Demo-lumeo.nativ.sh-blue)](https://lumeo.nativ.sh)
+[![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![Live Demo](https://img.shields.io/badge/demo-lumeo.nativ.sh-black?logo=cloudflare)](https://lumeo.nativ.sh)
+[![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
+[![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **v2.0 is currently `2.0.0-rc.1`.** The API is stable; we're gathering field feedback for a short window before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
+> **v2.0 is currently `2.0.0-rc.10`.** The API is stable; we're gathering field feedback for a short window before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
 
 ## What's new in 2.0
 
@@ -40,7 +45,7 @@
 - **DataGrid** — sort, filter, inline edit, column pin, row group, drag-to-reorder, fullscreen, layout JSON, Excel/PDF/CSV export
 - **Form validation** — DataAnnotations + custom validators with styled error states
 - **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
-- **1,687 bUnit tests**
+- **1,727 bUnit tests** — CI-enforced on every PR
 
 ## Component Categories
 
