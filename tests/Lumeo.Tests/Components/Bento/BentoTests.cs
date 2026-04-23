@@ -78,11 +78,14 @@ public class BentoTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Container_Query_Inline_Style_Is_Present()
+    public void Grid_Auto_Rows_Inline_Style_Is_Present()
     {
+        // Bento swapped `container-type: inline-size` for `grid-auto-rows: minmax(0, 1fr)` so mixed
+        // RowSpan tiles stay aligned — every row gets the same fr unit and short-content tiles don't
+        // collapse to their minimum height.
         var cut = _ctx.Render<Lumeo.Bento>();
 
-        Assert.Contains("container-type: inline-size", cut.Find("div").GetAttribute("style"));
+        Assert.Contains("grid-auto-rows: minmax(0, 1fr)", cut.Find("div").GetAttribute("style"));
     }
 
     [Fact]
