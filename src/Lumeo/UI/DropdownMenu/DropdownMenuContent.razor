@@ -11,6 +11,10 @@
          tabindex="-1"
          @attributes="AdditionalAttributes">
         @ChildContent
+        @if (ShowArrow)
+        {
+            <div class="@ArrowClasses"></div>
+        }
     </div>
 }
 
@@ -21,13 +25,23 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public DropdownMenuAlign Align { get; set; } = DropdownMenuAlign.Start;
     [Parameter] public DropdownMenuSide Side { get; set; } = DropdownMenuSide.Bottom;
+    [Parameter] public bool ShowArrow { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _registered;
     private int _focusedIndex = -1;
 
-    private string CssClass => $"fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
+    private string CssClass => string.Join(" ", new[] { "fixed z-50 min-w-[8rem] rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in", ShowArrow ? "overflow-visible" : "overflow-hidden", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string ArrowClasses => Side switch
+    {
+        DropdownMenuSide.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
+        DropdownMenuSide.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
+        DropdownMenuSide.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-r border-border/60",
+        DropdownMenuSide.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-l border-border/60",
+        _ => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
+    };
 
     private string AlignStr => Align switch
     {

@@ -1,19 +1,15 @@
 @namespace Lumeo
 
+@* Inline SVGs sized to the checkbox's 12-unit viewBox. Stroke-width ~2.75 gives a crisper check
+   than Lucide's default 2 at this size, and `stroke-linecap/join="round"` kills the pixel-corner
+   sharpness the user was seeing. *@
 @if (!string.IsNullOrEmpty(Label))
 {
-    <div class="flex items-start gap-3">
+    <div class="flex items-start gap-2.5">
         <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
-            @if (IsIndeterminate)
-            {
-                <Blazicon Svg="Lucide.Minus" class="h-3.5 w-3.5 text-current" />
-            }
-            else if (Checked)
-            {
-                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-current" />
-            }
+            @RenderIcon()
         </button>
-        <div class="grid gap-1.5 leading-none">
+        <div class="grid gap-1 leading-none pt-[1px]">
             <label for="@_id" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">@Label</label>
             @if (!string.IsNullOrEmpty(Description))
             {
@@ -25,15 +21,26 @@
 else
 {
     <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
-        @if (IsIndeterminate)
+        @RenderIcon()
+    </button>
+}
+
+@code {
+    private RenderFragment RenderIcon() => __builder =>
+    {
+        if (IsIndeterminate)
         {
-            <Blazicon Svg="Lucide.Minus" class="h-3.5 w-3.5 text-current" />
+            <svg class="pointer-events-none h-2.5 w-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round">
+                <line x1="3" y1="6" x2="9" y2="6" />
+            </svg>
         }
         else if (Checked)
         {
-            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-current" />
+            <svg class="pointer-events-none h-2.5 w-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="2.5,6.5 5,8.5 9.5,3.5" />
+            </svg>
         }
-    </button>
+    };
 }
 
 @code {
@@ -64,7 +71,13 @@ else
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();
 
-    private string CssClass => string.Join(" ", new[] { "peer h-4 w-4 shrink-0 cursor-pointer rounded-sm border border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", Checked || IsIndeterminate ? "bg-primary text-primary-foreground" : "bg-background", Animated && Checked ? "lumeo-checkbox-animated" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string CssClass => string.Join(" ", new[]
+    {
+        "peer inline-flex items-center justify-center h-4 w-4 shrink-0 cursor-pointer rounded border border-primary/60 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        Checked || IsIndeterminate ? "bg-primary border-primary text-primary-foreground" : "bg-background hover:border-primary",
+        Animated && Checked ? "lumeo-checkbox-animated" : null,
+        Class
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private async Task Toggle()
     {

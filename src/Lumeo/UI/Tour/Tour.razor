@@ -13,7 +13,7 @@
                     {
                         <rect x="@(_targetRect.X - 4)" y="@(_targetRect.Y - 4)"
                               width="@(_targetRect.Width + 8)" height="@(_targetRect.Height + 8)"
-                              rx="6" ry="6" fill="black" />
+                              rx="@SpotlightRadius" ry="@SpotlightRadius" fill="black" />
                     }
                 </mask>
             </defs>
@@ -23,10 +23,11 @@
 
         @if (_targetRect is not null)
         {
-            <!-- Highlight ring around target -->
-            <div class="absolute rounded-md ring-2 ring-primary" style="pointer-events: none;
+            <!-- Highlight ring around target — border-radius matches the target's computed radius + the 4px spotlight padding. -->
+            <div class="absolute ring-2 ring-primary" style="pointer-events: none;
                 left: @(_targetRect.X - 4)px; top: @(_targetRect.Y - 4)px;
-                width: @(_targetRect.Width + 8)px; height: @(_targetRect.Height + 8)px;" />
+                width: @(_targetRect.Width + 8)px; height: @(_targetRect.Height + 8)px;
+                border-radius: @(SpotlightRadius)px;" />
         }
     </div>
 
@@ -102,6 +103,10 @@
     private string? _currentTargetSelector;
 
     private string TooltipCssClass => $"fixed z-[61] w-80 rounded-lg border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
+
+    // Spotlight padding (4 px all sides), plus the target's own border-radius, so the mask + ring wrap the target
+    // with the same corner curve they would have if you'd drawn them directly on top.
+    private string SpotlightRadius => ((_targetRect?.BorderRadius ?? 0) + 4).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
     private string TooltipStyle
     {

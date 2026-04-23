@@ -1,7 +1,12 @@
 @namespace Lumeo
 
 @{
-    var context = new CommandContext(SearchText, EventCallback.Factory.Create<string>(this, OnSearchChanged));
+    var context = new CommandContext(
+        SearchText,
+        EventCallback.Factory.Create<string>(this, OnSearchChanged),
+        RegisterItem,
+        UnregisterItem,
+        VisibleItemCount);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -16,8 +21,24 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string SearchText { get; set; } = "";
+    private readonly HashSet<string> _items = new();
 
     private string CssClass => $"flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground {Class}".Trim();
+
+    // CommandItem tracks its own visibility and calls Register only while visible, Unregister when it's not —
+    // so VisibleItemCount reflects the filtered result set, which lets CommandEmpty render only when everything
+    // is filtered out.
+    private int VisibleItemCount => _items.Count;
+
+    private void RegisterItem(string id)
+    {
+        if (_items.Add(id)) StateHasChanged();
+    }
+
+    private void UnregisterItem(string id)
+    {
+        if (_items.Remove(id)) StateHasChanged();
+    }
 
     private Task OnSearchChanged(string text)
     {
@@ -26,5 +47,10 @@
         return Task.CompletedTask;
     }
 
-    public record CommandContext(string SearchText, EventCallback<string> OnSearch);
+    public record CommandContext(
+        string SearchText,
+        EventCallback<string> OnSearch,
+        Action<string> RegisterItem,
+        Action<string> UnregisterItem,
+        int VisibleItemCount);
 }
