@@ -121,6 +121,34 @@ jobs:
           rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' \
                 src/Lumeo/ release/wwwroot/raw/
 
+      - name: Install Chromium deps for Puppeteer
+        # ubuntu-latest ships most of these, but a few (libxkbcommon0, libgbm1) are
+        # missing by default. Listing them explicitly keeps CI green across runner
+        # image bumps.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+            libxrandr2 libgbm1 libasound2t64
+
+      - name: Prerender routes
+        # Visits every URL in sitemap.xml with headless Chromium, waits for the
+        # Blazor WASM app to mount, then saves document.documentElement.outerHTML
+        # as <route>/index.html. Cloudflare Pages then serves the prerendered
+        # HTML for first paint; the WASM bundle still boots and takes over.
+        working-directory: scripts/prerender
+        run: |
+          npm ci --no-audit --no-fund
+          node prerender.mjs ../../release
+
+      - name: Drop compressed variants of prerendered HTML
+        # The prerender step writes uncompressed HTML; any stale .br/.gz left
+        # over from dotnet publish (on the root index.html shell we just
+        # overwrote) would be served by Cloudflare in preference. Delete them.
+        run: |
+          find release/wwwroot -name 'index.html.br' -delete
+          find release/wwwroot -name 'index.html.gz' -delete
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
