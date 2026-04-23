@@ -915,7 +915,10 @@ export function getElementRectBySelector(selector) {
     const el = document.querySelector(selector);
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    // Also surface the computed border-radius so the tour spotlight can match the target's corner shape.
+    const radiusStr = getComputedStyle(el).borderTopLeftRadius || '0';
+    const radius = parseFloat(radiusStr) || 0;
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, borderRadius: radius };
 }
 
 // --- Affix: scroll-based sticky positioning ---

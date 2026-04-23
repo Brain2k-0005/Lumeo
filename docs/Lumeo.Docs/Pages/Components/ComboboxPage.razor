@@ -62,7 +62,8 @@
 
     <ComponentDemo Title="Multiple Selection" Code="@_multipleCode">
         <Stack Gap="2" Class="w-full max-w-sm">
-            <Combobox Multiple="true" @bind-Values="_selectedFrameworks" Placeholder="Select frameworks...">
+            <Combobox Multiple="true" @bind-Values="_selectedFrameworks" @bind-IsOpen="_isOpenMulti">
+                <ComboboxInput Placeholder="Select frameworks..." />
                 <ComboboxContent>
                     <ComboboxItem Value="react">React</ComboboxItem>
                     <ComboboxItem Value="vue">Vue</ComboboxItem>
@@ -71,18 +72,20 @@
                     <ComboboxItem Value="blazor">Blazor</ComboboxItem>
                 </ComboboxContent>
             </Combobox>
-            <Lumeo.Text Size="sm" Color="muted">Selected: @string.Join(", ", _selectedFrameworks)</Lumeo.Text>
+            <Lumeo.Text Size="sm" Color="muted">Selected: @(_selectedFrameworks.Count == 0 ? "none" : string.Join(", ", _selectedFrameworks))</Lumeo.Text>
         </Stack>
     </ComponentDemo>
 
     <ComponentDemo Title="Async Search" Code="@_asyncCode">
         <Container MaxWidth="sm" Center="false" Padding="">
-            <Combobox Placeholder="Search users..." OnSearchAsync="@HandleSearchAsync" IsSearchLoading="@_isSearching">
+            <Combobox @bind-IsOpen="_isOpenAsync" OnSearchAsync="@HandleSearchAsync" IsSearchLoading="@_isSearching">
+                <ComboboxInput Placeholder="Search users..." />
                 <ComboboxContent>
                     @foreach (var user in _searchResults)
                     {
                         <ComboboxItem Value="@user">@user</ComboboxItem>
                     }
+                    <ComboboxEmpty>Type to search users.</ComboboxEmpty>
                 </ComboboxContent>
             </Combobox>
         </Container>
@@ -96,6 +99,8 @@
     private bool _isOpen1;
     private bool _isOpen2;
     private bool _isOpen3;
+    private bool _isOpenMulti;
+    private bool _isOpenAsync;
     private string _searchText1 = "";
     private HashSet<string> _selectedFrameworks = new();
     private bool _isSearching;
@@ -158,7 +163,8 @@
         _isSearching = false;
     }
 
-    private string _multipleCode = @"<Combobox Multiple=""true"" @bind-Values=""_selectedFrameworks"" Placeholder=""Select frameworks..."">
+    private string _multipleCode = @"<Combobox Multiple=""true"" @bind-Values=""_selectedFrameworks"" @bind-IsOpen=""_isOpen"">
+    <ComboboxInput Placeholder=""Select frameworks..."" />
     <ComboboxContent>
         <ComboboxItem Value=""react"">React</ComboboxItem>
         <ComboboxItem Value=""vue"">Vue</ComboboxItem>
@@ -167,22 +173,25 @@
         <ComboboxItem Value=""blazor"">Blazor</ComboboxItem>
     </ComboboxContent>
 </Combobox>
-<Lumeo.Text Size=""sm"" Color=""muted"">Selected: @string.Join("", "", _selectedFrameworks)</Lumeo.Text>
 
 @code {
     private HashSet<string> _selectedFrameworks = new();
+    private bool _isOpen;
 }";
 
-    private string _asyncCode = @"<Combobox Placeholder=""Search users..."" OnSearchAsync=""@HandleSearchAsync"" IsSearchLoading=""@_isSearching"">
+    private string _asyncCode = @"<Combobox @bind-IsOpen=""_isOpen"" OnSearchAsync=""@HandleSearchAsync"" IsSearchLoading=""@_isSearching"">
+    <ComboboxInput Placeholder=""Search users..."" />
     <ComboboxContent>
         @foreach (var user in _searchResults)
         {
             <ComboboxItem Value=""@user"">@user</ComboboxItem>
         }
+        <ComboboxEmpty>Type to search users.</ComboboxEmpty>
     </ComboboxContent>
 </Combobox>
 
 @code {
+    private bool _isOpen;
     private bool _isSearching;
     private List<string> _searchResults = new();
 
@@ -203,7 +212,7 @@
     <Stack Gap="8">
         <Stack Gap="3">
             <Heading Level="3">Combobox</Heading>
-            <Stack Class="rounded-lg border border-border overflow-x-auto">
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
                 <table class="w-full min-w-[600px] text-sm">
                     <thead>
                         <tr class="border-b border-border/40 bg-muted/40">
@@ -245,7 +254,7 @@
 
         <Stack Gap="3">
             <Heading Level="3">ComboboxInput</Heading>
-            <Stack Class="rounded-lg border border-border overflow-x-auto">
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
                 <table class="w-full min-w-[600px] text-sm">
                     <thead>
                         <tr class="border-b border-border/40 bg-muted/40">
@@ -269,7 +278,7 @@
 
         <Stack Gap="3">
             <Heading Level="3">ComboboxItem</Heading>
-            <Stack Class="rounded-lg border border-border overflow-x-auto">
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
                 <table class="w-full min-w-[600px] text-sm">
                     <thead>
                         <tr class="border-b border-border/40 bg-muted/40">
@@ -293,7 +302,7 @@
 
         <Stack Gap="3">
             <Heading Level="3">Combobox — Additional Props</Heading>
-            <Stack Class="rounded-lg border border-border overflow-x-auto">
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
                 <table class="w-full min-w-[600px] text-sm">
                     <thead>
                         <tr class="border-b border-border/40 bg-muted/40">

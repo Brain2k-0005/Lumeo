@@ -1,21 +1,29 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @if (ChildContent is not null)
-    {
-        @ChildContent
-    }
-    else
-    {
-        <span>@L["Combobox.NoResults"]</span>
-    }
-</div>
+@* Only renders when the parent Combobox reports zero registered items — previously it rendered unconditionally
+   so users saw the empty state stacked under their visible items. *@
+@if (IsVisible)
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            <span>@L["Combobox.NoResults"]</span>
+        }
+    </div>
+}
 
 @code {
+    [CascadingParameter] public Combobox.ComboboxContext? Context { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsVisible => Context is null || (!Context.IsSearchLoading && Context.ItemCount == 0);
 
     private string CssClass => $"py-6 text-center text-sm text-muted-foreground {Class}".Trim();
 }

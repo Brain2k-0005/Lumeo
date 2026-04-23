@@ -26,7 +26,7 @@
     private readonly string _contentId = $"popover-content-{Guid.NewGuid():N}";
     private bool _registered;
 
-    private string CssClass => string.Join(" ", new[] { "fixed z-50 w-72 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg outline-none", ShowArrow ? "overflow-visible" : "overflow-hidden", "animate-fade-in", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string CssClass => string.Join(" ", new[] { "fixed z-50 w-72 rounded-md border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg outline-none", ShowArrow ? "overflow-visible" : "overflow-hidden", "animate-fade-in", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private string AlignStr => Align switch
     {
@@ -44,13 +44,16 @@
         _ => "bottom"
     };
 
+    // Rotated square so the arrow inherits both the popover surface colour AND a matching border
+    // on the two sides that face out — looks sharper than the hollow-triangle trick and lines the
+    // arrow up with the popover corner radius visually.
     private string ArrowClasses => Side switch
     {
-        PopoverSide.Top => "absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-[6px] border-transparent border-t-popover",
-        PopoverSide.Bottom => "absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-[6px] border-transparent border-b-popover",
-        PopoverSide.Left => "absolute top-1/2 -translate-y-1/2 left-full w-0 h-0 border-[6px] border-transparent border-l-popover",
-        PopoverSide.Right => "absolute top-1/2 -translate-y-1/2 right-full w-0 h-0 border-[6px] border-transparent border-r-popover",
-        _ => "absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-[6px] border-transparent border-b-popover"
+        PopoverSide.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
+        PopoverSide.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
+        PopoverSide.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-r border-border/60",
+        PopoverSide.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-l border-border/60",
+        _ => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
