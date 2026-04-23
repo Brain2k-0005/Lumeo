@@ -1,0 +1,124 @@
+@page "/privacy"
+@namespace Lumeo.Docs.Pages
+@inject Lumeo.Services.ConsentService Consent
+
+<PageTitle>Privacy — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Class="px-4 py-16">
+    <Stack Gap="10">
+        <Stack Gap="3">
+            <Heading Level="1" Size="3xl" Class="font-bold tracking-tight">Privacy policy</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Short version: this site is hosted on Cloudflare Pages, serves static
+                HTML + a Blazor WASM bundle, and does not use cookies or tracking by
+                default. You can opt in to anonymous usage analytics below.
+            </Lumeo.Text>
+        </Stack>
+
+        <Separator />
+
+        <Stack Gap="6">
+            <Stack Gap="2">
+                <Heading Level="2" Size="xl" Class="font-semibold">What we store locally</Heading>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    The following use your browser's <Lumeo.Text As="span" Weight="medium" Color="foreground">localStorage</Lumeo.Text>
+                    (not cookies, so they never travel to a server):
+                </Lumeo.Text>
+                <ul class="list-disc list-inside text-sm text-muted-foreground space-y-1 ml-4">
+                    <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo:consent:v1</code> — your consent choices from the banner.</li>
+                    <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo:theme</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo:theme-mode</code> — remembered color theme + light/dark preference.</li>
+                </ul>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    These are strictly necessary for the site to remember what you
+                    picked and don't require consent.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="2" Size="xl" Class="font-semibold">Analytics (optional)</Heading>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    When you allow "analytics" in the consent banner we load
+                    <Lumeo.Link Href="https://www.cloudflare.com/web-analytics/" Class="text-primary hover:underline">Cloudflare Web Analytics</Lumeo.Link>.
+                    It's cookie-free, sends no cross-site data, and reports only
+                    aggregate page views / load times for lumeo.nativ.sh. We use it
+                    to see which components people actually look at so we know where
+                    to invest docs + polish effort.
+                </Lumeo.Text>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    If you decline, no analytics script ever loads.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="2" Size="xl" Class="font-semibold">What happens on Cloudflare's edge</Heading>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    Like any web host, Cloudflare keeps short-lived request logs for
+                    abuse prevention and DDoS mitigation. These include IP, user
+                    agent, and request path; retention is 24h to 7d depending on the
+                    plan. See
+                    <Lumeo.Link Href="https://www.cloudflare.com/privacypolicy/" Class="text-primary hover:underline">Cloudflare's privacy policy</Lumeo.Link>.
+                </Lumeo.Text>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="2" Size="xl" Class="font-semibold">Third parties</Heading>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    We don't embed Google Analytics, Meta Pixel, Hotjar, Segment, or
+                    any ad/retargeting tags. Self-hosted fonts are served from the
+                    same domain (no Google Fonts call-home). The only third-party
+                    domain contacted from this site is
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">api.lumeo.nativ.sh</code>
+                    (our own Cloudflare Worker), and only if you use the customizer's
+                    "Share preset" feature.
+                </Lumeo.Text>
+            </Stack>
+        </Stack>
+
+        <Separator />
+
+        <Stack Gap="3">
+            <Heading Level="2" Size="xl" Class="font-semibold">Manage preferences</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Current choice:
+                <Lumeo.Text As="span" Weight="medium" Color="foreground">
+                    @(Consent.HasConsent("analytics") ? "Analytics enabled" : "Analytics declined")
+                </Lumeo.Text>
+            </Lumeo.Text>
+            <Flex Align="center" Gap="2">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ReopenBanner">
+                    Change consent
+                </Button>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="ClearChoice">
+                    Reset (ask me again)
+                </Button>
+            </Flex>
+        </Stack>
+
+        <Separator />
+
+        <Stack Gap="2">
+            <Heading Level="2" Size="xl" Class="font-semibold">Contact</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                Questions about this policy? Open a GitHub issue on
+                <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo" Class="text-primary hover:underline">Brain2k-0005/Lumeo</Lumeo.Link>
+                or use GitHub's private security advisory flow if it's sensitive.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+</Container>
+
+@code {
+    private void ReopenBanner()
+    {
+        // Asks whatever ConsentBanner is currently mounted (in MainLayout) to
+        // pop its preferences dialog. Service is the coordinator so we don't
+        // need a CascadingValue.
+        Consent.RequestOpenPreferences();
+    }
+
+    private async Task ClearChoice()
+    {
+        await Consent.ResetAsync();
+        StateHasChanged();
+    }
+}

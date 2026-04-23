@@ -1,0 +1,221 @@
+@namespace Lumeo
+@implements IDisposable
+@inject Lumeo.Services.ConsentService Consent
+
+@if (_ready && !Consent.HasDecided && !_preferencesOpen)
+{
+    <div role="dialog" aria-labelledby="@_titleId" aria-describedby="@_descId"
+         class="@($"fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-50 {AnimationClass}")">
+        <div class="rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-xl p-5">
+            <div class="flex items-start gap-4 flex-wrap md:flex-nowrap">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <Blazicon Svg="Lucide.Cookie" class="h-4 w-4 text-primary" />
+                        <h3 id="@_titleId" class="text-sm font-semibold">@Title</h3>
+                    </div>
+                    <p id="@_descId" class="text-sm text-muted-foreground leading-relaxed">
+                        @Description
+                        @if (!string.IsNullOrEmpty(PrivacyPolicyUrl))
+                        {
+                            <text> </text>
+                            <a href="@PrivacyPolicyUrl" class="text-primary hover:underline">@PrivacyPolicyLabel</a>
+                            <text>.</text>
+                        }
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 shrink-0">
+                    @if (Categories.Any(c => !c.Required))
+                    {
+                        <button type="button"
+                                class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 text-muted-foreground hover:text-foreground transition-colors"
+                                @onclick="OpenPreferences">
+                            @CustomizeLabel
+                        </button>
+                    }
+                    <button type="button"
+                            class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 border border-border/60 bg-background hover:bg-accent transition-colors"
+                            @onclick="RejectAll">
+                        @RejectLabel
+                    </button>
+                    <button type="button"
+                            class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                            @onclick="AcceptAll">
+                        @AcceptLabel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_preferencesOpen)
+{
+    <div role="dialog" aria-modal="true" aria-labelledby="@_prefTitleId"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/70 backdrop-blur-sm animate-fade-in">
+        <div class="w-full max-w-lg rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-2xl">
+            <div class="p-6 border-b border-border/40">
+                <h3 id="@_prefTitleId" class="text-lg font-semibold">@PreferencesTitle</h3>
+                <p class="text-sm text-muted-foreground mt-1 leading-relaxed">@PreferencesDescription</p>
+            </div>
+
+            <div class="p-6 space-y-4 max-h-[50vh] overflow-y-auto">
+                @foreach (var cat in Categories)
+                {
+                    var catKey = cat.Key;
+                    var locked = cat.Required;
+                    var checkedValue = IsDraftChecked(cat);
+                    var labelClass = locked ? "opacity-70 cursor-not-allowed" : "";
+                    <label class="@($"flex items-start gap-3 cursor-pointer {labelClass}")">
+                        <div class="mt-0.5 shrink-0">
+                            <input type="checkbox"
+                                   class="peer inline-flex items-center justify-center h-4 w-4 shrink-0 cursor-pointer rounded border border-primary/60 transition-colors checked:bg-primary checked:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                   checked="@checkedValue"
+                                   disabled="@locked"
+                                   @onchange="@(e => ToggleCategory(catKey, e))" />
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium text-foreground">@cat.Title</span>
+                                @if (locked)
+                                {
+                                    <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">@RequiredBadge</span>
+                                }
+                            </div>
+                            <p class="text-xs text-muted-foreground mt-0.5 leading-relaxed">@cat.Description</p>
+                        </div>
+                    </label>
+                }
+            </div>
+
+            <div class="p-6 border-t border-border/40 flex items-center justify-end gap-2">
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 text-muted-foreground hover:text-foreground"
+                        @onclick="ClosePreferencesNoSave">
+                    @CancelLabel
+                </button>
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 border border-border/60 bg-background hover:bg-accent"
+                        @onclick="RejectAll">
+                    @RejectLabel
+                </button>
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
+                        @onclick="SavePreferences">
+                    @SaveLabel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Consent buckets to expose in the preferences dialog. Omit `Required: true` ones if your site doesn't use strictly-necessary cookies.</summary>
+    [Parameter] public IReadOnlyList<Lumeo.Services.ConsentCategory> Categories { get; set; } = DefaultCategories;
+
+    /// <summary>URL to your privacy policy page. If null, the link is hidden.</summary>
+    [Parameter] public string? PrivacyPolicyUrl { get; set; }
+
+    // ---------- Copy — every string is overridable for i18n / tone. ----------
+    [Parameter] public string Title { get; set; } = "Cookies & consent";
+    [Parameter] public string Description { get; set; } = "We use a minimal set of cookies to run the site and optionally measure anonymous usage to improve it. You choose what's on.";
+    [Parameter] public string PrivacyPolicyLabel { get; set; } = "Read the privacy policy";
+    [Parameter] public string AcceptLabel { get; set; } = "Accept all";
+    [Parameter] public string RejectLabel { get; set; } = "Reject optional";
+    [Parameter] public string CustomizeLabel { get; set; } = "Customize";
+    [Parameter] public string PreferencesTitle { get; set; } = "Consent preferences";
+    [Parameter] public string PreferencesDescription { get; set; } = "Pick which categories you're okay with. You can change this later.";
+    [Parameter] public string RequiredBadge { get; set; } = "Required";
+    [Parameter] public string CancelLabel { get; set; } = "Cancel";
+    [Parameter] public string SaveLabel { get; set; } = "Save preferences";
+
+    [Parameter] public string AnimationClass { get; set; } = "animate-slide-in-from-bottom";
+
+    private static readonly IReadOnlyList<Lumeo.Services.ConsentCategory> DefaultCategories = new[]
+    {
+        new Lumeo.Services.ConsentCategory("necessary", "Strictly necessary", "Required for the site to function — theme preference, routing state, session.", Required: true),
+        new Lumeo.Services.ConsentCategory("analytics",  "Analytics",         "Anonymous aggregate stats on which pages are visited, so we know what to improve."),
+    };
+
+    private readonly string _titleId = $"lumeo-consent-title-{Guid.NewGuid():N}";
+    private readonly string _descId  = $"lumeo-consent-desc-{Guid.NewGuid():N}";
+    private readonly string _prefTitleId = $"lumeo-consent-pref-title-{Guid.NewGuid():N}";
+
+    private bool _ready;
+    private bool _preferencesOpen;
+    private Dictionary<string, bool> _draft = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        Consent.OnChange += HandleConsentChange;
+        Consent.OnRequestOpenPreferences += HandleReopenRequest;
+    }
+
+    private void HandleReopenRequest() => InvokeAsync(() =>
+    {
+        OpenPreferences();
+        StateHasChanged();
+    });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Consent.EnsureLoadedAsync();
+            _ready = true;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleConsentChange() => InvokeAsync(StateHasChanged);
+
+    private async Task AcceptAll()
+    {
+        await Consent.AcceptAllAsync(Categories.Where(c => !c.Required).Select(c => c.Key));
+        _preferencesOpen = false;
+    }
+
+    private async Task RejectAll()
+    {
+        await Consent.RejectAllAsync(Categories.Where(c => !c.Required).Select(c => c.Key));
+        _preferencesOpen = false;
+    }
+
+    private void OpenPreferences()
+    {
+        // Seed the draft from current consent so the toggles reflect reality.
+        _draft = Categories.ToDictionary(c => c.Key, c => c.Required || Consent.HasConsent(c.Key), StringComparer.OrdinalIgnoreCase);
+        _preferencesOpen = true;
+    }
+
+    /// <summary>Public entry point so a "Manage cookie preferences" link anywhere in the layout can reopen the dialog.</summary>
+    public void ShowPreferences()
+    {
+        OpenPreferences();
+        StateHasChanged();
+    }
+
+    private void ClosePreferencesNoSave() => _preferencesOpen = false;
+
+    private bool IsDraftChecked(Lumeo.Services.ConsentCategory cat)
+    {
+        if (cat.Required) return true;
+        return _draft.TryGetValue(cat.Key, out var v) && v;
+    }
+
+    private void ToggleCategory(string key, ChangeEventArgs e)
+    {
+        if (e.Value is bool b) _draft[key] = b;
+    }
+
+    private async Task SavePreferences()
+    {
+        await Consent.SetManyAsync(_draft);
+        _preferencesOpen = false;
+    }
+
+    public void Dispose()
+    {
+        Consent.OnChange -= HandleConsentChange;
+        Consent.OnRequestOpenPreferences -= HandleReopenRequest;
+    }
+}

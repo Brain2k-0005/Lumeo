@@ -4,6 +4,7 @@
 @inject NavigationManager Nav
 @inject Lumeo.Services.ThemeService ThemeService
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
+@inject Lumeo.Services.ConsentService Consent
 
 <div class="min-h-screen bg-background">
     <!-- Floating Navbar (outside animation wrapper — CSS transforms break fixed positioning) -->
@@ -112,6 +113,19 @@
 
 <OverlayProvider />
 <ToastProvider Position="ToastViewport.ToastPosition.BottomRight" />
+
+@* ---------- Consent banner + conditional analytics ----------
+   The banner persists the user's choice in localStorage and surfaces it via
+   ConsentService.HasConsent("analytics"). Only when that's granted do we
+   inject the Cloudflare Web Analytics beacon — so the site is fully cookie-
+   free and zero-telemetry until the user opts in. *@
+<ConsentBanner @ref="_consentBanner" PrivacyPolicyUrl="/privacy" />
+
+@if (Consent.HasConsent("analytics") && !string.IsNullOrEmpty(CloudflareAnalyticsToken))
+{
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon='@($"{{\"token\": \"{CloudflareAnalyticsToken}\"}}")'></script>
+}
 
 <!-- Search Command Palette -->
 @if (_searchOpen)
@@ -238,13 +252,22 @@
 }
 
 @code {
+    // Cloudflare Web Analytics beacon token. When non-empty AND the user has
+    // consented to the "analytics" category, MainLayout injects the beacon
+    // script. Leave empty to ship without analytics at all.
+    private const string CloudflareAnalyticsToken = "";
+
     private readonly List<IAsyncDisposable> _kbdShortcuts = new();
+    private ConsentBanner? _consentBanner;
     private bool _darkMode;
     private bool _customizerOpen = false;
     private bool _mobileNavOpen;
     private bool _searchOpen;
     private string _searchQuery = string.Empty;
     private ElementReference _searchInput;
+
+    /// <summary>Called from footer "Cookie preferences" link to re-open the dialog.</summary>
+    public void OpenConsentPreferences() => _consentBanner?.ShowPreferences();
 
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
 
