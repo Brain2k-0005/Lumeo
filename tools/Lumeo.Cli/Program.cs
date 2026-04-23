@@ -400,7 +400,7 @@ namespace Lumeo.Cli
         /// no hosting setup required. Pinned to an RC tag so the registry and the CLI binary
         /// always agree on schema/shape.</summary>
         public const string DefaultRegistryUrl =
-            "https://cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@v2.0.0-rc.8/src/Lumeo/wwwroot/registry/registry.json";
+            "https://cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@v2.0.0-rc.9/src/Lumeo/wwwroot/registry/registry.json";
 
         /// <summary>Derive the base URL to fetch component source files from the registry URL.
         /// Supports three layouts:
