@@ -13,6 +13,60 @@ namespace Lumeo.Cli;
 /// </summary>
 public static class ThemeCommands
 {
+    /// <summary>Encodes named options into the 6-char client-side preset code.
+    /// Unknown option values error out with the list of valid choices so typos
+    /// are caught before the code is printed.</summary>
+    public static Task Encode(
+        string? theme, string? style, string? baseColor, string? radius,
+        string? font, string? icons, string? menuColor, string? menuAccent,
+        bool dark, bool commandOnly)
+    {
+        int? Idx(string[] valid, string? value, string label, int defaultIdx)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return defaultIdx;
+            var i = Array.FindIndex(valid, v => string.Equals(v, value, StringComparison.OrdinalIgnoreCase));
+            if (i < 0)
+            {
+                Console.Error.WriteLine(Ansi.Red($"Invalid --{label} '{value}'. Valid: {string.Join(", ", valid.Where(v => v.Length > 0))}"));
+                Environment.ExitCode = 2;
+                return null;
+            }
+            return i;
+        }
+
+        var themeIdx       = Idx(LumeoPresetOptions.Themes,         theme,       "theme",       0);
+        var styleIdx       = Idx(LumeoPresetOptions.Styles,         style,       "style",       0);
+        var baseIdx        = Idx(LumeoPresetOptions.BaseColors,     baseColor,   "base",        0);
+        var radiusIdx      = Idx(LumeoPresetOptions.Radii,          radius,      "radius",      2);
+        var fontIdx        = Idx(LumeoPresetOptions.Fonts,          font,        "font",        0);
+        var iconsIdx       = Idx(LumeoPresetOptions.IconLibraries,  icons,       "icons",       0);
+        var menuColorIdx   = Idx(LumeoPresetOptions.MenuColors,     menuColor,   "menu-color",  0);
+        var menuAccentIdx  = Idx(LumeoPresetOptions.MenuAccents,    menuAccent,  "menu-accent", 0);
+        if (themeIdx is null || styleIdx is null || baseIdx is null || radiusIdx is null
+            || fontIdx is null || iconsIdx is null || menuColorIdx is null || menuAccentIdx is null)
+        {
+            return Task.CompletedTask; // exit code already set
+        }
+
+        var preset = new LumeoPreset(
+            Theme: themeIdx.Value, Style: styleIdx.Value, BaseColor: baseIdx.Value,
+            Radius: radiusIdx.Value, Font: fontIdx.Value, IconLibrary: iconsIdx.Value,
+            MenuColor: menuColorIdx.Value, MenuAccent: menuAccentIdx.Value,
+            Dark: dark ? 1 : 0);
+
+        var code = LumeoPresetCodec.Encode(preset);
+        if (commandOnly)
+        {
+            Console.WriteLine($"lumeo apply --preset {code}");
+        }
+        else
+        {
+            Console.WriteLine(code);
+        }
+        return Task.CompletedTask;
+    }
+
+
     // All theme keys that <c>apply</c> understands. Used for --only filtering
     // and to ensure lumeo-theme.json has a stable, known shape.
     private static readonly string[] AllParts =
@@ -156,8 +210,129 @@ public static class ThemeCommands
             Info(Ansi.Green("  write      ") + themeJsonRel);
         }
 
+        // Step 8: install the icon-library NuGet package if the preset requires one
+        // the consumer doesn't already have. Blazicons are compile-time — theme.js
+        // can't switch them at runtime — so this is the only way to keep the CLI
+        // apply step 1:1 with the customizer's icon selection.
+        if ((allowed is null || allowed.Contains("iconLibrary")) && !string.IsNullOrEmpty(resolved.IconLibrary))
+        {
+            await MaybeInstallIconPackageAsync(resolved.IconLibrary, yes, silent);
+        }
+
+        // Step 9: self-host the font (shadcn / next.js style) so the consumer doesn't
+        // depend on fonts.googleapis.com at runtime. theme.js reads the local path
+        // from lumeo-theme.json and injects a <link> to it on page load.
+        if ((allowed is null || allowed.Contains("font"))
+            && !string.IsNullOrEmpty(resolved.Font) && resolved.Font != "system"
+            && Directory.Exists(wwwroot))
+        {
+            using var http = new HttpClient();
+            var localPath = await FontInstaller.InstallAsync(resolved.Font, wwwroot, http, silent);
+            if (!string.IsNullOrEmpty(localPath))
+            {
+                // Write the local path into lumeo-theme.json under a well-known key
+                // so theme.js can pick it up. Preserves any other keys (like a
+                // consumer-added override) that live in the same file.
+                try
+                {
+                    var themeJson = Path.Combine(wwwroot, "lumeo-theme.json");
+                    var node = File.Exists(themeJson)
+                        ? System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(themeJson)) as System.Text.Json.Nodes.JsonObject
+                        : new System.Text.Json.Nodes.JsonObject();
+                    node!["fontLocalPath"] = localPath;
+                    await File.WriteAllTextAsync(themeJson, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(Ansi.Yellow($"! Could not persist fontLocalPath to lumeo-theme.json: {ex.Message}"));
+                }
+            }
+        }
+
         InfoBlank();
         Info(Ansi.Green("OK ") + $"Applied preset {Ansi.Bold(preset)}.");
+    }
+
+    // Maps the customizer's icon library id to the corresponding Blazicons NuGet id.
+    // Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
+    private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["lucide"]          = "Blazicons.Lucide",
+        ["bootstrap"]       = "Blazicons.Bootstrap",
+        ["fluentui"]        = "Blazicons.FluentUI",
+        ["font-awesome"]    = "Blazicons.FontAwesome",
+        ["google-material"] = "Blazicons.GoogleMaterialDesign",
+        ["material-design"] = "Blazicons.MaterialDesignIcons",
+        ["ionicons"]        = "Blazicons.Ionicons",
+        ["devicon"]         = "Blazicons.Devicon",
+        ["flag-icons"]      = "Blazicons.FlagIcons",
+    };
+
+    private static async Task MaybeInstallIconPackageAsync(string iconLib, bool yes, bool silent)
+    {
+        void Info(string line) { if (!silent) Console.WriteLine(line); }
+
+        if (!IconLibraryPackages.TryGetValue(iconLib, out var packageId))
+        {
+            Console.Error.WriteLine(Ansi.Yellow($"! Unknown icon library '{iconLib}' — no NuGet package mapped. Skipping install."));
+            return;
+        }
+
+        var csproj = Directory.EnumerateFiles(Environment.CurrentDirectory, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+        if (csproj is null)
+        {
+            Console.Error.WriteLine(Ansi.Yellow($"! No .csproj in current directory — skipping {packageId} install. Run `dotnet add package {packageId}` manually."));
+            return;
+        }
+
+        // Cheap check: scan the csproj for an existing PackageReference before shelling out.
+        try
+        {
+            var contents = await File.ReadAllTextAsync(csproj);
+            if (contents.Contains($"\"{packageId}\"", StringComparison.OrdinalIgnoreCase))
+            {
+                Info(Ansi.Dim($"  icons      {packageId} already referenced — skipped."));
+                return;
+            }
+        }
+        catch { /* fall through and let dotnet handle it */ }
+
+        if (!yes && Prompts.Interactive)
+        {
+            if (!Prompts.Confirm($"Install {Ansi.Cyan(packageId)} NuGet package?", defaultYes: true))
+            {
+                Info(Ansi.Yellow($"  icons      skipped — add with `dotnet add package {packageId}` when ready."));
+                return;
+            }
+        }
+
+        Info(Ansi.Dim($"  icons      installing {packageId} …"));
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("dotnet", $"add \"{csproj}\" package {packageId}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null) throw new InvalidOperationException("failed to start dotnet");
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                var stderr = await proc.StandardError.ReadToEndAsync();
+                Console.Error.WriteLine(Ansi.Yellow($"! `dotnet add package {packageId}` exited {proc.ExitCode}: {stderr.Trim()}"));
+            }
+            else
+            {
+                Info(Ansi.Green("  icons      ") + $"{packageId} installed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(Ansi.Yellow($"! Failed to install {packageId}: {ex.Message}"));
+        }
     }
 
     // Resolve the numeric indices from the codec to human-readable string values.
