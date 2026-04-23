@@ -210,8 +210,129 @@ public static class ThemeCommands
             Info(Ansi.Green("  write      ") + themeJsonRel);
         }
 
+        // Step 8: install the icon-library NuGet package if the preset requires one
+        // the consumer doesn't already have. Blazicons are compile-time — theme.js
+        // can't switch them at runtime — so this is the only way to keep the CLI
+        // apply step 1:1 with the customizer's icon selection.
+        if ((allowed is null || allowed.Contains("iconLibrary")) && !string.IsNullOrEmpty(resolved.IconLibrary))
+        {
+            await MaybeInstallIconPackageAsync(resolved.IconLibrary, yes, silent);
+        }
+
+        // Step 9: self-host the font (shadcn / next.js style) so the consumer doesn't
+        // depend on fonts.googleapis.com at runtime. theme.js reads the local path
+        // from lumeo-theme.json and injects a <link> to it on page load.
+        if ((allowed is null || allowed.Contains("font"))
+            && !string.IsNullOrEmpty(resolved.Font) && resolved.Font != "system"
+            && Directory.Exists(wwwroot))
+        {
+            using var http = new HttpClient();
+            var localPath = await FontInstaller.InstallAsync(resolved.Font, wwwroot, http, silent);
+            if (!string.IsNullOrEmpty(localPath))
+            {
+                // Write the local path into lumeo-theme.json under a well-known key
+                // so theme.js can pick it up. Preserves any other keys (like a
+                // consumer-added override) that live in the same file.
+                try
+                {
+                    var themeJson = Path.Combine(wwwroot, "lumeo-theme.json");
+                    var node = File.Exists(themeJson)
+                        ? System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(themeJson)) as System.Text.Json.Nodes.JsonObject
+                        : new System.Text.Json.Nodes.JsonObject();
+                    node!["fontLocalPath"] = localPath;
+                    await File.WriteAllTextAsync(themeJson, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(Ansi.Yellow($"! Could not persist fontLocalPath to lumeo-theme.json: {ex.Message}"));
+                }
+            }
+        }
+
         InfoBlank();
         Info(Ansi.Green("OK ") + $"Applied preset {Ansi.Bold(preset)}.");
+    }
+
+    // Maps the customizer's icon library id to the corresponding Blazicons NuGet id.
+    // Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
+    private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["lucide"]          = "Blazicons.Lucide",
+        ["bootstrap"]       = "Blazicons.Bootstrap",
+        ["fluentui"]        = "Blazicons.FluentUI",
+        ["font-awesome"]    = "Blazicons.FontAwesome",
+        ["google-material"] = "Blazicons.GoogleMaterialDesign",
+        ["material-design"] = "Blazicons.MaterialDesignIcons",
+        ["ionicons"]        = "Blazicons.Ionicons",
+        ["devicon"]         = "Blazicons.Devicon",
+        ["flag-icons"]      = "Blazicons.FlagIcons",
+    };
+
+    private static async Task MaybeInstallIconPackageAsync(string iconLib, bool yes, bool silent)
+    {
+        void Info(string line) { if (!silent) Console.WriteLine(line); }
+
+        if (!IconLibraryPackages.TryGetValue(iconLib, out var packageId))
+        {
+            Console.Error.WriteLine(Ansi.Yellow($"! Unknown icon library '{iconLib}' — no NuGet package mapped. Skipping install."));
+            return;
+        }
+
+        var csproj = Directory.EnumerateFiles(Environment.CurrentDirectory, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+        if (csproj is null)
+        {
+            Console.Error.WriteLine(Ansi.Yellow($"! No .csproj in current directory — skipping {packageId} install. Run `dotnet add package {packageId}` manually."));
+            return;
+        }
+
+        // Cheap check: scan the csproj for an existing PackageReference before shelling out.
+        try
+        {
+            var contents = await File.ReadAllTextAsync(csproj);
+            if (contents.Contains($"\"{packageId}\"", StringComparison.OrdinalIgnoreCase))
+            {
+                Info(Ansi.Dim($"  icons      {packageId} already referenced — skipped."));
+                return;
+            }
+        }
+        catch { /* fall through and let dotnet handle it */ }
+
+        if (!yes && Prompts.Interactive)
+        {
+            if (!Prompts.Confirm($"Install {Ansi.Cyan(packageId)} NuGet package?", defaultYes: true))
+            {
+                Info(Ansi.Yellow($"  icons      skipped — add with `dotnet add package {packageId}` when ready."));
+                return;
+            }
+        }
+
+        Info(Ansi.Dim($"  icons      installing {packageId} …"));
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("dotnet", $"add \"{csproj}\" package {packageId}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null) throw new InvalidOperationException("failed to start dotnet");
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                var stderr = await proc.StandardError.ReadToEndAsync();
+                Console.Error.WriteLine(Ansi.Yellow($"! `dotnet add package {packageId}` exited {proc.ExitCode}: {stderr.Trim()}"));
+            }
+            else
+            {
+                Info(Ansi.Green("  icons      ") + $"{packageId} installed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(Ansi.Yellow($"! Failed to install {packageId}: {ex.Message}"));
+        }
     }
 
     // Resolve the numeric indices from the codec to human-readable string values.

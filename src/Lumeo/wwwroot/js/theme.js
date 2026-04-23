@@ -18,6 +18,51 @@ function lumeoDefault(defaults, key) {
     return (v === undefined || v === null) ? null : String(v);
 }
 
+// Google Fonts map — keep in sync with LumeoPresetOptions.Fonts in src/Lumeo/Theming/.
+const lumeoFontMap = {
+    'inter':          { href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',         family: "'Inter', system-ui, sans-serif" },
+    'geist':          { href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap',         family: "'Geist', system-ui, sans-serif" },
+    'ibm-plex-sans':  { href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap', family: "'IBM Plex Sans', system-ui, sans-serif" },
+    'jetbrains-mono': { href: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap',    family: "'JetBrains Mono', ui-monospace, monospace" },
+    'fira-code':      { href: 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&display=swap',         family: "'Fira Code', ui-monospace, monospace" },
+};
+
+function applyLumeoFont(fontId, localPath) {
+    // Remove any prior injection if the font is unset/system — so switching back
+    // to system actually reverts (not just stacks another override).
+    const existingLink = document.getElementById('lumeo-font-link');
+    const existingStyle = document.getElementById('lumeo-font-override');
+    if (!fontId || fontId === 'system') {
+        if (existingLink) existingLink.remove();
+        if (existingStyle) existingStyle.remove();
+        return;
+    }
+    const entry = lumeoFontMap[fontId];
+    if (!entry) return; // unknown font id — silent no-op
+    // Prefer a self-hosted CSS if the CLI downloaded one — avoids the runtime
+    // dependency on fonts.googleapis.com that the Google href would introduce.
+    const href = localPath && typeof localPath === 'string' && localPath.length > 0
+        ? localPath
+        : entry.href;
+    if (!existingLink || existingLink.getAttribute('href') !== href) {
+        if (existingLink) existingLink.remove();
+        const link = document.createElement('link');
+        link.id = 'lumeo-font-link';
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.appendChild(link);
+    }
+    const css = `:root{font-family:${entry.family};}`;
+    if (!existingStyle) {
+        const style = document.createElement('style');
+        style.id = 'lumeo-font-override';
+        style.textContent = css;
+        document.head.appendChild(style);
+    } else if (existingStyle.textContent !== css) {
+        existingStyle.textContent = css;
+    }
+}
+
 window.themeManager = {
     init: function () {
         var defaults = loadLumeoThemeDefaults();
@@ -99,7 +144,9 @@ window.themeManager = {
         } else if (dir === 'ltr') {
             document.documentElement.setAttribute('dir', 'ltr');
         }
-        // Font
+        // Font — localStorage (raw CSS block) wins; else JSON default key 'font' maps
+        // to a Google Fonts <link> + font-family override auto-injected here, so
+        // consumers who apply a preset with font=inter never need to edit index.html.
         const fontCss = localStorage.getItem('theme-font-css');
         if (fontCss) {
             var el = document.getElementById('lumeo-font-override');
@@ -109,6 +156,8 @@ window.themeManager = {
                 document.head.appendChild(el);
             }
             el.textContent = fontCss;
+        } else {
+            applyLumeoFont(lumeoDefault(defaults, 'font'), lumeoDefault(defaults, 'fontLocalPath'));
         }
     },
     setMode: function (mode) {
