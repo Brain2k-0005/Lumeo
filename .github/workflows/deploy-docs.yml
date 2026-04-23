@@ -31,6 +31,14 @@ jobs:
       - name: Publish Blazor WASM
         run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
 
+      - name: Stamp CSS cache-busters with commit SHA
+        # index.html (and its copy 404.html created later) reference CSS with `?v=__LUMEO_BUILD__`.
+        # Replace the placeholder with the 7-char git SHA so every deploy yields a new query string
+        # and the browser re-fetches CSS instead of serving stale cached versions.
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          sed -i "s/__LUMEO_BUILD__/${SHORT_SHA}/g" release/wwwroot/index.html
+
       - name: Remove pre-compressed files (Fastly handles compression at CDN edge)
         run: find release/wwwroot/_framework -name "*.br" -o -name "*.gz" | xargs rm -f
 
