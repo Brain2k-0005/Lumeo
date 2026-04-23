@@ -76,6 +76,43 @@ jobs:
       - name: Copy index.html to 404.html
         run: cp release/wwwroot/index.html release/wwwroot/404.html
 
+      - name: Generate sitemap.xml from @page directives
+        # Blazor WASM routes only exist in .razor files as `@page "/route"`; crawlers
+        # can't discover them from the SPA shell at /. This step greps every @page from
+        # docs/Lumeo.Docs/Pages/**/*.razor, assigns a priority + changefreq bucket based
+        # on the route prefix, and emits a sitemap.xml that tells Google about all ~190
+        # pages.
+        run: |
+          SITE="https://lumeo.nativ.sh"
+          TODAY=$(date -u +%Y-%m-%d)
+          SITEMAP=release/wwwroot/sitemap.xml
+
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            # The index page doesn't have an @page directive (it's the default route)
+            # so add it explicitly with top priority.
+            echo "  <url><loc>${SITE}/</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>"
+
+            grep -rhE '^@page\s+"[^"]+"' docs/Lumeo.Docs/Pages/ --include="*.razor" \
+              | sed -E 's|^@page\s+"([^"]+)"|\1|' \
+              | grep -v '^/$' \
+              | sort -u \
+              | while read -r route; do
+                  case "$route" in
+                    /components/*)  PRIORITY=0.8; FREQ=monthly ;;
+                    /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
+                    /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
+                    /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
+                    *)              PRIORITY=0.5; FREQ=monthly ;;
+                  esac
+                  echo "  <url><loc>${SITE}${route}</loc><lastmod>${TODAY}</lastmod><changefreq>${FREQ}</changefreq><priority>${PRIORITY}</priority></url>"
+                done
+            echo '</urlset>'
+          } > "${SITEMAP}"
+
+          echo "Generated $(grep -c '<url>' ${SITEMAP}) URLs in sitemap.xml"
+
       - name: Copy registry + raw source for CLI consumers
         run: |
           mkdir -p release/wwwroot/registry
