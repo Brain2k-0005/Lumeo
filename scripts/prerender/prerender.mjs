@@ -16,7 +16,7 @@
 
 import { startServer } from './server.mjs';
 import puppeteer from 'puppeteer';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const publishDir = process.argv[2];
@@ -37,26 +37,61 @@ const browser = await puppeteer.launch({
 });
 
 try {
-    const route = '/privacy';
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
+    // Parse sitemap.xml for the list of routes to render.
+    const sitemapPath = join(wwwroot, 'sitemap.xml');
+    const sitemapXml = readFileSync(sitemapPath, 'utf8');
+    const { XMLParser } = await import('fast-xml-parser');
+    const parsed = new XMLParser().parse(sitemapXml);
+    const urlEntries = Array.isArray(parsed.urlset?.url) ? parsed.urlset.url : [parsed.urlset.url];
+    const routes = urlEntries
+        .map(u => new URL(u.loc).pathname)
+        .filter(p => !!p);
 
-    const start = Date.now();
-    await page.goto(server.url + route, { waitUntil: 'networkidle2', timeout: 30000 });
-    await page.waitForFunction(
-        () => document.documentElement.dataset.blazorReady === 'true',
-        { timeout: 30000 },
-    );
+    console.log(`[prerender] ${routes.length} routes from sitemap`);
 
-    const html = await page.evaluate(() => '<!DOCTYPE html>\n' + document.documentElement.outerHTML);
+    // Crawl with concurrency = 4. Each worker pulls from the queue.
+    const queue = [...routes];
+    const results = { ok: 0, fail: 0, durationMs: 0 };
+    const startAll = Date.now();
 
-    const outDir = join(wwwroot, route);
-    mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, 'index.html'), html, 'utf8');
+    async function worker(id) {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 800 });
+        while (queue.length) {
+            const route = queue.shift();
+            const t0 = Date.now();
+            try {
+                await page.goto(server.url + route, { waitUntil: 'networkidle2', timeout: 45000 });
+                await page.waitForFunction(
+                    () => document.documentElement.dataset.blazorReady === 'true',
+                    { timeout: 30000 },
+                );
+                const html = await page.evaluate(() => '<!DOCTYPE html>\n' + document.documentElement.outerHTML);
 
-    console.log(`[prerender] ✓ ${route} (${Date.now() - start}ms, ${(html.length / 1024).toFixed(1)}kB)`);
+                // Root "/" writes to wwwroot/index.html (overwrite the stock
+                // shell); everything else writes to wwwroot/<path>/index.html.
+                const outPath = route === '/'
+                    ? join(wwwroot, 'index.html')
+                    : join(wwwroot, route, 'index.html');
+                mkdirSync(join(outPath, '..'), { recursive: true });
+                writeFileSync(outPath, html, 'utf8');
 
-    await page.close();
+                results.ok++;
+                console.log(`[worker ${id}] ✓ ${route} (${Date.now() - t0}ms)`);
+            } catch (err) {
+                results.fail++;
+                console.error(`[worker ${id}] ✗ ${route} — ${err.message}`);
+            }
+        }
+        await page.close();
+    }
+
+    await Promise.all([worker(1), worker(2), worker(3), worker(4)]);
+
+    results.durationMs = Date.now() - startAll;
+    console.log(`[prerender] done: ${results.ok} ok, ${results.fail} failed, ${(results.durationMs / 1000).toFixed(1)}s total`);
+
+    if (results.fail > 0) process.exitCode = 1;
 } finally {
     await browser.close();
     await server.close();
