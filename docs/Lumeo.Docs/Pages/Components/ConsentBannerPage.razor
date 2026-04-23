@@ -1,0 +1,223 @@
+@page "/components/consent-banner"
+@inject Lumeo.Services.ConsentService Consent
+
+<PageTitle>Consent Banner — Lumeo</PageTitle>
+
+<PageHeader Title="Consent Banner"
+            Description="GDPR-ready cookie / tracking consent primitive. Persists per-category choices in localStorage and exposes them via ConsentService for gating third-party scripts." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Any site that loads analytics (Google Analytics, Cloudflare Web Analytics, Plausible, Umami) in the EU / UK / CA.</li>
+        <li>Any site that embeds third-party scripts users should opt into (YouTube embeds, Intercom, Hotjar).</li>
+        <li>SaaS apps that want to give end users a <em>"Manage cookie preferences"</em> link in the footer.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    @* ---------- Live demo: the banner running on THIS page itself ---------- *@
+    <ComponentDemo Title="Open the banner on this page" Description="The banner in the docs site already ran once (accepted/declined at first visit). Click below to re-open its preferences dialog — it's the same API a consumer would wire to a footer link." Code="@_openCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="3">
+                <Flex Align="center" Gap="2">
+                    <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm" OnClick="() => Consent.RequestOpenPreferences()">
+                        Open preferences
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ResetConsent">
+                        Reset (re-show banner)
+                    </Button>
+                </Flex>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Analytics consent right now: <Lumeo.Text As="span" Weight="medium" Color="foreground">@(Consent.HasConsent("analytics") ? "granted" : "denied")</Lumeo.Text>.
+                </Lumeo.Text>
+            </Stack>
+        </Container>
+    </ComponentDemo>
+
+    @* ---------- Minimal setup ---------- *@
+    <ComponentDemo Title="Minimal setup" Description="Drop the banner into your root layout. Default categories are `necessary` (locked) + `analytics`." Code="@_minimalCode">
+        <Container MaxWidth="lg" Center="false" Padding="">
+            <Stack Gap="3" Class="rounded-lg border border-border/40 p-6 bg-muted/20">
+                <Flex Align="center" Gap="2">
+                    <DynamicIcon Name="Info" Class="h-4 w-4 text-primary" />
+                    <Lumeo.Text Size="sm">
+                        No live preview here — the banner can only show once per browser. Copy the code into your own <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MainLayout.razor</code> to see it slide in.
+                    </Lumeo.Text>
+                </Flex>
+            </Stack>
+        </Container>
+    </ComponentDemo>
+
+    @* ---------- Gate analytics behind consent ---------- *@
+    <ComponentDemo Title="Gate analytics behind consent" Description="The whole point: nothing hits a third-party until the user says yes." Code="@_gateCode" />
+
+    @* ---------- Custom categories ---------- *@
+    <ComponentDemo Title="Custom categories" Description="Define your own buckets — one per third-party service you load." Code="@_customCode" />
+
+    @* ---------- Reopen from a footer link ---------- *@
+    <ComponentDemo Title="Reopen from a footer link" Description="ConsentService fires an event when any caller requests the dialog — no component refs, no CascadingValue plumbing." Code="@_footerCode" />
+
+    @* ---------- i18n ---------- *@
+    <ComponentDemo Title="Localized strings" Description="Every string is a parameter. Pair with `ILumeoLocalizer` if you want them to follow the user's language." Code="@_i18nCode" />
+
+</Stack>
+
+@* ---------- API reference ---------- *@
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API reference</Heading>
+
+    <Heading Id="consent-banner-api" Level="3" Class="mt-8 scroll-mt-20">&lt;ConsentBanner&gt;</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[240px]">Type</TableHead>
+                    <TableHead Class="w-[140px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Categories</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;ConsentCategory&gt;</TableCell><TableCell Class="font-mono text-xs">[necessary, analytics]</TableCell><TableCell>Buckets shown in the preferences dialog. Replace entirely to match your own site's third-party services.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PrivacyPolicyUrl</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Rendered as a link in the banner copy. Omit to hide the link.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Title</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Cookies &amp; consent"</TableCell><TableCell>Heading shown at the top of the banner.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Description</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">default blurb</TableCell><TableCell>Body copy below the heading.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PrivacyPolicyLabel</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Read the privacy policy"</TableCell><TableCell>Link text for the privacy-policy anchor.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AcceptLabel</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Accept all"</TableCell><TableCell>Primary button label.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">RejectLabel</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Reject optional"</TableCell><TableCell>Secondary button label. Rejection means every non-required category is stored as <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">false</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CustomizeLabel</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Customize"</TableCell><TableCell>Opens the preferences dialog with per-category toggles.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PreferencesTitle</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Consent preferences"</TableCell><TableCell>Heading inside the preferences dialog.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PreferencesDescription</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">default</TableCell><TableCell>Body copy inside the preferences dialog.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">RequiredBadge</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Required"</TableCell><TableCell>Badge shown next to locked-on categories.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SaveLabel / CancelLabel</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Save preferences" / "Cancel"</TableCell><TableCell>Preferences dialog footer buttons.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AnimationClass</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"animate-slide-in-from-bottom"</TableCell><TableCell>Tailwind animation class used for the banner entry.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="consent-category-api" Level="3" Class="mt-8 scroll-mt-20">ConsentCategory</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[180px]">Property</TableHead>
+                    <TableHead Class="w-[120px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Key</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Machine-readable identifier (e.g. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"analytics"</code>). Used as the persistence key and the argument to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ConsentService.HasConsent(key)</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Title</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Short label shown in the preferences dialog.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Description</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>One-sentence explanation for the end user.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Required</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Locked-on toggle. Use for strictly-necessary cookies (session, theme preference).</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="consent-service-api" Level="3" Class="mt-8 scroll-mt-20">ConsentService</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[260px]">Member</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">bool HasDecided</TableCell><TableCell>True once the user has answered the banner. While false, the banner shows.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">bool HasConsent(string key)</TableCell><TableCell>Did the user consent to this category? <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"necessary"</code> always returns true; unknown keys return false.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Task EnsureLoadedAsync()</TableCell><TableCell>Hydrate from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">localStorage</code>. Called automatically by the banner on first render; safe to call yourself before the banner mounts.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Task AcceptAllAsync(IEnumerable&lt;string&gt;)</TableCell><TableCell>Grant every non-necessary category. Persists to localStorage. Fires <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnChange</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Task RejectAllAsync(IEnumerable&lt;string&gt;)</TableCell><TableCell>Deny every non-necessary category. Persists and fires <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnChange</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Task SetManyAsync(IReadOnlyDictionary&lt;string, bool&gt;)</TableCell><TableCell>Commit a per-category map. Used by the preferences dialog's Save button.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Task ResetAsync()</TableCell><TableCell>Clear the stored decision — banner re-appears on next render.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">void RequestOpenPreferences()</TableCell><TableCell>Ask any mounted <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;ConsentBanner&gt;</code> to pop its dialog. Wire a "Manage cookies" footer link to this.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">event Action? OnChange</TableCell><TableCell>Fires when any category value changes. Subscribe if you want to dynamically load / unload scripts.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">event Action? OnRequestOpenPreferences</TableCell><TableCell>Internal coordination between <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RequestOpenPreferences</code> and the banner.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+@code {
+    private async Task ResetConsent()
+    {
+        await Consent.ResetAsync();
+        StateHasChanged();
+    }
+
+    private readonly string _openCode = @"@inject Lumeo.Services.ConsentService Consent
+
+<Button OnClick=""() => Consent.RequestOpenPreferences()"">Manage cookies</Button>
+<Button OnClick=""@(async () => await Consent.ResetAsync())"">Reset</Button>";
+
+    private readonly string _minimalCode = @"@* Program.cs *@
+builder.Services.AddLumeo();
+
+@* MainLayout.razor *@
+<ConsentBanner PrivacyPolicyUrl=""/privacy"" />";
+
+    private readonly string _gateCode = @"@inject Lumeo.Services.ConsentService Consent
+
+@if (Consent.HasConsent(""analytics""))
+{
+    <script defer src=""https://static.cloudflareinsights.com/beacon.min.js""
+            data-cf-beacon='@{""token"":""YOUR_TOKEN""}'></script>
+}
+
+@if (Consent.HasConsent(""marketing""))
+{
+    @* Meta Pixel, ad-retargeting, whatever *@
+}";
+
+    private readonly string _customCode = @"<ConsentBanner PrivacyPolicyUrl=""/privacy""
+                Categories=""@_categories"" />
+
+@code {
+    private readonly IReadOnlyList<Lumeo.Services.ConsentCategory> _categories = new[]
+    {
+        new Lumeo.Services.ConsentCategory(""necessary"", ""Strictly necessary"",
+            ""Session, theme preference, routing — required for the site to work."",
+            Required: true),
+
+        new Lumeo.Services.ConsentCategory(""analytics"",  ""Analytics"",
+            ""Cloudflare Web Analytics — anonymous aggregate page-view stats.""),
+
+        new Lumeo.Services.ConsentCategory(""marketing"",  ""Marketing"",
+            ""Meta Pixel and LinkedIn Insight Tag for remarketing.""),
+
+        new Lumeo.Services.ConsentCategory(""embeds"",     ""Third-party embeds"",
+            ""YouTube, Vimeo, Tweet embeds — set cookies when loaded."")
+    };
+}";
+
+    private readonly string _footerCode = @"@inject Lumeo.Services.ConsentService Consent
+
+<footer>
+    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm""
+            OnClick=""() => Consent.RequestOpenPreferences()"">
+        Manage cookie preferences
+    </Button>
+</footer>
+
+@* The <ConsentBanner> in MainLayout subscribes to
+   ConsentService.OnRequestOpenPreferences and pops its dialog. *@";
+
+    private readonly string _i18nCode = @"@* All banner strings are individually overridable — easy to pair with ILumeoLocalizer. *@
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+<ConsentBanner PrivacyPolicyUrl=""/privacy""
+                Title=""@L[""Consent.Title""]""
+                Description=""@L[""Consent.Description""]""
+                AcceptLabel=""@L[""Consent.Accept""]""
+                RejectLabel=""@L[""Consent.Reject""]""
+                CustomizeLabel=""@L[""Consent.Customize""]""
+                PreferencesTitle=""@L[""Consent.PreferencesTitle""]""
+                PreferencesDescription=""@L[""Consent.PreferencesDescription""]""
+                SaveLabel=""@L[""Consent.Save""]""
+                CancelLabel=""@L[""Consent.Cancel""]""
+                RequiredBadge=""@L[""Consent.Required""]""
+                PrivacyPolicyLabel=""@L[""Consent.PrivacyLink""]"" />";
+}
