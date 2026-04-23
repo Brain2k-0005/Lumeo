@@ -184,10 +184,22 @@ else
             var enumStripeClass = Animation == ProgressAnimation.Stripe ? "lumeo-progress-stripes" : null;
             var enumIndeterminateClass = Animation == ProgressAnimation.Indeterminate ? "lumeo-progress-indeterminate" : null;
             var enumGlowClass = Animation == ProgressAnimation.Glow ? "lumeo-progress-glow" : null;
-            var colorClasses = (GradientFrom is not null && GradientTo is not null) ? null : VariantClasses;
+            // Indeterminate sweep uses currentColor for its ::before pseudo — swap bg-* → text-* so the variant color feeds through.
+            var colorClasses = (GradientFrom is not null && GradientTo is not null)
+                ? null
+                : (Animation == ProgressAnimation.Indeterminate ? IndeterminateColorClasses : VariantClasses);
             return string.Join(" ", new[] { "h-full rounded-[var(--radius)] transition-all duration-300", colorClasses, stripeClasses, animClasses, enumStripeClass, enumIndeterminateClass, enumGlowClass }.Where(s => !string.IsNullOrWhiteSpace(s)));
         }
     }
+
+    private string IndeterminateColorClasses => Variant switch
+    {
+        ProgressVariant.Default => "text-primary",
+        ProgressVariant.Success => "text-success",
+        ProgressVariant.Warning => "text-warning",
+        ProgressVariant.Destructive => "text-destructive",
+        _ => "text-primary"
+    };
 
     private string IndicatorStyle
     {
