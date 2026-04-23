@@ -29,7 +29,19 @@
     private List<Sparkle> _sparkles = new();
     private int _lastSeed;
 
-    private string CssClass => string.Join(" ", new[] { "lumeo-sparkles", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    // If the consumer passes their own positioning utility (absolute/fixed/sticky), skip the marker class
+    // that forces `position: relative` — unlayered rules in lumeo.css always beat Tailwind's layered utilities,
+    // so the only reliable way to let "absolute inset-0" through is to not emit the conflicting rule at all.
+    private string CssClass
+    {
+        get
+        {
+            var overridesPosition = !string.IsNullOrEmpty(Class)
+                && (Class.Contains("absolute") || Class.Contains("fixed") || Class.Contains("sticky"));
+            var baseClass = overridesPosition ? null : "lumeo-sparkles";
+            return string.Join(" ", new[] { baseClass, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        }
+    }
 
     protected override void OnParametersSet()
     {

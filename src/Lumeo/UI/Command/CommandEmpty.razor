@@ -1,16 +1,21 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @if (ChildContent is not null)
-    {
-        @ChildContent
-    }
-    else
-    {
-        <span>@L["Command.NoResults"]</span>
-    }
-</div>
+@* Only renders when every CommandItem has been filtered out — previously rendered unconditionally so users
+   saw the empty text stacked under their matching items. *@
+@if (IsVisible)
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            <span>@L["Command.NoResults"]</span>
+        }
+    </div>
+}
 
 @code {
     [CascadingParameter] public Command.CommandContext? Context { get; set; }
@@ -18,5 +23,7 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"py-6 text-center text-sm {Class}".Trim();
+    private bool IsVisible => Context is null || Context.VisibleItemCount == 0;
+
+    private string CssClass => $"py-6 text-center text-sm text-muted-foreground {Class}".Trim();
 }

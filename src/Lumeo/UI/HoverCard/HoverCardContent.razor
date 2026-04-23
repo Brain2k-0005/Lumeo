@@ -5,6 +5,10 @@
 {
     <div id="@_contentId" class="@CssClass" @onmouseenter="() => Context.RequestOpen.InvokeAsync()" @onmouseleave="() => Context.RequestClose.InvokeAsync()" @attributes="AdditionalAttributes">
         @ChildContent
+        @if (ShowArrow)
+        {
+            <div class="@ArrowClasses"></div>
+        }
     </div>
 }
 
@@ -15,13 +19,21 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public HoverCardAlign Align { get; set; } = HoverCardAlign.Center;
     [Parameter] public HoverCardSide Side { get; set; } = HoverCardSide.Bottom;
+    [Parameter] public bool ShowArrow { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"hovercard-content-{Guid.NewGuid():N}";
     private bool _positioned;
 
-    private string CssClass => $"fixed z-50 w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg outline-none animate-fade-in {Class}".Trim();
+    private string CssClass => string.Join(" ", new[] { "fixed z-50 w-64 rounded-md border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg outline-none", ShowArrow ? "overflow-visible" : "", "animate-fade-in", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string ArrowClasses => Side switch
+    {
+        HoverCardSide.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
+        HoverCardSide.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
+        _ => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
+    };
 
     private string AlignStr => Align switch
     {

@@ -1,55 +1,47 @@
 @namespace Lumeo
 
+@* Uses a transparent <input type="range"> for drag handling — the browser does all the math,
+   so the slider tracks the pointer exactly whether the container is fixed px or fluid %. *@
 <div class="@CssClass"
      style="width: @Width; height: @Height; position: relative; overflow: hidden; user-select: none;"
-     @onmousedown="StartDrag"
-     @onmousemove="OnMouseMove"
-     @onmouseup="StopDrag"
-     @onmouseleave="StopDrag"
-     @ontouchstart="StartTouch"
-     @ontouchmove="OnTouchMove"
-     @ontouchend="StopDrag"
      @attributes="AdditionalAttributes">
 
     @* After image (full size, behind) *@
-    <img src="@AfterSrc" alt="@AfterLabel"
-         style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block;" />
+    <img src="@AfterSrc" alt="@AfterLabel" draggable="false"
+         style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;" />
 
-    @* Before image (clipped) *@
-    @if (Orientation == ImageCompareOrientation.Horizontal)
-    {
-        <div style="position: absolute; inset: 0; overflow: hidden; width: @(_position)%;">
-            <img src="@BeforeSrc" alt="@BeforeLabel"
-                 style="width: @(100 * 100 / Math.Max(1, _position))%; height: 100%; object-fit: cover; display: block;" />
-        </div>
-    }
-    else
-    {
-        <div style="position: absolute; inset: 0; overflow: hidden; height: @(_position)%;">
-            <img src="@BeforeSrc" alt="@BeforeLabel"
-                 style="width: 100%; height: @(100 * 100 / Math.Max(1, _position))%; object-fit: cover; display: block;" />
-        </div>
-    }
+    @* Before image (clipped via clip-path — no scaling tricks, exact pixel-for-pixel reveal) *@
+    <img src="@BeforeSrc" alt="@BeforeLabel" draggable="false"
+         style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; clip-path: @ClipPath;" />
 
     @* Divider line *@
     @if (Orientation == ImageCompareOrientation.Horizontal)
     {
-        <div style="position: absolute; top: 0; bottom: 0; left: @(_position)%; transform: translateX(-50%); width: 2px; background: white; opacity: 0.9; pointer-events: none;" />
-        <div style="position: absolute; top: 50%; left: @(_position)%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: ew-resize; pointer-events: none;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #555;">
-                <polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6" style="transform: translateX(12px)"/>
-                <path d="M9 18 3 12 9 6"/><path d="M15 6 21 12 15 18"/>
+        <div style="position: absolute; top: 0; bottom: 0; left: @(PositionPct); transform: translateX(-50%); width: 2px; background: white; opacity: 0.9; pointer-events: none;"></div>
+    }
+    else
+    {
+        <div style="position: absolute; left: 0; right: 0; top: @(PositionPct); transform: translateY(-50%); height: 2px; background: white; opacity: 0.9; pointer-events: none;"></div>
+    }
+
+    @* Handle *@
+    @if (Orientation == ImageCompareOrientation.Horizontal)
+    {
+        <div style="position: absolute; top: 50%; left: @(PositionPct); transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none; color: #555;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 6 3 12l6 6" />
+                <path d="m15 6 6 6-6 6" />
             </svg>
         </div>
     }
     else
     {
-        <div style="position: absolute; left: 0; right: 0; top: @(_position)%; transform: translateY(-50%); height: 2px; background: white; opacity: 0.9; pointer-events: none;" />
-        <div style="position: absolute; left: 50%; top: @(_position)%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: ns-resize; pointer-events: none;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #555;">
-                <path d="M12 3 12 21"/><path d="M6 9 12 3 18 9"/><path d="M6 15 12 21 18 15"/>
+        <div style="position: absolute; left: 50%; top: @(PositionPct); transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none; color: #555;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6-6 6 6" />
+                <path d="m6 15 6 6 6-6" />
             </svg>
         </div>
     }
@@ -67,6 +59,14 @@
             @AfterLabel
         </span>
     }
+
+    @* Transparent range input layered on top — the browser handles drag math. *@
+    <input type="range" min="0" max="100" step="0.1"
+           value="@_position.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)"
+           @oninput="OnInput"
+           aria-label="Image compare slider"
+           class="lumeo-image-compare-slider"
+           style="@SliderStyle" />
 </div>
 
 @code {
@@ -82,9 +82,19 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private double _position;
-    private bool _isDragging;
 
     private string CssClass => $"rounded-lg overflow-hidden {Class}".Trim();
+
+    private string PositionPct => $"{_position.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}%";
+
+    private string ClipPath => Orientation == ImageCompareOrientation.Horizontal
+        ? $"inset(0 {(100 - _position).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}% 0 0)"
+        : $"inset(0 0 {(100 - _position).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}% 0)";
+
+    private string SliderStyle =>
+        Orientation == ImageCompareOrientation.Horizontal
+            ? "position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; appearance: none; -webkit-appearance: none; background: transparent; margin: 0;"
+            : "position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ns-resize; appearance: none; -webkit-appearance: none; background: transparent; margin: 0; writing-mode: vertical-lr; direction: ltr;";
 
     public enum ImageCompareOrientation { Horizontal, Vertical }
 
@@ -93,47 +103,11 @@
         _position = Math.Clamp(InitialPosition, 1, 99);
     }
 
-    private void StartDrag(MouseEventArgs e)
+    private void OnInput(ChangeEventArgs e)
     {
-        _isDragging = true;
-    }
-
-    private void StopDrag()
-    {
-        _isDragging = false;
-    }
-
-    private void OnMouseMove(MouseEventArgs e)
-    {
-        if (!_isDragging) return;
-        // We rely on offsetX/offsetY not being available directly;
-        // use clientX relative approach via JS or use the element's bounding rect.
-        // Since we can't get bounding rect without JS here, we use a proportional estimate
-        // based on movementX/movementY increments.
-        if (Orientation == ImageCompareOrientation.Horizontal)
+        if (e.Value is string s && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
         {
-            var delta = e.MovementX;
-            // Convert pixel movement to percentage (rough, requires knowing width)
-            // We'll update position incrementally
-            _position = Math.Clamp(_position + delta * 0.3, 1, 99);
+            _position = Math.Clamp(v, 1, 99);
         }
-        else
-        {
-            var delta = e.MovementY;
-            _position = Math.Clamp(_position + delta * 0.3, 1, 99);
-        }
-    }
-
-    private void StartTouch(TouchEventArgs e)
-    {
-        _isDragging = true;
-    }
-
-    private void OnTouchMove(TouchEventArgs e)
-    {
-        if (!_isDragging || e.Touches.Length == 0) return;
-        // Touch move uses changedTouches, position relative to page
-        // We can only do delta-based here without JS interop
-        // This is a best-effort approach
     }
 }
