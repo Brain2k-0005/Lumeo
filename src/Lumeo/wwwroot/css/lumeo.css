@@ -515,6 +515,16 @@ input[type="range"]::-moz-range-thumb {
   to   { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); max-height: 200px; margin-top: 0; margin-bottom: 0; padding-top: var(--lumeo-toast-py, 1rem); padding-bottom: var(--lumeo-toast-py, 1rem); }
+  to   { opacity: 0; transform: translateX(110%); max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
+}
+
+.animate-toast-out {
+  animation: toast-out 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
 /* =====================================================
  * Animation Utility Classes
  * ===================================================== */
@@ -687,16 +697,39 @@ input[type="range"]::-moz-range-thumb {
   50%      { opacity: 1; transform: scale(1); }
 }
 
-.lumeo-sparkles {
+/* :where() keeps specificity at 0 so consumer utilities like `absolute inset-0` can still win. */
+:where(.lumeo-sparkles) {
   position: relative;
   display: inline-block;
 }
+
+/* --- ImageCompare: transparent range input with a full-height invisible thumb so
+   clicks anywhere on the image move the divider exactly under the cursor. --- */
+.lumeo-image-compare-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  cursor: inherit;
+}
+.lumeo-image-compare-slider::-moz-range-thumb {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: 0;
+  cursor: inherit;
+}
+.lumeo-image-compare-slider::-webkit-slider-runnable-track { background: transparent; }
+.lumeo-image-compare-slider::-moz-range-track { background: transparent; }
+.lumeo-image-compare-slider:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; opacity: 0.001; }
 .lumeo-sparkle {
   position: absolute;
   pointer-events: none;
   opacity: 0;
   animation: lumeo-sparkle-twinkle 2.2s ease-in-out infinite;
   transform-origin: center;
+  will-change: transform, opacity;
 }
 
 /* --- TextReveal --- */
@@ -854,10 +887,15 @@ input[type="range"]::-moz-range-thumb {
   animation: lumeo-progress-stripes 1s linear infinite;
 }
 
-/* --- Progress: indeterminate slider (narrow segment sweeping across) --- */
+/* --- Progress: indeterminate slider (narrow segment sweeping across) ---
+   Tuned so the bar's exit off the right edge lines up with the opacity fade-out:
+   at t=85% the right edge is at the viewport edge (translateX=70% with 30% bar width),
+   and opacity hits 0 right as the bar has fully exited — no visible snap. */
 @keyframes lumeo-progress-indeterminate {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(300%); }
+  0%   { transform: translateX(-100%); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { transform: translateX(70%); opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
 }
 
 .lumeo-progress-indeterminate {
@@ -871,7 +909,7 @@ input[type="range"]::-moz-range-thumb {
   inset: 0;
   width: 30%;
   border-radius: inherit;
-  background: inherit;
+  background: currentColor;
   animation: lumeo-progress-indeterminate 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
@@ -1245,6 +1283,16 @@ input[type="range"]::-moz-range-thumb {
 .lumeo-datagrid-fullscreen-panel {
   animation: lumeo-datagrid-fs-panel-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   transform-origin: center;
+}
+/* In fullscreen, the grid itself must fill the modal so the rows area grows and pagination
+   sticks to the bottom instead of floating with a big empty gap below. The grid root already
+   uses `flex flex-col`, so making it 100% height + dropping the redundant outer border gives
+   a clean single-surface look. */
+.lumeo-datagrid-fullscreen-panel [data-slot="datagrid"] {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 @keyframes lumeo-datagrid-fs-backdrop-in {
   from { opacity: 0; }

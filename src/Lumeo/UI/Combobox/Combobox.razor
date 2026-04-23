@@ -106,10 +106,14 @@
     {
         SearchText = text;
         _focusedIndex = -1;
-        _items.Clear();
 
+        // Only clear registered items for async search — async replaces the item set, so the old registrations
+        // are stale. For static items (filtered by the parent's bound text), the items remain mounted and handle
+        // their own register/unregister lifecycle; clearing here mis-reports ItemCount as 0 and triggers the
+        // "no results" empty state while items are still visible.
         if (OnSearchAsync.HasDelegate)
         {
+            _items.Clear();
             _dispatch.Schedule(DebounceMs, () => InvokeAsync(async () =>
             {
                 await OnSearchAsync.InvokeAsync(text);
