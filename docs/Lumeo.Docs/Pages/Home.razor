@@ -200,18 +200,34 @@
 </section>
 
 
-<!-- ======================= MARQUEE STRIP ======================= -->
-<section class="py-10 border-y border-border/40 bg-muted/20 overflow-hidden">
+<!-- ======================= MARQUEE WALL (two rows, opposite directions) ======================= -->
+<section class="py-14 border-y border-border/40 bg-gradient-to-b from-muted/30 via-muted/10 to-muted/30 overflow-hidden relative">
+    @* Edge fades so pills dissolve in/out instead of hard-cutting at the container. *@
+    <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-background to-transparent z-10"></div>
+    <div class="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-background to-transparent z-10"></div>
+
     <BlurFade DelayMs="0">
-        <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Class="[--gap:2rem]">
-            @foreach (var kw in _marqueeKeywords)
-            {
-                <span class="mx-4 inline-flex items-center gap-2 rounded-full border border-border/40 bg-background px-4 py-1.5 text-sm font-medium text-muted-foreground whitespace-nowrap">
-                    <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
-                    @kw
-                </span>
-            }
-        </Marquee>
+        <Stack Gap="4">
+            <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Class="[--gap:1rem]">
+                @foreach (var p in _marqueeRowA)
+                {
+                    <span class="mx-2 inline-flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap shadow-sm hover:border-primary/40 hover:shadow-md transition-all">
+                        <DynamicIcon Name="@p.Icon" Class="h-4 w-4 text-primary shrink-0" />
+                        @p.Label
+                    </span>
+                }
+            </Marquee>
+
+            <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Reverse="true" Class="[--gap:1rem]">
+                @foreach (var p in _marqueeRowB)
+                {
+                    <span class="mx-2 inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-4 py-2 text-sm font-semibold whitespace-nowrap hover:bg-primary/15 transition-colors">
+                        <DynamicIcon Name="@p.Icon" Class="h-4 w-4 shrink-0" />
+                        @p.Label
+                    </span>
+                }
+            </Marquee>
+        </Stack>
     </BlurFade>
 </section>
 
@@ -732,11 +748,46 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new("AntDesign 1.6",   "9.35 MB",100.0, false),
     };
 
-    private readonly string[] _marqueeKeywords =
+    private record MarqueePill(string Icon, string Label);
+
+    // Two rows, opposing directions, icon-anchored pills. Content-rich so the strip
+    // reads as "here's everything that ships" rather than a sparse ornament.
+    private readonly MarqueePill[] _marqueeRowA =
     {
-        "AI primitives", "Motion", "DataGrid", "Charts", "Scheduler", "Gantt",
-        "Kanban", "Blocks", "Dark mode", "RTL", "14 locales", "MCP server",
-        "CLI", "dotnet templates", "Source generators", "Pre-compiled Tailwind"
+        new("Zap",             "AI primitives"),
+        new("Sparkles",        "Motion primitives"),
+        new("Table2",          "DataGrid"),
+        new("BarChart3",       "Charts"),
+        new("Calendar",        "Scheduler"),
+        new("LayoutList",      "Gantt"),
+        new("Columns3",        "Kanban"),
+        new("Layers",          "Blocks"),
+        new("ClipboardList",   "Forms"),
+        new("CalendarDays",    "DatePicker"),
+        new("PenLine",         "RichText Editor"),
+        new("TrendingUp",      "Sparklines"),
+        new("LayoutDashboard", "Dashboard tiles"),
+        new("MessageCircle",   "Chat primitives"),
+        new("Send",            "Streaming"),
+    };
+
+    private readonly MarqueePill[] _marqueeRowB =
+    {
+        new("Moon",             "Dark mode"),
+        new("Languages",        "RTL support"),
+        new("Globe",            "14 locales"),
+        new("Rocket",           "MCP server"),
+        new("TerminalSquare",   "CLI"),
+        new("FolderPlus",       "dotnet new templates"),
+        new("Code2",            "Source generators"),
+        new("Palette",          "Tailwind v4 ready"),
+        new("Package",          "868 KB"),
+        new("ShieldCheck",      "WCAG AA"),
+        new("TestTube",         "1,727 tests"),
+        new("Shield",           "MIT licensed"),
+        new("Monitor",          "WASM + Server"),
+        new("Github",           "Source-available"),
+        new("Lightbulb",        "shadcn-style vendoring"),
     };
 
     private readonly FeatureItem[] _features =
