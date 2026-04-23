@@ -10,11 +10,15 @@
 
 import { createServer } from 'node:http';
 import sirv from 'sirv';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function startServer(rootDir, port = 4300) {
-    const indexHtml = readFileSync(join(rootDir, 'index.html'), 'utf8');
+    const indexPath = join(rootDir, 'index.html');
+    if (!existsSync(indexPath)) {
+        throw new Error(`[prerender/server] index.html not found at ${indexPath} — did you pass wwwroot/ (not the project root)?`);
+    }
+    const indexHtml = readFileSync(indexPath, 'utf8');
     const serve = sirv(rootDir, { dev: true, etag: true, single: false });
 
     const server = createServer((req, res) => {
