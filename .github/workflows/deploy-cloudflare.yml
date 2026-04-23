@@ -1,0 +1,97 @@
+name: Deploy Docs to Cloudflare Pages
+
+# Runs in parallel with the existing GitHub Pages deploy workflow during the cutover.
+# Once `lumeo.nativ.sh` is pointed at Cloudflare Pages, remove `deploy-docs.yml`.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN  — create at dash.cloudflare.com/profile/api-tokens using the
+#                           "Edit Cloudflare Workers" template and add "Pages:Edit" scope.
+#   CLOUDFLARE_ACCOUNT_ID — from any page in the Cloudflare dashboard sidebar.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: "cloudflare-pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
+      - name: Install npm deps
+        run: |
+          npm install --no-audit --no-fund
+          (cd docs/Lumeo.Docs && npm install --no-audit --no-fund)
+
+      - name: Publish Blazor WASM
+        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
+
+      - name: Rebuild Tailwind bundles into release
+        # Overwrites the stale CSS that dotnet publish's static-web-asset pipeline
+        # had copied from the (committed) working tree.
+        run: |
+          npx @tailwindcss/cli \
+            -i ./src/Lumeo/Styles/lumeo-utilities.src.css \
+            -o ./release/wwwroot/_content/Lumeo/css/lumeo-utilities.css \
+            --minify
+          npx @tailwindcss/cli \
+            -i ./docs/Lumeo.Docs/Styles/tailwind.css \
+            -o ./release/wwwroot/css/tailwind.out.css \
+            --minify
+
+      - name: Drop pre-compressed copies
+        # Cloudflare compresses at the edge; shipped `.br` / `.gz` copies would go stale
+        # the moment we overwrite their uncompressed source above.
+        run: |
+          find release/wwwroot -name "*.br" -delete
+          find release/wwwroot -name "*.gz" -delete
+
+      - name: Stamp CSS cache-busters with commit SHA
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          sed -i "s/__LUMEO_BUILD__/${SHORT_SHA}/g" release/wwwroot/index.html
+
+      - name: Copy index.html to 404.html
+        run: cp release/wwwroot/index.html release/wwwroot/404.html
+
+      - name: Copy registry + raw source for CLI consumers
+        run: |
+          mkdir -p release/wwwroot/registry
+          cp -r src/Lumeo/wwwroot/registry/* release/wwwroot/registry/ || true
+          mkdir -p release/wwwroot/raw
+          rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' \
+                src/Lumeo/ release/wwwroot/raw/
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: lumeo-docs
+          directory: release/wwwroot
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # Deploy to the `master` branch of the CF Pages project (= production).
+          # Other branches show up as preview deployments.
+          branch: master

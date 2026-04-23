@@ -1,0 +1,58 @@
+# Cloudflare Pages _headers — per-path HTTP response headers.
+# See: https://developers.cloudflare.com/pages/configuration/headers/
+#
+# Strategy: index.html is always revalidated (so a new deploy is picked up
+# immediately), every fingerprinted Blazor WASM asset is immutable for a year,
+# and fonts / theme CSS fall in between — short cache because they're served
+# without a filename fingerprint but can change on any deploy.
+
+# ---------- Blazor framework assets (every filename is fingerprinted) ----------
+/_framework/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Extra MIME for the native WASM payload — some CDN layers strip it otherwise.
+/_framework/*.wasm
+  Content-Type: application/wasm
+
+# ---------- Self-hosted fonts (rarely change; safe to cache a week) ----------
+/fonts/*
+  Cache-Control: public, max-age=604800, immutable
+
+/_content/Lumeo/fonts/*
+  Cache-Control: public, max-age=604800, immutable
+
+# ---------- CSS with `?v=<sha>` cache-busters ----------
+# Filename isn't fingerprinted, but the deploy workflow stamps `?v=<commit>`
+# on every CSS link in index.html — so each deploy is a distinct URL and
+# browsers re-fetch on their own. Cache for an hour as a safety net.
+/css/*
+  Cache-Control: public, max-age=3600
+
+/_content/Lumeo/css/*
+  Cache-Control: public, max-age=3600
+
+# ---------- Component source / registry (fetched by the CLI) ----------
+# These change on every Lumeo release; don't let anything cache stale JSON.
+/registry/*
+  Cache-Control: no-cache
+  Access-Control-Allow-Origin: *
+
+/raw/*
+  Cache-Control: no-cache
+  Access-Control-Allow-Origin: *
+
+# ---------- HTML shell — always revalidate so the new Blazor boot manifest loads ----------
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/404.html
+  Cache-Control: no-cache
+
+# ---------- Security hardening for the whole site ----------
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: interest-cohort=()
