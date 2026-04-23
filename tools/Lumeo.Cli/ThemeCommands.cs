@@ -13,6 +13,60 @@ namespace Lumeo.Cli;
 /// </summary>
 public static class ThemeCommands
 {
+    /// <summary>Encodes named options into the 6-char client-side preset code.
+    /// Unknown option values error out with the list of valid choices so typos
+    /// are caught before the code is printed.</summary>
+    public static Task Encode(
+        string? theme, string? style, string? baseColor, string? radius,
+        string? font, string? icons, string? menuColor, string? menuAccent,
+        bool dark, bool commandOnly)
+    {
+        int? Idx(string[] valid, string? value, string label, int defaultIdx)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return defaultIdx;
+            var i = Array.FindIndex(valid, v => string.Equals(v, value, StringComparison.OrdinalIgnoreCase));
+            if (i < 0)
+            {
+                Console.Error.WriteLine(Ansi.Red($"Invalid --{label} '{value}'. Valid: {string.Join(", ", valid.Where(v => v.Length > 0))}"));
+                Environment.ExitCode = 2;
+                return null;
+            }
+            return i;
+        }
+
+        var themeIdx       = Idx(LumeoPresetOptions.Themes,         theme,       "theme",       0);
+        var styleIdx       = Idx(LumeoPresetOptions.Styles,         style,       "style",       0);
+        var baseIdx        = Idx(LumeoPresetOptions.BaseColors,     baseColor,   "base",        0);
+        var radiusIdx      = Idx(LumeoPresetOptions.Radii,          radius,      "radius",      2);
+        var fontIdx        = Idx(LumeoPresetOptions.Fonts,          font,        "font",        0);
+        var iconsIdx       = Idx(LumeoPresetOptions.IconLibraries,  icons,       "icons",       0);
+        var menuColorIdx   = Idx(LumeoPresetOptions.MenuColors,     menuColor,   "menu-color",  0);
+        var menuAccentIdx  = Idx(LumeoPresetOptions.MenuAccents,    menuAccent,  "menu-accent", 0);
+        if (themeIdx is null || styleIdx is null || baseIdx is null || radiusIdx is null
+            || fontIdx is null || iconsIdx is null || menuColorIdx is null || menuAccentIdx is null)
+        {
+            return Task.CompletedTask; // exit code already set
+        }
+
+        var preset = new LumeoPreset(
+            Theme: themeIdx.Value, Style: styleIdx.Value, BaseColor: baseIdx.Value,
+            Radius: radiusIdx.Value, Font: fontIdx.Value, IconLibrary: iconsIdx.Value,
+            MenuColor: menuColorIdx.Value, MenuAccent: menuAccentIdx.Value,
+            Dark: dark ? 1 : 0);
+
+        var code = LumeoPresetCodec.Encode(preset);
+        if (commandOnly)
+        {
+            Console.WriteLine($"lumeo apply --preset {code}");
+        }
+        else
+        {
+            Console.WriteLine(code);
+        }
+        return Task.CompletedTask;
+    }
+
+
     // All theme keys that <c>apply</c> understands. Used for --only filtering
     // and to ensure lumeo-theme.json has a stable, known shape.
     private static readonly string[] AllParts =
