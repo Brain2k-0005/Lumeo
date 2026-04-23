@@ -4,7 +4,7 @@
 <ToastViewport Position="Position">
     @foreach (var toast in _toasts)
     {
-        <Toast Variant="@toast.Options.Variant" Class="@toast.Options.Class" @key="@toast.Id">
+        <Toast Variant="@toast.Options.Variant" Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)" @key="@toast.Id">
             @if (toast.Options.CustomContent is not null)
             {
                 @toast.Options.CustomContent
@@ -87,11 +87,7 @@
         if (toastId == "*")
         {
             var ids = _toasts.Select(t => t.Id).ToList();
-            foreach (var id in ids)
-            {
-                CancelTimer(id);
-                _toasts.RemoveAll(t => t.Id == id);
-            }
+            await Task.WhenAll(ids.Select(id => RemoveItemAsync(id)));
         }
         else
         {
@@ -131,7 +127,9 @@
         try
         {
             await Task.Delay(duration, token);
-            await InvokeAsync(() => RemoveItem(id));
+            // Use the async variant so the list removal is followed by StateHasChanged —
+            // without it the toast was dropped from _toasts but never re-rendered away.
+            await InvokeAsync(() => RemoveItemAsync(id));
         }
         catch (TaskCanceledException)
         {
@@ -144,12 +142,12 @@
         toast.Options.OnAction?.Invoke();
     }
 
+    // Exit animation duration — must match `.animate-toast-out` in lumeo.css (220 ms).
+    private const int ExitAnimationMs = 220;
+
     private void Remove(string id)
     {
-        var toast = _toasts.FirstOrDefault(t => t.Id == id);
-        toast?.Options.OnDismiss?.Invoke();
-        RemoveItem(id);
-        StateHasChanged();
+        _ = InvokeAsync(() => RemoveWithExitAsync(id, runOnDismiss: true));
     }
 
     private void RemoveItem(string id)
@@ -160,7 +158,28 @@
 
     private async Task RemoveItemAsync(string id)
     {
+        await RemoveWithExitAsync(id, runOnDismiss: false);
+    }
+
+    private async Task RemoveWithExitAsync(string id, bool runOnDismiss)
+    {
+        var toast = _toasts.FirstOrDefault(t => t.Id == id);
+        if (toast is null) return;
+
         CancelTimer(id);
+        if (runOnDismiss)
+        {
+            toast.Options.OnDismiss?.Invoke();
+        }
+        // Swap in the leaving marker so the render loop adds the exit animation class,
+        // then drop the toast after the animation would have played.
+        var index = _toasts.IndexOf(toast);
+        if (index >= 0)
+        {
+            _toasts[index] = toast with { Leaving = true };
+            StateHasChanged();
+            try { await Task.Delay(ExitAnimationMs); } catch (TaskCanceledException) { }
+        }
         _toasts.RemoveAll(t => t.Id == id);
         await InvokeAsync(StateHasChanged);
     }
@@ -190,5 +209,5 @@
         await Task.CompletedTask;
     }
 
-    private record ToastItem(string Id, ToastOptions Options);
+    private record ToastItem(string Id, ToastOptions Options, bool Leaving = false);
 }

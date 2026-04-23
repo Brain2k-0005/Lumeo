@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 @if (IsVisible)
 {
@@ -26,9 +27,33 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _itemId = $"cmd-item-{Guid.NewGuid():N}";
+    private bool _registered;
+
     private bool IsVisible => string.IsNullOrEmpty(Context?.SearchText)
         || string.IsNullOrEmpty(FilterValue)
         || FilterValue.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
 
     private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 {Class}".Trim();
+
+    protected override void OnParametersSet()
+    {
+        // Keep the item registered with the Command context only while it's visible — this is what drives
+        // CommandEmpty to render exactly when every item has been filtered out.
+        if (IsVisible && !_registered)
+        {
+            Context?.RegisterItem(_itemId);
+            _registered = true;
+        }
+        else if (!IsVisible && _registered)
+        {
+            Context?.UnregisterItem(_itemId);
+            _registered = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_registered) Context?.UnregisterItem(_itemId);
+    }
 }
