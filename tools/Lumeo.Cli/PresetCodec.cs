@@ -35,6 +35,35 @@ internal static class LumeoPresetCodec
         (3, 8), (4, 16), (2, 4), (2, 4), (1, 2),
     };
 
+    public static string Encode(LumeoPreset preset)
+    {
+        var values = new[]
+        {
+            CurrentVersion,
+            preset.Theme, preset.Style, preset.BaseColor, preset.Radius,
+            preset.Font, preset.IconLibrary, preset.MenuColor, preset.MenuAccent,
+            preset.Dark,
+        };
+        ulong bits = 0;
+        int pos = 0;
+        for (int i = 0; i < values.Length; i++)
+        {
+            var (width, max) = FieldSpec[i];
+            var v = values[i];
+            if (v < 0 || v >= max)
+                throw new ArgumentOutOfRangeException(nameof(preset), $"Field {i} value {v} exceeds {width}-bit slot (max {max - 1}).");
+            bits |= ((ulong)v & ((1UL << width) - 1)) << pos;
+            pos += width;
+        }
+        var buf = new char[CodeLength];
+        for (int i = 0; i < CodeLength; i++)
+        {
+            buf[i] = Base62Alphabet[(int)(bits % 62)];
+            bits /= 62;
+        }
+        return new string(buf);
+    }
+
     public static bool TryDecode(string code, out LumeoPreset preset)
     {
         preset = new LumeoPreset(0, 0, 0, 0, 0, 0, 0, 0, 0);

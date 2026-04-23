@@ -169,6 +169,39 @@ var infoCmd = new Command("info", "Print project state (config, installed compon
 };
 infoCmd.SetHandler(Commands.Info, infoJsonOpt);
 
+// --- preset encode ---
+var encodeThemeOpt = new Option<string?>("--theme", "Theme name: default, blue, orange, green, rose, zinc, violet, amber, teal.");
+var encodeStyleOpt = new Option<string?>("--style", "Style: default | new-york.");
+var encodeBaseOpt = new Option<string?>("--base", "Base color: slate | gray | zinc | neutral | stone.");
+var encodeRadiusOpt = new Option<string?>("--radius", "Radius: 0 | 0.25 | 0.5 | 0.75 | 1.");
+var encodeFontOpt = new Option<string?>("--font", "Font: system | inter | geist | ibm-plex-sans | jetbrains-mono | fira-code.");
+var encodeIconsOpt = new Option<string?>("--icons", "Icon library: lucide | bootstrap | fluentui | font-awesome | google-material | material-design | ionicons | devicon | flag-icons.");
+var encodeMenuColorOpt = new Option<string?>("--menu-color", "Menu color: default | dark | light.");
+var encodeMenuAccentOpt = new Option<string?>("--menu-accent", "Menu accent: subtle | bold | outline.");
+var encodeDarkOpt = new Option<bool>("--dark", "Enable dark mode.");
+var encodeCommandOpt = new Option<bool>("--command", "Print the full `lumeo apply --preset <code>` command instead of just the code.");
+var presetEncodeCmd = new Command("encode", "Generate a 6-char preset code from individual option flags.")
+{
+    encodeThemeOpt, encodeStyleOpt, encodeBaseOpt, encodeRadiusOpt, encodeFontOpt,
+    encodeIconsOpt, encodeMenuColorOpt, encodeMenuAccentOpt, encodeDarkOpt, encodeCommandOpt,
+};
+presetEncodeCmd.SetHandler(async ctx =>
+{
+    await ThemeCommands.Encode(
+        theme:      ctx.ParseResult.GetValueForOption(encodeThemeOpt),
+        style:      ctx.ParseResult.GetValueForOption(encodeStyleOpt),
+        baseColor:  ctx.ParseResult.GetValueForOption(encodeBaseOpt),
+        radius:     ctx.ParseResult.GetValueForOption(encodeRadiusOpt),
+        font:       ctx.ParseResult.GetValueForOption(encodeFontOpt),
+        icons:      ctx.ParseResult.GetValueForOption(encodeIconsOpt),
+        menuColor:  ctx.ParseResult.GetValueForOption(encodeMenuColorOpt),
+        menuAccent: ctx.ParseResult.GetValueForOption(encodeMenuAccentOpt),
+        dark:       ctx.ParseResult.GetValueForOption(encodeDarkOpt),
+        commandOnly: ctx.ParseResult.GetValueForOption(encodeCommandOpt));
+});
+var presetCmd = new Command("preset", "Preset codec utilities (encode / decode).");
+presetCmd.AddCommand(presetEncodeCmd);
+
 // --- update-assets ---
 var updateAssetsLocalOpt = new Option<bool>("--local", "Read assets from a local Lumeo checkout.");
 var updateAssetsForceOpt = new Option<bool>("--force", "Overwrite all files without prompting.");
@@ -189,6 +222,7 @@ root.AddCommand(viewCmd);
 root.AddCommand(infoCmd);
 root.AddCommand(applyCmd);
 root.AddCommand(updateAssetsCmd);
+root.AddCommand(presetCmd);
 root.AddCommand(themeCmd);
 
 var parseExit = await root.InvokeAsync(args);
@@ -366,7 +400,7 @@ namespace Lumeo.Cli
         /// no hosting setup required. Pinned to an RC tag so the registry and the CLI binary
         /// always agree on schema/shape.</summary>
         public const string DefaultRegistryUrl =
-            "https://cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@v2.0.0-rc.7/src/Lumeo/wwwroot/registry/registry.json";
+            "https://cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@v2.0.0-rc.9/src/Lumeo/wwwroot/registry/registry.json";
 
         /// <summary>Derive the base URL to fetch component source files from the registry URL.
         /// Supports three layouts:
