@@ -1,4 +1,5 @@
 @page "/components/consent-banner"
+@implements IDisposable
 @inject Lumeo.Services.ConsentService Consent
 
 <PageTitle>Consent Banner — Lumeo</PageTitle>
@@ -51,16 +52,128 @@
     </ComponentDemo>
 
     @* ---------- Gate analytics behind consent ---------- *@
-    <ComponentDemo Title="Gate analytics behind consent" Description="The whole point: nothing hits a third-party until the user says yes." Code="@_gateCode" />
+    <ComponentDemo Title="Gate analytics behind consent" Description="The whole point: nothing hits a third-party until the user says yes." Code="@_gateCode">
+        <Container MaxWidth="lg" Center="false" Padding="">
+            <Stack Gap="3">
+                <Flex Align="center" Gap="2" Class="text-xs">
+                    <Lumeo.Text Size="xs" Color="muted">Analytics consent:</Lumeo.Text>
+                    @if (Consent.HasConsent("analytics"))
+                    {
+                        <Badge Variant="Badge.BadgeVariant.Default">Granted</Badge>
+                    }
+                    else
+                    {
+                        <Badge Variant="Badge.BadgeVariant.Outline">Denied</Badge>
+                    }
+                </Flex>
+                <div class="rounded-lg border border-border/40 bg-muted/20 p-4 font-mono text-xs text-muted-foreground">
+                    @if (Consent.HasConsent("analytics"))
+                    {
+                        <div class="flex items-start gap-2">
+                            <DynamicIcon Name="CheckCircle2" Class="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                            <div>
+                                <Lumeo.Text As="div" Size="xs" Weight="medium" Color="foreground" Class="font-mono">&lt;script src="...beacon.min.js"&gt;</Lumeo.Text>
+                                <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-1">Beacon script injected — anonymous page views will be reported.</Lumeo.Text>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <Flex Align="center" Gap="2">
+                            <DynamicIcon Name="ShieldOff" Class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <Lumeo.Text Size="xs" Color="muted">No beacon. Nothing leaves the browser.</Lumeo.Text>
+                        </Flex>
+                    }
+                </div>
+                <Lumeo.Text Size="xs" Color="muted">Toggle Analytics in <button type="button" class="text-primary hover:underline" @onclick="() => Consent.RequestOpenPreferences()">cookie preferences</button> to see this flip.</Lumeo.Text>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 
     @* ---------- Custom categories ---------- *@
-    <ComponentDemo Title="Custom categories" Description="Define your own buckets — one per third-party service you load." Code="@_customCode" />
+    <ComponentDemo Title="Custom categories" Description="Define your own buckets — one per third-party service you load." Code="@_customCode">
+        <Container MaxWidth="lg" Center="false" Padding="">
+            <div class="rounded-lg border border-border/40 bg-popover text-popover-foreground p-5 space-y-4">
+                <div>
+                    <Lumeo.Text As="div" Size="sm" Weight="semibold" Color="foreground">Consent preferences</Lumeo.Text>
+                    <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-0.5">Pick which categories you're okay with. You can change this later.</Lumeo.Text>
+                </div>
+                @foreach (var cat in _demoCategories)
+                {
+                    <Flex Align="start" Gap="3">
+                        <div class="mt-0.5 shrink-0">
+                            <div class="@($"h-4 w-4 rounded border {(cat.Required ? "bg-primary border-primary" : "border-primary/60")}") flex items-center justify-center">
+                                @if (cat.Required)
+                                {
+                                    <DynamicIcon Name="Check" Class="h-3 w-3 text-primary-foreground" />
+                                }
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <Flex Align="center" Gap="2">
+                                <Lumeo.Text As="span" Size="sm" Weight="medium" Color="foreground">@cat.Title</Lumeo.Text>
+                                @if (cat.Required)
+                                {
+                                    <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Required</span>
+                                }
+                            </Flex>
+                            <Lumeo.Text As="p" Size="xs" Color="muted" Class="mt-0.5">@cat.Description</Lumeo.Text>
+                        </div>
+                    </Flex>
+                }
+            </div>
+        </Container>
+    </ComponentDemo>
 
     @* ---------- Reopen from a footer link ---------- *@
-    <ComponentDemo Title="Reopen from a footer link" Description="ConsentService fires an event when any caller requests the dialog — no component refs, no CascadingValue plumbing." Code="@_footerCode" />
+    <ComponentDemo Title="Reopen from a footer link" Description="ConsentService fires an event when any caller requests the dialog — no component refs, no CascadingValue plumbing." Code="@_footerCode">
+        <Container MaxWidth="lg" Center="false" Padding="">
+            <div class="rounded-lg border border-border/40 bg-muted/20 p-6">
+                <Lumeo.Text Size="xs" Color="muted" Class="mb-3 block uppercase tracking-wider font-semibold">Site footer</Lumeo.Text>
+                <Flex Align="center" Justify="between" Gap="4" Class="flex-wrap">
+                    <Lumeo.Text Size="xs" Color="muted">© 2026 Your Company. All rights reserved.</Lumeo.Text>
+                    <Flex Align="center" Gap="4" Class="text-xs">
+                        <a href="#" class="text-muted-foreground hover:text-foreground no-underline" @onclick:preventDefault>Privacy</a>
+                        <a href="#" class="text-muted-foreground hover:text-foreground no-underline" @onclick:preventDefault>Terms</a>
+                        <button type="button" class="text-muted-foreground hover:text-foreground" @onclick="() => Consent.RequestOpenPreferences()">
+                            Manage cookie preferences
+                        </button>
+                    </Flex>
+                </Flex>
+            </div>
+            <Lumeo.Text Size="xs" Color="muted" Class="mt-2 block">↑ Click <em>Manage cookie preferences</em> — the dialog pops open via <code class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-foreground">Consent.RequestOpenPreferences()</code>.</Lumeo.Text>
+        </Container>
+    </ComponentDemo>
 
     @* ---------- i18n ---------- *@
-    <ComponentDemo Title="Localized strings" Description="Every string is a parameter. Pair with `ILumeoLocalizer` if you want them to follow the user's language." Code="@_i18nCode" />
+    <ComponentDemo Title="Localized strings" Description="Every string is a parameter. Pair with `ILumeoLocalizer` if you want them to follow the user's language." Code="@_i18nCode">
+        <Container MaxWidth="xl" Center="false" Padding="">
+            <Stack Gap="3">
+                <Flex Align="center" Gap="2" Class="text-xs">
+                    <Button Variant="@(_i18nLocale == "en" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)" Size="Button.ButtonSize.Sm" OnClick="@(() => _i18nLocale = "en")">English</Button>
+                    <Button Variant="@(_i18nLocale == "de" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)" Size="Button.ButtonSize.Sm" OnClick="@(() => _i18nLocale = "de")">Deutsch</Button>
+                    <Button Variant="@(_i18nLocale == "fr" ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)" Size="Button.ButtonSize.Sm" OnClick="@(() => _i18nLocale = "fr")">Français</Button>
+                </Flex>
+                @{ var (title, desc, accept, reject, customize) = I18nCopy(_i18nLocale); }
+                <div class="rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-sm p-5">
+                    <Flex Align="start" Gap="4" Class="flex-wrap md:flex-nowrap">
+                        <div class="flex-1 min-w-0">
+                            <Flex Align="center" Gap="2" Class="mb-1">
+                                <DynamicIcon Name="Cookie" Class="h-4 w-4 text-primary" />
+                                <Lumeo.Text As="span" Size="sm" Weight="semibold" Color="foreground">@title</Lumeo.Text>
+                            </Flex>
+                            <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">@desc</Lumeo.Text>
+                        </div>
+                        <Flex Align="center" Gap="2" Class="shrink-0 flex-wrap">
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">@customize</Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">@reject</Button>
+                            <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm">@accept</Button>
+                        </Flex>
+                    </Flex>
+                </div>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 
 </Stack>
 
@@ -142,6 +255,35 @@
 </div>
 
 @code {
+    private string _i18nLocale = "en";
+
+    private readonly IReadOnlyList<Lumeo.Services.ConsentCategory> _demoCategories = new[]
+    {
+        new Lumeo.Services.ConsentCategory("necessary", "Strictly necessary", "Session, theme preference, routing — required for the site to work.", Required: true),
+        new Lumeo.Services.ConsentCategory("analytics", "Analytics", "Cloudflare Web Analytics — anonymous aggregate page-view stats."),
+        new Lumeo.Services.ConsentCategory("marketing", "Marketing", "Meta Pixel and LinkedIn Insight Tag for remarketing."),
+        new Lumeo.Services.ConsentCategory("embeds", "Third-party embeds", "YouTube, Vimeo, Tweet embeds — set cookies when loaded."),
+    };
+
+    private static (string title, string desc, string accept, string reject, string customize) I18nCopy(string locale) => locale switch
+    {
+        "de" => ("Cookies & Einwilligung", "Wir verwenden wenige Cookies zum Betrieb der Seite und – optional – anonyme Nutzungsstatistiken. Du entscheidest.", "Alle akzeptieren", "Optionale ablehnen", "Anpassen"),
+        "fr" => ("Cookies et consentement", "Nous utilisons peu de cookies pour faire fonctionner le site et, en option, des statistiques anonymes d'usage. À vous de choisir.", "Tout accepter", "Refuser optionnels", "Personnaliser"),
+        _    => ("Cookies & consent", "We use a minimal set of cookies to run the site and optionally measure anonymous usage to improve it. You choose what's on.", "Accept all", "Reject optional", "Customize"),
+    };
+
+    protected override void OnInitialized()
+    {
+        Consent.OnChange += HandleConsentChange;
+    }
+
+    private void HandleConsentChange() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Consent.OnChange -= HandleConsentChange;
+    }
+
     private async Task ResetConsent()
     {
         await Consent.ResetAsync();
