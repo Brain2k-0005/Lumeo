@@ -94,8 +94,10 @@ jobs:
             # so add it explicitly with top priority.
             echo "  <url><loc>${SITE}/</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>"
 
-            grep -rhE '^@page\s+"[^"]+"' docs/Lumeo.Docs/Pages/ --include="*.razor" \
-              | sed -E 's|^@page\s+"([^"]+)"|\1|' \
+            # \xEF\xBB\xBF? tolerates UTF-8 BOM at start of file — otherwise
+            # any razor file saved with BOM gets silently skipped from the sitemap.
+            grep -rhPE '^(\xEF\xBB\xBF)?@page\s+"[^"]+"' docs/Lumeo.Docs/Pages/ --include="*.razor" \
+              | sed -E 's|^(\xEF\xBB\xBF)?@page\s+"([^"]+)"|\2|' \
               | grep -v '^/$' \
               | sort -u \
               | while read -r route; do
