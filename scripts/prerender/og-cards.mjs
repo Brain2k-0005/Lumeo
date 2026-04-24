@@ -214,17 +214,120 @@ function escapeAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function rewriteMeta(html, slug, description) {
+// ---- Breadcrumb trail derived from route path ----
+// "/components/button" → [ {name: "Home", url: /}, {name: "Components", url: /components/button}, {name: "Button", url: /components/button} ]
+// Using the final route URL for intermediate crumbs (Lumeo has no /components index page).
+function breadcrumbs(route, pageTitle) {
+    const crumbs = [{ name: 'Home', url: `${SITE}/` }];
+    if (route === '/') return crumbs;
+    const parts = route.replace(/^\/+|\/+$/g, '').split('/');
+    // Intermediate segment label — title-case the slug, e.g. "components" → "Components".
+    for (let i = 0; i < parts.length - 1; i++) {
+        const seg = parts[i];
+        crumbs.push({
+            name: seg.split('-').map(s => s[0].toUpperCase() + s.slice(1)).join(' '),
+            url: `${SITE}${route}`,
+        });
+    }
+    crumbs.push({ name: pageTitle, url: `${SITE}${route}` });
+    return crumbs;
+}
+
+// ---- JSON-LD structured data ----
+// Choose schema.org type based on route prefix.
+function structuredDataFor(route, title, description) {
+    const url = `${SITE}${route}`;
+    const crumbs = breadcrumbs(route, title);
+
+    const breadcrumbList = {
+        '@type': 'BreadcrumbList',
+        itemListElement: crumbs.map((c, i) => ({
+            '@type': 'ListItem',
+            position: i + 1,
+            name: c.name,
+            item: c.url,
+        })),
+    };
+
+    let primary;
+    if (route === '/') {
+        primary = {
+            '@type': 'SoftwareApplication',
+            name: 'Lumeo',
+            description,
+            applicationCategory: 'DeveloperApplication',
+            operatingSystem: 'Cross-platform',
+            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+            url,
+            author: { '@type': 'Organization', name: 'Lumeo', url: SITE },
+        };
+    } else if (route.startsWith('/components/') || route.startsWith('/blocks/') || route.startsWith('/patterns')) {
+        primary = {
+            '@type': 'TechArticle',
+            headline: title,
+            description,
+            url,
+            image: `${SITE}/og${route === '/' ? '/home' : '/' + slugFor(route)}.png`,
+            author: { '@type': 'Organization', name: 'Lumeo', url: SITE },
+            publisher: { '@type': 'Organization', name: 'Lumeo', url: SITE, logo: { '@type': 'ImageObject', url: `${SITE}/favicon.ico` } },
+            isPartOf: { '@type': 'WebSite', name: 'Lumeo', url: SITE },
+        };
+    } else {
+        primary = {
+            '@type': 'WebPage',
+            name: title,
+            description,
+            url,
+            isPartOf: { '@type': 'WebSite', name: 'Lumeo', url: SITE },
+        };
+    }
+
+    return {
+        '@context': 'https://schema.org',
+        '@graph': [primary, breadcrumbList],
+    };
+}
+
+function rewriteMeta(html, route, slug, title, description) {
     const imgUrl = `${SITE}/og/${slug}.png`;
+    const canonicalUrl = `${SITE}${route}`;
+
+    // og:image + twitter:image
     html = html.replace(/(<meta property="og:image" content=")[^"]+(")/i, `$1${imgUrl}$2`);
     html = html.replace(/(<meta name="twitter:image" content=")[^"]+(")/i, `$1${imgUrl}$2`);
 
+    // Descriptions
     if (description) {
         const esc = escapeAttr(description);
         html = html.replace(/(<meta name="description" content=")[^"]*(")/i, `$1${esc}$2`);
         html = html.replace(/(<meta property="og:description" content=")[^"]*(")/i, `$1${esc}$2`);
         html = html.replace(/(<meta name="twitter:description" content=")[^"]*(")/i, `$1${esc}$2`);
     }
+
+    // og:url — tell platforms the canonical URL for this resource.
+    html = html.replace(/(<meta property="og:url" content=")[^"]*(")/i, `$1${canonicalUrl}$2`);
+
+    // og:image:alt — accessibility + crawler signal.
+    const altText = `Social preview card for ${title} — Lumeo Blazor component library`;
+    const escAlt = escapeAttr(altText);
+    if (/og:image:alt/i.test(html)) {
+        html = html.replace(/(<meta property="og:image:alt" content=")[^"]*(")/i, `$1${escAlt}$2`);
+    } else {
+        html = html.replace(/(<meta property="og:image" content="[^"]*"\s*\/?>)/i, `$1\n    <meta property="og:image:alt" content="${escAlt}">`);
+    }
+
+    // Canonical <link> — inject after <base href=...> if absent; otherwise rewrite.
+    if (/<link\s+rel=["']canonical["']/i.test(html)) {
+        html = html.replace(/(<link\s+rel=["']canonical["']\s+href=")[^"]*(")/i, `$1${canonicalUrl}$2`);
+    } else {
+        html = html.replace(/(<base\s+href="[^"]*"\s*\/?>)/i, `$1\n    <link rel="canonical" href="${canonicalUrl}">`);
+    }
+
+    // JSON-LD structured data — strip any previous lumeo-seo block, then inject fresh.
+    const jsonLd = JSON.stringify(structuredDataFor(route, title, description || ''));
+    html = html.replace(/\s*<script\s+type="application\/ld\+json"\s+data-lumeo-seo[^>]*>[\s\S]*?<\/script>/gi, '');
+    html = html.replace(/(<\/head>)/i, `    <script type="application/ld+json" data-lumeo-seo>${jsonLd}</script>\n$1`);
+
     return html;
 }
 
@@ -263,7 +366,7 @@ for (const route of routes) {
 
         const slug = slugFor(route);
         writeFileSync(join(ogDir, `${slug}.png`), png);
-        writeFileSync(htmlPath, rewriteMeta(routeHtml, slug, description), 'utf8');
+        writeFileSync(htmlPath, rewriteMeta(routeHtml, route, slug, title, description), 'utf8');
 
         ok++;
         if (ok % 40 === 0) console.log(`[og-cards] ${ok}/${routes.length}`);
@@ -275,6 +378,41 @@ for (const route of routes) {
 
 const secs = ((Date.now() - startAll) / 1000).toFixed(1);
 console.log(`[og-cards] done: ${ok} ok, ${fail} failed, ${secs}s`);
+
+// ---- llms.txt — emerging convention so ChatGPT / Perplexity / Claude can
+//      locate canonical Lumeo documentation without scraping the full site. ----
+const llmsLines = [
+    '# Lumeo',
+    '',
+    '> A modern, accessible Blazor component library — 130+ production-ready components on Tailwind CSS v4, with AI primitives, motion, DataGrid, charts, and RTL/i18n support. MIT-licensed, .NET 10, 868 KB total package.',
+    '',
+    '## Key pages',
+    '',
+    `- [Introduction](${SITE}/docs/introduction): What Lumeo is and how it compares to MudBlazor/Radzen/AntBlazor`,
+    `- [Getting Started](${SITE}/docs/templates): \`dotnet new\` templates and setup`,
+    `- [CLI](${SITE}/docs/cli): \`lumeo add\` / \`lumeo init\` commands`,
+    `- [Registry](${SITE}/docs/registry): Component registry for tooling`,
+    `- [MCP server](${SITE}/docs/mcp): Model Context Protocol integration for AI agents`,
+    `- [Accessibility](${SITE}/docs/accessibility): WCAG AA compliance notes`,
+    `- [Theming](${SITE}/themes): Live theme customizer`,
+    `- [Changelog](${SITE}/docs/changelog)`,
+    '',
+    '## Components',
+    '',
+];
+for (const r of routes.filter(x => x.startsWith('/components/')).sort()) {
+    const name = r.replace('/components/', '').split('-').map(s => s[0].toUpperCase() + s.slice(1)).join(' ');
+    const desc = descriptions[r] || 'Blazor component';
+    llmsLines.push(`- [${name}](${SITE}${r}): ${desc}`);
+}
+llmsLines.push('', '## Blocks (copy-paste UI)', '');
+for (const r of routes.filter(x => x.startsWith('/blocks/')).sort()) {
+    const name = r.replace('/blocks/', '').split('-').map(s => s[0].toUpperCase() + s.slice(1)).join(' ');
+    const desc = descriptions[r] || 'Pre-built UI block';
+    llmsLines.push(`- [${name}](${SITE}${r}): ${desc}`);
+}
+writeFileSync(join(wwwroot, 'llms.txt'), llmsLines.join('\n'), 'utf8');
+console.log(`[og-cards] wrote llms.txt (${llmsLines.length} lines)`);
 
 // Fail the step only if a large fraction fails (cards fall back to the
 // site-wide /social-preview.png for routes whose PNG is missing).
