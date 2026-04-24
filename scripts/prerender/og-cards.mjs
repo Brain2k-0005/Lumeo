@@ -2,17 +2,23 @@
 //
 // Usage: node og-cards.mjs <publish-dir>
 //
-// For every route in sitemap.xml:
-//   1. Open the prerendered HTML and pull its <title>
-//   2. Render a 1280×640 OG card via Puppeteer (inline HTML template)
-//   3. Save PNG to <publish-dir>/wwwroot/og/<slug>.png
-//   4. Rewrite og:image / twitter:image in the route's index.html to point at it
+// Generates one 1280×640 social preview PNG per route using Satori + resvg-js.
+// Pure JS: no browser, no Chromium, no compositor. ~100ms per card on CI.
 //
-// Runs after prerender in CI. Reuses Puppeteer's Chromium (already installed).
+// For each route in sitemap.xml:
+//   1. Read its prerendered HTML for the <title>
+//   2. Render an OG card SVG via Satori (flex layout, gradients, typography)
+//   3. Rasterize SVG → PNG via @resvg/resvg-js
+//   4. Write to <publish-dir>/wwwroot/og/<slug>.png
+//   5. Rewrite og:image / twitter:image meta tags in the route's index.html
 
-import puppeteer from 'puppeteer';
+import satori from 'satori';
+import { Resvg } from '@resvg/resvg-js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const publishDir = process.argv[2];
 if (!publishDir) {
@@ -25,18 +31,16 @@ mkdirSync(ogDir, { recursive: true });
 
 const SITE = 'https://lumeo.nativ.sh';
 
+// Fonts — loaded once. Satori requires explicit font data (no system lookups).
+const interRegular = readFileSync(join(__dirname, 'node_modules/@fontsource/inter/files/inter-latin-400-normal.woff'));
+const interBold    = readFileSync(join(__dirname, 'node_modules/@fontsource/inter/files/inter-latin-700-normal.woff'));
+
 const sitemapXml = readFileSync(join(wwwroot, 'sitemap.xml'), 'utf8');
 const routes = [...sitemapXml.matchAll(/<loc>([^<]+)<\/loc>/g)]
     .map(m => new URL(m[1]).pathname)
     .filter(Boolean);
 
 console.log(`[og-cards] ${routes.length} routes`);
-
-function escapeHtml(s) {
-    return String(s || '').replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
-}
 
 function slugFor(route) {
     if (route === '/') return 'home';
@@ -48,63 +52,117 @@ function categoryFor(route) {
     if (route.startsWith('/blocks/'))     return { label: 'Block',     tagline: 'Copy-paste UI block' };
     if (route.startsWith('/docs/'))       return { label: 'Docs',      tagline: 'Lumeo documentation' };
     if (route.startsWith('/patterns'))    return { label: 'Pattern',   tagline: 'Composition pattern' };
-    return { label: '', tagline: 'Modern Blazor component library' };
+    return { label: 'UI Library', tagline: 'Modern Blazor component library' };
 }
 
 function extractTitle(html) {
     const m = html.match(/<title>([^<]+)<\/title>/);
     if (!m) return '';
-    // Strip Blazor render-boundary markers defensively (should already be gone
-    // after prerender.mjs's pass, but avoid producing ugly cards if they leak).
-    return m[1].replace(/<!--!-->/g, '').replace(/\s*[—–-]\s*Lumeo\s*$/i, '').trim();
+    return m[1]
+        .replace(/<!--!-->/g, '')                  // raw Blazor markers
+        .replace(/&lt;!--!--&gt;/g, '')            // entity-encoded Blazor markers
+        .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        .replace(/\s*[—–-]\s*Lumeo\s*$/i, '')      // trailing " — Lumeo"
+        .trim();
 }
 
-function cardHtml({ title, subtitle, category }) {
-    const pill = category ? `<div class="pill">${escapeHtml(category)}</div>` : '';
-    return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 1280px; height: 640px; font-family: -apple-system, 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif; color: #fafafa; background: #0a0a0a; overflow: hidden; }
-.wrap { position: relative; width: 100%; height: 100%; padding: 72px 80px; display: flex; flex-direction: column; justify-content: space-between; background:
-    radial-gradient(circle at 18% 22%, rgba(59,130,246,0.22) 0%, rgba(10,10,10,0) 42%),
-    radial-gradient(circle at 85% 80%, rgba(139,92,246,0.18) 0%, rgba(10,10,10,0) 45%),
-    #0a0a0a;
-}
-.grid { position: absolute; inset: 0; background-image:
-    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-    background-size: 48px 48px; pointer-events: none; }
-.top { display: flex; justify-content: space-between; align-items: center; position: relative; }
-.brand { display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
-.brand svg { width: 36px; height: 36px; }
-.pill { padding: 8px 18px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); font-size: 15px; font-weight: 500; color: #d4d4d4; text-transform: uppercase; letter-spacing: 0.1em; }
-.content { display: flex; flex-direction: column; gap: 20px; max-width: 1050px; position: relative; }
-.title { font-size: 76px; font-weight: 800; line-height: 1.02; letter-spacing: -0.035em; }
-.subtitle { font-size: 26px; color: #a3a3a3; line-height: 1.4; font-weight: 400; }
-.footer { display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: #737373; letter-spacing: 0.02em; position: relative; }
-.footer .url { font-weight: 500; color: #a3a3a3; }
-.footer .tag { color: #525252; }
-</style></head><body><div class="wrap">
-<div class="grid"></div>
-<div class="top">
-  <div class="brand">
-    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="16" cy="16" r="9" stroke="#fafafa" stroke-width="2" opacity="0.55"/>
-      <circle cx="16" cy="16" r="3" fill="#fafafa"/>
-    </svg>
-    Lumeo
-  </div>
-  ${pill}
-</div>
-<div class="content">
-  <div class="title">${escapeHtml(title)}</div>
-  <div class="subtitle">${escapeHtml(subtitle)}</div>
-</div>
-<div class="footer">
-  <span class="url">lumeo.nativ.sh</span>
-  <span class="tag">130+ components · MIT · .NET 10</span>
-</div>
-</div></body></html>`;
+// Satori JSX-like object-tree template.
+function cardTree({ title, subtitle, category }) {
+    return {
+        type: 'div',
+        props: {
+            style: {
+                width: 1280, height: 640, display: 'flex', flexDirection: 'column',
+                justifyContent: 'space-between', padding: '72px 80px',
+                fontFamily: 'Inter', color: '#fafafa',
+                backgroundColor: '#0a0a0a',
+                backgroundImage:
+                    'radial-gradient(circle at 18% 22%, rgba(59,130,246,0.26) 0%, rgba(10,10,10,0) 42%),' +
+                    'radial-gradient(circle at 85% 80%, rgba(139,92,246,0.22) 0%, rgba(10,10,10,0) 45%)',
+            },
+            children: [
+                // Top row: brand + category pill
+                {
+                    type: 'div',
+                    props: {
+                        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+                        children: [
+                            {
+                                type: 'div',
+                                props: {
+                                    style: { display: 'flex', alignItems: 'center', gap: 14, fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em' },
+                                    children: [
+                                        // Simple Lumeo mark: outer ring + inner dot (as SVG).
+                                        {
+                                            type: 'svg',
+                                            props: {
+                                                width: 36, height: 36, viewBox: '0 0 32 32',
+                                                xmlns: 'http://www.w3.org/2000/svg',
+                                                children: [
+                                                    { type: 'circle', props: { cx: 16, cy: 16, r: 9, fill: 'none', stroke: '#fafafa', strokeWidth: 2, opacity: 0.55 } },
+                                                    { type: 'circle', props: { cx: 16, cy: 16, r: 3, fill: '#fafafa' } },
+                                                ],
+                                            },
+                                        },
+                                        'Lumeo',
+                                    ],
+                                },
+                            },
+                            {
+                                type: 'div',
+                                props: {
+                                    style: {
+                                        padding: '8px 18px', borderRadius: 999,
+                                        backgroundColor: 'rgba(255,255,255,0.08)',
+                                        border: '1px solid rgba(255,255,255,0.14)',
+                                        fontSize: 15, fontWeight: 500, color: '#d4d4d4',
+                                        textTransform: 'uppercase', letterSpacing: '0.1em',
+                                    },
+                                    children: category,
+                                },
+                            },
+                        ],
+                    },
+                },
+
+                // Middle: title + subtitle
+                {
+                    type: 'div',
+                    props: {
+                        style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1050 },
+                        children: [
+                            {
+                                type: 'div',
+                                props: {
+                                    style: { fontSize: 76, fontWeight: 700, lineHeight: 1.02, letterSpacing: '-0.035em', color: '#fafafa' },
+                                    children: title,
+                                },
+                            },
+                            {
+                                type: 'div',
+                                props: {
+                                    style: { fontSize: 26, color: '#a3a3a3', lineHeight: 1.4, fontWeight: 400 },
+                                    children: subtitle,
+                                },
+                            },
+                        ],
+                    },
+                },
+
+                // Footer
+                {
+                    type: 'div',
+                    props: {
+                        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 17, letterSpacing: '0.02em' },
+                        children: [
+                            { type: 'div', props: { style: { color: '#a3a3a3', fontWeight: 500 }, children: 'lumeo.nativ.sh' } },
+                            { type: 'div', props: { style: { color: '#525252' }, children: '130+ components · MIT · .NET 10' } },
+                        ],
+                    },
+                },
+            ],
+        },
+    };
 }
 
 function rewriteMeta(html, slug) {
@@ -114,96 +172,53 @@ function rewriteMeta(html, slug) {
     return html;
 }
 
-const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        // Reduce GPU/compositor pressure on shared CI runners.
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--font-render-hinting=none',
+const satoriOpts = {
+    width: 1280,
+    height: 640,
+    fonts: [
+        { name: 'Inter', data: interRegular, weight: 400, style: 'normal' },
+        { name: 'Inter', data: interBold,    weight: 700, style: 'normal' },
     ],
-    protocolTimeout: 300000,
-});
+};
 
-try {
-    const queue = [...routes];
-    const results = { ok: 0, fail: 0 };
-    const startAll = Date.now();
+const startAll = Date.now();
+let ok = 0, fail = 0;
 
-    async function makePage() {
-        const p = await browser.newPage();
-        // No JS in our template; disabling avoids Chromium waiting for any
-        // implicit script pipeline and cuts screenshot latency substantially.
-        await p.setJavaScriptEnabled(false);
-        await p.setViewport({ width: 1280, height: 640, deviceScaleFactor: 1 });
-        return p;
-    }
-
-    async function renderRoute(page, route) {
+for (const route of routes) {
+    try {
         const htmlPath = route === '/'
             ? join(wwwroot, 'index.html')
             : join(wwwroot, route, 'index.html');
         if (!existsSync(htmlPath)) {
-            throw new Error('no prerendered HTML');
+            fail++;
+            console.error(`✗ ${route} — no prerendered HTML`);
+            continue;
         }
+
         const routeHtml = readFileSync(htmlPath, 'utf8');
         const title = extractTitle(routeHtml) || 'Lumeo';
         const cat = categoryFor(route);
-        await page.setContent(
-            cardHtml({ title, subtitle: cat.tagline, category: cat.label }),
-            { waitUntil: 'domcontentloaded' },
-        );
+
+        const svg = await satori(cardTree({ title, subtitle: cat.tagline, category: cat.label }), satoriOpts);
+        const png = new Resvg(svg, { background: '#0a0a0a' }).render().asPng();
+
         const slug = slugFor(route);
-        await page.screenshot({ path: join(ogDir, `${slug}.png`), type: 'png', timeout: 60000 });
+        writeFileSync(join(ogDir, `${slug}.png`), png);
         writeFileSync(htmlPath, rewriteMeta(routeHtml, slug), 'utf8');
+
+        ok++;
+        if (ok % 40 === 0) console.log(`[og-cards] ${ok}/${routes.length}`);
+    } catch (err) {
+        fail++;
+        console.error(`✗ ${route} — ${err.message}`);
     }
+}
 
-    async function worker(id) {
-        let page = await makePage();
-        while (queue.length) {
-            const route = queue.shift();
-            try {
-                await renderRoute(page, route);
-                results.ok++;
-                if (results.ok % 25 === 0) {
-                    console.log(`[og-cards] ${results.ok}/${routes.length}`);
-                }
-            } catch (err) {
-                // Recreate the page — a screenshot timeout can leave Chromium's
-                // render pipeline wedged for subsequent calls. Retry once.
-                console.error(`[worker ${id}] ✗ ${route} — ${err.message}; recreating page`);
-                try { await page.close({ runBeforeUnload: false }); } catch {}
-                page = await makePage();
-                try {
-                    await renderRoute(page, route);
-                    results.ok++;
-                } catch (retryErr) {
-                    results.fail++;
-                    console.error(`[worker ${id}] ✗✗ ${route} — retry also failed: ${retryErr.message}`);
-                }
-            }
-        }
-        try { await page.close({ runBeforeUnload: false }); } catch {}
-    }
+const secs = ((Date.now() - startAll) / 1000).toFixed(1);
+console.log(`[og-cards] done: ${ok} ok, ${fail} failed, ${secs}s`);
 
-    // Concurrency 2 — screenshot throughput is GPU/compositor-bound on CI and
-    // 4 workers was causing Page.captureScreenshot timeouts.
-    await Promise.all([worker(1), worker(2)]);
-
-    const secs = ((Date.now() - startAll) / 1000).toFixed(1);
-    const failRate = results.fail / (results.ok + results.fail);
-    console.log(`[og-cards] done: ${results.ok} ok, ${results.fail} failed, ${secs}s`);
-
-    // Non-fatal: routes whose cards failed still serve the site-wide fallback
-    // og:image (/social-preview.png). Only fail the whole step if a large
-    // fraction (>15%) of routes couldn't be rendered — at that point something
-    // is systemically broken and we should know.
-    if (failRate > 0.15) {
-        console.error(`[og-cards] FAIL — ${(failRate * 100).toFixed(1)}% of routes failed, over 15% threshold`);
-        process.exitCode = 1;
-    }
-} finally {
-    await browser.close();
+// Fail the step only if a large fraction fails (cards fall back to the
+// site-wide /social-preview.png for routes whose PNG is missing).
+if (fail > 0 && fail / (ok + fail) > 0.15) {
+    process.exitCode = 1;
 }
