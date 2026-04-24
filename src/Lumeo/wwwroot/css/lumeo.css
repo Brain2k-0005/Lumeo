@@ -746,16 +746,25 @@ input[type="range"]::-moz-range-thumb {
   transform: translateY(0);
 }
 
-/* --- BlurFade --- */
+/* --- BlurFade ---
+ * Default: visible. The old default of `opacity: 0` caused a 1-2s blank flash on
+ * prerendered pages because above-the-fold elements stayed hidden until Blazor
+ * WASM finished loading and the IntersectionObserver fired. Now the element is
+ * visible as soon as CSS paints; the JS observer only HIDES elements that it has
+ * explicitly marked as "not yet seen" via data-motion-visible="false", and
+ * transitions them back to visible on scroll-in. Above-the-fold content stays
+ * visible throughout; below-fold still gets the fade-in animation. */
 .lumeo-blur-fade {
-  opacity: 0;
-  filter: blur(var(--lumeo-blur-px, 8px));
-  transform: translateY(var(--lumeo-blur-y, 8px));
   transition:
     opacity var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1),
     filter var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1),
     transform var(--lumeo-blur-duration, 600ms) cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, filter, transform;
+}
+.lumeo-blur-fade[data-motion-visible="false"] {
+  opacity: 0;
+  filter: blur(var(--lumeo-blur-px, 8px));
+  transform: translateY(var(--lumeo-blur-y, 8px));
 }
 .lumeo-blur-fade[data-motion-visible="true"] {
   opacity: 1;
