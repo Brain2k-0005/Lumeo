@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 <div class="inline-flex items-center">
-    <button type="button" role="switch" aria-checked="@Checked.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@(Disabled || Loading)" @attributes="AdditionalAttributes">
+    <button type="button" role="switch" aria-checked="@Checked.ToString().ToLower()" aria-label="@AriaLabelValue" class="@CssClass" @onclick="Toggle" disabled="@(Disabled || Loading)" @attributes="AdditionalAttributes">
         <span class="@ThumbClasses">
             @if (Loading)
             {
@@ -22,6 +22,13 @@
     [Parameter] public bool Loading { get; set; }
     [Parameter] public string? OnLabel { get; set; }
     [Parameter] public string? OffLabel { get; set; }
+    /// <summary>
+    /// Accessible name for the switch, exposed via <c>aria-label</c>. Recommended
+    /// for icon-only switches that have no visible text. If omitted but
+    /// <see cref="OnLabel"/>/<see cref="OffLabel"/> are set, the current one is
+    /// used automatically so screen readers announce the switch's purpose.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
     [Parameter] public SwitchSize Size { get; set; } = SwitchSize.Default;
 
     /// <summary>
@@ -35,6 +42,10 @@
 
     private bool HasLabel => OnLabel != null || OffLabel != null;
     private string? CurrentLabel => Checked ? OnLabel : OffLabel;
+
+    // Prefer an explicit Label, then fall back to the currently visible On/Off text so
+    // even consumers who don't set Label get a reasonable screen-reader announcement.
+    private string? AriaLabelValue => Label ?? CurrentLabel;
 
     private string TrackSizeClasses => Size switch
     {
