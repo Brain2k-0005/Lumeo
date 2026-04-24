@@ -2,7 +2,7 @@
 
 **130+ accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-~130 components · 1,727 tests · 14 locales · MIT · .NET 10
+130+ components · 1,727 tests · 14 locales · MIT · .NET 10
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
