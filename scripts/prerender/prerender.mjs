@@ -66,7 +66,15 @@ try {
                     () => document.documentElement.dataset.blazorReady === 'true',
                     { timeout: 30000 },
                 );
-                const html = await page.evaluate(() => '<!DOCTYPE html>\n' + document.documentElement.outerHTML);
+                // Strip Blazor render-boundary markers (`<!--!-->`). HTML parsers
+                // treat <title>...</title> as raw text, so embedded comments are
+                // displayed literally in the browser tab. Safe to remove — the
+                // WASM app re-renders from scratch on hydration and doesn't rely
+                // on these markers.
+                const html = await page.evaluate(() => {
+                    const raw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+                    return raw.replace(/<!--!-->/g, '');
+                });
 
                 // Root "/" writes to wwwroot/index.html (overwrite the stock
                 // shell); everything else writes to wwwroot/<path>/index.html.
