@@ -1327,13 +1327,26 @@ export const motion = {
         motionObservers.set(elementId, observer);
     },
 
-    /* ---------- BlurFade ---------- */
+    /* ---------- BlurFade ----------
+     * Paired with the CSS that now defaults to visible. If the element is already
+     * in view when the observer attaches, leave it alone (prerender-friendly). If
+     * it's out of view, explicitly hide it with data-motion-visible="false" so the
+     * scroll-in animation still plays when it enters. */
     blurFade(elementId, options) {
         const el = document.getElementById(elementId);
         if (!el) return;
 
         const delayMs = (options && options.delayMs) || 0;
         const once = !options || options.once !== false;
+
+        // Check viewport position synchronously. Out-of-view → hide first so the
+        // fade-in animation has somewhere to animate from when the observer fires.
+        const rect = el.getBoundingClientRect();
+        const viewportH = window.innerHeight || document.documentElement.clientHeight;
+        const isAboveFold = rect.top < viewportH && rect.bottom > 0;
+        if (!isAboveFold) {
+            el.setAttribute('data-motion-visible', 'false');
+        }
 
         const observer = new IntersectionObserver((entries) => {
             for (const entry of entries) {
