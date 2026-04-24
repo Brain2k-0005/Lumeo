@@ -25,16 +25,83 @@
                     you'd actually want to <Lumeo.Text As="span" Class="text-primary">ship</Lumeo.Text>.
                 </Heading>
 
-                <!-- Subtitle with TextReveal on the size claim -->
+                <!-- Subtitle with TextReveal on the size claim.
+                     Easter egg: clicking "868 KB" opens a Dialog explaining how we got there.
+                     The dotted underline is the only hint — deliberately subtle. -->
                 <div class="max-w-2xl">
                     <Lumeo.Text Size="lg" Color="muted" Class="leading-relaxed">
                         130+ components in a single
-                        <Lumeo.Text As="span" Weight="semibold" Color="foreground">868 KB</Lumeo.Text>
+                        <button type="button"
+                                class="font-semibold text-foreground decoration-dotted decoration-primary/60 underline underline-offset-4 hover:text-primary transition-colors cursor-pointer"
+                                title="How we got there"
+                                @onclick="() => _bundleSizeDialogOpen = true">
+                            868 KB
+                        </button>
                         package.
                     </Lumeo.Text>
                     <TextReveal Text="Roughly 9x smaller than MudBlazor (7.59 MB), Radzen (7.90 MB), and AntDesign (9.35 MB)."
                                 Class="block mt-2 text-base text-muted-foreground leading-relaxed" />
                 </div>
+
+                @* ---- "How Lumeo stays at 868 KB" easter-egg dialog ---- *@
+                <Dialog @bind-IsOpen="_bundleSizeDialogOpen">
+                    <DialogContent Class="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>
+                                <Flex Align="center" Gap="2">
+                                    <DynamicIcon Name="Package" Class="h-5 w-5 text-primary" />
+                                    How we stay at 868 KB
+                                </Flex>
+                            </DialogTitle>
+                            <DialogDescription>
+                                130+ components, forms, charts, and animations fit in less than a single typical React icon-pack bundle. Here's how:
+                            </DialogDescription>
+                        </DialogHeader>
+                        <Stack Gap="4" Class="py-2">
+                            <Flex Align="start" Gap="3">
+                                <DynamicIcon Name="Palette" Class="h-4 w-4 text-primary mt-1 shrink-0" />
+                                <div>
+                                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Tailwind CSS v4, compiled at build</Lumeo.Text>
+                                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">No CSS-in-JS runtime, no theme provider JS. Utilities ship as static CSS, tree-shaken to only what your app uses.</Lumeo.Text>
+                                </div>
+                            </Flex>
+                            <Flex Align="start" Gap="3">
+                                <DynamicIcon Name="Cpu" Class="h-4 w-4 text-primary mt-1 shrink-0" />
+                                <div>
+                                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">No runtime reflection</Lumeo.Text>
+                                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">[LumeoForm] generates form code at compile time via a Roslyn source generator. Zero expression trees, zero reflection.</Lumeo.Text>
+                                </div>
+                            </Flex>
+                            <Flex Align="start" Gap="3">
+                                <DynamicIcon Name="Component" Class="h-4 w-4 text-primary mt-1 shrink-0" />
+                                <div>
+                                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Pure Razor + CSS where possible</Lumeo.Text>
+                                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">JavaScript only where genuinely needed — focus trap, scroll lock, element measurement. Most components are pure Blazor markup.</Lumeo.Text>
+                                </div>
+                            </Flex>
+                            <Flex Align="start" Gap="3">
+                                <DynamicIcon Name="BarChart3" Class="h-4 w-4 text-primary mt-1 shrink-0" />
+                                <div>
+                                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Charts load on demand</Lumeo.Text>
+                                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">ECharts is fetched the first time a chart component mounts, not bundled upfront. Don't use charts? You don't pay for them.</Lumeo.Text>
+                                </div>
+                            </Flex>
+                            <Flex Align="start" Gap="3">
+                                <DynamicIcon Name="Scissors" Class="h-4 w-4 text-primary mt-1 shrink-0" />
+                                <div>
+                                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Tree-shaken imports</Lumeo.Text>
+                                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">Every component is its own Razor file. Blazor's compiler only emits code for what your app imports.</Lumeo.Text>
+                                </div>
+                            </Flex>
+                        </Stack>
+                        <DialogFooter>
+                            <Lumeo.Text Size="xs" Color="muted" Class="mr-auto italic">No tricks, no minification hackery — just less runtime, more compile-time.</Lumeo.Text>
+                            <DialogClose>
+                                <Button>Neat</Button>
+                            </DialogClose>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 <!-- CTA row -->
                 <Flex Gap="3" Wrap="true" Justify="center" Class="pt-2">
@@ -725,6 +792,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     private bool _checkOn = true;
     private bool _installCopied;
     private bool _showDialog;
+    private bool _bundleSizeDialogOpen;
     private DateOnly? _selectedDate = DateOnly.FromDateTime(DateTime.Today);
 
     private record FeatureItem(string Icon, string Title, string Body);
