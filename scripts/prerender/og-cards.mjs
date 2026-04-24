@@ -480,7 +480,7 @@ console.log(`[og-cards] done: ${ok} ok, ${fail} failed, ${secs}s`);
 const llmsLines = [
     '# Lumeo',
     '',
-    '> A modern, accessible Blazor component library — 130+ production-ready components on Tailwind CSS v4, with AI primitives, motion, DataGrid, charts, and RTL/i18n support. MIT-licensed, .NET 10, 868 KB total package.',
+    '> A modern, accessible Blazor component library — 130+ production-ready components on Tailwind CSS v4, with AI primitives, motion, DataGrid, charts, and RTL/i18n support. MIT-licensed, .NET 10, 889 KB total package.',
     '',
     '## Key pages',
     '',
@@ -519,7 +519,7 @@ const llmsFullLines = [
     '',
     '> Canonical home: ' + SITE,
     '',
-    '> License: MIT · Bundle: 868 KB · Stack: Blazor WASM/Server, .NET 10, Tailwind CSS v4',
+    '> License: MIT · Bundle: 889 KB · Stack: Blazor WASM/Server, .NET 10, Tailwind CSS v4',
     '',
     '---',
     '',
