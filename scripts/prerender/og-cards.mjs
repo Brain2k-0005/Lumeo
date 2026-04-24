@@ -2,19 +2,20 @@
 //
 // Usage: node og-cards.mjs <publish-dir>
 //
-// Generates one 1280×640 social preview PNG per route using Satori + resvg-js.
-// Pure JS: no browser, no Chromium, no compositor. ~100ms per card on CI.
+// Generates one 1280×640 social preview PNG per route using Satori + resvg-js,
+// AND injects per-route <meta name="description"> (and og:/twitter: variants)
+// extracted from each page's <PageHeader Description="..." /> in Razor source.
 //
 // For each route in sitemap.xml:
 //   1. Read its prerendered HTML for the <title>
 //   2. Render an OG card SVG via Satori (flex layout, gradients, typography)
 //   3. Rasterize SVG → PNG via @resvg/resvg-js
 //   4. Write to <publish-dir>/wwwroot/og/<slug>.png
-//   5. Rewrite og:image / twitter:image meta tags in the route's index.html
+//   5. Rewrite og:image / twitter:image + description meta tags in the route's index.html
 
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,6 +42,50 @@ const routes = [...sitemapXml.matchAll(/<loc>([^<]+)<\/loc>/g)]
     .filter(Boolean);
 
 console.log(`[og-cards] ${routes.length} routes`);
+
+// ----- Build a map of route → description from Razor source -----
+//
+// Most docs pages declare their copy as <PageHeader Title="..." Description="..." />.
+// Harvesting that at CI time gives Google real per-page copy to show in SERP
+// snippets instead of the site-wide fallback description.
+const pagesDir = resolve(__dirname, '../../docs/Lumeo.Docs/Pages');
+
+function walkRazor(dir) {
+    const out = [];
+    for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        const stat = statSync(full);
+        if (stat.isDirectory()) out.push(...walkRazor(full));
+        else if (entry.endsWith('.razor')) out.push(full);
+    }
+    return out;
+}
+
+function buildDescriptionMap() {
+    const map = {};
+    const files = existsSync(pagesDir) ? walkRazor(pagesDir) : [];
+    for (const file of files) {
+        let content;
+        try { content = readFileSync(file, 'utf8'); } catch { continue; }
+        // Strip leading BOM if present.
+        if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+
+        const pageMatch = content.match(/^@page\s+"([^"]+)"/m);
+        if (!pageMatch) continue;
+        const route = pageMatch[1];
+
+        // <PageHeader ... Description="..." /> — the attribute can sit on any
+        // line relative to the tag, so scan across the element.
+        const phMatch = content.match(/<PageHeader\b[^>]*?\bDescription\s*=\s*"([^"]+)"/s);
+        if (phMatch) {
+            map[route] = phMatch[1].trim();
+        }
+    }
+    return map;
+}
+
+const descriptions = buildDescriptionMap();
+console.log(`[og-cards] ${Object.keys(descriptions).length} per-route descriptions extracted`);
 
 function slugFor(route) {
     if (route === '/') return 'home';
@@ -165,10 +210,21 @@ function cardTree({ title, subtitle, category }) {
     };
 }
 
-function rewriteMeta(html, slug) {
+function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function rewriteMeta(html, slug, description) {
     const imgUrl = `${SITE}/og/${slug}.png`;
     html = html.replace(/(<meta property="og:image" content=")[^"]+(")/i, `$1${imgUrl}$2`);
     html = html.replace(/(<meta name="twitter:image" content=")[^"]+(")/i, `$1${imgUrl}$2`);
+
+    if (description) {
+        const esc = escapeAttr(description);
+        html = html.replace(/(<meta name="description" content=")[^"]*(")/i, `$1${esc}$2`);
+        html = html.replace(/(<meta property="og:description" content=")[^"]*(")/i, `$1${esc}$2`);
+        html = html.replace(/(<meta name="twitter:description" content=")[^"]*(")/i, `$1${esc}$2`);
+    }
     return html;
 }
 
@@ -198,13 +254,16 @@ for (const route of routes) {
         const routeHtml = readFileSync(htmlPath, 'utf8');
         const title = extractTitle(routeHtml) || 'Lumeo';
         const cat = categoryFor(route);
+        // Prefer the per-page PageHeader Description; fall back to the category
+        // tagline so every route still gets *some* meaningful description.
+        const description = descriptions[route] || cat.tagline;
 
         const svg = await satori(cardTree({ title, subtitle: cat.tagline, category: cat.label }), satoriOpts);
         const png = new Resvg(svg, { background: '#0a0a0a' }).render().asPng();
 
         const slug = slugFor(route);
         writeFileSync(join(ogDir, `${slug}.png`), png);
-        writeFileSync(htmlPath, rewriteMeta(routeHtml, slug), 'utf8');
+        writeFileSync(htmlPath, rewriteMeta(routeHtml, slug, description), 'utf8');
 
         ok++;
         if (ok % 40 === 0) console.log(`[og-cards] ${ok}/${routes.length}`);
