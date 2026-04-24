@@ -116,10 +116,15 @@ function rewriteMeta(html, slug) {
 
 const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    // Headless screenshot can stall on slow machines (especially Windows local);
-    // bump well past the default 30s to avoid spurious timeouts.
-    protocolTimeout: 180000,
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        // Reduce GPU/compositor pressure on shared CI runners.
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--font-render-hinting=none',
+    ],
+    protocolTimeout: 300000,
 });
 
 try {
@@ -129,6 +134,9 @@ try {
 
     async function worker(id) {
         const page = await browser.newPage();
+        // No JS in our template; disabling avoids Chromium waiting for any
+        // implicit script pipeline and cuts screenshot latency substantially.
+        await page.setJavaScriptEnabled(false);
         await page.setViewport({ width: 1280, height: 640, deviceScaleFactor: 1 });
         while (queue.length) {
             const route = queue.shift();
@@ -167,7 +175,9 @@ try {
         await page.close();
     }
 
-    await Promise.all([worker(1), worker(2), worker(3), worker(4)]);
+    // Concurrency 2 — screenshot throughput is GPU/compositor-bound on CI and
+    // 4 workers was causing Page.captureScreenshot timeouts on ~10% of routes.
+    await Promise.all([worker(1), worker(2)]);
 
     const secs = ((Date.now() - startAll) / 1000).toFixed(1);
     console.log(`[og-cards] done: ${results.ok} ok, ${results.fail} failed, ${secs}s`);
