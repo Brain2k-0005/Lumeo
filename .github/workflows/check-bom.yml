@@ -1,0 +1,49 @@
+name: Check for UTF-8 BOM in razor files
+
+# A single BOM at the start of a .razor file is invisible in editors but silently
+# breaks the sitemap-generator grep (which anchors on ^@page). Every affected
+# route disappears from sitemap.xml, meaning it never gets prerendered and never
+# gets an OG card. We hit this in April 2026; this check stops it recurring.
+
+on:
+  pull_request:
+    paths:
+      - '**/*.razor'
+  push:
+    branches: [master]
+    paths:
+      - '**/*.razor'
+
+permissions:
+  contents: read
+
+jobs:
+  bom-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan .razor files for UTF-8 BOM
+        run: |
+          BOM_FILES=$(find docs/Lumeo.Docs/Pages src/Lumeo/UI -name '*.razor' 2>/dev/null \
+            | while read -r f; do
+                # First 3 bytes of a UTF-8 BOM are 0xEF 0xBB 0xBF.
+                if [ "$(head -c 3 "$f" | xxd -p)" = "efbbbf" ]; then
+                  echo "$f"
+                fi
+              done)
+          if [ -n "$BOM_FILES" ]; then
+            echo "::error::.razor files with UTF-8 BOM detected. BOMs break the sitemap generator ('^@page' grep) — strip them before merging."
+            echo ""
+            echo "Affected files:"
+            echo "$BOM_FILES" | sed 's/^/  - /'
+            echo ""
+            echo "Fix:"
+            echo "  for f in \$(find docs/Lumeo.Docs/Pages src/Lumeo/UI -name '*.razor'); do"
+            echo "    if [ \"\$(head -c 3 \"\$f\" | xxd -p)\" = \"efbbbf\" ]; then"
+            echo "      tail -c +4 \"\$f\" > \"\$f.tmp\" && mv \"\$f.tmp\" \"\$f\""
+            echo "    fi"
+            echo "  done"
+            exit 1
+          fi
+          echo "✓ No BOMs found."
