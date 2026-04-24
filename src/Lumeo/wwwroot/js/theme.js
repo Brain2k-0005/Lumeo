@@ -1,14 +1,19 @@
-// Project-level defaults written by `lumeo theme apply --preset <code>`. Synchronously
-// fetched on init (one-time per page load) so first paint uses the configured theme
-// without a flash. localStorage still wins — consumers who customize at runtime via
-// the floating Create sidebar keep their overrides across sessions.
+// Project-level defaults written by `lumeo theme apply --preset <code>`.
+//
+// Previously this did a synchronous XHR to `/lumeo-theme.json` on every page
+// load — which (a) triggered a deprecation warning in Chrome, (b) blocked the
+// main thread, and (c) 404'd (and logged a console error) on every site that
+// didn't ship the file.
+//
+// Now: the `lumeo` CLI inlines the JSON into index.html as a
+// <script id="lumeo-theme-defaults" type="application/json">...</script> tag,
+// read synchronously from the DOM. Sites without the tag get null — no fetch,
+// no network, no 404.
 function loadLumeoThemeDefaults() {
     try {
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', '/lumeo-theme.json', false); // sync — tiny file, prevents FOUC
-        xhr.send(null);
-        if (xhr.status >= 200 && xhr.status < 300) return JSON.parse(xhr.responseText);
-    } catch (_) { /* file missing / cross-origin / offline — defaults fall back to Lumeo built-ins */ }
+        const tag = document.getElementById('lumeo-theme-defaults');
+        if (tag && tag.textContent) return JSON.parse(tag.textContent);
+    } catch (_) { /* malformed JSON — fall back to built-ins */ }
     return null;
 }
 
