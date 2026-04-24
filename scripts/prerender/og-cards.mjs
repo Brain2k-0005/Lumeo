@@ -15,6 +15,8 @@
 
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
+import TurndownService from 'turndown';
+import { JSDOM } from 'jsdom';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,11 +95,12 @@ function slugFor(route) {
 }
 
 function categoryFor(route) {
-    if (route.startsWith('/components/')) return { label: 'Component', tagline: 'Blazor component documentation' };
-    if (route.startsWith('/blocks/'))     return { label: 'Block',     tagline: 'Copy-paste UI block' };
-    if (route.startsWith('/docs/'))       return { label: 'Docs',      tagline: 'Lumeo documentation' };
-    if (route.startsWith('/patterns'))    return { label: 'Pattern',   tagline: 'Composition pattern' };
-    return { label: 'UI Library', tagline: 'Modern Blazor component library' };
+    if (route.startsWith('/components/charts/')) return { label: 'Chart',    tagline: 'Blazor chart component',            keywordNoun: 'Chart Component',    titleSuffix: 'Blazor Chart | Lumeo' };
+    if (route.startsWith('/components/'))         return { label: 'Component', tagline: 'Blazor component documentation',   keywordNoun: 'Blazor Component',   titleSuffix: 'Blazor Component | Lumeo' };
+    if (route.startsWith('/blocks/'))             return { label: 'Block',     tagline: 'Copy-paste UI block',              keywordNoun: 'Blazor UI Block',    titleSuffix: 'Blazor UI Block | Lumeo' };
+    if (route.startsWith('/docs/'))               return { label: 'Docs',      tagline: 'Lumeo documentation',              keywordNoun: 'Documentation',      titleSuffix: 'Lumeo Documentation' };
+    if (route.startsWith('/patterns'))            return { label: 'Pattern',   tagline: 'Composition pattern',              keywordNoun: 'Pattern',            titleSuffix: 'Blazor Pattern | Lumeo' };
+    return { label: 'UI Library', tagline: 'Modern Blazor component library', keywordNoun: 'Blazor UI Library', titleSuffix: 'Blazor UI Library | Lumeo' };
 }
 
 function extractTitle(html) {
@@ -249,6 +252,14 @@ function structuredDataFor(route, title, description) {
         })),
     };
 
+    // ISO date for datePublished — CI build time is the best approximation we have.
+    const today = new Date().toISOString().slice(0, 10);
+    const cat = categoryFor(route);
+    // Keyword array — helps both Google and LLMs understand topic at a glance.
+    const baseKeywords = ['Blazor', 'C#', '.NET', 'UI components', 'component library', 'MIT', 'Lumeo', 'Tailwind CSS'];
+    const routeKeywords = cat.label ? [cat.label, `Blazor ${cat.label}`] : [];
+    const keywords = [title, ...routeKeywords, ...baseKeywords];
+
     let primary;
     if (route === '/') {
         primary = {
@@ -257,9 +268,13 @@ function structuredDataFor(route, title, description) {
             description,
             applicationCategory: 'DeveloperApplication',
             operatingSystem: 'Cross-platform',
+            programmingLanguage: 'C#',
+            softwareVersion: '2.0.0',
+            license: 'https://opensource.org/licenses/MIT',
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
             url,
             author: { '@type': 'Organization', name: 'Lumeo', url: SITE },
+            keywords: keywords.join(', '),
         };
     } else if (route.startsWith('/components/') || route.startsWith('/blocks/') || route.startsWith('/patterns')) {
         primary = {
@@ -268,9 +283,15 @@ function structuredDataFor(route, title, description) {
             description,
             url,
             image: `${SITE}/og${route === '/' ? '/home' : '/' + slugFor(route)}.png`,
+            proficiencyLevel: 'Beginner',
+            programmingLanguage: 'C#',
+            datePublished: today,
+            dateModified: today,
+            keywords: keywords.join(', '),
             author: { '@type': 'Organization', name: 'Lumeo', url: SITE },
             publisher: { '@type': 'Organization', name: 'Lumeo', url: SITE, logo: { '@type': 'ImageObject', url: `${SITE}/favicon.ico` } },
             isPartOf: { '@type': 'WebSite', name: 'Lumeo', url: SITE },
+            inLanguage: 'en',
         };
     } else {
         primary = {
@@ -278,7 +299,11 @@ function structuredDataFor(route, title, description) {
             name: title,
             description,
             url,
+            datePublished: today,
+            dateModified: today,
+            keywords: keywords.join(', '),
             isPartOf: { '@type': 'WebSite', name: 'Lumeo', url: SITE },
+            inLanguage: 'en',
         };
     }
 
@@ -288,9 +313,31 @@ function structuredDataFor(route, title, description) {
     };
 }
 
+// Build a keyword-rich <title>. The stock Blazor <PageTitle> renders as
+// "{Name} — Lumeo" which wastes the title tag. Pattern by category:
+//   component: "Button — Blazor Component | Lumeo"
+//   block:     "Dashboard — Blazor UI Block | Lumeo"
+//   docs:      "RTL Support — Lumeo Documentation"
+//   root:      unchanged (already hand-tuned in index.html)
+function enhancedTitle(route, pageTitle) {
+    if (route === '/') return null; // leave the home page's hand-tuned title alone
+    const cat = categoryFor(route);
+    return `${pageTitle} — ${cat.titleSuffix}`;
+}
+
 function rewriteMeta(html, route, slug, title, description) {
     const imgUrl = `${SITE}/og/${slug}.png`;
     const canonicalUrl = `${SITE}${route}`;
+
+    // Title rewrite — long-tail keyword injection.
+    const newTitle = enhancedTitle(route, title);
+    if (newTitle) {
+        const escTitle = escapeAttr(newTitle);
+        html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escTitle}</title>`);
+        // Also update og:title + twitter:title since those mirror <title>.
+        html = html.replace(/(<meta property="og:title" content=")[^"]*(")/i, `$1${escTitle}$2`);
+        html = html.replace(/(<meta name="twitter:title" content=")[^"]*(")/i, `$1${escTitle}$2`);
+    }
 
     // og:image + twitter:image
     html = html.replace(/(<meta property="og:image" content=")[^"]+(")/i, `$1${imgUrl}$2`);
@@ -323,12 +370,44 @@ function rewriteMeta(html, route, slug, title, description) {
         html = html.replace(/(<base\s+href="[^"]*"\s*\/?>)/i, `$1\n    <link rel="canonical" href="${canonicalUrl}">`);
     }
 
+    // Markdown alternate — tells LLMs / crawlers a clean .md version exists.
+    const mdUrl = `${canonicalUrl === SITE + '/' ? SITE : canonicalUrl}.md`;
+    if (/<link\s+rel=["']alternate["']\s+type=["']text\/markdown["']/i.test(html)) {
+        html = html.replace(/(<link\s+rel=["']alternate["']\s+type=["']text\/markdown["']\s+href=")[^"]*(")/i, `$1${mdUrl}$2`);
+    } else {
+        html = html.replace(/(<link\s+rel=["']canonical["']\s+href="[^"]*"\s*\/?>)/i, `$1\n    <link rel="alternate" type="text/markdown" href="${mdUrl}">`);
+    }
+
     // JSON-LD structured data — strip any previous lumeo-seo block, then inject fresh.
     const jsonLd = JSON.stringify(structuredDataFor(route, title, description || ''));
     html = html.replace(/\s*<script\s+type="application\/ld\+json"\s+data-lumeo-seo[^>]*>[\s\S]*?<\/script>/gi, '');
     html = html.replace(/(<\/head>)/i, `    <script type="application/ld+json" data-lumeo-seo>${jsonLd}</script>\n$1`);
 
     return html;
+}
+
+// ---- HTML → Markdown extraction for .md variants + llms-full.txt ----
+const turndown = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    emDelimiter: '_',
+});
+// Strip Lumeo-specific noise from the DOM before turndown converts it.
+turndown.remove(['script', 'style', 'noscript', 'iframe', 'svg']);
+
+function extractMarkdown(html, title, route) {
+    let main;
+    try {
+        const dom = new JSDOM(html);
+        main = dom.window.document.querySelector('main');
+    } catch {
+        return null;
+    }
+    if (!main) return null;
+    const body = turndown.turndown(main.innerHTML);
+    const siteUrl = `${SITE}${route}`;
+    return `# ${title}\n\nSource: ${siteUrl}\n\n${body}\n`;
 }
 
 const satoriOpts = {
@@ -342,6 +421,7 @@ const satoriOpts = {
 
 const startAll = Date.now();
 let ok = 0, fail = 0;
+const mdChunks = []; // collected for llms-full.txt
 
 for (const route of routes) {
     try {
@@ -366,7 +446,23 @@ for (const route of routes) {
 
         const slug = slugFor(route);
         writeFileSync(join(ogDir, `${slug}.png`), png);
-        writeFileSync(htmlPath, rewriteMeta(routeHtml, route, slug, title, description), 'utf8');
+
+        // Rewrite meta tags, title, canonical, JSON-LD.
+        const newHtml = rewriteMeta(routeHtml, route, slug, title, description);
+        writeFileSync(htmlPath, newHtml, 'utf8');
+
+        // Extract clean Markdown — save a .md sibling for LLM-friendly fetches.
+        // /components/button → wwwroot/components/button.md (parallel to /index.html)
+        // / → wwwroot/index.md
+        const md = extractMarkdown(newHtml, title, route);
+        if (md) {
+            const mdPath = route === '/'
+                ? join(wwwroot, 'index.md')
+                : join(wwwroot, route.replace(/^\/+|\/+$/g, '') + '.md');
+            mkdirSync(dirname(mdPath), { recursive: true });
+            writeFileSync(mdPath, md, 'utf8');
+            mdChunks.push({ route, title, description, md });
+        }
 
         ok++;
         if (ok % 40 === 0) console.log(`[og-cards] ${ok}/${routes.length}`);
@@ -413,6 +509,40 @@ for (const r of routes.filter(x => x.startsWith('/blocks/')).sort()) {
 }
 writeFileSync(join(wwwroot, 'llms.txt'), llmsLines.join('\n'), 'utf8');
 console.log(`[og-cards] wrote llms.txt (${llmsLines.length} lines)`);
+
+// ---- llms-full.txt — Anthropic/Vercel/Cloudflare style full-content dump.
+//      One fetch gives an LLM every public doc page in clean Markdown. ----
+const llmsFullLines = [
+    '# Lumeo — full documentation',
+    '',
+    '> This file concatenates every public page of the Lumeo docs site as Markdown so that AI tools (ChatGPT, Claude, Perplexity, Cursor, etc.) can cite us with authority from a single fetch.',
+    '',
+    '> Canonical home: ' + SITE,
+    '',
+    '> License: MIT · Bundle: 868 KB · Stack: Blazor WASM/Server, .NET 10, Tailwind CSS v4',
+    '',
+    '---',
+    '',
+];
+// Order the chunks meaningfully: root first, then docs, components, blocks, patterns, others.
+function order(r) {
+    if (r === '/') return 0;
+    if (r.startsWith('/docs/')) return 1;
+    if (r.startsWith('/components/')) return 2;
+    if (r.startsWith('/blocks/')) return 3;
+    if (r.startsWith('/patterns')) return 4;
+    return 5;
+}
+mdChunks.sort((a, b) => {
+    const da = order(a.route), db = order(b.route);
+    if (da !== db) return da - db;
+    return a.route.localeCompare(b.route);
+});
+for (const chunk of mdChunks) {
+    llmsFullLines.push(chunk.md.trim(), '', '---', '');
+}
+writeFileSync(join(wwwroot, 'llms-full.txt'), llmsFullLines.join('\n'), 'utf8');
+console.log(`[og-cards] wrote llms-full.txt (${mdChunks.length} pages, ${(llmsFullLines.join('\n').length / 1024).toFixed(1)} kB)`);
 
 // Fail the step only if a large fraction fails (cards fall back to the
 // site-wide /social-preview.png for routes whose PNG is missing).
