@@ -134,6 +134,8 @@ function createSuggestionRenderer(label) {
     let selectedIndex = 0;
     let command = () => {};
     let editor = null;
+    let lastProps = null;
+    let scrollHandler = null;
 
     function ensureRoot() {
         if (root) return root;
@@ -175,14 +177,29 @@ function createSuggestionRenderer(label) {
         }).join('');
         root.innerHTML = html;
         root.querySelectorAll('[data-index]').forEach(el => {
-            el.addEventListener('mousedown', (e) => {
+            // mousedown: only prevent focus-loss; don't pick yet (would race with re-render).
+            el.addEventListener('mousedown', (e) => { e.preventDefault(); });
+            // click: actually fires after mousedown without losing editor focus.
+            el.addEventListener('click', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 const idx = Number(el.getAttribute('data-index'));
                 pickItem(idx);
             });
+            // mouseenter: just update the visual selection — DON'T re-render here,
+            // re-rendering destroys the click handler before it fires.
             el.addEventListener('mouseenter', () => {
-                selectedIndex = Number(el.getAttribute('data-index'));
-                render();
+                const newIdx = Number(el.getAttribute('data-index'));
+                if (newIdx === selectedIndex) return;
+                selectedIndex = newIdx;
+                // Soft update the selected styles in-place rather than rebuild the DOM.
+                root.querySelectorAll('[data-index]').forEach(node => {
+                    const ni = Number(node.getAttribute('data-index'));
+                    const sel = ni === selectedIndex;
+                    node.setAttribute('aria-selected', sel ? 'true' : 'false');
+                    node.style.background = sel ? 'var(--color-accent)' : '';
+                    node.style.color = sel ? 'var(--color-accent-foreground)' : '';
+                });
             });
         });
     }
@@ -194,12 +211,44 @@ function createSuggestionRenderer(label) {
             root.style.display = 'none';
             return;
         }
-        root.style.display = 'block';
-        const top = rect.bottom + 6;
-        const left = rect.left;
         const vw = window.innerWidth, vh = window.innerHeight;
-        root.style.top = Math.min(top, vh - 320) + 'px';
+        // Hide if the trigger has scrolled off-screen.
+        if (rect.bottom < 0 || rect.top > vh) {
+            root.style.display = 'none';
+            return;
+        }
+        root.style.display = 'block';
+        // Flip above when there's no room below.
+        const menuHeight = root.offsetHeight || 280;
+        const spaceBelow = vh - rect.bottom;
+        const top = spaceBelow >= menuHeight + 8
+            ? rect.bottom + 6
+            : Math.max(8, rect.top - menuHeight - 6);
+        const left = rect.left;
+        root.style.top = top + 'px';
         root.style.left = Math.min(left, vw - 360) + 'px';
+    }
+
+    function attachScrollHandler() {
+        if (scrollHandler) return;
+        let raf = 0;
+        scrollHandler = () => {
+            if (raf) return;
+            raf = requestAnimationFrame(() => {
+                raf = 0;
+                if (lastProps) position(lastProps);
+            });
+        };
+        // Capture phase + passive so we catch scrolls inside any ancestor.
+        window.addEventListener('scroll', scrollHandler, { capture: true, passive: true });
+        window.addEventListener('resize', scrollHandler, { passive: true });
+    }
+
+    function detachScrollHandler() {
+        if (!scrollHandler) return;
+        window.removeEventListener('scroll', scrollHandler, { capture: true });
+        window.removeEventListener('resize', scrollHandler);
+        scrollHandler = null;
     }
 
     function pickItem(i) {
@@ -209,6 +258,8 @@ function createSuggestionRenderer(label) {
     }
 
     function destroy() {
+        detachScrollHandler();
+        lastProps = null;
         if (root) {
             try { root.remove(); } catch (_) {}
             root = null;
@@ -221,13 +272,16 @@ function createSuggestionRenderer(label) {
             items = props.items || [];
             selectedIndex = 0;
             command = props.command;
+            lastProps = props;
             render();
             position(props);
+            attachScrollHandler();
         },
         onUpdate(props) {
             items = props.items || [];
             selectedIndex = Math.min(selectedIndex, Math.max(0, items.length - 1));
             command = props.command;
+            lastProps = props;
             render();
             position(props);
         },
@@ -281,6 +335,11 @@ function iconSvg(name) {
         Table: '<path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>',
         Image: '<path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 10.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21"/>',
         Minus: '<path d="M5 12h14"/>',
+        Bold: '<path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6zM6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>',
+        Italic: '<line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>',
+        Underline: '<path d="M6 4v6a6 6 0 0 0 12 0V4M4 20h16"/>',
+        Link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+        Sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/>',
     };
     const d = paths[name] || '<circle cx="12" cy="12" r="9"/>';
     return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -318,15 +377,16 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
         return b;
     };
 
-    root.appendChild(mkBtn('Bold', 'Code', () => editor.chain().focus().toggleBold().run()));
-    root.appendChild(mkBtn('Italic', 'Code', () => editor.chain().focus().toggleItalic().run()));
-    root.appendChild(mkBtn('Link', 'Code', () => {
+    root.appendChild(mkBtn('Bold', 'Bold', () => editor.chain().focus().toggleBold().run()));
+    root.appendChild(mkBtn('Italic', 'Italic', () => editor.chain().focus().toggleItalic().run()));
+    root.appendChild(mkBtn('Underline', 'Underline', () => editor.chain().focus().toggleUnderline && editor.chain().focus().toggleUnderline().run()));
+    root.appendChild(mkBtn('Link', 'Link', () => {
         const url = window.prompt('Link URL', 'https://');
         if (url) editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
     }));
 
     if (opts && opts.enableAiActions && dotNetRef) {
-        const ai = mkBtn('AI actions', 'Code', async () => {
+        const ai = mkBtn('AI actions', 'Sparkles', async () => {
             const sel = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, ' ');
             if (!sel) return;
             // Default to "Improve" via the .NET callback. Consumers can render
