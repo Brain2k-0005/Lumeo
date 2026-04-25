@@ -4,9 +4,22 @@
     var context = new RadioGroupContext(Value, EventCallback.Factory.Create<string>(this, OnValueSelected), _itemValues, _itemIds);
 }
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="text-sm font-medium leading-none">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div role="radiogroup"
      aria-label="@AriaLabel"
      aria-labelledby="@AriaLabelledBy"
+     aria-required="@Required.ToString().ToLower()"
+     aria-invalid="@EffectiveInvalid.ToString().ToLower()"
      class="@CssClass"
      @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
@@ -14,7 +27,31 @@
     </CascadingValue>
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -26,7 +63,7 @@
     private readonly List<string> _itemValues = new();
     private readonly Dictionary<string, string> _itemIds = new();
 
-    private string CssClass => $"grid gap-2 {Class}".Trim();
+    private string CssClass => $"grid gap-2 {(EffectiveInvalid ? "text-destructive" : "")} {Class}".Trim();
 
     private async Task OnValueSelected(string value)
     {

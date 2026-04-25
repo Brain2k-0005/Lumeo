@@ -5,13 +5,26 @@
     var displayText = GetDisplayText();
 }
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium text-foreground mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div id="@_wrapperId" class="relative inline-block @Class" @attributes="AdditionalAttributes">
     <button type="button"
             class="@TriggerClass"
             @onclick="ToggleOpen"
             disabled="@Disabled"
             aria-haspopup="tree"
-            aria-expanded="@_isOpen">
+            aria-expanded="@_isOpen"
+            aria-required="@(Required ? "true" : "false")"
+            aria-invalid="@(EffectiveInvalid ? "true" : "false")">
         <span class="@(string.Join(" ", new[] { "flex-1 truncate text-left", displayText == (Placeholder ?? L["TreeSelect.Placeholder"]) ? "text-muted-foreground" : null }.Where(s => !string.IsNullOrWhiteSpace(s))))">@displayText</span>
         @{ var chevronClass = string.Join(" ", new[] { "h-4 w-4 shrink-0 opacity-50 transition-transform", _isOpen ? "rotate-180" : null }.Where(s => !string.IsNullOrWhiteSpace(s))); }
         <Blazicon Svg="Lucide.ChevronDown" class="@chevronClass" />
@@ -47,10 +60,24 @@
     }
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+    }
+}
+
 @inject ComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public List<TreeSelectItem> Items { get; set; } = new();
@@ -61,8 +88,17 @@
     [Parameter] public EventCallback<List<string>?> ValuesChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ExpandAll { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private readonly string _wrapperId = $"treeselect-{Guid.NewGuid():N}";
     private readonly string _contentId = $"treeselect-content-{Guid.NewGuid():N}";
@@ -72,7 +108,7 @@
     private readonly HashSet<string> _expandedNodes = new();
 
     private string TriggerClass =>
-        $"flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent/50 focus:outline-none focus:ring-1 focus:ring-ring".Trim();
+        $"flex h-9 w-full items-center justify-between rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-background px-3 py-2 text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent/50 focus:outline-none focus:ring-1 {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}".Trim();
 
     protected override void OnInitialized()
     {

@@ -1,5 +1,16 @@
 @namespace Lumeo
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 @if (Prefix != null || Suffix != null || (Clearable && !string.IsNullOrEmpty(Value)))
 {
     <div class="@WrapperClass" @attributes="AdditionalAttributes">
@@ -7,7 +18,10 @@
         {
             <div class="flex items-center px-3 text-muted-foreground">@Prefix</div>
         }
-        <input class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" />
+        <input name="@Name"
+               aria-required="@Required.ToString().ToLowerInvariant()"
+               aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+               class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" />
         @if (Clearable && !string.IsNullOrEmpty(Value))
         {
             <button type="button" class="flex items-center px-2 text-muted-foreground hover:text-foreground transition-colors" @onclick="HandleClear" tabindex="-1" aria-label="Clear">
@@ -22,10 +36,27 @@
 }
 else
 {
-    <input class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+    <input name="@Name"
+           aria-required="@Required.ToString().ToLowerInvariant()"
+           aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+           class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+}
+
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
+    {
+        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+    }
+    else if (!string.IsNullOrEmpty(HelperText))
+    {
+        <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
+    }
 }
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnInput { get; set; }
@@ -35,8 +66,17 @@ else
     [Parameter] public InputSize Size { get; set; } = InputSize.Default;
     [Parameter] public bool Clearable { get; set; }
     [Parameter] public EventCallback OnClear { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private string SizeClasses => Size switch
     {
@@ -59,9 +99,9 @@ else
         _ => "px-3 text-sm"
     };
 
-    private string CssClass => $"flex {SizeClasses} w-full rounded-md border border-input bg-transparent py-1 transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    private string CssClass => $"flex {SizeClasses} w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent py-1 transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] {(EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
-    private string WrapperClass => $"flex {WrapperSizeClasses} w-full rounded-md border border-input bg-transparent transition-colors focus-within:ring-[1.5px] focus-within:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    private string WrapperClass => $"flex {WrapperSizeClasses} w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent transition-colors {(EffectiveInvalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : "focus-within:ring-[1.5px] focus-within:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed".Trim();
 

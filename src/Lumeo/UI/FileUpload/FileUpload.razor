@@ -1,9 +1,23 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@if (Label is not null && !InsideFormField && Variant != "Button" && Variant != "Avatar")
+{
+    <label class="text-sm font-medium leading-none">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 @if (Variant == "Button")
 {
-    <div class="@($"inline-flex flex-col gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
+    <div class="@($"inline-flex flex-col gap-2 {Class}".Trim())"
+         aria-required="@Required.ToString().ToLower()"
+         aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+         @attributes="AdditionalAttributes">
         <label class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
             <Blazicon Svg="Lucide.Upload" class="h-4 w-4" />
             <span>@(Label ?? L["FileUpload.ChooseFile"])</span>
@@ -33,11 +47,25 @@
                 }
             </div>
         }
+        @if (!InsideFormField)
+        {
+            @if (EffectiveInvalid && ErrorText is not null)
+            {
+                <p class="text-xs text-destructive">@ErrorText</p>
+            }
+            else if (HelperText is not null)
+            {
+                <p class="text-xs text-muted-foreground">@HelperText</p>
+            }
+        }
     </div>
 }
 else if (Variant == "Avatar")
 {
-    <div class="@($"inline-flex flex-col items-center gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
+    <div class="@($"inline-flex flex-col items-center gap-2 {Class}".Trim())"
+         aria-required="@Required.ToString().ToLower()"
+         aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+         @attributes="AdditionalAttributes">
         <label class="flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-input bg-muted transition-colors hover:border-primary hover:bg-muted/80">
             @if (ShowThumbnails && _thumbnailUrl is not null)
             {
@@ -53,12 +81,25 @@ else if (Variant == "Avatar")
         {
             <p class="text-xs text-destructive">@_errorMessage</p>
         }
+        @if (!InsideFormField)
+        {
+            @if (EffectiveInvalid && ErrorText is not null)
+            {
+                <p class="text-xs text-destructive">@ErrorText</p>
+            }
+            else if (HelperText is not null)
+            {
+                <p class="text-xs text-muted-foreground">@HelperText</p>
+            }
+        }
     </div>
 }
 else
 {
     <div class="@($"flex flex-col gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
         <label class="@DropzoneCssClass"
+               aria-required="@Required.ToString().ToLower()"
+               aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                @ondragenter="HandleDragEnter"
                @ondragleave="HandleDragLeave"
                @ondragover:preventDefault="true"
@@ -126,10 +167,32 @@ else
                 }
             </div>
         }
+        @if (!InsideFormField)
+        {
+            @if (EffectiveInvalid && ErrorText is not null)
+            {
+                <p class="text-xs text-destructive">@ErrorText</p>
+            }
+            else if (HelperText is not null)
+            {
+                <p class="text-xs text-muted-foreground">@HelperText</p>
+            }
+        }
     </div>
 }
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Name { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
+
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Description { get; set; }
     [Parameter] public bool Multiple { get; set; }
@@ -151,7 +214,7 @@ else
     private List<IBrowserFile> _selectedFiles = new();
     private Dictionary<string, string> _thumbnailUrls = new();
 
-    private string DropzoneCssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : _errorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
+    private string DropzoneCssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : EffectiveInvalid ? "border-destructive bg-destructive/5" : _errorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
 
     private void HandleDragEnter(DragEventArgs e) => _isDragOver = true;
 

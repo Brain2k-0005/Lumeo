@@ -1,6 +1,17 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium text-foreground mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" tabindex="0" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
@@ -57,7 +68,21 @@
     }
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public double Value { get; set; }
     [Parameter] public EventCallback<double> ValueChanged { get; set; }
     [Parameter] public int Max { get; set; } = 5;
@@ -68,8 +93,17 @@
     [Parameter] public RenderFragment? IconContent { get; set; }
 
     [Parameter] public RatingSize Size { get; set; } = RatingSize.Default;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private int _hoverValue;
 

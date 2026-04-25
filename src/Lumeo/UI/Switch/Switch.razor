@@ -1,7 +1,27 @@
 @namespace Lumeo
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="text-sm font-medium leading-none">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div class="inline-flex items-center">
-    <button type="button" role="switch" aria-checked="@Checked.ToString().ToLower()" aria-label="@AriaLabelValue" class="@CssClass" @onclick="Toggle" disabled="@(Disabled || Loading)" @attributes="AdditionalAttributes">
+    <button type="button" role="switch"
+            aria-checked="@Checked.ToString().ToLower()"
+            aria-label="@AriaLabelValue"
+            aria-required="@Required.ToString().ToLower()"
+            aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+            name="@Name"
+            class="@CssClass"
+            @onclick="Toggle"
+            disabled="@(Disabled || Loading)"
+            @attributes="AdditionalAttributes">
         <span class="@ThumbClasses">
             @if (Loading)
             {
@@ -9,13 +29,37 @@
             }
         </span>
     </button>
-    @if (HasLabel)
+    @if (HasOnOffLabel)
     {
-        <span class="text-xs text-muted-foreground ml-2">@CurrentLabel</span>
+        <span class="text-xs text-muted-foreground ml-2">@CurrentOnOffLabel</span>
     }
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
+
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
@@ -23,12 +67,12 @@
     [Parameter] public string? OnLabel { get; set; }
     [Parameter] public string? OffLabel { get; set; }
     /// <summary>
-    /// Accessible name for the switch, exposed via <c>aria-label</c>. Recommended
+    /// Accessible name for the switch button, exposed via <c>aria-label</c>. Recommended
     /// for icon-only switches that have no visible text. If omitted but
     /// <see cref="OnLabel"/>/<see cref="OffLabel"/> are set, the current one is
     /// used automatically so screen readers announce the switch's purpose.
     /// </summary>
-    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public SwitchSize Size { get; set; } = SwitchSize.Default;
 
     /// <summary>
@@ -40,12 +84,12 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private bool HasLabel => OnLabel != null || OffLabel != null;
-    private string? CurrentLabel => Checked ? OnLabel : OffLabel;
+    private bool HasOnOffLabel => OnLabel != null || OffLabel != null;
+    private string? CurrentOnOffLabel => Checked ? OnLabel : OffLabel;
 
-    // Prefer an explicit Label, then fall back to the currently visible On/Off text so
-    // even consumers who don't set Label get a reasonable screen-reader announcement.
-    private string? AriaLabelValue => Label ?? CurrentLabel;
+    // Prefer an explicit AriaLabel, then fall back to the currently visible On/Off text, then to Label
+    // so even consumers who don't set AriaLabel get a reasonable screen-reader announcement.
+    private string? AriaLabelValue => AriaLabel ?? CurrentOnOffLabel ?? Label;
 
     private string TrackSizeClasses => Size switch
     {
@@ -75,7 +119,7 @@
         _ => "!h-3 !w-3"
     };
 
-    private string CssClass => string.Join(" ", new[] { "peer inline-flex", TrackSizeClasses, "shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", Checked ? "bg-primary" : "bg-input", Loading ? "pointer-events-none opacity-70" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string CssClass => string.Join(" ", new[] { "peer inline-flex", TrackSizeClasses, "shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", Checked ? "bg-primary" : "bg-input", EffectiveInvalid ? "ring-2 ring-destructive/20 focus-visible:ring-destructive" : null, Loading ? "pointer-events-none opacity-70" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private string ThumbClasses
     {

@@ -3,14 +3,24 @@
 @* Inline SVGs sized to the checkbox's 12-unit viewBox. Stroke-width ~2.75 gives a crisper check
    than Lucide's default 2 at this size, and `stroke-linecap/join="round"` kills the pixel-corner
    sharpness the user was seeing. *@
-@if (!string.IsNullOrEmpty(Label))
+
+@if (Label is not null)
 {
     <div class="flex items-start gap-2.5">
-        <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+        <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked"
+                aria-required="@Required.ToString().ToLowerInvariant()"
+                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+                class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
             @RenderIcon()
         </button>
         <div class="grid gap-1 leading-none pt-[1px]">
-            <label for="@_id" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">@Label</label>
+            <label for="@_id" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                @Label
+                @if (Required)
+                {
+                    <span class="text-destructive ml-0.5">*</span>
+                }
+            </label>
             @if (!string.IsNullOrEmpty(Description))
             {
                 <p class="text-xs text-muted-foreground">@Description</p>
@@ -20,9 +30,24 @@
 }
 else
 {
-    <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+    <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
+            aria-required="@Required.ToString().ToLowerInvariant()"
+            aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+            class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
         @RenderIcon()
     </button>
+}
+
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
+    {
+        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+    }
+    else if (!string.IsNullOrEmpty(HelperText))
+    {
+        <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
+    }
 }
 
 @code {
@@ -44,6 +69,8 @@ else
 }
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
     [Parameter] public bool IsIndeterminate { get; set; }
@@ -66,8 +93,16 @@ else
     /// </summary>
     [Parameter] public bool Animated { get; set; }
 
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private string _id = default!;
 
@@ -80,8 +115,10 @@ else
 
     private string CssClass => string.Join(" ", new[]
     {
-        "peer inline-flex items-center justify-center h-4 w-4 shrink-0 cursor-pointer rounded border border-primary/60 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-        Checked || IsIndeterminate ? "bg-primary border-primary text-primary-foreground" : "bg-background hover:border-primary",
+        "peer inline-flex items-center justify-center h-4 w-4 shrink-0 cursor-pointer rounded transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        EffectiveInvalid
+            ? (Checked || IsIndeterminate ? "bg-destructive border border-destructive text-primary-foreground focus-visible:ring-destructive/50" : "border border-destructive focus-visible:ring-destructive/50")
+            : (Checked || IsIndeterminate ? "bg-primary border border-primary text-primary-foreground focus-visible:ring-ring" : "border border-primary/60 bg-background hover:border-primary focus-visible:ring-ring"),
         Animated && Checked ? "lumeo-checkbox-animated" : null,
         Class
     }.Where(s => !string.IsNullOrWhiteSpace(s)));
