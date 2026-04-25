@@ -203,6 +203,69 @@ internal static class Commands
         return false;
     }
 
+    /// <summary>Walk up from cwd looking for .csproj files. Scan each for the specified NuGet package ID.
+    /// Returns the path of the first .csproj that references it, or null if none found.</summary>
+    private static string? FindCsprojReferencingPackage(string cwd, string packageId)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(cwd);
+            for (int depth = 0; dir is not null && depth < 6; depth++, dir = dir.Parent)
+            {
+                foreach (var csproj in Directory.EnumerateFiles(dir.FullName, "*.csproj", SearchOption.TopDirectoryOnly))
+                {
+                    if (CsprojContainsPackageReference(csproj, packageId)) return csproj;
+                }
+                if (Directory.Exists(System.IO.Path.Combine(dir.FullName, ".git"))) break;
+            }
+        }
+        catch { /* best-effort */ }
+        return null;
+    }
+
+    private static bool CsprojContainsPackageReference(string csprojPath, string packageId)
+    {
+        try
+        {
+            var doc = XDocument.Load(csprojPath);
+            foreach (var pr in doc.Descendants("PackageReference"))
+            {
+                var include = pr.Attribute("Include")?.Value?.Trim();
+                if (string.Equals(include, packageId, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            // Also check ProjectReference for monorepo setups (e.g. "Lumeo.Charts.csproj").
+            foreach (var pr in doc.Descendants("ProjectReference"))
+            {
+                var include = pr.Attribute("Include")?.Value;
+                if (string.IsNullOrEmpty(include)) continue;
+                var fileName = System.IO.Path.GetFileNameWithoutExtension(include);
+                if (string.Equals(fileName, packageId, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch { /* unreadable csproj */ }
+        return false;
+    }
+
+    /// <summary>Find the first .csproj in cwd (or ancestor up to git root) — used as the
+    /// target project for `dotnet add package`.</summary>
+    private static string? FindConsumerCsproj(string cwd)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(cwd);
+            for (int depth = 0; dir is not null && depth < 6; depth++, dir = dir.Parent)
+            {
+                var found = Directory.EnumerateFiles(dir.FullName, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+                if (found is not null) return found;
+                if (Directory.Exists(System.IO.Path.Combine(dir.FullName, ".git"))) break;
+            }
+        }
+        catch { /* best-effort */ }
+        return null;
+    }
+
     private static char PromptAssetSetup()
     {
         Console.WriteLine();
@@ -552,6 +615,75 @@ internal static class Commands
             Console.Error.WriteLine($"Run {Ansi.Cyan("lumeo list")} to see available components.");
             Environment.ExitCode = 1;
             return;
+        }
+
+        // ── Satellite NuGet package check ──────────────────────────────────────
+        // If the component lives in a satellite package (nugetPackage != "Lumeo"),
+        // ensure the consumer's project already has it — or prompt to install it.
+        var satellitePkg = entry.NugetPackage;
+        if (!string.IsNullOrEmpty(satellitePkg)
+            && !string.Equals(satellitePkg, "Lumeo", StringComparison.OrdinalIgnoreCase))
+        {
+            var alreadyReferenced = FindCsprojReferencingPackage(Environment.CurrentDirectory, satellitePkg) is not null;
+            if (!alreadyReferenced)
+            {
+                if (opts.DryRun)
+                {
+                    Console.WriteLine(Ansi.Yellow($"  dry-run  would install NuGet package {satellitePkg}"));
+                }
+                else
+                {
+                    bool doInstall;
+                    if (opts.Yes || opts.Force)
+                    {
+                        doInstall = true;
+                    }
+                    else
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine(Ansi.Yellow($"Component '{entry.Name}' requires the {satellitePkg} NuGet package."));
+                        doInstall = Prompts.Confirm($"Install {satellitePkg}?", defaultYes: true);
+                    }
+
+                    if (doInstall)
+                    {
+                        // Find the consumer .csproj to pass to `dotnet add package`.
+                        var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
+                        var projectArg = csprojPath is not null ? $"\"{csprojPath}\"" : "";
+                        var dotnetArgs = string.IsNullOrEmpty(projectArg)
+                            ? $"add package {satellitePkg}"
+                            : $"add {projectArg} package {satellitePkg}";
+
+                        Console.WriteLine(Ansi.Dim($"  $ dotnet {dotnetArgs}"));
+                        var psi = new System.Diagnostics.ProcessStartInfo("dotnet", dotnetArgs)
+                        {
+                            RedirectStandardOutput = false,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                        };
+                        var proc = System.Diagnostics.Process.Start(psi);
+                        if (proc is not null)
+                        {
+                            var stderr = await proc.StandardError.ReadToEndAsync();
+                            await proc.WaitForExitAsync();
+                            if (proc.ExitCode != 0)
+                            {
+                                Console.Error.WriteLine(Ansi.Red($"dotnet add package {satellitePkg} failed (exit {proc.ExitCode})."));
+                                if (!string.IsNullOrWhiteSpace(stderr))
+                                    Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
+                            }
+                            else
+                            {
+                                Console.WriteLine(Ansi.Green($"  +   {satellitePkg} added to project."));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine(Ansi.Yellow($"Skipped. Note: {entry.Name} will not render correctly without {satellitePkg}."));
+                    }
+                }
+            }
         }
 
         // Resolve dependency chain (BFS).
