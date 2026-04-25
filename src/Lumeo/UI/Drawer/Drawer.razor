@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DrawerContext(IsOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId);
+    var context = new DrawerContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -10,16 +10,22 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public bool IsOpen { get; set; }
-    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
+    [Parameter] public bool IsOpen { get => Open; set => Open = value; }
+
+    [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
+    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
 
     private readonly string _titleId = $"drawer-title-{Guid.NewGuid():N}";
     private readonly string _descriptionId = $"drawer-desc-{Guid.NewGuid():N}";
 
     private async Task SetOpen(bool value)
     {
-        IsOpen = value;
-        await IsOpenChanged.InvokeAsync(value);
+        Open = value;
+        await OpenChanged.InvokeAsync(value);
     }
 
     public record DrawerContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId);
