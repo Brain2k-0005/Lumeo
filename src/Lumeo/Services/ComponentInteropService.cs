@@ -575,7 +575,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private async Task<IJSObjectReference> GetSchedulerModuleAsync()
     {
         _schedulerModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo/js/scheduler.js");
+            "import", "./_content/Lumeo.Scheduler/js/scheduler.js");
         return _schedulerModule;
     }
 
@@ -674,7 +674,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private async Task<IJSObjectReference> GetGanttModuleAsync()
     {
         _ganttModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo/js/gantt.js");
+            "import", "./_content/Lumeo.Gantt/js/gantt.js");
         return _ganttModule;
     }
 
