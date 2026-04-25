@@ -1,5 +1,5 @@
 # Required secrets (set in GitHub repo settings):
-#   NUGET_API_KEY - existing, used by Lumeo / Lumeo.Cli / Lumeo.Templates
+#   NUGET_API_KEY - existing, used by Lumeo / Lumeo.Cli / Lumeo.Templates / all satellites
 #   NPM_TOKEN     - new, required for @lumeo-ui/mcp-server (https://www.npmjs.com/ -> Access Tokens -> Automation)
 
 name: Publish 2.0 packages
@@ -30,21 +30,43 @@ jobs:
           npm run build:css
 
       - name: Restore
-        run: dotnet restore src/Lumeo/Lumeo.csproj
+        run: |
+          dotnet restore src/Lumeo/Lumeo.csproj
+          dotnet restore src/Lumeo.Charts/Lumeo.Charts.csproj
+          dotnet restore src/Lumeo.DataGrid/Lumeo.DataGrid.csproj
+          dotnet restore src/Lumeo.Editor/Lumeo.Editor.csproj
+          dotnet restore src/Lumeo.Scheduler/Lumeo.Scheduler.csproj
+          dotnet restore src/Lumeo.Gantt/Lumeo.Gantt.csproj
 
-      - name: Build
+      - name: Build core
         run: dotnet build src/Lumeo/Lumeo.csproj -c Release --no-restore -warnaserror
+
+      - name: Build satellites
+        run: |
+          dotnet build src/Lumeo.Charts/Lumeo.Charts.csproj -c Release --no-restore -warnaserror
+          dotnet build src/Lumeo.DataGrid/Lumeo.DataGrid.csproj -c Release --no-restore -warnaserror
+          dotnet build src/Lumeo.Editor/Lumeo.Editor.csproj -c Release --no-restore -warnaserror
+          dotnet build src/Lumeo.Scheduler/Lumeo.Scheduler.csproj -c Release --no-restore -warnaserror
+          dotnet build src/Lumeo.Gantt/Lumeo.Gantt.csproj -c Release --no-restore -warnaserror
 
       - name: Test
         run: |
           dotnet restore tests/Lumeo.Tests/Lumeo.Tests.csproj
           dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-restore --verbosity normal
 
-      - name: Pack
+      - name: Pack core
         run: dotnet pack src/Lumeo/Lumeo.csproj -c Release --no-build -o ./nupkg
 
-      - name: Push to NuGet
-        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Pack satellites
+        run: |
+          dotnet pack src/Lumeo.Charts/Lumeo.Charts.csproj -c Release --no-build -o ./nupkg
+          dotnet pack src/Lumeo.DataGrid/Lumeo.DataGrid.csproj -c Release --no-build -o ./nupkg
+          dotnet pack src/Lumeo.Editor/Lumeo.Editor.csproj -c Release --no-build -o ./nupkg
+          dotnet pack src/Lumeo.Scheduler/Lumeo.Scheduler.csproj -c Release --no-build -o ./nupkg
+          dotnet pack src/Lumeo.Gantt/Lumeo.Gantt.csproj -c Release --no-build -o ./nupkg
+
+      - name: Push all to NuGet
+        run: dotnet nuget push "./nupkg/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
   publish-cli:
     runs-on: ubuntu-latest
