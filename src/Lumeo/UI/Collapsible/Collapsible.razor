@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new CollapsibleContext(IsOpen, EventCallback.Factory.Create(this, Toggle));
+    var context = new CollapsibleContext(Open, EventCallback.Factory.Create(this, Toggle));
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -12,8 +12,15 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public bool IsOpen { get; set; }
-    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
+    [Parameter] public bool IsOpen { get => Open; set => Open = value; }
+
+    [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
+    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -21,8 +28,8 @@
 
     private async Task Toggle()
     {
-        IsOpen = !IsOpen;
-        await IsOpenChanged.InvokeAsync(IsOpen);
+        Open = !Open;
+        await OpenChanged.InvokeAsync(Open);
     }
 
     public record CollapsibleContext(bool IsOpen, EventCallback Toggle);

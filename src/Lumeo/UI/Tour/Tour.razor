@@ -1,7 +1,7 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
-@if (IsOpen && _currentStepConfig is not null)
+@if (Open && _currentStepConfig is not null)
 {
     <!-- Spotlight overlay -->
     <div class="fixed inset-0 z-[60]" @onclick="HandleOverlayClick">
@@ -86,8 +86,15 @@
 
 @code {
     [Parameter] public List<TourStepConfig> Steps { get; set; } = [];
-    [Parameter] public bool IsOpen { get; set; }
-    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
+    [Parameter] public bool IsOpen { get => Open; set => Open = value; }
+
+    [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
+    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
+
     [Parameter] public int CurrentStep { get; set; }
     [Parameter] public EventCallback<int> CurrentStepChanged { get; set; }
     [Parameter] public EventCallback OnComplete { get; set; }
@@ -127,7 +134,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (IsOpen && Steps.Count > 0 && CurrentStep >= 0 && CurrentStep < Steps.Count)
+        if (Open && Steps.Count > 0 && CurrentStep >= 0 && CurrentStep < Steps.Count)
         {
             _currentStepConfig = Steps[CurrentStep];
         }
@@ -139,7 +146,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && _currentStepConfig is not null)
+        if (Open && _currentStepConfig is not null)
         {
             if (!_scrollLocked)
             {
@@ -215,12 +222,12 @@
 
     private async Task Close()
     {
-        IsOpen = false;
+        Open = false;
         CurrentStep = 0;
         _currentStepConfig = null;
         _targetRect = null;
         _currentTargetSelector = null;
-        await IsOpenChanged.InvokeAsync(false);
+        await OpenChanged.InvokeAsync(false);
         await CurrentStepChanged.InvokeAsync(0);
         if (_scrollLocked)
         {

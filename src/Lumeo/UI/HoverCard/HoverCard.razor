@@ -3,7 +3,7 @@
 
 @{
     var context = new HoverCardContext(
-        IsOpen,
+        Open,
         EventCallback.Factory.Create(this, RequestOpen),
         EventCallback.Factory.Create(this, RequestClose),
         _wrapperId);
@@ -17,8 +17,15 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public bool IsOpen { get; set; }
-    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
+    [Parameter] public bool IsOpen { get => Open; set => Open = value; }
+
+    [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
+    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
+
     [Parameter] public int OpenDelay { get; set; } = 200;
     [Parameter] public int CloseDelay { get; set; } = 300;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -29,11 +36,11 @@
     private void RequestOpen()
     {
         _dispatch.Cancel();
-        if (IsOpen) return;
+        if (Open) return;
         _dispatch.Schedule(OpenDelay, () => InvokeAsync(async () =>
         {
-            IsOpen = true;
-            await IsOpenChanged.InvokeAsync(true);
+            Open = true;
+            await OpenChanged.InvokeAsync(true);
             StateHasChanged();
         }));
     }
@@ -41,11 +48,11 @@
     private void RequestClose()
     {
         _dispatch.Cancel();
-        if (!IsOpen) return;
+        if (!Open) return;
         _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
         {
-            IsOpen = false;
-            await IsOpenChanged.InvokeAsync(false);
+            Open = false;
+            await OpenChanged.InvokeAsync(false);
             StateHasChanged();
         }));
     }
