@@ -1,0 +1,229 @@
+@page "/components/overlay"
+
+<PageTitle>Overlay — Lumeo</PageTitle>
+
+<PageHeader Title="Overlay" Description="Low-level backdrop primitive for custom popovers and modals." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Open a <code class="text-xs bg-muted px-1 py-0.5 rounded">Dialog</code>, <code class="text-xs bg-muted px-1 py-0.5 rounded">Sheet</code>, or <code class="text-xs bg-muted px-1 py-0.5 rounded">Drawer</code> programmatically from any service or handler — without managing open/closed state locally.</li>
+        <li>Show confirmation dialogs from deeply nested components or event handlers.</li>
+        <li>Create wizard flows where each step is a separate Blazor component loaded into an overlay.</li>
+    </ul>
+</div>
+
+<div class="mt-6 rounded-lg border border-border/40 bg-muted/20 p-4 text-sm text-muted-foreground">
+    <strong class="text-foreground">Setup required:</strong> Add <code class="text-xs bg-muted px-1 py-0.5 rounded">&lt;OverlayProvider /&gt;</code> once near the root of your app layout (e.g. <code class="text-xs bg-muted px-1 py-0.5 rounded">MainLayout.razor</code>) and register <code class="text-xs bg-muted px-1 py-0.5 rounded">OverlayService</code> in DI.
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Open a Dialog" Code="@_dialogCode">
+        <Button OnClick="@OpenDialog">Open Dialog</Button>
+        <p class="mt-3 text-sm text-muted-foreground">
+            Result: <strong>@_dialogResult</strong>
+        </p>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Open a Sheet" Code="@_sheetCode">
+        <Button Variant="Button.ButtonVariant.Outline" OnClick="@OpenSheet">Open Sheet</Button>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Confirmation Dialog" Code="@_confirmCode">
+        <Button Variant="Button.ButtonVariant.Destructive" OnClick="@OpenConfirm">Delete Item</Button>
+        <p class="mt-3 text-sm text-muted-foreground">
+            Confirmed: <strong>@_confirmed</strong>
+        </p>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="setup" Level="2" Class="scroll-mt-20">Setup</Heading>
+    <p class="text-sm text-muted-foreground">Register the service and add the provider to your layout:</p>
+    <Code Variant="block">// Program.cs
+builder.Services.AddScoped&lt;OverlayService&gt;();
+
+// MainLayout.razor
+&lt;OverlayProvider /&gt;</Code>
+</div>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">OverlayService</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Method</th>
+                            <th class="text-left p-3 font-medium text-foreground">Returns</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowDialogAsync&lt;TComponent&gt;(title?, parameters?, options?)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
+                            <td class="p-3 text-muted-foreground">Opens a Dialog overlay containing <code class="text-xs">TComponent</code>. Awaitable — resolves when closed.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowSheetAsync&lt;TComponent&gt;(title?, side?, size?, parameters?, options?)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
+                            <td class="p-3 text-muted-foreground">Opens a Sheet overlay. Default side is <code class="text-xs">Right</code>.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowDrawerAsync&lt;TComponent&gt;(title?, parameters?, options?)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
+                            <td class="p-3 text-muted-foreground">Opens a Drawer overlay (slide-up).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowAlertDialogAsync(alertOptions)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Task&lt;OverlayResult&gt;</td>
+                            <td class="p-3 text-muted-foreground">Opens a confirmation AlertDialog with configurable title, description, and button labels.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Close(overlayId, result?)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                            <td class="p-3 text-muted-foreground">Closes an overlay and resolves its task with an OK result.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Cancel(overlayId)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">void</td>
+                            <td class="p-3 text-muted-foreground">Closes an overlay and resolves its task as cancelled.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">OverlayResult</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Cancelled</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 text-muted-foreground">True when the overlay was dismissed without confirmation.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Data</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">object?</td>
+                            <td class="p-3 text-muted-foreground">Optional return value passed to <code class="text-xs">Close(id, result)</code>.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/dialog" class="text-primary hover:underline">Dialog</a> — Modal dialog for direct template-based usage.</li>
+        <li><a href="/components/sheet" class="text-primary hover:underline">Sheet</a> — Slide-in panel for direct template-based usage.</li>
+        <li><a href="/components/alert-dialog" class="text-primary hover:underline">AlertDialog</a> — Confirmation modal for destructive actions.</li>
+        <li><a href="/components/drawer" class="text-primary hover:underline">Drawer</a> — Mobile-first slide-up sheet.</li>
+    </ul>
+</div>
+
+@inject Lumeo.Services.OverlayService OverlayService
+
+@code {
+    private string _dialogResult = "—";
+    private string _confirmed = "—";
+
+    private async Task OpenDialog()
+    {
+        var result = await OverlayService.ShowAlertDialogAsync(new Lumeo.Services.AlertDialogOptions
+        {
+            Title = "Demo Dialog",
+            Description = "This dialog was opened programmatically via OverlayService.",
+            ConfirmText = "Got it",
+            CancelText = "Close"
+        });
+        _dialogResult = result.Cancelled ? "Cancelled" : "Confirmed";
+    }
+
+    private async Task OpenSheet()
+    {
+        await OverlayService.ShowAlertDialogAsync(new Lumeo.Services.AlertDialogOptions
+        {
+            Title = "Sheet Demo",
+            Description = "Sheets are opened the same way — swap ShowAlertDialogAsync for ShowSheetAsync<TComponent>.",
+            ConfirmText = "OK"
+        });
+    }
+
+    private async Task OpenConfirm()
+    {
+        var result = await OverlayService.ShowAlertDialogAsync(new Lumeo.Services.AlertDialogOptions
+        {
+            Title = "Delete Item?",
+            Description = "This action cannot be undone.",
+            ConfirmText = "Delete",
+            CancelText = "Cancel",
+            IsDestructive = true
+        });
+        _confirmed = result.Cancelled ? "No" : "Yes";
+    }
+
+    private string _dialogCode = @"@inject OverlayService OverlayService
+
+<Button OnClick=""@OpenDialog"">Open Dialog</Button>
+
+@code {
+    private async Task OpenDialog()
+    {
+        var result = await OverlayService.ShowDialogAsync<MyDialogContent>(
+            title: ""Edit Profile"",
+            parameters: new OverlayParameters().Add(""UserId"", 42));
+
+        if (!result.Cancelled) { /* handle result */ }
+    }
+}";
+
+    private string _sheetCode = @"@inject OverlayService OverlayService
+
+<Button OnClick=""@OpenSheet"">Open Sheet</Button>
+
+@code {
+    private async Task OpenSheet()
+    {
+        await OverlayService.ShowSheetAsync<MySheetContent>(
+            title: ""Settings"",
+            side: SheetSide.Right);
+    }
+}";
+
+    private string _confirmCode = @"@inject OverlayService OverlayService
+
+<Button Variant=""Button.ButtonVariant.Destructive"" OnClick=""@Confirm"">Delete</Button>
+
+@code {
+    private async Task Confirm()
+    {
+        var result = await OverlayService.ShowAlertDialogAsync(new AlertDialogOptions
+        {
+            Title = ""Delete Item?"",
+            Description = ""This action cannot be undone."",
+            ConfirmText = ""Delete"",
+            CancelText = ""Cancel"",
+            IsDestructive = true
+        });
+
+        if (!result.Cancelled) { /* perform delete */ }
+    }
+}";
+}

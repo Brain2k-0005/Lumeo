@@ -1,0 +1,204 @@
+@page "/components/prompt-input"
+
+<PageTitle>PromptInput — Lumeo</PageTitle>
+
+<PageHeader Title="PromptInput" Description="Multiline AI prompt textarea with submit and keyboard shortcuts." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Build chat interfaces, AI assistant prompts, or command inputs.</li>
+        <li>Use <kbd class="rounded border border-border px-1 py-0.5 text-xs font-mono">Enter</kbd> to submit and <kbd class="rounded border border-border px-1 py-0.5 text-xs font-mono">Shift+Enter</kbd> for newlines — built in.</li>
+        <li>Add leading or trailing content slots for model selectors, voice input, and file attachments.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic" Code="@_basicCode">
+        <Container MaxWidth="lg" Center="false">
+            <PromptInput @bind-Value="_prompt1" OnSend="@HandleSend1" Placeholder="Ask anything…" />
+            @if (!string.IsNullOrEmpty(_lastSent1))
+            {
+                <p class="mt-2 text-xs text-muted-foreground">Sent: <em>@_lastSent1</em></p>
+            }
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Loading State" Code="@_loadingCode">
+        <Container MaxWidth="lg" Center="false">
+            <PromptInput @bind-Value="_prompt2" IsLoading="@_isLoading" OnSend="@HandleSend2" Placeholder="Waiting for response…" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Leading and Trailing Content" Code="@_slotsCode">
+        <Container MaxWidth="lg" Center="false">
+            <PromptInput @bind-Value="_prompt3" OnSend="@HandleSend3" Placeholder="Message Claude…">
+                <LeadingContent>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7">
+                        <DynamicIcon Name="Paperclip" Class="h-4 w-4" />
+                    </Button>
+                </LeadingContent>
+                <TrailingContent>
+                    <span class="text-xs text-muted-foreground">Shift+Enter for newline</span>
+                </TrailingContent>
+            </PromptInput>
+        </Container>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Key</TableHead>
+                    <TableHead>Action</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell><Kbd>Enter</Kbd></TableCell><TableCell>Submits the prompt (fires <code class="text-xs">OnSend</code>).</TableCell></TableRow>
+                <TableRow><TableCell><Kbd>Shift</Kbd> + <Kbd>Enter</Kbd></TableCell><TableCell>Inserts a newline without submitting.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">PromptInput</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Value</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Current text value. Use <code class="text-xs">@@bind-Value</code> for two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ValueChanged</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string?&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fires on each keystroke. Used by <code class="text-xs">@@bind-Value</code>.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnSend</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fires when the user presses Enter or clicks the send button. Receives the current value.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Placeholder</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">"Ask anything…"</td>
+                            <td class="p-3 text-muted-foreground">Textarea placeholder text.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsLoading</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Disables the textarea and shows a spinner on the send button.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DisableSendOnEmpty</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Disables the send button when the input is empty or whitespace-only.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">MinHeight / MaxHeight</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">56 / 240</td>
+                            <td class="p-3 text-muted-foreground">Min and max pixel height for the auto-growing textarea.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">LeadingContent</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Slot rendered left of the send button toolbar (file attach, model picker, etc.).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TrailingContent</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Slot rendered right of the send button (hints, character count, etc.).</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/streaming-text" class="text-primary hover:underline">StreamingText</a> — Token-by-token streaming text renderer for AI responses.</li>
+        <li><a href="/components/agent-message-list" class="text-primary hover:underline">AgentMessageList</a> — Chat message stream for AI agents.</li>
+        <li><a href="/components/textarea" class="text-primary hover:underline">Textarea</a> — Plain multiline text input without the AI-chat chrome.</li>
+    </ul>
+</div>
+
+@code {
+    private string? _prompt1;
+    private string? _prompt2;
+    private string? _prompt3;
+    private string _lastSent1 = string.Empty;
+    private bool _isLoading;
+
+    private void HandleSend1(string text) => _lastSent1 = text;
+
+    private async Task HandleSend2(string text)
+    {
+        _isLoading = true;
+        await Task.Delay(2000);
+        _isLoading = false;
+    }
+
+    private void HandleSend3(string text) { }
+
+    private string _basicCode = @"<PromptInput @bind-Value=""_prompt"" OnSend=""@HandleSend"" Placeholder=""Ask anything…"" />
+
+@code {
+    private string? _prompt;
+    private void HandleSend(string text) { /* call AI API */ }
+}";
+
+    private string _loadingCode = @"<PromptInput @bind-Value=""_prompt"" IsLoading=""@_isLoading"" OnSend=""@HandleSend"" />
+
+@code {
+    private string? _prompt;
+    private bool _isLoading;
+
+    private async Task HandleSend(string text)
+    {
+        _isLoading = true;
+        await CallAiApi(text);
+        _isLoading = false;
+    }
+}";
+
+    private string _slotsCode = @"<PromptInput @bind-Value=""_prompt"" OnSend=""@HandleSend"" Placeholder=""Message Claude…"">
+    <LeadingContent>
+        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-7 w-7"">
+            <Blazicon Svg=""Lucide.Paperclip"" class=""h-4 w-4"" />
+        </Button>
+    </LeadingContent>
+    <TrailingContent>
+        <span class=""text-xs text-muted-foreground"">Shift+Enter for newline</span>
+    </TrailingContent>
+</PromptInput>";
+}

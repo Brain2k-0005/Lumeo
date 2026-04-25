@@ -1,0 +1,158 @@
+@page "/components/tool-call-card"
+
+<PageTitle>ToolCallCard — Lumeo</PageTitle>
+
+<PageHeader Title="ToolCallCard" Description="AI tool-invocation card showing call and result." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Display tool calls and their results inside an AI chat interface.</li>
+        <li>Show the status lifecycle — pending, running, success, or error — as the tool executes.</li>
+        <li>Use <code class="text-xs bg-muted px-1 py-0.5 rounded">DefaultOpen</code> to pre-expand cards for debugging or first-time viewing.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Status Variants" Code="@_statusCode">
+        <Stack Gap="2" Class="max-w-lg">
+            <ToolCallCard ToolName="search_web" Status="ToolCallCard.ToolCallStatus.Pending" Input='{"query": "latest Blazor news"}' />
+            <ToolCallCard ToolName="read_file" Status="ToolCallCard.ToolCallStatus.Running" Input='{"path": "/src/app.razor"}' />
+            <ToolCallCard ToolName="execute_code" Status="ToolCallCard.ToolCallStatus.Success"
+                          Input='{"language": "csharp", "code": "Console.WriteLine(\"Hello\");"}' Output="Hello" DurationMs="342" />
+            <ToolCallCard ToolName="fetch_url" Status="ToolCallCard.ToolCallStatus.Error"
+                          Input='{"url": "https://example.com/api/data"}' ErrorMessage="Connection timeout after 5000ms" DurationMs="5001" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Expanded by Default" Code="@_openCode">
+        <Stack Gap="2" Class="max-w-lg">
+            <ToolCallCard ToolName="analyze_sentiment" Status="ToolCallCard.ToolCallStatus.Success"
+                          Input='{"text": "Lumeo makes Blazor development a joy!"}' Output='{"sentiment": "positive", "score": 0.96}'
+                          DurationMs="128" DefaultOpen="true" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multiple Tool Calls" Code="@_multipleCode">
+        <Stack Gap="2" Class="max-w-lg">
+            <ToolCallCard ToolName="list_files" Status="ToolCallCard.ToolCallStatus.Success"
+                          Input='{"directory": "/src"}' Output="Program.cs&#10;App.razor&#10;_Imports.razor" DurationMs="18" />
+            <ToolCallCard ToolName="read_file" Status="ToolCallCard.ToolCallStatus.Success"
+                          Input='{"path": "/src/Program.cs"}' Output="var builder = WebApplication.CreateBuilder(args);&#10;// ..." DurationMs="24" />
+            <ToolCallCard ToolName="write_file" Status="ToolCallCard.ToolCallStatus.Running"
+                          Input='{"path": "/src/NewComponent.razor", "content": "..."}' />
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">ToolCallCard</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ToolName</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">""</td>
+                            <td class="p-3 text-muted-foreground">The tool function name displayed in the summary row (e.g. <code class="text-xs">search_web</code>).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Status</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ToolCallStatus</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Pending</td>
+                            <td class="p-3 text-muted-foreground">Current execution status. Values: <code class="text-xs">Pending</code>, <code class="text-xs">Running</code>, <code class="text-xs">Success</code>, <code class="text-xs">Error</code>. Controls color and icon.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Input</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Tool input parameters, typically a JSON string. Rendered in a code block when expanded.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Output</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Tool result/output rendered in a code block when expanded (shown only on Success).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ErrorMessage</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Error details rendered in a destructive-colored code block when <code class="text-xs">Status</code> is <code class="text-xs">Error</code>.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DurationMs</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">long?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Execution duration in milliseconds. Rendered as <code class="text-xs">342ms</code> or <code class="text-xs">1.4s</code> in the summary.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DefaultOpen</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Expand the card body on initial render.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes merged onto the card root.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/reasoning-display" class="text-primary hover:underline">ReasoningDisplay</a> — Collapsible chain-of-thought block for AI reasoning traces.</li>
+        <li><a href="/components/agent-message-list" class="text-primary hover:underline">AgentMessageList</a> — Chat message stream for AI agents with role-based styling.</li>
+        <li><a href="/components/streaming-text" class="text-primary hover:underline">StreamingText</a> — Token-by-token streaming text renderer for AI responses.</li>
+    </ul>
+</div>
+
+@code {
+    private string _statusCode = @"<ToolCallCard ToolName=""search_web"" Status=""ToolCallCard.ToolCallStatus.Pending""
+              Input=""{&quot;query&quot;: &quot;latest Blazor news&quot;}"" />
+
+<ToolCallCard ToolName=""read_file"" Status=""ToolCallCard.ToolCallStatus.Running""
+              Input=""{&quot;path&quot;: &quot;/src/app.razor&quot;}"" />
+
+<ToolCallCard ToolName=""execute_code"" Status=""ToolCallCard.ToolCallStatus.Success""
+              Input=""{&quot;language&quot;: &quot;csharp&quot;}"" Output=""Hello"" DurationMs=""342"" />
+
+<ToolCallCard ToolName=""fetch_url"" Status=""ToolCallCard.ToolCallStatus.Error""
+              ErrorMessage=""Connection timeout after 5000ms"" DurationMs=""5001"" />";
+
+    private string _openCode = @"<ToolCallCard ToolName=""analyze_sentiment""
+              Status=""ToolCallCard.ToolCallStatus.Success""
+              Input=""{&quot;text&quot;: &quot;Lumeo makes Blazor development a joy!&quot;}""
+              Output=""{&quot;sentiment&quot;: &quot;positive&quot;, &quot;score&quot;: 0.96}""
+              DurationMs=""128""
+              DefaultOpen=""true"" />";
+
+    private string _multipleCode = @"@foreach (var call in _toolCalls)
+{
+    <ToolCallCard ToolName=""@call.Name""
+                  Status=""@call.Status""
+                  Input=""@call.Input""
+                  Output=""@call.Output""
+                  DurationMs=""@call.DurationMs"" />
+}";
+}
