@@ -1,0 +1,38 @@
+@namespace Lumeo
+
+@*
+    Floating list of AI actions (Improve / Shorten / Expand / ...). Wired to
+    the editor's selection — picking an item fires OnAction with the action
+    record and the editor's currently selected text; consumer returns the
+    replacement HTML, which the editor inserts via executeCommand("replaceSelection").
+*@
+
+<div class="@RootClass" role="menu" aria-label="AI actions" @attributes="AdditionalAttributes">
+    @foreach (var action in EffectiveActions)
+    {
+        var a = action;
+        <button type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-md text-sm hover:bg-accent hover:text-accent-foreground"
+                @onmousedown:preventDefault="true"
+                @onclick="() => OnAction.InvokeAsync(a)">
+            @if (!string.IsNullOrEmpty(a.IconName))
+            {
+                <span class="text-muted-foreground"><Icon Name="@a.IconName" Size="Icon.IconSize.Sm" /></span>
+            }
+            <span class="flex-1 text-left">@a.Label</span>
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<AiAction>? Actions { get; set; }
+    [Parameter] public EventCallback<AiAction> OnAction { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private IReadOnlyList<AiAction> EffectiveActions => Actions ?? AiActions.Default;
+
+    private string RootClass =>
+        $"min-w-[200px] rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-lg p-1 {Class}".Trim();
+}

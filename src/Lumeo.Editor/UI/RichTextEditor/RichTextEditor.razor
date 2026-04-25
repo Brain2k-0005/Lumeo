@@ -14,61 +14,14 @@
 }
 
 <div class="@RootClass" @attributes="AdditionalAttributes" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")">
-    @if (Toolbar != RichTextToolbarMode.None)
+    @if (EffectiveToolbar != EditorToolbarPreset.None)
     {
-        <div class="flex flex-wrap items-center gap-0.5 border-b border-border/40 bg-muted/30 px-2 py-1.5"
-             role="toolbar"
-             aria-label="Text formatting">
-
-            @if (Toolbar == RichTextToolbarMode.Full)
-            {
-                @TbButton("Paragraph", "Pilcrow", _active?.Paragraph == true, async () => await RunCommand("setParagraph"))
-                @TbButton("Heading 1", "Heading1", _active?.Heading1 == true, async () => await RunCommand("setHeading", 1))
-                @TbButton("Heading 2", "Heading2", _active?.Heading2 == true, async () => await RunCommand("setHeading", 2))
-                @TbButton("Heading 3", "Heading3", _active?.Heading3 == true, async () => await RunCommand("setHeading", 3))
-                @TbSeparator()
-            }
-
-            @TbButton("Bold", "Bold", _active?.Bold == true, async () => await RunCommand("bold"))
-            @TbButton("Italic", "Italic", _active?.Italic == true, async () => await RunCommand("italic"))
-
-            @if (Toolbar == RichTextToolbarMode.Full)
-            {
-                @TbButton("Underline", "Underline", _active?.Underline == true, async () => await RunCommand("underline"))
-            }
-
-            @TbButton("Strikethrough", "Strikethrough", _active?.Strike == true, async () => await RunCommand("strike"))
-
-            @if (Toolbar == RichTextToolbarMode.Full)
-            {
-                @TbButton("Inline code", "Code", _active?.Code == true, async () => await RunCommand("code"))
-            }
-
-            @TbSeparator()
-            @TbButton("Bullet list", "List", _active?.BulletList == true, async () => await RunCommand("bulletList"))
-            @TbButton("Numbered list", "ListOrdered", _active?.OrderedList == true, async () => await RunCommand("orderedList"))
-
-            @if (Toolbar == RichTextToolbarMode.Full)
-            {
-                @TbSeparator()
-                @TbButton("Quote", "Quote", _active?.Blockquote == true, async () => await RunCommand("blockquote"))
-                @TbButton("Code block", "SquareCode", _active?.CodeBlock == true, async () => await RunCommand("codeBlock"))
-                @TbButton("Horizontal rule", "Minus", false, async () => await RunCommand("hr"))
-            }
-
-            @TbSeparator()
-            @TbButton("Link", "Link", _active?.Link == true, HandleLinkAsync)
-            @TbButton("Unlink", "Unlink", false, async () => await RunCommand("unlink"), disabled: _active?.Link != true)
-
-            @TbSeparator()
-            @TbButton("Undo", "Undo", false, async () => await RunCommand("undo"), disabled: _active?.CanUndo == false)
-            @TbButton("Redo", "Redo", false, async () => await RunCommand("redo"), disabled: _active?.CanRedo == false)
-
-            @if (Toolbar == RichTextToolbarMode.Full)
-            {
-                @TbButton("Clear formatting", "RemoveFormatting", false, async () => await RunCommand("clearFormat"))
-            }
-        </div>
+        <EditorToolbar Preset="EffectiveToolbar"
+                       Active="_active"
+                       Disabled="Disabled || ReadOnly"
+                       AllowWordImport="AllowWordImport"
+                       EnableAiActions="EnableAiActions"
+                       OnCommand="HandleToolbarCommand" />
     }
 
     <div @ref="_contentRef" style="@ContentStyle" class="lumeo-rte-content bg-card"></div>
@@ -89,6 +42,7 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    // ---- Backwards-compatible params ----
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Start writing…";
@@ -96,18 +50,59 @@
     [Parameter] public int? MaxHeight { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
-    [Parameter] public RichTextToolbarMode Toolbar { get; set; } = RichTextToolbarMode.Full;
     [Parameter] public bool Required { get; set; }
     [Parameter] public bool Invalid { get; set; }
     [Parameter] public string? ErrorText { get; set; }
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+
+    /// <summary>Legacy toolbar mode; superseded by <see cref="Toolbar"/>.</summary>
+    [Parameter] public RichTextToolbarMode? ToolbarMode { get; set; }
+
+    /// <summary>Toolbar density preset. Defaults to <see cref="EditorToolbarPreset.Standard"/>.</summary>
+    [Parameter] public EditorToolbarPreset Toolbar { get; set; } = EditorToolbarPreset.Standard;
+
+    // ---- New: rich features ----
+    [Parameter] public IReadOnlyList<EditorTrigger>? Triggers { get; set; }
+    [Parameter] public bool EnableSlashCommand { get; set; } = true;
+    [Parameter] public bool EnableTables { get; set; } = true;
+    [Parameter] public bool EnableCodeBlock { get; set; } = true;
+    [Parameter] public bool EnableImages { get; set; } = true;
+    [Parameter] public bool EnableTaskList { get; set; } = true;
+    [Parameter] public bool EnableMarkdownShortcuts { get; set; } = true;
+    [Parameter] public bool EnableAiActions { get; set; }
+    [Parameter] public bool EnableBubbleMenu { get; set; } = true;
+    [Parameter] public bool EnableDragHandle { get; set; } = true;
+    [Parameter] public int? MaxLength { get; set; }
+    [Parameter] public bool AllowWordImport { get; set; }
+
+    /// <summary>Resolves a picked image into a URL (or data URI). Receives file metadata
+    /// from JS; consumer is expected to upload the file out-of-band (e.g. via a paired
+    /// <c>InputFile</c>) and return a final URL. If null, images fall back to base64.</summary>
+    [Parameter] public Func<EditorImageRequest, ValueTask<string?>>? OnImageRequested { get; set; }
+
+    /// <summary>Selection-driven AI actions. Receives the action id and selected plain text;
+    /// returns replacement HTML to be inserted in place of the selection.</summary>
+    [Parameter] public Func<string, string, ValueTask<string?>>? OnAiAction { get; set; }
+
+    /// <summary>Fires when the toolbar's "Import .docx" button is clicked. Consumer is
+    /// expected to pop their own file picker / upload flow and call <see cref="SetHtmlAsync"/>.</summary>
+    [Parameter] public EventCallback<string> OnWordImportRequested { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    private EditorToolbarPreset EffectiveToolbar => ToolbarMode switch
+    {
+        RichTextToolbarMode.None => EditorToolbarPreset.None,
+        RichTextToolbarMode.Basic => EditorToolbarPreset.Minimal,
+        RichTextToolbarMode.Full => EditorToolbarPreset.Full,
+        _ => Toolbar,
+    };
 
     private Microsoft.AspNetCore.Components.ElementReference _contentRef;
     private DotNetObjectReference<RichTextEditor>? _selfRef;
@@ -143,13 +138,36 @@
             _lastSetValue = Value;
             _lastDisabled = Disabled;
             _lastReadOnly = ReadOnly;
+
+            // Build the "trigger" descriptor list passed into JS — only the
+            // metadata the JS needs (char + label). Item resolution happens via
+            // the OnTriggerQuery JSInvokable below, which fans queries out to
+            // the matching EditorTrigger registered server-side.
+            var triggerMeta = (Triggers ?? Array.Empty<EditorTrigger>())
+                .Select(t => new { @char = t.Char.ToString(), label = $"{t.Char} suggestions" })
+                .ToArray();
+
             var options = new
             {
                 content = Value ?? string.Empty,
+                initialHtml = Value ?? string.Empty,
                 placeholder = Placeholder,
                 disabled = Disabled,
                 readOnly = ReadOnly,
+                editable = !Disabled && !ReadOnly,
+                mentionTriggers = triggerMeta,
+                enableSlashCommand = EnableSlashCommand,
+                enableTables = EnableTables,
+                enableCodeBlock = EnableCodeBlock,
+                enableImages = EnableImages,
+                enableTaskList = EnableTaskList,
+                enableMarkdownShortcuts = EnableMarkdownShortcuts,
+                enableAiActions = EnableAiActions,
+                enableBubbleMenu = EnableBubbleMenu,
+                enableDragHandle = EnableDragHandle,
+                maxLength = MaxLength,
             };
+
             _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
             _initialized = !string.IsNullOrEmpty(_instanceId);
             if (_initialized)
@@ -177,19 +195,115 @@
         }
     }
 
+    // ---------------- JS callbacks ----------------
+
     [JSInvokable]
     public async Task OnContentUpdate(string html)
     {
-        // Echo back from TipTap — track it so OnParametersSetAsync doesn't push it back in a loop.
         _lastSetValue = html;
         Value = html;
         await ValueChanged.InvokeAsync(html);
         await RefreshActiveAsync();
     }
 
+    /// <summary>Mirror of <see cref="OnContentUpdate"/> kept for the new JS naming.</summary>
     [JSInvokable]
-    public Task OnSelectionUpdate()
-        => RefreshActiveAsync();
+    public Task OnUpdate(string html) => OnContentUpdate(html);
+
+    [JSInvokable]
+    public Task OnSelectionUpdate() => RefreshActiveAsync();
+
+    [JSInvokable]
+    public async Task<IReadOnlyList<TriggerItem>> OnTriggerQuery(string triggerChar, string query)
+    {
+        // Slash command default — only kicks in if no consumer trigger overrides '/'.
+        if (triggerChar == "/" && (Triggers is null || !Triggers.Any(t => t.Char == '/')))
+        {
+            return EnableSlashCommand
+                ? await SlashCommands.Filter(query)
+                : Array.Empty<TriggerItem>();
+        }
+
+        var trigger = Triggers?.FirstOrDefault(t => t.Char.ToString() == triggerChar);
+        if (trigger is null) return Array.Empty<TriggerItem>();
+        try
+        {
+            return await trigger.ItemSource(query) ?? Array.Empty<TriggerItem>();
+        }
+        catch
+        {
+            return Array.Empty<TriggerItem>();
+        }
+    }
+
+    [JSInvokable("OnImageRequested")]
+    public async Task<string?> OnImageRequestedJs(string fileName, string mimeType, long size)
+    {
+        if (OnImageRequested is null) return null;
+        try
+        {
+            return await OnImageRequested(new EditorImageRequest(fileName, mimeType, size));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [JSInvokable("OnAiAction")]
+    public async Task<string?> OnAiActionJs(string actionId, string selectedText)
+    {
+        if (OnAiAction is null) return null;
+        try
+        {
+            return await OnAiAction(actionId, selectedText);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [JSInvokable("OnWordImportRequested")]
+    public async Task OnWordImportRequestedJs(string fileName)
+    {
+        if (OnWordImportRequested.HasDelegate)
+        {
+            await OnWordImportRequested.InvokeAsync(fileName);
+        }
+    }
+
+    // ---------------- Toolbar dispatch ----------------
+
+    private async Task HandleToolbarCommand((string command, object? arg) cmd)
+    {
+        if (_instanceId is null || Disabled || ReadOnly) return;
+
+        switch (cmd.command)
+        {
+            case "link":
+            {
+                var url = await Interop.RichTextPromptLinkAsync(null);
+                if (url is null) return;
+                await Interop.RichTextCommandAsync(_instanceId, "link", new object?[] { url });
+                break;
+            }
+            case "ai-menu":
+                // Reserved for a future popover. For now, fire an "improve" against
+                // current selection if the consumer wired OnAiAction.
+                if (OnAiAction is not null)
+                {
+                    await Interop.RichTextCommandAsync(_instanceId, "noop", null);
+                }
+                break;
+            default:
+                var args = cmd.arg is null ? null : new object?[] { cmd.arg };
+                await Interop.RichTextCommandAsync(_instanceId, cmd.command, args);
+                break;
+        }
+
+        await RefreshActiveAsync();
+    }
 
     private async Task RefreshActiveAsync()
     {
@@ -198,65 +312,17 @@
         StateHasChanged();
     }
 
-    private async Task RunCommand(string name, params object?[] args)
+    // ---------------- Public API for consumers ----------------
+
+    /// <summary>Replaces the editor content with the given HTML.</summary>
+    public async ValueTask SetHtmlAsync(string? html)
     {
-        if (_instanceId is null || Disabled || ReadOnly) return;
-        await Interop.RichTextCommandAsync(_instanceId, name, args);
-        await RefreshActiveAsync();
+        if (_instanceId is null) return;
+        _lastSetValue = html;
+        Value = html;
+        await Interop.RichTextSetContentAsync(_instanceId, html);
+        await ValueChanged.InvokeAsync(html);
     }
-
-    private async Task HandleLinkAsync()
-    {
-        if (_instanceId is null || Disabled || ReadOnly) return;
-        var url = await Interop.RichTextPromptLinkAsync(null);
-        if (url is null) return; // user cancelled
-        await RunCommand("link", url);
-    }
-
-    // --- Toolbar button render helpers ---
-
-    private RenderFragment TbSeparator() => builder =>
-    {
-        builder.OpenElement(0, "span");
-        builder.AddAttribute(1, "aria-hidden", "true");
-        builder.AddAttribute(2, "class", "mx-0.5 h-5 w-px bg-border");
-        builder.CloseElement();
-    };
-
-    private RenderFragment TbButton(string label, string icon, bool active, Func<Task> onClick, bool disabled = false)
-        => builder =>
-        {
-            var isDisabled = disabled || Disabled || ReadOnly;
-            var cls = active
-                ? "inline-flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground transition-colors"
-                : "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
-            if (isDisabled) cls += " opacity-50 cursor-not-allowed";
-
-            builder.OpenElement(0, "button");
-            builder.AddAttribute(1, "type", "button");
-            builder.AddAttribute(2, "class", cls);
-            builder.AddAttribute(3, "title", label);
-            builder.AddAttribute(4, "aria-label", label);
-            builder.AddAttribute(5, "aria-pressed", active ? "true" : "false");
-            if (isDisabled)
-            {
-                builder.AddAttribute(6, "disabled", true);
-            }
-            else
-            {
-                builder.AddAttribute(7, "onclick",
-                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, onClick));
-                // Prevent the button from stealing focus away from the editor on mousedown —
-                // TipTap loses selection if another element becomes the active element between
-                // mousedown and click.
-                builder.AddAttribute(8, "onmousedown", "event.preventDefault()");
-            }
-            builder.OpenComponent<Icon>(9);
-            builder.AddAttribute(10, "Name", icon);
-            builder.AddAttribute(11, "Size", Icon.IconSize.Sm);
-            builder.CloseComponent();
-            builder.CloseElement();
-        };
 
     public async ValueTask DisposeAsync()
     {
@@ -273,6 +339,7 @@
         _selfRef = null;
     }
 
+    /// <summary>Legacy toolbar mode — kept so existing call sites compile.</summary>
     public enum RichTextToolbarMode
     {
         None,

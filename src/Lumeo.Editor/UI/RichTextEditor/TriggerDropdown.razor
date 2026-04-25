@@ -1,0 +1,71 @@
+@namespace Lumeo
+
+@*
+    Floating list rendered above/below a trigger caret. Driven by Items + a
+    selected index. Keyboard navigation (Up/Down/Enter/Escape) is handled by
+    the parent (the JS suggestion plugin already does this in the live editor;
+    this Razor primitive exists for consumers who want to render their own
+    trigger UI server-side, e.g. in a Mention input).
+*@
+
+<div class="@RootClass" role="listbox" aria-label="@AriaLabel" id="@Id" @attributes="AdditionalAttributes">
+    @if (Items is null || Items.Count == 0)
+    {
+        <div class="px-2.5 py-2 text-xs text-muted-foreground">No results</div>
+    }
+    else
+    {
+        @for (var i = 0; i < Items.Count; i++)
+        {
+            var idx = i;
+            var item = Items[idx];
+            var selected = idx == SelectedIndex;
+            var rowClass = selected
+                ? "flex items-start gap-2 px-2.5 py-1.5 rounded-md cursor-pointer bg-accent text-accent-foreground"
+                : "flex items-start gap-2 px-2.5 py-1.5 rounded-md cursor-pointer hover:bg-accent/60";
+
+            <div role="option"
+                 aria-selected="@(selected ? "true" : "false")"
+                 class="@rowClass"
+                 @onmousedown:preventDefault="true"
+                 @onclick="() => OnPick.InvokeAsync(item)"
+                 @onmouseenter="() => OnHover.InvokeAsync(idx)">
+                @if (ItemTemplate is not null)
+                {
+                    @ItemTemplate(item)
+                }
+                else
+                {
+                    @if (!string.IsNullOrEmpty(item.IconName))
+                    {
+                        <span class="mt-0.5 text-muted-foreground">
+                            <Icon Name="@item.IconName" Size="Icon.IconSize.Sm" />
+                        </span>
+                    }
+                    <div class="min-w-0 flex-1">
+                        <div class="text-sm font-medium leading-tight">@item.Label</div>
+                        @if (!string.IsNullOrEmpty(item.Subtitle))
+                        {
+                            <div class="text-xs text-muted-foreground leading-tight">@item.Subtitle</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public IReadOnlyList<TriggerItem>? Items { get; set; }
+    [Parameter] public int SelectedIndex { get; set; }
+    [Parameter] public RenderFragment<TriggerItem>? ItemTemplate { get; set; }
+    [Parameter] public EventCallback<TriggerItem> OnPick { get; set; }
+    [Parameter] public EventCallback<int> OnHover { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Suggestions";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass =>
+        $"min-w-[200px] max-w-[340px] max-h-[280px] overflow-y-auto rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-lg p-1 {Class}".Trim();
+}

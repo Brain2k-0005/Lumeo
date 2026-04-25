@@ -1,0 +1,48 @@
+@namespace Lumeo
+
+@*
+    Static (non-floating) bubble-menu primitive consumers can drop into a
+    custom toolbar. The live floating bubble menu is rendered in JS by the
+    editor itself when EnableBubbleMenu=true on RichTextEditor. This component
+    exists so consumers can also build their own selection menu out of band.
+*@
+
+<div class="@RootClass" role="toolbar" aria-label="Format selection" @attributes="AdditionalAttributes">
+    <button type="button" class="@BtnClass" title="Bold" aria-label="Bold"
+            @onmousedown:preventDefault="true" @onclick="@(() => OnCommand.InvokeAsync("bold"))">
+        <Icon Name="Bold" Size="Icon.IconSize.Sm" />
+    </button>
+    <button type="button" class="@BtnClass" title="Italic" aria-label="Italic"
+            @onmousedown:preventDefault="true" @onclick="@(() => OnCommand.InvokeAsync("italic"))">
+        <Icon Name="Italic" Size="Icon.IconSize.Sm" />
+    </button>
+    <button type="button" class="@BtnClass" title="Underline" aria-label="Underline"
+            @onmousedown:preventDefault="true" @onclick="@(() => OnCommand.InvokeAsync("underline"))">
+        <Icon Name="Underline" Size="Icon.IconSize.Sm" />
+    </button>
+    <button type="button" class="@BtnClass" title="Link" aria-label="Link"
+            @onmousedown:preventDefault="true" @onclick="@(() => OnCommand.InvokeAsync("link"))">
+        <Icon Name="Link" Size="Icon.IconSize.Sm" />
+    </button>
+    @if (EnableAiActions)
+    {
+        <button type="button" class="@BtnClass" title="AI actions" aria-label="AI actions"
+                @onmousedown:preventDefault="true" @onclick="@(() => OnAiMenuToggled.InvokeAsync())">
+            <Icon Name="Sparkles" Size="Icon.IconSize.Sm" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public bool EnableAiActions { get; set; }
+    [Parameter] public EventCallback<string> OnCommand { get; set; }
+    [Parameter] public EventCallback OnAiMenuToggled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass =>
+        $"inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-md p-1 {Class}".Trim();
+
+    private const string BtnClass =
+        "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
+}
