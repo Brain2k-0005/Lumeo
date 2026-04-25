@@ -14,11 +14,22 @@ const FC_TIMEGRID = 'https://esm.sh/@fullcalendar/timegrid@6';
 const FC_LIST = 'https://esm.sh/@fullcalendar/list@6';
 const FC_INTERACTION = 'https://esm.sh/@fullcalendar/interaction@6';
 
+function injectLumeoSchedulerOverrides() {
+    if (document.querySelector('[data-lumeo-scheduler-overrides]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.setAttribute('data-lumeo-scheduler-overrides', '');
+    link.href = '/_content/Lumeo.Scheduler/css/lumeo-scheduler.css';
+    document.head.appendChild(link);
+}
+
 async function loadFullCalendar() {
     if (fcLoaded) return fcModules;
     if (fcLoadPromise) return fcLoadPromise;
 
     fcLoadPromise = (async () => {
+        // Inject Lumeo theme overrides before any Calendar instance is created.
+        injectLumeoSchedulerOverrides();
         const [core, dayGrid, timeGrid, listPlugin, interaction] = await Promise.all([
             import(/* @vite-ignore */ FC_CORE),
             import(/* @vite-ignore */ FC_DAYGRID),
