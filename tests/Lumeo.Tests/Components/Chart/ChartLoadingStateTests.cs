@@ -16,7 +16,7 @@ public class ChartLoadingStateTests : IAsyncLifetime
     public Task InitializeAsync()
     {
         _ctx.AddLumeoServices();
-        var module = _ctx.JSInterop.SetupModule("./_content/Lumeo/js/echarts-interop.js");
+        var module = _ctx.JSInterop.SetupModule("./_content/Lumeo.Charts/js/echarts-interop.js");
         module.Mode = Bunit.JSRuntimeMode.Loose;
         return Task.CompletedTask;
     }

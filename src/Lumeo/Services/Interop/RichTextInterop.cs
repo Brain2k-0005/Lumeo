@@ -14,7 +14,7 @@ internal sealed class RichTextInterop
     private async Task<IJSObjectReference> GetModuleAsync(IJSRuntime js)
     {
         _module ??= await js.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo/js/rich-text-editor.js");
+            "import", "./_content/Lumeo.Editor/js/rich-text-editor.js");
         return _module;
     }
 
