@@ -80,11 +80,15 @@
 
         if (!_isOpen)
         {
-            InvokeAsync(async () =>
+            _ = InvokeAsync(async () =>
             {
                 await Context.SetActiveItemId.InvokeAsync(_itemId);
                 StateHasChanged();
-            });
+            }).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[MegaMenuItem] HandleMouseEnter error: {t.Exception}");
+            }, TaskScheduler.Current);
         }
     }
 
@@ -92,14 +96,21 @@
     {
         if (_isOpen)
         {
-            _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
+            _dispatch.Schedule(CloseDelay, () =>
             {
-                if (Context.ActiveItemId == _itemId)
+                _ = InvokeAsync(async () =>
                 {
-                    await Context.SetActiveItemId.InvokeAsync(null);
-                    StateHasChanged();
-                }
-            }));
+                    if (Context.ActiveItemId == _itemId)
+                    {
+                        await Context.SetActiveItemId.InvokeAsync(null);
+                        StateHasChanged();
+                    }
+                }).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        Console.Error.WriteLine($"[MegaMenuItem] HandleMouseLeave error: {t.Exception}");
+                }, TaskScheduler.Current);
+            });
         }
     }
 
