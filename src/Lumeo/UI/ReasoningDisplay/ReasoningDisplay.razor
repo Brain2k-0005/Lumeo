@@ -25,13 +25,29 @@
     [Parameter] public string? Summary { get; set; }
     [Parameter] public long? DurationMs { get; set; }
     [Parameter] public bool DefaultOpen { get; set; }
+    [Parameter] public ReasoningSize Size { get; set; } = ReasoningSize.Medium;
+    [Parameter] public ReasoningVariant Variant { get; set; } = ReasoningVariant.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string RootClass => $"w-full min-w-0 max-w-full overflow-hidden {Class}".Trim();
+    private string RootClass => $"w-full min-w-0 max-w-full overflow-hidden {VariantRootClass} {Class}".Trim();
 
-    private string SummaryClass =>
-        "flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden";
+    private string VariantRootClass => Variant switch
+    {
+        ReasoningVariant.Compact => "opacity-80",
+        ReasoningVariant.Detailed => "space-y-1",
+        _ => ""
+    };
+
+    private string SummaryClass => Size switch
+    {
+        ReasoningSize.Small =>
+            "flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden",
+        ReasoningSize.Large =>
+            "flex cursor-pointer list-none items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden",
+        _ =>
+            "flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden"
+    };
 
     private string BodyClass
     {
@@ -39,7 +55,20 @@
         {
             // ml-1 adds breathing room between the rotated chevron column and the rule,
             // pl-4 puts enough gap between the rule and the reasoning text.
-            var baseClass = "mt-2 ml-1 border-l-2 border-border pl-4 py-1 text-xs leading-relaxed text-muted-foreground";
+            var sizeClass = Size switch
+            {
+                ReasoningSize.Small => "mt-1.5 ml-1 border-l-2 border-border pl-3 py-0.5 text-[11px] leading-relaxed text-muted-foreground",
+                ReasoningSize.Large => "mt-2.5 ml-1 border-l-2 border-border pl-5 py-1.5 text-sm leading-relaxed text-muted-foreground",
+                _ => "mt-2 ml-1 border-l-2 border-border pl-4 py-1 text-xs leading-relaxed text-muted-foreground"
+            };
+            // Detailed variant shows full untruncated text; compact variant limits visible lines
+            var variantExtra = Variant switch
+            {
+                ReasoningVariant.Compact => " line-clamp-3",
+                ReasoningVariant.Detailed => "",
+                _ => ""
+            };
+            var baseClass = $"{sizeClass}{variantExtra}";
             return IsStreaming ? $"{baseClass} animate-pulse" : baseClass;
         }
     }
@@ -53,4 +82,12 @@
             return IsStreaming ? "Thinking…" : "Reasoning";
         }
     }
+
+    public enum ReasoningSize { Small, Medium, Large }
+    /// <summary>
+    /// Default = standard expand/collapse display.
+    /// Compact = summary label + collapsed body limited to 3 lines.
+    /// Detailed = always shows full body text with extra padding.
+    /// </summary>
+    public enum ReasoningVariant { Default, Compact, Detailed }
 }
