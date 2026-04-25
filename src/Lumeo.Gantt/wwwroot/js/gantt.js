@@ -144,10 +144,21 @@ function buildInstance(el, dotNetRef, options) {
     // previous render before instantiating a replacement.
     while (el.firstChild) el.removeChild(el.firstChild);
 
+    // Debug: surface what we're sending to Frappe Gantt so dev-mode can
+    // catch silent rejections (e.g. missing start date). Removed once stable.
+    if (typeof console !== 'undefined' && console.debug) {
+        console.debug('[lumeo-gantt] init', { taskCount: tasks.length, viewMode, sample: tasks[0] });
+    }
+
     const { Gantt } = gModule;
     const g = new Gantt(el, tasks, {
         view_mode: viewMode,
         read_only: readOnly,
+        // Frappe v1 uses bar_height + padding; explicitly set so bars don't get
+        // sized to 0 when the container's intrinsic height doesn't telegraph
+        // the row geometry properly.
+        bar_height: 28,
+        padding: 18,
         // Frappe Gantt ≥1.0 uses these option names for drag guards.
         bar_edit: !readOnly,
         bar_drag: !readOnly,
