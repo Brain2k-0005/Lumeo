@@ -298,9 +298,10 @@ foreach (var dir in componentDirs)
         .Select(p => NormalizePath(Path.GetRelativePath(Path.Combine(repoRoot, "src", "Lumeo"), p)))
         .ToList();
 
-    // Scan for cssVars and dependencies
+    // Scan for cssVars, dependencies, and package dependencies
     var cssVars = new HashSet<string>(StringComparer.Ordinal);
     var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var packageDeps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     foreach (var file in files)
     {
@@ -317,6 +318,9 @@ foreach (var dir in componentDirs)
         // radius
         if (Regex.IsMatch(content, @"\brounded(-(none|sm|md|lg|xl|2xl|3xl|full))?\b"))
             cssVars.Add("--radius");
+        // Package dependencies: detect <Blazicon usage → Blazicons.Lucide
+        if (content.Contains("<Blazicon ", StringComparison.Ordinal))
+            packageDeps.Add("Blazicons.Lucide");
         // Dependencies: only for .razor, match `<OtherComponent` where OtherComponent is a known sibling.
         if (file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
         {
@@ -355,6 +359,7 @@ foreach (var dir in componentDirs)
         ["description"] = description,
         ["files"] = files,
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+        ["packageDependencies"] = packageDeps.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
         ["cssVars"] = cssVars.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
         ["registryUrl"] = $"https://lumeo.nativ.sh/registry/{componentKey}.json",
     };
