@@ -2,7 +2,18 @@
 @inject Services.ComponentInteropService Interop
 @implements IAsyncDisposable
 
-<div class="@RootClass" @attributes="AdditionalAttributes">
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium text-foreground mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
+<div class="@RootClass" @attributes="AdditionalAttributes" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")">
     @if (Toolbar != RichTextToolbarMode.None)
     {
         <div class="flex flex-wrap items-center gap-0.5 border-b border-border/40 bg-muted/30 px-2 py-1.5"
@@ -63,7 +74,21 @@
     <div @ref="_contentRef" style="@ContentStyle" class="lumeo-rte-content bg-card"></div>
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Start writing…";
@@ -72,8 +97,17 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public RichTextToolbarMode Toolbar { get; set; } = RichTextToolbarMode.Full;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private Microsoft.AspNetCore.Components.ElementReference _contentRef;
     private DotNetObjectReference<RichTextEditor>? _selfRef;
@@ -85,7 +119,7 @@
     private bool _initialized;
 
     private string RootClass =>
-        $"rounded-lg border border-border bg-card overflow-hidden transition-colors focus-within:border-ring/60 focus-within:ring-[1.5px] focus-within:ring-ring/40 {Class}".Trim();
+        $"rounded-lg border {(EffectiveInvalid ? "border-destructive focus-within:ring-destructive/20" : "border-border focus-within:border-ring/60 focus-within:ring-ring/40")} bg-card overflow-hidden transition-colors focus-within:ring-[1.5px] {Class}".Trim();
 
     private string ContentStyle
     {

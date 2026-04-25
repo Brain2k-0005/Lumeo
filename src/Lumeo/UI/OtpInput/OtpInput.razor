@@ -1,5 +1,16 @@
 @namespace Lumeo
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @{
         var groups = GetGroups();
@@ -11,11 +22,13 @@
                 {
                     var index = idx;
                     <input id="@($"{_baseId}-{index}")"
+                           aria-required="@Required.ToString().ToLowerInvariant()"
+                           aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                            type="@(Masked ? "password" : "text")"
                            inputmode="@InputModeAttr"
                            maxlength="1"
                            autocomplete="one-time-code"
-                           class="flex h-10 w-10 items-center justify-center rounded-md border border-input bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                           class="@($"flex h-10 w-10 items-center justify-center rounded-md border {(EffectiveInvalid ? "border-destructive focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : "border-input")} bg-transparent text-center text-sm font-medium transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50")"
                            disabled="@Disabled"
                            value="@GetChar(index)"
                            @oninput="@(e => HandleInput(index, e))"
@@ -30,10 +43,24 @@
     }
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
+    {
+        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+    }
+    else if (!string.IsNullOrEmpty(HelperText))
+    {
+        <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @implements IAsyncDisposable
 @inject ComponentInteropService Interop
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public int Length { get; set; } = 6;
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -43,8 +70,17 @@
     [Parameter] public bool Masked { get; set; }
     [Parameter] public string? Separator { get; set; }
     [Parameter] public int[]? GroupSizes { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private readonly string _baseId = $"otp-{Guid.NewGuid():N}";
 

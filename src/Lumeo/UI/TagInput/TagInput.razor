@@ -1,6 +1,17 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium text-foreground mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div class="@ContainerClass" @onclick="FocusInput" @attributes="AdditionalAttributes">
     @if (Tags is { Count: > 0 })
     {
@@ -24,6 +35,9 @@
                class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
                placeholder="@(Tags is { Count: > 0 } ? "" : (Placeholder ?? L["TagInput.Placeholder"]))"
                value="@_inputValue"
+               name="@(Name ?? FormField?.Name)"
+               aria-required="@(Required ? "true" : "false")"
+               aria-invalid="@(EffectiveInvalid ? "true" : "false")"
                @oninput="OnInput"
                @onkeydown="OnKeyDown"
                @onfocus="() => _showSuggestions = FilteredSuggestions.Count > 0"
@@ -46,10 +60,24 @@
     </div>
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+    }
+}
+
 @inject ComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public List<string>? Tags { get; set; }
     [Parameter] public EventCallback<List<string>> TagsChanged { get; set; }
     [Parameter] public int MaxTags { get; set; }
@@ -57,8 +85,17 @@
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public List<string>? Suggestions { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private string _inputValue = "";
     private bool _showSuggestions;
@@ -68,7 +105,7 @@
 
     private bool IsAtMax => MaxTags > 0 && (Tags?.Count ?? 0) >= MaxTags;
 
-    private string ContainerClass => $"flex flex-wrap items-center gap-1.5 min-h-9 w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm transition-colors focus-within:ring-[1.5px] focus-within:ring-ring {(Disabled ? "cursor-not-allowed opacity-50" : "cursor-text")} {Class}".Trim();
+    private string ContainerClass => $"flex flex-wrap items-center gap-1.5 min-h-9 w-full rounded-md border {(EffectiveInvalid ? "border-destructive focus-within:ring-destructive/20" : "border-input focus-within:ring-ring")} bg-transparent px-3 py-1.5 text-sm transition-colors focus-within:ring-[1.5px] {(Disabled ? "cursor-not-allowed opacity-50" : "cursor-text")} {Class}".Trim();
 
     private List<string> FilteredSuggestions
     {

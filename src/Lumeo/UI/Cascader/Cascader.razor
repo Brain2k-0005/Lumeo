@@ -1,9 +1,22 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium text-foreground mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
     @* Trigger *@
-    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@_triggerId" disabled="@Disabled">
+    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@_triggerId" disabled="@Disabled"
+            aria-required="@(Required ? "true" : "false")"
+            aria-invalid="@(EffectiveInvalid ? "true" : "false")">
         @if (SelectedLabels.Count > 0)
         {
             <span class="truncate text-sm">@string.Join(" / ", SelectedLabels)</span>
@@ -70,10 +83,24 @@
     }
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+    }
+}
+
 @inject ComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public List<string>? Value { get; set; }
     [Parameter] public EventCallback<List<string>?> ValueChanged { get; set; }
     [Parameter] public List<CascaderOption>? Options { get; set; }
@@ -81,8 +108,17 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Clearable { get; set; }
     [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private bool _isOpen;
     private bool _registered;
@@ -94,7 +130,7 @@
     private readonly string _contentId = $"cascader-content-{Guid.NewGuid():N}";
 
     private string ContainerClass => $"relative inline-block {Class}".Trim();
-    private string TriggerClass => $"flex items-center w-full h-9 px-3 rounded-md border border-input bg-background text-sm hover:bg-accent/50 transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+    private string TriggerClass => $"flex items-center w-full h-9 px-3 rounded-md border {(EffectiveInvalid ? "border-destructive focus:ring-destructive/20" : "border-input")} bg-background text-sm hover:bg-accent/50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-[1.5px] {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}";
     private const string ContentClass = "fixed z-50 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-fade-in";
     private const string PanelClass = "min-w-[160px] max-h-64 overflow-y-auto border-r border-border/40 last:border-r-0 p-1";
 

@@ -1,8 +1,25 @@
 @namespace Lumeo
 
-<Popover @bind-IsOpen="_isOpen">
+@if (Label is not null && !InsideFormField)
+{
+    <label class="text-sm font-medium leading-none">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
+<Popover @bind-Open="_isOpen">
     <PopoverTrigger>
-        <button type="button" class="@CssClass" disabled="@Disabled" @attributes="AdditionalAttributes">
+        <button type="button"
+                name="@Name"
+                aria-required="@Required.ToString().ToLower()"
+                aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                class="@CssClass"
+                disabled="@Disabled"
+                @attributes="AdditionalAttributes">
             <Blazicon Svg="Lucide.Clock" class="mr-2 h-4 w-4 shrink-0" />
             @if (Value.HasValue)
             {
@@ -84,9 +101,33 @@
     </PopoverContent>
 </Popover>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
+
     [Parameter] public TimeSpan? Value { get; set; }
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
     [Parameter] public bool Use24Hour { get; set; } = true;
@@ -102,7 +143,7 @@
 
     private bool _isOpen;
 
-    private string CssClass => $"flex h-9 items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    private string CssClass => $"flex h-9 items-center rounded-md border {(EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input")} bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private string FormatTime(TimeSpan time)
     {
