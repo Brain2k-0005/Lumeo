@@ -1,0 +1,166 @@
+@page "/components/streaming-text"
+
+<PageTitle>StreamingText — Lumeo</PageTitle>
+
+<PageHeader Title="StreamingText" Description="Token-by-token streaming text renderer for AI responses." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Render AI response text as it streams in — new tokens fade in smoothly.</li>
+        <li>Show a blinking cursor while <code class="text-xs bg-muted px-1 py-0.5 rounded">IsStreaming</code> is true, hide it when the response is complete.</li>
+        <li>Enable <code class="text-xs bg-muted px-1 py-0.5 rounded">Prose</code> for Tailwind typography styling on markdown-formatted responses.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Static Text" Code="@_staticCode">
+        <Container MaxWidth="lg" Center="false">
+            <StreamingText Text="@_fullResponse" IsStreaming="false" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Streaming Simulation" Code="@_streamCode">
+        <Container MaxWidth="lg" Center="false">
+            <StreamingText Text="@_streamedText" IsStreaming="@_isStreaming" />
+            <Flex Gap="2" Class="mt-3">
+                <Button Size="Button.ButtonSize.Sm" OnClick="@StartStreaming" Disabled="@_isStreaming">Start Streaming</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@ResetStream">Reset</Button>
+            </Flex>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Blinking Cursor While Streaming" Code="@_cursorCode">
+        <Container MaxWidth="lg" Center="false">
+            <div class="rounded-lg border border-border/40 bg-card p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <Avatar>
+                        <AvatarFallback>AI</AvatarFallback>
+                    </Avatar>
+                    <span class="text-sm font-medium">Assistant</span>
+                </div>
+                <StreamingText Text="@_streamedText" IsStreaming="@_isStreaming" />
+            </div>
+            <Flex Gap="2" Class="mt-3">
+                <Button Size="Button.ButtonSize.Sm" OnClick="@StartStreaming" Disabled="@_isStreaming">Simulate Response</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@ResetStream">Reset</Button>
+            </Flex>
+        </Container>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">StreamingText</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Text</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The current full text. Each re-render fades in only the new suffix since the last render.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsStreaming</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, shows an animated blinking cursor at the end of the text.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Prose</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Applies Tailwind <code class="text-xs">prose prose-sm max-w-none</code> classes for markdown-formatted responses.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes merged onto the root span.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/prompt-input" class="text-primary hover:underline">PromptInput</a> — Multiline AI prompt textarea with submit and keyboard shortcuts.</li>
+        <li><a href="/components/reasoning-display" class="text-primary hover:underline">ReasoningDisplay</a> — Collapsible chain-of-thought block for AI reasoning traces.</li>
+        <li><a href="/components/agent-message-list" class="text-primary hover:underline">AgentMessageList</a> — Chat message stream for AI agents with role-based styling.</li>
+    </ul>
+</div>
+
+@code {
+    private const string _fullResponse =
+        "Blazor is a framework for building interactive web UIs using C# instead of JavaScript. " +
+        "It enables developers to share logic across client and server without writing JavaScript, " +
+        "while still delivering rich interactive experiences.";
+
+    private string _streamedText = string.Empty;
+    private bool _isStreaming;
+    private System.Threading.CancellationTokenSource? _cts;
+
+    private async Task StartStreaming()
+    {
+        _cts?.Cancel();
+        _cts = new System.Threading.CancellationTokenSource();
+        _streamedText = string.Empty;
+        _isStreaming = true;
+
+        var chars = _fullResponse.ToCharArray();
+        var batch = string.Empty;
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (_cts.Token.IsCancellationRequested) break;
+            batch += chars[i];
+            if (i % 3 == 0 || i == chars.Length - 1)
+            {
+                _streamedText += batch;
+                batch = string.Empty;
+                StateHasChanged();
+                await Task.Delay(30);
+            }
+        }
+        _isStreaming = false;
+    }
+
+    private void ResetStream()
+    {
+        _cts?.Cancel();
+        _streamedText = string.Empty;
+        _isStreaming = false;
+    }
+
+    private string _staticCode = @"<StreamingText Text=""Blazor is a framework for building interactive web UIs using C# instead of JavaScript."" IsStreaming=""false"" />";
+
+    private string _streamCode = @"<StreamingText Text=""@_text"" IsStreaming=""@_streaming"" />
+
+@code {
+    private string _text = string.Empty;
+    private bool _streaming;
+
+    // Update _text incrementally as tokens arrive from your AI API
+}";
+
+    private string _cursorCode = @"<StreamingText Text=""@_text"" IsStreaming=""@_streaming"" />
+<!-- IsStreaming=true shows a blinking cursor at the end -->
+<!-- Set IsStreaming=false when the response is complete -->
+";
+}
