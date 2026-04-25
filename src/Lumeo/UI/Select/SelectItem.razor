@@ -1,17 +1,20 @@
 @namespace Lumeo
 @implements IDisposable
 
-<button type="button" id="@_itemId" role="option" aria-selected="@IsSelected.ToString().ToLower()"
-        aria-disabled="@Disabled.ToString().ToLower()"
-        class="@CssClass" @onclick="HandleSelect" @attributes="AdditionalAttributes">
-    <span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-        @if (IsSelected)
-        {
-            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
-        }
-    </span>
-    @ChildContent
-</button>
+@if (Visible)
+{
+    <button type="button" id="@_itemId" role="option" aria-selected="@IsSelected.ToString().ToLower()"
+            aria-disabled="@Disabled.ToString().ToLower()"
+            class="@CssClass" @onclick="HandleSelect" @attributes="AdditionalAttributes">
+        <span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+            @if (IsSelected)
+            {
+                <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+            }
+        </span>
+        @ChildContent
+    </button>
+}
 
 @code {
     [CascadingParameter] public Select.SelectContext Context { get; set; } = default!;
@@ -19,9 +22,12 @@
     [Parameter, EditorRequired] public string Value { get; set; } = "";
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>Optional text used to match against the search input when Searchable is enabled. Falls back to Value.</summary>
+    [Parameter] public string? SearchValue { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _itemId = $"select-item-{Guid.NewGuid():N}";
+    private bool _registered;
 
     private bool IsSelected => Context.Multiple
         ? Context.Values != null && Context.Values.Contains(Value)
@@ -29,16 +35,35 @@
 
     private bool IsFocused => Context.FocusedItemId == _itemId;
 
+    private bool Visible
+    {
+        get
+        {
+            if (!Context.Searchable || string.IsNullOrEmpty(Context.SearchText)) return true;
+            var haystack = SearchValue ?? Value;
+            return haystack.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private string CssClass => string.Join(" ", new[] { "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none", Disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-accent hover:text-accent-foreground", IsFocused && !Disabled ? "bg-accent text-accent-foreground" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
-        Context.RegisterItem(_itemId, Value);
+        if (Visible && !_registered)
+        {
+            Context.RegisterItem(_itemId, Value);
+            _registered = true;
+        }
+        else if (!Visible && _registered)
+        {
+            Context.UnregisterItem(_itemId);
+            _registered = false;
+        }
     }
 
     public void Dispose()
     {
-        Context.UnregisterItem(_itemId);
+        if (_registered) Context.UnregisterItem(_itemId);
     }
 
     private async Task HandleSelect()
