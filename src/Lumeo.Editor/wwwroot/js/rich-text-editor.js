@@ -380,9 +380,14 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
     root.appendChild(mkBtn('Bold', 'Bold', () => editor.chain().focus().toggleBold().run()));
     root.appendChild(mkBtn('Italic', 'Italic', () => editor.chain().focus().toggleItalic().run()));
     root.appendChild(mkBtn('Underline', 'Underline', () => editor.chain().focus().toggleUnderline && editor.chain().focus().toggleUnderline().run()));
-    root.appendChild(mkBtn('Link', 'Link', () => {
-        const url = window.prompt('Link URL', 'https://');
-        if (url) editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    root.appendChild(mkBtn('Link', 'Link', async () => {
+        // Read the existing href under the selection so the dialog can pre-fill it.
+        const attrs = editor.getAttributes('link');
+        const existing = attrs && attrs.href ? attrs.href : '';
+        if (dotNetRef) {
+            try { await dotNetRef.invokeMethodAsync('OnLinkRequested', existing); }
+            catch (_) {}
+        }
     }));
 
     if (opts && opts.enableAiActions && dotNetRef) {

@@ -39,6 +39,26 @@
     }
 }
 
+<Dialog @bind-Open="_linkDialogOpen">
+    <DialogContent Class="max-w-md">
+        <DialogHeader>
+            <DialogTitle>Insert link</DialogTitle>
+            <DialogDescription>Paste or type the URL to link the selected text to.</DialogDescription>
+        </DialogHeader>
+        <div class="py-2">
+            <Input @bind-Value="_linkDialogUrl"
+                   Placeholder="https://"
+                   @onkeydown="HandleLinkDialogKey" />
+        </div>
+        <DialogFooter>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="CancelLinkDialog">Cancel</Button>
+            <Button Variant="Button.ButtonVariant.Default" OnClick="ApplyLinkDialog" Disabled="@string.IsNullOrWhiteSpace(_linkDialogUrl)">
+                Apply
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
@@ -115,6 +135,44 @@
     private bool _lastReadOnly;
     private Services.Interop.RichTextActiveState? _active;
     private bool _initialized;
+
+    // Link dialog state (replaces the native browser prompt for the toolbar
+    // and bubble menu's Link button).
+    private bool _linkDialogOpen;
+    private string _linkDialogUrl = string.Empty;
+
+    private void OpenLinkDialog(string? initial)
+    {
+        _linkDialogUrl = string.IsNullOrWhiteSpace(initial) ? "https://" : initial;
+        _linkDialogOpen = true;
+        StateHasChanged();
+    }
+
+    private void CancelLinkDialog()
+    {
+        _linkDialogOpen = false;
+    }
+
+    private async Task ApplyLinkDialog()
+    {
+        var url = _linkDialogUrl?.Trim();
+        _linkDialogOpen = false;
+        if (string.IsNullOrWhiteSpace(url) || _instanceId is null) return;
+        await Interop.RichTextCommandAsync(_instanceId, "link", new object?[] { url });
+    }
+
+    private async Task HandleLinkDialogKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ApplyLinkDialog();
+        else if (e.Key == "Escape") CancelLinkDialog();
+    }
+
+    [JSInvokable("OnLinkRequested")]
+    public Task OnLinkRequestedJs(string? currentUrl)
+    {
+        OpenLinkDialog(currentUrl);
+        return Task.CompletedTask;
+    }
 
     private string RootClass =>
         $"rounded-lg border {(EffectiveInvalid ? "border-destructive focus-within:ring-destructive/20" : "border-border focus-within:border-ring/60 focus-within:ring-ring/40")} bg-card overflow-hidden transition-colors focus-within:ring-[1.5px] {Class}".Trim();
@@ -308,9 +366,7 @@
         {
             case "link":
             {
-                var url = await Interop.RichTextPromptLinkAsync(null);
-                if (url is null) return;
-                await Interop.RichTextCommandAsync(_instanceId, "link", new object?[] { url });
+                OpenLinkDialog(null);
                 break;
             }
             case "ai-menu":
