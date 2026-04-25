@@ -4,10 +4,56 @@
 
 Lumeo 2.0 is additive for the vast majority of users — most apps upgrade with a package bump and no code changes. The breaking surface is intentionally small:
 
+- **The `Lumeo` package was split into `Lumeo` (core) + 5 satellite packages.** If you use Chart, DataGrid, DataTable, Filter, RichTextEditor, Scheduler, or Gantt, you now also need to install the corresponding satellite package. See "Package split" below.
+- **Overlay components renamed `IsOpen` → `Open`.** Existing `IsOpen` / `IsOpenChanged` continue to work via `[Obsolete]` aliases; consider migrating at your leisure.
 - The `[Obsolete]` `Icon` / `Label` RenderFragment slot aliases deprecated in 1.6.0 are now **removed** (5 min rename).
 - DataGrid's "Export Excel" is now a **real `.xlsx`** (ClosedXML) instead of a CSV with the wrong extension.
 - Date / number components now honour `CultureInfo.CurrentCulture` by default — pass `Culture="@CultureInfo.InvariantCulture"` if you relied on invariant formatting.
 - BarChart shows every category label by default and auto-rotates.
+
+## Package split
+
+Lumeo 2.0 follows the DevExpress / Telerik / Microsoft.Extensions model: a small core package plus opt-in satellites for heavy components. The split keeps the core package lean (~568 KB instead of ~918 KB) and means consumers only pay for what they use.
+
+| Component | Now ships in |
+|-----------|--------------|
+| Chart (and all 30+ chart subtypes) | `Lumeo.Charts` |
+| DataGrid, DataTable, Filter | `Lumeo.DataGrid` |
+| RichTextEditor | `Lumeo.Editor` |
+| Scheduler | `Lumeo.Scheduler` |
+| Gantt | `Lumeo.Gantt` |
+| All other ~110 components | `Lumeo` (core) |
+
+**To migrate:** add a `<PackageReference>` to each satellite whose components you use. All packages share one version (lockstep), so always upgrade them together.
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Lumeo" Version="2.0.0" />
+  <PackageReference Include="Lumeo.Charts" Version="2.0.0" />     <!-- if using Chart -->
+  <PackageReference Include="Lumeo.DataGrid" Version="2.0.0" />   <!-- if using DataGrid/DataTable/Filter -->
+  <!-- etc. -->
+</ItemGroup>
+```
+
+`@using Lumeo` already covers the satellite components — no extra `@using` directives are needed. The `lumeo add <component>` CLI also detects which satellite a component belongs to and prompts you to install the package.
+
+`lumeo-utilities.css` (a 275 KB compiled-Tailwind-utilities snapshot) is **no longer shipped in the NuGet package**. If you were relying on it, generate the utility classes you need with your own Tailwind build (recommended), or download `lumeo-utilities.css` separately from the registry CDN.
+
+## Overlay component rename: `IsOpen` → `Open`
+
+15 overlay components (Dialog, Drawer, DropdownMenu, AlertDialog, Sheet, Popover, ContextMenu, Combobox, Select, ColorPicker, HoverCard, Tour, Collapsible, NavigationMenu*) now expose `Open` / `OpenChanged` as the canonical parameters, matching shadcn/ui and ReUI conventions.
+
+The previous `IsOpen` / `IsOpenChanged` parameters remain as `[Obsolete]` aliases that mirror the new properties — your existing code keeps working but emits a build-time warning. Migrate when convenient:
+
+```razor
+<!-- Old (still works, with deprecation warning) -->
+<Dialog @bind-IsOpen="_open">…</Dialog>
+
+<!-- New -->
+<Dialog @bind-Open="_open">…</Dialog>
+```
+
+The aliases will be removed in a future major release.
 
 Services (`ToastService`, `OverlayService`, `ThemeService`, `KeyboardShortcutService`, `ComponentInteropService`, `IDataGridExportService`), theming, CSS variables, and routes are **unchanged**.
 
