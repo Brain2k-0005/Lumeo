@@ -14,7 +14,7 @@ public class ChartTests : IAsyncLifetime
     {
         _ctx.AddLumeoServices();
         // Set up the echarts-interop module in loose mode
-        var module = _ctx.JSInterop.SetupModule("./_content/Lumeo/js/echarts-interop.js");
+        var module = _ctx.JSInterop.SetupModule("./_content/Lumeo.Charts/js/echarts-interop.js");
         module.Mode = Bunit.JSRuntimeMode.Loose;
         return Task.CompletedTask;
     }
