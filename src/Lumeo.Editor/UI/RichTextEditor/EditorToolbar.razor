@@ -1,0 +1,140 @@
+@namespace Lumeo
+
+@*
+    Preset-driven toolbar rendered above the editor surface. Each button
+    invokes OnCommand which the parent RichTextEditor forwards to the JS
+    editor via executeCommand.
+*@
+
+<div class="@RootClass" role="toolbar" aria-label="Text formatting" @attributes="AdditionalAttributes">
+    @if (Preset == EditorToolbarPreset.Full)
+    {
+        @Btn("Paragraph", "Pilcrow", "setParagraph", Active?.Paragraph == true)
+        @Btn("Heading 1", "Heading1", "setHeading", Active?.Heading1 == true, 1)
+        @Btn("Heading 2", "Heading2", "setHeading", Active?.Heading2 == true, 2)
+        @Btn("Heading 3", "Heading3", "setHeading", Active?.Heading3 == true, 3)
+        @Sep()
+    }
+    else if (Preset == EditorToolbarPreset.Standard)
+    {
+        @Btn("Heading 1", "Heading1", "setHeading", Active?.Heading1 == true, 1)
+        @Btn("Heading 2", "Heading2", "setHeading", Active?.Heading2 == true, 2)
+        @Sep()
+    }
+
+    @Btn("Bold", "Bold", "bold", Active?.Bold == true)
+    @Btn("Italic", "Italic", "italic", Active?.Italic == true)
+
+    @if (Preset != EditorToolbarPreset.Minimal)
+    {
+        @Btn("Underline", "Underline", "underline", Active?.Underline == true)
+        @Btn("Strikethrough", "Strikethrough", "strike", Active?.Strike == true)
+    }
+
+    @if (Preset == EditorToolbarPreset.Full)
+    {
+        @Btn("Inline code", "Code", "code", Active?.Code == true)
+    }
+
+    @if (Preset != EditorToolbarPreset.Minimal)
+    {
+        @Sep()
+        @Btn("Bullet list", "List", "bulletList", Active?.BulletList == true)
+        @Btn("Numbered list", "ListOrdered", "orderedList", Active?.OrderedList == true)
+
+        @if (Preset == EditorToolbarPreset.Full)
+        {
+            @Btn("Task list", "ListChecks", "taskList", false)
+            @Sep()
+            @Btn("Quote", "Quote", "blockquote", Active?.Blockquote == true)
+            @Btn("Code block", "SquareCode", "codeBlock", Active?.CodeBlock == true)
+            @Btn("Horizontal rule", "Minus", "hr", false)
+        }
+    }
+
+    @Sep()
+    @Btn("Link", "Link", "link", Active?.Link == true)
+    @if (Preset != EditorToolbarPreset.Minimal)
+    {
+        @Btn("Unlink", "Unlink", "unlink", false, disabled: Active?.Link != true)
+    }
+
+    @if (Preset == EditorToolbarPreset.Full)
+    {
+        @Sep()
+        @Btn("Insert table", "Table", "insertTable", false)
+        @Btn("Insert image", "Image", "pickImage", false)
+        @if (AllowWordImport)
+        {
+            @Btn("Import .docx", "FileText", "pickWord", false)
+        }
+        @if (EnableAiActions)
+        {
+            @Btn("AI actions", "Sparkles", "ai-menu", false)
+        }
+    }
+
+    @Sep()
+    @Btn("Undo", "Undo", "undo", false, disabled: Active?.CanUndo == false)
+    @Btn("Redo", "Redo", "redo", false, disabled: Active?.CanRedo == false)
+
+    @if (Preset == EditorToolbarPreset.Full)
+    {
+        @Btn("Clear formatting", "RemoveFormatting", "clearFormat", false)
+    }
+</div>
+
+@code {
+    [Parameter] public EditorToolbarPreset Preset { get; set; } = EditorToolbarPreset.Standard;
+    [Parameter] public Lumeo.Services.Interop.RichTextActiveState? Active { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool AllowWordImport { get; set; }
+    [Parameter] public bool EnableAiActions { get; set; }
+    [Parameter] public EventCallback<(string command, object? arg)> OnCommand { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass =>
+        $"flex flex-wrap items-center gap-0.5 border-b border-border/40 bg-muted/30 px-2 py-1.5 {Class}".Trim();
+
+    private RenderFragment Sep() => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "aria-hidden", "true");
+        builder.AddAttribute(2, "class", "mx-0.5 h-5 w-px bg-border");
+        builder.CloseElement();
+    };
+
+    private RenderFragment Btn(string label, string icon, string command, bool active, object? arg = null, bool disabled = false)
+        => builder =>
+        {
+            var isDisabled = disabled || Disabled;
+            var cls = active
+                ? "inline-flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground transition-colors"
+                : "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
+            if (isDisabled) cls += " opacity-50 cursor-not-allowed";
+
+            builder.OpenElement(0, "button");
+            builder.AddAttribute(1, "type", "button");
+            builder.AddAttribute(2, "class", cls);
+            builder.AddAttribute(3, "title", label);
+            builder.AddAttribute(4, "aria-label", label);
+            builder.AddAttribute(5, "aria-pressed", active ? "true" : "false");
+            if (isDisabled)
+            {
+                builder.AddAttribute(6, "disabled", true);
+            }
+            else
+            {
+                builder.AddAttribute(7, "onclick",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create(
+                        this, async () => await OnCommand.InvokeAsync((command, arg))));
+                builder.AddAttribute(8, "onmousedown", "event.preventDefault()");
+            }
+            builder.OpenComponent<Icon>(9);
+            builder.AddAttribute(10, "Name", icon);
+            builder.AddAttribute(11, "Size", Icon.IconSize.Sm);
+            builder.CloseComponent();
+            builder.CloseElement();
+        };
+}
