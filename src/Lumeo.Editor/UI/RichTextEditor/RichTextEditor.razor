@@ -86,9 +86,12 @@
     /// returns replacement HTML to be inserted in place of the selection.</summary>
     [Parameter] public Func<string, string, ValueTask<string?>>? OnAiAction { get; set; }
 
-    /// <summary>Fires when the toolbar's "Import .docx" button is clicked. Consumer is
-    /// expected to pop their own file picker / upload flow and call <see cref="SetHtmlAsync"/>.</summary>
-    [Parameter] public EventCallback<string> OnWordImportRequested { get; set; }
+    /// <summary>Optional override for Word import. Receives the picked file payload
+    /// (filename + bytes) and returns HTML to replace the editor content. When NOT set,
+    /// the file is converted in-browser via <see cref="WordImporter"/> (Mammoth runs
+    /// inside the WASM bundle), so the demo works on static hosting with no server.
+    /// Set this when you want server-side conversion (better fidelity for complex docs).</summary>
+    [Parameter] public Func<WordImportPayload, ValueTask<string>>? OnWordImportRequested { get; set; }
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -265,11 +268,33 @@
     }
 
     [JSInvokable("OnWordImportRequested")]
-    public async Task OnWordImportRequestedJs(string fileName)
+    public async Task OnWordImportRequestedJs(string fileName, string base64Content)
     {
-        if (OnWordImportRequested.HasDelegate)
+        try
         {
-            await OnWordImportRequested.InvokeAsync(fileName);
+            var bytes = Convert.FromBase64String(base64Content);
+            var payload = new WordImportPayload(fileName, bytes);
+
+            string html;
+            if (OnWordImportRequested is not null)
+            {
+                html = await OnWordImportRequested(payload);
+            }
+            else
+            {
+                using var stream = new MemoryStream(bytes);
+                var result = await WordImporter.ToHtmlAsync(stream);
+                html = result.Html;
+            }
+
+            if (!string.IsNullOrEmpty(html))
+            {
+                await SetHtmlAsync(html);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Word import failed: {ex.Message}");
         }
     }
 
