@@ -83,6 +83,33 @@ public static class WordImporter
 
 Implementation wraps `Mammoth` NuGet (MIT, ~80 KB). Consumers call it from their own `[HttpPost("/upload-docx")]` endpoint. Total integration: ~10 lines on the consumer's side.
 
+**Default style map (baked into `WordImporter`):**
+
+`WordImporter.DefaultStyleMap` ships with mappings for English AND German Word default styles, since enterprise docs commonly use both:
+
+```text
+p[style-name='Title']         => h1.doc-title:fresh
+p[style-name='Titel']         => h1.doc-title:fresh
+p[style-name='Subtitle']      => h2.doc-subtitle:fresh
+p[style-name='Untertitel']    => h2.doc-subtitle:fresh
+p[style-name='Heading 1']     => h1:fresh
+p[style-name='Überschrift 1'] => h1:fresh
+p[style-name='Heading 2']     => h2:fresh
+p[style-name='Überschrift 2'] => h2:fresh
+p[style-name='Heading 3']     => h3:fresh
+p[style-name='Überschrift 3'] => h3:fresh
+p[style-name='Heading 4']     => h4:fresh
+p[style-name='Überschrift 4'] => h4:fresh
+p[style-name='Body Text']     => p:fresh
+p[style-name='Textkörper']    => p:fresh
+p[style-name='List Paragraph']=> li:fresh
+p[style-name='Listenabsatz']  => li:fresh
+r[style-name='Strong']        => strong
+r[style-name='Emphasis']      => em
+```
+
+Validated against real-world test docs in `tests/docx-fixtures/` covering EN/DE/SL/HR/ES/FR variants of the same template. Consumers can extend or replace via `WordImportOptions { StyleMap = ... }`.
+
 **Browser-side path (opt-in):** if consumer sets `WordImportMode.Browser`, the editor lazy-loads `mammoth.browser.min.js` from a CDN URL the consumer configures. Default CDN: `https://unpkg.com/mammoth@1.x/mammoth.browser.min.js`. ~400 KB, downloaded only when user clicks Import. Not bundled in the package.
 
 ### Image upload API
