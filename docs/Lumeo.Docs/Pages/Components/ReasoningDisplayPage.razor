@@ -1,0 +1,163 @@
+@page "/components/reasoning-display"
+
+<PageTitle>ReasoningDisplay — Lumeo</PageTitle>
+
+<PageHeader Title="ReasoningDisplay" Description="Collapsible chain-of-thought block for AI reasoning traces." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Display reasoning traces from chain-of-thought models (e.g. Claude's extended thinking mode).</li>
+        <li>Show an intermediate thinking step collapsed by default to avoid cluttering the chat UI.</li>
+        <li>Use <code class="text-xs bg-muted px-1 py-0.5 rounded">IsStreaming</code> to animate while tokens are arriving, then set it to false when the trace is complete.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic" Code="@_basicCode">
+        <Container MaxWidth="lg" Center="false">
+            <ReasoningDisplay Text="@_reasoningText" Summary="Reasoning" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Duration" Code="@_durationCode">
+        <Container MaxWidth="lg" Center="false">
+            <ReasoningDisplay Text="@_reasoningText" DurationMs="4200" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Streaming State" Code="@_streamingCode">
+        <Container MaxWidth="lg" Center="false">
+            <ReasoningDisplay Text="@_partialReasoning" IsStreaming="@_isStreaming" DefaultOpen="true" />
+            <Flex Gap="2" Class="mt-3">
+                <Button Size="Button.ButtonSize.Sm" OnClick="@StartStream" Disabled="@_isStreaming">Start Streaming</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@StopStream">Stop</Button>
+            </Flex>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Open by Default" Code="@_openCode">
+        <Container MaxWidth="lg" Center="false">
+            <ReasoningDisplay Text="@_reasoningText" DefaultOpen="true" Summary="Chain of thought" />
+        </Container>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">ReasoningDisplay</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Text</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The reasoning trace text to display inside the collapsible body.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsStreaming</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">When true, shows a pulsing dot in the summary and animates the body text.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Summary</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Custom label for the summary row. Defaults to "Thinking…" while streaming, "Reasoning" otherwise, or "Reasoned for Xs" when <code class="text-xs">DurationMs</code> is set.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DurationMs</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">long?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Optional thinking duration in milliseconds. When set, renders "Reasoned for Xs" in the summary.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">DefaultOpen</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">If true, the reasoning block is expanded on initial render.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes merged onto the root element.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/streaming-text" class="text-primary hover:underline">StreamingText</a> — Token-by-token streaming text renderer for AI responses.</li>
+        <li><a href="/components/tool-call-card" class="text-primary hover:underline">ToolCallCard</a> — AI tool-invocation card showing call and result.</li>
+        <li><a href="/components/agent-message-list" class="text-primary hover:underline">AgentMessageList</a> — Chat message stream for AI agents with role-based styling.</li>
+    </ul>
+</div>
+
+@code {
+    private const string _reasoningText =
+        "First, I need to consider the user's question carefully. " +
+        "The problem involves finding the optimal path through a weighted graph. " +
+        "I should apply Dijkstra's algorithm here, starting from the source node. " +
+        "Let me trace through the steps: initialize distances to infinity, process nodes by priority queue...\n\n" +
+        "After analyzing all edges, the shortest path from A to D is A → B → C → D with total weight 7.";
+
+    private string _partialReasoning = "Analyzing the request...";
+    private bool _isStreaming;
+    private System.Threading.CancellationTokenSource? _cts;
+
+    private async Task StartStream()
+    {
+        _cts?.Cancel();
+        _cts = new System.Threading.CancellationTokenSource();
+        _isStreaming = true;
+        _partialReasoning = string.Empty;
+        var words = _reasoningText.Split(' ');
+        foreach (var word in words)
+        {
+            if (_cts.Token.IsCancellationRequested) break;
+            _partialReasoning += word + " ";
+            StateHasChanged();
+            await Task.Delay(60);
+        }
+        _isStreaming = false;
+    }
+
+    private void StopStream()
+    {
+        _cts?.Cancel();
+        _isStreaming = false;
+    }
+
+    private string _basicCode = @"<ReasoningDisplay Text=""@_reasoningText"" Summary=""Reasoning"" />";
+
+    private string _durationCode = @"<ReasoningDisplay Text=""@_reasoningText"" DurationMs=""4200"" />";
+
+    private string _streamingCode = @"<ReasoningDisplay Text=""@_partialText"" IsStreaming=""@_streaming"" DefaultOpen=""true"" />
+
+@code {
+    private string _partialText = string.Empty;
+    private bool _streaming;
+}";
+
+    private string _openCode = @"<ReasoningDisplay Text=""@_reasoningText"" DefaultOpen=""true"" Summary=""Chain of thought"" />";
+}
