@@ -291,6 +291,7 @@ namespace Lumeo.Cli
         [JsonPropertyName("name")] public string Name { get; set; } = "";
         [JsonPropertyName("category")] public string Category { get; set; } = "Utility";
         [JsonPropertyName("description")] public string Description { get; set; } = "";
+        [JsonPropertyName("nugetPackage")] public string? NugetPackage { get; set; }
         [JsonPropertyName("files")] public List<string> Files { get; set; } = new();
         [JsonPropertyName("dependencies")] public List<string> Dependencies { get; set; } = new();
         [JsonPropertyName("cssVars")] public List<string> CssVars { get; set; } = new();

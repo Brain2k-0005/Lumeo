@@ -21,6 +21,24 @@ if (!Directory.Exists(uiRoot))
     return 1;
 }
 
+// NuGet package map — components that live in satellite packages.
+// Everything not listed here defaults to the "Lumeo" core package.
+var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+{
+    // Charts satellite
+    ["Chart"] = "Lumeo.Charts",
+    // DataGrid satellite
+    ["DataGrid"] = "Lumeo.DataGrid",
+    ["DataTable"] = "Lumeo.DataGrid",
+    ["Filter"] = "Lumeo.DataGrid",
+    // Editor satellite
+    ["RichTextEditor"] = "Lumeo.Editor",
+    // Scheduler satellite
+    ["Scheduler"] = "Lumeo.Scheduler",
+    // Gantt satellite
+    ["Gantt"] = "Lumeo.Gantt",
+};
+
 // Category map derived from README.md structure.
 // Keep in sync with README.md when adding components.
 var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -357,6 +375,7 @@ foreach (var dir in componentDirs)
         ["name"] = name,
         ["category"] = category,
         ["description"] = description,
+        ["nugetPackage"] = componentToPackage.TryGetValue(name, out var pkg) ? pkg : "Lumeo",
         ["files"] = files,
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
         ["packageDependencies"] = packageDeps.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
