@@ -145,8 +145,8 @@ function createSuggestionRenderer(label) {
             'position:fixed', 'z-index:9999',
             'min-width:200px', 'max-width:340px', 'max-height:280px',
             'overflow-y:auto', 'border-radius:0.5rem',
-            'border:1px solid hsl(var(--border) / 0.6)',
-            'background:hsl(var(--popover))', 'color:hsl(var(--popover-foreground))',
+            'border:1px solid var(--color-border)',
+            'background:var(--color-popover)', 'color:var(--color-popover-foreground)',
             'box-shadow:0 10px 25px -5px rgb(0 0 0 / 0.15), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
             'padding:0.25rem', 'font-size:0.875rem',
         ].join(';');
@@ -157,14 +157,14 @@ function createSuggestionRenderer(label) {
     function render() {
         ensureRoot();
         if (!items || items.length === 0) {
-            root.innerHTML = '<div style="padding:0.5rem 0.625rem;color:hsl(var(--muted-foreground));font-size:0.8125rem">No results</div>';
+            root.innerHTML = '<div style="padding:0.5rem 0.625rem;color:var(--color-muted-foreground);font-size:0.8125rem">No results</div>';
             return;
         }
         const html = items.map((it, i) => {
             const sel = i === selectedIndex;
-            const subtitle = it.subtitle ? `<div style="font-size:0.75rem;color:hsl(var(--muted-foreground));line-height:1.1">${escapeHtml(it.subtitle)}</div>` : '';
-            const icon = it.icon ? `<span style="display:inline-flex;align-items:center;width:1rem;height:1rem;color:hsl(var(--muted-foreground));margin-right:0.5rem">${iconSvg(it.icon)}</span>` : '';
-            const bg = sel ? 'background:hsl(var(--accent));color:hsl(var(--accent-foreground));' : '';
+            const subtitle = it.subtitle ? `<div style="font-size:0.75rem;color:var(--color-muted-foreground);line-height:1.1">${escapeHtml(it.subtitle)}</div>` : '';
+            const icon = it.icon ? `<span style="display:inline-flex;align-items:center;width:1rem;height:1rem;color:var(--color-muted-foreground);margin-right:0.5rem">${iconSvg(it.icon)}</span>` : '';
+            const bg = sel ? 'background:var(--color-accent);color:var(--color-accent-foreground);' : '';
             return `<div role="option" data-index="${i}" aria-selected="${sel}" style="display:flex;align-items:flex-start;padding:0.4rem 0.55rem;border-radius:0.375rem;cursor:pointer;${bg}">
                 ${icon}
                 <div style="flex:1;min-width:0">
@@ -299,8 +299,8 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
         'position:fixed', 'z-index:9998', 'display:none',
         'gap:0.125rem', 'padding:0.25rem',
         'border-radius:0.5rem',
-        'border:1px solid hsl(var(--border) / 0.6)',
-        'background:hsl(var(--popover))', 'color:hsl(var(--popover-foreground))',
+        'border:1px solid var(--color-border)',
+        'background:var(--color-popover)', 'color:var(--color-popover-foreground)',
         'box-shadow:0 8px 20px -4px rgb(0 0 0 / 0.18)',
     ].join(';');
 
@@ -313,7 +313,7 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
         b.innerHTML = iconSvg(icon);
         b.addEventListener('mousedown', e => e.preventDefault());
         b.addEventListener('click', onClick);
-        b.addEventListener('mouseenter', () => { b.style.background = 'hsl(var(--accent))'; });
+        b.addEventListener('mouseenter', () => { b.style.background = 'var(--color-accent)'; });
         b.addEventListener('mouseleave', () => { b.style.background = 'transparent'; });
         return b;
     };
@@ -384,7 +384,7 @@ function createDragHandle(editor) {
     handle.style.cssText = [
         'position:absolute', 'display:none', 'width:1.25rem', 'height:1.25rem',
         'align-items:center', 'justify-content:center', 'cursor:grab',
-        'color:hsl(var(--muted-foreground))', 'border-radius:0.25rem',
+        'color:var(--color-muted-foreground)', 'border-radius:0.25rem',
         'opacity:0', 'transition:opacity 120ms',
         'user-select:none', 'pointer-events:auto', 'z-index:5',
     ].join(';');
@@ -689,9 +689,29 @@ function applySlashCommand(editor, item) {
 export const rte = {
     async init(elOrId, dotNetRef, options) {
         const opts = options || {};
-        const libs = await loadTiptap();
         const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
         if (!el) return '';
+
+        // Lazy init: wait until the editor scrolls into view before paying the
+        // ~3-5 MB TipTap+lowlight init cost. Massive win on pages with many editors.
+        // Skip the wait if the element is already on screen (typical first-paint case).
+        const inViewport = (() => {
+            const r = el.getBoundingClientRect();
+            return r.top < window.innerHeight && r.bottom > 0;
+        })();
+        if (!inViewport && typeof IntersectionObserver !== 'undefined') {
+            await new Promise(resolve => {
+                const io = new IntersectionObserver((entries) => {
+                    if (entries.some(e => e.isIntersecting)) {
+                        io.disconnect();
+                        resolve();
+                    }
+                }, { rootMargin: '200px' });
+                io.observe(el);
+            });
+        }
+
+        const libs = await loadTiptap();
 
         const id = makeId();
         const idRef = { current: id };
@@ -757,7 +777,7 @@ export const rte = {
                         'span',
                         libs.mergeAttributes(options.HTMLAttributes, {
                             'data-mention-id': node.attrs.id,
-                            style: 'display:inline-block;padding:0 0.25rem;border-radius:0.25rem;background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-weight:500',
+                            style: 'display:inline-block;padding:0 0.25rem;border-radius:0.25rem;background:var(--color-accent);color:var(--color-accent-foreground);font-weight:500',
                         }),
                         `${triggers[0]?.char || '@'}${node.attrs.label ?? node.attrs.id}`,
                     ];
