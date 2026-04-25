@@ -12,6 +12,15 @@ let cssInjected = false;
 const GANTT_ESM = 'https://esm.sh/frappe-gantt@1';
 const GANTT_CSS = 'https://esm.sh/frappe-gantt@1/dist/frappe-gantt.css';
 
+function injectLumeoGanttOverrides() {
+    if (document.querySelector('[data-lumeo-gantt-overrides]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.setAttribute('data-lumeo-gantt-overrides', '');
+    link.href = '/_content/Lumeo.Gantt/css/lumeo-gantt.css';
+    document.head.appendChild(link);
+}
+
 async function injectCssOnce() {
     if (cssInjected) return;
     cssInjected = true;
@@ -29,6 +38,8 @@ async function injectCssOnce() {
         // Non-fatal: chart still renders, just without default Frappe styles.
         // Lumeo theme overrides in lumeo.css cover the essentials.
     }
+    // Inject Lumeo overrides AFTER Frappe CSS so they win the cascade.
+    injectLumeoGanttOverrides();
 }
 
 async function loadGantt() {
