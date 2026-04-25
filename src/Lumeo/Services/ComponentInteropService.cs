@@ -429,6 +429,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ripple.detach", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- LocalStorage ---
 
     public async ValueTask SaveToLocalStorage(string key, string value)
@@ -547,6 +557,14 @@ public sealed class ComponentInteropService : IComponentInteropService
         }
         catch (JSDisconnectedException) { }
     }
+
+    // --- Generic module import ---
+    // Allows components that manage their own heavy JS modules (e.g. Chart with
+    // echarts-interop.js) to import via the service rather than injecting IJSRuntime
+    // directly in the component, satisfying the "no direct IJSRuntime in components" rule.
+
+    public async ValueTask<IJSObjectReference> ImportModuleAsync(string moduleUrl)
+        => await _jsRuntime.InvokeAsync<IJSObjectReference>("import", moduleUrl);
 
     // --- Scheduler (FullCalendar wrapper) ---
     // Scheduler ships its own JS module (scheduler.js) loaded lazily on first

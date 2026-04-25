@@ -93,7 +93,12 @@
 
     private void HandleShow(OverlayInstance instance)
     {
-        _ = InvokeAsync(() => HandleShowAsync(instance));
+        _ = InvokeAsync(() => HandleShowAsync(instance))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[OverlayProvider] HandleShow error: {t.Exception}");
+            }, TaskScheduler.Current);
     }
 
     private Task HandleShowAsync(OverlayInstance instance)
@@ -105,7 +110,12 @@
 
     private void HandleClose(string id, object? result, bool cancelled)
     {
-        _ = InvokeAsync(() => HandleCloseAsync(id, result, cancelled));
+        _ = InvokeAsync(() => HandleCloseAsync(id, result, cancelled))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[OverlayProvider] HandleClose error: {t.Exception}");
+            }, TaskScheduler.Current);
     }
 
     private Task HandleCloseAsync(string id, object? result, bool cancelled)
