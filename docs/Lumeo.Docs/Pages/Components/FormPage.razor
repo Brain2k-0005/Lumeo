@@ -14,6 +14,67 @@
     </ul>
 </div>
 
+<div class="mt-10 space-y-3">
+    <Heading Id="validation-pattern" Level="2" Class="scroll-mt-20">Validation Pattern</Heading>
+    <p class="text-sm text-muted-foreground">
+        Lumeo form inputs (<code class="font-mono text-xs">Input</code>, <code class="font-mono text-xs">Select</code>, <code class="font-mono text-xs">Checkbox</code>, <code class="font-mono text-xs">Switch</code>, <code class="font-mono text-xs">Textarea</code>, and others) do not carry
+        <code class="font-mono text-xs">Label</code>, <code class="font-mono text-xs">Required</code>, <code class="font-mono text-xs">Error</code>, or <code class="font-mono text-xs">HelpText</code> props directly.
+        Instead, wrap any input in <code class="font-mono text-xs">&lt;FormField&gt;</code> to attach a label, helper text, required marker, and inline error message.
+        The <code class="font-mono text-xs">FormField</code> cascades a <code class="font-mono text-xs">FormFieldContext</code> so that child <code class="font-mono text-xs">&lt;FormLabel&gt;</code> and <code class="font-mono text-xs">&lt;FormMessage&gt;</code>
+        components automatically reflect the error state without any extra wiring.
+    </p>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Input with Validation" Code="@_validationInputCode">
+        <Stack Gap="4" Class="w-full max-w-sm">
+            <FormField Name="email" Label="Email" Required="true" Error="@_emailError" HelpText="We will never share your email.">
+                <Input Type="email" Placeholder="you@example.com" @bind-Value="_emailValue" />
+            </FormField>
+            <Button OnClick="ValidateEmail">Validate</Button>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Select with Validation" Code="@_validationSelectCode">
+        <Stack Gap="4" Class="w-full max-w-sm">
+            <FormField Name="role" Label="Role" Required="true" Error="@_roleError">
+                <Select @bind-Value="_roleValue">
+                    <SelectTrigger>
+                        <Text As="span" Class="@(_roleValue == null ? "text-muted-foreground" : "")">
+                            @(_roleValue ?? "Select a role")
+                        </Text>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value="admin">Admin</SelectItem>
+                        <SelectItem Value="editor">Editor</SelectItem>
+                        <SelectItem Value="viewer">Viewer</SelectItem>
+                    </SelectContent>
+                </Select>
+            </FormField>
+            <Button OnClick="ValidateRole">Validate</Button>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Checkbox and Switch with Validation" Code="@_validationToggleCode">
+        <Stack Gap="4" Class="w-full max-w-sm">
+            <FormField Name="terms" Error="@_termsError">
+                <Flex Gap="2" Align="center">
+                    <Checkbox @bind-Checked="_termsChecked" />
+                    <Label>I accept the terms and conditions</Label>
+                </Flex>
+            </FormField>
+            <FormField Name="notifications" Label="Email Notifications" HelpText="Receive updates about your account.">
+                <Switch @bind-Checked="_notifChecked" />
+            </FormField>
+            <Button OnClick="ValidateTerms">Submit</Button>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="demos" Level="2" Class="scroll-mt-20">Examples</Heading>
+</div>
+
 <Stack Gap="8" Class="mt-8">
     <ComponentDemo Title="Default" Code="@_defaultCode">
         <Stack Gap="4" Class="w-full max-w-sm">
@@ -216,6 +277,105 @@
 </div>
 
 @code {
+    // Validation pattern demos
+    private string? _emailValue;
+    private string? _emailError;
+    private string? _roleValue;
+    private string? _roleError;
+    private bool _termsChecked;
+    private bool _notifChecked = true;
+    private string? _termsError;
+
+    private void ValidateEmail()
+    {
+        if (string.IsNullOrWhiteSpace(_emailValue) || !_emailValue.Contains('@'))
+            _emailError = "Please enter a valid email address.";
+        else
+            _emailError = null;
+    }
+
+    private void ValidateRole()
+    {
+        if (string.IsNullOrEmpty(_roleValue))
+            _roleError = "Please select a role.";
+        else
+            _roleError = null;
+    }
+
+    private void ValidateTerms()
+    {
+        _termsError = _termsChecked ? null : "You must accept the terms to continue.";
+    }
+
+    private string _validationInputCode = @"<FormField Name=""email"" Label=""Email"" Required=""true"" Error=""@_emailError"" HelpText=""We will never share your email."">
+    <Input Type=""email"" Placeholder=""you@example.com"" @bind-Value=""_emailValue"" />
+</FormField>
+<Button OnClick=""ValidateEmail"">Validate</Button>
+
+@code {
+    private string? _emailValue;
+    private string? _emailError;
+
+    private void ValidateEmail()
+    {
+        if (string.IsNullOrWhiteSpace(_emailValue) || !_emailValue.Contains('@'))
+            _emailError = ""Please enter a valid email address."";
+        else
+            _emailError = null;
+    }
+}";
+
+    private string _validationSelectCode = @"<FormField Name=""role"" Label=""Role"" Required=""true"" Error=""@_roleError"">
+    <Select @bind-Value=""_roleValue"">
+        <SelectTrigger>
+            <Text As=""span"" Class=""@(_roleValue == null ? \""text-muted-foreground\"" : """")"">
+                @(_roleValue ?? ""Select a role"")
+            </Text>
+        </SelectTrigger>
+        <SelectContent>
+            <SelectItem Value=""admin"">Admin</SelectItem>
+            <SelectItem Value=""editor"">Editor</SelectItem>
+            <SelectItem Value=""viewer"">Viewer</SelectItem>
+        </SelectContent>
+    </Select>
+</FormField>
+<Button OnClick=""ValidateRole"">Validate</Button>
+
+@code {
+    private string? _roleValue;
+    private string? _roleError;
+
+    private void ValidateRole()
+    {
+        if (string.IsNullOrEmpty(_roleValue))
+            _roleError = ""Please select a role."";
+        else
+            _roleError = null;
+    }
+}";
+
+    private string _validationToggleCode = @"<FormField Name=""terms"" Error=""@_termsError"">
+    <Flex Gap=""2"" Align=""center"">
+        <Checkbox @bind-Checked=""_termsChecked"" />
+        <Label>I accept the terms and conditions</Label>
+    </Flex>
+</FormField>
+<FormField Name=""notifications"" Label=""Email Notifications"" HelpText=""Receive updates about your account."">
+    <Switch @bind-Checked=""_notifChecked"" />
+</FormField>
+<Button OnClick=""ValidateTerms"">Submit</Button>
+
+@code {
+    private bool _termsChecked;
+    private bool _notifChecked = true;
+    private string? _termsError;
+
+    private void ValidateTerms()
+    {
+        _termsError = _termsChecked ? null : ""You must accept the terms to continue."";
+    }
+}";
+
     private string _defaultCode = @"<FormField Name=""username"">
     <FormItem>
         <FormLabel>Username</FormLabel>
