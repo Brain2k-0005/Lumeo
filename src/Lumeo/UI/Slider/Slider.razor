@@ -1,5 +1,16 @@
 @namespace Lumeo
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="text-sm font-medium leading-none">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 @if (Orientation == "Vertical")
 {
     <div class="@VerticalCssClass" @attributes="AdditionalAttributes">
@@ -14,10 +25,14 @@
                     }
                 </div>
             }
-            <div class="relative h-full w-2 rounded-[var(--radius)] bg-primary/20">
-                <div class="absolute bottom-0 w-full rounded-[var(--radius)] bg-primary" style="height: @(GetPercent(Value))%"></div>
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled" aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
-                       class="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]"
+            <div class="relative h-full w-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")">
+                <div class="absolute bottom-0 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%"></div>
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                       name="@Name"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-required="@Required.ToString().ToLower()"
+                       aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       class="@VerticalInputClasses"
                        @oninput="OnInput"
                        @onmouseenter="() => _showTooltipThumb = true"
                        @onmouseleave="() => _showTooltipThumb = false" />
@@ -37,17 +52,24 @@ else if (IsRange)
     <div class="@CssClass" @attributes="AdditionalAttributes">
         <div class="relative w-full">
             <div class="absolute inset-0 flex items-center">
-                <div class="h-2 w-full rounded-[var(--radius)] bg-primary/20"></div>
+                <div class="h-2 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")"></div>
             </div>
             <div class="absolute inset-0 flex items-center" style="pointer-events: none;">
-                <div class="h-2 rounded-[var(--radius)] bg-primary" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;"></div>
+                <div class="h-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;"></div>
             </div>
             <div class="relative flex items-center" style="pointer-events: none;">
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled" aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                       name="@Name"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-required="@Required.ToString().ToLower()"
+                       aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@RangeInputClasses"
                        style="pointer-events: auto;"
                        @oninput="OnStartInput" />
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled" aria-label="@(string.IsNullOrEmpty(AriaLabel) ? null : AriaLabel + " (end)")" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@ValueEnd"
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
+                       aria-label="@(string.IsNullOrEmpty(AriaLabel) ? null : AriaLabel + " (end)")" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@ValueEnd"
+                       aria-required="@Required.ToString().ToLower()"
+                       aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@RangeInputClasses"
                        style="pointer-events: auto; position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
@@ -76,7 +98,11 @@ else
     <div class="@CssClass" @attributes="AdditionalAttributes">
         <div class="relative w-full">
             <div class="relative">
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled" aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                       name="@Name"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-required="@Required.ToString().ToLower()"
+                       aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@InputClasses"
                        @oninput="OnInput"
                        @onmouseenter="() => _showTooltipThumb = true"
@@ -109,7 +135,31 @@ else
     </div>
 }
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
+
     [Parameter] public double Value { get; set; }
     [Parameter] public EventCallback<double> ValueChanged { get; set; }
     [Parameter] public bool IsRange { get; set; }
@@ -149,7 +199,9 @@ else
     private string CssClass => $"relative flex w-full touch-none select-none items-center {Class}".Trim();
     private string VerticalCssClass => $"relative flex h-full min-h-[200px] touch-none select-none justify-center {Class}".Trim();
 
-    private const string InputClasses = "w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] bg-primary/20 accent-primary disabled:cursor-not-allowed disabled:opacity-50";
+    private string InputClasses => $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-primary/20 accent-primary")} disabled:cursor-not-allowed disabled:opacity-50";
+
+    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
 
     private const string RangeInputClasses = "w-full h-2 cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50";
 

@@ -3,7 +3,7 @@
 @{
     var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
     var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Value : null;
-    var context = new SelectContext(Value, IsOpen, Searchable, SearchText, Multiple, Values, IsLoading, Disabled, Clearable, Creatable, MaxDisplayTags,
+    var context = new SelectContext(Value, Open, Searchable, SearchText, Multiple, Values, IsLoading, Disabled, Clearable, Creatable, MaxDisplayTags,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
@@ -11,7 +11,18 @@
         EventCallback.Factory.Create<string>(this, OnCreateItem),
         _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
-        RegisterItem, UnregisterItem);
+        RegisterItem, UnregisterItem, EffectiveInvalid, Required);
+}
+
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -20,12 +31,33 @@
     </div>
 </CascadingValue>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
+    {
+        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+    }
+    else if (!string.IsNullOrEmpty(HelperText))
+    {
+        <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
-    [Parameter] public bool IsOpen { get; set; }
-    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
+    [Parameter] public bool IsOpen { get => Open; set => Open = value; }
+
+    [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
+    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
+
     [Parameter] public bool Searchable { get; set; }
     [Parameter] public bool Multiple { get; set; }
     [Parameter] public List<string>? Values { get; set; }
@@ -36,7 +68,16 @@
     [Parameter] public int MaxDisplayTags { get; set; } = 3;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private readonly string _wrapperId = $"select-{Guid.NewGuid():N}";
     private readonly string _contentId = $"select-content-{Guid.NewGuid():N}";
@@ -92,14 +133,14 @@
 
     private async Task SetOpen(bool value)
     {
-        IsOpen = value;
+        Open = value;
         if (!value)
         {
             SearchText = "";
             _focusedIndex = -1;
             _items.Clear();
         }
-        await IsOpenChanged.InvokeAsync(value);
+        await OpenChanged.InvokeAsync(value);
     }
 
     private Task OnSearchChanged(string text)
@@ -150,5 +191,6 @@
         EventCallback OnClear, EventCallback<string> OnCreateItem,
         string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
-        Action<string, string> RegisterItem, Action<string> UnregisterItem);
+        Action<string, string> RegisterItem, Action<string> UnregisterItem,
+        bool Invalid, bool Required);
 }

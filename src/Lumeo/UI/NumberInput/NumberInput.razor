@@ -1,19 +1,33 @@
 @namespace Lumeo
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div class="@CssClass" @attributes="AdditionalAttributes">
     <button type="button"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-l-md border border-r-0 border-border/60 bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50"
+            class="@($"inline-flex h-9 w-9 items-center justify-center rounded-l-md border border-r-0 {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50")"
             disabled="@(Disabled || IsAtMin)"
             @onclick="Decrement"
             aria-label="Decrease">
         <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
     </button>
-    <div class="relative inline-flex items-center h-9 border border-border/60 bg-background">
+    <div class="@($"relative inline-flex items-center h-9 border {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-background")">
         @if (!string.IsNullOrEmpty(Prefix))
         {
             <span class="pl-2 text-sm text-muted-foreground select-none">@Prefix</span>
         }
         <input type="number"
+               name="@Name"
+               aria-required="@Required.ToString().ToLowerInvariant()"
+               aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                class="h-9 w-20 bg-transparent @(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1") text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                value="@DisplayValue"
                disabled="@Disabled"
@@ -30,7 +44,7 @@
         }
     </div>
     <button type="button"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-r-md border border-l-0 border-border/60 bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50"
+            class="@($"inline-flex h-9 w-9 items-center justify-center rounded-r-md border border-l-0 {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 disabled:pointer-events-none disabled:opacity-50")"
             disabled="@(Disabled || IsAtMax)"
             @onclick="Increment"
             aria-label="Increase">
@@ -38,7 +52,21 @@
     </button>
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
+    {
+        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+    }
+    else if (!string.IsNullOrEmpty(HelperText))
+    {
+        <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public double? Value { get; set; }
     [Parameter] public EventCallback<double?> ValueChanged { get; set; }
     [Parameter] public double? Min { get; set; }
@@ -60,8 +88,17 @@
     [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
 
     private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private string CssClass => $"inline-flex items-center {Class}".Trim();
 

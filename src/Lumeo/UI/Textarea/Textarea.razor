@@ -1,7 +1,22 @@
 @namespace Lumeo
 
+@if (Label is not null && !InsideFormField)
+{
+    <label class="block text-sm font-medium mb-1.5">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ml-0.5">*</span>
+        }
+    </label>
+}
+
 <div>
-    <textarea id="@_elementId" class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled"
+    <textarea id="@_elementId"
+              name="@Name"
+              aria-required="@Required.ToString().ToLowerInvariant()"
+              aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+              class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled"
               maxlength="@MaxLength" @attributes="AdditionalAttributes"></textarea>
     @if (ShowCount)
     {
@@ -11,9 +26,23 @@
     }
 </div>
 
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
+    {
+        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+    }
+    else if (!string.IsNullOrEmpty(HelperText))
+    {
+        <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+
 @inject ComponentInteropService Interop
 
 @code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnInput { get; set; }
@@ -23,11 +52,20 @@
     [Parameter] public bool ShowCount { get; set; }
     [Parameter] public int? MaxLength { get; set; }
     [Parameter] public TextareaResize Resize { get; set; } = TextareaResize.Vertical;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _elementId = $"textarea-{Guid.NewGuid():N}";
     private bool _autoResizeSetup;
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
 
     private string ResizeClass => Resize switch
     {
@@ -38,7 +76,7 @@
         _ => "resize-y"
     };
 
-    private string CssClass => $"flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {ResizeClass} {Class}".Trim();
+    private string CssClass => $"flex min-h-[60px] w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] {(EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {ResizeClass} {Class}".Trim();
 
     private bool IsOverLimit => MaxLength.HasValue && (Value?.Length ?? 0) > MaxLength.Value;
 
