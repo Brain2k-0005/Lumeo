@@ -36,6 +36,7 @@
 @code {
     private readonly List<ToastItem> _toasts = new();
     private readonly Dictionary<string, CancellationTokenSource> _timers = new();
+    private readonly Dictionary<string, CancellationTokenSource> _exitTimers = new();
 
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
     [Parameter] public int DefaultDuration { get; set; } = 5000;
@@ -50,7 +51,12 @@
 
     private void HandleShow(ToastMessage message)
     {
-        _ = InvokeAsync(() => HandleShowAsync(message));
+        _ = InvokeAsync(() => HandleShowAsync(message))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[ToastProvider] HandleShow error: {t.Exception}");
+            }, TaskScheduler.Current);
     }
 
     private async Task HandleShowAsync(ToastMessage message)
@@ -73,13 +79,23 @@
         {
             var cts = new CancellationTokenSource();
             _timers[message.Id] = cts;
-            _ = DismissAfterDelayAsync(message.Id, duration, cts.Token);
+            _ = DismissAfterDelayAsync(message.Id, duration, cts.Token)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        Console.Error.WriteLine($"[ToastProvider] DismissAfterDelay error: {t.Exception}");
+                }, TaskScheduler.Current);
         }
     }
 
     private void HandleDismiss(string toastId)
     {
-        _ = InvokeAsync(() => HandleDismissAsync(toastId));
+        _ = InvokeAsync(() => HandleDismissAsync(toastId))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[ToastProvider] HandleDismiss error: {t.Exception}");
+            }, TaskScheduler.Current);
     }
 
     private async Task HandleDismissAsync(string toastId)
@@ -98,7 +114,12 @@
 
     private void HandleUpdate(string toastId, ToastOptions options)
     {
-        _ = InvokeAsync(() => HandleUpdateAsync(toastId, options));
+        _ = InvokeAsync(() => HandleUpdateAsync(toastId, options))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[ToastProvider] HandleUpdate error: {t.Exception}");
+            }, TaskScheduler.Current);
     }
 
     private async Task HandleUpdateAsync(string toastId, ToastOptions options)
@@ -116,7 +137,12 @@
         {
             var cts = new CancellationTokenSource();
             _timers[toastId] = cts;
-            _ = DismissAfterDelayAsync(toastId, duration, cts.Token);
+            _ = DismissAfterDelayAsync(toastId, duration, cts.Token)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        Console.Error.WriteLine($"[ToastProvider] DismissAfterDelay error: {t.Exception}");
+                }, TaskScheduler.Current);
         }
 
         StateHasChanged();
@@ -147,7 +173,12 @@
 
     private void Remove(string id)
     {
-        _ = InvokeAsync(() => RemoveWithExitAsync(id, runOnDismiss: true));
+        _ = InvokeAsync(() => RemoveWithExitAsync(id, runOnDismiss: true))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"[ToastProvider] Remove error: {t.Exception}");
+            }, TaskScheduler.Current);
     }
 
     private void RemoveItem(string id)
@@ -178,7 +209,21 @@
         {
             _toasts[index] = toast with { Leaving = true };
             StateHasChanged();
-            try { await Task.Delay(ExitAnimationMs); } catch (TaskCanceledException) { }
+            var exitCts = new CancellationTokenSource();
+            _exitTimers[id] = exitCts;
+            try
+            {
+                await Task.Delay(ExitAnimationMs, exitCts.Token);
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                if (_exitTimers.TryGetValue(id, out var storedCts) && storedCts == exitCts)
+                {
+                    _exitTimers.Remove(id);
+                    exitCts.Dispose();
+                }
+            }
         }
         _toasts.RemoveAll(t => t.Id == id);
         await InvokeAsync(StateHasChanged);
@@ -191,6 +236,12 @@
             cts.Cancel();
             cts.Dispose();
             _timers.Remove(id);
+        }
+        if (_exitTimers.TryGetValue(id, out var exitCts))
+        {
+            exitCts.Cancel();
+            exitCts.Dispose();
+            _exitTimers.Remove(id);
         }
     }
 
@@ -206,6 +257,14 @@
             cts.Dispose();
         }
         _timers.Clear();
+
+        foreach (var cts in _exitTimers.Values)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _exitTimers.Clear();
+
         await Task.CompletedTask;
     }
 

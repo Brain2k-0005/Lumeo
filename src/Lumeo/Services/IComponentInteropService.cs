@@ -97,6 +97,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Press feedback (Ripple)
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
+    ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
 
     // LocalStorage
     ValueTask SaveToLocalStorage(string key, string value);

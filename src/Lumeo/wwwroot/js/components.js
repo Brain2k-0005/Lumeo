@@ -1460,7 +1460,7 @@ export const tabs = {
 function attachRipple(el) {
     if (!el || el.__lumeoRippleBound) return;
     el.__lumeoRippleBound = true;
-    el.addEventListener('pointerdown', (e) => {
+    const handler = (e) => {
         const rect = el.getBoundingClientRect();
         const span = document.createElement('span');
         span.className = 'lumeo-ripple-dot';
@@ -1470,7 +1470,16 @@ function attachRipple(el) {
         span.style.top = (e.clientY - rect.top - size / 2) + 'px';
         el.appendChild(span);
         span.addEventListener('animationend', () => span.remove(), { once: true });
-    });
+    };
+    el.__lumeoRippleHandler = handler;
+    el.addEventListener('pointerdown', handler);
 }
 
-export const ripple = { attach: attachRipple };
+function detachRipple(el) {
+    if (!el || !el.__lumeoRippleBound) return;
+    el.removeEventListener('pointerdown', el.__lumeoRippleHandler);
+    delete el.__lumeoRippleHandler;
+    delete el.__lumeoRippleBound;
+}
+
+export const ripple = { attach: attachRipple, detach: detachRipple };

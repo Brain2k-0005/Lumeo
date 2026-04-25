@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
 <button @ref="_el"
@@ -34,6 +35,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private Microsoft.AspNetCore.Components.ElementReference _el;
+    private bool _rippleAttached;
 
     private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
@@ -81,6 +83,19 @@
             try
             {
                 await Interop.RippleAttachAsync(_el);
+                _rippleAttached = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
