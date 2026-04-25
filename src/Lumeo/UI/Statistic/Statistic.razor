@@ -3,17 +3,17 @@
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @if (!string.IsNullOrEmpty(Title))
     {
-        <p class="text-sm text-muted-foreground">@Title</p>
+        <p class="@TitleClass">@Title</p>
     }
     <div class="flex items-baseline gap-1">
         @if (Prefix is not null)
         {
-            <span class="text-2xl font-semibold text-foreground">@Prefix</span>
+            <span class="@ValueClass">@Prefix</span>
         }
-        <span class="text-2xl font-semibold text-foreground">@FormattedValue</span>
+        <span class="@ValueClass">@FormattedValue</span>
         @if (Suffix is not null)
         {
-            <span class="text-sm text-muted-foreground">@Suffix</span>
+            <span class="@SuffixClass">@Suffix</span>
         }
     </div>
     @if (ShowTrend)
@@ -53,10 +53,40 @@
     [Parameter] public bool ShowTrend { get; set; }
     [Parameter] public string? TrendValue { get; set; }
     [Parameter] public TrendType TrendDirection { get; set; } = TrendType.Up;
+    [Parameter] public StatisticSize Size { get; set; } = StatisticSize.Medium;
+    [Parameter] public StatisticVariant Variant { get; set; } = StatisticVariant.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"{Class}".Trim();
+    private string CssClass => $"{VariantClass} {Class}".Trim();
+
+    private string VariantClass => Variant switch
+    {
+        StatisticVariant.Minimal => "",
+        StatisticVariant.Bordered => "rounded-lg border border-border/60 p-4",
+        _ => ""
+    };
+
+    private string TitleClass => Size switch
+    {
+        StatisticSize.Small => "text-xs text-muted-foreground",
+        StatisticSize.Large => "text-base text-muted-foreground",
+        _ => "text-sm text-muted-foreground"
+    };
+
+    private string ValueClass => Size switch
+    {
+        StatisticSize.Small => "text-lg font-semibold text-foreground",
+        StatisticSize.Large => "text-4xl font-semibold text-foreground",
+        _ => "text-2xl font-semibold text-foreground"
+    };
+
+    private string SuffixClass => Size switch
+    {
+        StatisticSize.Small => "text-xs text-muted-foreground",
+        StatisticSize.Large => "text-base text-muted-foreground",
+        _ => "text-sm text-muted-foreground"
+    };
 
     private string FormattedValue
     {
@@ -86,4 +116,10 @@
     };
 
     public enum TrendType { Up, Down }
+    public enum StatisticSize { Small, Medium, Large }
+    /// <summary>
+    /// Default = plain (no decoration). Minimal = alias for Default (explicit opt-in to no chrome).
+    /// Bordered = rounded border card wrapper.
+    /// </summary>
+    public enum StatisticVariant { Default, Minimal, Bordered }
 }

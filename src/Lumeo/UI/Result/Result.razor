@@ -14,11 +14,11 @@
         </div>
         @if (!string.IsNullOrEmpty(Title))
         {
-            <h3 class="mt-4 text-xl font-semibold text-foreground">@Title</h3>
+            <h3 class="@TitleClass">@Title</h3>
         }
         @if (!string.IsNullOrEmpty(SubTitle))
         {
-            <p class="mt-2 text-sm text-muted-foreground">@SubTitle</p>
+            <p class="@SubTitleClass">@SubTitle</p>
         }
         @if (Extra is not null)
         {
@@ -31,6 +31,8 @@
 
 @code {
     [Parameter] public ResultStatus Status { get; set; } = ResultStatus.Info;
+    // Status serves as this component's Variant — it drives color + icon. No duplicate Variant param needed.
+    [Parameter] public ResultSize Size { get; set; } = ResultSize.Medium;
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? SubTitle { get; set; }
 
@@ -41,9 +43,44 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"py-12 px-6 {Class}".Trim();
+    private string CssClass => $"{SizePaddingClass} px-6 {Class}".Trim();
 
-    private string IconContainerClasses => $"flex h-16 w-16 items-center justify-center rounded-full {StatusBgClasses}";
+    private string SizePaddingClass => Size switch
+    {
+        ResultSize.Small => "py-8",
+        ResultSize.Large => "py-16",
+        _ => "py-12"
+    };
+
+    private string IconContainerClasses => $"flex {IconSizeClass} items-center justify-center rounded-full {StatusBgClasses}";
+
+    private string IconSizeClass => Size switch
+    {
+        ResultSize.Small => "h-12 w-12",
+        ResultSize.Large => "h-20 w-20",
+        _ => "h-16 w-16"
+    };
+
+    private string TitleClass => Size switch
+    {
+        ResultSize.Small => "mt-3 text-lg font-semibold text-foreground",
+        ResultSize.Large => "mt-5 text-2xl font-semibold text-foreground",
+        _ => "mt-4 text-xl font-semibold text-foreground"
+    };
+
+    private string SubTitleClass => Size switch
+    {
+        ResultSize.Small => "mt-1.5 text-xs text-muted-foreground",
+        ResultSize.Large => "mt-2.5 text-base text-muted-foreground",
+        _ => "mt-2 text-sm text-muted-foreground"
+    };
+
+    private string InnerIconClass => Size switch
+    {
+        ResultSize.Small => "h-6 w-6",
+        ResultSize.Large => "h-10 w-10",
+        _ => "h-8 w-8"
+    };
 
     private string StatusBgClasses => Status switch
     {
@@ -59,15 +96,16 @@
 
     private RenderFragment DefaultIcon => Status switch
     {
-        ResultStatus.Success => @<Blazicon Svg="Lucide.CircleCheck" class="h-8 w-8" />,
-        ResultStatus.Error => @<Blazicon Svg="Lucide.CircleAlert" class="h-8 w-8" />,
-        ResultStatus.Warning => @<Blazicon Svg="Lucide.TriangleAlert" class="h-8 w-8" />,
-        ResultStatus.Info => @<Blazicon Svg="Lucide.Info" class="h-8 w-8" />,
-        ResultStatus.NotFound => @<Blazicon Svg="Lucide.Search" class="h-8 w-8" />,
-        ResultStatus.Forbidden => @<Blazicon Svg="Lucide.Lock" class="h-8 w-8" />,
-        ResultStatus.ServerError => @<Blazicon Svg="Lucide.CircleAlert" class="h-8 w-8" />,
-        _ => @<Blazicon Svg="Lucide.Info" class="h-8 w-8" />
+        ResultStatus.Success => @<Blazicon Svg="Lucide.CircleCheck" class="@InnerIconClass" />,
+        ResultStatus.Error => @<Blazicon Svg="Lucide.CircleAlert" class="@InnerIconClass" />,
+        ResultStatus.Warning => @<Blazicon Svg="Lucide.TriangleAlert" class="@InnerIconClass" />,
+        ResultStatus.Info => @<Blazicon Svg="Lucide.Info" class="@InnerIconClass" />,
+        ResultStatus.NotFound => @<Blazicon Svg="Lucide.Search" class="@InnerIconClass" />,
+        ResultStatus.Forbidden => @<Blazicon Svg="Lucide.Lock" class="@InnerIconClass" />,
+        ResultStatus.ServerError => @<Blazicon Svg="Lucide.CircleAlert" class="@InnerIconClass" />,
+        _ => @<Blazicon Svg="Lucide.Info" class="@InnerIconClass" />
     };
 
     public enum ResultStatus { Success, Error, Warning, Info, NotFound, Forbidden, ServerError }
+    public enum ResultSize { Small, Medium, Large }
 }

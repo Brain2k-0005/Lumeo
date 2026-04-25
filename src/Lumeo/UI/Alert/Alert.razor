@@ -17,19 +17,19 @@
                     @switch (Variant)
                     {
                         case AlertVariant.Destructive:
-                            <Blazicon Svg="Lucide.TriangleAlert" class="h-4 w-4" />
+                            <Blazicon Svg="Lucide.TriangleAlert" class="@IconSizeClass" />
                             break;
                         case AlertVariant.Success:
-                            <Blazicon Svg="Lucide.CircleCheck" class="h-4 w-4" />
+                            <Blazicon Svg="Lucide.CircleCheck" class="@IconSizeClass" />
                             break;
                         case AlertVariant.Warning:
-                            <Blazicon Svg="Lucide.TriangleAlert" class="h-4 w-4" />
+                            <Blazicon Svg="Lucide.TriangleAlert" class="@IconSizeClass" />
                             break;
                         case AlertVariant.Info:
-                            <Blazicon Svg="Lucide.Info" class="h-4 w-4" />
+                            <Blazicon Svg="Lucide.Info" class="@IconSizeClass" />
                             break;
                         default:
-                            <Blazicon Svg="Lucide.Info" class="h-4 w-4" />
+                            <Blazicon Svg="Lucide.Info" class="@IconSizeClass" />
                             break;
                     }
                 </div>
@@ -37,11 +37,11 @@
             <div class="flex-1 min-w-0">
                 @if (!string.IsNullOrEmpty(Title))
                 {
-                    <h5 class="mb-1 font-medium leading-none tracking-tight">@Title</h5>
+                    <h5 class="@TitleClass">@Title</h5>
                 }
                 @if (!string.IsNullOrEmpty(Description))
                 {
-                    <div class="text-sm opacity-90">@Description</div>
+                    <div class="@DescriptionClass">@Description</div>
                 }
                 @ChildContent
             </div>
@@ -49,7 +49,7 @@
             {
                 <div class="shrink-0">
                     <button type="button" class="rounded-md hover:bg-foreground/10 focus:outline-none focus:ring-1 focus:ring-ring p-0.5" @onclick="Dismiss" aria-label="Dismiss">
-                        <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                        <Blazicon Svg="Lucide.X" class="@IconSizeClass" />
                     </button>
                 </div>
             }
@@ -60,6 +60,7 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public AlertVariant Variant { get; set; } = AlertVariant.Default;
+    [Parameter] public AlertSize Size { get; set; } = AlertSize.Medium;
     [Parameter] public bool IsDismissible { get; set; }
     [Parameter] public EventCallback OnDismiss { get; set; }
     [Parameter] public string? Title { get; set; }
@@ -85,7 +86,35 @@
 
     // Border baseline kept at /60 so the unfilled (Default variant) alert still reads as an outlined callout;
     // colored variants knock it softer since their tinted background already carries the visual weight.
-    private string CssClass => $"relative w-full rounded-lg border border-border/60 px-4 py-3 text-sm {VariantClasses} {Class}".Trim();
+    private string CssClass => $"relative w-full rounded-lg border border-border/60 {SizePaddingClass} text-sm {VariantClasses} {Class}".Trim();
+
+    private string SizePaddingClass => Size switch
+    {
+        AlertSize.Small => "px-3 py-2",
+        AlertSize.Large => "px-5 py-4",
+        _ => "px-4 py-3"
+    };
+
+    private string IconSizeClass => Size switch
+    {
+        AlertSize.Small => "h-3.5 w-3.5",
+        AlertSize.Large => "h-5 w-5",
+        _ => "h-4 w-4"
+    };
+
+    private string TitleClass => Size switch
+    {
+        AlertSize.Small => "mb-0.5 text-xs font-medium leading-none tracking-tight",
+        AlertSize.Large => "mb-1.5 text-base font-medium leading-none tracking-tight",
+        _ => "mb-1 font-medium leading-none tracking-tight"
+    };
+
+    private string DescriptionClass => Size switch
+    {
+        AlertSize.Small => "text-xs opacity-90",
+        AlertSize.Large => "text-sm opacity-90",
+        _ => "text-sm opacity-90"
+    };
 
     private string VariantClasses => Variant switch
     {
@@ -123,4 +152,5 @@
     }
 
     public enum AlertVariant { Default, Destructive, Success, Warning, Info }
+    public enum AlertSize { Small, Medium, Large }
 }

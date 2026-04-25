@@ -27,10 +27,11 @@
     }
 
     <button type="button"
-            class="flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            class="@TriggerClass"
             @onclick="ToggleOpen"
             aria-expanded="@_isOpen"
-            aria-label="Actions">
+            aria-label="Actions"
+            disabled="@Disabled">
         @{ var plusClass = string.Join(" ", new[] { "h-6 w-6 transition-transform", _isOpen ? "rotate-45" : null }.Where(s => !string.IsNullOrWhiteSpace(s))); }
         <Blazicon Svg="Lucide.Plus" class="@plusClass" />
     </button>
@@ -44,6 +45,7 @@
     [Parameter] public SpeedDialPosition Position { get; set; } = SpeedDialPosition.BottomRight;
     [Parameter] public SpeedDialDirection Direction { get; set; } = SpeedDialDirection.Up;
     [Parameter] public string Variant { get; set; } = "Default";
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -75,8 +77,14 @@
         }
     }
 
+    private string TriggerClass =>
+        Disabled
+            ? "flex h-14 w-14 cursor-not-allowed items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg opacity-50 pointer-events-none"
+            : "flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
     private async Task ToggleOpen()
     {
+        if (Disabled) return;
         if (_isOpen)
             await Close();
         else
@@ -109,7 +117,7 @@
 
     private async Task HandleItemClick(SpeedDialItem item)
     {
-        if (item.Disabled) return;
+        if (Disabled || item.Disabled) return;
         await item.OnClick.InvokeAsync();
         await Close();
     }
