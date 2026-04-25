@@ -116,16 +116,17 @@
         <Stack Gap="2">
             <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true">
                 <ChildContent>
-                    Setting <code class="font-mono text-xs">AllowWordImport="true"</code> adds an <em>Import .docx</em> button to the Full toolbar.
-                    Wire <code class="font-mono text-xs">OnWordImportRequested</code> to your server endpoint that calls
-                    <code class="font-mono text-xs">WordImporter.ToHtmlAsync</code> and then calls <code class="font-mono text-xs">editor.SetHtmlAsync(result.Html)</code>.
-                    See the server-side snippet at the bottom of this page.
+                    Click the <em>Import</em> button in the toolbar and pick any <code class="font-mono text-xs">.docx</code> file.
+                    Conversion runs entirely in your browser via <code class="font-mono text-xs">WordImporter</code> (Mammoth ships with the
+                    Lumeo.Editor WASM bundle), so this demo works on static hosting with no server. The default style map handles
+                    English and German Word default styles (<em>Title/Titel, Heading 1-6/Überschrift 1-6, Body Text/Textkörper,
+                    List Paragraph/Listenabsatz</em>, etc.). For server-side conversion with custom callbacks (e.g. uploading
+                    embedded images), set <code class="font-mono text-xs">OnWordImportRequested</code>.
                 </ChildContent>
             </Alert>
             <RichTextEditor @bind-Value="_wordHtml"
                             Toolbar="EditorToolbarPreset.Full"
-                            AllowWordImport="true"
-                            OnWordImportRequested="HandleWordImport" />
+                            AllowWordImport="true" />
         </Stack>
     </ComponentDemo>
 
@@ -255,10 +256,10 @@
                         <tr><td class="p-3 font-mono text-xs text-primary">EnableBubbleMenu</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Shows the floating bubble menu (Bold, Italic, Link, etc.) when text is selected.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">EnableDragHandle</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Shows the drag handle on the left of each block node for drag-and-drop reordering.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">MaxLength</td><td class="p-3 font-mono text-xs text-muted-foreground">int?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Optional plain-text character limit enforced by the editor.</td></tr>
-                        <tr><td class="p-3 font-mono text-xs text-primary">AllowWordImport</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Adds an <em>Import .docx</em> button to the Full toolbar. Wire <code class="font-mono text-xs">OnWordImportRequested</code> to handle the upload.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">AllowWordImport</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Adds an <em>Import .docx</em> button to the Full toolbar. By default, conversion runs in-browser via <code class="font-mono text-xs">WordImporter</code>. Override with <code class="font-mono text-xs">OnWordImportRequested</code> for server-side conversion.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">OnImageRequested</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;EditorImageRequest, ValueTask&lt;string?&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Async callback that receives file metadata and returns the final image URL. When null, images are inlined as base64.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">OnAiAction</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;string, string, ValueTask&lt;string?&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Async callback receiving <code class="font-mono text-xs">(actionId, selectedText)</code>; returns replacement HTML. Action IDs: <code class="font-mono text-xs">improve</code>, <code class="font-mono text-xs">shorten</code>, <code class="font-mono text-xs">expand</code>, <code class="font-mono text-xs">fix-grammar</code>, <code class="font-mono text-xs">summarize</code>, <code class="font-mono text-xs">translate</code>.</td></tr>
-                        <tr><td class="p-3 font-mono text-xs text-primary">OnWordImportRequested</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires when the toolbar's Import .docx button is clicked; the argument is the chosen filename. Consumer is expected to handle the upload and call <code class="font-mono text-xs">SetHtmlAsync</code>.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnWordImportRequested</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;WordImportPayload, ValueTask&lt;string&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Optional override. Receives the picked file (filename + bytes) and returns the HTML to insert. When not set, the editor calls <code class="font-mono text-xs">WordImporter.ToHtmlAsync</code> in-browser and inserts the result.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">Class</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Additional CSS classes applied to the root wrapper element.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">AdditionalAttributes</td><td class="p-3 font-mono text-xs text-muted-foreground">Dictionary&lt;string, object&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Splatted onto the root element. Useful for <code class="font-mono text-xs">data-*</code> or ARIA attributes.</td></tr>
                     </tbody>
@@ -525,17 +526,8 @@
         };
     }
 
-    // ── Word import mock ──────────────────────────────────────────────────────
-    private async Task HandleWordImport(string fileName)
-    {
-        await Task.Delay(100);
-        Toast.Show(new ToastOptions
-        {
-            Title = "Word import",
-            Description = $"'{fileName}' — wire this callback to your server endpoint that calls WordImporter.ToHtmlAsync, then call editor.SetHtmlAsync(result.Html).",
-            Duration = 6000,
-        });
-    }
+    // Word import: no callback wired → editor uses the built-in browser-side WordImporter.
+    // For server-side conversion, see the snippet at the bottom of this page.
 
     // ── form validation ───────────────────────────────────────────────────────
     private void ValidateForm()
@@ -653,22 +645,28 @@
 }";
 
     private const string _wordCode =
-@"<RichTextEditor @bind-Value=""_html""
+@"<!-- Default: browser-side conversion via WordImporter (Mammoth in WASM bundle). -->
+<RichTextEditor @bind-Value=""_html""
+                Toolbar=""EditorToolbarPreset.Full""
+                AllowWordImport=""true"" />
+
+<!-- Optional: server-side conversion with custom processing. -->
+<RichTextEditor @bind-Value=""_html2""
                 Toolbar=""EditorToolbarPreset.Full""
                 AllowWordImport=""true""
                 OnWordImportRequested=""HandleWordImport"" />
 
 @code {
     private string? _html;
-    private RichTextEditor _editor = default!;
+    private string? _html2;
 
-    private async Task HandleWordImport(string fileName)
+    private async ValueTask<string> HandleWordImport(WordImportPayload payload)
     {
-        // Post the file to your server endpoint; the editor reference
-        // lets you push the converted HTML back in.
+        // Post the file to your server endpoint; return the converted HTML.
+        var content = new ByteArrayContent(payload.Content);
         var response = await Http.PostAsync(""/api/upload-docx"", content);
         var result   = await response.Content.ReadFromJsonAsync<WordImportResponse>();
-        await _editor.SetHtmlAsync(result!.Html);
+        return result!.Html;
     }
 }";
 

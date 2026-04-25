@@ -930,8 +930,19 @@ export const rte = {
                     const f = inp.files && inp.files[0];
                     if (!f || !entry.dotNetRef) return;
                     try {
-                        await entry.dotNetRef.invokeMethodAsync('OnWordImportRequested', f.name);
-                    } catch (_) {}
+                        const buffer = await f.arrayBuffer();
+                        // Convert ArrayBuffer → base64 in chunks to avoid call-stack overflow on large files.
+                        const bytes = new Uint8Array(buffer);
+                        let binary = '';
+                        const chunk = 0x8000;
+                        for (let i = 0; i < bytes.length; i += chunk) {
+                            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+                        }
+                        const base64 = btoa(binary);
+                        await entry.dotNetRef.invokeMethodAsync('OnWordImportRequested', f.name, base64);
+                    } catch (e) {
+                        console.error('Word import failed:', e);
+                    }
                 };
                 inp.click();
                 break;
