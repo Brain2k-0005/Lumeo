@@ -66,9 +66,35 @@
 
 ## Installation
 
+Lumeo 2.0 follows the DevExpress / Telerik / Microsoft.Extensions model: a small core package plus opt-in satellites for heavy components. The split keeps the core lean (~568 KB instead of ~918 KB) — you only pay for what you use.
+
 ```bash
+# Core — always required (~110 components)
 dotnet add package Lumeo
+
+# Add satellites only for the components you use:
+dotnet add package Lumeo.Charts      # Chart and 30+ subtypes
+dotnet add package Lumeo.DataGrid    # DataGrid, DataTable, Filter
+dotnet add package Lumeo.Editor      # RichTextEditor
+dotnet add package Lumeo.Scheduler   # Scheduler
+dotnet add package Lumeo.Gantt       # Gantt
 ```
+
+Or reference them in your `.csproj`. All packages share one version (lockstep) — always upgrade them together:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Lumeo"            Version="2.0.0-rc.15" />
+  <!-- add only the satellites you need: -->
+  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.15" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.15" />
+  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.15" />
+  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.15" />
+  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.15" />
+</ItemGroup>
+```
+
+`@using Lumeo` covers all satellite components — no extra `@using` directives needed.
 
 ## Companion packages
 
