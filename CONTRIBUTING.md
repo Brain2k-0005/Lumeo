@@ -40,15 +40,32 @@ Lumeo/
 ## Building
 
 ```bash
-# Build the library
+# Build the core library
 dotnet build src/Lumeo/Lumeo.csproj
 
-# Pack a NuGet package
-dotnet pack src/Lumeo/Lumeo.csproj
+# Build satellite packages (each references core)
+dotnet build src/Lumeo.Charts/Lumeo.Charts.csproj
+dotnet build src/Lumeo.DataGrid/Lumeo.DataGrid.csproj
+dotnet build src/Lumeo.Editor/Lumeo.Editor.csproj
+dotnet build src/Lumeo.Scheduler/Lumeo.Scheduler.csproj
+dotnet build src/Lumeo.Gantt/Lumeo.Gantt.csproj
+
+# Pack all packages (lockstep — all share one version from Directory.Build.props)
+dotnet pack src/Lumeo/Lumeo.csproj -o ./nupkg
+dotnet pack src/Lumeo.Charts/Lumeo.Charts.csproj -o ./nupkg
+dotnet pack src/Lumeo.DataGrid/Lumeo.DataGrid.csproj -o ./nupkg
+dotnet pack src/Lumeo.Editor/Lumeo.Editor.csproj -o ./nupkg
+dotnet pack src/Lumeo.Scheduler/Lumeo.Scheduler.csproj -o ./nupkg
+dotnet pack src/Lumeo.Gantt/Lumeo.Gantt.csproj -o ./nupkg
 
 # Run the docs site
 dotnet run --project docs/Lumeo.Docs/Lumeo.Docs.csproj
 ```
+
+> **Release model:** All 6 packages (`Lumeo`, `Lumeo.Charts`, `Lumeo.DataGrid`, `Lumeo.Editor`,
+> `Lumeo.Scheduler`, `Lumeo.Gantt`) are versioned and released in lockstep — the canonical
+> version lives in `Directory.Build.props`. The CI publish workflow packs and pushes all 6 in a
+> single job when a GitHub release is published.
 
 ## Running Tests
 
