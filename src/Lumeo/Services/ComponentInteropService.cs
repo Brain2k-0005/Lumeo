@@ -674,7 +674,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private async Task<IJSObjectReference> GetGanttModuleAsync()
     {
         _ganttModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo.Gantt/js/gantt.js");
+            "import", "./_content/Lumeo.Gantt/js/gantt-v2.js");
         return _ganttModule;
     }
 
