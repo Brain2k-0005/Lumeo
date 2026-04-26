@@ -134,6 +134,51 @@ function taskToJson(task, overrides) {
     };
 }
 
+function applyLumeoBarStyles(el) {
+    if (!el) return;
+    // Read Lumeo theme tokens from the closest themed ancestor — body or root
+    // typically has --color-primary etc. Fall back to a sensible default.
+    const cs = getComputedStyle(el);
+    const primary = (cs.getPropertyValue('--color-primary') || '').trim() || '#7c3aed';
+    const primaryFg = (cs.getPropertyValue('--color-primary-foreground') || '').trim() || '#ffffff';
+    const muted = (cs.getPropertyValue('--color-muted-foreground') || '').trim() || '#888';
+    const fg = (cs.getPropertyValue('--color-foreground') || '').trim() || '#fff';
+    const accent = (cs.getPropertyValue('--color-accent') || '').trim() || primary;
+
+    el.querySelectorAll('.bar-wrapper .bar').forEach(b => {
+        b.setAttribute('fill', primary);
+        b.setAttribute('stroke', primary);
+        b.style.fill = primary;
+        b.style.stroke = primary;
+    });
+    el.querySelectorAll('.bar-progress').forEach(p => {
+        p.setAttribute('fill', primary);
+        p.setAttribute('fill-opacity', '0.55');
+        p.style.fill = primary;
+    });
+    el.querySelectorAll('.bar-label').forEach(l => {
+        l.setAttribute('fill', primaryFg);
+        l.style.fill = primaryFg;
+    });
+    el.querySelectorAll('.bar-label.big').forEach(l => {
+        l.setAttribute('fill', fg);
+        l.style.fill = fg;
+    });
+    el.querySelectorAll('.upper-text, .lower-text').forEach(t => {
+        t.setAttribute('fill', fg);
+        t.style.fill = fg;
+        t.style.color = fg;
+    });
+    el.querySelectorAll('.arrow').forEach(a => {
+        a.setAttribute('stroke', muted);
+        a.style.stroke = muted;
+    });
+    el.querySelectorAll('.today-highlight, .current-highlight, .current-ball-highlight').forEach(t => {
+        t.setAttribute('fill', primary);
+        t.style.background = primary;
+    });
+}
+
 function buildInstance(el, dotNetRef, options) {
     const opts = options || {};
     const tasks = Array.isArray(opts.tasks) ? opts.tasks.map(normalizeTask) : [];
@@ -173,6 +218,54 @@ function buildInstance(el, dotNetRef, options) {
             try { dotNetRef.invokeMethodAsync('JsOnProgressChange', taskToJson(task, { progress })); } catch (_) { }
         },
     });
+
+    // Frappe renders bars with default Frappe colors; force them to Lumeo
+    // theme tokens by setting SVG attributes directly. Bypasses all CSS
+    // cascade / browser cache issues. Re-applied after every refresh.
+    applyLumeoBarStyles(el);
+
+    // Frappe re-renders bars on view-mode change, drag, and progress change —
+    // hook MutationObserver so Lumeo styles persist across those rebuilds.
+    const reapply = () => applyLumeoBarStyles(el);
+    const mo = new MutationObserver(reapply);
+    const svg = el.querySelector('svg');
+    if (svg) mo.observe(svg, { childList: true, subtree: true });
+
+    // Diagnostic: report what Frappe actually built so we can tell whether
+    // tasks were rejected silently or bars were rendered (just invisible).
+    if (typeof console !== 'undefined' && console.debug) {
+        const svg = el.querySelector('svg');
+        const firstBarRect = el.querySelector('.bar-wrapper .bar');
+        const firstWrapper = el.querySelector('.bar-wrapper');
+        let barInfo = 'no-bar-rect';
+        if (firstBarRect) {
+            const r = firstBarRect.getBoundingClientRect();
+            const cs = window.getComputedStyle(firstBarRect);
+            barInfo = {
+                rect: { x: r.x | 0, y: r.y | 0, w: r.width | 0, h: r.height | 0 },
+                attrs: {
+                    x: firstBarRect.getAttribute('x'),
+                    y: firstBarRect.getAttribute('y'),
+                    width: firstBarRect.getAttribute('width'),
+                    height: firstBarRect.getAttribute('height'),
+                    fill: firstBarRect.getAttribute('fill'),
+                },
+                computedFill: cs.fill,
+                computedDisplay: cs.display,
+                computedOpacity: cs.opacity,
+                wrapperTransform: firstWrapper ? firstWrapper.getAttribute('transform') : null,
+            };
+        }
+        console.warn('[lumeo-gantt] post-init ' + JSON.stringify({
+            tasksAccepted: g.tasks ? g.tasks.length : 'unknown',
+            barsBuilt: g.bars ? g.bars.length : 'unknown',
+            barWrapperEls: el.querySelectorAll('.bar-wrapper').length,
+            svgWidth: svg ? svg.getAttribute('width') || svg.clientWidth : 'no-svg',
+            svgHeight: svg ? svg.getAttribute('height') || svg.clientHeight : 'no-svg',
+            viewMode: g.options ? g.options.view_mode : 'no-options',
+            firstBar: barInfo,
+        }));
+    }
 
     return g;
 }
