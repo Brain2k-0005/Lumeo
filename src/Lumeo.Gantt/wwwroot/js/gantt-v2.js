@@ -118,6 +118,11 @@ function render(inst) {
     const tokens = readTokens(host);
     const cfg = VIEW_MODES[viewMode] || VIEW_MODES.Day;
 
+    // Preserve scroll position across re-renders so user's pan doesn't get
+    // wiped every time refresh() runs. innerHTML='' resets scrollLeft to 0.
+    const preservedScrollLeft = host.scrollLeft;
+    const preservedScrollTop = host.scrollTop;
+
     // Compute date range with generous padding so users can scroll back/forward.
     let minDate, maxDate;
     if (tasks.length > 0) {
@@ -489,11 +494,13 @@ function render(inst) {
 
     inst._taskById = taskById;
 
-    // Auto-scroll horizontally so today is centered. Defer until the host has
-    // real dimensions — on first render, clientWidth is often 0 (the host
-    // hasn't completed layout yet) and a centering calc against 0 just
-    // pins today to the left edge.
-    if (!inst._initialScrolled) {
+    // Scroll handling:
+    //  - First render: center today in viewport once host has real width.
+    //  - Subsequent renders (refresh): restore the user's pan position.
+    if (inst._initialScrolled) {
+        host.scrollLeft = preservedScrollLeft;
+        host.scrollTop = preservedScrollTop;
+    } else {
         const tryScroll = (attempt) => {
             const w = host.clientWidth;
             if (w > 50) {
@@ -503,7 +510,6 @@ function render(inst) {
                 }
                 inst._initialScrolled = true;
             } else if (attempt < 30) {
-                // Layout not done yet — try again next frame.
                 requestAnimationFrame(() => tryScroll(attempt + 1));
             }
         };
@@ -638,9 +644,12 @@ export const gantt = {
 
         render(inst);
 
-        const ro = new ResizeObserver(() => render(inst));
-        ro.observe(host);
-        inst._ro = ro;
+        // No ResizeObserver here on purpose: the SVG has a fixed width (the
+        // total of all date columns) and a fixed height (header + rows). The
+        // host element resizes around it without affecting the chart's own
+        // coordinate space, so we don't need to re-render on every layout
+        // wobble. Re-rendering would also wipe host.scrollLeft and reset the
+        // user's pan position.
 
         return id;
     },
@@ -657,7 +666,6 @@ export const gantt = {
     destroy(id) {
         const inst = instances.get(id);
         if (!inst) return;
-        if (inst._ro) inst._ro.disconnect();
         if (inst.host) inst.host.innerHTML = '';
         instances.delete(id);
     },
