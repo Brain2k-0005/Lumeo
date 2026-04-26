@@ -189,6 +189,14 @@ function buildInstance(el, dotNetRef, options) {
     // previous render before instantiating a replacement.
     while (el.firstChild) el.removeChild(el.firstChild);
 
+    // CRITICAL: Frappe v1 sizes its grid based on container_height. If left
+    // unset, --gv-grid-height defaults to 'auto' which renders the canvas
+    // taller than our wrapper, pushing bars below the visible area. Force
+    // it to fit our wrapper's intrinsic height so bars stay in view.
+    el.style.position = 'relative';
+    el.style.overflow = 'auto';
+    const wrapperHeight = el.clientHeight || 420;
+
     // Debug: surface what we're sending to Frappe Gantt so dev-mode can
     // catch silent rejections (e.g. missing start date). Removed once stable.
     if (typeof console !== 'undefined' && console.debug) {
@@ -204,6 +212,10 @@ function buildInstance(el, dotNetRef, options) {
         // the row geometry properly.
         bar_height: 28,
         padding: 18,
+        // Force Frappe's --gv-grid-height to our wrapper's height so the chart
+        // canvas doesn't overflow the visible window and push bars off-screen.
+        // 60px reserve for the timeline header (upper + lower header).
+        container_height: Math.max(200, wrapperHeight - 4),
         // Frappe Gantt ≥1.0 uses these option names for drag guards.
         bar_edit: !readOnly,
         bar_drag: !readOnly,
