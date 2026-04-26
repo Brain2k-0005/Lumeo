@@ -663,6 +663,17 @@ export const gantt = {
         render(inst);
     },
 
+    // Aliases matching the original Frappe wrapper API surface, so the
+    // Razor component (which calls gantt.setTasks / gantt.changeViewMode)
+    // keeps working without C# changes.
+    setTasks(id, tasks) {
+        this.refresh(id, { tasks });
+    },
+
+    changeViewMode(id, mode) {
+        this.refresh(id, { viewMode: mode });
+    },
+
     destroy(id) {
         const inst = instances.get(id);
         if (!inst) return;
