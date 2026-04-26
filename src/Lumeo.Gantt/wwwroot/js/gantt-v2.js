@@ -489,15 +489,25 @@ function render(inst) {
 
     inst._taskById = taskById;
 
-    // Auto-scroll horizontally to today on first paint
+    // Auto-scroll horizontally so today is centered. Defer until the host has
+    // real dimensions — on first render, clientWidth is often 0 (the host
+    // hasn't completed layout yet) and a centering calc against 0 just
+    // pins today to the left edge.
     if (!inst._initialScrolled) {
-        requestAnimationFrame(() => {
-            const todayPx = dateToX(today);
-            if (todayPx > 0) {
-                host.scrollLeft = Math.max(0, todayPx - host.clientWidth / 2);
+        const tryScroll = (attempt) => {
+            const w = host.clientWidth;
+            if (w > 50) {
+                const todayPx = dateToX(today);
+                if (todayPx > 0) {
+                    host.scrollLeft = Math.max(0, todayPx - w / 2);
+                }
+                inst._initialScrolled = true;
+            } else if (attempt < 30) {
+                // Layout not done yet — try again next frame.
+                requestAnimationFrame(() => tryScroll(attempt + 1));
             }
-            inst._initialScrolled = true;
-        });
+        };
+        requestAnimationFrame(() => tryScroll(0));
     }
 }
 
