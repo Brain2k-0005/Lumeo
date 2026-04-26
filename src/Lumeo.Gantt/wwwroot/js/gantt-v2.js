@@ -1,19 +1,19 @@
 // Lumeo Gantt — custom SVG-based renderer.
-// We previously wrapped Frappe Gantt v1.2.2 but its render pipeline kept
-// pushing bars off-screen in unpredictable ways across viewport sizes.
-// This is a deterministic ~250-line implementation that just works.
+// Drop-in replacement for the Frappe Gantt wrapper. Deterministic, themeable,
+// and feature-complete: drag-to-move, drag-to-resize, drag-to-set-progress,
+// hover tooltip, dependency arrows, today indicator, generous past/future scroll.
 //
-// API surface (matches the previous Frappe wrapper, so no Razor changes):
-//   gantt.init(el, dotNetRef, options)
-//   gantt.refresh(instanceId, options)
-//   gantt.destroy(instanceId)
+// API surface (matches the previous wrapper):
+//   gantt.init(el, dotNetRef, options) -> string instanceId
+//   gantt.refresh(id, options)
+//   gantt.destroy(id)
 //
 // Options:
 //   tasks:    [{ id, name, start, end, progress, dependencies, customClass }]
 //   viewMode: 'QuarterDay' | 'HalfDay' | 'Day' | 'Week' | 'Month' | 'Year'
 //   readonly: bool
 //
-// DotNet callbacks (best-effort, swallowed on failure):
+// .NET callbacks (best-effort, swallowed on failure):
 //   JsOnTaskClick(taskJson)
 //   JsOnDateChange(taskJson { Start, End })
 //   JsOnProgressChange(taskJson { Progress })
@@ -23,18 +23,21 @@ const instances = new Map();
 let nextId = 1;
 
 const VIEW_MODES = {
-    QuarterDay: { columnWidth: 38, unit: 'hour', step: 6, headerFmt: { upper: 'day', lower: 'time6h' } },
-    HalfDay:    { columnWidth: 38, unit: 'hour', step: 12, headerFmt: { upper: 'day', lower: 'time12h' } },
-    Day:        { columnWidth: 38, unit: 'day',  step: 1,  headerFmt: { upper: 'month', lower: 'dayNum' } },
-    Week:       { columnWidth: 140, unit: 'day', step: 7,  headerFmt: { upper: 'month', lower: 'weekRange' } },
-    Month:      { columnWidth: 120, unit: 'month', step: 1, headerFmt: { upper: 'year', lower: 'monthName' } },
-    Year:       { columnWidth: 120, unit: 'year', step: 1, headerFmt: { upper: '', lower: 'yearNum' } },
+    QuarterDay: { columnWidth: 38,  unit: 'hour',  step: 6,  padBefore: 24, padAfter: 24, headerFmt: { upper: 'day',   lower: 'time6h' } },
+    HalfDay:    { columnWidth: 38,  unit: 'hour',  step: 12, padBefore: 24, padAfter: 24, headerFmt: { upper: 'day',   lower: 'time12h' } },
+    Day:        { columnWidth: 38,  unit: 'day',   step: 1,  padBefore: 60, padAfter: 60, headerFmt: { upper: 'month', lower: 'dayNum' } },
+    Week:       { columnWidth: 140, unit: 'day',   step: 7,  padBefore: 16, padAfter: 16, headerFmt: { upper: 'month', lower: 'weekRange' } },
+    Month:      { columnWidth: 120, unit: 'month', step: 1,  padBefore: 12, padAfter: 12, headerFmt: { upper: 'year',  lower: 'monthName' } },
+    Year:       { columnWidth: 120, unit: 'year',  step: 1,  padBefore: 4,  padAfter: 6,  headerFmt: { upper: '',      lower: 'yearNum' } },
 };
 
 const ROW_HEIGHT = 36;
 const BAR_HEIGHT = 22;
 const HEADER_HEIGHT = 56;
 const PADDING_X = 8;
+const RESIZE_HANDLE_W = 8;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function el(tag, attrs, parent) {
     const node = document.createElementNS(SVG_NS, tag);
@@ -47,7 +50,6 @@ function parseDate(d) {
     if (!d) return null;
     if (d instanceof Date) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
     if (typeof d === 'string') {
-        // 'YYYY-MM-DD' or full ISO. Strip time so day-aligned math is stable.
         const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
         const x = new Date(d);
@@ -56,27 +58,14 @@ function parseDate(d) {
     return null;
 }
 
-function dayDiff(a, b) {
-    const ms = b - a;
-    return Math.round(ms / 86_400_000);
-}
-
-function addDays(d, n) {
-    const x = new Date(d);
-    x.setDate(x.getDate() + n);
-    return x;
-}
-
-function addMonths(d, n) {
-    const x = new Date(d);
-    x.setMonth(x.getMonth() + n);
-    return x;
-}
-
-function fmtDayNum(d) { return String(d.getDate()).padStart(2, '0'); }
-function fmtMonth(d) { return d.toLocaleString(undefined, { month: 'long' }); }
-function fmtMonthShort(d) { return d.toLocaleString(undefined, { month: 'short' }); }
-function fmtYear(d) { return String(d.getFullYear()); }
+const dayDiff = (a, b) => Math.round((b - a) / 86_400_000);
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const addMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; };
+const fmtDayNum = d => String(d.getDate()).padStart(2, '0');
+const fmtMonth = d => d.toLocaleString(undefined, { month: 'long' });
+const fmtMonthShort = d => d.toLocaleString(undefined, { month: 'short' });
+const fmtYear = d => String(d.getFullYear());
+const fmtDate = d => `${fmtMonthShort(d)} ${d.getDate()}, ${d.getFullYear()}`;
 
 function normalizeTasks(rawTasks) {
     if (!Array.isArray(rawTasks)) return [];
@@ -87,56 +76,77 @@ function normalizeTasks(rawTasks) {
         const end = parseDate(t.end ?? t.End);
         const progress = Math.max(0, Math.min(100, Number(t.progress ?? t.Progress ?? 0)));
         const depsRaw = t.dependencies ?? t.Dependencies ?? [];
-        const dependencies = Array.isArray(depsRaw) ? depsRaw : String(depsRaw).split(',').map(s => s.trim()).filter(Boolean);
+        const dependencies = Array.isArray(depsRaw)
+            ? depsRaw
+            : String(depsRaw).split(',').map(s => s.trim()).filter(Boolean);
         return { id: String(id), name, start, end, progress, dependencies };
     }).filter(t => t.start && t.end && t.end >= t.start);
 }
 
 function readTokens(el) {
     const cs = getComputedStyle(el);
+    const get = (name, fallback) => (cs.getPropertyValue(name) || fallback).trim();
     return {
-        primary: (cs.getPropertyValue('--color-primary') || '#7c3aed').trim(),
-        primaryFg: (cs.getPropertyValue('--color-primary-foreground') || '#ffffff').trim(),
-        muted: (cs.getPropertyValue('--color-muted-foreground') || '#888').trim(),
-        fg: (cs.getPropertyValue('--color-foreground') || '#fff').trim(),
-        border: (cs.getPropertyValue('--color-border') || '#444').trim(),
-        accent: (cs.getPropertyValue('--color-accent') || '#333').trim(),
-        card: (cs.getPropertyValue('--color-card') || '#0a0a0a').trim(),
+        primary:   get('--color-primary', '#7c3aed'),
+        primaryFg: get('--color-primary-foreground', '#ffffff'),
+        muted:     get('--color-muted-foreground', '#888'),
+        fg:        get('--color-foreground', '#fff'),
+        border:    get('--color-border', '#444'),
+        accent:    get('--color-accent', '#333'),
+        card:      get('--color-card', '#0a0a0a'),
+        popover:   get('--color-popover', '#0a0a0a'),
+        popoverFg: get('--color-popover-foreground', '#fff'),
     };
 }
 
+function taskToJson(task) {
+    return {
+        Id: task.id,
+        Name: task.name,
+        Start: task.start ? task.start.toISOString() : null,
+        End: task.end ? task.end.toISOString() : null,
+        Progress: task.progress,
+        Dependencies: task.dependencies,
+        CustomClass: null,
+    };
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+
 function render(inst) {
-    const { host, tasks, viewMode } = inst;
+    const { host, tasks, viewMode, readonly, dotNetRef } = inst;
     const tokens = readTokens(host);
     const cfg = VIEW_MODES[viewMode] || VIEW_MODES.Day;
 
-    // Compute date range with 5-step padding on each side.
-    let minDate = tasks.reduce((m, t) => (m && m < t.start ? m : t.start), null);
-    let maxDate = tasks.reduce((m, t) => (m && m > t.end ? m : t.end), null);
-    if (!minDate || !maxDate) {
+    // Compute date range with generous padding so users can scroll back/forward.
+    let minDate, maxDate;
+    if (tasks.length > 0) {
+        minDate = tasks.reduce((m, t) => (m && m < t.start ? m : t.start), null);
+        maxDate = tasks.reduce((m, t) => (m && m > t.end ? m : t.end), null);
+    } else {
         const today = new Date();
         minDate = addDays(today, -7);
         maxDate = addDays(today, 14);
     }
 
-    let columnsBefore = 5, columnsAfter = 5;
-    let dateUnits = []; // array of Date objects, one per column
+    let dateUnits = [];
     if (cfg.unit === 'day') {
-        const totalDays = dayDiff(minDate, maxDate) + 1;
-        const totalColumns = Math.ceil((totalDays + columnsBefore * cfg.step + columnsAfter * cfg.step) / cfg.step);
-        const startDate = addDays(minDate, -columnsBefore * cfg.step);
+        const startDate = addDays(minDate, -cfg.padBefore * cfg.step);
+        const endDate = addDays(maxDate, cfg.padAfter * cfg.step);
+        const totalDays = dayDiff(startDate, endDate) + 1;
+        const totalColumns = Math.ceil(totalDays / cfg.step);
         for (let i = 0; i < totalColumns; i++) dateUnits.push(addDays(startDate, i * cfg.step));
     } else if (cfg.unit === 'month') {
-        const startDate = new Date(minDate.getFullYear(), minDate.getMonth() - 2, 1);
-        const endDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 3, 1);
+        const startDate = new Date(minDate.getFullYear(), minDate.getMonth() - cfg.padBefore, 1);
+        const endDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + cfg.padAfter, 1);
         for (let d = startDate; d <= endDate; d = addMonths(d, 1)) dateUnits.push(new Date(d));
     } else if (cfg.unit === 'year') {
-        const startYear = minDate.getFullYear() - 1;
-        const endYear = maxDate.getFullYear() + 2;
-        for (let y = startYear; y < endYear; y++) dateUnits.push(new Date(y, 0, 1));
+        const startYear = minDate.getFullYear() - cfg.padBefore;
+        const endYear = maxDate.getFullYear() + cfg.padAfter;
+        for (let y = startYear; y <= endYear; y++) dateUnits.push(new Date(y, 0, 1));
     } else if (cfg.unit === 'hour') {
-        const startDate = addDays(minDate, -1);
-        const endDate = addDays(maxDate, 2);
+        const startDate = addDays(minDate, -Math.ceil(cfg.padBefore * cfg.step / 24));
+        const endDate = addDays(maxDate, Math.ceil(cfg.padAfter * cfg.step / 24));
         const totalHours = (endDate - startDate) / 3_600_000;
         for (let i = 0; i < totalHours; i += cfg.step) {
             const d = new Date(startDate);
@@ -147,15 +157,17 @@ function render(inst) {
 
     const colW = cfg.columnWidth;
     const totalWidth = dateUnits.length * colW;
-    const totalHeight = HEADER_HEIGHT + tasks.length * ROW_HEIGHT;
+    const totalHeight = HEADER_HEIGHT + Math.max(1, tasks.length) * ROW_HEIGHT;
 
+    // Date <-> X mapping
     function dateToX(d) {
         if (cfg.unit === 'day') {
             const days = dayDiff(dateUnits[0], d);
             return (days / cfg.step) * colW;
         }
         if (cfg.unit === 'month') {
-            const months = (d.getFullYear() - dateUnits[0].getFullYear()) * 12 + (d.getMonth() - dateUnits[0].getMonth());
+            const months = (d.getFullYear() - dateUnits[0].getFullYear()) * 12
+                         + (d.getMonth() - dateUnits[0].getMonth());
             const dayFraction = (d.getDate() - 1) / 30;
             return (months + dayFraction) * colW;
         }
@@ -171,7 +183,37 @@ function render(inst) {
         return 0;
     }
 
-    // Wipe and rebuild. Use a wrapper div that scrolls horizontally.
+    function xToDate(x) {
+        if (cfg.unit === 'day') {
+            const days = Math.round((x / colW) * cfg.step);
+            return addDays(dateUnits[0], days);
+        }
+        if (cfg.unit === 'month') {
+            const months = Math.round(x / colW);
+            return addMonths(dateUnits[0], months);
+        }
+        if (cfg.unit === 'year') {
+            const years = Math.round(x / colW);
+            return new Date(dateUnits[0].getFullYear() + years, 0, 1);
+        }
+        if (cfg.unit === 'hour') {
+            const hours = Math.round((x / colW) * cfg.step);
+            const d = new Date(dateUnits[0]);
+            d.setHours(d.getHours() + hours);
+            return d;
+        }
+        return new Date();
+    }
+
+    inst._dateToX = dateToX;
+    inst._xToDate = xToDate;
+    inst._snapStep = cfg.step;
+    inst._unitMs = cfg.unit === 'day' ? 86_400_000
+                 : cfg.unit === 'hour' ? 3_600_000
+                 : cfg.unit === 'month' ? 30 * 86_400_000
+                 : 365 * 86_400_000;
+
+    // Wipe and rebuild
     host.innerHTML = '';
     host.style.position = 'relative';
     host.style.overflow = 'auto';
@@ -181,17 +223,17 @@ function render(inst) {
         height: totalHeight,
         viewBox: `0 0 ${totalWidth} ${totalHeight}`,
         class: 'lumeo-gantt-svg',
-        style: 'display:block',
+        style: 'display:block; user-select:none',
     }, host);
 
-    // -- HEADER (background + grid lines + labels) --
+    // Header background
     el('rect', { x: 0, y: 0, width: totalWidth, height: HEADER_HEIGHT, fill: tokens.card }, svg);
 
     // Vertical grid lines
     for (let i = 0; i <= dateUnits.length; i++) {
         el('line', {
             x1: i * colW, y1: 0, x2: i * colW, y2: totalHeight,
-            stroke: tokens.border, 'stroke-width': '0.5', opacity: '0.5',
+            stroke: tokens.border, 'stroke-width': '0.5', opacity: '0.4',
         }, svg);
     }
 
@@ -200,7 +242,7 @@ function render(inst) {
         const y = HEADER_HEIGHT + i * ROW_HEIGHT;
         el('line', {
             x1: 0, y1: y, x2: totalWidth, y2: y,
-            stroke: tokens.border, 'stroke-width': '0.5', opacity: '0.4',
+            stroke: tokens.border, 'stroke-width': '0.5', opacity: '0.3',
         }, svg);
     }
 
@@ -208,87 +250,105 @@ function render(inst) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayX = dateToX(today);
-    if (todayX >= 0 && todayX <= totalWidth) {
+    const todayInRange = todayX >= 0 && todayX <= totalWidth;
+    if (todayInRange) {
         el('line', {
             x1: todayX, y1: HEADER_HEIGHT - 4, x2: todayX, y2: totalHeight,
-            stroke: tokens.primary, 'stroke-width': '2',
+            stroke: tokens.primary, 'stroke-width': '2', opacity: '0.8',
         }, svg);
         el('circle', { cx: todayX, cy: HEADER_HEIGHT - 4, r: 4, fill: tokens.primary }, svg);
     }
 
-    // Header text labels — render lower row first (per column), upper row groups by month/year
+    // Header labels (per-column)
     let lastUpperLabel = '';
-    let lastUpperX = 0;
     dateUnits.forEach((d, i) => {
-        const x = i * colW + colW / 2;
-        const y = HEADER_HEIGHT - 18;
-
-        // Lower row
-        let lowerText = '';
-        switch (cfg.headerFmt.lower) {
-            case 'dayNum': lowerText = fmtDayNum(d); break;
-            case 'weekRange': lowerText = `${d.getDate()}/${d.getMonth() + 1}`; break;
-            case 'monthName': lowerText = fmtMonthShort(d); break;
-            case 'yearNum': lowerText = fmtYear(d); break;
-            case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`; break;
-        }
-        const lower = el('text', {
-            x, y,
-            'text-anchor': 'middle',
-            'font-size': '12',
-            'font-family': 'system-ui,sans-serif',
-            fill: tokens.muted,
-        }, svg);
-        lower.textContent = lowerText;
+        const xCenter = i * colW + colW / 2;
+        const xLeft = i * colW;
 
         // Highlight today's column
-        if (cfg.unit === 'day' && dayDiff(d, today) === 0) {
-            const bg = el('rect', {
-                x: i * colW + 2, y: HEADER_HEIGHT - 32,
+        const isToday = cfg.unit === 'day' && dayDiff(d, today) === 0;
+        if (isToday) {
+            el('rect', {
+                x: xLeft + 2, y: HEADER_HEIGHT - 32,
                 width: colW - 4, height: 22, rx: 4,
                 fill: tokens.primary,
             }, svg);
-            // Re-append text on top
-            lower.setAttribute('fill', tokens.primaryFg);
-            svg.appendChild(lower);
         }
 
-        // Upper row: only render label when it changes
+        // Lower row text
+        let lowerText = '';
+        switch (cfg.headerFmt.lower) {
+            case 'dayNum':    lowerText = fmtDayNum(d); break;
+            case 'weekRange': lowerText = `${d.getDate()}/${d.getMonth() + 1}`; break;
+            case 'monthName': lowerText = fmtMonthShort(d); break;
+            case 'yearNum':   lowerText = fmtYear(d); break;
+            case 'time6h':
+            case 'time12h':   lowerText = `${d.getHours()}:00`; break;
+        }
+        const lower = el('text', {
+            x: xCenter, y: HEADER_HEIGHT - 18,
+            'text-anchor': 'middle',
+            'font-size': '12',
+            'font-family': 'system-ui,sans-serif',
+            fill: isToday ? tokens.primaryFg : tokens.muted,
+            'pointer-events': 'none',
+        }, svg);
+        lower.textContent = lowerText;
+
+        // Upper row label (only when it changes)
         let upperText = '';
         switch (cfg.headerFmt.upper) {
             case 'month': upperText = fmtMonth(d); break;
-            case 'year': upperText = fmtYear(d); break;
-            case 'day': upperText = `${fmtMonth(d)} ${d.getDate()}`; break;
+            case 'year':  upperText = fmtYear(d); break;
+            case 'day':   upperText = `${fmtMonth(d)} ${d.getDate()}`; break;
         }
         if (upperText && upperText !== lastUpperLabel) {
             const upper = el('text', {
-                x: i * colW + 8, y: 18,
+                x: xLeft + 8, y: 18,
                 'font-size': '13',
                 'font-family': 'system-ui,sans-serif',
                 'font-weight': '600',
                 fill: tokens.fg,
+                'pointer-events': 'none',
             }, svg);
             upper.textContent = upperText;
             lastUpperLabel = upperText;
-            lastUpperX = i * colW;
         }
     });
 
-    // -- TASK BARS --
+    // Empty state
+    if (tasks.length === 0) {
+        const emptyT = el('text', {
+            x: totalWidth / 2, y: HEADER_HEIGHT + 50,
+            'text-anchor': 'middle',
+            'font-size': '13',
+            'font-family': 'system-ui,sans-serif',
+            fill: tokens.muted,
+        }, svg);
+        emptyT.textContent = 'No tasks to display';
+        return;
+    }
+
+    // Task bars
     const taskById = new Map();
     tasks.forEach((task, idx) => {
         const rowY = HEADER_HEIGHT + idx * ROW_HEIGHT;
         const barY = rowY + (ROW_HEIGHT - BAR_HEIGHT) / 2;
         const x1 = dateToX(task.start);
-        const x2 = dateToX(addDays(task.end, 1)); // end-inclusive
+        const x2 = dateToX(addDays(task.end, 1));
         const barW = Math.max(8, x2 - x1);
 
-        taskById.set(task.id, { task, x: x1, y: barY, w: barW });
+        taskById.set(task.id, { task, x: x1, y: barY, w: barW, idx });
 
-        const group = el('g', { class: 'lumeo-gantt-bar-wrapper', 'data-task-id': task.id, style: 'cursor:pointer' }, svg);
+        const group = el('g', {
+            class: 'lumeo-gantt-bar-wrapper',
+            'data-task-id': task.id,
+            style: readonly ? 'cursor:pointer' : 'cursor:grab',
+        }, svg);
 
         // Background bar
-        el('rect', {
+        const bgRect = el('rect', {
+            class: 'lumeo-gantt-bar-bg',
             x: x1, y: barY,
             width: barW, height: BAR_HEIGHT,
             rx: 4, ry: 4,
@@ -297,17 +357,18 @@ function render(inst) {
         }, group);
 
         // Progress overlay
-        if (task.progress > 0) {
-            el('rect', {
-                x: x1, y: barY,
-                width: barW * (task.progress / 100), height: BAR_HEIGHT,
-                rx: 4, ry: 4,
-                fill: tokens.primary,
-            }, group);
-        }
+        const progressW = barW * (task.progress / 100);
+        const progressRect = el('rect', {
+            class: 'lumeo-gantt-bar-progress',
+            x: x1, y: barY,
+            width: progressW, height: BAR_HEIGHT,
+            rx: 4, ry: 4,
+            fill: tokens.primary,
+        }, group);
 
-        // Label
+        // Label (clipped to bar)
         const label = el('text', {
+            class: 'lumeo-gantt-bar-label',
             x: x1 + PADDING_X, y: barY + BAR_HEIGHT / 2 + 4,
             'font-size': '12',
             'font-family': 'system-ui,sans-serif',
@@ -317,21 +378,98 @@ function render(inst) {
         }, group);
         label.textContent = task.name;
 
-        // Click handler
-        group.addEventListener('click', () => {
-            inst.dotNetRef.invokeMethodAsync('JsOnTaskClick', taskToJson(task)).catch(() => {});
+        // Resize handle (right edge) — invisible hit zone for cursor change + drag
+        let resizeHandle = null;
+        let progressHandle = null;
+        if (!readonly) {
+            resizeHandle = el('rect', {
+                class: 'lumeo-gantt-resize',
+                x: x1 + barW - RESIZE_HANDLE_W, y: barY,
+                width: RESIZE_HANDLE_W, height: BAR_HEIGHT,
+                fill: 'transparent',
+                style: 'cursor:ew-resize',
+            }, group);
+
+            // Progress handle — small circle at the right edge of progress overlay
+            progressHandle = el('circle', {
+                class: 'lumeo-gantt-progress-handle',
+                cx: x1 + progressW, cy: barY + BAR_HEIGHT,
+                r: 4,
+                fill: tokens.primaryFg,
+                stroke: tokens.primary,
+                'stroke-width': '2',
+                style: 'cursor:ns-resize',
+                opacity: '0',
+            }, group);
+        }
+
+        // Hover feedback
+        group.addEventListener('mouseenter', () => {
+            bgRect.setAttribute('fill-opacity', '0.45');
+            if (progressHandle) progressHandle.setAttribute('opacity', '1');
+            showTooltip(host, task, group);
         });
+        group.addEventListener('mouseleave', () => {
+            bgRect.setAttribute('fill-opacity', '0.30');
+            if (progressHandle) progressHandle.setAttribute('opacity', '0');
+            hideTooltip(host);
+        });
+
+        // Click handler (only fires if drag wasn't initiated)
+        let mouseDownX = 0, dragInitiated = false, dragMode = null;
+        const onMouseDown = (e, mode) => {
+            if (readonly && mode !== 'click') return;
+            e.preventDefault();
+            mouseDownX = e.clientX;
+            dragInitiated = false;
+            dragMode = mode;
+            inst._dragState = {
+                taskId: task.id,
+                mode,
+                startX: e.clientX,
+                origStart: task.start,
+                origEnd: task.end,
+                origProgress: task.progress,
+                bgRect, progressRect, label, resizeHandle, progressHandle,
+                x1, barW, barY,
+            };
+
+            const onMove = (mv) => {
+                const dx = mv.clientX - mouseDownX;
+                if (Math.abs(dx) > 3) dragInitiated = true;
+                applyDragVisual(inst, dx);
+            };
+            const onUp = (mu) => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                if (dragInitiated) {
+                    commitDrag(inst, mu.clientX - mouseDownX);
+                } else if (mode === 'move') {
+                    // Treat as click
+                    dotNetRef.invokeMethodAsync('JsOnTaskClick', taskToJson(task)).catch(() => {});
+                }
+                inst._dragState = null;
+                dragInitiated = false;
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        };
+
+        bgRect.addEventListener('mousedown', e => onMouseDown(e, 'move'));
+        progressRect.addEventListener('mousedown', e => onMouseDown(e, 'move'));
+        label.addEventListener('mousedown', e => onMouseDown(e, 'move'));
+        if (resizeHandle) resizeHandle.addEventListener('mousedown', e => onMouseDown(e, 'resize'));
+        if (progressHandle) progressHandle.addEventListener('mousedown', e => onMouseDown(e, 'progress'));
     });
 
-    // -- DEPENDENCY ARROWS --
-    tasks.forEach((task, idx) => {
+    // Dependency arrows
+    tasks.forEach((task) => {
         if (!task.dependencies || task.dependencies.length === 0) return;
         const target = taskById.get(task.id);
         if (!target) return;
         for (const depId of task.dependencies) {
             const source = taskById.get(depId);
             if (!source) continue;
-            // Arrow goes from end of source bar to start of target bar.
             const sx = source.x + source.w;
             const sy = source.y + BAR_HEIGHT / 2;
             const tx = target.x;
@@ -339,52 +477,138 @@ function render(inst) {
             const midX = sx + 12;
             const path = `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx - 4} ${ty}`;
             el('path', {
-                d: path,
-                fill: 'none',
-                stroke: tokens.muted,
-                'stroke-width': '1.2',
-                'marker-end': '',
-                opacity: '0.7',
+                d: path, fill: 'none',
+                stroke: tokens.muted, 'stroke-width': '1.2', opacity: '0.6',
             }, svg);
-            // Arrow head
             el('polygon', {
                 points: `${tx - 6},${ty - 4} ${tx},${ty} ${tx - 6},${ty + 4}`,
-                fill: tokens.muted,
-                opacity: '0.7',
+                fill: tokens.muted, opacity: '0.6',
             }, svg);
         }
     });
 
-    // Auto-scroll horizontally so today is centered (best-effort)
-    requestAnimationFrame(() => {
-        const todayPx = dateToX(today);
-        if (todayPx > 0) {
-            host.scrollLeft = Math.max(0, todayPx - host.clientWidth / 2);
-        }
-    });
+    inst._taskById = taskById;
 
-    if (typeof console !== 'undefined' && console.debug) {
-        console.debug('[lumeo-gantt-v2-custom] rendered', {
-            tasks: tasks.length,
-            viewMode,
-            totalWidth,
-            totalHeight,
-            columns: dateUnits.length,
+    // Auto-scroll horizontally to today on first paint
+    if (!inst._initialScrolled) {
+        requestAnimationFrame(() => {
+            const todayPx = dateToX(today);
+            if (todayPx > 0) {
+                host.scrollLeft = Math.max(0, todayPx - host.clientWidth / 2);
+            }
+            inst._initialScrolled = true;
         });
     }
 }
 
-function taskToJson(task) {
-    return {
-        Id: task.id,
-        Name: task.name,
-        Start: task.start ? task.start.toISOString() : null,
-        End: task.end ? task.end.toISOString() : null,
-        Progress: task.progress,
-        Dependencies: task.dependencies,
-        CustomClass: null,
-    };
+// ── Drag visual update (during mousemove) ──────────────────────────────────
+
+function applyDragVisual(inst, dx) {
+    const s = inst._dragState;
+    if (!s) return;
+    const { mode, x1, barW, bgRect, progressRect, label, resizeHandle, progressHandle, origProgress } = s;
+
+    if (mode === 'move') {
+        bgRect.setAttribute('x', x1 + dx);
+        progressRect.setAttribute('x', x1 + dx);
+        label.setAttribute('x', x1 + dx + PADDING_X);
+        if (resizeHandle) resizeHandle.setAttribute('x', x1 + dx + barW - RESIZE_HANDLE_W);
+        if (progressHandle) progressHandle.setAttribute('cx', x1 + dx + (barW * origProgress / 100));
+    } else if (mode === 'resize') {
+        const newW = Math.max(8, barW + dx);
+        bgRect.setAttribute('width', newW);
+        progressRect.setAttribute('width', newW * origProgress / 100);
+        if (resizeHandle) resizeHandle.setAttribute('x', x1 + newW - RESIZE_HANDLE_W);
+        if (progressHandle) progressHandle.setAttribute('cx', x1 + (newW * origProgress / 100));
+    } else if (mode === 'progress') {
+        const newProgress = Math.max(0, Math.min(100, origProgress + (dx / barW) * 100));
+        progressRect.setAttribute('width', barW * newProgress / 100);
+        if (progressHandle) progressHandle.setAttribute('cx', x1 + (barW * newProgress / 100));
+    }
 }
+
+// ── Drag commit (mouseup) ──────────────────────────────────────────────────
+
+function commitDrag(inst, dx) {
+    const s = inst._dragState;
+    if (!s) return;
+    const { mode, taskId, origStart, origEnd, origProgress, x1, barW } = s;
+    const task = inst.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (mode === 'move') {
+        // Snap dx to nearest column step
+        const snapPx = inst._snapStep * (VIEW_MODES[inst.viewMode] || VIEW_MODES.Day).columnWidth / inst._snapStep;
+        const cfg = VIEW_MODES[inst.viewMode] || VIEW_MODES.Day;
+        const stepPx = cfg.columnWidth;
+        const stepDays = cfg.step * (cfg.unit === 'day' ? 1 : cfg.unit === 'hour' ? cfg.step / 24 : cfg.unit === 'month' ? 30 : 365);
+        const movedSteps = Math.round(dx / stepPx);
+        const movedDays = Math.round(movedSteps * (cfg.unit === 'day' ? cfg.step : cfg.unit === 'hour' ? cfg.step / 24 : cfg.unit === 'month' ? 30 : 365));
+        if (movedDays === 0) { render(inst); return; }
+        task.start = addDays(origStart, movedDays);
+        task.end = addDays(origEnd, movedDays);
+        inst.dotNetRef.invokeMethodAsync('JsOnDateChange', taskToJson(task)).catch(() => {});
+    } else if (mode === 'resize') {
+        const cfg = VIEW_MODES[inst.viewMode] || VIEW_MODES.Day;
+        const newW = Math.max(8, barW + dx);
+        const movedSteps = Math.round((newW - barW) / cfg.columnWidth);
+        const movedDays = Math.round(movedSteps * (cfg.unit === 'day' ? cfg.step : cfg.unit === 'hour' ? cfg.step / 24 : cfg.unit === 'month' ? 30 : 365));
+        if (movedDays === 0) { render(inst); return; }
+        task.end = addDays(origEnd, movedDays);
+        if (task.end < task.start) task.end = task.start;
+        inst.dotNetRef.invokeMethodAsync('JsOnDateChange', taskToJson(task)).catch(() => {});
+    } else if (mode === 'progress') {
+        const newProgress = Math.max(0, Math.min(100, Math.round(origProgress + (dx / barW) * 100)));
+        if (newProgress === origProgress) { render(inst); return; }
+        task.progress = newProgress;
+        inst.dotNetRef.invokeMethodAsync('JsOnProgressChange', taskToJson(task)).catch(() => {});
+    }
+    render(inst);
+}
+
+// ── Tooltip ────────────────────────────────────────────────────────────────
+
+function showTooltip(host, task, group) {
+    hideTooltip(host);
+    const tokens = readTokens(host);
+    const tt = document.createElement('div');
+    tt.className = 'lumeo-gantt-tooltip';
+    tt.style.cssText = [
+        'position:absolute', 'pointer-events:none', 'z-index:1000',
+        `background:${tokens.popover}`, `color:${tokens.popoverFg}`,
+        `border:1px solid ${tokens.border}`,
+        'padding:8px 10px', 'border-radius:6px',
+        'font-family:system-ui,sans-serif', 'font-size:12px',
+        'box-shadow:0 4px 12px rgb(0 0 0 / 0.2)',
+        'min-width:180px',
+    ].join(';');
+    const dateRange = `${fmtDate(task.start)} → ${fmtDate(task.end)}`;
+    const days = dayDiff(task.start, task.end) + 1;
+    tt.innerHTML = `
+        <div style="font-weight:600;margin-bottom:4px">${escapeHtml(task.name)}</div>
+        <div style="opacity:0.75;margin-bottom:2px">${dateRange}</div>
+        <div style="opacity:0.75">${days} day${days !== 1 ? 's' : ''} · ${task.progress}% complete</div>
+    `;
+    host.appendChild(tt);
+
+    const groupRect = group.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    tt.style.left = (groupRect.left - hostRect.left + host.scrollLeft) + 'px';
+    tt.style.top = (groupRect.top - hostRect.top + host.scrollTop - tt.offsetHeight - 8) + 'px';
+}
+
+function hideTooltip(host) {
+    const tt = host.querySelector('.lumeo-gantt-tooltip');
+    if (tt) tt.remove();
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
 
 export const gantt = {
     async init(elOrId, dotNetRef, options) {
@@ -404,18 +628,9 @@ export const gantt = {
 
         render(inst);
 
-        // Re-render on theme change (if Lumeo flips dark/light) and resize.
         const ro = new ResizeObserver(() => render(inst));
         ro.observe(host);
         inst._ro = ro;
-
-        if (typeof console !== 'undefined' && console.debug) {
-            console.debug('[lumeo-gantt-v2-custom] init', {
-                id,
-                taskCount: inst.tasks.length,
-                viewMode: inst.viewMode,
-            });
-        }
 
         return id;
     },
