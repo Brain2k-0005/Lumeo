@@ -222,14 +222,44 @@ function render(inst) {
     host.innerHTML = '';
     host.style.position = 'relative';
     host.style.overflow = 'auto';
+    // CRITICAL: flex items default to min-width:min-content, so any inline
+    // min-width on a child SVG would expand the host element to the SVG's
+    // full width, eliminating horizontal scroll and pushing the chart out
+    // of its parent card. Forcing min-width:0 lets the host shrink to its
+    // parent's available width and lets overflow-x:auto actually scroll.
+    host.style.minWidth = '0';
+    host.style.maxWidth = '100%';
 
     const svg = el('svg', {
         width: totalWidth,
         height: totalHeight,
         viewBox: `0 0 ${totalWidth} ${totalHeight}`,
         class: 'lumeo-gantt-svg',
-        style: 'display:block; user-select:none',
+        // Fixed pixel dimensions via inline CSS to defeat any ancestor
+        // svg{width:100%} rule. NOTE: do NOT set min-width here — that
+        // bubbles up through flex containers and forces the host to grow
+        // to the SVG's full width, killing horizontal scroll.
+        style: `display:block; user-select:none; width:${totalWidth}px; height:${totalHeight}px; max-width:none; flex-shrink:0;`,
     }, host);
+
+    // Diagnostic so we can SEE what range was actually rendered.
+    // Uses a temp 'now' since 'today' const is declared further below.
+    if (typeof console !== 'undefined' && console.warn) {
+        const _now = new Date();
+        _now.setHours(0, 0, 0, 0);
+        console.warn('[lumeo-gantt-v2-custom] dimensions ' + JSON.stringify({
+            viewMode,
+            columns: dateUnits.length,
+            totalWidth,
+            firstColDate: dateUnits[0] ? dateUnits[0].toISOString().slice(0, 10) : null,
+            lastColDate: dateUnits[dateUnits.length - 1] ? dateUnits[dateUnits.length - 1].toISOString().slice(0, 10) : null,
+            hostClientWidth: host.clientWidth,
+            hostScrollWidth: host.scrollWidth,
+            todayDate: _now.toISOString().slice(0, 10),
+            todayX: dateToX(_now),
+            padBefore: cfg.padBefore,
+        }));
+    }
 
     // Header background
     el('rect', { x: 0, y: 0, width: totalWidth, height: HEADER_HEIGHT, fill: tokens.card }, svg);
