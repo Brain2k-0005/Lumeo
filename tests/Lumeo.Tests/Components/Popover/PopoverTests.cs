@@ -126,7 +126,7 @@ public class PopoverTests : IAsyncLifetime
         });
 
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("my-popover-class")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("my-popover-class"));
     }
 
     // --- PopoverContent default classes ---
@@ -148,11 +148,11 @@ public class PopoverTests : IAsyncLifetime
         });
 
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e =>
+        Assert.Contains(elements, e =>
         {
             var cls = e.GetAttribute("class") ?? "";
             return cls.Contains("bg-popover") && cls.Contains("border-border");
-        }));
+        });
     }
 
     // --- Escape key ---

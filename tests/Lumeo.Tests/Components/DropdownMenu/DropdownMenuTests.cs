@@ -210,7 +210,7 @@ public class DropdownMenuTests : IAsyncLifetime
         });
 
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("my-dropdown-class")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("my-dropdown-class"));
     }
 
     // --- Label and Separator ---
@@ -261,10 +261,10 @@ public class DropdownMenuTests : IAsyncLifetime
 
         // DropdownMenuSeparator uses role="none" and has bg-border class
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e =>
+        Assert.Contains(elements, e =>
         {
             var cls = e.GetAttribute("class") ?? "";
             return cls.Contains("bg-border") && cls.Contains("h-px");
-        }));
+        });
     }
 }
