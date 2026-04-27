@@ -661,25 +661,30 @@ export const gantt = {
         const host = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
         if (!host) throw new Error('Gantt: root element missing');
 
-        // CRITICAL: lock the host to its parent's CURRENT natural width
-        // BEFORE we add any wide content. Once SVG with width=5814 is added,
-        // min-width:auto cascades up through every flex/block ancestor and
-        // expands the host to 5814 — killing horizontal scroll.
-        // Capturing parent width while host is empty gives us the constrained
-        // size; then explicit width on host stops the cascade dead.
+        // CRITICAL: lock the host to a stable container width BEFORE adding
+        // any wide content. Once SVG with width=5814 is added, min-width:auto
+        // cascades up through every flex/block ancestor and expands the host
+        // to 5814 — killing horizontal scroll.
+        //
+        // Don't touch ancestor min-widths (that collapsed the parent card to
+        // its toolbar width). Instead, walk UP to find the first ancestor
+        // with a stable, non-content-driven width — typically a container
+        // div with explicit max-width or padding. Use that as the lock.
         const lockHostWidth = () => {
             const parentEl = host.parentElement;
             if (!parentEl) return;
-            // Walk UP and force min-width:0 on every ancestor in the chain so
-            // none of them can be expanded by their content. Cap at 8 levels.
-            let p = parentEl;
-            for (let i = 0; i < 8 && p && p !== document.body; i++) {
-                p.style.minWidth = '0';
-                p = p.parentElement;
-            }
-            // Now measure the parent's natural width.
-            const w = parentEl.clientWidth;
-            if (w > 0) {
+
+            // The .lumeo-gantt outer card has padding (p-3 = 12px each side),
+            // border (1px each side), so subtract those from its clientWidth
+            // to get the inner content width available to the host.
+            // clientWidth already excludes border but includes padding, so we
+            // need padding subtraction.
+            const cs = window.getComputedStyle(parentEl);
+            const padL = parseFloat(cs.paddingLeft) || 0;
+            const padR = parseFloat(cs.paddingRight) || 0;
+            const w = parentEl.clientWidth - padL - padR;
+
+            if (w > 50) {
                 host.style.width = w + 'px';
                 host.style.maxWidth = w + 'px';
                 host.style.minWidth = '0';
