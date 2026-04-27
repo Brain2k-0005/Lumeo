@@ -15,9 +15,9 @@ public class RegistryServiceTests
         var json = """
         {
           "components": {
-            "input":   { "name": "Input",   "category": "Forms",        "subcategory": "Inputs",   "description": "An input.",   "thumbnail": "/preview-cards/input.png",   "nugetPackage": "Lumeo" },
-            "select":  { "name": "Select",  "category": "Forms",        "subcategory": "Selection","description": "A select.",   "thumbnail": "/preview-cards/select.png",  "nugetPackage": "Lumeo" },
-            "table":   { "name": "Table",   "category": "Data Display", "subcategory": "Tables",   "description": "A table.",    "thumbnail": "/preview-cards/table.png",   "nugetPackage": "Lumeo" }
+            "input":   { "name": "Input",   "category": "Forms",        "subcategory": "Inputs",   "description": "An input.",   "thumbnail": "/preview-cards/input.png",   "nugetPackage": "Lumeo", "hasDocsPage": true },
+            "select":  { "name": "Select",  "category": "Forms",        "subcategory": "Selection","description": "A select.",   "thumbnail": "/preview-cards/select.png",  "nugetPackage": "Lumeo", "hasDocsPage": true },
+            "table":   { "name": "Table",   "category": "Data Display", "subcategory": "Tables",   "description": "A table.",    "thumbnail": "/preview-cards/table.png",   "nugetPackage": "Lumeo", "hasDocsPage": true }
           }
         }
         """;

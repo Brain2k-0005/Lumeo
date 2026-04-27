@@ -31,7 +31,11 @@ public sealed class RegistryService(HttpClient http)
     public async Task<Dictionary<string, List<RegistryComponent>>> GroupsByCategoryAsync()
     {
         var registry = await GetAsync();
+        // Skip components without a docs page so the catalog never shows a card that 404s on click.
+        // Components in registry without a docs page are real (e.g. AgentMessageList, BorderBeam, BlurFade)
+        // but undocumented — they'll appear once their pages are written.
         return registry.Components.Values
+            .Where(c => c.HasDocsPage)
             .GroupBy(c => c.Category)
             .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Name).ToList());
     }
@@ -50,5 +54,6 @@ public sealed class RegistryComponent
     [JsonPropertyName("description")] public string Description { get; set; } = "";
     [JsonPropertyName("thumbnail")] public string? Thumbnail { get; set; }
     [JsonPropertyName("nugetPackage")] public string NugetPackage { get; set; } = "";
+    [JsonPropertyName("hasDocsPage")] public bool HasDocsPage { get; set; }
     [JsonIgnore] public string Slug { get; set; } = "";
 }
