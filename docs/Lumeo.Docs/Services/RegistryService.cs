@@ -19,6 +19,10 @@ public sealed class RegistryService(HttpClient http)
                 "registry.json",
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
                 ?? throw new InvalidOperationException("registry.json failed to deserialize.");
+            foreach (var (key, comp) in _cached.Components)
+            {
+                comp.Slug = key;
+            }
             return _cached;
         }
         finally { _gate.Release(); }
@@ -46,4 +50,5 @@ public sealed class RegistryComponent
     [JsonPropertyName("description")] public string Description { get; set; } = "";
     [JsonPropertyName("thumbnail")] public string? Thumbnail { get; set; }
     [JsonPropertyName("nugetPackage")] public string NugetPackage { get; set; } = "";
+    [JsonIgnore] public string Slug { get; set; } = "";
 }
