@@ -1,0 +1,66 @@
+@page "/components"
+@namespace Lumeo.Docs.Pages
+@using Lumeo.Docs.Services
+@using Lumeo.Docs.Shared
+@inject RegistryService Registry
+
+<PageTitle>Components — Lumeo</PageTitle>
+
+@if (_groups is null)
+{
+    <Container MaxWidth="6xl" Class="px-4 py-12">
+        <Stack Gap="4"><Skeleton Height="32" Width="40%" /><Skeleton Height="200" Width="100%" /></Stack>
+    </Container>
+}
+else
+{
+    <Container MaxWidth="6xl" Class="px-4 py-12">
+        <Stack Gap="6" Class="mb-8">
+            <Stack Gap="2">
+                <Heading Level="1" Class="text-3xl sm:text-4xl font-bold tracking-tight">Components</Heading>
+                <Lumeo.Text Color="muted">Browse all @_total components across @_groups.Count categories.</Lumeo.Text>
+            </Stack>
+            <CatalogFilterChips Categories="@_categoryNames" @bind-Selected="_filter" />
+        </Stack>
+
+        <Flex Gap="8" Class="items-start">
+            <CatalogRail Categories="@_categoryCounts" />
+
+            <div class="flex-1 min-w-0 space-y-12">
+                @foreach (var (cat, items) in _groups)
+                {
+                    @if (_filter is null || _filter == cat)
+                    {
+                        <section id="@Slug(cat)">
+                            <Heading Level="2" Class="text-xl font-semibold mb-4">@cat <span class="text-sm font-normal text-muted-foreground">(@items.Count)</span></Heading>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                @foreach (var component in items)
+                                {
+                                    <CatalogCard Component="@component" />
+                                }
+                            </div>
+                        </section>
+                    }
+                }
+            </div>
+        </Flex>
+    </Container>
+}
+
+@code {
+    private Dictionary<string, List<RegistryComponent>>? _groups;
+    private Dictionary<string, int> _categoryCounts = new();
+    private IReadOnlyList<string> _categoryNames = [];
+    private int _total;
+    private string? _filter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _groups = await Registry.GroupsByCategoryAsync();
+        _categoryCounts = _groups.ToDictionary(g => g.Key, g => g.Value.Count);
+        _categoryNames = _groups.Keys.ToList();
+        _total = _groups.Sum(g => g.Value.Count);
+    }
+
+    private static string Slug(string s) => s.ToLowerInvariant().Replace(' ', '-').Replace('&', '-');
+}
