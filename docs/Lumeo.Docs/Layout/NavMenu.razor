@@ -11,20 +11,6 @@
 @{
     RenderFragment navContent =
     @<text>
-        @* Catalog promo — visual entry point to the /components catalog so users don't
-           have to scroll the long sidebar to discover what's available. *@
-        <a href="components"
-           class="group flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/10 px-3 py-2.5 mb-2 transition-colors no-underline">
-            <span class="flex h-8 w-8 items-center justify-center rounded-md bg-primary/15 text-primary shrink-0">
-                <Blazicon Svg="Lucide.LayoutGrid" class="h-4 w-4" />
-            </span>
-            <span class="flex-1 min-w-0">
-                <span class="block text-sm font-semibold text-foreground">Browse catalog</span>
-                <span class="block text-[11px] text-muted-foreground">128 components, visual grid</span>
-            </span>
-            <Blazicon Svg="Lucide.ArrowRight" class="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-        </a>
-
         @if (_config is null)
         {
             <Stack Gap="1" Class="px-2 py-4">
@@ -37,13 +23,19 @@
         {
             @foreach (var group in _config.Groups)
             {
-                <NavGroupSection Group="@group" />
+                <NavGroupSection Group="@group" Collapsible="@(Section == "components")"
+                                 IsExpanded="@IsGroupExpanded(group)"
+                                 OnToggle="@(() => ToggleGroup(group))" />
             }
         }
     </text>;
 }
 
-@if (IsMobile)
+@if (Embedded)
+{
+    <nav class="lumeo-sidebar-nav p-4 space-y-6 text-sm" @ref="_navRef">@navContent</nav>
+}
+else if (IsMobile)
 {
     <nav class="lumeo-sidebar-nav p-4 space-y-6 text-sm" @ref="_navRef">@navContent</nav>
 }
@@ -56,18 +48,82 @@ else
 
 @code {
     [Parameter] public bool IsMobile { get; set; }
+    [Parameter] public string? Section { get; set; }
+    [Parameter] public bool Embedded { get; set; }
+
     private NavConfig? _config;
     private ElementReference _navRef;
     private string? _lastLocation;
+    private readonly Dictionary<string, bool> _expanded = new();
 
     protected override async Task OnInitializedAsync()
     {
         Nav.LocationChanged += OnLocationChanged;
-        _config = await NavConfig.GetAsync();
+        _config = Section is null
+            ? await NavConfig.GetAsync()
+            : await NavConfig.GetForSectionAsync(Section);
+
+        // For collapsible mode: expand the group that contains the current URL.
+        if (Section == "components" && _config is not null)
+        {
+            ExpandActiveGroup();
+        }
+    }
+
+    private void ExpandActiveGroup()
+    {
+        if (_config is null) return;
+        var currentPath = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+        foreach (var group in _config.Groups)
+        {
+            if (GroupContainsPath(group, currentPath))
+            {
+                _expanded[group.Id] = true;
+                return;
+            }
+        }
+        // If nothing matched, expand first group as fallback
+        if (_config.Groups.Count > 0)
+            _expanded[_config.Groups[0].Id] = true;
+    }
+
+    private static bool GroupContainsPath(NavGroup group, string path)
+    {
+        if (group.Items is not null)
+        {
+            if (group.Items.Any(i => i.Href.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        if (group.Subgroups is not null)
+        {
+            foreach (var sub in group.Subgroups)
+            {
+                if (sub.Items.Any(i => i.Href.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private bool IsGroupExpanded(NavGroup group)
+    {
+        if (Section != "components") return true; // non-collapsible: always expanded
+        return _expanded.TryGetValue(group.Id, out var v) && v;
+    }
+
+    private void ToggleGroup(NavGroup group)
+    {
+        var current = _expanded.TryGetValue(group.Id, out var v) && v;
+        _expanded[group.Id] = !current;
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        // Re-expand the active group on navigation when in collapsible mode
+        if (Section == "components" && _config is not null)
+        {
+            ExpandActiveGroup();
+        }
         InvokeAsync(StateHasChanged);
     }
 

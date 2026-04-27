@@ -26,11 +26,11 @@
                 <Lumeo.Text As="span">Lumeo</Lumeo.Text>
             </Lumeo.Link>
 
-            <!-- Nav links (desktop) — /themes removed: the floating Create sidebar
-                 renders on every page, so users can preview themes against real content. -->
+            <!-- Nav links (desktop) -->
             <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2">
-                <a href="components/button" class="@NavLinkClass("docs")">Docs</a>
+                <a href="docs/introduction" class="@NavLinkClass("docs")">Docs</a>
                 <a href="components" class="@NavLinkClass("catalog")">Components</a>
+                <a href="patterns" class="@NavLinkClass("patterns")">Patterns</a>
                 <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
             </nav>
 
@@ -85,20 +85,29 @@
     @if (ShowDocsLayout)
     {
         <Flex>
-            @if (IsBlocks)
+            @switch (SidebarSection)
             {
-                <BlocksSidebar />
-            }
-            else
-            {
-                <NavMenu />
+                case "blocks":
+                    <BlocksSidebar />
+                    break;
+                case "docs":
+                    <DocsSidebar />
+                    break;
+                case "components":
+                    <ComponentDetailSidebar />
+                    break;
+                case "patterns":
+                    <PatternsSidebar />
+                    break;
+                default:
+                    break; // "none" — catalog and home get full-width, no sidebar
             }
             <main class="flex-1 min-w-0">
-                <div class="container mx-auto px-4 sm:px-6 py-8 @(IsBlocks ? "" : "max-w-5xl")">
+                <div class="container mx-auto px-4 sm:px-6 py-8 @(SidebarSection is "blocks" or "none" ? "" : "max-w-5xl")">
                     @Body
                 </div>
             </main>
-            @if (!IsBlocks)
+            @if (SidebarSection != "blocks" && SidebarSection != "none")
             {
                 <OnThisPage />
             }
@@ -170,13 +179,26 @@
                         <Lumeo.Text Size="sm" Color="muted">No results for "<Lumeo.Text As="span" Class="text-foreground">@_query</Lumeo.Text>"</Lumeo.Text>
                     </div>
                 }
+                else if (_query.Length == 0)
+                {
+                    @* Curated empty state — popular components *@
+                    <div class="py-1.5">
+                        <Lumeo.Text Size="xs" Color="muted" Class="px-4 py-1 block">Popular components</Lumeo.Text>
+                        @foreach (var (label, slug) in _popularComponents)
+                        {
+                            <a class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group no-underline"
+                               href="@($"components/{slug}")"
+                               @onclick="CloseSearch">
+                                <DynamicIcon Name="Component" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                                <span class="flex-1 text-foreground/90">@label</span>
+                                <span class="text-[11px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">Component</span>
+                            </a>
+                        }
+                    </div>
+                }
                 else
                 {
                     <div class="py-1.5">
-                        @if (_query.Length == 0)
-                        {
-                            <Lumeo.Text Size="xs" Color="muted" Class="px-4 py-1 block">Suggestions</Lumeo.Text>
-                        }
                         @foreach (var hit in _hits)
                         {
                             <button class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group"
@@ -217,20 +239,30 @@
                 </Button>
             </div>
             <nav class="px-3 py-2 border-b border-border/30 flex gap-1 shrink-0">
-                <a href="components/button" class="@NavLinkClass("docs")">Docs</a>
+                <a href="docs/introduction" class="@NavLinkClass("docs")">Docs</a>
                 <a href="components" class="@NavLinkClass("catalog")">Components</a>
+                <a href="patterns" class="@NavLinkClass("patterns")">Patterns</a>
                 <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
             </nav>
             @if (ShowDocsLayout)
             {
                 <div class="flex-1 overflow-y-auto">
-                    @if (IsBlocks)
+                    @switch (SidebarSection)
                     {
-                        <BlocksSidebar IsMobile="true" />
-                    }
-                    else
-                    {
-                        <NavMenu IsMobile="true" />
+                        case "blocks":
+                            <BlocksSidebar IsMobile="true" />
+                            break;
+                        case "docs":
+                            <DocsSidebar IsMobile="true" />
+                            break;
+                        case "components":
+                            <NavMenu Section="components" IsMobile="true" />
+                            break;
+                        case "patterns":
+                            <PatternsSidebar IsMobile="true" />
+                            break;
+                        default:
+                            break;
                     }
                 </div>
             }
@@ -263,6 +295,17 @@
     // script. Leave empty to ship without analytics at all.
     private const string CloudflareAnalyticsToken = "21fac6cd604348129ae8f1b345d46ba5";
 
+    // Popular components shown in the Cmd+K empty state
+    private static readonly (string Label, string Slug)[] _popularComponents =
+    [
+        ("Button",  "button"),
+        ("Input",   "input"),
+        ("Card",    "card"),
+        ("Dialog",  "dialog"),
+        ("Select",  "select"),
+        ("Toast",   "toast"),
+    ];
+
     private readonly List<IAsyncDisposable> _kbdShortcuts = new();
     private ConsentBanner? _consentBanner;
     private bool _darkMode;
@@ -279,7 +322,29 @@
 
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
 
-    private bool IsBlocks => CurrentPath.StartsWith("blocks", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Returns the sidebar section to display based on the current route:
+    /// "none"       — home (/) and bare catalog (/components)
+    /// "docs"       — /docs/* routes
+    /// "components" — /components/{slug} (specific component detail)
+    /// "patterns"   — /patterns/*
+    /// "blocks"     — /blocks/*
+    /// Anything else defaults to "docs" (safe fallback for /themes etc.)
+    /// </summary>
+    private string SidebarSection
+    {
+        get
+        {
+            var p = CurrentPath;
+            if (p == "") return "none";
+            if (p.Equals("components", StringComparison.OrdinalIgnoreCase)) return "none"; // bare catalog → full width
+            if (p.StartsWith("components/", StringComparison.OrdinalIgnoreCase)) return "components";
+            if (p.StartsWith("docs", StringComparison.OrdinalIgnoreCase)) return "docs";
+            if (p.StartsWith("patterns", StringComparison.OrdinalIgnoreCase)) return "patterns";
+            if (p.StartsWith("blocks", StringComparison.OrdinalIgnoreCase)) return "blocks";
+            return "docs"; // /themes and other misc pages default to docs sidebar
+        }
+    }
 
     private bool ShowDocsLayout
     {
@@ -294,23 +359,27 @@
     private string NavLinkClass(string segment)
     {
         bool isActive;
-        if (segment == "catalog")
+        switch (segment)
         {
-            // /components catalog page only — exact match, not /components/{slug}
-            isActive = CurrentPath.Equals("components", StringComparison.OrdinalIgnoreCase);
-        }
-        else if (segment == "docs")
-        {
-            // Component detail pages, patterns, getting-started — but NOT the bare /components catalog.
-            var onCatalog = CurrentPath.Equals("components", StringComparison.OrdinalIgnoreCase);
-            isActive = !onCatalog && (
-                CurrentPath.StartsWith("components", StringComparison.OrdinalIgnoreCase)
-             || CurrentPath.StartsWith("patterns", StringComparison.OrdinalIgnoreCase)
-             || CurrentPath.StartsWith("docs", StringComparison.OrdinalIgnoreCase));
-        }
-        else
-        {
-            isActive = CurrentPath.StartsWith(segment, StringComparison.OrdinalIgnoreCase);
+            case "catalog":
+                // Bare /components catalog page only — exact match
+                isActive = CurrentPath.Equals("components", StringComparison.OrdinalIgnoreCase);
+                break;
+            case "docs":
+                // Active on /docs/* AND on /components/{slug} (component detail pages)
+                // NOT on the bare /components catalog.
+                isActive = CurrentPath.StartsWith("docs", StringComparison.OrdinalIgnoreCase)
+                        || CurrentPath.StartsWith("components/", StringComparison.OrdinalIgnoreCase);
+                break;
+            case "patterns":
+                isActive = CurrentPath.StartsWith("patterns", StringComparison.OrdinalIgnoreCase);
+                break;
+            case "blocks":
+                isActive = CurrentPath.StartsWith("blocks", StringComparison.OrdinalIgnoreCase);
+                break;
+            default:
+                isActive = CurrentPath.StartsWith(segment, StringComparison.OrdinalIgnoreCase);
+                break;
         }
         return isActive
             ? "rounded-md px-3 py-1.5 text-foreground bg-accent transition-colors no-underline"
@@ -397,7 +466,7 @@
         }
         try
         {
-            await Task.Delay(200, token); // 200ms debounce
+            await Task.Delay(120, token); // 120ms debounce
             var hits = await JS.InvokeAsync<SearchHit[]>("lumeoAlgolia.search", token, _query);
             _hits = hits.ToList();
             StateHasChanged();
