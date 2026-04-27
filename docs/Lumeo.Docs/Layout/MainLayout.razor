@@ -30,6 +30,7 @@
                  renders on every page, so users can preview themes against real content. -->
             <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2">
                 <a href="components/button" class="@NavLinkClass("docs")">Docs</a>
+                <a href="components" class="@NavLinkClass("catalog")">Components</a>
                 <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
             </nav>
 
@@ -217,6 +218,7 @@
             </div>
             <nav class="px-3 py-2 border-b border-border/30 flex gap-1 shrink-0">
                 <a href="components/button" class="@NavLinkClass("docs")">Docs</a>
+                <a href="components" class="@NavLinkClass("catalog")">Components</a>
                 <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
             </nav>
             @if (ShowDocsLayout)
@@ -292,11 +294,19 @@
     private string NavLinkClass(string segment)
     {
         bool isActive;
-        if (segment == "docs")
+        if (segment == "catalog")
         {
-            isActive = CurrentPath.StartsWith("components", StringComparison.OrdinalIgnoreCase)
-                    || CurrentPath.StartsWith("patterns", StringComparison.OrdinalIgnoreCase)
-                    || CurrentPath.StartsWith("docs", StringComparison.OrdinalIgnoreCase);
+            // /components catalog page only — exact match, not /components/{slug}
+            isActive = CurrentPath.Equals("components", StringComparison.OrdinalIgnoreCase);
+        }
+        else if (segment == "docs")
+        {
+            // Component detail pages, patterns, getting-started — but NOT the bare /components catalog.
+            var onCatalog = CurrentPath.Equals("components", StringComparison.OrdinalIgnoreCase);
+            isActive = !onCatalog && (
+                CurrentPath.StartsWith("components", StringComparison.OrdinalIgnoreCase)
+             || CurrentPath.StartsWith("patterns", StringComparison.OrdinalIgnoreCase)
+             || CurrentPath.StartsWith("docs", StringComparison.OrdinalIgnoreCase));
         }
         else
         {

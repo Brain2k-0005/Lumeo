@@ -345,3 +345,13 @@ window.themeManager = {
     }
 };
 themeManager.init();
+
+
+// Consent FOUC class helper — keeps the html.lumeo-consent-decided class in
+// sync with localStorage at runtime. The class is also set synchronously in
+// index.html's <head> before Blazor boots so the banner doesn't flash on
+// hard reload for users who already gave consent. See ConsentService.cs.
+window.lumeoConsent = {
+    markDecided: function () { document.documentElement.classList.add('lumeo-consent-decided'); },
+    markUndecided: function () { document.documentElement.classList.remove('lumeo-consent-decided'); }
+};
