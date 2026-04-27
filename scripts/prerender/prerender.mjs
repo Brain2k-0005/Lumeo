@@ -60,12 +60,22 @@ try {
         while (queue.length) {
             const route = queue.shift();
             const t0 = Date.now();
+            let degraded = false;
             try {
                 await page.goto(server.url + route, { waitUntil: 'networkidle2', timeout: 45000 });
-                await page.waitForFunction(
-                    () => document.documentElement.dataset.blazorReady === 'true',
-                    { timeout: 30000 },
-                );
+                try {
+                    await page.waitForFunction(
+                        () => document.documentElement.dataset.blazorReady === 'true',
+                        { timeout: 30000 },
+                    );
+                } catch (waitErr) {
+                    // Some pages (e.g. heavy JS-interop demos like Scrollspy) keep their
+                    // OnAfterRenderAsync chain busy past 30s and never set blazorReady.
+                    // Capture the page anyway — networkidle2 already fired so the static
+                    // HTML is renderable, just possibly with skeleton states. A warning,
+                    // not a failure, so SSG keeps shipping.
+                    degraded = true;
+                }
                 // Strip Blazor render-boundary markers (`<!--!-->`). HTML parsers
                 // treat <title>...</title> as raw text, so embedded comments are
                 // displayed literally in the browser tab. Safe to remove — the
@@ -85,7 +95,9 @@ try {
                 writeFileSync(outPath, html, 'utf8');
 
                 results.ok++;
-                console.log(`[worker ${id}] ✓ ${route} (${Date.now() - t0}ms)`);
+                if (degraded) results.degraded = (results.degraded || 0) + 1;
+                const tag = degraded ? '⚠ (degraded)' : '✓';
+                console.log(`[worker ${id}] ${tag} ${route} (${Date.now() - t0}ms)`);
             } catch (err) {
                 results.fail++;
                 console.error(`[worker ${id}] ✗ ${route} — ${err.message}`);
