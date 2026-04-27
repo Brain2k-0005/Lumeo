@@ -124,7 +124,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeTicker(string elementId) => ValueTask.CompletedTask;
     public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => ValueTask.CompletedTask;
-    public ValueTask MotionBlurFade(string elementId, int delayMs, bool once) => ValueTask.CompletedTask;
+    public ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeObserver(string elementId) => ValueTask.CompletedTask;
 
     // AI primitives
