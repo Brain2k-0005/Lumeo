@@ -78,23 +78,23 @@ public class DeltaTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Positive_Good_Positive_Value_Uses_Emerald_Text()
+    public void Positive_Good_Positive_Value_Uses_Positive_Token()
     {
         var cut = _ctx.Render<Lumeo.Delta>(p => p
             .Add(d => d.Value, 1.0)
             .Add(d => d.Positive, Lumeo.Delta.DeltaDirection.Good));
 
-        Assert.Contains("text-emerald-600", cut.Find("span").GetAttribute("class"));
+        Assert.Contains("text-positive-text", cut.Find("span").GetAttribute("class"));
     }
 
     [Fact]
-    public void Positive_Good_Negative_Value_Uses_Rose_Text()
+    public void Positive_Good_Negative_Value_Uses_Destructive_Token()
     {
         var cut = _ctx.Render<Lumeo.Delta>(p => p
             .Add(d => d.Value, -1.0)
             .Add(d => d.Positive, Lumeo.Delta.DeltaDirection.Good));
 
-        Assert.Contains("text-rose-600", cut.Find("span").GetAttribute("class"));
+        Assert.Contains("text-destructive-text", cut.Find("span").GetAttribute("class"));
     }
 
     [Fact]
@@ -104,18 +104,18 @@ public class DeltaTests : IAsyncLifetime
             .Add(d => d.Value, 1.0)
             .Add(d => d.Positive, Lumeo.Delta.DeltaDirection.Bad));
 
-        // Up is bad when Positive=Bad → rose
-        Assert.Contains("text-rose-600", cut.Find("span").GetAttribute("class"));
+        // Up is bad when Positive=Bad → destructive
+        Assert.Contains("text-destructive-text", cut.Find("span").GetAttribute("class"));
     }
 
     [Fact]
-    public void Positive_Bad_Negative_Value_Is_Good_Emerald()
+    public void Positive_Bad_Negative_Value_Is_Good_Positive_Token()
     {
         var cut = _ctx.Render<Lumeo.Delta>(p => p
             .Add(d => d.Value, -1.0)
             .Add(d => d.Positive, Lumeo.Delta.DeltaDirection.Bad));
 
-        Assert.Contains("text-emerald-600", cut.Find("span").GetAttribute("class"));
+        Assert.Contains("text-positive-text", cut.Find("span").GetAttribute("class"));
     }
 
     [Fact]

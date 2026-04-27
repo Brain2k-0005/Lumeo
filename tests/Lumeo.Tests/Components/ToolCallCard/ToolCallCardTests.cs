@@ -70,13 +70,13 @@ public class ToolCallCardTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Success_Status_Has_Emerald_Color()
+    public void Success_Status_Has_Positive_Token()
     {
         var cut = _ctx.Render<Lumeo.ToolCallCard>(p => p
             .Add(c => c.ToolName, "x")
             .Add(c => c.Status, Lumeo.ToolCallCard.ToolCallStatus.Success));
 
-        Assert.Contains("emerald", cut.Markup);
+        Assert.Contains("positive", cut.Markup);
     }
 
     [Fact]
