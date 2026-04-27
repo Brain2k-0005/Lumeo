@@ -393,6 +393,7 @@
             StateHasChanged();
         }
         catch (TaskCanceledException) { /* superseded by newer query */ }
+        catch (JSDisconnectedException) { /* user navigated away mid-await */ }
         catch (JSException ex)
         {
             Console.WriteLine($"[Lumeo] Search error: {ex.Message}");
@@ -434,6 +435,8 @@
     {
         Nav.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeServiceChanged;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         foreach (var s in _kbdShortcuts) await s.DisposeAsync();
     }
 
