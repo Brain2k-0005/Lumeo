@@ -1,14 +1,47 @@
 @namespace __Namespace__
 
+@*
+    Lumeo component scaffold.
+    Conventions baked in (per Lumeo 2.0 contract):
+      - Class parameter for consumer-supplied CSS classes.
+      - AdditionalAttributes splat on the root element.
+      - Variant + Size enums in @code; switch them in the CssClass builder.
+      - Theme tokens only — no raw hex/hsl/rgb. No `dark:` Tailwind prefix.
+      - Use Blazicons.Lucide for icons (e.g. <Blazicon Svg="Lucide.Star" />).
+*@
+
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public __ComponentName__Variant Variant { get; set; } = __ComponentName__Variant.Default;
+    [Parameter] public __ComponentName__Size Size { get; set; } = __ComponentName__Size.Medium;
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"rounded-lg border border-border bg-card p-4 {Class}".Trim();
+    private string CssClass => string.Join(" ", new[]
+    {
+        "rounded-lg border bg-card text-card-foreground transition-colors",
+        Variant switch
+        {
+            __ComponentName__Variant.Outline => "border-border bg-transparent",
+            __ComponentName__Variant.Subtle  => "border-transparent bg-muted/40",
+            _                                => "border-border/60",
+        },
+        Size switch
+        {
+            __ComponentName__Size.Small  => "p-2 text-sm",
+            __ComponentName__Size.Large  => "p-6 text-base",
+            _                            => "p-4 text-sm",
+        },
+        Disabled ? "opacity-50 pointer-events-none" : null,
+        Class,
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    public enum __ComponentName__Variant { Default, Outline, Subtle }
+    public enum __ComponentName__Size { Small, Medium, Large }
 }
