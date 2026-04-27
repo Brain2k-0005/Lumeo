@@ -4,6 +4,7 @@
 
 let _client = null;
 let _localIndex = null;
+let _localIndexPromise = null;
 let _disabled = false;
 
 async function getClient() {
@@ -20,12 +21,26 @@ async function getClient() {
     return _client;
 }
 
+// Eagerly pre-fetch the local index so the first keystroke is instant.
+function prefetchLocalIndex() {
+    if (_localIndex || _localIndexPromise) return;
+    _localIndexPromise = fetch('/registry-search.json')
+        .then(r => r.json())
+        .then(data => { _localIndex = data; })
+        .catch(() => { /* silently ignore — will retry lazily */ });
+}
+
 async function getLocalIndex() {
     if (_localIndex) return _localIndex;
+    // Await the in-flight prefetch if it's already running
+    if (_localIndexPromise) { await _localIndexPromise; return _localIndex ?? []; }
     const res = await fetch('/registry-search.json');
     _localIndex = await res.json();
     return _localIndex;
 }
+
+// Kick off the prefetch immediately on script load.
+prefetchLocalIndex();
 
 function localSearch(query, items) {
     const q = query.toLowerCase();
