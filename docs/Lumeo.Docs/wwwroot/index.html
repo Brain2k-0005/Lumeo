@@ -29,8 +29,23 @@
     <meta name="twitter:description" content="128 component families · 351 importable primitives. 568 KB core + opt-in satellites. Tailwind v4, AI, 14 locales, MIT." />
     <meta name="twitter:image" content="https://lumeo.nativ.sh/social-preview.png" />
 
+    <!-- Consent banner FOUC guard — runs synchronously BEFORE Blazor boots so the
+         banner never flashes for users who already gave (or rejected) consent.
+         Adds .lumeo-consent-decided to <html> if the consent localStorage entry exists;
+         a CSS rule below force-hides any element with class .lumeo-consent-banner. -->
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('lumeo:consent:v1')) {
+                    document.documentElement.classList.add('lumeo-consent-decided');
+                }
+            } catch (e) { /* private mode / cookies blocked — fall through, banner shows once */ }
+        })();
+    </script>
+
     <!-- Splash screen — plain CSS, loads before Tailwind -->
     <style>
+        html.lumeo-consent-decided .lumeo-consent-banner { display: none !important; }
         .lumeo-splash {
             position: fixed; inset: 0; z-index: 9999;
             display: flex; align-items: center; justify-content: center;
