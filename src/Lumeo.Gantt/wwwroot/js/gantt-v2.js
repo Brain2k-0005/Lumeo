@@ -575,30 +575,35 @@ function applyDragVisual(inst, dx) {
 
 // ── Drag commit (mouseup) ──────────────────────────────────────────────────
 
+// Pixels per day for the current view mode — used to snap drag deltas
+// to single-day increments regardless of column granularity. In Week view
+// each column is 140px wide and represents 7 days, so 1 day = 20px.
+function pixelsPerDay(viewMode) {
+    const cfg = VIEW_MODES[viewMode] || VIEW_MODES.Day;
+    if (cfg.unit === 'day') return cfg.columnWidth / cfg.step;       // Day:1, Week:20
+    if (cfg.unit === 'hour') return (cfg.columnWidth * 24) / cfg.step;
+    if (cfg.unit === 'month') return cfg.columnWidth / 30;
+    if (cfg.unit === 'year') return cfg.columnWidth / 365;
+    return cfg.columnWidth;
+}
+
 function commitDrag(inst, dx) {
     const s = inst._dragState;
     if (!s) return;
-    const { mode, taskId, origStart, origEnd, origProgress, x1, barW } = s;
+    const { mode, taskId, origStart, origEnd, origProgress, barW } = s;
     const task = inst.tasks.find(t => t.id === taskId);
     if (!task) return;
 
+    const dayPx = pixelsPerDay(inst.viewMode);
+
     if (mode === 'move') {
-        // Snap dx to nearest column step
-        const snapPx = inst._snapStep * (VIEW_MODES[inst.viewMode] || VIEW_MODES.Day).columnWidth / inst._snapStep;
-        const cfg = VIEW_MODES[inst.viewMode] || VIEW_MODES.Day;
-        const stepPx = cfg.columnWidth;
-        const stepDays = cfg.step * (cfg.unit === 'day' ? 1 : cfg.unit === 'hour' ? cfg.step / 24 : cfg.unit === 'month' ? 30 : 365);
-        const movedSteps = Math.round(dx / stepPx);
-        const movedDays = Math.round(movedSteps * (cfg.unit === 'day' ? cfg.step : cfg.unit === 'hour' ? cfg.step / 24 : cfg.unit === 'month' ? 30 : 365));
+        const movedDays = Math.round(dx / dayPx);
         if (movedDays === 0) { render(inst); return; }
         task.start = addDays(origStart, movedDays);
         task.end = addDays(origEnd, movedDays);
         inst.dotNetRef.invokeMethodAsync('JsOnDateChange', taskToJson(task)).catch(() => {});
     } else if (mode === 'resize') {
-        const cfg = VIEW_MODES[inst.viewMode] || VIEW_MODES.Day;
-        const newW = Math.max(8, barW + dx);
-        const movedSteps = Math.round((newW - barW) / cfg.columnWidth);
-        const movedDays = Math.round(movedSteps * (cfg.unit === 'day' ? cfg.step : cfg.unit === 'hour' ? cfg.step / 24 : cfg.unit === 'month' ? 30 : 365));
+        const movedDays = Math.round(dx / dayPx);
         if (movedDays === 0) { render(inst); return; }
         task.end = addDays(origEnd, movedDays);
         if (task.end < task.start) task.end = task.start;
@@ -666,30 +671,37 @@ export const gantt = {
         // cascades up through every flex/block ancestor and expands the host
         // to 5814 — killing horizontal scroll.
         //
-        // Don't touch ancestor min-widths (that collapsed the parent card to
-        // its toolbar width). Instead, walk UP to find the first ancestor
-        // with a stable, non-content-driven width — typically a container
-        // div with explicit max-width or padding. Use that as the lock.
+        // Tricky: when the Gantt is the ONLY child of its ComponentDemo
+        // preview (no surrounding text/cards), the preview shrinks to fit
+        // the toolbar (~350px) and parentElement.clientWidth is misleading.
+        // So walk UP and pick the WIDEST ancestor's clientWidth as the
+        // available container width. That gives us the actual layout column
+        // width regardless of which sibling-content the demo has.
         const lockHostWidth = () => {
             const parentEl = host.parentElement;
             if (!parentEl) return;
 
-            // The .lumeo-gantt outer card has padding (p-3 = 12px each side),
-            // border (1px each side), so subtract those from its clientWidth
-            // to get the inner content width available to the host.
-            // clientWidth already excludes border but includes padding, so we
-            // need padding subtraction.
+            // Find the widest ancestor (up to body) — that's the natural
+            // layout column the Gantt should fill.
+            let widest = 0;
+            let p = parentEl;
+            for (let i = 0; i < 10 && p && p !== document.documentElement; i++) {
+                const w = p.clientWidth;
+                if (w > widest) widest = w;
+                p = p.parentElement;
+            }
+
+            // Subtract padding of the immediate parent so the host fits
+            // INSIDE the card chrome rather than overlapping its border.
             const cs = window.getComputedStyle(parentEl);
             const padL = parseFloat(cs.paddingLeft) || 0;
             const padR = parseFloat(cs.paddingRight) || 0;
-            const w = parentEl.clientWidth - padL - padR;
+            const lockW = Math.max(50, widest - padL - padR);
 
-            if (w > 50) {
-                host.style.width = w + 'px';
-                host.style.maxWidth = w + 'px';
-                host.style.minWidth = '0';
-                host.style.boxSizing = 'border-box';
-            }
+            host.style.width = lockW + 'px';
+            host.style.maxWidth = lockW + 'px';
+            host.style.minWidth = '0';
+            host.style.boxSizing = 'border-box';
         };
         lockHostWidth();
 
