@@ -27,18 +27,24 @@ public static class SubcategoryInferrer
         ["TimePicker"] = "Specialized", ["DateTimePicker"] = "Specialized",
         ["RangePicker"] = "Specialized", ["FileUpload"] = "Specialized",
         ["InplaceEditor"] = "Specialized", ["Checkbox"] = "Specialized",
+        ["RichTextEditor"] = "Specialized",
     };
 
     private static readonly Dictionary<string, string> DataDisplayMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Table"] = "Tables", ["DataGrid"] = "Tables", ["DataTable"] = "Tables",
+        ["Filter"] = "Tables",
 
         ["Card"] = "Cards & Layout", ["KpiCard"] = "Cards & Layout", ["StatsCard"] = "Cards & Layout",
         ["Avatar"] = "Cards & Layout", ["AvatarGroup"] = "Cards & Layout",
         ["Badge"] = "Cards & Layout", ["Descriptions"] = "Cards & Layout",
+        ["Image"] = "Cards & Layout", ["ImageCompare"] = "Cards & Layout",
+        ["Watermark"] = "Cards & Layout",
 
         ["List"] = "Lists & Trees", ["Tree"] = "Lists & Trees", ["Timeline"] = "Lists & Trees",
         ["Steps"] = "Lists & Trees", ["Carousel"] = "Lists & Trees", ["Calendar"] = "Lists & Trees",
+        ["TreeView"] = "Lists & Trees", ["Scheduler"] = "Lists & Trees",
+        ["Gantt"] = "Lists & Trees",
 
         ["Chart"] = "Charts",
 
@@ -46,6 +52,7 @@ public static class SubcategoryInferrer
         ["Spinner"] = "Status & Indicators", ["Chip"] = "Status & Indicators",
         ["Tag"] = "Status & Indicators", ["Delta"] = "Status & Indicators",
         ["Statistic"] = "Status & Indicators",
+        ["QRCode"] = "Status & Indicators", ["Sparkline"] = "Status & Indicators",
     };
 
     public static string? Infer(string componentName, string category)
