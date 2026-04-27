@@ -2,7 +2,7 @@
 // Generates docs/Lumeo.Docs/wwwroot/registry-search.json — the fallback
 // search dataset used when Algolia is unavailable or disabled.
 // Covers: components (with dead-link filter), patterns, blocks, and docs guides.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,14 +31,14 @@ const componentItems = Object.entries(registry.components)
         url: `/components/${slug}`,
     }));
 
-// --- Patterns ---
+// --- Patterns (routed under /blocks/* — patterns and blocks share the same prefix) ---
 const patterns = [
     { label: 'Analytics',     slug: 'analytics' },
     { label: 'Authentication', slug: 'authentication' },
     { label: 'Calendar',      slug: 'calendar' },
     { label: 'Chat',          slug: 'chat' },
     { label: 'Dashboard',     slug: 'dashboard' },
-    { label: 'E-Commerce',    slug: 'e-commerce' },
+    { label: 'E-Commerce',    slug: 'ecommerce' },
     { label: 'File Manager',  slug: 'file-manager' },
     { label: 'Filters',       slug: 'filters' },
     { label: 'Form Wizard',   slug: 'form-wizard' },
@@ -57,7 +57,7 @@ const patternItems = patterns.map(p => ({
     title: p.label,
     summary: `${p.label} UI pattern`,
     category: 'Patterns',
-    url: `/patterns/${p.slug}`,
+    url: `/blocks/${p.slug}`,
 }));
 
 // --- Blocks ---
@@ -114,10 +114,36 @@ const guideItems = guides.map(g => ({
 
 const allItems = [...componentItems, ...patternItems, ...blockItems, ...guideItems];
 
+// --- Dead-link sanity check: every emitted URL must match a real @page route ---
+const realRoutes = collectAllRoutes(join(repoRoot, 'docs', 'Lumeo.Docs', 'Pages'));
+const dead = allItems.filter(i => !realRoutes.has(i.url.replace(/^\//, '').replace(/\/$/, '').toLowerCase()));
+if (dead.length > 0) {
+    console.error(`ERROR: ${dead.length} dead-link entries in registry-search.json:`);
+    for (const d of dead) console.error(`  ${d.type.padEnd(9)} ${d.url}  (${d.title})`);
+    process.exit(1);
+}
+
 writeFileSync(outPath, JSON.stringify(allItems));
-console.log(`Wrote ${allItems.length} items to ${outPath} (${componentItems.length} components, ${patternItems.length} patterns, ${blockItems.length} blocks, ${guideItems.length} guides)`);
+console.log(`Wrote ${allItems.length} items to ${outPath} (${componentItems.length} components, ${patternItems.length} patterns, ${blockItems.length} blocks, ${guideItems.length} guides) — all routes verified live.`);
 
 // --- Helpers ---
 function toPascalCase(slug) {
     return slug.split(/[-\/]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+}
+
+function collectAllRoutes(pagesDir) {
+    const routes = new Set();
+    function walk(dir) {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = join(dir, entry.name);
+            if (entry.isDirectory()) { walk(full); continue; }
+            if (!entry.name.endsWith('.razor')) continue;
+            const content = readFileSync(full, 'utf-8');
+            for (const m of content.matchAll(/@page\s+"\/?([^"]*)"/g)) {
+                routes.add(m[1].trim().replace(/\/$/, '').toLowerCase());
+            }
+        }
+    }
+    walk(pagesDir);
+    return routes;
 }
