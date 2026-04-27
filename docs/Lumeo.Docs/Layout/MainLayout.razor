@@ -148,14 +148,14 @@
                 <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground/60 shrink-0" />
                 <input class="flex-1 bg-transparent py-4 text-sm outline-none placeholder:text-muted-foreground/50 text-foreground"
                        placeholder="Search components, patterns..."
-                       value="@_searchQuery"
-                       @oninput="OnSearchInput"
+                       value="@_query"
+                       @oninput="OnQueryChanged"
                        @ref="_searchInput"
                        autofocus />
-                @if (_searchQuery.Length > 0)
+                @if (_query.Length > 0)
                 {
                     <button class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
-                            @onclick='() => { _searchQuery = string.Empty; _searchResults = []; }'>
+                            @onclick='() => { _query = string.Empty; _hits = []; }'>
                         <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
                     </button>
                 }
@@ -163,31 +163,26 @@
 
             @* Results list *@
             <div class="max-h-[360px] overflow-y-auto">
-                @{
-                    var displayItems = _searchQuery.Length == 0
-                        ? _allSearchItems.Take(8).ToList()
-                        : _searchResults;
-                }
-                @if (_searchQuery.Length > 0 && _searchResults.Count == 0)
+                @if (_query.Length > 0 && _hits.Count == 0)
                 {
                     <div class="py-12 text-center">
-                        <Lumeo.Text Size="sm" Color="muted">No results for "<Lumeo.Text As="span" Class="text-foreground">@_searchQuery</Lumeo.Text>"</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Color="muted">No results for "<Lumeo.Text As="span" Class="text-foreground">@_query</Lumeo.Text>"</Lumeo.Text>
                     </div>
                 }
                 else
                 {
                     <div class="py-1.5">
-                        @if (_searchQuery.Length == 0)
+                        @if (_query.Length == 0)
                         {
                             <Lumeo.Text Size="xs" Color="muted" Class="px-4 py-1 block">Suggestions</Lumeo.Text>
                         }
-                        @foreach (var item in displayItems)
+                        @foreach (var hit in _hits)
                         {
                             <button class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group"
-                                    @onclick="() => NavigateTo(item)">
-                                <DynamicIcon Name="@GetSearchIcon(item.Category)" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-                                <span class="flex-1 text-foreground/90">@item.Label</span>
-                                <span class="text-[11px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">@item.Category</span>
+                                    @onclick="() => NavigateToHit(hit)">
+                                <DynamicIcon Name="@GetSearchIcon(hit.Category)" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                                <span class="flex-1 text-foreground/90">@hit.Title</span>
+                                <span class="text-[11px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">@hit.Category</span>
                             </button>
                         }
                     </div>
@@ -272,7 +267,9 @@
     private bool _customizerOpen = false;
     private bool _mobileNavOpen;
     private bool _searchOpen;
-    private string _searchQuery = string.Empty;
+    private string _query = string.Empty;
+    private List<SearchHit> _hits = [];
+    private CancellationTokenSource? _searchCts;
     private ElementReference _searchInput;
 
     /// <summary>Called from footer "Cookie preferences" link to re-open the dialog.</summary>
@@ -310,210 +307,7 @@
             : "rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline";
     }
 
-    private record SearchItem(string Label, string Category, string Href);
-
-    private readonly List<SearchItem> _allSearchItems =
-    [
-        // Form
-        new("Button", "Components", "components/button"),
-        new("Cascader", "Components", "components/cascader"),
-        new("Checkbox", "Components", "components/checkbox"),
-        new("Color Picker", "Components", "components/color-picker"),
-        new("Combobox", "Components", "components/combobox"),
-        new("Date Picker", "Components", "components/date-picker"),
-        new("Date Range Picker", "Components", "components/date-range-picker"),
-        new("Date Time Picker", "Components", "components/date-time-picker"),
-        new("File Upload", "Components", "components/file-upload"),
-        new("Filter", "Components", "components/filter"),
-        new("Form", "Components", "components/form"),
-        new("Inplace Editor", "Components", "components/inplace-editor"),
-        new("Input", "Components", "components/input"),
-        new("Input Mask", "Components", "components/input-mask"),
-        new("Label", "Components", "components/label"),
-        new("Mention", "Components", "components/mention"),
-        new("Number Input", "Components", "components/number-input"),
-        new("OTP Input", "Components", "components/otp-input"),
-        new("Password Input", "Components", "components/password-input"),
-        new("Pick List", "Components", "components/pick-list"),
-        new("Radio Group", "Components", "components/radio-group"),
-        new("Rich Text Editor", "Components", "components/rich-text-editor"),
-        new("Segmented", "Components", "components/segmented"),
-        new("Select", "Components", "components/select"),
-        new("Slider", "Components", "components/slider"),
-        new("Sortable List", "Components", "components/sortable-list"),
-        new("Switch", "Components", "components/switch"),
-        new("Tag Input", "Components", "components/tag-input"),
-        new("Textarea", "Components", "components/textarea"),
-        new("Time Picker", "Components", "components/time-picker"),
-        new("Toggle", "Components", "components/toggle"),
-        new("Toggle Group", "Components", "components/toggle-group"),
-        new("Tree Select", "Components", "components/tree-select"),
-        // Layout Primitives
-        new("Stack", "Components", "components/stack"),
-        new("Flex", "Components", "components/flex"),
-        new("Grid", "Components", "components/grid"),
-        new("Container", "Components", "components/container"),
-        new("Center", "Components", "components/center"),
-        new("Spacer", "Components", "components/spacer"),
-        // Typography
-        new("Heading", "Components", "components/heading"),
-        new("Text", "Components", "components/text"),
-        new("Code", "Components", "components/code"),
-        new("Link", "Components", "components/link"),
-        // Form Field
-        new("Form Field", "Components", "components/form-field"),
-        // Layout
-        new("Accordion", "Components", "components/accordion"),
-        new("Image Compare", "Components", "components/image-compare"),
-        new("Kanban", "Components", "components/kanban"),
-        new("Aspect Ratio", "Components", "components/aspect-ratio"),
-        new("Bento", "Components", "components/bento"),
-        new("Calendar", "Components", "components/calendar"),
-        new("Card", "Components", "components/card"),
-        new("Carousel", "Components", "components/carousel"),
-        new("Collapsible", "Components", "components/collapsible"),
-        new("Resizable", "Components", "components/resizable"),
-        new("Scroll Area", "Components", "components/scroll-area"),
-        new("Separator", "Components", "components/separator"),
-        new("Splitter", "Components", "components/splitter"),
-        new("Tabs", "Components", "components/tabs"),
-        // Feedback
-        new("Alert", "Components", "components/alert"),
-        new("Badge", "Components", "components/badge"),
-        new("Consent Banner", "Components", "components/consent-banner"),
-        new("Empty State", "Components", "components/empty-state"),
-        new("Progress", "Components", "components/progress"),
-        new("Result", "Components", "components/result"),
-        new("Skeleton", "Components", "components/skeleton"),
-        new("Spinner", "Components", "components/spinner"),
-        new("Toast", "Components", "components/toast"),
-        // Overlay
-        new("Alert Dialog", "Components", "components/alert-dialog"),
-        new("Command", "Components", "components/command"),
-        new("Context Menu", "Components", "components/context-menu"),
-        new("Dialog", "Components", "components/dialog"),
-        new("Drawer", "Components", "components/drawer"),
-        new("Dropdown Menu", "Components", "components/dropdown-menu"),
-        new("Hover Card", "Components", "components/hover-card"),
-        new("PopConfirm", "Components", "components/pop-confirm"),
-        new("Popover", "Components", "components/popover"),
-        new("Sheet", "Components", "components/sheet"),
-        new("Tooltip", "Components", "components/tooltip"),
-        new("Tour", "Components", "components/tour"),
-        new("Overlay Service", "Components", "components/overlay-service"),
-        // Navigation
-        new("Bottom Nav", "Components", "components/bottom-nav"),
-        new("Breadcrumb", "Components", "components/breadcrumb"),
-        new("Mega Menu", "Components", "components/mega-menu"),
-        new("Menubar", "Components", "components/menubar"),
-        new("Navigation Menu", "Components", "components/navigation-menu"),
-        new("Pagination", "Components", "components/pagination"),
-        new("Sidebar", "Components", "components/sidebar"),
-        new("Speed Dial", "Components", "components/speed-dial"),
-        new("Steps", "Components", "components/steps"),
-        // Data Display
-        new("Avatar", "Components", "components/avatar"),
-        new("Charts Overview", "Components", "components/chart"),
-        new("Bar Chart", "Charts", "components/charts/bar"),
-        new("Line Chart", "Charts", "components/charts/line"),
-        new("Area Chart", "Charts", "components/charts/area"),
-        new("Scatter Chart", "Charts", "components/charts/scatter"),
-        new("Effect Scatter Chart", "Charts", "components/charts/effect-scatter"),
-        new("Candlestick Chart", "Charts", "components/charts/candlestick"),
-        new("Box Plot Chart", "Charts", "components/charts/boxplot"),
-        new("Waterfall Chart", "Charts", "components/charts/waterfall"),
-        new("Pictorial Bar Chart", "Charts", "components/charts/pictorial-bar"),
-        new("Mixed Chart", "Charts", "components/charts/mixed"),
-        new("Pie Chart", "Charts", "components/charts/pie"),
-        new("Donut Chart", "Charts", "components/charts/donut"),
-        new("Nightingale Chart", "Charts", "components/charts/nightingale"),
-        new("Funnel Chart", "Charts", "components/charts/funnel"),
-        new("Radar Chart", "Charts", "components/charts/radar"),
-        new("Radial Chart", "Charts", "components/charts/radial"),
-        new("Gauge Chart", "Charts", "components/charts/gauge"),
-        new("Polar Bar Chart", "Charts", "components/charts/polar-bar"),
-        new("Liquid Fill Chart", "Charts", "components/charts/liquid-fill"),
-        new("Treemap Chart", "Charts", "components/charts/treemap"),
-        new("Sunburst Chart", "Charts", "components/charts/sunburst"),
-        new("Tree Chart", "Charts", "components/charts/tree"),
-        new("Graph Chart", "Charts", "components/charts/graph"),
-        new("Sankey Chart", "Charts", "components/charts/sankey"),
-        new("Parallel Chart", "Charts", "components/charts/parallel"),
-        new("Heatmap Chart", "Charts", "components/charts/heatmap"),
-        new("Calendar Heatmap Chart", "Charts", "components/charts/calendar-heatmap"),
-        new("Theme River Chart", "Charts", "components/charts/theme-river"),
-        new("Geo Map Chart", "Charts", "components/charts/geo-map"),
-        new("Word Cloud Chart", "Charts", "components/charts/word-cloud"),
-        new("Chip", "Components", "components/chip"),
-        new("Data Grid", "Components", "components/datagrid"),
-        new("Data Table", "Components", "components/data-table"),
-        new("Dashboard Tiles", "Components", "components/dashboard-tiles"),
-        new("Descriptions", "Components", "components/descriptions"),
-        new("Gantt", "Components", "components/gantt"),
-        new("Image", "Components", "components/image"),
-        new("List", "Components", "components/list"),
-        new("QR Code", "Components", "components/qr-code"),
-        new("Rating", "Components", "components/rating"),
-        new("Scheduler", "Components", "components/scheduler"),
-        new("Sparkline", "Components", "components/sparkline"),
-        new("Statistic", "Components", "components/statistic"),
-        new("Table", "Components", "components/table"),
-        new("Timeline", "Components", "components/timeline"),
-        // Utility
-        new("Icon", "Components", "components/icon"),
-        new("Dynamic Icon", "Components", "components/dynamic-icon"),
-        new("Affix", "Components", "components/affix"),
-        new("Back To Top", "Components", "components/back-to-top"),
-        new("Kbd", "Components", "components/kbd"),
-        new("Motion", "Components", "components/motion"),
-        new("Scrollspy", "Components", "components/scrollspy"),
-        new("Transfer", "Components", "components/transfer"),
-        new("Tree View", "Components", "components/tree-view"),
-        new("Watermark", "Components", "components/watermark"),
-        // Theme
-        new("Theme Switcher", "Components", "components/theme-switcher"),
-        new("Theme Toggle", "Components", "components/theme-toggle"),
-        // Services
-        new("Toast Service", "Services", "docs/services/toast"),
-        new("Overlay Service", "Services", "docs/services/overlay"),
-        new("Theme Service", "Services", "docs/services/theme"),
-        new("Keyboard Shortcuts", "Services", "docs/services/keyboard-shortcuts"),
-        new("Component Interop", "Services", "docs/services/component-interop"),
-        new("DataGrid Export", "Services", "docs/services/datagrid-export"),
-        new("RTL Support", "Getting Started", "docs/rtl"),
-        new("Culture & Formatting", "Getting Started", "docs/culture"),
-        new("CultureInfo", "Getting Started", "docs/culture"),
-        new("Localized dates", "Getting Started", "docs/culture"),
-        new("Localized numbers", "Getting Started", "docs/culture"),
-        new("dotnet new Templates", "Getting Started", "docs/templates"),
-        new("MCP Server", "Getting Started", "docs/mcp"),
-        new("Registry — Build your own", "Getting Started", "docs/registry"),
-        new("CLI", "Getting Started", "docs/cli"),
-        new("lumeo add", "Getting Started", "docs/cli"),
-        new("lumeo init", "Getting Started", "docs/cli"),
-        new("AI Chat Primitives", "Components", "components/ai"),
-        // Pages
-        new("Patterns Gallery", "Components", "patterns"),
-        // Blocks
-        new("Dashboard", "Blocks", "blocks/dashboard"),
-        new("Mail", "Blocks", "blocks/mail"),
-        new("E-Commerce", "Blocks", "blocks/ecommerce"),
-        new("Settings", "Blocks", "blocks/settings"),
-        new("Kanban Board", "Blocks", "blocks/kanban"),
-        new("Chat", "Blocks", "blocks/chat"),
-        new("Calendar", "Blocks", "blocks/calendar"),
-        new("Form Wizard", "Blocks", "blocks/form-wizard"),
-        new("Filters", "Blocks", "blocks/filters"),
-        new("Music Player", "Blocks", "blocks/music"),
-        new("Analytics", "Blocks", "blocks/analytics"),
-        new("Task Tracker", "Blocks", "blocks/task-tracker"),
-        new("Social Feed", "Blocks", "blocks/social-feed"),
-        new("Authentication", "Blocks", "blocks/authentication"),
-        new("File Manager", "Blocks", "blocks/file-manager"),
-        new("Notifications", "Blocks", "blocks/notifications"),
-    ];
-
-    private List<SearchItem> _searchResults = [];
+    private record SearchHit(string Id, string Title, string Summary, string Category, string Type, string Url);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -560,8 +354,8 @@
     private async Task OpenSearch()
     {
         _searchOpen = true;
-        _searchQuery = string.Empty;
-        _searchResults = [];
+        _query = string.Empty;
+        _hits = [];
         StateHasChanged();
         await Task.Delay(50);
         try { await _searchInput.FocusAsync(); } catch (Exception) { /* search input may not be rendered yet */ }
@@ -570,8 +364,9 @@
     private void CloseSearch()
     {
         _searchOpen = false;
-        _searchQuery = string.Empty;
-        _searchResults = [];
+        _query = string.Empty;
+        _hits = [];
+        _searchCts?.Cancel();
     }
 
     private void HandleSearchKeyDown(KeyboardEventArgs e)
@@ -579,25 +374,35 @@
         if (e.Key == "Escape") CloseSearch();
     }
 
-    private void OnSearchInput(ChangeEventArgs e)
+    private async Task OnQueryChanged(ChangeEventArgs e)
     {
-        _searchQuery = e.Value?.ToString() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(_searchQuery))
+        _query = e.Value?.ToString() ?? string.Empty;
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        if (string.IsNullOrWhiteSpace(_query))
         {
-            _searchResults = [];
+            _hits = [];
             return;
         }
-        var q = _searchQuery.ToLowerInvariant();
-        _searchResults = _allSearchItems
-            .Where(x => x.Label.ToLowerInvariant().Contains(q) || x.Category.ToLowerInvariant().Contains(q))
-            .Take(10)
-            .ToList();
+        try
+        {
+            await Task.Delay(200, token); // 200ms debounce
+            var hits = await JS.InvokeAsync<SearchHit[]>("lumeoAlgolia.search", token, _query);
+            _hits = hits.ToList();
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { /* superseded by newer query */ }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"[Lumeo] Search error: {ex.Message}");
+        }
     }
 
-    private void NavigateTo(SearchItem item)
+    private void NavigateToHit(SearchHit hit)
     {
         CloseSearch();
-        Nav.NavigateTo(item.Href);
+        Nav.NavigateTo(hit.Url);
     }
 
     private static string GetSearchIcon(string category) => category switch
