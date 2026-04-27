@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Lumeo.RegistryGen;
 
 // Lumeo Registry Generator
 // Scans src/Lumeo/UI/*/ and produces src/Lumeo/registry/registry.json
@@ -320,7 +321,7 @@ var componentDirs = uiRoots
     .ToArray();
 var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-var components = new SortedDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+var components = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
 foreach (var dir in componentDirs)
 {
@@ -397,11 +398,14 @@ foreach (var dir in componentDirs)
     var category = categoryMap.TryGetValue(name, out var cat) ? cat : "Utility";
     var description = descriptions.TryGetValue(name, out var d) ? d : $"{InsertSpaces(name)} component.";
 
-    var entry = new Dictionary<string, object>
+    var subcategory = SubcategoryInferrer.Infer(name, category);
+    var entry = new Dictionary<string, object?>
     {
         ["name"] = name,
         ["category"] = category,
+        ["subcategory"] = subcategory,
         ["description"] = description,
+        ["thumbnail"] = $"/preview-cards/{ToSlug(name)}.png",
         ["nugetPackage"] = componentToPackage.TryGetValue(name, out var pkg) ? pkg : "Lumeo",
         ["files"] = files,
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
@@ -475,3 +479,6 @@ static string InsertSpaces(string s)
 }
 
 static string NormalizePath(string p) => p.Replace('\\', '/');
+
+static string ToSlug(string name) =>
+    System.Text.RegularExpressions.Regex.Replace(name, "([a-z0-9])([A-Z])", "$1-$2").ToLowerInvariant();
