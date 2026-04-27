@@ -114,7 +114,11 @@ public sealed class ConsentService
     public async Task ResetAsync()
     {
         _state.Clear();
-        try { await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey); }
+        try
+        {
+            await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);
+            await _js.InvokeVoidAsync("lumeoConsent.markUndecided");
+        }
         catch (JSException) { }
         catch (InvalidOperationException) { }
         OnChange?.Invoke();
@@ -130,6 +134,8 @@ public sealed class ConsentService
         {
             var json = JsonSerializer.Serialize(_state);
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
+            // Mirror the FOUC-guard class so a subsequent runtime change keeps it accurate.
+            await _js.InvokeVoidAsync("lumeoConsent.markDecided");
         }
         catch (JSException) { }
         catch (InvalidOperationException) { }
