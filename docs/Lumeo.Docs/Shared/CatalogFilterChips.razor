@@ -1,0 +1,37 @@
+@namespace Lumeo.Docs.Shared
+
+<div class="flex flex-wrap gap-2">
+    <button type="button" data-chip="All"
+            class="@ChipClass(null)"
+            @onclick="() => Set(null)">
+        All
+    </button>
+    @foreach (var c in Categories)
+    {
+        <button type="button" data-chip="@c"
+                class="@ChipClass(c)"
+                @onclick="() => Set(c)">
+            @c
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Categories { get; set; } = [];
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public EventCallback<string?> SelectedChanged { get; set; }
+
+    private async Task Set(string? value)
+    {
+        Selected = value;
+        await SelectedChanged.InvokeAsync(value);
+    }
+
+    private string ChipClass(string? c)
+    {
+        var active = (Selected ?? "") == (c ?? "");
+        return active
+            ? "rounded-full px-3 py-1 text-xs font-medium bg-primary text-primary-foreground"
+            : "rounded-full px-3 py-1 text-xs font-medium bg-muted/40 text-muted-foreground hover:bg-muted/60 transition-colors";
+    }
+}
