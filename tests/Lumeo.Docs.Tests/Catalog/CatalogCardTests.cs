@@ -23,6 +23,7 @@ public class CatalogCardTests : IDisposable
             Description = "Captures single-line user text input.",
             Thumbnail = "/preview-cards/input.png",
             NugetPackage = "Lumeo",
+            Slug = "input",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
 
@@ -42,6 +43,7 @@ public class CatalogCardTests : IDisposable
             Description = "No thumbnail yet.",
             Thumbnail = null,
             NugetPackage = "Lumeo",
+            Slug = "mystery-component",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
 
@@ -60,8 +62,25 @@ public class CatalogCardTests : IDisposable
             Description = "Picks a date.",
             Thumbnail = "/preview-cards/date-picker.png",
             NugetPackage = "Lumeo",
+            Slug = "date-picker",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
         Assert.Contains("href=\"components/date-picker\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Uses_registry_slug_for_compound_acronym_names()
+    {
+        var component = new RegistryComponent
+        {
+            Name = "QRCode",
+            Category = "Data Display",
+            Description = "Renders QR codes.",
+            Thumbnail = "/preview-cards/qr-code.png",
+            NugetPackage = "Lumeo",
+            Slug = "qr-code", // populated by RegistryService in production
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
+        Assert.Contains("href=\"components/qr-code\"", cut.Markup);
     }
 }
