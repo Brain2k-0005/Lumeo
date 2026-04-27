@@ -7,6 +7,9 @@ name: Deploy Docs to Cloudflare Pages
 #   CLOUDFLARE_API_TOKEN  — create at dash.cloudflare.com/profile/api-tokens using the
 #                           "Edit Cloudflare Workers" template and add "Pages:Edit" scope.
 #   CLOUDFLARE_ACCOUNT_ID — from any page in the Cloudflare dashboard sidebar.
+#   ALGOLIA_APP_ID        - Algolia application ID (public; injected into index.html)
+#   ALGOLIA_SEARCH_KEY    - Algolia search-only API key (public; injected into index.html)
+#   ALGOLIA_ADMIN_KEY     - Algolia admin API key (private; used only by indexer)
 
 on:
   push:
@@ -45,6 +48,15 @@ jobs:
           npm install --no-audit --no-fund
           (cd docs/Lumeo.Docs && npm install --no-audit --no-fund)
 
+      - name: Generate catalog thumbnails
+        # Renders 128 component-catalog PNG thumbnails into
+        # docs/Lumeo.Docs/wwwroot/preview-cards/ before dotnet publish so they
+        # are picked up as static assets and shipped with the site.
+        working-directory: scripts/prerender
+        run: |
+          npm ci --no-audit --no-fund
+          node run-all.mjs
+
       - name: Publish Blazor WASM
         run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
 
@@ -72,6 +84,13 @@ jobs:
         run: |
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           sed -i "s/__LUMEO_BUILD__/${SHORT_SHA}/g" release/wwwroot/index.html
+
+      - name: Inject Algolia keys into index.html
+        # Uses | as sed delimiter — Algolia keys can contain / which would
+        # break the conventional s/.../.../g form.
+        run: |
+          sed -i "s|__ALGOLIA_APP_ID__|${{ secrets.ALGOLIA_APP_ID }}|g" release/wwwroot/index.html
+          sed -i "s|__ALGOLIA_SEARCH_KEY__|${{ secrets.ALGOLIA_SEARCH_KEY }}|g" release/wwwroot/index.html
 
       - name: Copy index.html to 404.html
         run: cp release/wwwroot/index.html release/wwwroot/404.html
@@ -171,6 +190,20 @@ jobs:
           # Deploy to the `master` branch of the CF Pages project (= production).
           # Other branches show up as preview deployments.
           branch: master
+
+      - name: Push search index to Algolia
+        # Runs scripts/algolia/index-docs.mjs which crawls the published HTML,
+        # extracts component/docs content, and pushes records to Algolia.
+        # Only runs when the deploy succeeded (if: success() is implicit here
+        # since we're in a linear job, but kept explicit for clarity).
+        if: success()
+        working-directory: scripts/algolia
+        env:
+          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_ADMIN_KEY: ${{ secrets.ALGOLIA_ADMIN_KEY }}
+        run: |
+          npm ci --no-audit --no-fund
+          node index-docs.mjs
 
       - name: Verify prerender on live site
         # Post-deploy smoke test. Fetches a sample of live routes and checks
