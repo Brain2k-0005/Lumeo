@@ -31,11 +31,11 @@ public sealed class RegistryService(HttpClient http)
     public async Task<Dictionary<string, List<RegistryComponent>>> GroupsByCategoryAsync()
     {
         var registry = await GetAsync();
-        // Skip components without a docs page so the catalog never shows a card that 404s on click.
-        // Components in registry without a docs page are real (e.g. AgentMessageList, BorderBeam, BlurFade)
-        // but undocumented — they'll appear once their pages are written.
+        // Show every component in the catalog. Undocumented ones (HasDocsPage = false) render
+        // with a "Coming soon" badge and no link — handled by CatalogCard. This way the user sees
+        // the full library at a glance and never silently loses a component just because its docs
+        // page hasn't been written yet.
         return registry.Components.Values
-            .Where(c => c.HasDocsPage)
             .GroupBy(c => c.Category)
             .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Name).ToList());
     }
