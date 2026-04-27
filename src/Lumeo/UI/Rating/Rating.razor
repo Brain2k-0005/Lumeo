@@ -40,29 +40,26 @@
                     @onclick="() => HandleClick(starIndex)"
                     @onmouseover="() => HandleHover(starIndex)"
                     @onmouseout="HandleMouseLeave">
-                @if (isHalf)
-                {
-                    @* Two SVGs stacked at identical coordinates. Each Blazicon is wrapped in a span that owns the
-                       grid-area — Blazicon doesn't reliably forward inline `style` to the underlying <svg>, so the
-                       grid-area has to live on the wrapper. Both wrappers target the same cell, giving a pixel-perfect
-                       overlay regardless of line-box baseline. *@
-                    <span class="inline-grid align-middle leading-none [&_svg]:block" style="grid-template-areas: 'stack';">
+                @* Always render the stars inside the same inline-grid wrapper — using the wrapper for half-stars
+                   only put them on a different baseline than the plain-Blazicon full/empty stars and made
+                   half-stars sit slightly lower in the row. Now every star shares the same line-box geometry. *@
+                <span class="inline-grid align-middle leading-none [&_svg]:block" style="grid-template-areas: 'stack';">
+                    <span style="grid-area: stack;">
+                        <Blazicon Svg="Lucide.Star" class="text-muted-foreground/30 fill-muted-foreground/10" />
+                    </span>
+                    @if (isFull || (_hoverValue > 0 && starIndex <= _hoverValue))
+                    {
                         <span style="grid-area: stack;">
-                            <Blazicon Svg="Lucide.Star" class="text-muted-foreground/30 fill-muted-foreground/10" />
+                            <Blazicon Svg="Lucide.Star" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
                         </span>
+                    }
+                    else if (isHalf)
+                    {
                         <span style="grid-area: stack; clip-path: inset(0 50% 0 0);">
                             <Blazicon Svg="Lucide.Star" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
                         </span>
-                    </span>
-                }
-                else if (isFull || (_hoverValue > 0 && starIndex <= _hoverValue))
-                {
-                    <Blazicon Svg="Lucide.Star" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
-                }
-                else
-                {
-                    <Blazicon Svg="Lucide.Star" class="text-muted-foreground/30 fill-muted-foreground/10" />
-                }
+                    }
+                </span>
             </button>
         }
     }
