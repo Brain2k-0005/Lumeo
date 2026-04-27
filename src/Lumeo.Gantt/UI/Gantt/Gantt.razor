@@ -2,7 +2,7 @@
 @implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 {Class}".Trim())" @attributes="AdditionalAttributes">
+<div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 min-w-0 w-full {Class}".Trim())" @attributes="AdditionalAttributes" style="min-width: 0; width: 100%;">
     @* Lumeo-styled toolbar above the Frappe Gantt canvas. We suppress
        Quarter Day / Half Day from the control bar to keep the common case
        simple — power users can still pass them through the `ViewMode` param. *@
@@ -25,7 +25,14 @@
         }
     </div>
 
-    <div @ref="_hostRef" class="lumeo-gantt-host w-full overflow-x-auto" style="height: @Height;"></div>
+    @* Clip wrapper: width:100% of the .lumeo-gantt parent and overflow:hidden
+       prevents this wrapper from being inflated by its wide SVG content. The
+       host inside has its own overflow-x:auto for actual scrolling. The
+       contain:size trick makes layout ignore the host's intrinsic size when
+       sizing this wrapper. *@
+    <div style="width: 100%; min-width: 0; overflow: hidden; contain: layout size; position: relative;">
+        <div @ref="_hostRef" class="lumeo-gantt-host" style="width: 100%; min-width: 0; overflow-x: auto; height: @Height; position: absolute; inset: 0;"></div>
+    </div>
 </div>
 
 @code {
