@@ -23,6 +23,7 @@ public class CatalogCardTests : IDisposable
             Description = "Captures single-line user text input.",
             Thumbnail = "/preview-cards/input.png",
             NugetPackage = "Lumeo",
+            HasDocsPage = true,
             Slug = "input",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
@@ -43,6 +44,7 @@ public class CatalogCardTests : IDisposable
             Description = "No thumbnail yet.",
             Thumbnail = null,
             NugetPackage = "Lumeo",
+            HasDocsPage = true,
             Slug = "mystery-component",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
@@ -62,6 +64,7 @@ public class CatalogCardTests : IDisposable
             Description = "Picks a date.",
             Thumbnail = "/preview-cards/date-picker.png",
             NugetPackage = "Lumeo",
+            HasDocsPage = true,
             Slug = "date-picker",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
@@ -78,9 +81,33 @@ public class CatalogCardTests : IDisposable
             Description = "Renders QR codes.",
             Thumbnail = "/preview-cards/qr-code.png",
             NugetPackage = "Lumeo",
+            HasDocsPage = true,
             Slug = "qr-code", // populated by RegistryService in production
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
         Assert.Contains("href=\"components/qr-code\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Undocumented_component_renders_non_link_with_coming_soon_badge()
+    {
+        var component = new RegistryComponent
+        {
+            Name = "BorderBeam",
+            Category = "Motion",
+            Description = "Animated gradient border beam.",
+            Thumbnail = "/preview-cards/border-beam.png",
+            NugetPackage = "Lumeo",
+            HasDocsPage = false,
+            Slug = "border-beam",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
+
+        // No anchor tag — card is not navigable
+        Assert.DoesNotContain("href=\"components/border-beam\"", cut.Markup);
+        // Thumbnail still shown so the user sees the visual
+        Assert.Contains("/preview-cards/border-beam.png", cut.Markup);
+        // "Coming soon" badge is visible
+        Assert.Contains("Docs coming soon", cut.Markup);
     }
 }
