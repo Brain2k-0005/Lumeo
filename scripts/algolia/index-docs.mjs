@@ -243,18 +243,29 @@ for (const extra of extras) {
     records.push({ ...extra, objectID: extra.id });
 }
 
+if (records.length < 100) {
+    console.error(`Refusing to push: only ${records.length} records (expected 152+ — registry regen may have failed).`);
+    process.exit(2);
+}
+
 console.log(`Pushing ${records.length} records to ${indexName} on ${appId}…`);
 const client = algoliasearch(appId, adminKey);
-await client.replaceAllObjects({ indexName, objects: records, batchSize: 500 });
 
-// Configure searchable attributes + ranking on every push (idempotent).
-await client.setSettings({
-    indexName,
-    indexSettings: {
-        searchableAttributes: ['title', 'summary', 'category', 'subcategory'],
-        attributesForFaceting: ['type', 'category', 'package'],
-        customRanking: ['asc(title)'],
-    },
-});
+try {
+    await client.replaceAllObjects({ indexName, objects: records, batchSize: 500 });
 
-console.log('Indexing complete.');
+    // Configure searchable attributes + ranking on every push (idempotent).
+    await client.setSettings({
+        indexName,
+        indexSettings: {
+            searchableAttributes: ['title', 'summary', 'category', 'subcategory'],
+            attributesForFaceting: ['type', 'category', 'package'],
+            customRanking: ['asc(title)'],
+        },
+    });
+
+    console.log('Indexing complete.');
+} catch (err) {
+    console.error('Algolia indexing failed:', err?.message ?? err);
+    process.exit(1);
+}
