@@ -12,5 +12,6 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddLumeo();
 builder.Services.AddSingleton<IconService>();
 builder.Services.AddSingleton<PatternFilterService>();
+builder.Services.AddSingleton<NavConfigService>();
 
 await builder.Build().RunAsync();

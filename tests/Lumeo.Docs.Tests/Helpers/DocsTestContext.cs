@@ -1,4 +1,5 @@
 using Bunit;
+using Lumeo.Docs.Services;
 using Lumeo.Services;
 using Lumeo.Services.Interop;
 using Microsoft.AspNetCore.Components;
@@ -12,8 +13,8 @@ public static class DocsTestContextExtensions
     public static void AddDocsServices(this BunitContext ctx)
     {
         ctx.Services.AddSingleton<IComponentInteropService, NoopInteropService>();
-        // TODO: re-enable after Task 3/4
-        // ctx.Services.AddSingleton<NavConfigService>();
+        ctx.Services.AddSingleton<NavConfigService>();
+        // TODO: re-enable after Task 4
         // ctx.Services.AddSingleton<RegistryService>();
     }
 }
