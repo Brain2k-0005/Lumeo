@@ -208,10 +208,9 @@ public class ChartTests : IAsyncLifetime
     [Fact]
     public void Chart_With_OnClick_Renders_Without_Error()
     {
-        bool clicked = false;
         var cut = _ctx.Render<L.Chart>(p => p
             .Add(x => x.OnClick, EventCallback.Factory.Create<L.Chart.ChartEventArgs>(
-                new object(), _ => { clicked = true; return Task.CompletedTask; })));
+                new object(), _ => Task.CompletedTask)));
 
         Assert.NotNull(cut.Find("div"));
     }

@@ -126,11 +126,11 @@ public class CarouselTests : IAsyncLifetime
 
         // The inner scrollable div should have flex class
         var divs = cut.FindAll("div");
-        Assert.True(divs.Any(d =>
+        Assert.Contains(divs, d =>
         {
             var cls = d.GetAttribute("class") ?? "";
             return cls.Contains("flex") && !cls.Contains("flex-col");
-        }));
+        });
     }
 
     [Fact]
@@ -139,11 +139,11 @@ public class CarouselTests : IAsyncLifetime
         var cut = RenderCarousel(orientation: L.Carousel.CarouselOrientation.Vertical);
 
         var divs = cut.FindAll("div");
-        Assert.True(divs.Any(d =>
+        Assert.Contains(divs, d =>
         {
             var cls = d.GetAttribute("class") ?? "";
             return cls.Contains("flex-col");
-        }));
+        });
     }
 
     [Fact]
@@ -170,8 +170,8 @@ public class CarouselTests : IAsyncLifetime
         var cut = RenderCarousel();
 
         var divs = cut.FindAll("div");
-        Assert.True(divs.Any(d =>
-            (d.GetAttribute("class") ?? "").Contains("overflow-hidden")));
+        Assert.Contains(divs, d =>
+            (d.GetAttribute("class") ?? "").Contains("overflow-hidden"));
     }
 
     [Fact]
