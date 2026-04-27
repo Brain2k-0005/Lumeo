@@ -661,6 +661,33 @@ export const gantt = {
         const host = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
         if (!host) throw new Error('Gantt: root element missing');
 
+        // CRITICAL: lock the host to its parent's CURRENT natural width
+        // BEFORE we add any wide content. Once SVG with width=5814 is added,
+        // min-width:auto cascades up through every flex/block ancestor and
+        // expands the host to 5814 — killing horizontal scroll.
+        // Capturing parent width while host is empty gives us the constrained
+        // size; then explicit width on host stops the cascade dead.
+        const lockHostWidth = () => {
+            const parentEl = host.parentElement;
+            if (!parentEl) return;
+            // Walk UP and force min-width:0 on every ancestor in the chain so
+            // none of them can be expanded by their content. Cap at 8 levels.
+            let p = parentEl;
+            for (let i = 0; i < 8 && p && p !== document.body; i++) {
+                p.style.minWidth = '0';
+                p = p.parentElement;
+            }
+            // Now measure the parent's natural width.
+            const w = parentEl.clientWidth;
+            if (w > 0) {
+                host.style.width = w + 'px';
+                host.style.maxWidth = w + 'px';
+                host.style.minWidth = '0';
+                host.style.boxSizing = 'border-box';
+            }
+        };
+        lockHostWidth();
+
         const id = `gantt-${nextId++}`;
         const inst = {
             id,
@@ -673,6 +700,25 @@ export const gantt = {
         instances.set(id, inst);
 
         render(inst);
+
+        // When the window resizes, re-measure the parent and update host.
+        // Need to TEMPORARILY unlock host (set width to 0) to let the parent
+        // collapse back to its natural size, then re-measure, then re-lock.
+        const onWindowResize = () => {
+            const parentEl = host.parentElement;
+            if (!parentEl) return;
+            host.style.width = '0';
+            host.style.maxWidth = '0';
+            // Force layout
+            void parentEl.offsetWidth;
+            const w = parentEl.clientWidth;
+            if (w > 0) {
+                host.style.width = w + 'px';
+                host.style.maxWidth = w + 'px';
+            }
+        };
+        window.addEventListener('resize', onWindowResize, { passive: true });
+        inst._onResize = onWindowResize;
 
         // No ResizeObserver here on purpose: the SVG has a fixed width (the
         // total of all date columns) and a fixed height (header + rows). The
@@ -707,6 +753,7 @@ export const gantt = {
     destroy(id) {
         const inst = instances.get(id);
         if (!inst) return;
+        if (inst._onResize) window.removeEventListener('resize', inst._onResize);
         if (inst.host) inst.host.innerHTML = '';
         instances.delete(id);
     },
