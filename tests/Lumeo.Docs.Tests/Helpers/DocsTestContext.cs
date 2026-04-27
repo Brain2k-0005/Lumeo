@@ -14,8 +14,7 @@ public static class DocsTestContextExtensions
     {
         ctx.Services.AddSingleton<IComponentInteropService, NoopInteropService>();
         ctx.Services.AddSingleton<NavConfigService>();
-        // TODO: re-enable after Task 4
-        // ctx.Services.AddSingleton<RegistryService>();
+        ctx.Services.AddSingleton<RegistryService>();
     }
 }
 

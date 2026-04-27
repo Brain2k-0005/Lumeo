@@ -13,5 +13,6 @@ builder.Services.AddLumeo();
 builder.Services.AddSingleton<IconService>();
 builder.Services.AddSingleton<PatternFilterService>();
 builder.Services.AddSingleton<NavConfigService>();
+builder.Services.AddSingleton<RegistryService>();
 
 await builder.Build().RunAsync();
