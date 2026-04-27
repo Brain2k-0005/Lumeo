@@ -9,15 +9,30 @@ using System.Text.RegularExpressions;
 var repoRoot = FindRepoRoot(Environment.CurrentDirectory)
                ?? throw new InvalidOperationException("Could not locate Lumeo repo root (no Lumeo.slnx found).");
 
-var uiRoot = Path.Combine(repoRoot, "src", "Lumeo", "UI");
+// Scan core + every satellite package's UI directory. The 2.0-rc.15 split
+// moved Chart/DataGrid/RichTextEditor/Scheduler/Gantt out of src/Lumeo/UI/
+// into their own satellite folders — without including those, the
+// registry would silently miss 7 components and `lumeo add chart` would
+// fail with a 404.
+var uiRoots = new[]
+{
+    Path.Combine(repoRoot, "src", "Lumeo", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.Charts", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.DataGrid", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.Editor", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.Scheduler", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.Gantt", "UI"),
+};
+
 var outputDir = Path.Combine(repoRoot, "src", "Lumeo", "registry");
 var outputPath = Path.Combine(outputDir, "registry.json");
 
 Directory.CreateDirectory(outputDir);
 
-if (!Directory.Exists(uiRoot))
+var coreUiRoot = uiRoots[0];
+if (!Directory.Exists(coreUiRoot))
 {
-    Console.Error.WriteLine($"UI root not found: {uiRoot}");
+    Console.Error.WriteLine($"Core UI root not found: {coreUiRoot}");
     return 1;
 }
 
@@ -297,7 +312,12 @@ var cssVarMap = new Dictionary<string, string>
 };
 
 // Known component names (we infer from directory). Used to detect cross-component deps.
-var componentDirs = Directory.GetDirectories(uiRoot).OrderBy(d => d, StringComparer.OrdinalIgnoreCase).ToArray();
+// Walk every satellite root so cross-package deps resolve correctly.
+var componentDirs = uiRoots
+    .Where(Directory.Exists)
+    .SelectMany(root => Directory.GetDirectories(root))
+    .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
+    .ToArray();
 var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
 var components = new SortedDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -307,13 +327,19 @@ foreach (var dir in componentDirs)
     var name = Path.GetFileName(dir);
     if (string.IsNullOrEmpty(name)) continue;
 
+    // Resolve which package this component lives in, based on which uiRoot the
+    // dir came from — used to compute the relative file paths (registry stores
+    // paths relative to the package's src dir so `lumeo add` knows where to fetch).
+    var packageRoot = uiRoots.First(r => dir.StartsWith(r, StringComparison.OrdinalIgnoreCase));
+    var packageSrcRoot = Path.GetDirectoryName(packageRoot)!; // e.g. src/Lumeo.Charts
+
     var componentKey = ToKebabCase(name);
     var files = Directory
         .EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
         .Where(p => p.EndsWith(".razor", StringComparison.OrdinalIgnoreCase)
                     || p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
         .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-        .Select(p => NormalizePath(Path.GetRelativePath(Path.Combine(repoRoot, "src", "Lumeo"), p)))
+        .Select(p => NormalizePath(Path.GetRelativePath(packageSrcRoot, p)))
         .ToList();
 
     // Scan for cssVars, dependencies, and package dependencies
@@ -323,7 +349,8 @@ foreach (var dir in componentDirs)
 
     foreach (var file in files)
     {
-        var abs = Path.Combine(repoRoot, "src", "Lumeo", file.Replace('/', Path.DirectorySeparatorChar));
+        // file path is relative to packageSrcRoot (e.g. src/Lumeo.Charts).
+        var abs = Path.Combine(packageSrcRoot, file.Replace('/', Path.DirectorySeparatorChar));
         string content;
         try { content = File.ReadAllText(abs); }
         catch { continue; }
