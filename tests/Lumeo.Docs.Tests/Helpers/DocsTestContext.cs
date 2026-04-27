@@ -15,6 +15,7 @@ public static class DocsTestContextExtensions
         ctx.Services.AddSingleton<IComponentInteropService, NoopInteropService>();
         ctx.Services.AddSingleton<NavConfigService>();
         ctx.Services.AddSingleton<RegistryService>();
+        ctx.Services.AddSingleton<IconService>();
     }
 }
 
