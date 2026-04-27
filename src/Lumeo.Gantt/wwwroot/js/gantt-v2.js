@@ -666,44 +666,10 @@ export const gantt = {
         const host = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
         if (!host) throw new Error('Gantt: root element missing');
 
-        // CRITICAL: lock the host to a stable container width BEFORE adding
-        // any wide content. Once SVG with width=5814 is added, min-width:auto
-        // cascades up through every flex/block ancestor and expands the host
-        // to 5814 — killing horizontal scroll.
-        //
-        // Tricky: when the Gantt is the ONLY child of its ComponentDemo
-        // preview (no surrounding text/cards), the preview shrinks to fit
-        // the toolbar (~350px) and parentElement.clientWidth is misleading.
-        // So walk UP and pick the WIDEST ancestor's clientWidth as the
-        // available container width. That gives us the actual layout column
-        // width regardless of which sibling-content the demo has.
-        const lockHostWidth = () => {
-            const parentEl = host.parentElement;
-            if (!parentEl) return;
-
-            // Find the widest ancestor (up to body) — that's the natural
-            // layout column the Gantt should fill.
-            let widest = 0;
-            let p = parentEl;
-            for (let i = 0; i < 10 && p && p !== document.documentElement; i++) {
-                const w = p.clientWidth;
-                if (w > widest) widest = w;
-                p = p.parentElement;
-            }
-
-            // Subtract padding of the immediate parent so the host fits
-            // INSIDE the card chrome rather than overlapping its border.
-            const cs = window.getComputedStyle(parentEl);
-            const padL = parseFloat(cs.paddingLeft) || 0;
-            const padR = parseFloat(cs.paddingRight) || 0;
-            const lockW = Math.max(50, widest - padL - padR);
-
-            host.style.width = lockW + 'px';
-            host.style.maxWidth = lockW + 'px';
-            host.style.minWidth = '0';
-            host.style.boxSizing = 'border-box';
-        };
-        lockHostWidth();
+        // Width handling moved to CSS via the Razor's clip wrapper
+        // (style="contain: layout size; overflow: hidden") which prevents
+        // the SVG's intrinsic 5814px width from cascading up through flex
+        // ancestors. No JS measurement needed.
 
         const id = `gantt-${nextId++}`;
         const inst = {
@@ -718,24 +684,7 @@ export const gantt = {
 
         render(inst);
 
-        // When the window resizes, re-measure the parent and update host.
-        // Need to TEMPORARILY unlock host (set width to 0) to let the parent
-        // collapse back to its natural size, then re-measure, then re-lock.
-        const onWindowResize = () => {
-            const parentEl = host.parentElement;
-            if (!parentEl) return;
-            host.style.width = '0';
-            host.style.maxWidth = '0';
-            // Force layout
-            void parentEl.offsetWidth;
-            const w = parentEl.clientWidth;
-            if (w > 0) {
-                host.style.width = w + 'px';
-                host.style.maxWidth = w + 'px';
-            }
-        };
-        window.addEventListener('resize', onWindowResize, { passive: true });
-        inst._onResize = onWindowResize;
+        // Width is now handled by CSS — no resize listener needed.
 
         // No ResizeObserver here on purpose: the SVG has a fixed width (the
         // total of all date columns) and a fixed height (header + rows). The
@@ -770,7 +719,6 @@ export const gantt = {
     destroy(id) {
         const inst = instances.get(id);
         if (!inst) return;
-        if (inst._onResize) window.removeEventListener('resize', inst._onResize);
         if (inst.host) inst.host.innerHTML = '';
         instances.delete(id);
     },
