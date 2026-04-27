@@ -1338,13 +1338,16 @@ export const motion = {
 
         const delayMs = (options && options.delayMs) || 0;
         const once = !options || options.once !== false;
+        const forceHidden = !!(options && options.forceHidden);
 
         // Check viewport position synchronously. Out-of-view → hide first so the
         // fade-in animation has somewhere to animate from when the observer fires.
+        // forceHidden=true overrides viewport check — always hide first so docs demos
+        // and Replay buttons reliably animate even when above the fold.
         const rect = el.getBoundingClientRect();
         const viewportH = window.innerHeight || document.documentElement.clientHeight;
         const isAboveFold = rect.top < viewportH && rect.bottom > 0;
-        if (!isAboveFold) {
+        if (forceHidden || !isAboveFold) {
             el.setAttribute('data-motion-visible', 'false');
         }
 

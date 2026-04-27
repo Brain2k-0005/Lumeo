@@ -2,7 +2,7 @@
 @implements IAsyncDisposable
 @inject ComponentInteropService Interop
 
-<div id="@_elementId" class="@CssClass" style="@StyleString" @attributes="AdditionalAttributes">
+<div id="@_elementId" class="@CssClass" style="@StyleString" data-motion-visible="@InitialMotionState" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -13,6 +13,13 @@
     [Parameter] public int BlurPx { get; set; } = 8;
     [Parameter] public int Yoffset { get; set; } = 8;
     [Parameter] public bool Once { get; set; } = true;
+    /// <summary>
+    /// When true, always start in the hidden state and animate in — even if the element is already
+    /// in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades
+    /// stay statically visible to avoid a flash of blurred content on first paint. Set to true for
+    /// docs demos or controlled "Replay" scenarios where you always want the animation to play.
+    /// </summary>
+    [Parameter] public bool ForceHidden { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -20,6 +27,11 @@
     private bool _registered;
 
     private string CssClass => string.Join(" ", new[] { "lumeo-blur-fade", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    // When ForceHidden, render the initial hidden state directly via attribute so the very first
+    // paint already shows the to-be-animated state. Prevents a one-frame flash of fully-visible
+    // content before the JS observer marks it hidden.
+    private string? InitialMotionState => ForceHidden ? "false" : null;
 
     private string StyleString =>
         $"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;";
@@ -31,7 +43,7 @@
             _registered = true;
             try
             {
-                await Interop.MotionBlurFade(_elementId, DelayMs, Once);
+                await Interop.MotionBlurFade(_elementId, DelayMs, Once, ForceHidden);
             }
             catch (JSDisconnectedException) { }
         }

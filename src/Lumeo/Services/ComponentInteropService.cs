@@ -483,10 +483,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("motion.revealText", elementId, new { stagger = staggerMs, threshold });
     }
 
-    public async ValueTask MotionBlurFade(string elementId, int delayMs, bool once)
+    public async ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false)
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("motion.blurFade", elementId, new { delayMs, once });
+        await module.InvokeVoidAsync("motion.blurFade", elementId, new { delayMs, once, forceHidden });
     }
 
     public async ValueTask MotionDisposeObserver(string elementId)
