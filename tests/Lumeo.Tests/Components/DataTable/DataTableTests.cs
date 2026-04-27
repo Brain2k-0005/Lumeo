@@ -245,7 +245,7 @@ public class DataTableTests : IAsyncLifetime
 
         Assert.Contains("Diana", cut.Markup);
         var rows = cut.FindAll("tbody tr");
-        Assert.Equal(1, rows.Count);
+        Assert.Single(rows);
     }
 
     [Fact]

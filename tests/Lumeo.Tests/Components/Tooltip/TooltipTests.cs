@@ -154,7 +154,7 @@ public class TooltipTests : IAsyncLifetime
         var cut = RenderTooltip();
         // Tooltip wraps in a div with class "relative inline-flex"
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("relative inline-flex")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("relative inline-flex"));
     }
 
     // --- TooltipTrigger class ---
@@ -165,7 +165,7 @@ public class TooltipTests : IAsyncLifetime
         var cut = RenderTooltip();
         var elements = cut.FindAll("[class]");
         // TooltipTrigger renders a div with class "inline-flex"
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex"));
     }
 
     // --- Mouse interaction ---

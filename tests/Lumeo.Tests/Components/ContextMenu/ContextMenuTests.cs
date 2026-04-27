@@ -192,11 +192,11 @@ public class ContextMenuTests : IAsyncLifetime
     {
         var cut = RenderContextMenu(isOpen: true);
         var elements = cut.FindAll("[style]");
-        Assert.True(elements.Any(e =>
+        Assert.Contains(elements, e =>
         {
             var style = e.GetAttribute("style") ?? "";
             return style.Contains("position: fixed");
-        }));
+        });
     }
 
     // --- Custom class ---
@@ -219,7 +219,7 @@ public class ContextMenuTests : IAsyncLifetime
         });
 
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("my-context-class")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("my-context-class"));
     }
 
     // --- Label and Separator ---
@@ -270,11 +270,11 @@ public class ContextMenuTests : IAsyncLifetime
 
         // ContextMenuSeparator uses role="none" and has bg-border class
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e =>
+        Assert.Contains(elements, e =>
         {
             var cls = e.GetAttribute("class") ?? "";
             return cls.Contains("bg-border") && cls.Contains("h-px");
-        }));
+        });
     }
 
     // --- Group ---

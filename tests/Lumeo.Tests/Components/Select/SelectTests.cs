@@ -302,7 +302,7 @@ public class SelectTests : IAsyncLifetime
         });
 
         var allDivs = cut.FindAll("div");
-        Assert.True(allDivs.Any(d => (d.GetAttribute("class") ?? "").Contains("my-content-class")));
+        Assert.Contains(allDivs, d => (d.GetAttribute("class") ?? "").Contains("my-content-class"));
     }
 
     // --- Disabled SelectItem ---

@@ -281,9 +281,8 @@ public class DataGridLayoutServiceTests : IAsyncLifetime
     [Fact]
     public void ScheduleAutoSave_Accepts_Func_Task()
     {
-        var called = false;
         var exception = Record.Exception(() =>
-            _service.ScheduleAutoSave(async () => { called = true; await Task.CompletedTask; }));
+            _service.ScheduleAutoSave(async () => { await Task.CompletedTask; }));
         Assert.Null(exception);
     }
 

@@ -320,7 +320,7 @@ public class DialogTests : IAsyncLifetime
 
         // Find the element with "title-custom" class
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("title-custom")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("title-custom"));
     }
 
     // --- DialogContent Size variants ---

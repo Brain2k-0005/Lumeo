@@ -334,11 +334,11 @@ public class ToastTests : IAsyncLifetime
 
         // The viewport div should have bottom-right positioning classes
         var divs = cut.FindAll("div");
-        Assert.True(divs.Any(d =>
+        Assert.Contains(divs, d =>
         {
             var cls = d.GetAttribute("class") ?? "";
             return cls.Contains("bottom-4") && cls.Contains("right-4");
-        }));
+        });
     }
 
     [Fact]
@@ -348,10 +348,10 @@ public class ToastTests : IAsyncLifetime
             .Add(b => b.Position, L.ToastViewport.ToastPosition.TopLeft));
 
         var divs = cut.FindAll("div");
-        Assert.True(divs.Any(d =>
+        Assert.Contains(divs, d =>
         {
             var cls = d.GetAttribute("class") ?? "";
             return cls.Contains("top-4") && cls.Contains("left-4");
-        }));
+        });
     }
 }

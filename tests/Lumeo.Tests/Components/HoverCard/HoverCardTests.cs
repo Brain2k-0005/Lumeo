@@ -88,7 +88,7 @@ public class HoverCardTests : IAsyncLifetime
         var cut = RenderHoverCard(isOpen: false);
         // HoverCardTrigger renders a div with class "inline-flex"
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex"));
     }
 
     // --- HoverCard wrapper ---
@@ -98,11 +98,11 @@ public class HoverCardTests : IAsyncLifetime
     {
         var cut = RenderHoverCard(isOpen: false);
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e =>
+        Assert.Contains(elements, e =>
         {
             var cls = e.GetAttribute("class") ?? "";
             return cls.Contains("relative") && cls.Contains("inline-block");
-        }));
+        });
     }
 
     // --- HoverCardContent default classes ---
@@ -112,11 +112,11 @@ public class HoverCardTests : IAsyncLifetime
     {
         var cut = RenderHoverCard(isOpen: true);
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e =>
+        Assert.Contains(elements, e =>
         {
             var cls = e.GetAttribute("class") ?? "";
             return cls.Contains("bg-popover") && cls.Contains("border-border");
-        }));
+        });
     }
 
     // --- Custom class on HoverCardContent ---
@@ -139,7 +139,7 @@ public class HoverCardTests : IAsyncLifetime
         });
 
         var elements = cut.FindAll("[class]");
-        Assert.True(elements.Any(e => (e.GetAttribute("class") ?? "").Contains("my-hovercard-class")));
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("my-hovercard-class"));
     }
 
     // --- Open/Close delay parameters ---
