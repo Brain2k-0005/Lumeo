@@ -73,16 +73,16 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["ToggleGroup"] = "Forms", ["FileUpload"] = "Forms", ["OtpInput"] = "Forms",
     ["TagInput"] = "Forms", ["ColorPicker"] = "Forms", ["Textarea"] = "Forms", ["Form"] = "Forms",
     ["Mention"] = "Forms", ["Cascader"] = "Forms", ["Segmented"] = "Forms", ["Rating"] = "Forms",
-    ["InplaceEditor"] = "Forms",
+    ["InplaceEditor"] = "Forms", ["RichTextEditor"] = "Forms",
     // Data Display
     ["Table"] = "Data Display", ["DataTable"] = "Data Display", ["DataGrid"] = "Data Display",
     ["Card"] = "Data Display", ["Badge"] = "Data Display", ["Chip"] = "Data Display",
     ["Avatar"] = "Data Display", ["Calendar"] = "Data Display", ["Descriptions"] = "Data Display",
     ["Statistic"] = "Data Display", ["Timeline"] = "Data Display", ["Steps"] = "Data Display",
     ["Image"] = "Data Display", ["ImageCompare"] = "Data Display", ["TreeView"] = "Data Display",
-    ["TreeSelect"] = "Data Display", ["QRCode"] = "Data Display", ["Watermark"] = "Data Display",
-    ["List"] = "Data Display", ["Scheduler"] = "Data Display", ["RichTextEditor"] = "Data Display",
-    ["Sparkline"] = "Data Display",
+    ["TreeSelect"] = "Forms", ["QRCode"] = "Data Display", ["Watermark"] = "Data Display",
+    ["List"] = "Data Display", ["Scheduler"] = "Data Display",
+    ["Sparkline"] = "Data Display", ["Gantt"] = "Data Display",
     // Feedback
     ["Toast"] = "Feedback", ["Alert"] = "Feedback", ["Progress"] = "Feedback",
     ["Spinner"] = "Feedback", ["Skeleton"] = "Feedback", ["EmptyState"] = "Feedback",
@@ -405,7 +405,7 @@ foreach (var dir in componentDirs)
         ["category"] = category,
         ["subcategory"] = subcategory,
         ["description"] = description,
-        ["thumbnail"] = $"/preview-cards/{ToSlug(name)}.png",
+        ["thumbnail"] = $"/preview-cards/{ToKebabCase(name)}.png",
         ["nugetPackage"] = componentToPackage.TryGetValue(name, out var pkg) ? pkg : "Lumeo",
         ["files"] = files,
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
@@ -479,6 +479,3 @@ static string InsertSpaces(string s)
 }
 
 static string NormalizePath(string p) => p.Replace('\\', '/');
-
-static string ToSlug(string name) =>
-    System.Text.RegularExpressions.Regex.Replace(name, "([a-z0-9])([A-Z])", "$1-$2").ToLowerInvariant();
