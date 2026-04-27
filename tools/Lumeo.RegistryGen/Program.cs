@@ -399,6 +399,11 @@ foreach (var dir in componentDirs)
     var description = descriptions.TryGetValue(name, out var d) ? d : $"{InsertSpaces(name)} component.";
 
     var subcategory = SubcategoryInferrer.Infer(name, category);
+    // Whether this component has a real docs page in docs/Lumeo.Docs/Pages/Components/.
+    // Catalog uses this to skip rendering cards that would 404 on click.
+    var docsPagePath = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components", $"{name}Page.razor");
+    var docsPagePathAlt = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components", "Charts", $"{name}ChartPage.razor");
+    var hasDocsPage = File.Exists(docsPagePath) || File.Exists(docsPagePathAlt);
     var entry = new Dictionary<string, object?>
     {
         ["name"] = name,
@@ -406,6 +411,7 @@ foreach (var dir in componentDirs)
         ["subcategory"] = subcategory,
         ["description"] = description,
         ["thumbnail"] = $"/preview-cards/{ToKebabCase(name)}.png",
+        ["hasDocsPage"] = hasDocsPage,
         ["nugetPackage"] = componentToPackage.TryGetValue(name, out var pkg) ? pkg : "Lumeo",
         ["files"] = files,
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),

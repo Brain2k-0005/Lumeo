@@ -54,9 +54,9 @@ public class CatalogPageTests : IDisposable
             const string json = """
             {
               "components": {
-                "input":  { "name": "Input",  "category": "Forms",        "subcategory": "Inputs",   "description": "Text input.",  "thumbnail": "/preview-cards/input.png",  "nugetPackage": "Lumeo" },
-                "select": { "name": "Select", "category": "Forms",        "subcategory": "Selection","description": "Picker.",      "thumbnail": "/preview-cards/select.png", "nugetPackage": "Lumeo" },
-                "table":  { "name": "Table",  "category": "Data Display", "subcategory": "Tables",   "description": "Tabular data.","thumbnail": "/preview-cards/table.png",  "nugetPackage": "Lumeo" }
+                "input":  { "name": "Input",  "category": "Forms",        "subcategory": "Inputs",   "description": "Text input.",  "thumbnail": "/preview-cards/input.png",  "nugetPackage": "Lumeo", "hasDocsPage": true },
+                "select": { "name": "Select", "category": "Forms",        "subcategory": "Selection","description": "Picker.",      "thumbnail": "/preview-cards/select.png", "nugetPackage": "Lumeo", "hasDocsPage": true },
+                "table":  { "name": "Table",  "category": "Data Display", "subcategory": "Tables",   "description": "Tabular data.","thumbnail": "/preview-cards/table.png",  "nugetPackage": "Lumeo", "hasDocsPage": true }
               }
             }
             """;
