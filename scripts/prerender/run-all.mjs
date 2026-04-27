@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Reads src/Lumeo/registry/registry.json, renders one PNG per component into
-// docs/Lumeo.Docs/wwwroot/preview-cards/. Parallelizes 8 at a time.
+// docs/Lumeo.Docs/wwwroot/preview-cards/. Parallelizes 4–8 at a time
+// (env-overridable via PRERENDER_CONCURRENCY).
 import puppeteer from 'puppeteer';
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -28,17 +29,21 @@ const browser = await puppeteer.launch({
     protocolTimeout: 60000,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
 });
-const concurrency = 4;
+const concurrency = Number(process.env.PRERENDER_CONCURRENCY) || (process.platform === 'win32' ? 4 : 8);
 let done = 0;
 
 async function worker(slice) {
     for (const [slug, comp] of slice) {
         const outPath = join(outDir, `${slug}.png`);
-        await renderCard(browser, {
-            name: comp.name,
-            category: comp.category,
-            description: comp.description,
-        }, outPath);
+        try {
+            await renderCard(browser, {
+                name: comp.name,
+                category: comp.category,
+                description: comp.description,
+            }, outPath);
+        } catch (err) {
+            console.error(`Failed to render ${slug}: ${err.message}`);
+        }
         done++;
         if (done % 16 === 0) console.log(`  ${done}/${entries.length}`);
     }
