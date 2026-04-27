@@ -53,7 +53,7 @@ public class NavMenuTests : IDisposable
         {
             // Read the actual nav-config.json from the docs project so the test exercises real config.
             var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-                "docs", "Lumeo.Docs", "Layout", "nav-config.json");
+                "docs", "Lumeo.Docs", "wwwroot", "Layout", "nav-config.json");
             var json = File.ReadAllText(Path.GetFullPath(path));
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
