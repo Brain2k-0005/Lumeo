@@ -113,8 +113,8 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     // Drag & Drop
     ["Kanban"] = "Drag & Drop", ["Sortable"] = "Drag & Drop", ["Transfer"] = "Drag & Drop",
     ["Filter"] = "Data Display",
-    // Charts
-    ["Chart"] = "Charts",
+    // Charts (subgroup of Data Display per docs nav v2)
+    ["Chart"] = "Data Display",
     // Utility
     ["Button"] = "Forms",
     ["Icon"] = "Utility", ["Kbd"] = "Utility", ["Label"] = "Utility",
