@@ -56,33 +56,33 @@ public class KpiCardTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Positive_Delta_With_Good_Direction_Shows_Emerald()
+    public void Positive_Delta_With_Good_Direction_Shows_Positive_Token()
     {
         var cut = _ctx.Render<Lumeo.KpiCard>(p => p
             .Add(k => k.Delta, 10.0)
             .Add(k => k.DeltaPositive, Lumeo.KpiCard.KpiDeltaDirection.Good));
 
-        Assert.Contains("text-emerald-600", cut.Markup);
+        Assert.Contains("text-positive-text", cut.Markup);
     }
 
     [Fact]
-    public void Positive_Delta_With_Bad_Direction_Shows_Rose()
+    public void Positive_Delta_With_Bad_Direction_Shows_Destructive_Token()
     {
         var cut = _ctx.Render<Lumeo.KpiCard>(p => p
             .Add(k => k.Delta, 10.0)
             .Add(k => k.DeltaPositive, Lumeo.KpiCard.KpiDeltaDirection.Bad));
 
-        Assert.Contains("text-rose-600", cut.Markup);
+        Assert.Contains("text-destructive-text", cut.Markup);
     }
 
     [Fact]
-    public void Negative_Delta_With_Good_Direction_Shows_Rose()
+    public void Negative_Delta_With_Good_Direction_Shows_Destructive_Token()
     {
         var cut = _ctx.Render<Lumeo.KpiCard>(p => p
             .Add(k => k.Delta, -2.0)
             .Add(k => k.DeltaPositive, Lumeo.KpiCard.KpiDeltaDirection.Good));
 
-        Assert.Contains("text-rose-600", cut.Markup);
+        Assert.Contains("text-destructive-text", cut.Markup);
     }
 
     [Fact]
