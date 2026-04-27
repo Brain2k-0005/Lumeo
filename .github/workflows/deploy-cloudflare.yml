@@ -7,9 +7,12 @@ name: Deploy Docs to Cloudflare Pages
 #   CLOUDFLARE_API_TOKEN  — create at dash.cloudflare.com/profile/api-tokens using the
 #                           "Edit Cloudflare Workers" template and add "Pages:Edit" scope.
 #   CLOUDFLARE_ACCOUNT_ID — from any page in the Cloudflare dashboard sidebar.
-#   ALGOLIA_APP_ID        - Algolia application ID (public; injected into index.html)
-#   ALGOLIA_SEARCH_KEY    - Algolia search-only API key (public; injected into index.html)
-#   ALGOLIA_ADMIN_KEY     - Algolia admin API key (private; used only by indexer)
+#   ALGOLIA_APP_ID        - Algolia DocSearch application ID (public; injected into index.html)
+#   ALGOLIA_SEARCH_KEY    - Algolia DocSearch search-only API key (public; injected into index.html)
+#
+# Algolia DocSearch's hosted crawler manages the index — we don't push records
+# from CI. If you ever switch off DocSearch onto a regular Algolia Search app,
+# add ALGOLIA_ADMIN_KEY and re-enable the indexer step (see scripts/algolia/).
 
 on:
   push:
@@ -191,19 +194,10 @@ jobs:
           # Other branches show up as preview deployments.
           branch: master
 
-      - name: Push search index to Algolia
-        # Runs scripts/algolia/index-docs.mjs which crawls the published HTML,
-        # extracts component/docs content, and pushes records to Algolia.
-        # Only runs when the deploy succeeded (if: success() is implicit here
-        # since we're in a linear job, but kept explicit for clarity).
-        if: success()
-        working-directory: scripts/algolia
-        env:
-          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
-          ALGOLIA_ADMIN_KEY: ${{ secrets.ALGOLIA_ADMIN_KEY }}
-        run: |
-          npm ci --no-audit --no-fund
-          node index-docs.mjs
+      # NOTE: No "Push search index to Algolia" step — we use Algolia DocSearch,
+      # which has its own hosted crawler that scrapes lumeo.nativ.sh on schedule.
+      # The scripts/algolia/index-docs.mjs script is kept in the repo for future
+      # use if we ever switch off DocSearch onto a regular Algolia Search app.
 
       - name: Verify prerender on live site
         # Post-deploy smoke test. Fetches a sample of live routes and checks
