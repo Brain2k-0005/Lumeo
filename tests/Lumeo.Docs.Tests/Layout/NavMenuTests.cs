@@ -47,6 +47,34 @@ public class NavMenuTests : IDisposable
         });
     }
 
+    [Fact]
+    public void Renders_only_components_section_when_filtered()
+    {
+        var cut = _ctx.Render<NavMenu>(p => p.Add(c => c.Section, "components"));
+        cut.WaitForAssertion(() =>
+        {
+            // Components section groups should be present
+            Assert.Contains("Form", cut.Markup);
+            Assert.Contains("Layout", cut.Markup);
+            // Docs-only groups should not be present
+            Assert.DoesNotContain("Getting Started", cut.Markup);
+            Assert.DoesNotContain("Services", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void Renders_only_docs_section_when_filtered()
+    {
+        var cut = _ctx.Render<NavMenu>(p => p.Add(c => c.Section, "docs"));
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Getting Started", cut.Markup);
+            Assert.Contains("Services", cut.Markup);
+            // Component groups should not be present
+            Assert.DoesNotContain("Layout Primitives", cut.Markup);
+        });
+    }
+
     private sealed class InMemoryNavConfigHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)

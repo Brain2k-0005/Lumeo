@@ -23,6 +23,18 @@ public sealed class NavConfigService(HttpClient http)
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>Returns a NavConfig containing only groups that match the specified section.</summary>
+    public async Task<NavConfig> GetForSectionAsync(string section)
+    {
+        var full = await GetAsync();
+        return new NavConfig
+        {
+            Groups = full.Groups
+                .Where(g => string.Equals(g.Section, section, StringComparison.OrdinalIgnoreCase))
+                .ToList()
+        };
+    }
 }
 
 public sealed class NavConfig
@@ -34,6 +46,7 @@ public sealed class NavGroup
 {
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     [JsonPropertyName("label")] public string Label { get; set; } = "";
+    [JsonPropertyName("section")] public string Section { get; set; } = "docs";
     [JsonPropertyName("items")] public List<NavItem>? Items { get; set; }
     [JsonPropertyName("subgroups")] public List<NavSubgroup>? Subgroups { get; set; }
 }
