@@ -12,17 +12,17 @@
 const motionTickers = new Map();       // elementId -> rafId
 const motionObservers = new Map();     // elementId -> IntersectionObserver
 
-function formatNumber(value, decimals) {
+function formatNumber(value, decimals, separator) {
+    const sep = separator !== undefined && separator !== null ? separator : ',';
     const fixed = value.toFixed(decimals);
-    // Locale-aware thousands separators without forcing a locale — use browser default.
     const [whole, frac] = fixed.split('.');
-    const withSep = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const withSep = sep ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, sep) : whole;
     return frac !== undefined ? `${withSep}.${frac}` : withSep;
 }
 
 export const motion = {
     /* ---------- NumberTicker ---------- */
-    tickNumber(elementId, from, to, durationMs, decimals) {
+    tickNumber(elementId, from, to, durationMs, decimals, separator) {
         const el = document.getElementById(elementId);
         if (!el) return;
 
@@ -34,18 +34,19 @@ export const motion = {
         const delta = to - from;
         const dur = Math.max(1, durationMs | 0);
         const dec = Math.max(0, decimals | 0);
+        const sep = separator !== undefined ? separator : ',';
 
         const step = (now) => {
             const t = Math.min(1, (now - start) / dur);
             // easeOutCubic — snappy, settles nicely
             const eased = 1 - Math.pow(1 - t, 3);
             const current = from + delta * eased;
-            el.textContent = formatNumber(current, dec);
+            el.textContent = formatNumber(current, dec, sep);
             if (t < 1) {
                 const id = requestAnimationFrame(step);
                 motionTickers.set(elementId, id);
             } else {
-                el.textContent = formatNumber(to, dec);
+                el.textContent = formatNumber(to, dec, sep);
                 motionTickers.delete(elementId);
             }
         };
@@ -173,43 +174,65 @@ export const motion = {
             return `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
         };
 
+        // Per-element keyframe injection — must be called after path length is measured
+        const kfId = `lumeo-beam-kf-${svgId}`;
+        const injectKf = (len, dashLen) => {
+            let existing = document.getElementById(kfId);
+            if (existing) existing.remove();
+            const style = document.createElement('style');
+            style.id = kfId;
+            // Travel from start (just off the end) to fully past the beginning
+            style.textContent = `@keyframes lumeo-beam-travel-${svgId} {` +
+                `from { stroke-dashoffset: ${(len + dashLen).toFixed(1)}; }` +
+                `to   { stroke-dashoffset: ${(-(len * 0.2 + dashLen)).toFixed(1)}; } }`;
+            document.head.appendChild(style);
+        };
+
         const update = () => {
             const d = calcPath();
             if (d) {
                 pathEl.setAttribute('d', d);
                 beamEl.setAttribute('d', d);
 
-                // Animate stroke-dashoffset for beam traversal
-                const len = beamEl.getTotalLength ? beamEl.getTotalLength() : 200;
-                beamEl.style.strokeDasharray = `${len * 0.2} ${len}`;
-                beamEl.style.animation = 'none';
-                void beamEl.offsetWidth; // reflow
-                beamEl.style.animation = '';
+                // Compute actual path length so dasharray / dashoffset are correct
+                const len = (beamEl.getTotalLength ? beamEl.getTotalLength() : 200) || 200;
+                const dashLen = len * 0.25;   // beam head length (~25% of path)
+                const gapLen = len * 1.5;     // gap large enough to hide the rest
 
-                // Drive animation via CSS custom property
-                beamEl.style.animationDuration = `${durationMs}ms`;
-                beamEl.style.animationDelay = `${delayMs}ms`;
-                beamEl.style.animationName = 'lumeo-beam-travel';
-                beamEl.style.animationTimingFunction = 'linear';
-                beamEl.style.animationIterationCount = 'infinite';
-                beamEl.style.strokeDashoffset = `${len}`;
+                // Inject keyframes first (must exist before animation is applied)
+                injectKf(len, dashLen);
+
+                // Reset animation then apply with correct values
+                beamEl.style.animation = 'none';
+                beamEl.style.strokeDasharray = `${dashLen} ${gapLen}`;
+                beamEl.style.strokeDashoffset = `${len + dashLen}`;
+                void beamEl.getBoundingClientRect(); // force reflow
+                beamEl.style.animation = `lumeo-beam-travel-${svgId} ${durationMs}ms linear ${delayMs}ms infinite`;
             }
         };
 
-        // Inject the @keyframes if not already present
-        if (!document.getElementById('lumeo-beam-kf')) {
-            const style = document.createElement('style');
-            style.id = 'lumeo-beam-kf';
-            style.textContent = `
-                @keyframes lumeo-beam-travel {
-                    from { stroke-dashoffset: var(--lumeo-beam-len, 1000); }
-                    to   { stroke-dashoffset: calc(var(--lumeo-beam-len, 1000) * -1.2); }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
+        // Run update, then re-measure after one frame to ensure DOM layout is settled
+        // (getTotalLength() can return 0 before the browser has laid out the path)
         update();
+        requestAnimationFrame(() => {
+            // Second call after layout — ensures correct path length measurement
+            const d = calcPath();
+            if (d) {
+                pathEl.setAttribute('d', d);
+                beamEl.setAttribute('d', d);
+                const len = (beamEl.getTotalLength ? beamEl.getTotalLength() : 200) || 200;
+                if (len > 0) {
+                    const dashLen = len * 0.25;
+                    const gapLen = len * 1.5;
+                    injectKf(len, dashLen);
+                    beamEl.style.animation = 'none';
+                    beamEl.style.strokeDasharray = `${dashLen} ${gapLen}`;
+                    beamEl.style.strokeDashoffset = `${len + dashLen}`;
+                    void beamEl.getBoundingClientRect();
+                    beamEl.style.animation = `lumeo-beam-travel-${svgId} ${durationMs}ms linear ${delayMs}ms infinite`;
+                }
+            }
+        });
 
         // Re-measure on resize
         const ro = new ResizeObserver(update);
@@ -218,7 +241,11 @@ export const motion = {
         if (fromEl2) ro.observe(fromEl2);
         if (toEl2) ro.observe(toEl2);
         ro.observe(svg);
-        motionObservers.set(svgId + '-beam-ro', { disconnect: () => ro.disconnect() });
+        motionObservers.set(svgId + '-beam-ro', { disconnect: () => {
+            ro.disconnect();
+            const kfStyle = document.getElementById(kfId);
+            if (kfStyle) kfStyle.remove();
+        }});
     },
 
     disposeAnimatedBeam(svgId) {
@@ -262,52 +289,56 @@ export const motion = {
             ctx.clearRect(0, 0, size, size);
             const dotColor = resolveColor(dotColorRaw);
             const glowColor = resolveColor(glowColorRaw);
-            const dotOpacity = dotColor;
 
-            // Draw dots on sphere surface
-            const latSteps = 14, lonSteps = 24;
+            // Draw dots on sphere surface — denser grid for a more recognizable globe
+            const latSteps = 18, lonSteps = 32;
+            // Collect front-facing dots sorted by depth (painter's algorithm)
+            const dots = [];
             for (let lat = -90; lat <= 90; lat += 180 / latSteps) {
-                for (let lon = -180; lon <= 180; lon += 360 / lonSteps) {
+                for (let lon = 0; lon < 360; lon += 360 / lonSteps) {
                     const phi = (lat * Math.PI) / 180;
                     const theta = (lon * Math.PI) / 180 + angle;
                     const x3 = radius * Math.cos(phi) * Math.cos(theta);
                     const y3 = radius * Math.sin(phi);
                     const z3 = radius * Math.cos(phi) * Math.sin(theta);
-                    // Project: only front-facing dots (z3 >= -radius*0.1)
-                    if (z3 < -radius * 0.05) continue;
+                    if (z3 < -radius * 0.02) continue; // cull back-facing
                     const px = cx + x3;
                     const py = cy - y3;
-                    const depth = (z3 + radius) / (2 * radius);
-                    ctx.beginPath();
-                    ctx.arc(px, py, 1.2, 0, Math.PI * 2);
-                    ctx.fillStyle = dotColor;
-                    ctx.globalAlpha = 0.2 + depth * 0.5;
-                    ctx.fill();
+                    const depth = (z3 + radius) / (2 * radius); // 0=back, 1=front
+                    dots.push({ px, py, depth });
                 }
             }
+            // Paint back-to-front for correct overlap
+            dots.sort((a, b) => a.depth - b.depth);
+            for (const { px, py, depth } of dots) {
+                const r = 0.8 + depth * 1.0; // size grows toward front
+                ctx.beginPath();
+                ctx.arc(px, py, r, 0, Math.PI * 2);
+                ctx.fillStyle = dotColor;
+                ctx.globalAlpha = 0.15 + depth * 0.65;
+                ctx.fill();
+            }
 
-            // Sweep glow arc
-            ctx.globalAlpha = 0.18;
+            // Sweep glow arc — rotate with globe
             const sweepStart = angle % (Math.PI * 2);
-            const grad = ctx.createConicalGradient
-                ? null // not widely available
-                : null;
+            ctx.globalAlpha = 0.22;
             ctx.beginPath();
-            ctx.arc(cx, cy, radius, sweepStart, sweepStart + 0.9);
-            ctx.lineWidth = 4;
+            ctx.arc(cx, cy, radius * 0.98, sweepStart, sweepStart + 1.1);
+            ctx.lineWidth = 3;
             ctx.strokeStyle = glowColor;
             ctx.shadowColor = glowColor;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 14;
             ctx.stroke();
             ctx.shadowBlur = 0;
             ctx.globalAlpha = 1;
 
             angle += 0.005 * speed;
             rafId = requestAnimationFrame(draw);
+            // Keep ticker updated with latest rafId for cleanup
+            motionTickers.set(elementId + '-globe', rafId);
         };
 
         draw();
-        motionTickers.set(elementId + '-globe', rafId);
 
         // Store cleanup reference
         motionObservers.set(elementId + '-globe', { disconnect: () => {
@@ -406,7 +437,12 @@ export const motion = {
     },
 
     confettiFire(elementId, options) {
-        const canvas = document.getElementById(elementId + '-canvas');
+        const triggerEl = document.getElementById(elementId);
+        if (!triggerEl) return;
+
+        // Use a fixed-position canvas that covers the full viewport so particles
+        // can travel outside the component's bounding box.
+        let canvas = document.getElementById(elementId + '-canvas');
         if (!canvas) return;
 
         const particleCount = (options && options.particleCount) || 80;
@@ -415,15 +451,27 @@ export const motion = {
         const originX = (options && options.origin && options.origin.x) !== undefined ? options.origin.x : 0.5;
         const originY = (options && options.origin && options.origin.y) !== undefined ? options.origin.y : 0.5;
 
-        const parent = canvas.parentElement;
-        canvas.width = parent.offsetWidth || 300;
-        canvas.height = parent.offsetHeight || 200;
+        // Move canvas to fixed viewport overlay
+        canvas.style.position = 'fixed';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100vw';
+        canvas.style.height = '100vh';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.zIndex = '9999';
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Map origin from element-relative (0-1) to viewport pixel coords
+        const elRect = triggerEl.getBoundingClientRect();
+        const elOriginX = elRect.left + elRect.width * originX;
+        const elOriginY = elRect.top + elRect.height * originY;
 
         const ctx = canvas.getContext('2d');
         const particles = [];
 
-        const ox = canvas.width * originX;
-        const oy = canvas.height * originY;
+        const ox = elOriginX;
+        const oy = elOriginY;
         const spreadRad = (spread * Math.PI) / 180;
 
         for (let i = 0; i < particleCount; i++) {

@@ -105,7 +105,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RemoveFromLocalStorage(string key);
 
     // Motion primitives
-    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals);
+    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",");
     ValueTask MotionDisposeTicker(string elementId);
     ValueTask MotionRevealText(string elementId, int staggerMs, double threshold);
     ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false);
