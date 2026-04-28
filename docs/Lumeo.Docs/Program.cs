@@ -12,7 +12,10 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddLumeo();
 builder.Services.AddSingleton<IconService>();
 builder.Services.AddSingleton<PatternFilterService>();
-builder.Services.AddSingleton<NavConfigService>();
-builder.Services.AddSingleton<RegistryService>();
+// Scoped, not Singleton — both depend on HttpClient which is Scoped in Blazor WASM.
+// In WASM there's only one scope per app lifetime, so caching semantics are identical
+// to a Singleton, but DI lifetime validation requires the consumer match the dependency.
+builder.Services.AddScoped<NavConfigService>();
+builder.Services.AddScoped<RegistryService>();
 
 await builder.Build().RunAsync();
