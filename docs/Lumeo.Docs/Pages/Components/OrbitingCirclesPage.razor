@@ -16,10 +16,20 @@
 
 <Stack Gap="8" Class="mt-8">
     <ComponentDemo Title="Logo Constellation" Code="@_basicCode">
-        <div class="flex items-center justify-center py-8">
-            <OrbitingCircles Size="200">
-                <div class="h-12 w-12 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-                    <Blazicon Svg="Lucide.Zap" class="h-6 w-6 text-primary" />
+        <div class="flex items-center justify-center py-12">
+            <OrbitingCircles @ref="_orbit1" Size="280">
+                <div class="h-14 w-14 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center shadow-sm">
+                    <Blazicon Svg="Lucide.Zap" class="h-7 w-7 text-primary" />
+                </div>
+            </OrbitingCircles>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Two Rings — Inner &amp; Outer" Code="@_twoRingCode">
+        <div class="flex items-center justify-center py-12">
+            <OrbitingCircles @ref="_orbit2" Size="320">
+                <div class="h-16 w-16 rounded-2xl bg-primary flex items-center justify-center shadow-md">
+                    <Blazicon Svg="Lucide.Layers" class="h-8 w-8 text-primary-foreground" />
                 </div>
             </OrbitingCircles>
         </div>
@@ -76,9 +86,60 @@
 </div>
 
 @code {
-    private const string _basicCode = @"<OrbitingCircles Size=""200"">
-    <div class=""h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center"">
-        <Blazicon Svg=""Lucide.Zap"" class=""h-6 w-6 text-primary"" />
+    private OrbitingCircles? _orbit1;
+    private OrbitingCircles? _orbit2;
+    private bool _orbitsAdded;
+
+    // Pre-build RenderFragment lambdas (valid in @code — no @<> syntax needed)
+    private static RenderFragment IconBubble(SvgIcon icon, string colorClass, string size = "w-9 h-9")
+        => b => {
+            b.OpenElement(0, "div");
+            b.AddAttribute(1, "class", $"flex items-center justify-center {size} rounded-full bg-card border border-border/60 shadow-sm");
+            b.OpenComponent<Blazicon>(2);
+            b.AddAttribute(3, "Svg", icon);
+            b.AddAttribute(4, "class", $"h-4 w-4 {colorClass}");
+            b.CloseComponent();
+            b.CloseElement();
+        };
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender || _orbitsAdded) return;
+        _orbitsAdded = true;
+
+        // Single ring
+        _orbit1?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Star,     "text-primary"),  80, 16000, false, 0));
+        _orbit1?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Sparkles, "text-primary"),  80, 16000, false, 120));
+        _orbit1?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Zap,      "text-primary"),  80, 16000, false, 240));
+
+        // Two rings
+        _orbit2?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Bell,   "text-amber-500"),  70, 12000, false, 0));
+        _orbit2?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Shield, "text-blue-500"),   70, 12000, false, 180));
+        _orbit2?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Globe,  "text-green-500", "w-10 h-10"), 128, 22000, true, 60));
+        _orbit2?.AddOrbit(new OrbitingCircles.OrbitDef(IconBubble(Lucide.Star,   "text-violet-500", "w-10 h-10"), 128, 22000, true, 240));
+    }
+
+    private const string _basicCode = @"@* Orbits are added imperatively via @ref after first render *@
+<OrbitingCircles @ref=""_orbits"" Size=""280"">
+    <div class=""h-14 w-14 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center"">
+        <Blazicon Svg=""Lucide.Zap"" class=""h-7 w-7 text-primary"" />
+    </div>
+</OrbitingCircles>
+
+@code {
+    OrbitingCircles? _orbits;
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        _orbits?.AddOrbit(new OrbitingCircles.OrbitDef(
+            Content: b => { b.OpenElement(0,""div""); b.AddAttribute(1,""class"",""w-9 h-9 rounded-full bg-card""); b.CloseElement(); },
+            Radius: 80, DurationMs: 16000, Reverse: false, Offset: 0));
+    }
+}";
+
+    private const string _twoRingCode = @"<OrbitingCircles @ref=""_orbits"" Size=""320"">
+    <div class=""h-16 w-16 rounded-2xl bg-primary flex items-center justify-center"">
+        <Blazicon Svg=""Lucide.Layers"" class=""h-8 w-8 text-primary-foreground"" />
     </div>
 </OrbitingCircles>";
 }
