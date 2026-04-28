@@ -139,113 +139,143 @@ export const motion = {
     },
 
     /* ---------- AnimatedBeam ----------
-     * Calculates a cubic bezier path between two referenced DOM nodes
-     * and animates a gradient offset along it. */
+     * Magic UI port: SVG path connects two DOM nodes, a gradient "beam"
+     * travels along the path via stroke-dashoffset animation.
+     *
+     * Key difference from previous: coordinates are measured relative to
+     * the CONTAINER element (containerId), not the SVG itself — exactly
+     * like Magic UI's containerRef pattern. The SVG is sized to the container.
+     *
+     * If containerId is null/missing, falls back to using the SVG's parent. */
     animatedBeam(svgId, fromId, toId, options) {
         const svg = document.getElementById(svgId);
         if (!svg) return;
 
         const durationMs = (options && options.durationMs) || 3000;
-        const delayMs = (options && options.delayMs) || 0;
-        const curvature = (options && options.curvature) !== undefined ? options.curvature : 0.3;
+        const delayMs    = (options && options.delayMs)    || 0;
+        const curvature  = (options && options.curvature  !== undefined) ? options.curvature : 0;
+        const reverse    = !!(options && options.reverse);
+        const containerId = options && options.containerId;
 
-        const pathEl = document.getElementById(svgId + '-path');
-        const beamEl = document.getElementById(svgId + '-beam');
-        if (!pathEl || !beamEl) return;
+        const trackEl = document.getElementById(svgId + '-track');
+        const beamEl  = document.getElementById(svgId + '-beam');
+        const gradEl  = document.getElementById(svgId.replace('lumeo-animated-beam-', 'lumeo-beam-grad-'));
+        // Find gradient by querying defs inside this SVG
+        const gradient = svg.querySelector('linearGradient');
+        if (!trackEl || !beamEl) return;
+
+        const getContainer = () => {
+            if (containerId) return document.getElementById(containerId);
+            return svg.parentElement;
+        };
 
         const calcPath = () => {
+            const container = getContainer();
             const fromEl = document.getElementById(fromId);
-            const toEl = document.getElementById(toId);
-            if (!fromEl || !toEl) return null;
+            const toEl   = document.getElementById(toId);
+            if (!container || !fromEl || !toEl) return null;
 
-            const svgRect = svg.getBoundingClientRect();
-            const fr = fromEl.getBoundingClientRect();
-            const tr = toEl.getBoundingClientRect();
+            const cr  = container.getBoundingClientRect();
+            const fr  = fromEl.getBoundingClientRect();
+            const tr  = toEl.getBoundingClientRect();
 
-            const x1 = fr.left + fr.width / 2 - svgRect.left;
-            const y1 = fr.top + fr.height / 2 - svgRect.top;
-            const x2 = tr.left + tr.width / 2 - svgRect.left;
-            const y2 = tr.top + tr.height / 2 - svgRect.top;
+            // Resize SVG to match container exactly
+            svg.setAttribute('width',  cr.width);
+            svg.setAttribute('height', cr.height);
+            svg.setAttribute('viewBox', `0 0 ${cr.width} ${cr.height}`);
 
-            const dx = Math.abs(x2 - x1) * curvature;
-            const cp1x = x1 + dx;
-            const cp2x = x2 - dx;
+            const x1 = fr.left + fr.width  / 2 - cr.left;
+            const y1 = fr.top  + fr.height / 2 - cr.top;
+            const x2 = tr.left + tr.width  / 2 - cr.left;
+            const y2 = tr.top  + tr.height / 2 - cr.top;
 
-            return `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
+            // Quadratic bezier — control point is midX at (y - curvature)
+            const mx  = (x1 + x2) / 2;
+            const my  = (y1 + y2) / 2 - curvature;
+
+            // Update gradient to span the actual path endpoints
+            if (gradient) {
+                gradient.setAttribute('x1', x1);
+                gradient.setAttribute('y1', y1);
+                gradient.setAttribute('x2', x2);
+                gradient.setAttribute('y2', y2);
+            }
+
+            return `M ${x1},${y1} Q ${mx},${my} ${x2},${y2}`;
         };
 
-        // Per-element keyframe injection — must be called after path length is measured
+        // Inject per-instance keyframes into <head>
         const kfId = `lumeo-beam-kf-${svgId}`;
-        const injectKf = (len, dashLen) => {
-            let existing = document.getElementById(kfId);
+        const injectKeyframes = (len) => {
+            const existing = document.getElementById(kfId);
             if (existing) existing.remove();
+            const dashLen = len * 0.3;   // beam head = 30% of path
+            const gapLen  = len + dashLen + 10;  // gap large enough to hide rest
+
+            // forward: dashoffset goes from +(len+dashLen) → -(dashLen)
+            // reverse: dashoffset goes from -(dashLen) → +(len+dashLen)
+            const from = reverse ? `${-(dashLen).toFixed(1)}` : `${(len + dashLen).toFixed(1)}`;
+            const to   = reverse ? `${(len + dashLen).toFixed(1)}` : `${-(dashLen).toFixed(1)}`;
+
             const style = document.createElement('style');
             style.id = kfId;
-            // Travel from start (just off the end) to fully past the beginning
-            style.textContent = `@keyframes lumeo-beam-travel-${svgId} {` +
-                `from { stroke-dashoffset: ${(len + dashLen).toFixed(1)}; }` +
-                `to   { stroke-dashoffset: ${(-(len * 0.2 + dashLen)).toFixed(1)}; } }`;
+            style.textContent =
+                `@keyframes lumeo-beam-anim-${svgId} {` +
+                `from { stroke-dashoffset: ${from}; }` +
+                `to   { stroke-dashoffset: ${to}; } }`;
             document.head.appendChild(style);
+            return { dashLen, gapLen };
         };
 
-        const update = () => {
+        const applyAnimation = () => {
             const d = calcPath();
-            if (d) {
-                pathEl.setAttribute('d', d);
-                beamEl.setAttribute('d', d);
+            if (!d) return;
 
-                // Compute actual path length so dasharray / dashoffset are correct
-                const len = (beamEl.getTotalLength ? beamEl.getTotalLength() : 200) || 200;
-                const dashLen = len * 0.25;   // beam head length (~25% of path)
-                const gapLen = len * 1.5;     // gap large enough to hide the rest
+            trackEl.setAttribute('d', d);
+            beamEl.setAttribute('d', d);
 
-                // Inject keyframes first (must exist before animation is applied)
-                injectKf(len, dashLen);
+            // Measure path length after setting 'd'
+            const rawLen = beamEl.getTotalLength ? beamEl.getTotalLength() : 0;
+            const len = rawLen > 1 ? rawLen : 200;
 
-                // Reset animation then apply with correct values
-                beamEl.style.animation = 'none';
-                beamEl.style.strokeDasharray = `${dashLen} ${gapLen}`;
-                beamEl.style.strokeDashoffset = `${len + dashLen}`;
-                void beamEl.getBoundingClientRect(); // force reflow
-                beamEl.style.animation = `lumeo-beam-travel-${svgId} ${durationMs}ms linear ${delayMs}ms infinite`;
-            }
+            const { dashLen, gapLen } = injectKeyframes(len);
+
+            // Force reflow so animation restarts cleanly
+            beamEl.style.animation = 'none';
+            beamEl.style.strokeDasharray  = `${dashLen.toFixed(1)} ${gapLen.toFixed(1)}`;
+            beamEl.style.strokeDashoffset = reverse ? `${-(dashLen).toFixed(1)}` : `${(len + dashLen).toFixed(1)}`;
+            void beamEl.getBoundingClientRect();
+            beamEl.style.animation =
+                `lumeo-beam-anim-${svgId} ${durationMs}ms linear ${delayMs}ms infinite`;
         };
 
-        // Run update, then re-measure after one frame to ensure DOM layout is settled
-        // (getTotalLength() can return 0 before the browser has laid out the path)
-        update();
+        // Initial run: set path without measuring, then measure on next frame
+        // (getTotalLength() returns 0 until the path is painted)
+        const d0 = calcPath();
+        if (d0) { trackEl.setAttribute('d', d0); beamEl.setAttribute('d', d0); }
+
         requestAnimationFrame(() => {
-            // Second call after layout — ensures correct path length measurement
-            const d = calcPath();
-            if (d) {
-                pathEl.setAttribute('d', d);
-                beamEl.setAttribute('d', d);
-                const len = (beamEl.getTotalLength ? beamEl.getTotalLength() : 200) || 200;
-                if (len > 0) {
-                    const dashLen = len * 0.25;
-                    const gapLen = len * 1.5;
-                    injectKf(len, dashLen);
-                    beamEl.style.animation = 'none';
-                    beamEl.style.strokeDasharray = `${dashLen} ${gapLen}`;
-                    beamEl.style.strokeDashoffset = `${len + dashLen}`;
-                    void beamEl.getBoundingClientRect();
-                    beamEl.style.animation = `lumeo-beam-travel-${svgId} ${durationMs}ms linear ${delayMs}ms infinite`;
-                }
-            }
+            applyAnimation();
+            // Second rAF covers browsers that need two paint cycles
+            requestAnimationFrame(applyAnimation);
         });
 
-        // Re-measure on resize
-        const ro = new ResizeObserver(update);
+        // Re-measure when container or nodes resize
+        const ro = new ResizeObserver(() => applyAnimation());
+        const container = getContainer();
         const fromEl2 = document.getElementById(fromId);
-        const toEl2 = document.getElementById(toId);
-        if (fromEl2) ro.observe(fromEl2);
-        if (toEl2) ro.observe(toEl2);
-        ro.observe(svg);
-        motionObservers.set(svgId + '-beam-ro', { disconnect: () => {
-            ro.disconnect();
-            const kfStyle = document.getElementById(kfId);
-            if (kfStyle) kfStyle.remove();
-        }});
+        const toEl2   = document.getElementById(toId);
+        if (container) ro.observe(container);
+        if (fromEl2)   ro.observe(fromEl2);
+        if (toEl2)     ro.observe(toEl2);
+
+        motionObservers.set(svgId + '-beam-ro', {
+            disconnect: () => {
+                ro.disconnect();
+                const kfStyle = document.getElementById(kfId);
+                if (kfStyle) kfStyle.remove();
+            }
+        });
     },
 
     disposeAnimatedBeam(svgId) {

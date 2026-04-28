@@ -1,51 +1,92 @@
 @namespace Lumeo
 
+@* OrbitingCircles — Magic UI port.
+   Usage: nest <OrbitItem> children inside <OrbitingCircles>.
+   Each OrbitItem registers itself and receives an auto-computed angular offset.
+   A separate CenterContent slot renders in the middle. *@
 <div class="@CssClass" style="@ContainerStyle" @attributes="AdditionalAttributes">
-    @if (ChildContent != null)
+    @* Orbit path ring (optional) *@
+    @if (ShowPath)
+    {
+        <svg class="lumeo-orbit-path-svg" aria-hidden="true"
+             viewBox="0 0 @Size @Size" width="@Size" height="@Size">
+            <circle class="lumeo-orbit-path-circle"
+                    cx="@(Size / 2)" cy="@(Size / 2)"
+                    r="@Radius" />
+        </svg>
+    }
+
+    @* Center icon *@
+    @if (CenterContent != null)
     {
         <div class="lumeo-orbiting-center">
-            @ChildContent
+            @CenterContent
         </div>
     }
-    @foreach (var orbit in _orbits)
-    {
-        <div class="lumeo-orbit-ring" style="@OrbitRingStyle(orbit.Radius, orbit.DurationMs, orbit.Reverse, orbit.Offset)">
-            @orbit.Content
-        </div>
-    }
+
+    @* Child orbit items — each OrbitItem registers and gets an angle *@
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
 </div>
 
 @code {
-    /// <summary>Center content (icon, logo, etc.).</summary>
+    /// <summary>Content placed at the center of the orbit ring.</summary>
+    [Parameter] public RenderFragment? CenterContent { get; set; }
+    /// <summary>Orbit icons as nested <c>&lt;OrbitItem&gt;</c> children.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>Size of the container in pixels.</summary>
-    [Parameter] public int Size { get; set; } = 200;
+    /// <summary>Orbit radius in pixels (center-to-icon distance).</summary>
+    [Parameter] public int Radius { get; set; } = 80;
+    /// <summary>Duration of one full revolution in milliseconds.</summary>
+    [Parameter] public int DurationMs { get; set; } = 20000;
+    /// <summary>Reverses the direction of orbit.</summary>
+    [Parameter] public bool Reverse { get; set; } = false;
+    /// <summary>Show the circular orbit path guide line.</summary>
+    [Parameter] public bool ShowPath { get; set; } = true;
+    /// <summary>Container diameter in pixels. Should be &gt;= (2 × Radius) + icon size.</summary>
+    [Parameter] public int Size { get; set; } = 240;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly List<OrbitDef> _orbits = new();
+    private readonly List<OrbitItem> _items = new();
+    private bool _dirty;
 
     private string CssClass => string.Join(" ", new[] { "lumeo-orbiting-circles", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
-    private string ContainerStyle => $"width:{Size}px; height:{Size}px;";
+    private string ContainerStyle => $"width:{Size}px;height:{Size}px;";
 
-    private static string OrbitRingStyle(int radius, int durationMs, bool reverse, int offsetDeg) =>
-        $"--lumeo-orbit-radius:{radius}px; --lumeo-orbit-duration:{durationMs}ms; " +
-        $"--lumeo-orbit-reverse:{(reverse ? "reverse" : "normal")}; --lumeo-orbit-offset:{offsetDeg}deg;";
-
-    /// <summary>Add an orbit ring. Call from a parent component's <c>OnAfterRender</c> via <c>@@ref</c>.
-    /// Automatically triggers a re-render so the new orbit appears immediately.</summary>
-    public void AddOrbit(OrbitDef orbit)
+    internal void RegisterItem(OrbitItem item)
     {
-        _orbits.Add(orbit);
-        StateHasChanged();
+        if (!_items.Contains(item))
+        {
+            _items.Add(item);
+            _dirty = true;
+        }
     }
 
-    /// <summary>Remove all orbit rings and re-render.</summary>
-    public void ClearOrbits()
+    internal void UnregisterItem(OrbitItem item)
     {
-        _orbits.Clear();
-        StateHasChanged();
+        if (_items.Remove(item))
+        {
+            _dirty = true;
+        }
     }
 
-    public record OrbitDef(RenderFragment Content, int Radius = 80, int DurationMs = 20000, bool Reverse = false, int Offset = 0);
+    // Assign angles and re-render all items after the child tree renders
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_dirty)
+        {
+            _dirty = false;
+            // Distribute angles evenly; notify each item of its new angle
+            int count = _items.Count;
+            for (int i = 0; i < count; i++)
+            {
+                _items[i].SetAngle((360.0 / Math.Max(1, count)) * i);
+            }
+        }
+    }
+
+    public int GetRadius() => Radius;
+    public int GetDurationMs() => DurationMs;
+    public bool GetReverse() => Reverse;
 }

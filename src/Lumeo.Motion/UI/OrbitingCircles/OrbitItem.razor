@@ -1,0 +1,59 @@
+@namespace Lumeo
+@implements IDisposable
+
+@* OrbitItem — a single icon/element on an OrbitingCircles ring.
+   Registers itself with the parent OrbitingCircles to receive an auto-computed angle.
+   The Magic UI CSS pattern: rotate by angle, translate by radius, counter-rotate. *@
+@if (_angle.HasValue)
+{
+    <div class="lumeo-orbit-item"
+         style="@ItemStyle"
+         @attributes="AdditionalAttributes">
+        @* Counter-rotate the inner content so the icon stays upright *@
+        <div class="lumeo-orbit-item-inner">
+            @ChildContent
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private OrbitingCircles? Parent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private double? _angle;
+
+    private string ItemStyle
+    {
+        get
+        {
+            if (!_angle.HasValue || Parent == null) return string.Empty;
+            var angle = _angle.Value;
+            var radius = Parent.GetRadius();
+            var duration = Parent.GetDurationMs();
+            var rev = Parent.GetReverse();
+            var dir = rev ? "reverse" : "normal";
+            return $"--lumeo-orbit-angle:{angle:F1}deg; --lumeo-orbit-radius:{radius}px; --lumeo-orbit-duration:{duration}ms; animation-direction:{dir};";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Parent?.RegisterItem(this);
+    }
+
+    public void SetAngle(double angle)
+    {
+        if (_angle != angle)
+        {
+            _angle = angle;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        Parent?.UnregisterItem(this);
+    }
+}

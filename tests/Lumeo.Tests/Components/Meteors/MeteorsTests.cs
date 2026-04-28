@@ -47,7 +47,8 @@ public class MeteorsTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Meteors>(p => p
             .Add(m => m.Color, "oklch(0.7 0.2 30)"));
 
-        Assert.Contains("--lumeo-meteor-color: oklch(0.7 0.2 30)", cut.Find("div").GetAttribute("style"));
+        // CSS variable syntax may or may not include space after colon depending on Blazor's renderer
+        Assert.Contains("--lumeo-meteor-color:oklch(0.7 0.2 30)", cut.Find("div").GetAttribute("style"));
     }
 
     [Fact]

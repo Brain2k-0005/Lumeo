@@ -1,71 +1,99 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@* AnimatedGridPattern — Magic UI port.
+   An SVG grid where individual cells blink in/out continuously.
+   The Blazor animation loop picks a new batch of random cells every CycleDurationMs.
+   Each batch generates unique cell keys so Blazor re-renders triggers CSS animation restart. *@
 <div class="@CssClass" @attributes="AdditionalAttributes" aria-hidden="true">
     <svg class="lumeo-grid-pattern-svg" xmlns="http://www.w3.org/2000/svg">
         <defs>
-            <pattern id="@_patternId" x="0" y="0" width="@CellSize" height="@CellSize" patternUnits="userSpaceOnUse">
-                <path d="M @CellSize 0 L 0 0 0 @CellSize" fill="none" stroke="currentColor" stroke-opacity="0.15" stroke-width="0.5" />
+            <pattern id="@_patternId" x="0" y="0"
+                     width="@CellSize" height="@CellSize"
+                     patternUnits="userSpaceOnUse">
+                <path d="M @CellSize 0 L 0 0 0 @CellSize"
+                      fill="none" stroke="currentColor"
+                      stroke-opacity="0.12" stroke-width="0.5" />
             </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#@_patternId)" />
         @foreach (var cell in _activeCells)
         {
-            <rect x="@(cell.Col * CellSize)" y="@(cell.Row * CellSize)"
+            @* Unique key via cell.Key forces Blazor to re-render → CSS animation restarts *@
+            <rect key="@cell.Key"
+                  x="@(cell.Col * CellSize)" y="@(cell.Row * CellSize)"
                   width="@CellSize" height="@CellSize"
                   class="lumeo-grid-cell"
-                  style="opacity:@(cell.Opacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)); --lumeo-grid-cell-delay:@(cell.Delay)ms;" />
+                  style="--lumeo-grid-cell-delay:@(cell.Delay)ms; --lumeo-grid-cell-duration:@(CycleDurationMs)ms; --lumeo-grid-cell-opacity:@(cell.Opacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));" />
         }
     </svg>
 </div>
 
 @code {
+    /// <summary>Grid cell size in pixels.</summary>
     [Parameter] public int CellSize { get; set; } = 40;
     /// <summary>Max number of simultaneously lit cells.</summary>
     [Parameter] public int MaxLit { get; set; } = 10;
-    /// <summary>Grid columns (approximate).</summary>
+    /// <summary>Grid columns (used when container size isn't measured).</summary>
     [Parameter] public int Cols { get; set; } = 20;
-    /// <summary>Grid rows (approximate).</summary>
+    /// <summary>Grid rows (used when container size isn't measured).</summary>
     [Parameter] public int Rows { get; set; } = 12;
+    /// <summary>Duration of each blink cycle in ms. Controls both CSS animation and loop interval.</summary>
+    [Parameter] public int CycleDurationMs { get; set; } = 2000;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _patternId = $"lumeo-grid-{Guid.NewGuid():N}";
     private List<CellDef> _activeCells = new();
     private CancellationTokenSource? _cts;
-    private Random _rng = new();
+    private readonly Random _rng = new();
+    private int _generation = 0;
 
     private string CssClass => string.Join(" ", new[] { "lumeo-animated-grid", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
-    private record CellDef(int Row, int Col, double Opacity, int Delay);
+    private record CellDef(int Row, int Col, double Opacity, int Delay, string Key);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             _cts = new CancellationTokenSource();
-            _ = AnimateAsync(_cts.Token);
+            _ = AnimateLoopAsync(_cts.Token);
         }
     }
 
-    private async Task AnimateAsync(CancellationToken ct)
+    private async Task AnimateLoopAsync(CancellationToken ct)
     {
+        // Start immediately
+        RefreshCells();
+        await InvokeAsync(StateHasChanged);
+
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                // Pick random cells to light up
-                _activeCells = Enumerable.Range(0, MaxLit).Select(_ => new CellDef(
-                    Row: _rng.Next(0, Rows),
-                    Col: _rng.Next(0, Cols),
-                    Opacity: 0.2 + _rng.NextDouble() * 0.6,
-                    Delay: _rng.Next(0, 800)
-                )).ToList();
+                // Wait for the cycle to complete before picking new cells
+                await Task.Delay(CycleDurationMs + 100, ct);
+                RefreshCells();
                 await InvokeAsync(StateHasChanged);
-                await Task.Delay(1200, ct);
             }
         }
         catch (TaskCanceledException) { }
+    }
+
+    private void RefreshCells()
+    {
+        _generation++;
+        var gen = _generation;
+        // Stagger delays so not all cells appear at once (0 to CycleDuration/3)
+        var maxDelay = CycleDurationMs / 4;
+        _activeCells = Enumerable.Range(0, MaxLit).Select(i => new CellDef(
+            Row: _rng.Next(0, Rows),
+            Col: _rng.Next(0, Cols),
+            Opacity: 0.25 + _rng.NextDouble() * 0.55,
+            Delay: _rng.Next(0, Math.Max(1, maxDelay)),
+            Key: $"g{gen}-i{i}"
+        )).ToList();
     }
 
     public async ValueTask DisposeAsync()
