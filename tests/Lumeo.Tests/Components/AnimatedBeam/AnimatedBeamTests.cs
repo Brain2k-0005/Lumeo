@@ -30,23 +30,24 @@ public class AnimatedBeamTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Renders_Path_And_Beam_Elements()
+    public void Renders_Track_And_Beam_Path_Elements()
     {
         var cut = _ctx.Render<Lumeo.AnimatedBeam>(p => p
             .Add(c => c.FromId, "from-el")
             .Add(c => c.ToId, "to-el"));
 
+        // Expects a track path + beam path = 2 paths
         var paths = cut.FindAll("path");
         Assert.Equal(2, paths.Count);
     }
 
     [Fact]
-    public void Custom_Color_Appears_In_LinearGradient_Stop()
+    public void GradientStartColor_Appears_In_LinearGradient()
     {
         var cut = _ctx.Render<Lumeo.AnimatedBeam>(p => p
             .Add(c => c.FromId, "a")
             .Add(c => c.ToId, "b")
-            .Add(c => c.Color, "oklch(0.7 0.2 200)"));
+            .Add(c => c.GradientStartColor, "oklch(0.7 0.2 200)"));
 
         Assert.Contains("oklch(0.7 0.2 200)", cut.Markup);
     }
