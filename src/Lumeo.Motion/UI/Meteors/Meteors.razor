@@ -1,10 +1,16 @@
 @namespace Lumeo
 
+@* Meteors — Magic UI port.
+   Each meteor is an absolutely-positioned span rotated at the configured angle,
+   starting above the top edge and translating diagonally off-screen.
+   A ::before-equivalent inner div provides the trailing gradient tail. *@
 <div class="@CssClass" style="@StyleString" aria-hidden="true" @attributes="AdditionalAttributes">
     @foreach (var m in _meteors)
     {
         <span class="lumeo-meteor"
-              style="top:@(m.Top)%;left:@(m.Left)%;width:@(m.Width)px;animation-delay:@(m.Delay)ms;animation-duration:@(m.Duration)ms;">
+              style="top:@(m.Top);left:@(m.Left);--lumeo-meteor-angle:@(m.Angle)deg;animation-delay:@(m.Delay);animation-duration:@(m.Duration);">
+            @* Tail — a thin gradient line behind the meteor head *@
+            <div class="lumeo-meteor-tail"></div>
         </span>
     }
 </div>
@@ -12,8 +18,10 @@
 @code {
     /// <summary>Number of meteor streaks to render (default 20).</summary>
     [Parameter] public int Number { get; set; } = 20;
-    /// <summary>CSS color of the meteor head/tail. Defaults to the theme primary.</summary>
-    [Parameter] public string Color { get; set; } = "var(--color-primary)";
+    /// <summary>Angle of travel in degrees (default 215 — matches Magic UI).</summary>
+    [Parameter] public int Angle { get; set; } = 215;
+    /// <summary>CSS color of the meteor head/tail. Defaults to white for dark backgrounds.</summary>
+    [Parameter] public string Color { get; set; } = "#ffffff";
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -22,7 +30,7 @@
     private int _lastSeed;
 
     private string CssClass => string.Join(" ", new[] { "lumeo-meteors", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
-    private string StyleString => $"--lumeo-meteor-color: {Color};";
+    private string StyleString => $"--lumeo-meteor-color:{Color};";
 
     protected override void OnParametersSet()
     {
@@ -30,18 +38,31 @@
         if (_meteors.Count == Number && seed == _lastSeed) return;
         _lastSeed = seed;
         var rng = new Random(seed);
-        _meteors = Enumerable.Range(0, Math.Max(0, Number)).Select(_ => new Meteor(
-            Top: rng.Next(-20, 60),
-            Left: rng.Next(0, 100),
-            Width: rng.Next(60, 160),
-            Delay: rng.Next(0, 3000),
-            Duration: rng.Next(1500, 3500)
-        )).ToList();
+        _meteors = Enumerable.Range(0, Math.Max(0, Number)).Select(_ =>
+        {
+            // Position above the container; random horizontal spread
+            // Magic UI: top="-5%", left=random across full width
+            var topPct = rng.Next(-10, 10);
+            var leftPct = rng.Next(-20, 120);
+            var minDelay = 0.2;
+            var maxDelay = 3.0;
+            var minDur = 2.0;
+            var maxDur = 8.0;
+            var delay = minDelay + rng.NextDouble() * (maxDelay - minDelay);
+            var dur = minDur + rng.NextDouble() * (maxDur - minDur);
+            return new Meteor(
+                Top: $"{topPct}%",
+                Left: $"{leftPct}%",
+                Angle: Angle,
+                Delay: $"{delay:F2}s",
+                Duration: $"{dur:F2}s"
+            );
+        }).ToList();
     }
 
     private int HashSeed()
     {
-        var src = $"{_elementId}:{Number}";
+        var src = $"{_elementId}:{Number}:{Angle}:{Color}";
         unchecked
         {
             var hash = 2166136261u;
@@ -50,5 +71,5 @@
         }
     }
 
-    private record Meteor(int Top, int Left, int Width, int Delay, int Duration);
+    private record Meteor(string Top, string Left, int Angle, string Delay, string Duration);
 }
