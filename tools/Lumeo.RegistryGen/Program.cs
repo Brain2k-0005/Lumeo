@@ -23,6 +23,7 @@ var uiRoots = new[]
     Path.Combine(repoRoot, "src", "Lumeo.Editor", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Scheduler", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Gantt", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.Motion", "UI"),
 };
 
 var outputDir = Path.Combine(repoRoot, "src", "Lumeo", "registry");
@@ -53,6 +54,14 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["Scheduler"] = "Lumeo.Scheduler",
     // Gantt satellite
     ["Gantt"] = "Lumeo.Gantt",
+    // Motion satellite
+    ["BlurFade"] = "Lumeo.Motion",
+    ["BorderBeam"] = "Lumeo.Motion",
+    ["Marquee"] = "Lumeo.Motion",
+    ["NumberTicker"] = "Lumeo.Motion",
+    ["ShimmerButton"] = "Lumeo.Motion",
+    ["Sparkles"] = "Lumeo.Motion",
+    ["TextReveal"] = "Lumeo.Motion",
 };
 
 // Category map derived from README.md structure.
