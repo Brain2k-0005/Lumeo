@@ -59,17 +59,17 @@
 | **Overlay** | Dialog, Sheet, Drawer, AlertDialog, Popover, Tooltip, HoverCard, ContextMenu, DropdownMenu, Command, PopConfirm, Tour |
 | **Navigation** | Tabs, Breadcrumb, Pagination, Sidebar, BottomNav, Menubar, NavigationMenu, MegaMenu, Accordion, Collapsible, Scrollspy, BackToTop, Affix, SpeedDial |
 | **AI** | PromptInput, StreamingText, AgentMessageList, AgentMessage, ToolCallCard, ReasoningDisplay |
-| **Motion** | Marquee, NumberTicker, TextReveal, BlurFade, BorderBeam, ShimmerButton, Sparkles |
+| **Motion** | *via Lumeo.Motion satellite* — BlurFade, BorderBeam, Marquee, NumberTicker, ShimmerButton, Sparkles, TextReveal, AnimatedBeam, Meteors, Globe, Dock, Spotlight, TypingAnimation, Confetti, MagneticButton, AnimatedGradientText, Ripple, OrbitingCircles, and 12 more |
 | **Dashboard** | Bento, BentoTile, KpiCard, SparkCard, Delta |
 | **Drag & Drop** | Kanban, SortableList, Transfer |
 | **Charts** | 30+ ECharts types — Bar (smart labels), Line, Area, Pie, Donut, Radar, Scatter, Heatmap, Treemap, Sankey, Funnel, Gauge, Candlestick, Boxplot, Calendar, Sunburst, Graph, Parallel, ThemeRiver, WordCloud, GeoMap |
 
 ## Installation
 
-Lumeo 2.0 follows the DevExpress / Telerik / Microsoft.Extensions model: a small core package plus opt-in satellites for heavy components. The split keeps the core lean (~568 KB instead of ~918 KB) — you only pay for what you use.
+Lumeo 2.0 follows the DevExpress / Telerik / Microsoft.Extensions model: a small core package plus opt-in satellites for heavy components. The split keeps the core lean (~530 KB) — you only pay for what you use.
 
 ```bash
-# Core — always required (~110 components)
+# Core — always required (~121 components)
 dotnet add package Lumeo
 
 # Add satellites only for the components you use:
@@ -78,19 +78,21 @@ dotnet add package Lumeo.DataGrid    # DataGrid, DataTable, Filter
 dotnet add package Lumeo.Editor      # RichTextEditor
 dotnet add package Lumeo.Scheduler   # Scheduler
 dotnet add package Lumeo.Gantt       # Gantt
+dotnet add package Lumeo.Motion      # 30 motion primitives
 ```
 
 Or reference them in your `.csproj`. All packages share one version (lockstep) — always upgrade them together:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="2.0.0-rc.15" />
+  <PackageReference Include="Lumeo"            Version="2.0.0-rc.17" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.15" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.15" />
-  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.15" />
-  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.15" />
-  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.15" />
+  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.17" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.17" />
+  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.17" />
+  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.17" />
+  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.17" />
+  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.17" />
 </ItemGroup>
 ```
 
