@@ -7,6 +7,7 @@ public sealed class ComponentInteropService : IComponentInteropService
 {
     private readonly IJSRuntime _jsRuntime;
     private IJSObjectReference? _module;
+    private IJSObjectReference? _motionModule;
     private DotNetObjectReference<ComponentInteropService>? _selfRef;
 
     // Adapters
@@ -29,6 +30,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         _module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
             "import", "./_content/Lumeo/js/components.js");
         return _module;
+    }
+
+    // --- Motion module (Lumeo.Motion satellite) ---
+    // Loaded lazily on first use; apps that don't install Lumeo.Motion never pay
+    // the import cost. If Lumeo.Motion is not referenced, the JS 404 will surface
+    // as a clear JS exception pointing at _content/Lumeo.Motion/js/motion.js.
+
+    private async Task<IJSObjectReference> GetMotionModuleAsync()
+    {
+        _motionModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo.Motion/js/motion.js");
+        return _motionModule;
     }
 
     private DotNetObjectReference<ComponentInteropService> GetSelfRef()
@@ -460,10 +473,13 @@ public sealed class ComponentInteropService : IComponentInteropService
     }
 
     // --- Motion primitives ---
+    // These methods delegate to the Lumeo.Motion satellite JS module, loaded
+    // lazily via GetMotionModuleAsync(). The C# API surface is unchanged so
+    // existing consumers of IComponentInteropService keep working as-is.
 
     public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals)
     {
-        var module = await GetModuleAsync();
+        var module = await GetMotionModuleAsync();
         await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals);
     }
 
@@ -471,7 +487,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         try
         {
-            var module = await GetModuleAsync();
+            var module = await GetMotionModuleAsync();
             await module.InvokeVoidAsync("motion.disposeTicker", elementId);
         }
         catch (JSDisconnectedException) { }
@@ -479,13 +495,13 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public async ValueTask MotionRevealText(string elementId, int staggerMs, double threshold)
     {
-        var module = await GetModuleAsync();
+        var module = await GetMotionModuleAsync();
         await module.InvokeVoidAsync("motion.revealText", elementId, new { stagger = staggerMs, threshold });
     }
 
     public async ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false)
     {
-        var module = await GetModuleAsync();
+        var module = await GetMotionModuleAsync();
         await module.InvokeVoidAsync("motion.blurFade", elementId, new { delayMs, once, forceHidden });
     }
 
@@ -493,7 +509,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         try
         {
-            var module = await GetModuleAsync();
+            var module = await GetMotionModuleAsync();
             await module.InvokeVoidAsync("motion.disposeObserver", elementId);
         }
         catch (JSDisconnectedException) { }
@@ -781,6 +797,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_motionModule is not null)
+        {
+            try
+            {
+                await _motionModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
