@@ -1,0 +1,68 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<div id="@_elementId" class="@CssClass" style="position:relative;" @attributes="AdditionalAttributes">
+    @ChildContent
+    <canvas id="@(_elementId + "-canvas")" class="lumeo-confetti-canvas" aria-hidden="true" />
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Number of confetti particles to emit per burst.</summary>
+    [Parameter] public int ParticleCount { get; set; } = 80;
+    /// <summary>Spread angle in degrees.</summary>
+    [Parameter] public int Spread { get; set; } = 70;
+    /// <summary>Colors to use for confetti. Defaults to a festive palette using CSS variables (resolved at runtime).</summary>
+    [Parameter] public string[]? Colors { get; set; }
+    /// <summary>Origin X position (0–1, relative to element width). Default: 0.5 (center).</summary>
+    [Parameter] public double OriginX { get; set; } = 0.5;
+    /// <summary>Origin Y position (0–1, relative to element height). Default: 0.5 (center).</summary>
+    [Parameter] public double OriginY { get; set; } = 0.5;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-confetti-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-confetti", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionConfettiInit(_elementId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    /// <summary>Programmatically trigger a confetti burst from the configured origin.</summary>
+    public async Task Fire()
+    {
+        if (!_registered) return;
+        try
+        {
+            var colors = Colors ?? new[] { "#ff595e", "#ffca3a", "#6a4c93", "#1982c4", "#8ac926", "#ff6b6b" };
+            await Interop.MotionConfettiFire(_elementId, new
+            {
+                particleCount = ParticleCount,
+                spread = Spread,
+                colors,
+                origin = new { x = OriginX, y = OriginY }
+            });
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            await Interop.MotionDisposeConfetti(_elementId);
+        }
+    }
+}

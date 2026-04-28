@@ -1,0 +1,49 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<div id="@_elementId" class="@CssClass" role="toolbar" aria-label="@AriaLabel" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger).</summary>
+    [Parameter] public double MaxScale { get; set; } = 1.8;
+    /// <summary>Radius (px) around each item within which neighbors start scaling.</summary>
+    [Parameter] public int MagnifyRadius { get; set; } = 100;
+    /// <summary>Accessible label for the dock toolbar container.</summary>
+    [Parameter] public string AriaLabel { get; set; } = "Application Dock";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-dock-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-dock", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionDock(_elementId, new
+                {
+                    maxScale = MaxScale,
+                    magnifyRadius = MagnifyRadius
+                });
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            await Interop.MotionDisposeDock(_elementId);
+        }
+    }
+}
