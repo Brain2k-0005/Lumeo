@@ -477,10 +477,10 @@ public sealed class ComponentInteropService : IComponentInteropService
     // lazily via GetMotionModuleAsync(). The C# API surface is unchanged so
     // existing consumers of IComponentInteropService keep working as-is.
 
-    public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals)
+    public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",")
     {
         var module = await GetMotionModuleAsync();
-        await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals);
+        await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals, separator);
     }
 
     public async ValueTask MotionDisposeTicker(string elementId)
