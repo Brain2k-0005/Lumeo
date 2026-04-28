@@ -1,0 +1,39 @@
+@namespace Lumeo
+
+<div class="@CssClass" style="@ContainerStyle" @attributes="AdditionalAttributes">
+    @if (ChildContent != null)
+    {
+        <div class="lumeo-orbiting-center">
+            @ChildContent
+        </div>
+    }
+    @foreach (var orbit in _orbits)
+    {
+        <div class="lumeo-orbit-ring" style="@OrbitRingStyle(orbit.Radius, orbit.DurationMs, orbit.Reverse, orbit.Offset)">
+            @orbit.Content
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Center content (icon, logo, etc.).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Size of the container in pixels.</summary>
+    [Parameter] public int Size { get; set; } = 200;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly List<OrbitDef> _orbits = new();
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-orbiting-circles", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string ContainerStyle => $"width:{Size}px; height:{Size}px;";
+
+    private static string OrbitRingStyle(int radius, int durationMs, bool reverse, int offsetDeg) =>
+        $"--lumeo-orbit-radius:{radius}px; --lumeo-orbit-duration:{durationMs}ms; " +
+        $"--lumeo-orbit-reverse:{(reverse ? "reverse" : "normal")}; --lumeo-orbit-offset:{offsetDeg}deg;";
+
+    /// <summary>Add an orbit ring. Call from within an <see cref="OrbitingCircles"/> via child code or a wrapping component.</summary>
+    public void AddOrbit(OrbitDef orbit) => _orbits.Add(orbit);
+
+    public record OrbitDef(RenderFragment Content, int Radius = 80, int DurationMs = 20000, bool Reverse = false, int Offset = 0);
+}

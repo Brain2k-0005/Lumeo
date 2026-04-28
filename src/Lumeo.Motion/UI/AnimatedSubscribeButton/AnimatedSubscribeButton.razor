@@ -1,0 +1,56 @@
+@namespace Lumeo
+
+<button type="button" class="@CssClass" disabled="@(_state == SubscribeState.Loading)" @onclick="HandleClick" @attributes="AdditionalAttributes">
+    <span class="lumeo-subscribe-inner" data-state="@_state.ToString().ToLowerInvariant()">
+        @if (_state == SubscribeState.Idle)
+        {
+            <span class="lumeo-subscribe-slot lumeo-subscribe-slot--idle">@IdleLabel</span>
+        }
+        else if (_state == SubscribeState.Loading)
+        {
+            <span class="lumeo-subscribe-slot lumeo-subscribe-slot--loading" aria-busy="true">
+                <span class="lumeo-subscribe-spinner" aria-hidden="true"></span>
+                @LoadingLabel
+            </span>
+        }
+        else
+        {
+            <span class="lumeo-subscribe-slot lumeo-subscribe-slot--success">
+                <Blazicon Svg="Lucide.Check" class="h-4 w-4" aria-hidden="true" />
+                @SuccessLabel
+            </span>
+        }
+    </span>
+</button>
+
+@code {
+    public enum SubscribeState { Idle, Loading, Success }
+
+    [Parameter] public SubscribeState State { get; set; } = SubscribeState.Idle;
+    [Parameter] public EventCallback<SubscribeState> StateChanged { get; set; }
+    [Parameter] public string IdleLabel { get; set; } = "Subscribe";
+    [Parameter] public string LoadingLabel { get; set; } = "Subscribing…";
+    [Parameter] public string SuccessLabel { get; set; } = "Subscribed!";
+    /// <summary>Called when the idle button is clicked. Transition to loading is automatic.</summary>
+    [Parameter] public EventCallback OnSubscribe { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private SubscribeState _state = SubscribeState.Idle;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-subscribe-button", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override void OnParametersSet()
+    {
+        _state = State;
+    }
+
+    private async Task HandleClick()
+    {
+        if (_state != SubscribeState.Idle) return;
+        _state = SubscribeState.Loading;
+        await StateChanged.InvokeAsync(_state);
+        if (OnSubscribe.HasDelegate)
+            await OnSubscribe.InvokeAsync();
+    }
+}

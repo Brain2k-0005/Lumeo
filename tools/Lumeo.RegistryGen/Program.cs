@@ -73,6 +73,20 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["Ripple"] = "Lumeo.Motion",
     ["Spotlight"] = "Lumeo.Motion",
     ["TypingAnimation"] = "Lumeo.Motion",
+    // Motion satellite — Phase 3 (13 Tier-2 components)
+    ["OrbitingCircles"] = "Lumeo.Motion",
+    ["AnimatedCircularProgressBar"] = "Lumeo.Motion",
+    ["WordRotate"] = "Lumeo.Motion",
+    ["RetroGrid"] = "Lumeo.Motion",
+    ["AuroraBackground"] = "Lumeo.Motion",
+    ["BackgroundBeams"] = "Lumeo.Motion",
+    ["MorphingText"] = "Lumeo.Motion",
+    ["AnimatedGridPattern"] = "Lumeo.Motion",
+    ["ShineBorder"] = "Lumeo.Motion",
+    ["MagicCard"] = "Lumeo.Motion",
+    ["AnimatedSubscribeButton"] = "Lumeo.Motion",
+    ["NumberCountUp"] = "Lumeo.Motion",
+    ["HoverBorderGradient"] = "Lumeo.Motion",
 };
 
 // Category map derived from README.md structure.
@@ -131,6 +145,12 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Confetti"] = "Motion", ["Dock"] = "Motion", ["Globe"] = "Motion",
     ["MagneticButton"] = "Motion", ["Meteors"] = "Motion", ["Ripple"] = "Motion",
     ["Spotlight"] = "Motion", ["TypingAnimation"] = "Motion",
+    // Phase 3 Tier-2
+    ["OrbitingCircles"] = "Motion", ["AnimatedCircularProgressBar"] = "Motion",
+    ["WordRotate"] = "Motion", ["RetroGrid"] = "Motion", ["AuroraBackground"] = "Motion",
+    ["BackgroundBeams"] = "Motion", ["MorphingText"] = "Motion", ["AnimatedGridPattern"] = "Motion",
+    ["ShineBorder"] = "Motion", ["MagicCard"] = "Motion", ["AnimatedSubscribeButton"] = "Motion",
+    ["NumberCountUp"] = "Motion", ["HoverBorderGradient"] = "Motion",
     // Dashboard
     ["Bento"] = "Dashboard", ["KpiCard"] = "Dashboard", ["SparkCard"] = "Dashboard",
     ["Delta"] = "Dashboard", ["PickList"] = "Dashboard",
@@ -284,6 +304,20 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["TreeSelect"] = "Select input with a hierarchical tree dropdown.",
     ["TreeView"] = "Hierarchical tree with expand/collapse and selection.",
     ["Watermark"] = "Repeating diagonal watermark overlay.",
+    // Phase 3 Tier-2 Motion
+    ["OrbitingCircles"] = "Children orbit a center point on circular paths with configurable radius and duration.",
+    ["AnimatedCircularProgressBar"] = "SVG ring that animates stroke-dashoffset to a target percentage with a centered label.",
+    ["WordRotate"] = "Cycles through a list of words with a slide-fade transition on a configurable interval.",
+    ["RetroGrid"] = "Perspective-projected grid floor with a subtle scroll animation — the synthwave staple.",
+    ["AuroraBackground"] = "Northern-lights multi-layered radial gradient that slowly shifts hue and position via CSS keyframes.",
+    ["BackgroundBeams"] = "Network of animated SVG line segments that fade in and out with staggered delays.",
+    ["MorphingText"] = "Text morphs between two strings via an SVG blur+contrast filter trick.",
+    ["AnimatedGridPattern"] = "SVG grid where individual cells fade in and out at random with stagger.",
+    ["ShineBorder"] = "Border with a subtle linear shine that travels around the perimeter.",
+    ["MagicCard"] = "Card with a cursor-following radial gradient spotlight and subtle 3D tilt.",
+    ["AnimatedSubscribeButton"] = "Multi-state button: idle → loading → success with slide-fade transitions.",
+    ["NumberCountUp"] = "Animated count-up to a target number with thousands separators, prefix, and suffix.",
+    ["HoverBorderGradient"] = "Border whose conic gradient rotates following cursor position around the element perimeter.",
 };
 
 // Heuristic for additional CSS classes we care about in components.

@@ -110,4 +110,53 @@ public class CatalogCardTests : IDisposable
         // "Coming soon" badge is visible
         Assert.Contains("Docs coming soon", cut.Markup);
     }
+
+    [Fact]
+    public void Renders_nuget_package_badge_for_satellite_components()
+    {
+        var component = new RegistryComponent
+        {
+            Name = "MagicCard",
+            Category = "Motion",
+            Description = "Card with cursor spotlight and 3D tilt.",
+            Thumbnail = "/preview-cards/magic-card.png",
+            NugetPackage = "Lumeo.Motion",
+            HasDocsPage = true,
+            Slug = "magic-card",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
+
+        // The NuGet badge should be visible for satellite packages
+        Assert.Contains("Lumeo.Motion", cut.Markup);
+        // The card should still be navigable (HasDocsPage = true)
+        Assert.Contains("href=\"components/magic-card\"", cut.Markup);
+        // "Docs coming soon" must NOT appear — that badge is only for undocumented cards
+        Assert.DoesNotContain("Docs coming soon", cut.Markup);
+    }
+
+    [Fact]
+    public void Does_not_render_badge_for_core_lumeo_package()
+    {
+        var component = new RegistryComponent
+        {
+            Name = "Button",
+            Category = "Forms",
+            Description = "Core button component.",
+            Thumbnail = "/preview-cards/button.png",
+            NugetPackage = "Lumeo",
+            HasDocsPage = true,
+            Slug = "button",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
+
+        // "Lumeo" badge text must NOT appear in any badge span
+        // (The package name "Lumeo" appears in many places, so we check for the badge span specifically)
+        Assert.DoesNotContain("Docs coming soon", cut.Markup);
+        // The card should be a link since it has a docs page
+        Assert.Contains("href=\"components/button\"", cut.Markup);
+        // No satellite badge — "Lumeo" package = no badge
+        // We check the markup doesn't contain a badge span with exactly "Lumeo" content
+        var spans = cut.FindAll("span.absolute");
+        Assert.Empty(spans); // no badge spans at all for core components with docs
+    }
 }

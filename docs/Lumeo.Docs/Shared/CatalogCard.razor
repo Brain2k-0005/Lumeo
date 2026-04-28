@@ -4,7 +4,7 @@
 @if (Component.HasDocsPage)
 {
     <a href="components/@Component.Slug"
-       class="group flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden hover:border-primary/40 hover:shadow-sm transition-all">
+       class="group relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden hover:border-primary/40 hover:shadow-sm transition-all">
         @if (!string.IsNullOrEmpty(Component.Thumbnail))
         {
             <div class="aspect-[16/9] w-full bg-muted/30 overflow-hidden">
@@ -19,6 +19,12 @@
                 <DynamicIcon Name="Box" Class="h-12 w-12" />
             </div>
         }
+        @if (ShowNugetBadge)
+        {
+            <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                @Component.NugetPackage
+            </span>
+        }
         <div class="p-4 space-y-1">
             <h3 class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
                 @Component.Name
@@ -32,7 +38,8 @@
 else
 {
     @* Undocumented variant — rendered as a non-clickable div with a "Coming soon" badge.
-       Component is real (registry entry exists) but no docs page yet. *@
+       Component is real (registry entry exists) but no docs page yet.
+       "Coming soon" takes precedence over the NuGet badge to avoid overlap. *@
     <div class="relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden opacity-70"
          title="Documentation page coming soon">
         @if (!string.IsNullOrEmpty(Component.Thumbnail))
@@ -65,4 +72,14 @@ else
 
 @code {
     [Parameter, EditorRequired] public RegistryComponent Component { get; set; } = null!;
+
+    /// <summary>
+    /// True when the component ships from a satellite package and has a docs page.
+    /// Core "Lumeo" components are badge-free (most cards are core — no clutter).
+    /// Undocumented components show "Docs coming soon" instead (never both).
+    /// </summary>
+    private bool ShowNugetBadge =>
+        Component.HasDocsPage &&
+        !string.IsNullOrEmpty(Component.NugetPackage) &&
+        Component.NugetPackage != "Lumeo";
 }

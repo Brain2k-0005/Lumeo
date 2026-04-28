@@ -1,0 +1,60 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<span class="@CssClass" @attributes="AdditionalAttributes">
+    <span class="lumeo-word-rotate-word lumeo-word-rotate-word--visible" aria-live="polite">@_currentWord</span>
+</span>
+
+@code {
+    /// <summary>List of words to cycle through.</summary>
+    [Parameter] public IReadOnlyList<string> Words { get; set; } = Array.Empty<string>();
+    /// <summary>How long each word is shown (ms).</summary>
+    [Parameter] public int IntervalMs { get; set; } = 2000;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _currentWord = string.Empty;
+    private int _index;
+    private CancellationTokenSource? _cts;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-word-rotate", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override void OnParametersSet()
+    {
+        if (Words.Count > 0 && string.IsNullOrEmpty(_currentWord))
+            _currentWord = Words[0];
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Words.Count > 1)
+        {
+            _cts = new CancellationTokenSource();
+            await RotateAsync(_cts.Token);
+        }
+    }
+
+    private async Task RotateAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(IntervalMs, ct);
+                _index = (_index + 1) % Words.Count;
+                _currentWord = Words[_index];
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+    }
+}

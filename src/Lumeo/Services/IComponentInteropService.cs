@@ -136,6 +136,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask MotionMagneticButton(string elementId, object options);
     ValueTask MotionDisposeMagneticButton(string elementId);
 
+    // Motion: MagicCard
+    ValueTask MotionMagicCard(string elementId, object options);
+    ValueTask MotionDisposeMagicCard(string elementId);
+
+    // Motion: HoverBorderGradient
+    ValueTask MotionHoverBorderGradient(string elementId);
+    ValueTask MotionDisposeHoverBorderGradient(string elementId);
+
     // AI primitives
     ValueTask AiAutosize(string elementId, int maxPx);
     ValueTask AiObserveAutoScroll(string elementId);

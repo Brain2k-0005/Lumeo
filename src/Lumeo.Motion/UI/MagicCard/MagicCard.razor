@@ -1,0 +1,51 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<div id="@_elementId" class="@CssClass"
+     style="--lumeo-magic-radius:@(SpotlightRadius)px; --lumeo-magic-color:@SpotlightColor;"
+     @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Radius of the cursor-following spotlight in pixels.</summary>
+    [Parameter] public int SpotlightRadius { get; set; } = 300;
+    /// <summary>Color of the spotlight gradient.</summary>
+    [Parameter] public string SpotlightColor { get; set; } = "var(--color-primary)";
+    /// <summary>Max tilt angle in degrees.</summary>
+    [Parameter] public double MaxTilt { get; set; } = 8;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-magic-card-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-magic-card", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionMagicCard(_elementId, new { maxTilt = MaxTilt });
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            try
+            {
+                await Interop.MotionDisposeMagicCard(_elementId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}
