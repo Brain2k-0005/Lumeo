@@ -111,6 +111,31 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false);
     ValueTask MotionDisposeObserver(string elementId);
 
+    // Motion: AnimatedBeam
+    ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options);
+    ValueTask MotionDisposeAnimatedBeam(string elementId);
+
+    // Motion: Globe
+    ValueTask MotionGlobe(string elementId, object options);
+    ValueTask MotionDisposeGlobe(string elementId);
+
+    // Motion: Dock
+    ValueTask MotionDock(string elementId, object options);
+    ValueTask MotionDisposeDock(string elementId);
+
+    // Motion: Spotlight
+    ValueTask MotionSpotlight(string elementId);
+    ValueTask MotionDisposeSpotlight(string elementId);
+
+    // Motion: Confetti
+    ValueTask MotionConfettiInit(string elementId);
+    ValueTask MotionConfettiFire(string elementId, object options);
+    ValueTask MotionDisposeConfetti(string elementId);
+
+    // Motion: MagneticButton
+    ValueTask MotionMagneticButton(string elementId, object options);
+    ValueTask MotionDisposeMagneticButton(string elementId);
+
     // AI primitives
     ValueTask AiAutosize(string elementId, int maxPx);
     ValueTask AiObserveAutoScroll(string elementId);

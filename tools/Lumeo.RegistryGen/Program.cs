@@ -54,7 +54,7 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["Scheduler"] = "Lumeo.Scheduler",
     // Gantt satellite
     ["Gantt"] = "Lumeo.Gantt",
-    // Motion satellite
+    // Motion satellite — Phase 1 (7 components)
     ["BlurFade"] = "Lumeo.Motion",
     ["BorderBeam"] = "Lumeo.Motion",
     ["Marquee"] = "Lumeo.Motion",
@@ -62,6 +62,17 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["ShimmerButton"] = "Lumeo.Motion",
     ["Sparkles"] = "Lumeo.Motion",
     ["TextReveal"] = "Lumeo.Motion",
+    // Motion satellite — Phase 2 (10 Tier-1 components)
+    ["AnimatedBeam"] = "Lumeo.Motion",
+    ["AnimatedGradientText"] = "Lumeo.Motion",
+    ["Confetti"] = "Lumeo.Motion",
+    ["Dock"] = "Lumeo.Motion",
+    ["Globe"] = "Lumeo.Motion",
+    ["MagneticButton"] = "Lumeo.Motion",
+    ["Meteors"] = "Lumeo.Motion",
+    ["Ripple"] = "Lumeo.Motion",
+    ["Spotlight"] = "Lumeo.Motion",
+    ["TypingAnimation"] = "Lumeo.Motion",
 };
 
 // Category map derived from README.md structure.
@@ -116,6 +127,10 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Marquee"] = "Motion", ["NumberTicker"] = "Motion", ["TextReveal"] = "Motion",
     ["BlurFade"] = "Motion", ["BorderBeam"] = "Motion", ["ShimmerButton"] = "Motion",
     ["Sparkles"] = "Motion",
+    ["AnimatedBeam"] = "Motion", ["AnimatedGradientText"] = "Motion",
+    ["Confetti"] = "Motion", ["Dock"] = "Motion", ["Globe"] = "Motion",
+    ["MagneticButton"] = "Motion", ["Meteors"] = "Motion", ["Ripple"] = "Motion",
+    ["Spotlight"] = "Motion", ["TypingAnimation"] = "Motion",
     // Dashboard
     ["Bento"] = "Dashboard", ["KpiCard"] = "Dashboard", ["SparkCard"] = "Dashboard",
     ["Delta"] = "Dashboard", ["PickList"] = "Dashboard",
@@ -143,6 +158,8 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["BackToTop"] = "Floating button that scrolls the page back to the top.",
     ["Badge"] = "Small label for counts, statuses, or category tags.",
     ["Bento"] = "Masonry grid for dashboard tiles and marketing feature layouts.",
+    ["AnimatedBeam"] = "SVG beam that traces an animated gradient path between two DOM elements.",
+    ["AnimatedGradientText"] = "Text with a multi-stop gradient that shifts hue over time.",
     ["BlurFade"] = "Motion primitive: blur + fade-in on mount or when in view.",
     ["BorderBeam"] = "Animated gradient border beam effect for hero elements.",
     ["BottomNav"] = "Mobile-first bottom navigation bar with icon items.",
@@ -192,8 +209,13 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Label"] = "Form label that links to a control via for/id.",
     ["Link"] = "Styled anchor with underline + color variants.",
     ["List"] = "Ordered/unordered list with Lumeo typographic styling.",
+    ["Confetti"] = "Burst of colored particles on demand via imperative Fire() method.",
+    ["Dock"] = "macOS-style icon dock with cursor-proximity magnification.",
+    ["Globe"] = "Stylized rotating 3D globe rendered on canvas with dotted lat/long lines.",
+    ["MagneticButton"] = "Container that translates toward the cursor within a configurable radius.",
     ["Marquee"] = "Infinitely scrolling horizontal band of children.",
     ["MegaMenu"] = "Full-width dropdown for site-wide navigation with columns.",
+    ["Meteors"] = "Falling angled meteor streaks for dramatic decorative backgrounds.",
     ["Mention"] = "Textarea with @-trigger dropdown for mentioning users.",
     ["Menubar"] = "Horizontal menubar with File/Edit-style dropdowns.",
     ["NavigationMenu"] = "Top-level site nav with animated dropdown panels.",
@@ -230,7 +252,9 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Spacer"] = "Flex-grow spacer that pushes siblings apart.",
     ["SparkCard"] = "Small dashboard card with an inline sparkline chart.",
     ["Sparkline"] = "Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.",
+    ["Ripple"] = "Concentric expanding circles emanating from a container center.",
     ["Sparkles"] = "Decorative sparkle particle animation.",
+    ["Spotlight"] = "Container with a radial gradient spotlight that follows the cursor.",
     ["SpeedDial"] = "Floating action button that fans out sub-actions.",
     ["Spinner"] = "Indeterminate loading spinner with size variants.",
     ["Splitter"] = "Resizable split pane for horizontal/vertical layouts.",
@@ -244,6 +268,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["TagInput"] = "Input that turns entries into removable tag chips.",
     ["Text"] = "Paragraph text with size, color, weight props.",
     ["TextReveal"] = "Word-by-word reveal animation on scroll.",
+    ["TypingAnimation"] = "Renders text one character at a time with optional blinking cursor.",
     ["Textarea"] = "Multiline text input with auto-resize option.",
     ["ThemeSwitcher"] = "Color-scheme picker that writes to ThemeService.",
     ["ThemeToggle"] = "Dark/light mode toggle button.",

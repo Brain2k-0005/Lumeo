@@ -1,0 +1,48 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<div id="@_elementId" class="@CssClass" style="@StyleString" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>CSS color of the spotlight radial gradient center.</summary>
+    [Parameter] public string Color { get; set; } = "var(--color-primary)";
+    /// <summary>Opacity of the spotlight (0–1).</summary>
+    [Parameter] public double Opacity { get; set; } = 0.15;
+    /// <summary>Radius of the spotlight circle in px.</summary>
+    [Parameter] public int Radius { get; set; } = 300;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-spotlight-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-spotlight", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string StyleString =>
+        $"--lumeo-spotlight-color: {Color}; --lumeo-spotlight-opacity: {Opacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}; --lumeo-spotlight-radius: {Radius}px;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionSpotlight(_elementId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            await Interop.MotionDisposeSpotlight(_elementId);
+        }
+    }
+}

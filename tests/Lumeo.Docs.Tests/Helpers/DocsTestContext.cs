@@ -127,6 +127,31 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeObserver(string elementId) => ValueTask.CompletedTask;
 
+    // Motion: AnimatedBeam
+    public ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeAnimatedBeam(string elementId) => ValueTask.CompletedTask;
+
+    // Motion: Globe
+    public ValueTask MotionGlobe(string elementId, object options) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeGlobe(string elementId) => ValueTask.CompletedTask;
+
+    // Motion: Dock
+    public ValueTask MotionDock(string elementId, object options) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeDock(string elementId) => ValueTask.CompletedTask;
+
+    // Motion: Spotlight
+    public ValueTask MotionSpotlight(string elementId) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeSpotlight(string elementId) => ValueTask.CompletedTask;
+
+    // Motion: Confetti
+    public ValueTask MotionConfettiInit(string elementId) => ValueTask.CompletedTask;
+    public ValueTask MotionConfettiFire(string elementId, object options) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeConfetti(string elementId) => ValueTask.CompletedTask;
+
+    // Motion: MagneticButton
+    public ValueTask MotionMagneticButton(string elementId, object options) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeMagneticButton(string elementId) => ValueTask.CompletedTask;
+
     // AI primitives
     public ValueTask AiAutosize(string elementId, int maxPx) => ValueTask.CompletedTask;
     public ValueTask AiObserveAutoScroll(string elementId) => ValueTask.CompletedTask;
