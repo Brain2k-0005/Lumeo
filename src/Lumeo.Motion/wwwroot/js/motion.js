@@ -518,5 +518,78 @@ export const motion = {
     disposeMagneticButton(elementId) {
         const ref = motionObservers.get(elementId + '-magnetic');
         if (ref) { ref.disconnect(); motionObservers.delete(elementId + '-magnetic'); }
+    },
+
+    /* ---------- MagicCard ----------
+     * Follows cursor with a spotlight radial gradient + subtle 3D tilt. */
+    magicCard(elementId, options) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const maxTilt = (options && options.maxTilt) || 8;
+
+        const onMouseMove = (e) => {
+            const rect = el.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const cx = rect.width / 2;
+            const cy = rect.height / 2;
+            const rotateX = ((y - cy) / cy) * -maxTilt;
+            const rotateY = ((x - cx) / cx) * maxTilt;
+            el.style.setProperty('--lumeo-magic-x', `${x}px`);
+            el.style.setProperty('--lumeo-magic-y', `${y}px`);
+            el.style.transform = `perspective(600px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg)`;
+        };
+
+        const onMouseLeave = () => {
+            el.style.setProperty('--lumeo-magic-x', '-9999px');
+            el.style.setProperty('--lumeo-magic-y', '-9999px');
+            el.style.transform = '';
+        };
+
+        el.addEventListener('mousemove', onMouseMove);
+        el.addEventListener('mouseleave', onMouseLeave);
+
+        motionObservers.set(elementId + '-magic', { disconnect: () => {
+            el.removeEventListener('mousemove', onMouseMove);
+            el.removeEventListener('mouseleave', onMouseLeave);
+        }});
+    },
+
+    disposeMagicCard(elementId) {
+        const ref = motionObservers.get(elementId + '-magic');
+        if (ref) { ref.disconnect(); motionObservers.delete(elementId + '-magic'); }
+    },
+
+    /* ---------- HoverBorderGradient ----------
+     * Rotates a conic gradient border following cursor angle around the element. */
+    hoverBorderGradient(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const onMouseMove = (e) => {
+            const rect = el.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI) + 90;
+            el.style.setProperty('--lumeo-hbg-angle', `${angle.toFixed(1)}deg`);
+        };
+
+        const onMouseLeave = () => {
+            el.style.setProperty('--lumeo-hbg-angle', '0deg');
+        };
+
+        el.addEventListener('mousemove', onMouseMove);
+        el.addEventListener('mouseleave', onMouseLeave);
+
+        motionObservers.set(elementId + '-hbg', { disconnect: () => {
+            el.removeEventListener('mousemove', onMouseMove);
+            el.removeEventListener('mouseleave', onMouseLeave);
+        }});
+    },
+
+    disposeHoverBorderGradient(elementId) {
+        const ref = motionObservers.get(elementId + '-hbg');
+        if (ref) { ref.disconnect(); motionObservers.delete(elementId + '-hbg'); }
     }
 };

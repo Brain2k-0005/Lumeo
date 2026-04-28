@@ -1,0 +1,49 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <svg class="lumeo-beams-svg" aria-hidden="true" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
+        @for (int i = 0; i < Count; i++)
+        {
+            var beam = GetBeam(i);
+            <line class="lumeo-beam"
+                  x1="@beam.X1" y1="@beam.Y1"
+                  x2="@beam.X2" y2="@beam.Y2"
+                  style="--lumeo-beam-delay:@(beam.Delay)ms; --lumeo-beam-duration:@(beam.Duration)ms; stroke-opacity:@(beam.Opacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));" />
+        }
+    </svg>
+    @if (ChildContent != null)
+    {
+        <div class="lumeo-beams-content">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Number of beam lines.</summary>
+    [Parameter] public int Count { get; set; } = 12;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-background-beams", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private record BeamDef(double X1, double Y1, double X2, double Y2, int Delay, int Duration, double Opacity);
+
+    private BeamDef GetBeam(int i)
+    {
+        // Deterministic but visually varied — seeded by index
+        var rng = new Random(i * 31337 + 7);
+        double x1 = rng.Next(0, 800);
+        double y1 = rng.Next(0, 200);
+        double angle = rng.NextDouble() * 60 - 30; // -30 to +30 deg
+        double length = rng.Next(200, 500);
+        double rad = angle * Math.PI / 180;
+        double x2 = x1 + Math.Sin(rad) * length;
+        double y2 = y1 + Math.Cos(rad) * length;
+        int delay = rng.Next(0, 3000);
+        int duration = rng.Next(2500, 6000);
+        double opacity = 0.2 + rng.NextDouble() * 0.5;
+        return new BeamDef(x1, y1, x2, y2, delay, duration, opacity);
+    }
+}

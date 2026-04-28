@@ -1,0 +1,79 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@CssClass" @attributes="AdditionalAttributes" aria-hidden="true">
+    <svg class="lumeo-grid-pattern-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <pattern id="@_patternId" x="0" y="0" width="@CellSize" height="@CellSize" patternUnits="userSpaceOnUse">
+                <path d="M @CellSize 0 L 0 0 0 @CellSize" fill="none" stroke="currentColor" stroke-opacity="0.15" stroke-width="0.5" />
+            </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#@_patternId)" />
+        @foreach (var cell in _activeCells)
+        {
+            <rect x="@(cell.Col * CellSize)" y="@(cell.Row * CellSize)"
+                  width="@CellSize" height="@CellSize"
+                  class="lumeo-grid-cell"
+                  style="opacity:@(cell.Opacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)); --lumeo-grid-cell-delay:@(cell.Delay)ms;" />
+        }
+    </svg>
+</div>
+
+@code {
+    [Parameter] public int CellSize { get; set; } = 40;
+    /// <summary>Max number of simultaneously lit cells.</summary>
+    [Parameter] public int MaxLit { get; set; } = 10;
+    /// <summary>Grid columns (approximate).</summary>
+    [Parameter] public int Cols { get; set; } = 20;
+    /// <summary>Grid rows (approximate).</summary>
+    [Parameter] public int Rows { get; set; } = 12;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _patternId = $"lumeo-grid-{Guid.NewGuid():N}";
+    private List<CellDef> _activeCells = new();
+    private CancellationTokenSource? _cts;
+    private Random _rng = new();
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-animated-grid", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private record CellDef(int Row, int Col, double Opacity, int Delay);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _cts = new CancellationTokenSource();
+            _ = AnimateAsync(_cts.Token);
+        }
+    }
+
+    private async Task AnimateAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                // Pick random cells to light up
+                _activeCells = Enumerable.Range(0, MaxLit).Select(_ => new CellDef(
+                    Row: _rng.Next(0, Rows),
+                    Col: _rng.Next(0, Cols),
+                    Opacity: 0.2 + _rng.NextDouble() * 0.6,
+                    Delay: _rng.Next(0, 800)
+                )).ToList();
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(1200, ct);
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+    }
+}
