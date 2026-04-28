@@ -645,6 +645,46 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask MotionMagicCard(string elementId, object options)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.magicCard", elementId, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeMagicCard(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeMagicCard", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionHoverBorderGradient(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.hoverBorderGradient", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeHoverBorderGradient(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeHoverBorderGradient", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Tabs sliding indicator measurement ---
 
     public record TabMeasurement(double X, double Width);

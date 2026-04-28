@@ -1,0 +1,63 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <svg viewBox="0 0 @(_viewBox) @(_viewBox)" class="lumeo-circular-progress-svg" style="width:@(Size)px; height:@(Size)px;">
+        @* Track *@
+        <circle class="lumeo-circular-progress-track"
+                cx="@_center" cy="@_center" r="@_radius"
+                fill="none"
+                stroke-width="@StrokeWidth" />
+        @* Progress arc *@
+        <circle class="lumeo-circular-progress-arc"
+                cx="@_center" cy="@_center" r="@_radius"
+                fill="none"
+                stroke-width="@StrokeWidth"
+                stroke-linecap="round"
+                stroke-dasharray="@_circumference"
+                style="stroke-dashoffset:@DashOffset; transition:stroke-dashoffset @(DurationMs)ms cubic-bezier(0.4,0,0.2,1);" />
+    </svg>
+    <div class="lumeo-circular-progress-label" style="width:@(Size)px; height:@(Size)px;">
+        @if (LabelContent != null)
+        {
+            @LabelContent
+        }
+        else
+        {
+            <span class="lumeo-circular-progress-value">@Label</span>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Progress value 0–100.</summary>
+    [Parameter] public double Value { get; set; } = 0;
+    /// <summary>Overall size in pixels.</summary>
+    [Parameter] public int Size { get; set; } = 120;
+    /// <summary>Stroke width in pixels.</summary>
+    [Parameter] public int StrokeWidth { get; set; } = 8;
+    /// <summary>Animation duration in milliseconds.</summary>
+    [Parameter] public int DurationMs { get; set; } = 800;
+    /// <summary>Custom label rendered inside the circle. Defaults to percent text.</summary>
+    [Parameter] public RenderFragment? LabelContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private const int _viewBox = 100;
+    private const int _center = 50;
+    private int _radius => (_viewBox / 2) - (StrokeWidth / 2) - 2;
+    private double _circumference => 2 * Math.PI * _radius;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-circular-progress", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string Label => $"{Math.Round(Math.Clamp(Value, 0, 100))}%";
+
+    private string DashOffset
+    {
+        get
+        {
+            var pct = Math.Clamp(Value, 0, 100) / 100.0;
+            var offset = _circumference * (1 - pct);
+            return offset.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+}

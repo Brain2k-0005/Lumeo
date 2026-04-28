@@ -1,0 +1,53 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<div id="@_elementId" class="@CssClass"
+     style="--lumeo-hbg-radius:@(BorderRadius)px; --lumeo-hbg-duration:@(DurationMs)ms; border-radius:@(BorderRadius)px;"
+     @attributes="AdditionalAttributes">
+    @if (ChildContent != null)
+    {
+        <div class="lumeo-hbg-inner">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int BorderRadius { get; set; } = 8;
+    /// <summary>Transition duration when the gradient snaps back on mouse leave.</summary>
+    [Parameter] public int DurationMs { get; set; } = 500;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-hbg-{Guid.NewGuid():N}";
+    private bool _registered;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-hover-border-gradient", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_registered)
+        {
+            _registered = true;
+            try
+            {
+                await Interop.MotionHoverBorderGradient(_elementId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered)
+        {
+            try
+            {
+                await Interop.MotionDisposeHoverBorderGradient(_elementId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

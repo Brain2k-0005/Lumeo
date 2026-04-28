@@ -1,0 +1,98 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@CssClass" @attributes="AdditionalAttributes" aria-live="polite">
+    <svg class="lumeo-morphing-svg" aria-hidden="true">
+        <defs>
+            <filter id="@_filterId">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="@_blur" result="blur" />
+                <feColorMatrix in="blur" mode="matrix"
+                               values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 @_contrast -@(_contrast/2)" />
+            </filter>
+        </defs>
+        <text class="lumeo-morphing-text" x="50%" y="50%" dominant-baseline="central"
+              text-anchor="middle" filter="url(#@_filterId)">@_displayed</text>
+    </svg>
+    @* Screen reader text — always current *@
+    <span class="sr-only">@_displayed</span>
+</div>
+
+@code {
+    /// <summary>First string (shown initially).</summary>
+    [Parameter] public string From { get; set; } = string.Empty;
+    /// <summary>Second string (morphed to).</summary>
+    [Parameter] public string To { get; set; } = string.Empty;
+    /// <summary>Morph duration in milliseconds.</summary>
+    [Parameter] public int DurationMs { get; set; } = 1500;
+    /// <summary>Pause between morphs in milliseconds.</summary>
+    [Parameter] public int PauseMs { get; set; } = 2000;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _filterId = $"lumeo-morph-filter-{Guid.NewGuid():N}";
+    private string _displayed = string.Empty;
+    private double _blur = 0;
+    private double _contrast = 20;
+    private CancellationTokenSource? _cts;
+    private bool _showFrom = true;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-morphing", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrEmpty(_displayed))
+            _displayed = From;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _cts = new CancellationTokenSource();
+            _ = RunMorphLoopAsync(_cts.Token);
+        }
+    }
+
+    private async Task RunMorphLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(PauseMs, ct);
+                await MorphAsync(_showFrom ? From : To, _showFrom ? To : From, ct);
+                _showFrom = !_showFrom;
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task MorphAsync(string fromText, string toText, CancellationToken ct)
+    {
+        const int steps = 30;
+        var stepDelay = DurationMs / steps;
+        for (int i = 0; i <= steps; i++)
+        {
+            double t = (double)i / steps;
+            // Blend text — use fromText first half, toText second half
+            _displayed = t < 0.5 ? fromText : toText;
+            // Blur peaks at midpoint then settles
+            _blur = 8 * Math.Sin(t * Math.PI);
+            _contrast = 20 + 5 * Math.Sin(t * Math.PI * 2);
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(stepDelay, ct);
+        }
+        _blur = 0;
+        _displayed = toText;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+    }
+}

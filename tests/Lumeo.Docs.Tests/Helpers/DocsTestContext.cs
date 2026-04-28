@@ -152,6 +152,14 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask MotionMagneticButton(string elementId, object options) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeMagneticButton(string elementId) => ValueTask.CompletedTask;
 
+    // Motion: MagicCard
+    public ValueTask MotionMagicCard(string elementId, object options) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeMagicCard(string elementId) => ValueTask.CompletedTask;
+
+    // Motion: HoverBorderGradient
+    public ValueTask MotionHoverBorderGradient(string elementId) => ValueTask.CompletedTask;
+    public ValueTask MotionDisposeHoverBorderGradient(string elementId) => ValueTask.CompletedTask;
+
     // AI primitives
     public ValueTask AiAutosize(string elementId, int maxPx) => ValueTask.CompletedTask;
     public ValueTask AiObserveAutoScroll(string elementId) => ValueTask.CompletedTask;
