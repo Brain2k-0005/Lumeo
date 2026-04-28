@@ -1,0 +1,54 @@
+@namespace Lumeo
+
+<div class="@CssClass" style="@StyleString" aria-hidden="true" @attributes="AdditionalAttributes">
+    @foreach (var m in _meteors)
+    {
+        <span class="lumeo-meteor"
+              style="top:@(m.Top)%;left:@(m.Left)%;width:@(m.Width)px;animation-delay:@(m.Delay)ms;animation-duration:@(m.Duration)ms;">
+        </span>
+    }
+</div>
+
+@code {
+    /// <summary>Number of meteor streaks to render (default 20).</summary>
+    [Parameter] public int Number { get; set; } = 20;
+    /// <summary>CSS color of the meteor head/tail. Defaults to the theme primary.</summary>
+    [Parameter] public string Color { get; set; } = "var(--color-primary)";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"lumeo-meteors-{Guid.NewGuid():N}";
+    private List<Meteor> _meteors = new();
+    private int _lastSeed;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-meteors", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string StyleString => $"--lumeo-meteor-color: {Color};";
+
+    protected override void OnParametersSet()
+    {
+        var seed = HashSeed();
+        if (_meteors.Count == Number && seed == _lastSeed) return;
+        _lastSeed = seed;
+        var rng = new Random(seed);
+        _meteors = Enumerable.Range(0, Math.Max(0, Number)).Select(_ => new Meteor(
+            Top: rng.Next(-20, 60),
+            Left: rng.Next(0, 100),
+            Width: rng.Next(60, 160),
+            Delay: rng.Next(0, 3000),
+            Duration: rng.Next(1500, 3500)
+        )).ToList();
+    }
+
+    private int HashSeed()
+    {
+        var src = $"{_elementId}:{Number}";
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var c in src) { hash ^= c; hash *= 16777619u; }
+            return (int)hash;
+        }
+    }
+
+    private record Meteor(int Top, int Left, int Width, int Delay, int Duration);
+}

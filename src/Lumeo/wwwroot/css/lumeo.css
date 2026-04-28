@@ -789,6 +789,232 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* =====================================================
+ * === Motion: AnimatedBeam ===
+ * SVG beam that traces between two DOM nodes.
+ * The beam path + gradient are drawn by motion.js.
+ * ===================================================== */
+.lumeo-animated-beam {
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* =====================================================
+ * === Motion: Meteors ===
+ * Falling angled streaks across a container.
+ * ===================================================== */
+.lumeo-meteors {
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes lumeo-meteor-fall {
+  0% {
+    transform: rotate(-45deg) translateX(0);
+    opacity: 1;
+  }
+  70% { opacity: 1; }
+  100% {
+    transform: rotate(-45deg) translateX(600px);
+    opacity: 0;
+  }
+}
+
+.lumeo-meteor {
+  position: absolute;
+  height: 1px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, var(--lumeo-meteor-color, var(--color-primary)), transparent);
+  box-shadow: 0 0 4px 0 var(--lumeo-meteor-color, var(--color-primary));
+  animation: lumeo-meteor-fall linear infinite;
+  transform-origin: left center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-meteor { animation: none; opacity: 0; }
+}
+
+/* =====================================================
+ * === Motion: Globe ===
+ * Canvas-rendered rotating globe. Styled wrapper only;
+ * drawing is handled by motion.js canvas loop.
+ * ===================================================== */
+.lumeo-globe {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lumeo-globe-canvas {
+  display: block;
+  border-radius: 50%;
+}
+
+/* =====================================================
+ * === Motion: Dock ===
+ * macOS-style icon dock with magnification effect.
+ * Per-item scale is applied via motion.js mousemove handler.
+ * ===================================================== */
+.lumeo-dock {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-card) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.lumeo-dock > * {
+  transform-origin: bottom center;
+  transition: transform 120ms ease-out;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-dock > * { transition: none; }
+}
+
+/* =====================================================
+ * === Motion: Spotlight ===
+ * Container with a radial gradient chasing the cursor.
+ * --mouse-x / --mouse-y are set by motion.js.
+ * ===================================================== */
+.lumeo-spotlight {
+  position: relative;
+  overflow: hidden;
+}
+
+.lumeo-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    var(--lumeo-spotlight-radius, 300px) circle at var(--lumeo-spotlight-x, -9999px) var(--lumeo-spotlight-y, -9999px),
+    color-mix(in srgb, var(--lumeo-spotlight-color, var(--color-primary)) calc(var(--lumeo-spotlight-opacity, 0.15) * 100%), transparent),
+    transparent 80%
+  );
+  transition: background 0ms;
+  z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-spotlight::before { display: none; }
+}
+
+/* =====================================================
+ * === Motion: TypingAnimation ===
+ * Blinking cursor after typed text.
+ * ===================================================== */
+@keyframes lumeo-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.lumeo-typing-animation {
+  display: inline;
+}
+
+.lumeo-typing-cursor {
+  display: inline;
+  animation: lumeo-cursor-blink 1s step-start infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-typing-cursor { animation: none; }
+}
+
+/* =====================================================
+ * === Motion: Confetti ===
+ * Canvas overlay for confetti bursts.
+ * ===================================================== */
+.lumeo-confetti {
+  display: inline-block;
+}
+
+.lumeo-confetti-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* =====================================================
+ * === Motion: MagneticButton ===
+ * Button translated toward cursor within a radius.
+ * Transform is applied inline by motion.js.
+ * ===================================================== */
+.lumeo-magnetic-button {
+  display: inline-flex;
+  cursor: pointer;
+  will-change: transform;
+  transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-magnetic-button { transition: none; }
+}
+
+/* =====================================================
+ * === Motion: AnimatedGradientText ===
+ * Text with a hue-shifting gradient via background-position.
+ * ===================================================== */
+@keyframes lumeo-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.lumeo-animated-gradient-text {
+  background: linear-gradient(270deg, var(--lumeo-agt-gradient, var(--color-primary), oklch(0.7 0.2 200), var(--color-primary)));
+  background-size: var(--lumeo-agt-size, 200%) 200%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: lumeo-gradient-shift var(--lumeo-agt-duration, 4s) ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-animated-gradient-text {
+    animation: none;
+    background-position: 0% 50%;
+  }
+}
+
+/* =====================================================
+ * === Motion: Ripple ===
+ * Concentric expanding circles from container center.
+ * ===================================================== */
+@keyframes lumeo-ripple-expand {
+  0%   { transform: scale(0.7); opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.lumeo-ripple {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lumeo-ripple-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  animation: lumeo-ripple-expand var(--lumeo-ripple-duration, 2.5s) ease-out infinite;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-ripple-ring { animation: none; opacity: 0.3; }
+}
+
+/* =====================================================
  * === motion: component integrations ===
  * Opt-in animations for Steps, Timeline, Progress, Tabs,
  * Switch, Checkbox, Badge, and BottomNav. Enabled via

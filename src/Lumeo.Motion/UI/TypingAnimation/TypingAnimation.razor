@@ -1,0 +1,72 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<span class="@CssClass" aria-label="@Text" role="status" @attributes="AdditionalAttributes"><span aria-hidden="true">@_displayed</span>@if (ShowCursor) {<span class="lumeo-typing-cursor" aria-hidden="true">@Cursor</span>}</span>
+
+@code {
+    /// <summary>The full text to type out.</summary>
+    [Parameter] public string Text { get; set; } = "";
+    /// <summary>Delay between each character in milliseconds.</summary>
+    [Parameter] public int IntervalMs { get; set; } = 50;
+    /// <summary>Delay before typing begins.</summary>
+    [Parameter] public int DelayMs { get; set; } = 0;
+    /// <summary>Show a blinking cursor after the typed text.</summary>
+    [Parameter] public bool ShowCursor { get; set; } = true;
+    /// <summary>The cursor character.</summary>
+    [Parameter] public string Cursor { get; set; } = "|";
+    /// <summary>When true, restarts the animation after a pause (loops).</summary>
+    [Parameter] public bool Loop { get; set; } = false;
+    /// <summary>Pause (ms) after full text is typed before restarting (only relevant when Loop=true).</summary>
+    [Parameter] public int LoopPauseMs { get; set; } = 1500;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _displayed = "";
+    private CancellationTokenSource? _cts;
+
+    private string CssClass => string.Join(" ", new[] { "lumeo-typing-animation", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Cancel any running animation when parameters change
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        _displayed = "";
+        await RunTypingLoop(_cts.Token);
+    }
+
+    private async Task RunTypingLoop(CancellationToken ct)
+    {
+        try
+        {
+            if (DelayMs > 0)
+                await Task.Delay(DelayMs, ct);
+
+            do
+            {
+                _displayed = "";
+                StateHasChanged();
+
+                foreach (var ch in Text)
+                {
+                    if (ct.IsCancellationRequested) return;
+                    _displayed += ch;
+                    StateHasChanged();
+                    await Task.Delay(Math.Max(1, IntervalMs), ct);
+                }
+
+                if (Loop && !ct.IsCancellationRequested)
+                    await Task.Delay(LoopPauseMs, ct);
+
+            } while (Loop && !ct.IsCancellationRequested);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

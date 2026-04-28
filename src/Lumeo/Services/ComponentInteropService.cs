@@ -515,6 +515,136 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.animatedBeam", elementId, fromId, toId, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeAnimatedBeam(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeAnimatedBeam", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionGlobe(string elementId, object options)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.globe", elementId, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeGlobe(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeGlobe", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDock(string elementId, object options)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.dock", elementId, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeDock(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeDock", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionSpotlight(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.spotlight", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeSpotlight(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeSpotlight", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionConfettiInit(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.confettiInit", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionConfettiFire(string elementId, object options)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.confettiFire", elementId, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeConfetti(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeConfetti", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionMagneticButton(string elementId, object options)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.magneticButton", elementId, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MotionDisposeMagneticButton(string elementId)
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            await module.InvokeVoidAsync("motion.disposeMagneticButton", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Tabs sliding indicator measurement ---
 
     public record TabMeasurement(double X, double Width);
