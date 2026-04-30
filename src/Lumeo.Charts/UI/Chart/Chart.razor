@@ -1,4 +1,5 @@
 @namespace Lumeo
+@using Blazicons
 @implements IAsyncDisposable
 
 @if (_initError is not null)
@@ -18,6 +19,20 @@ else
                ECharts with placeholder data instead — no DOM element needed here. *@
             <div style="position: absolute; inset: 0; pointer-events: none;">
                 <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
+            </div>
+        }
+        else if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Spinner)
+        {
+            @* Spinner mode — semi-transparent backdrop + centered Lucide LoaderCircle + label.
+               Closest to the conventional chart-library UX (Highcharts, Recharts). The chart
+               keeps mounting underneath so toggling Loading off doesn't reinitialise ECharts. *@
+            <div role="status" aria-live="polite" aria-label="@LoadingText"
+                 class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[inherit] bg-background/65 backdrop-blur-[1px] pointer-events-none">
+                <Blazicon Svg="Lucide.LoaderCircle" class="h-7 w-7 text-muted-foreground animate-spin" />
+                @if (!string.IsNullOrEmpty(LoadingText))
+                {
+                    <span class="text-xs font-medium text-muted-foreground">@LoadingText</span>
+                }
             </div>
         }
     </div>
@@ -68,6 +83,10 @@ else
     /// stacking, area fill). When null (default), the shape is inferred from the real
     /// <see cref="Option"/> so the phantom mirrors the actual chart structure.</summary>
     [Parameter] public PhantomShape? PhantomShapeOverride { get; set; }
+    /// <summary>Label rendered next to the spinner when <see cref="SkeletonStyle"/> is
+    /// <see cref="ChartSkeletonStyle.Spinner"/>. Set to <c>null</c> or empty to hide the
+    /// label and show only the spinner. Defaults to "Loading…".</summary>
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;

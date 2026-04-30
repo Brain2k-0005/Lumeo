@@ -1,6 +1,6 @@
 # Lumeo Package Split — DevExpress Model
 
-**Status:** Approved 2026-04-25
+**Status:** Approved 2026-04-25 — partially reversed 2026-04-30 (see footer)
 **Trigger:** `Lumeo.2.0.0-rc.14.nupkg` is 918 KB — 92% of the 1 MB ceiling. Splitting is overdue and matches how DevExpress / Telerik / Syncfusion ship.
 
 ## Goal
@@ -115,3 +115,29 @@ The pack output for satellites becomes a `PackageReference` to `Lumeo` at the sa
 - **wwwroot path changes.** Existing JS interop calls reference `./_content/Lumeo/js/echarts-interop.js`. After the split, the path becomes `./_content/Lumeo.Charts/js/echarts-interop.js`. Every interop call in moved components needs the path updated.
 - **Source generator visibility.** If `Lumeo.SourceGenerators` produces code referenced by satellite components, satellites need the generator wired up too. Verify before splitting.
 - **NuGet propagation lag.** First publish of new package IDs takes a few hours to be searchable. Communicate in the release note.
+
+---
+
+## Update 2026-04-30 — `lumeo-utilities.css` reversal (rc.18)
+
+**The decision in this spec to "move `lumeo-utilities.css` out — not shipped in any NuGet package" is reversed for rc.18 onward.** The file ships again in the `Lumeo` core package as `_content/Lumeo/css/lumeo-utilities.css`.
+
+### Why the reversal
+- The spec assumed a "registry CDN" would host the file separately. The CDN was never set up.
+- README.md, `docs/Lumeo.Docs/Pages/Docs/Introduction.razor`, and `MIGRATION.md` were never updated to point to an alternate path. They still told consumers to load `_content/Lumeo/css/lumeo-utilities.css`.
+- Result for ~6 weeks (rc.15 → rc.17): every consumer following the docs got a 404 + visibly unstyled Lumeo components (Badge `px-2.5` missing, DataGrid toolbar borders gone, Switch container gap collapsed, etc.). External feedback flagged it 2026-04-30.
+- The 275 KB → ~245 KB pre-compiled bundle is still the right shape for a drop-in component library. Tailwind v4.2.2's improved minification + dedup means the regenerated file is now smaller than the rc.4–rc.14 bundle anyway.
+
+### What changed in rc.18
+1. Removed the `<Content Remove>` / `<None Pack="false">` block in `src/Lumeo/Lumeo.csproj` for `wwwroot/css/lumeo-utilities.css`. The Razor SDK's auto-glob picks it up as a static web asset.
+2. Extended `src/Lumeo/Styles/lumeo-utilities.src.css` to `@source` all 6 satellite `UI/` folders so the bundle covers utility classes used inside DataGrid, Charts, Editor, Scheduler, Gantt, and Motion components — not just core.
+3. `MIGRATION.md` was rewritten so the "no longer shipped" paragraph matches the rc.18 reality and explicitly tells rc.15–rc.17 users they can drop their workaround.
+
+### What stayed
+- The 6-package layout (Lumeo + Charts + DataGrid + Editor + Scheduler + Gantt) — that decision is correct and unchanged.
+- Lockstep versioning via `Directory.Build.props`.
+- The "advanced consumer" path: any consumer running their own Tailwind build can still skip `<link>`-ing the shipped file and emit utilities locally. That's just no longer the only path.
+
+### Lesson
+Don't decommission a publicly-documented asset until the replacement is shipped and the docs/onboarding flow points to it. The "deferred CDN" half of the original spec should have blocked the "stop shipping the file" half.
+

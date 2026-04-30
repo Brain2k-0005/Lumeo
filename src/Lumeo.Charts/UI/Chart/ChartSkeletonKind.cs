@@ -42,9 +42,12 @@ public enum ChartSkeletonKind
 /// <summary>How the loading state is presented.
 /// Phantom = render the real chart with synthesized data in a muted palette and morph
 /// to real data via ECharts' option-change animation (default — feels continuous).
-/// Silhouette = fall back to the legacy SVG skeleton overlay.</summary>
+/// Silhouette = fall back to the legacy SVG skeleton overlay.
+/// Spinner = dim the chart and show a centered circular spinner with a "Loading…" label
+/// (closest to what most consumers expect from chart libraries — Recharts, Highcharts).</summary>
 public enum ChartSkeletonStyle
 {
     Phantom,
     Silhouette,
+    Spinner,
 }

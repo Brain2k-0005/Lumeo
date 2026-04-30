@@ -37,7 +37,9 @@ Lumeo 2.0 follows the DevExpress / Telerik / Microsoft.Extensions model: a small
 
 `@using Lumeo` already covers the satellite components — no extra `@using` directives are needed. The `lumeo add <component>` CLI also detects which satellite a component belongs to and prompts you to install the package.
 
-`lumeo-utilities.css` (a 275 KB compiled-Tailwind-utilities snapshot) is **no longer shipped in the NuGet package**. If you were relying on it, generate the utility classes you need with your own Tailwind build (recommended), or download `lumeo-utilities.css` separately from the registry CDN.
+`lumeo-utilities.css` ships unchanged in the `Lumeo` core package as `_content/Lumeo/css/lumeo-utilities.css`. The bundle now also covers every utility class used inside the satellites (DataGrid, Charts, Editor, Scheduler, Gantt, Motion), so installing a satellite alongside the core package is enough — you don't need a separate stylesheet per satellite.
+
+> **rc.15–rc.17 note:** those three pre-releases briefly stopped shipping `lumeo-utilities.css` while a registry CDN was being planned. The CDN never materialized and the change broke drop-in setup for everyone, so rc.18 restores the file. If you pinned to rc.15/16/17 and worked around the missing file by vendoring an older copy or running your own Tailwind build, you can revert that workaround once you're on rc.18+.
 
 ## Overlay component rename: `IsOpen` → `Open`
 
