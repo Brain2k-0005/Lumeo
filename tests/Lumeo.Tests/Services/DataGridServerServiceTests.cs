@@ -320,16 +320,16 @@ public class DataGridServerServiceTests : IDisposable
     public void DebounceSearch_Does_Not_Throw()
     {
         var exception = Record.Exception(() =>
-            _service.DebounceSearch(() => { }));
+            _service.DebounceSearch(_ => Task.CompletedTask));
         Assert.Null(exception);
     }
 
     [Fact]
-    public async Task DebounceSearch_Invokes_Action_After_Delay()
+    public async Task DebounceSearch_Invokes_Work_After_Delay()
     {
         var tcs = new TaskCompletionSource<bool>();
 
-        _service.DebounceSearch(() => tcs.TrySetResult(true), delayMs: 50);
+        _service.DebounceSearch(_ => { tcs.TrySetResult(true); return Task.CompletedTask; }, delayMs: 50);
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(2000));
         Assert.Same(tcs.Task, completed);
@@ -337,17 +337,67 @@ public class DataGridServerServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task DebounceSearch_Cancels_Previous_Timer_On_Re_Call()
+    public async Task DebounceSearch_ExactLastCall_Semantics()
     {
-        // Call twice rapidly — only the second action should fire
+        // Call twice rapidly — only the last call should fire (exact-last-call semantics)
         int callCount = 0;
-        _service.DebounceSearch(() => { callCount++; }, delayMs: 100);
-        _service.DebounceSearch(() => { callCount++; }, delayMs: 100);
+        _service.DebounceSearch(_ => { callCount++; return Task.CompletedTask; }, delayMs: 100);
+        _service.DebounceSearch(_ => { callCount++; return Task.CompletedTask; }, delayMs: 100);
 
-        // Wait slightly longer than debounce delay
-        await Task.Delay(350);
-        // Only one call should have fired (might be 1 or 2 due to timing, but must not throw)
-        Assert.True(callCount <= 2);
+        // Wait longer than debounce delay so the last call has time to fire
+        await Task.Delay(400);
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public async Task DebounceSearch_AfterDispose_DoesNotFire()
+    {
+        // Register work, then immediately dispose; work must never run
+        var service = new DataGridServerService();
+        int callCount = 0;
+        service.DebounceSearch(_ => { callCount++; return Task.CompletedTask; }, delayMs: 50);
+        service.Dispose();
+
+        await Task.Delay(200); // well past debounce delay
+        Assert.Equal(0, callCount);
+    }
+
+    [Fact]
+    public async Task DebounceSearch_PropagatesCancellationToken_ToCaller()
+    {
+        // The token given to the first call should be cancelled when a second call arrives
+        CancellationToken receivedToken = default;
+        var firstCallStarted = new TaskCompletionSource();
+
+        _service.DebounceSearch(async ct =>
+        {
+            receivedToken = ct;
+            firstCallStarted.TrySetResult();
+            await Task.Delay(5000, ct); // will be cancelled
+        }, delayMs: 20);
+
+        await Task.Delay(60); // let first call fire and begin executing
+        await firstCallStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // Second call cancels the first
+        _service.DebounceSearch(_ => Task.CompletedTask, delayMs: 20);
+
+        // Give cancellation a moment to propagate
+        await Task.Delay(100);
+        Assert.True(receivedToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task DebounceSearch_LogsUnhandledExceptions_WithoutThrowing()
+    {
+        // Work that throws must not bubble up to the test — error is logged, not rethrown
+        var exception = await Record.ExceptionAsync(async () =>
+        {
+            _service.DebounceSearch(_ => throw new InvalidOperationException("boom"), delayMs: 20);
+            await Task.Delay(200); // give the fire-and-forget task time to complete
+        });
+
+        Assert.Null(exception);
     }
 
     // -----------------------------------------------------------------------
