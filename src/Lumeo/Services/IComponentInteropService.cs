@@ -95,7 +95,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Clipboard
     ValueTask CopyToClipboard(string text);
 
-    // Press feedback (Ripple)
+    // Press feedback (ripple click effect on Button, Card, Chip, BottomNavItem, ToggleGroupItem)
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
 
@@ -115,34 +115,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options);
     ValueTask MotionDisposeAnimatedBeam(string elementId);
 
-    // Motion: Globe
-    ValueTask MotionGlobe(string elementId, object options);
-    ValueTask MotionDisposeGlobe(string elementId);
-
     // Motion: Dock
     ValueTask MotionDock(string elementId, object options);
     ValueTask MotionDisposeDock(string elementId);
-
-    // Motion: Spotlight
-    ValueTask MotionSpotlight(string elementId);
-    ValueTask MotionDisposeSpotlight(string elementId);
 
     // Motion: Confetti
     ValueTask MotionConfettiInit(string elementId);
     ValueTask MotionConfettiFire(string elementId, object options);
     ValueTask MotionDisposeConfetti(string elementId);
-
-    // Motion: MagneticButton
-    ValueTask MotionMagneticButton(string elementId, object options);
-    ValueTask MotionDisposeMagneticButton(string elementId);
-
-    // Motion: MagicCard
-    ValueTask MotionMagicCard(string elementId, object options);
-    ValueTask MotionDisposeMagicCard(string elementId);
-
-    // Motion: HoverBorderGradient
-    ValueTask MotionHoverBorderGradient(string elementId);
-    ValueTask MotionDisposeHoverBorderGradient(string elementId);
 
     // AI primitives
     ValueTask AiAutosize(string elementId, int maxPx);
