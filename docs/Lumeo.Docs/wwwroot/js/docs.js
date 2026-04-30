@@ -8,6 +8,13 @@ window.lumeo.signalBlazorReady = function () {
     document.documentElement.dataset.blazorReady = 'true';
 };
 
+// Scroll a heading into view from the OnThisPage sidebar. Using a dedicated
+// function instead of eval() avoids CSP issues and keeps interop auditable.
+window.lumeo.navScrollActiveIntoView = function (id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 window.lumeo.setupSearch = function () {
     document.addEventListener('keydown', function (e) {
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
