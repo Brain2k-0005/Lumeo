@@ -5,13 +5,13 @@ namespace Lumeo.Tests.Editor;
 
 public class WordImporterTests
 {
-    [Fact(Skip = "Requires test fixture at C:/Users/bemi/Downloads/TEST0033/25_009_TechInfo_EN474_5_Quick coupler conformity_EN_Rev01.docx — not in repo.")]
-    public async Task ToHtmlAsync_RealDocument_ContainsHeadingsAndParagraphs()
+    [Fact]
+    public async Task ToHtmlAsync_DocumentWithHeadingsAndParagraphs_ContainsExpectedElements()
     {
-        const string path = @"C:/Users/bemi/Downloads/TEST0033/25_009_TechInfo_EN474_5_Quick coupler conformity_EN_Rev01.docx";
-
-        await using var stream = File.OpenRead(path);
-        var result = await WordImporter.ToHtmlAsync(stream);
+        // Generate an in-memory DOCX that has a Heading 1, a paragraph, and a Heading 2
+        // so this test has no external file dependency.
+        using var docx = BuildDocxWithHeadingsAndParagraphs();
+        var result = await WordImporter.ToHtmlAsync(docx);
 
         Assert.NotNull(result.Html);
         Assert.NotEmpty(result.Html);
@@ -83,6 +83,87 @@ public class WordImporterTests
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds an in-memory DOCX that contains a Heading 1, a paragraph, and a Heading 2
+    /// so ToHtmlAsync can be verified against headings + paragraph output without any
+    /// external file dependency.
+    /// </summary>
+    private static MemoryStream BuildDocxWithHeadingsAndParagraphs()
+    {
+        var ms = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(zip, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml"  ContentType="application/xml"/>
+                  <Override PartName="/word/document.xml"
+                            ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+                  <Override PartName="/word/styles.xml"
+                            ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+                </Types>
+                """);
+
+            WriteEntry(zip, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+                </Relationships>
+                """);
+
+            WriteEntry(zip, "word/_rels/document.xml.rels", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+                </Relationships>
+                """);
+
+            // Styles file defines Heading 1 and Heading 2 so Mammoth can recognise them
+            WriteEntry(zip, "word/styles.xml", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                  <w:style w:type="paragraph" w:styleId="Heading1">
+                    <w:name w:val="heading 1"/>
+                  </w:style>
+                  <w:style w:type="paragraph" w:styleId="Heading2">
+                    <w:name w:val="heading 2"/>
+                  </w:style>
+                  <w:style w:type="paragraph" w:styleId="Normal">
+                    <w:name w:val="Normal"/>
+                  </w:style>
+                </w:styles>
+                """);
+
+            WriteEntry(zip, "word/document.xml", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <w:body>
+                    <w:p>
+                      <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+                      <w:r><w:t>Introduction</w:t></w:r>
+                    </w:p>
+                    <w:p>
+                      <w:pPr><w:pStyle w:val="Normal"/></w:pPr>
+                      <w:r><w:t>This is the first paragraph of the document.</w:t></w:r>
+                    </w:p>
+                    <w:p>
+                      <w:pPr><w:pStyle w:val="Heading2"/></w:pPr>
+                      <w:r><w:t>Details</w:t></w:r>
+                    </w:p>
+                    <w:p>
+                      <w:pPr><w:pStyle w:val="Normal"/></w:pPr>
+                      <w:r><w:t>Further detail paragraph.</w:t></w:r>
+                    </w:p>
+                  </w:body>
+                </w:document>
+                """);
+        }
+        ms.Position = 0;
+        return ms;
+    }
 
     private static MemoryStream BuildMinimalDocx(string bodyText = "Test")
     {

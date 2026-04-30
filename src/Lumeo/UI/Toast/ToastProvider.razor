@@ -1,4 +1,5 @@
 @namespace Lumeo
+@using Lumeo.Services
 @implements IAsyncDisposable
 
 <ToastViewport Position="Position">
@@ -51,12 +52,7 @@
 
     private void HandleShow(ToastMessage message)
     {
-        _ = InvokeAsync(() => HandleShowAsync(message))
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    Console.Error.WriteLine($"[ToastProvider] HandleShow error: {t.Exception}");
-            }, TaskScheduler.Current);
+        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleShowAsync(message), "ToastProvider.HandleShow");
     }
 
     private async Task HandleShowAsync(ToastMessage message)
@@ -79,23 +75,13 @@
         {
             var cts = new CancellationTokenSource();
             _timers[message.Id] = cts;
-            _ = DismissAfterDelayAsync(message.Id, duration, cts.Token)
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                        Console.Error.WriteLine($"[ToastProvider] DismissAfterDelay error: {t.Exception}");
-                }, TaskScheduler.Current);
+            SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(message.Id, duration, cts.Token), "ToastProvider.DismissAfterDelay");
         }
     }
 
     private void HandleDismiss(string toastId)
     {
-        _ = InvokeAsync(() => HandleDismissAsync(toastId))
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    Console.Error.WriteLine($"[ToastProvider] HandleDismiss error: {t.Exception}");
-            }, TaskScheduler.Current);
+        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleDismissAsync(toastId), "ToastProvider.HandleDismiss");
     }
 
     private async Task HandleDismissAsync(string toastId)
@@ -114,12 +100,7 @@
 
     private void HandleUpdate(string toastId, ToastOptions options)
     {
-        _ = InvokeAsync(() => HandleUpdateAsync(toastId, options))
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    Console.Error.WriteLine($"[ToastProvider] HandleUpdate error: {t.Exception}");
-            }, TaskScheduler.Current);
+        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleUpdateAsync(toastId, options), "ToastProvider.HandleUpdate");
     }
 
     private async Task HandleUpdateAsync(string toastId, ToastOptions options)
@@ -137,12 +118,7 @@
         {
             var cts = new CancellationTokenSource();
             _timers[toastId] = cts;
-            _ = DismissAfterDelayAsync(toastId, duration, cts.Token)
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                        Console.Error.WriteLine($"[ToastProvider] DismissAfterDelay error: {t.Exception}");
-                }, TaskScheduler.Current);
+            SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(toastId, duration, cts.Token), "ToastProvider.DismissAfterDelay");
         }
 
         StateHasChanged();
@@ -173,12 +149,7 @@
 
     private void Remove(string id)
     {
-        _ = InvokeAsync(() => RemoveWithExitAsync(id, runOnDismiss: true))
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    Console.Error.WriteLine($"[ToastProvider] Remove error: {t.Exception}");
-            }, TaskScheduler.Current);
+        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => RemoveWithExitAsync(id, runOnDismiss: true), "ToastProvider.Remove");
     }
 
     private void RemoveItem(string id)

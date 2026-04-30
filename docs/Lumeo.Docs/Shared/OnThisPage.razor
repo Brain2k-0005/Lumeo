@@ -34,6 +34,7 @@
     private IJSObjectReference? _module;
     private DotNetObjectReference<OnThisPage>? _selfRef;
     private string? _lastPath;
+    private CancellationTokenSource? _scanCts;
 
     [Inject] NavigationManager Nav { get; set; } = default!;
 
@@ -47,25 +48,41 @@
     {
         if (firstRender)
         {
-            await RescanWithRetry();
+            _scanCts?.Cancel();
+            _scanCts?.Dispose();
+            _scanCts = new CancellationTokenSource();
+            var token = _scanCts.Token;
+            try { await RescanWithRetry(token); }
+            catch (OperationCanceledException) { /* superseded */ }
         }
     }
 
-    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         if (e.Location == _lastPath) return;
         _lastPath = e.Location;
-        await RescanWithRetry();
+
+        // Cancel any in-flight rescan from a previous route
+        _scanCts?.Cancel();
+        _scanCts?.Dispose();
+        _scanCts = new CancellationTokenSource();
+        var token = _scanCts.Token;
+
+        _ = InvokeAsync(async () =>
+        {
+            try { await RescanWithRetry(token); }
+            catch (OperationCanceledException) { /* superseded */ }
+        });
     }
 
-    private async Task RescanWithRetry()
+    private async Task RescanWithRetry(CancellationToken ct)
     {
         // Child page may not have rendered its headings yet when we first scan.
         // Try a few times with increasing delays.
         int[] delays = { 50, 150, 300, 600 };
         foreach (var d in delays)
         {
-            await Task.Delay(d);
+            await Task.Delay(d, ct);
             await Rescan();
             if (_headings.Count > 0) return;
         }
@@ -111,12 +128,8 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("eval", $@"
-                (function() {{
-                    var el = document.getElementById('{id}');
-                    if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                }})();
-            ");
+            // docs.js is loaded as a regular global script — call via window.lumeo namespace
+            await JS.InvokeVoidAsync("lumeo.navScrollActiveIntoView", id);
             _activeId = id;
             StateHasChanged();
         }
@@ -137,6 +150,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _scanCts?.Cancel();
+        _scanCts?.Dispose();
         Nav.LocationChanged -= OnLocationChanged;
         if (_module is not null)
         {
