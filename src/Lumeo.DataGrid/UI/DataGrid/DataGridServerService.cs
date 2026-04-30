@@ -5,7 +5,7 @@ namespace Lumeo;
 internal sealed class DataGridServerService : IDisposable
 {
     private CancellationTokenSource? _requestCts;
-    private System.Threading.Timer? _searchDebounceTimer;
+    private CancellationTokenSource? _searchCts;
     private int _requestGeneration;
 
     internal bool IsLoading { get; private set; }
@@ -73,20 +73,38 @@ internal sealed class DataGridServerService : IDisposable
         }
     }
 
-    internal void DebounceSearch(Action requestAction, int delayMs = 300)
+    internal void DebounceSearch(Func<CancellationToken, Task> work, int delayMs = 300)
     {
-        _searchDebounceTimer?.Dispose();
-        _searchDebounceTimer = new System.Threading.Timer(_ =>
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+
+        _ = RunDebouncedAsync(work, delayMs, token);
+    }
+
+    private async Task RunDebouncedAsync(Func<CancellationToken, Task> work, int delayMs, CancellationToken ct)
+    {
+        try
         {
-            requestAction();
-        }, null, delayMs, System.Threading.Timeout.Infinite);
+            await Task.Delay(delayMs, ct);
+            if (ct.IsCancellationRequested) return;
+            await work(ct);
+        }
+        catch (OperationCanceledException) { /* superseded by newer call or disposed */ }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[DataGridServerService] debounced search error: {ex}");
+        }
     }
 
     internal void ClearError() => Error = null;
 
     public void Dispose()
     {
-        _searchDebounceTimer?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
         _requestCts?.Cancel();
         _requestCts?.Dispose();
     }
