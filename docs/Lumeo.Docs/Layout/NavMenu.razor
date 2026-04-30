@@ -23,7 +23,7 @@
         {
             @foreach (var group in _config.Groups)
             {
-                <NavGroupSection Group="@group" Collapsible="@(Section == "components")"
+                <NavGroupSection Group="@group" Collapsible="@Collapsible"
                                  IsExpanded="@IsGroupExpanded(group)"
                                  OnToggle="@(() => ToggleGroup(group))" />
             }
@@ -48,8 +48,12 @@ else
 
 @code {
     [Parameter] public bool IsMobile { get; set; }
+    /// <summary>Filter the nav to a single section (docs/components/patterns). Null = show all.</summary>
     [Parameter] public string? Section { get; set; }
     [Parameter] public bool Embedded { get; set; }
+    /// <summary>Render group headers as toggleable buttons; the group containing the current URL
+    /// auto-expands. Independent of Section — a sidebar can show all groups AND collapse them.</summary>
+    [Parameter] public bool Collapsible { get; set; }
 
     private NavConfig? _config;
     private ElementReference _navRef;
@@ -63,8 +67,7 @@ else
             ? await NavConfig.GetAsync()
             : await NavConfig.GetForSectionAsync(Section);
 
-        // For collapsible mode: expand the group that contains the current URL.
-        if (Section == "components" && _config is not null)
+        if (Collapsible && _config is not null)
         {
             ExpandActiveGroup();
         }
@@ -107,7 +110,7 @@ else
 
     private bool IsGroupExpanded(NavGroup group)
     {
-        if (Section != "components") return true; // non-collapsible: always expanded
+        if (!Collapsible) return true; // non-collapsible: always expanded
         return _expanded.TryGetValue(group.Id, out var v) && v;
     }
 
@@ -119,8 +122,7 @@ else
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
-        // Re-expand the active group on navigation when in collapsible mode
-        if (Section == "components" && _config is not null)
+        if (Collapsible && _config is not null)
         {
             ExpandActiveGroup();
         }
