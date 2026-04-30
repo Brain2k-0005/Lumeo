@@ -1,4 +1,5 @@
 @namespace Lumeo
+@using Lumeo.Services
 @implements IDisposable
 
 @{
@@ -80,15 +81,11 @@
 
         if (!_isOpen)
         {
-            _ = InvokeAsync(async () =>
+            SafeAsyncDispatcher.FireAndForget(InvokeAsync, async () =>
             {
                 await Context.SetActiveItemId.InvokeAsync(_itemId);
                 StateHasChanged();
-            }).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    Console.Error.WriteLine($"[MegaMenuItem] HandleMouseEnter error: {t.Exception}");
-            }, TaskScheduler.Current);
+            }, "MegaMenuItem.HandleMouseEnter");
         }
     }
 
@@ -98,18 +95,14 @@
         {
             _dispatch.Schedule(CloseDelay, () =>
             {
-                _ = InvokeAsync(async () =>
+                SafeAsyncDispatcher.FireAndForget(InvokeAsync, async () =>
                 {
                     if (Context.ActiveItemId == _itemId)
                     {
                         await Context.SetActiveItemId.InvokeAsync(null);
                         StateHasChanged();
                     }
-                }).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                        Console.Error.WriteLine($"[MegaMenuItem] HandleMouseLeave error: {t.Exception}");
-                }, TaskScheduler.Current);
+                }, "MegaMenuItem.HandleMouseLeave");
             });
         }
     }
