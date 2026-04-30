@@ -15,6 +15,57 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.17 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.17</Badge>
+            <Lumeo.Text Size="sm" Color="muted">April 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Audit-driven hardening</strong>. A 10-item code review surfaced real lifecycle, async, CI, and test-coverage gaps. This release closes all of them. <strong>+387 tests</strong> (1744 → 2131), three new infrastructure layers (component contract theory, Playwright e2e, visual snapshots), and four lifecycle bugfixes.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Improved — Lifecycle &amp; async safety</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>DataGrid debounced server search</strong> rewritten to a CTS-backed pattern — exact-last-call semantics, dispose cancels in-flight work, exceptions surfaced. Test now asserts <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Assert.Equal(1, callCount)</code> instead of race-tolerant <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">callCount &lt;= 2</code>.</li>
+                <li><strong>OnThisPage</strong> (docs sidebar) now uses a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CancellationTokenSource</code> per route — old retry scans cancel cleanly when navigating, no more stale headings on fast clicks. Replaced JS <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">eval</code> with a dedicated function.</li>
+                <li><strong>Toast / Overlay / MegaMenu</strong> providers — the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_ = InvokeAsync(...).ContinueWith(...)</code> pattern (which silently logged errors) replaced by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Services.SafeAsyncDispatcher</code>. 9 call-sites converted; expected lifecycle exceptions (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ObjectDisposedException</code>) swallowed silently, others logged with a structured tag.</li>
+                <li><strong>ComponentInteropService</strong> sync <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Dispose()</code> now fire-and-forgets the same JS-side cleanup that <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DisposeAsync</code> runs — stops browser-side observers/listeners from leaking when the sync path is taken.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added — Test infrastructure</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Direct unit tests for 23 components</strong> previously without test files (Cascader, ColorPicker, ConsentBanner, DateTimePicker, Gantt, ImageCompare, InplaceEditor, InputMask, Kanban, MegaMenu, Mention, PasswordInput, PopConfirm, QRCode, RichTextEditor, Scheduler, Sortable, SpeedDial, TimePicker, Tour, Transfer, TreeSelect, TreeView). Coverage 108/131 → 131/131.</li>
+                <li><strong>Component contract <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[Theory]</code></strong> — 250 test cases spanning 125 components; asserts every component renders with defaults AND forwards <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AdditionalAttributes</code> to its root. Catches "I forgot to splat" regressions across the entire library at once.</li>
+                <li><strong>Lumeo.Tests.E2E</strong> — new Playwright .NET project with 5 high-value smoke tests (Dialog focus trap, DropdownMenu keyboard nav, Tooltip hover, catalog renders ≥100 cards, Cmd+K palette navigates). Reaches the failure modes bUnit can't.</li>
+                <li><strong>Visual snapshot foundation</strong> — one example test capturing the home page above-the-fold and comparing against a baseline PNG. Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">LUMEO_E2E_UPDATE_SNAPSHOTS=1</code> to regenerate baselines.</li>
+                <li><strong>WordImporter real-DOCX test unskipped</strong> — programmatic in-memory DOCX with headings, paragraphs, and styles replaces the local-path fixture that previously caused the test to be skipped on every CI run.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Improved — CI release gate</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>CI now builds <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.slnx</code> with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">-warnaserror</code> across the entire solution (was: library + satellites only — docs project was excluded).</li>
+                <li>CI runs all three test projects: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Tests</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Docs.Tests</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.RegistryGen.Tests</code>. Was previously only <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Tests</code>.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — Docs nav UX</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>Top-nav highlight: clicking into a component (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">/components/&lt;slug&gt;</code>) now keeps "Components" lit instead of switching to "Docs".</li>
+                <li>Sidebar from any docs/patterns/component-detail page now shows the <strong>full nav</strong> (docs + components + patterns) with collapsible groups; the group containing the current URL auto-expands. No more "to find a component you have to click into a component first".</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.16 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
