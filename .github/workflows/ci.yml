@@ -24,7 +24,12 @@ jobs:
         run: dotnet build Lumeo.slnx -c Release --no-restore -warnaserror
 
       - name: Test
-        run: dotnet test Lumeo.slnx -c Release --no-build --verbosity normal
+        # Exclude Lumeo.Tests.E2E — those are Playwright tests that need browser
+        # binaries + a running dev server (see tests/Lumeo.Tests.E2E/README.md).
+        # The project still builds in the previous step, so compile breakage is
+        # caught; only execution is skipped. Wire to a separate workflow when
+        # ready to run them headless against a deployed preview.
+        run: dotnet test Lumeo.slnx -c Release --no-build --verbosity normal --filter "FullyQualifiedName!~Lumeo.Tests.E2E"
 
       - name: Check vulnerable packages
         run: dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt && ! grep -q "has the following vulnerable packages" vulnerable.txt
