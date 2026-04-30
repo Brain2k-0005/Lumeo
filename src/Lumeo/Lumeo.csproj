@@ -54,15 +54,27 @@
     <None Include="Styles\**" Pack="false" />
   </ItemGroup>
 
-  <!-- lumeo-utilities.css (275 KB) is NOT shipped in the NuGet package.
-       Consumers either generate their own Tailwind utilities (recommended)
-       or download lumeo-utilities.css separately from the registry CDN.
-       The file is kept in source so the local docs site can reference it.
-       Spec ref: docs/superpowers/specs/2026-04-25-package-split-design.md -->
-  <ItemGroup>
-    <Content Remove="wwwroot\css\lumeo-utilities.css" />
-    <None Include="wwwroot\css\lumeo-utilities.css" Pack="false" />
-  </ItemGroup>
+  <!-- lumeo-utilities.css (~245 KB) IS shipped in the NuGet package as a
+       static web asset at `_content/Lumeo/css/lumeo-utilities.css`. It's a
+       pre-compiled Tailwind v4 bundle covering every utility class used
+       inside Lumeo + every satellite (DataGrid, Charts, Editor, Scheduler,
+       Gantt, Motion). Consumers can either link this file directly (default,
+       zero-config) or run their own Tailwind build (advanced) and drop the
+       link tag.
+
+       Regeneration: the repo-root `npm run build:css` script compiles
+       Styles/lumeo-utilities.src.css → wwwroot/css/lumeo-utilities.css.
+       The publish workflow (.github/workflows/publish.yml) runs that script
+       before `dotnet pack`, so every published rc gets a fresh bundle that
+       reflects every Razor source under src/Lumeo + satellites. The Razor
+       SDK auto-globs wwwroot/, so no <Content Include> is needed.
+
+       History: rc.15 dropped the file per the original package-split spec
+       on the assumption a registry CDN would host it separately. The CDN
+       was never set up; consumers following the docs got a 404 + broken
+       Lumeo styling. Restored in rc.18.
+       Spec ref: docs/superpowers/specs/2026-04-25-package-split-design.md
+                 (see "Update 2026-04-30 (rc.18)" footer). -->
 
   <ItemGroup>
     <InternalsVisibleTo Include="Lumeo.Tests" />
