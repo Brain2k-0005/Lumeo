@@ -430,7 +430,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _utility.CopyToClipboard(module, text);
     }
 
-    // --- Press feedback (Ripple) ---
+    // --- Press feedback (ripple click effect) ---
 
     public async ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element)
     {
@@ -535,26 +535,6 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
-    public async ValueTask MotionGlobe(string elementId, object options)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.globe", elementId, options);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionDisposeGlobe(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.disposeGlobe", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
     public async ValueTask MotionDock(string elementId, object options)
     {
         try
@@ -571,26 +551,6 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetMotionModuleAsync();
             await module.InvokeVoidAsync("motion.disposeDock", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionSpotlight(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.spotlight", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionDisposeSpotlight(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.disposeSpotlight", elementId);
         }
         catch (JSDisconnectedException) { }
     }
@@ -621,66 +581,6 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetMotionModuleAsync();
             await module.InvokeVoidAsync("motion.disposeConfetti", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionMagneticButton(string elementId, object options)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.magneticButton", elementId, options);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionDisposeMagneticButton(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.disposeMagneticButton", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionMagicCard(string elementId, object options)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.magicCard", elementId, options);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionDisposeMagicCard(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.disposeMagicCard", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionHoverBorderGradient(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.hoverBorderGradient", elementId);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async ValueTask MotionDisposeHoverBorderGradient(string elementId)
-    {
-        try
-        {
-            var module = await GetMotionModuleAsync();
-            await module.InvokeVoidAsync("motion.disposeHoverBorderGradient", elementId);
         }
         catch (JSDisconnectedException) { }
     }

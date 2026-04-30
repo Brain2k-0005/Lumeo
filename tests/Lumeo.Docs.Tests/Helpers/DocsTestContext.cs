@@ -111,7 +111,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     // Clipboard
     public ValueTask CopyToClipboard(string text) => ValueTask.CompletedTask;
 
-    // Press feedback (Ripple)
+    // Press feedback (ripple click effect)
     public ValueTask RippleAttachAsync(ElementReference element) => ValueTask.CompletedTask;
     public ValueTask RippleDetachAsync(ElementReference element) => ValueTask.CompletedTask;
 
@@ -131,34 +131,14 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeAnimatedBeam(string elementId) => ValueTask.CompletedTask;
 
-    // Motion: Globe
-    public ValueTask MotionGlobe(string elementId, object options) => ValueTask.CompletedTask;
-    public ValueTask MotionDisposeGlobe(string elementId) => ValueTask.CompletedTask;
-
     // Motion: Dock
     public ValueTask MotionDock(string elementId, object options) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeDock(string elementId) => ValueTask.CompletedTask;
-
-    // Motion: Spotlight
-    public ValueTask MotionSpotlight(string elementId) => ValueTask.CompletedTask;
-    public ValueTask MotionDisposeSpotlight(string elementId) => ValueTask.CompletedTask;
 
     // Motion: Confetti
     public ValueTask MotionConfettiInit(string elementId) => ValueTask.CompletedTask;
     public ValueTask MotionConfettiFire(string elementId, object options) => ValueTask.CompletedTask;
     public ValueTask MotionDisposeConfetti(string elementId) => ValueTask.CompletedTask;
-
-    // Motion: MagneticButton
-    public ValueTask MotionMagneticButton(string elementId, object options) => ValueTask.CompletedTask;
-    public ValueTask MotionDisposeMagneticButton(string elementId) => ValueTask.CompletedTask;
-
-    // Motion: MagicCard
-    public ValueTask MotionMagicCard(string elementId, object options) => ValueTask.CompletedTask;
-    public ValueTask MotionDisposeMagicCard(string elementId) => ValueTask.CompletedTask;
-
-    // Motion: HoverBorderGradient
-    public ValueTask MotionHoverBorderGradient(string elementId) => ValueTask.CompletedTask;
-    public ValueTask MotionDisposeHoverBorderGradient(string elementId) => ValueTask.CompletedTask;
 
     // AI primitives
     public ValueTask AiAutosize(string elementId, int maxPx) => ValueTask.CompletedTask;
