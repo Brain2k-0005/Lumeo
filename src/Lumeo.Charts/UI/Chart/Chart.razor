@@ -21,14 +21,16 @@ else
                 <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
             </div>
         }
-        else if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Spinner)
+        @if (ShouldShowSkeleton && ShowLoadingLabel)
         {
-            @* Spinner mode — semi-transparent backdrop + centered Lucide LoaderCircle + label.
-               Closest to the conventional chart-library UX (Highcharts, Recharts). The chart
-               keeps mounting underneath so toggling Loading off doesn't reinitialise ECharts. *@
+            @* Loading label — small top-right pill (spinner + text) overlaid on TOP of
+               whichever skeleton style is active. Tells users explicitly "this is loading"
+               so the cycling phantom data isn't mistaken for a bug. Doesn't block the
+               chart underneath (small, corner-aligned). Disable via ShowLoadingLabel=false
+               for bare phantom/silhouette visuals. *@
             <div role="status" aria-live="polite" aria-label="@LoadingText"
-                 class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[inherit] bg-background/65 backdrop-blur-[1px] pointer-events-none">
-                <Blazicon Svg="Lucide.LoaderCircle" class="h-7 w-7 text-muted-foreground animate-spin" />
+                 class="absolute top-2 right-2 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 backdrop-blur-sm px-2.5 py-1 shadow-sm pointer-events-none">
+                <Blazicon Svg="Lucide.LoaderCircle" class="h-3.5 w-3.5 text-muted-foreground animate-spin" />
                 @if (!string.IsNullOrEmpty(LoadingText))
                 {
                     <span class="text-xs font-medium text-muted-foreground">@LoadingText</span>
@@ -83,9 +85,16 @@ else
     /// stacking, area fill). When null (default), the shape is inferred from the real
     /// <see cref="Option"/> so the phantom mirrors the actual chart structure.</summary>
     [Parameter] public PhantomShape? PhantomShapeOverride { get; set; }
-    /// <summary>Label rendered next to the spinner when <see cref="SkeletonStyle"/> is
-    /// <see cref="ChartSkeletonStyle.Spinner"/>. Set to <c>null</c> or empty to hide the
-    /// label and show only the spinner. Defaults to "Loading…".</summary>
+    /// <summary>When true (default), overlays a small top-right pill containing a
+    /// spinner and <see cref="LoadingText"/> on top of the active skeleton — a clear,
+    /// always-on visual cue that the chart is loading. The pill renders independently
+    /// of <see cref="SkeletonStyle"/> so phantom and silhouette both get the same
+    /// hint. Set to <c>false</c> for bare visuals where the skeleton speaks for
+    /// itself.</summary>
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    /// <summary>Label rendered next to the spinner inside the loading pill. Set to
+    /// <c>null</c> or empty to hide the text and show only the spinner. Defaults to
+    /// "Loading…".</summary>
     [Parameter] public string? LoadingText { get; set; } = "Loading…";
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
