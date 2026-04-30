@@ -538,4 +538,59 @@ public class ComponentInteropServiceTests : IAsyncLifetime
         Assert.Equal("123456", received);
         Assert.False(otherCalled);
     }
+
+    // --- Dispose / DisposeAsync ---
+
+    [Fact]
+    public void Dispose_DoesNotThrow()
+    {
+        // Sync Dispose must not throw even when JS state exists
+        var exception = Record.Exception(() => _service.Dispose());
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task Dispose_FiresAsyncCleanup_WithoutThrowingToCallingPath()
+    {
+        // Register a click-outside handler to give the async cleanup something to do,
+        // then call sync Dispose. The fire-and-forget task must complete without
+        // surfacing any exception back to the test thread.
+        await _service.RegisterClickOutside("sync-disp-elem", null, () => Task.CompletedTask);
+
+        var exception = Record.Exception(() => _service.Dispose());
+        Assert.Null(exception);
+
+        // Give the detached cleanup task a moment to run
+        await Task.Delay(50);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_ClearsClickOutsideHandlers()
+    {
+        var called = false;
+        await _service.RegisterClickOutside("da-elem", null, () =>
+        {
+            called = true;
+            return Task.CompletedTask;
+        });
+
+        await _service.DisposeAsync();
+
+        // After DisposeAsync the handler dictionary should be cleared;
+        // invoking OnClickOutside must not call the handler.
+        await _service.OnClickOutside("da-elem");
+
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DoesNotThrow_WithRegisteredHandlers()
+    {
+        await _service.RegisterClickOutside("da-elem-2", null, () => Task.CompletedTask);
+
+        var exception = await Record.ExceptionAsync(() =>
+            _service.DisposeAsync().AsTask());
+
+        Assert.Null(exception);
+    }
 }

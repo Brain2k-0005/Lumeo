@@ -829,15 +829,31 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public void Dispose()
     {
-        _clickOutside.Clear();
-        _swipe.Clear();
-        _resize.Clear();
-        _scroll.Clear();
-        _utility.Clear();
+        // Best-effort: fire-and-forget the JS-side cleanup so browser observers/listeners
+        // don't leak between scopes. Sync Dispose() is rarely the dispose path in Blazor
+        // (DI prefers IAsyncDisposable when both are implemented), but if it IS called —
+        // e.g. circuit teardown, custom IServiceScope disposal — we still want JS state
+        // released. The async work runs detached; lifecycle exceptions are silently
+        // swallowed because there's no caller to surface them to.
+        _ = DisposeJsStateAsync();
         _selfRef?.Dispose();
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task DisposeJsStateAsync()
+    {
+        try
+        {
+            await DisposeJsRegistrationsAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ComponentInteropService] sync-dispose JS cleanup error: {ex}");
+        }
+    }
+
+    private async Task DisposeJsRegistrationsAsync()
     {
         foreach (var id in _clickOutside.RegisteredIds.ToList())
         {
@@ -909,7 +925,11 @@ public sealed class ComponentInteropService : IComponentInteropService
                 // Circuit disconnected, safe to ignore
             }
         }
+    }
 
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeJsRegistrationsAsync();
         _selfRef?.Dispose();
     }
 }
