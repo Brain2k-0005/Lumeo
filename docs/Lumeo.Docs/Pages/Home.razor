@@ -177,7 +177,7 @@
                                 131 components across 7 packages. <Lumeo.Text As="span" Class="text-primary">~530 KB core</Lumeo.Text>.
                             </Heading>
                         </Flex>
-                        <Lumeo.Text Size="sm" Color="muted">Package size comparison — Lumeo splits into 7 packages, install only what you use. Smaller is better.</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Color="muted">Per-package breakdown — install only the satellites you use. Each row shows what that package adds to your app's bundle.</Lumeo.Text>
                     </Stack>
 
                     <Stack Gap="4" Class="flex-1 justify-center">
@@ -186,20 +186,14 @@
                             <Stack Gap="1.5">
                                 <Flex Align="center" Justify="between" Class="text-sm">
                                     <Flex Align="center" Gap="2">
-                                        @if (row.IsUs)
-                                        {
-                                            <span class="h-2 w-2 rounded-full bg-primary"></span>
-                                        }
-                                        else
-                                        {
-                                            <span class="h-2 w-2 rounded-full bg-muted-foreground/40"></span>
-                                        }
-                                        <Lumeo.Text As="span" Weight="@(row.IsUs ? "semibold" : "medium")" Color="foreground">@row.Name</Lumeo.Text>
+                                        <span class="h-2 w-2 rounded-full @(row.IsCore ? "bg-primary" : "bg-primary/50")"></span>
+                                        <Lumeo.Text As="span" Weight="@(row.IsCore ? "semibold" : "medium")" Color="foreground">@row.Name</Lumeo.Text>
+                                        <Lumeo.Text As="span" Size="xs" Color="muted">@row.Components</Lumeo.Text>
                                     </Flex>
-                                    <Lumeo.Text As="span" Size="xs" Class="@(row.IsUs ? "font-mono text-primary font-semibold" : "font-mono text-muted-foreground")">@row.Size</Lumeo.Text>
+                                    <Lumeo.Text As="span" Size="xs" Class="@(row.IsCore ? "font-mono text-primary font-semibold" : "font-mono text-muted-foreground")">@row.Size</Lumeo.Text>
                                 </Flex>
                                 <div class="relative h-2 rounded-md bg-muted/40 overflow-hidden">
-                                    <div class="@(row.IsUs ? "bg-primary" : "bg-muted-foreground/40") h-full rounded-md transition-all"
+                                    <div class="@(row.IsCore ? "bg-primary" : "bg-primary/50") h-full rounded-md transition-all"
                                          style="width: @(row.Percent)%;"></div>
                                 </div>
                             </Stack>
@@ -208,7 +202,7 @@
 
                     <Flex Align="center" Gap="2" Class="pt-1 text-xs text-muted-foreground border-t border-border/40 pt-4">
                         <DynamicIcon Name="Info" Class="h-3.5 w-3.5" />
-                        <Lumeo.Text As="span">NuGet .nupkg sizes, verified 2026-04-22.</Lumeo.Text>
+                        <Lumeo.Text As="span">Compressed .nupkg sizes from nuget.org (rc.18).</Lumeo.Text>
                     </Flex>
                 </Stack>
             </BentoTile>
@@ -872,31 +866,19 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 
     private record FeatureItem(string Icon, string Title, string Body);
     private record UseCaseItem(string Icon, string Title, string Body, string[] Components);
-    private record SizeRow(string Name, string Size, double Percent, bool IsUs);
+    private record SizeRow(string Name, string Components, string Size, double Percent, bool IsCore);
     private record Employee(string Name, string Department, string Role, double Salary);
-    // Size comparison (verified 2026-04-27, compressed .nupkg sizes):
-    // Lumeo split into 7 packages in 2.0.0-rc.17 (drop-in CSS restored in rc.18) — install only what you use.
-    //   Lumeo 2.0 core:                    ~530 KB (the package every consumer references; 7 motion components moved to Lumeo.Motion)
-    //   + Lumeo.Charts (optional):          196 KB
-    //   + Lumeo.DataGrid (optional):        111 KB
-    //   + Lumeo.Editor (optional):           44 KB  (incl. Mammoth for Word import)
-    //   + Lumeo.Scheduler (optional):        22 KB
-    //   + Lumeo.Gantt (optional):            19 KB
-    //   + Lumeo.Motion (optional):           ~80 KB  (10 motion primitives)
-    //   = Lumeo 2.0 everything (all 7):    ~1002 KB
-    //   Microsoft.FluentUI 5.0-rc.2:      1.26 MB
-    //   MudBlazor 9.4.0 (2026-04-22):     7.59 MB
-    //   Radzen.Blazor 10.3.1 (2026-04-23):7.90 MB
-    //   AntDesign 1.6.1 (2026-04-16):     9.35 MB  ← largest, bar normalizes to 100%
-    // Bars are scaled against AntDesign (largest) at 100%.
+    // Per-package breakdown (verified 2026-04-30, compressed .nupkg sizes from rc.18).
+    // Bars normalize against the largest row (Lumeo core at 530 KB → 100%).
     private readonly SizeRow[] _sizeRows =
     {
-        new("Lumeo core",      "~530 KB",  5.7, true),
-        new("Lumeo all 7",     "~1.0 MB", 10.7, true),
-        new("FluentUI 5.0",    "1.26 MB", 13.5, false),
-        new("MudBlazor 9.4",   "7.59 MB", 81.2, false),
-        new("Radzen 10.3",     "7.90 MB", 84.5, false),
-        new("AntDesign 1.6",   "9.35 MB",100.0, false),
+        new("Lumeo",           "85 components",  "~530 KB", 100.0, true),
+        new("Lumeo.Charts",    "30 components",  "196 KB",   37.0, false),
+        new("Lumeo.DataGrid",  "3 components",   "111 KB",   20.9, false),
+        new("Lumeo.Motion",    "10 components",  "~80 KB",   15.1, false),
+        new("Lumeo.Editor",    "1 component",    "44 KB",     8.3, false),
+        new("Lumeo.Scheduler", "1 component",    "22 KB",     4.2, false),
+        new("Lumeo.Gantt",     "1 component",    "19 KB",     3.6, false),
     };
 
     private record MarqueePill(string Icon, string Label);
