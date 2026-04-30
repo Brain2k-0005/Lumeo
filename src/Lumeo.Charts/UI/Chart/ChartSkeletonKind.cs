@@ -39,15 +39,15 @@ public enum ChartSkeletonKind
     Candlestick,
 }
 
-/// <summary>How the loading state is presented.
+/// <summary>How the loading state's visual is presented.
 /// Phantom = render the real chart with synthesized data in a muted palette and morph
 /// to real data via ECharts' option-change animation (default — feels continuous).
 /// Silhouette = fall back to the legacy SVG skeleton overlay.
-/// Spinner = dim the chart and show a centered circular spinner with a "Loading…" label
-/// (closest to what most consumers expect from chart libraries — Recharts, Highcharts).</summary>
+/// A small "Loading…" pill (spinner + label) is overlaid on TOP of whichever style is
+/// chosen via <see cref="Chart.ShowLoadingLabel"/> so users never mistake the cycling
+/// phantom data for a bug. The label can be disabled per-chart for bare visuals.</summary>
 public enum ChartSkeletonStyle
 {
     Phantom,
     Silhouette,
-    Spinner,
 }
