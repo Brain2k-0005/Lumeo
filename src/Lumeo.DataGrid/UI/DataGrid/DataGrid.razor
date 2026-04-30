@@ -972,11 +972,15 @@
 
         if (ServerMode)
         {
-            _serverService!.DebounceSearch(() => InvokeAsync(async () =>
+            _serverService!.DebounceSearch(async ct =>
             {
-                await RequestServerData();
-                StateHasChanged();
-            }));
+                if (ct.IsCancellationRequested) return;
+                await InvokeAsync(async () =>
+                {
+                    await RequestServerData();
+                    StateHasChanged();
+                });
+            });
         }
         else
         {
