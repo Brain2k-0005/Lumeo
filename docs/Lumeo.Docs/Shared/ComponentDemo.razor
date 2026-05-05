@@ -21,11 +21,41 @@
         </Flex>
     </Flex>
 
+    @* Optional viewport toggle — opt-in via ShowViewportToggle. Lets demos preview
+       inside a phone-width frame so the docs honestly show what wide-min-width blocks
+       look like on small screens (instead of just horizontally scrolling on phones). *@
+    @if (ShowViewportToggle && _activeTab == Tab.Preview)
+    {
+        <Flex Align="center" Justify="end" Class="border-b border-border/60 px-4 py-2 bg-muted/10">
+            <Flex Align="center" Gap="1" Class="rounded-[var(--radius)] border border-border bg-background p-0.5">
+                <button type="button" class="@ViewportButtonClass(Viewport.Desktop)" @onclick="() => SetViewport(Viewport.Desktop)" aria-pressed="@(_viewport == Viewport.Desktop)">
+                    <DynamicIcon Name="Monitor" Class="h-3.5 w-3.5 mr-1.5" />
+                    Desktop
+                </button>
+                <button type="button" class="@ViewportButtonClass(Viewport.Mobile)" @onclick="() => SetViewport(Viewport.Mobile)" aria-pressed="@(_viewport == Viewport.Mobile)">
+                    <DynamicIcon Name="Smartphone" Class="h-3.5 w-3.5 mr-1.5" />
+                    Mobile
+                </button>
+            </Flex>
+        </Flex>
+    }
+
     @* Preview panel *@
     @if (_activeTab == Tab.Preview)
     {
         <div class="@PreviewContainerClass">
-            @ChildContent
+            @if (ShowViewportToggle && _viewport == Viewport.Mobile)
+            {
+                <div class="max-w-[420px] w-full mx-auto rounded-[var(--radius-lg)] border border-border/60 bg-background shadow-sm overflow-x-auto">
+                    <div class="px-2 py-3">
+                        @ChildContent
+                    </div>
+                </div>
+            }
+            else
+            {
+                @ChildContent
+            }
         </div>
     }
 
@@ -83,6 +113,14 @@
     [Parameter] public bool OverflowVisible { get; set; }
     [Parameter] public string? Id { get; set; }
 
+    /// <summary>
+    /// When true, renders a Desktop / Mobile viewport toggle above the preview.
+    /// When set to Mobile, the demo content is wrapped in a 420 px-wide phone frame —
+    /// any inner <c>min-w-[…]</c> remains, so the preview honestly shows the
+    /// horizontal scroll the user would experience on a real phone.
+    /// </summary>
+    [Parameter] public bool ShowViewportToggle { get; set; }
+
     private string? ComputedId => Id ?? (string.IsNullOrWhiteSpace(Title) ? null : Slugify(Title!));
 
     private static string Slugify(string input)
@@ -105,6 +143,19 @@
     private enum Tab { Preview, Code }
     private Tab _activeTab = Tab.Preview;
     private bool _copied;
+
+    private enum Viewport { Desktop, Mobile }
+    private Viewport _viewport = Viewport.Desktop;
+
+    private void SetViewport(Viewport v) => _viewport = v;
+
+    private string ViewportButtonClass(Viewport v)
+    {
+        var active = _viewport == v;
+        return active
+            ? "inline-flex items-center rounded px-2.5 py-1 text-xs font-medium bg-background shadow-sm text-foreground transition-all"
+            : "inline-flex items-center rounded px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-all";
+    }
 
     private string TabButtonClass(bool isPreview)
     {
