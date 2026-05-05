@@ -137,6 +137,7 @@
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
+    [CascadingParameter] private DataGridDragState? DragStateCtx { get; set; }
     [Parameter] public TItem Item { get; set; } = default!;
     [Parameter] public int RowIndex { get; set; }
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
@@ -237,23 +238,35 @@
     }
 
     // --- Row Drag & Drop ---
+    //
+    // Drag state is held by an instance-bound DataGridDragState cascaded from
+    // the owning DataGrid<TItem> (see DataGridHeaderCell for the column drag
+    // counterpart). This replaces the previous static-class holder which was
+    // process-global; cross-grid drops were applied to the wrong grid. The
+    // drop handler now verifies the drag originated in this grid via
+    // DragStateCtx.IsOwnDragRow().
 
     private void HandleDragStart(DragEventArgs e)
     {
-        // Store row index in a static field for cross-row communication
-        DragState.DragSourceIndex = RowIndex;
+        if (DragStateCtx is null) return;
+        DragStateCtx.StartRowDrag(RowIndex);
     }
 
     private void HandleDrop(DragEventArgs e)
     {
-        var sourceIndex = DragState.DragSourceIndex;
+        if (DragStateCtx is null) return;
+
+        // Reject cross-grid drops — only honor drags that originated in our owning grid.
+        if (!DragStateCtx.IsOwnDragRow())
+        {
+            DragStateCtx.ResetRow();
+            return;
+        }
+
+        var sourceIndex = DragStateCtx.SourceRowIndex;
+        DragStateCtx.ResetRow();
+
         if (sourceIndex < 0 || sourceIndex == RowIndex) return;
         ParentGrid?.MoveRow(sourceIndex, RowIndex);
-        DragState.DragSourceIndex = -1;
-    }
-
-    private static class DragState
-    {
-        public static int DragSourceIndex = -1;
     }
 }
