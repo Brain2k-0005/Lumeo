@@ -149,6 +149,7 @@
 }
 
 <CascadingValue Value="this" IsFixed="true">
+<CascadingValue Value="_dragState" IsFixed="true">
 <CascadingValue Value="context" IsFixed="false">
 <CascadingValue Value="_toolbarContext" IsFixed="false">
     @if (_isExpanded)
@@ -185,6 +186,7 @@
     {
         @gridRoot
     }
+</CascadingValue>
 </CascadingValue>
 </CascadingValue>
 </CascadingValue>
@@ -349,6 +351,20 @@
     private DataGridLayoutService? _layoutService;
     private DataGridServerService? _serverService;
     private DataGridToolbarContext<TItem> _toolbarContext = new();
+
+    /// <summary>
+    /// Stable per-instance id used to scope drag state. Allocated once per
+    /// grid instance and cascaded via <see cref="DataGridDragState"/> so
+    /// header cells / rows can reject drops that originated in a different
+    /// grid instance on the same page.
+    /// </summary>
+    private readonly string _gridInstanceId = Guid.NewGuid().ToString("N");
+    private readonly DataGridDragState _dragState;
+
+    public DataGrid()
+    {
+        _dragState = new DataGridDragState(_gridInstanceId);
+    }
 
     // --- ToolbarContent component registration ---
 
@@ -761,7 +777,7 @@
             if (staleCount > 0)
             {
                 _selectedSet = new HashSet<TItem>(_selectedItems);
-                SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+                NotifySelectionChanged();
             }
         }
 
@@ -1060,7 +1076,7 @@
             }
         }
 
-        SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+        NotifySelectionChanged();
         StateHasChanged();
     }
 
@@ -1068,7 +1084,7 @@
     {
         _selectedItems = _displayedItems.ToList();
         _selectedSet = new HashSet<TItem>(_selectedItems);
-        SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+        NotifySelectionChanged();
         StateHasChanged();
     }
 
@@ -1076,8 +1092,27 @@
     {
         _selectedItems.Clear();
         _selectedSet.Clear();
-        SelectedItemsChanged.InvokeAsync(_selectedItems.AsReadOnly());
+        NotifySelectionChanged();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Invokes the <see cref="SelectedItemsChanged"/> EventCallback safely from sync
+    /// call sites. The previous implementation discarded the returned Task; a faulting
+    /// async consumer handler would surface as an UnobservedTaskException AND the parent
+    /// re-render after <see cref="StateHasChanged"/> could race a still-running consumer
+    /// callback. <see cref="Lumeo.Services.SafeAsyncDispatcher.FireAndForget"/> dispatches
+    /// the InvokeAsync via the component's renderer, swallows lifecycle-class
+    /// exceptions silently, and logs anything unexpected with a structured tag.
+    /// </summary>
+    private void NotifySelectionChanged()
+    {
+        if (!SelectedItemsChanged.HasDelegate) return;
+        var snapshot = _selectedItems.AsReadOnly();
+        Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
+            InvokeAsync,
+            () => SelectedItemsChanged.InvokeAsync(snapshot),
+            "DataGrid.SelectionChanged");
     }
 
     private void ToggleGroupExpand(string key)
@@ -1158,7 +1193,7 @@
 
     // --- Column Reordering ---
 
-    private void HandleColumnReorder(ColumnReorderEventArgs args)
+    private async Task HandleColumnReorder(ColumnReorderEventArgs args)
     {
         if (args.OldIndex < 0 || args.NewIndex < 0 || args.OldIndex >= _orderedColumns.Count || args.NewIndex >= _orderedColumns.Count)
             return;
@@ -1167,8 +1202,12 @@
         _orderedColumns.RemoveAt(args.OldIndex);
         _orderedColumns.Insert(args.NewIndex, col);
 
+        // Await consumer handler so async handlers complete before we re-render.
+        // Previously the returned Task was discarded which let the next
+        // StateHasChanged race a still-running consumer callback and let
+        // exceptions in async handlers go unobserved.
         if (OnColumnReorder.HasDelegate)
-            OnColumnReorder.InvokeAsync(args);
+            await OnColumnReorder.InvokeAsync(args);
 
         ScheduleAutoSave();
         StateHasChanged();
@@ -1185,8 +1224,19 @@
         _displayedItems.RemoveAt(oldIndex);
         _displayedItems.Insert(newIndex, item);
 
+        // Public sync API — can't change return type without breaking consumers.
+        // Dispatch the consumer callback through SafeAsyncDispatcher so faults
+        // in async handlers are observed (logged) instead of becoming
+        // UnobservedTaskExceptions, and so a faulting outer InvokeAsync (e.g.
+        // disposed renderer) is also handled.
         if (OnRowReorder.HasDelegate)
-            OnRowReorder.InvokeAsync(new RowReorderEventArgs<TItem>(item, oldIndex, newIndex));
+        {
+            var args = new RowReorderEventArgs<TItem>(item, oldIndex, newIndex);
+            Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
+                InvokeAsync,
+                () => OnRowReorder.InvokeAsync(args),
+                "DataGrid.RowReorder");
+        }
 
         StateHasChanged();
     }
