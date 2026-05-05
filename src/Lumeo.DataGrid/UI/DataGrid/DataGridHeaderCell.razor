@@ -86,6 +86,7 @@
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
+    [CascadingParameter] private DataGridDragState? DragState { get; set; }
     [Inject] private ComponentInteropService Interop { get; set; } = default!;
 
     [Parameter] public DataGridColumn<TItem> Column { get; set; } = default!;
@@ -206,34 +207,39 @@
     }
 
     // --- Column Drag & Drop Reordering ---
+    //
+    // Drag state is held by an instance-bound DataGridDragState cascaded from
+    // the owning DataGrid<TItem>. Replaces the previous static-class holder
+    // which was process-global and cross-talked between grid instances on the
+    // same page (drag started in grid A, dropped on grid B → grid B applied
+    // grid A's source index). Drop handler verifies SourceGridId matches via
+    // DragState.IsOwnDragColumn, otherwise the drop is rejected.
 
     private void HandleDragStart(DragEventArgs e)
     {
-        if (!EffectiveReorderable) return;
-        ColumnDragState.DragSourceIndex = ColumnIndex;
-        ColumnDragState.DragSourceId = Column.Id;
-        // Note: dataTransfer.setData isn't directly exposable via Blazor's
-        // DragEventArgs — but the static drag-state captures the column id
-        // for the drop handler. For interop with external drop targets, the
-        // browser still fires the native dragstart event which JS consumers
-        // can hook into separately if needed.
+        if (!EffectiveReorderable || DragState is null) return;
+        DragState.StartColumnDrag(ColumnIndex, Column.Id);
     }
 
     private void HandleDragOver(DragEventArgs e)
     {
-        if (!EffectiveReorderable || ColumnDragState.DragSourceId == null || ColumnDragState.DragSourceId == Column.Id) return;
+        if (!EffectiveReorderable || DragState is null) return;
+        if (!DragState.IsOwnDragColumn(ColumnIndex)) return;
+        if (DragState.SourceColumnId == Column.Id) return;
         // Choose the drop side based on drag direction:
         // dragging from a lower index → drop AFTER this column (right edge).
         // dragging from a higher index → drop BEFORE this column (left edge).
-        var src = ColumnDragState.DragSourceIndex;
+        var src = DragState.SourceColumnIndex;
         _dropSide = src < ColumnIndex ? "right" : "left";
     }
 
     private void HandleDragEnter(DragEventArgs e)
     {
-        if (!EffectiveReorderable || ColumnDragState.DragSourceId == Column.Id) return;
+        if (!EffectiveReorderable || DragState is null) return;
+        if (!DragState.IsOwnDragColumn(ColumnIndex)) return;
+        if (DragState.SourceColumnId == Column.Id) return;
         _isDragOver = true;
-        var src = ColumnDragState.DragSourceIndex;
+        var src = DragState.SourceColumnIndex;
         _dropSide = src >= 0 && src < ColumnIndex ? "right" : "left";
     }
 
@@ -247,27 +253,27 @@
     {
         _isDragOver = false;
         _dropSide = null;
-        if (!EffectiveReorderable) return;
+        if (!EffectiveReorderable || DragState is null) return;
 
-        var sourceIndex = ColumnDragState.DragSourceIndex;
+        // Reject drops from drags that originated in a different grid instance.
+        if (!DragState.IsOwnDragColumn(ColumnIndex))
+        {
+            DragState.ResetColumn();
+            return;
+        }
+
+        var sourceIndex = DragState.SourceColumnIndex;
+        var sourceId = DragState.SourceColumnId ?? Column.Id;
+
+        // Reset BEFORE invoking the consumer callback so re-entrant drops don't
+        // see a stale source index, and so a faulting consumer can't leave the
+        // grid in a "drag in progress" state.
+        DragState.ResetColumn();
+
         if (sourceIndex < 0 || sourceIndex == ColumnIndex) return;
 
-        var args = new ColumnReorderEventArgs(
-            ColumnDragState.DragSourceId ?? Column.Id,
-            sourceIndex,
-            ColumnIndex
-        );
-
-        ColumnDragState.DragSourceIndex = -1;
-        ColumnDragState.DragSourceId = null;
-
+        var args = new ColumnReorderEventArgs(sourceId, sourceIndex, ColumnIndex);
         await OnColumnReorder.InvokeAsync(args);
-    }
-
-    private static class ColumnDragState
-    {
-        public static int DragSourceIndex = -1;
-        public static string? DragSourceId;
     }
 
     public async ValueTask DisposeAsync()
