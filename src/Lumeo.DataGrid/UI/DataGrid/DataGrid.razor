@@ -1479,6 +1479,12 @@
 
     private async Task PersistLayoutAsync(int? generation = null)
     {
+        // Generation guard — gates BOTH the LocalStorage write AND the consumer callback.
+        // Without this, a stale debounced timer could deliver an outdated layout snapshot to
+        // OnLayoutSave even when the in-service guard correctly suppressed the LocalStorage write.
+        if (generation.HasValue && _layoutService is not null && generation.Value != _layoutService.CurrentSaveGeneration)
+            return;
+
         var layout = SnapshotCurrentLayout();
 
         if (EnableLayoutPersistence)
@@ -1489,6 +1495,7 @@
 
         if (OnLayoutSave.HasDelegate)
         {
+            // Generation guard above ensures we don't deliver stale snapshots to the consumer's backend.
             await OnLayoutSave.InvokeAsync(layout);
         }
     }
