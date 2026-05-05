@@ -74,14 +74,40 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isDismissed;
-    private Timer? _autoDismissTimer;
+    private volatile bool _disposed;
+    private CancellationTokenSource? _autoDismissCts;
 
     protected override void OnInitialized()
     {
         if (AutoDismissMs.HasValue && AutoDismissMs.Value > 0)
         {
-            _autoDismissTimer = new Timer(AutoDismissCallback, null, AutoDismissMs.Value, Timeout.Infinite);
+            _autoDismissCts = new CancellationTokenSource();
+            var timeout = AutoDismissMs.Value;
+            var token = _autoDismissCts.Token;
+            // Dispatch via SafeAsyncDispatcher so any outer-task fault (e.g. circuit
+            // already disposed) is caught and never surfaces as an unobserved task.
+            SafeAsyncDispatcher.FireAndForget(
+                fn => InvokeAsync(fn),
+                () => RunAutoDismissAsync(timeout, token),
+                "Lumeo.Alert");
         }
+    }
+
+    private async Task RunAutoDismissAsync(int timeout, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(timeout, token).ConfigureAwait(true);
+        }
+        catch (TaskCanceledException) { return; }
+        catch (OperationCanceledException) { return; }
+
+        if (_disposed || token.IsCancellationRequested) return;
+        if (_isDismissed) return;
+        _isDismissed = true;
+        await OnDismiss.InvokeAsync();
+        if (_disposed) return;
+        StateHasChanged();
     }
 
     // Border baseline kept at /60 so the unfilled (Default variant) alert still reads as an outlined callout;
@@ -129,26 +155,17 @@
     private async Task Dismiss()
     {
         if (_isDismissed) return;
-        _autoDismissTimer?.Dispose();
-        _autoDismissTimer = null;
+        try { _autoDismissCts?.Cancel(); } catch (ObjectDisposedException) { }
         _isDismissed = true;
         await OnDismiss.InvokeAsync();
     }
 
-    private void AutoDismissCallback(object? state)
-    {
-        InvokeAsync(async () =>
-        {
-            if (_isDismissed) return;
-            _isDismissed = true;
-            await OnDismiss.InvokeAsync();
-            StateHasChanged();
-        });
-    }
-
     public void Dispose()
     {
-        _autoDismissTimer?.Dispose();
+        _disposed = true;
+        try { _autoDismissCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _autoDismissCts?.Dispose();
+        _autoDismissCts = null;
     }
 
     public enum AlertVariant { Default, Destructive, Success, Warning, Info }
