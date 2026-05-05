@@ -1,0 +1,102 @@
+{
+  "name": "Overlay",
+  "category": "Overlay",
+  "subcategory": null,
+  "description": "Low-level backdrop primitive for custom popovers and modals.",
+  "thumbnail": "/preview-cards/overlay.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/Overlay/OverlayProvider.razor"
+  ],
+  "dependencies": [
+    "alert-dialog",
+    "button",
+    "dialog",
+    "drawer",
+    "sheet"
+  ],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "Overlay",
+    "category": "Overlay",
+    "subcategory": null,
+    "description": "Low-level backdrop primitive for custom popovers and modals.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/Overlay/OverlayProvider.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "overlay",
+  "docsUrl": "https://lumeo.nativ.sh/components/overlay",
+  "sourceUrl": [
+    {
+      "file": "UI/Overlay/OverlayProvider.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Overlay/OverlayProvider.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Overlay/OverlayProvider.razor",
+      "content": "@namespace Lumeo\r\n@using Lumeo.Services\r\n@implements IAsyncDisposable\r\n\r\n@foreach (var overlay in _overlays)\r\n{\r\n    @switch (overlay.Type)\r\n    {\r\n        case OverlayType.Dialog:\r\n            <Dialog Open=\"true\" OpenChanged=\"(bool val) => OnOverlayClosed(val, overlay.Id)\">\r\n                <DialogContent PreventClose=\"@overlay.Options.PreventClose\" Class=\"@overlay.Options.Class\">\r\n                    @if (overlay.Title is not null)\r\n                    {\r\n                        <DialogHeader>\r\n                            <DialogTitle>@overlay.Title</DialogTitle>\r\n                        </DialogHeader>\r\n                    }\r\n                    <CascadingValue Value=\"@(new OverlayShellMarker(overlay.Id))\" IsFixed=\"true\">\r\n                        <CascadingValue Value=\"@CreateReference(overlay)\">\r\n                            <DynamicComponent Type=\"@GetComponentType(overlay)\" Parameters=\"@GetParameters(overlay)\" />\r\n                        </CascadingValue>\r\n                    </CascadingValue>\r\n                </DialogContent>\r\n            </Dialog>\r\n            break;\r\n\r\n        case OverlayType.Sheet:\r\n            <Sheet Open=\"true\" OpenChanged=\"(bool val) => OnOverlayClosed(val, overlay.Id)\">\r\n                <SheetContent Side=\"@MapSheetSide(overlay.Options.SheetSide)\" Size=\"@MapSheetSize(overlay.Options.SheetSize)\" PreventClose=\"@overlay.Options.PreventClose\" Class=\"@overlay.Options.Class\">\r\n                    @if (overlay.Title is not null)\r\n                    {\r\n                        <SheetHeader>\r\n                            <SheetTitle>@overlay.Title</SheetTitle>\r\n                        </SheetHeader>\r\n                    }\r\n                    <CascadingValue Value=\"@(new OverlayShellMarker(overlay.Id))\" IsFixed=\"true\">\r\n                        <CascadingValue Value=\"@CreateReference(overlay)\">\r\n                            <DynamicComponent Type=\"@GetComponentType(overlay)\" Parameters=\"@GetParameters(overlay)\" />\r\n                        </CascadingValue>\r\n                    </CascadingValue>\r\n                </SheetContent>\r\n            </Sheet>\r\n            break;\r\n\r\n        case OverlayType.Drawer:\r\n            <Drawer Open=\"true\" OpenChanged=\"(bool val) => OnOverlayClosed(val, overlay.Id)\">\r\n                <DrawerContent PreventClose=\"@overlay.Options.PreventClose\" Class=\"@overlay.Options.Class\">\r\n                    @if (overlay.Title is not null)\r\n                    {\r\n                        <DrawerHeader>\r\n                            <DrawerTitle>@overlay.Title</DrawerTitle>\r\n                        </DrawerHeader>\r\n                    }\r\n                    <CascadingValue Value=\"@(new OverlayShellMarker(overlay.Id))\" IsFixed=\"true\">\r\n                        <CascadingValue Value=\"@CreateReference(overlay)\">\r\n                            <DynamicComponent Type=\"@GetComponentType(overlay)\" Parameters=\"@GetParameters(overlay)\" />\r\n                        </CascadingValue>\r\n                    </CascadingValue>\r\n                </DrawerContent>\r\n            </Drawer>\r\n            break;\r\n\r\n        case OverlayType.AlertDialog:\r\n            <AlertDialog Open=\"true\">\r\n                <AlertDialogContent>\r\n                    <AlertDialogHeader>\r\n                        <AlertDialogTitle>@(overlay.AlertOptions?.Title ?? \"Are you sure?\")</AlertDialogTitle>\r\n                        @if (overlay.AlertOptions?.Description is not null)\r\n                        {\r\n                            <AlertDialogDescription>@overlay.AlertOptions.Description</AlertDialogDescription>\r\n                        }\r\n                    </AlertDialogHeader>\r\n                    <AlertDialogFooter>\r\n                        <AlertDialogCancel @onclick=\"() => HandleCancel(overlay.Id)\">@(overlay.AlertOptions?.CancelText ?? \"Cancel\")</AlertDialogCancel>\r\n                        @if (overlay.AlertOptions?.IsDestructive == true)\r\n                        {\r\n                            <AlertDialogAction OnAction=\"() => HandleConfirm(overlay.Id)\">@(overlay.AlertOptions?.ConfirmText ?? \"Continue\")</AlertDialogAction>\r\n                        }\r\n                        else\r\n                        {\r\n                            <Button OnClick=\"() => HandleConfirm(overlay.Id)\">@(overlay.AlertOptions?.ConfirmText ?? \"Continue\")</Button>\r\n                        }\r\n                    </AlertDialogFooter>\r\n                </AlertDialogContent>\r\n            </AlertDialog>\r\n            break;\r\n    }\r\n}\r\n\r\n@inject OverlayService OverlayService\r\n\r\n@code {\r\n    private readonly List<OverlayInstance> _overlays = new();\r\n\r\n    protected override void OnInitialized()\r\n    {\r\n        OverlayService.OnShow += HandleShow;\r\n        OverlayService.OnClose += HandleClose;\r\n    }\r\n\r\n    private void HandleShow(OverlayInstance instance)\r\n    {\r\n        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleShowAsync(instance), \"OverlayProvider.HandleShow\");\r\n    }\r\n\r\n    private Task HandleShowAsync(OverlayInstance instance)\r\n    {\r\n        _overlays.Add(instance);\r\n        StateHasChanged();\r\n        return Task.CompletedTask;\r\n    }\r\n\r\n    private void HandleClose(string id, object? result, bool cancelled)\r\n    {\r\n        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleCloseAsync(id, result, cancelled), \"OverlayProvider.HandleClose\");\r\n    }\r\n\r\n    private Task HandleCloseAsync(string id, object? result, bool cancelled)\r\n    {\r\n        var overlay = _overlays.FirstOrDefault(o => o.Id == id);\r\n        if (overlay is null) return Task.CompletedTask;\r\n\r\n        _overlays.Remove(overlay);\r\n\r\n        if (cancelled)\r\n            overlay.Tcs.TrySetResult(OverlayResult.CancelResult());\r\n        else\r\n            overlay.Tcs.TrySetResult(OverlayResult.Ok(result));\r\n\r\n        StateHasChanged();\r\n        return Task.CompletedTask;\r\n    }\r\n\r\n    private void OnOverlayClosed(bool isOpen, string id)\r\n    {\r\n        if (!isOpen) OverlayService.Cancel(id);\r\n    }\r\n\r\n    private void HandleConfirm(string id)\r\n    {\r\n        OverlayService.Close(id, true);\r\n    }\r\n\r\n    private void HandleCancel(string id)\r\n    {\r\n        OverlayService.Cancel(id);\r\n    }\r\n\r\n    private static Type GetComponentType(OverlayInstance overlay) => overlay.ComponentType ?? typeof(Fallback);\r\n    private static Dictionary<string, object>? GetParameters(OverlayInstance overlay) => overlay.Parameters?.ToDictionary();\r\n\r\n    private class Fallback : Microsoft.AspNetCore.Components.ComponentBase { }\r\n\r\n    private OverlayReference CreateReference(OverlayInstance overlay)\r\n    {\r\n        return new OverlayReference(overlay.Id, overlay.Parameters, OverlayService);\r\n    }\r\n\r\n    private static SheetContent.SheetSide MapSheetSide(SheetSide side) => side switch\r\n    {\r\n        SheetSide.Top => SheetContent.SheetSide.Top,\r\n        SheetSide.Bottom => SheetContent.SheetSide.Bottom,\r\n        SheetSide.Left => SheetContent.SheetSide.Left,\r\n        _ => SheetContent.SheetSide.Right\r\n    };\r\n\r\n    private static SheetContent.SheetSize MapSheetSize(SheetSize size) => size switch\r\n    {\r\n        SheetSize.Sm => SheetContent.SheetSize.Sm,\r\n        SheetSize.Lg => SheetContent.SheetSize.Lg,\r\n        SheetSize.Xl => SheetContent.SheetSize.Xl,\r\n        SheetSize.Full => SheetContent.SheetSize.Full,\r\n        _ => SheetContent.SheetSize.Default\r\n    };\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        OverlayService.OnShow -= HandleShow;\r\n        OverlayService.OnClose -= HandleClose;\r\n\r\n        foreach (var overlay in _overlays)\r\n        {\r\n            overlay.Tcs.TrySetResult(OverlayResult.CancelResult());\r\n        }\r\n        _overlays.Clear();\r\n        await Task.CompletedTask;\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [
+    {
+      "service": "OverlayService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [
+    {
+      "name": "OverlayProvider",
+      "reason": "sub-component"
+    },
+    {
+      "name": "Dialog",
+      "reason": "used internally"
+    },
+    {
+      "name": "Sheet",
+      "reason": "used internally"
+    },
+    {
+      "name": "Drawer",
+      "reason": "used internally"
+    },
+    {
+      "name": "AlertDialog",
+      "reason": "used internally"
+    },
+    {
+      "name": "Button",
+      "reason": "used internally"
+    }
+  ],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Contract/ComponentContractTests.cs"
+  ],
+  "mdSummary": "# Overlay\r\n\r\nLow-level backdrop primitive for custom popovers and modals.\r\n\r\n**Package:** `Lumeo` · **Category:** Overlay\r\n**Docs:** https://lumeo.nativ.sh/components/overlay\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `OverlayProvider`\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `OverlayService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Overlay />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Overlay/OverlayProvider.razor`\r\n"
+}

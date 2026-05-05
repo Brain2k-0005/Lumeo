@@ -1,0 +1,134 @@
+{
+  "name": "Sparkles",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "Decorative sparkle particle animation.",
+  "thumbnail": "/preview-cards/sparkles.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/Sparkles/Sparkles.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "Sparkles",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "Decorative sparkle particle animation.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/Sparkles/Sparkles.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [],
+    "parameters": [
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Count",
+        "type": "int",
+        "default": "5",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MinSize",
+        "type": "int",
+        "default": "6",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MaxSize",
+        "type": "int",
+        "default": "14",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Color",
+        "type": "string",
+        "default": "\"var(--color-primary)\"",
+        "description": "CSS color of the sparkles — defaults to var(--color-primary).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [
+      {
+        "name": "Sparkle",
+        "signature": "Sparkle(double Top, double Left, int Size, int Delay, int Duration)",
+        "description": null
+      }
+    ],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "sparkles",
+  "docsUrl": "https://lumeo.nativ.sh/components/sparkles",
+  "sourceUrl": [
+    {
+      "file": "UI/Sparkles/Sparkles.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/Sparkles/Sparkles.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Sparkles/Sparkles.razor",
+      "content": "@namespace Lumeo\r\n\r\n<span class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @foreach (var sp in _sparkles)\r\n    {\r\n        <span class=\"lumeo-sparkle\"\r\n              style=\"top:@(sp.Top)%; left:@(sp.Left)%; width:@(sp.Size)px; height:@(sp.Size)px; animation-delay:@(sp.Delay)ms; animation-duration:@(sp.Duration)ms; color:@Color;\">\r\n            <svg viewBox=\"0 0 24 24\" width=\"100%\" height=\"100%\" fill=\"currentColor\" aria-hidden=\"true\">\r\n                <path d=\"M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z\" />\r\n            </svg>\r\n        </span>\r\n    }\r\n    <span class=\"relative z-10\">@ChildContent</span>\r\n</span>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public int Count { get; set; } = 5;\r\n    [Parameter] public int MinSize { get; set; } = 6;\r\n    [Parameter] public int MaxSize { get; set; } = 14;\r\n\r\n    /// <summary>CSS color of the sparkles — defaults to <c>var(--color-primary)</c>.</summary>\r\n    [Parameter] public string Color { get; set; } = \"var(--color-primary)\";\r\n\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private readonly string _elementId = $\"lumeo-sparkles-{Guid.NewGuid():N}\";\r\n    private List<Sparkle> _sparkles = new();\r\n    private int _lastSeed;\r\n\r\n    // If the consumer passes their own positioning utility (absolute/fixed/sticky), skip the marker class\r\n    // that forces `position: relative` — unlayered rules in lumeo.css always beat Tailwind's layered utilities,\r\n    // so the only reliable way to let \"absolute inset-0\" through is to not emit the conflicting rule at all.\r\n    private string CssClass\r\n    {\r\n        get\r\n        {\r\n            var overridesPosition = !string.IsNullOrEmpty(Class)\r\n                && (Class.Contains(\"absolute\") || Class.Contains(\"fixed\") || Class.Contains(\"sticky\"));\r\n            var baseClass = overridesPosition ? null : \"lumeo-sparkles\";\r\n            return string.Join(\" \", new[] { baseClass, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\r\n        }\r\n    }\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        // Seeded deterministic placement — stable across re-renders so sparkles do not \"jump\".\r\n        var seed = GetStableSeed();\r\n        if (_sparkles.Count == Count && seed == _lastSeed && _sparkles.All(s => s.Size >= MinSize && s.Size <= MaxSize))\r\n        {\r\n            return;\r\n        }\r\n        _lastSeed = seed;\r\n        var rng = new Random(seed);\r\n        _sparkles = Enumerable.Range(0, Math.Max(0, Count)).Select(_ => new Sparkle(\r\n            Top: Math.Round(rng.NextDouble() * 90 + 5, 2),\r\n            Left: Math.Round(rng.NextDouble() * 90 + 5, 2),\r\n            Size: rng.Next(MinSize, Math.Max(MinSize + 1, MaxSize + 1)),\r\n            Delay: rng.Next(0, 2000),\r\n            Duration: rng.Next(1600, 2800)\r\n        )).ToList();\r\n    }\r\n\r\n    private int GetStableSeed()\r\n    {\r\n        // Stable hash from element id + Count; avoids relying on GetHashCode which is randomized between runs.\r\n        var src = $\"{_elementId}:{Count}:{MinSize}:{MaxSize}\";\r\n        unchecked\r\n        {\r\n            var hash = 2166136261u;\r\n            foreach (var c in src)\r\n            {\r\n                hash ^= c;\r\n                hash *= 16777619u;\r\n            }\r\n            return (int)hash;\r\n        }\r\n    }\r\n\r\n    private record Sparkle(double Top, double Left, int Size, int Delay, int Duration);\r\n}\r\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "Sparkles",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/Sparkles/SparklesTests.cs"
+  ],
+  "mdSummary": "# Sparkles\r\n\r\nDecorative sparkle particle animation.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/sparkles\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Sparkles | ChildContent | `RenderFragment?` | `` |  |\r\n| Sparkles | Count | `int` | `5` |  |\r\n| Sparkles | MinSize | `int` | `6` |  |\r\n| Sparkles | MaxSize | `int` | `14` |  |\r\n| Sparkles | Color | `string` | `\"var(--color-primary)\"` | CSS color of the sparkles — defaults to var(--color-primary). |\r\n| Sparkles | Class | `string?` | `` |  |\r\n| Sparkles | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Sparkles) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Sparkles />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Sparkles/Sparkles.razor`\r\n"
+}

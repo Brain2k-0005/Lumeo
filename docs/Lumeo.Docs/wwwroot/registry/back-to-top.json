@@ -1,0 +1,130 @@
+{
+  "name": "BackToTop",
+  "category": "Navigation",
+  "subcategory": null,
+  "description": "Floating button that scrolls the page back to the top.",
+  "thumbnail": "/preview-cards/back-to-top.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/BackToTop/BackToTop.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
+  "cssVars": [
+    "--color-primary",
+    "--color-primary-foreground",
+    "--radius"
+  ],
+  "api": {
+    "name": "BackToTop",
+    "category": "Navigation",
+    "subcategory": null,
+    "description": "Floating button that scrolls the page back to the top.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/BackToTop/BackToTop.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "VisibilityThreshold",
+        "type": "int",
+        "default": "300",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Disabled",
+        "type": "bool",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-primary",
+      "--color-primary-foreground",
+      "--radius"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "back-to-top",
+  "docsUrl": "https://lumeo.nativ.sh/components/back-to-top",
+  "sourceUrl": [
+    {
+      "file": "UI/BackToTop/BackToTop.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/BackToTop/BackToTop.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/BackToTop/BackToTop.razor",
+      "content": "@namespace Lumeo\r\n@implements IAsyncDisposable\r\n@inject Lumeo.Services.ComponentInteropService Interop\r\n\r\n@if (_visible && !Disabled)\r\n{\r\n    <button type=\"button\"\r\n            class=\"@CssClass\"\r\n            @onclick=\"ScrollToTop\"\r\n            aria-label=\"Back to top\"\r\n            @attributes=\"AdditionalAttributes\">\r\n        @if (ChildContent is not null)\r\n        {\r\n            @ChildContent\r\n        }\r\n        else\r\n        {\r\n            <Blazicon Svg=\"Lucide.ArrowUp\" class=\"h-5 w-5\" />\r\n        }\r\n    </button>\r\n}\r\n\r\n@code {\r\n    [Parameter] public int VisibilityThreshold { get; set; } = 300;\r\n    [Parameter] public bool Disabled { get; set; }\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private bool _visible;\r\n    private readonly string _id = $\"backtotop-{Guid.NewGuid():N}\";\r\n\r\n    private string CssClass => $\"fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 {Class}\".Trim();\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender)\r\n        {\r\n            await Interop.RegisterBackToTop(_id, VisibilityThreshold, async (visible) =>\r\n            {\r\n                if (_visible != visible)\r\n                {\r\n                    _visible = visible;\r\n                    await InvokeAsync(StateHasChanged);\r\n                }\r\n            });\r\n        }\r\n    }\r\n\r\n    private async Task ScrollToTop()\r\n    {\r\n        await Interop.ScrollToTop();\r\n    }\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        try\r\n        {\r\n            await Interop.UnregisterBackToTop(_id);\r\n        }\r\n        catch (JSDisconnectedException)\r\n        {\r\n            // Circuit disconnected, safe to ignore\r\n        }\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "BackToTop",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": "Lumeo.Services"
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Docs.Tests/Helpers/DocsTestContext.cs",
+    "tests/Lumeo.Tests/Components/BackToTop/BackToTopTests.cs",
+    "tests/Lumeo.Tests/Contract/ComponentContractTests.cs",
+    "tests/Lumeo.Tests/Services/ComponentInteropServiceTests.cs",
+    "tests/Lumeo.Tests/Services/Interop/InteropAdapterTests.cs",
+    "tests/Lumeo.Tests/Services/StrictInteropTests.cs"
+  ],
+  "mdSummary": "# BackToTop\r\n\r\nFloating button that scrolls the page back to the top.\r\n\r\n**Package:** `Lumeo` · **Category:** Navigation\r\n**Docs:** https://lumeo.nativ.sh/components/back-to-top\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| BackToTop | VisibilityThreshold | `int` | `300` |  |\r\n| BackToTop | Disabled | `bool` | `` |  |\r\n| BackToTop | ChildContent | `RenderFragment?` | `` |  |\r\n| BackToTop | Class | `string?` | `` |  |\r\n| BackToTop | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (BackToTop) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` (Lumeo.Services)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<BackToTop />\r\n```\r\n\r\n## CSS variables\r\n`--color-primary`, `--color-primary-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/BackToTop/BackToTop.razor`\r\n"
+}

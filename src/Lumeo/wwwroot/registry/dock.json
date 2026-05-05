@@ -1,0 +1,128 @@
+{
+  "name": "Dock",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "macOS-style icon dock with cursor-proximity magnification.",
+  "thumbnail": "/preview-cards/dock.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/Dock/Dock.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "Dock",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "macOS-style icon dock with cursor-proximity magnification.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/Dock/Dock.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MaxScale",
+        "type": "double",
+        "default": "1.8",
+        "description": "Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MagnifyRadius",
+        "type": "int",
+        "default": "100",
+        "description": "Radius (px) around each item within which neighbors start scaling.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AriaLabel",
+        "type": "string",
+        "default": "\"Application Dock\"",
+        "description": "Accessible label for the dock toolbar container.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "dock",
+  "docsUrl": "https://lumeo.nativ.sh/components/dock",
+  "sourceUrl": [
+    {
+      "file": "UI/Dock/Dock.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/Dock/Dock.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Dock/Dock.razor",
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<div id=\"@_elementId\" class=\"@CssClass\" role=\"toolbar\" aria-label=\"@AriaLabel\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger).</summary>\n    [Parameter] public double MaxScale { get; set; } = 1.8;\n    /// <summary>Radius (px) around each item within which neighbors start scaling.</summary>\n    [Parameter] public int MagnifyRadius { get; set; } = 100;\n    /// <summary>Accessible label for the dock toolbar container.</summary>\n    [Parameter] public string AriaLabel { get; set; } = \"Application Dock\";\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-dock-{Guid.NewGuid():N}\";\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-dock\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                await Interop.MotionDock(_elementId, new\n                {\n                    maxScale = MaxScale,\n                    magnifyRadius = MagnifyRadius\n                });\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_registered)\n        {\n            await Interop.MotionDisposeDock(_elementId);\n        }\n    }\n}\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "Dock",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Docs.Tests/Helpers/DocsTestContext.cs",
+    "tests/Lumeo.Tests/Components/Dock/DockTests.cs"
+  ],
+  "mdSummary": "# Dock\r\n\r\nmacOS-style icon dock with cursor-proximity magnification.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/dock\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Dock | ChildContent | `RenderFragment?` | `` |  |\r\n| Dock | MaxScale | `double` | `1.8` | Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger). |\r\n| Dock | MagnifyRadius | `int` | `100` | Radius (px) around each item within which neighbors start scaling. |\r\n| Dock | AriaLabel | `string` | `\"Application Dock\"` | Accessible label for the dock toolbar container. |\r\n| Dock | Class | `string?` | `` |  |\r\n| Dock | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Dock) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Dock />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Dock/Dock.razor`\r\n"
+}

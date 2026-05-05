@@ -1,0 +1,112 @@
+{
+  "name": "TextReveal",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "Word-by-word reveal animation on scroll.",
+  "thumbnail": "/preview-cards/text-reveal.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/TextReveal/TextReveal.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "TextReveal",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "Word-by-word reveal animation on scroll.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/TextReveal/TextReveal.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "Text",
+        "type": "string",
+        "default": "string.Empty",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Stagger",
+        "type": "int",
+        "default": "80",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Threshold",
+        "type": "double",
+        "default": "0.3",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "text-reveal",
+  "docsUrl": "https://lumeo.nativ.sh/components/text-reveal",
+  "sourceUrl": [
+    {
+      "file": "UI/TextReveal/TextReveal.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/TextReveal/TextReveal.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/TextReveal/TextReveal.razor",
+      "content": "@namespace Lumeo\r\n@implements IAsyncDisposable\r\n@inject ComponentInteropService Interop\r\n\r\n<span id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @for (var i = 0; i < _words.Length; i++)\r\n    {\r\n        <span data-motion-word>@_words[i]</span>\r\n        @if (i < _words.Length - 1)\r\n        {\r\n            @(\" \")\r\n        }\r\n    }\r\n</span>\r\n\r\n@code {\r\n    [Parameter] public string Text { get; set; } = string.Empty;\r\n    [Parameter] public int Stagger { get; set; } = 80;\r\n    [Parameter] public double Threshold { get; set; } = 0.3;\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private readonly string _elementId = $\"lumeo-reveal-{Guid.NewGuid():N}\";\r\n    private string[] _words = Array.Empty<string>();\r\n    private bool _registered;\r\n\r\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-reveal\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        _words = string.IsNullOrEmpty(Text)\r\n            ? Array.Empty<string>()\r\n            : Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);\r\n    }\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender && !_registered)\r\n        {\r\n            _registered = true;\r\n            try\r\n            {\r\n                await Interop.MotionRevealText(_elementId, Stagger, Threshold);\r\n            }\r\n            catch (JSDisconnectedException) { }\r\n        }\r\n    }\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        if (_registered)\r\n        {\r\n            await Interop.MotionDisposeObserver(_elementId);\r\n        }\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/TextReveal/TextRevealTests.cs"
+  ],
+  "mdSummary": "# TextReveal\r\n\r\nWord-by-word reveal animation on scroll.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/text-reveal\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| TextReveal | Text | `string` | `string.Empty` |  |\r\n| TextReveal | Stagger | `int` | `80` |  |\r\n| TextReveal | Threshold | `double` | `0.3` |  |\r\n| TextReveal | Class | `string?` | `` |  |\r\n| TextReveal | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<TextReveal />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/TextReveal/TextReveal.razor`\r\n"
+}
