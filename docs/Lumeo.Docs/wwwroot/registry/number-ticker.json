@@ -1,0 +1,144 @@
+{
+  "name": "NumberTicker",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "Animated count-up from zero to target number.",
+  "thumbnail": "/preview-cards/number-ticker.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/NumberTicker/NumberTicker.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "NumberTicker",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "Animated count-up from zero to target number.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/NumberTicker/NumberTicker.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "Value",
+        "type": "double",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "StartValue",
+        "type": "double",
+        "default": "0",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "DurationMs",
+        "type": "int",
+        "default": "1500",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Decimals",
+        "type": "int",
+        "default": "0",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Prefix",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Suffix",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ThousandsSeparator",
+        "type": "string",
+        "default": "\",\"",
+        "description": "Thousands group separator (default \",\"). Set to empty string to suppress.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "number-ticker",
+  "docsUrl": "https://lumeo.nativ.sh/components/number-ticker",
+  "sourceUrl": [
+    {
+      "file": "UI/NumberTicker/NumberTicker.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/NumberTicker/NumberTicker.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/NumberTicker/NumberTicker.razor",
+      "content": "@namespace Lumeo\r\n@implements IAsyncDisposable\r\n@inject ComponentInteropService Interop\r\n\r\n<span class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @if (!string.IsNullOrEmpty(Prefix))\r\n    {\r\n        <span>@Prefix</span>\r\n    }\r\n    <span id=\"@_elementId\">@InitialNumberText</span>\r\n    @if (!string.IsNullOrEmpty(Suffix))\r\n    {\r\n        <span>@Suffix</span>\r\n    }\r\n</span>\r\n\r\n@code {\r\n    [Parameter] public double Value { get; set; }\r\n    [Parameter] public double StartValue { get; set; } = 0;\r\n    [Parameter] public int DurationMs { get; set; } = 1500;\r\n    [Parameter] public int Decimals { get; set; } = 0;\r\n    [Parameter] public string? Prefix { get; set; }\r\n    [Parameter] public string? Suffix { get; set; }\r\n    /// <summary>Thousands group separator (default \",\"). Set to empty string to suppress.</summary>\r\n    [Parameter] public string ThousandsSeparator { get; set; } = \",\";\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private readonly string _elementId = $\"lumeo-ticker-{Guid.NewGuid():N}\";\r\n    private double _lastRenderedValue;\r\n    private bool _initialized;\r\n\r\n    private string CssClass => string.Join(\" \", new[] { \"tabular-nums inline-flex items-baseline\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\r\n\r\n    private string InitialNumberText => StartValue.ToString(\"N\" + Decimals);\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender)\r\n        {\r\n            _lastRenderedValue = Value;\r\n            _initialized = true;\r\n            await Tick(StartValue, Value);\r\n        }\r\n        else if (_initialized && !AreClose(_lastRenderedValue, Value))\r\n        {\r\n            var from = _lastRenderedValue;\r\n            _lastRenderedValue = Value;\r\n            await Tick(from, Value);\r\n        }\r\n    }\r\n\r\n    private async Task Tick(double from, double to)\r\n    {\r\n        try\r\n        {\r\n            await Interop.MotionTickNumber(_elementId, from, to, DurationMs, Decimals, ThousandsSeparator);\r\n        }\r\n        catch (JSDisconnectedException) { }\r\n    }\r\n\r\n    private static bool AreClose(double a, double b) => Math.Abs(a - b) < 1e-9;\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        await Interop.MotionDisposeTicker(_elementId);\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/NumberTicker/NumberTickerTests.cs"
+  ],
+  "mdSummary": "# NumberTicker\r\n\r\nAnimated count-up from zero to target number.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/number-ticker\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| NumberTicker | Value | `double` | `` |  |\r\n| NumberTicker | StartValue | `double` | `0` |  |\r\n| NumberTicker | DurationMs | `int` | `1500` |  |\r\n| NumberTicker | Decimals | `int` | `0` |  |\r\n| NumberTicker | Prefix | `string?` | `` |  |\r\n| NumberTicker | Suffix | `string?` | `` |  |\r\n| NumberTicker | ThousandsSeparator | `string` | `\",\"` | Thousands group separator (default \",\"). Set to empty string to suppress. |\r\n| NumberTicker | Class | `string?` | `` |  |\r\n| NumberTicker | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<NumberTicker />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/NumberTicker/NumberTicker.razor`\r\n"
+}

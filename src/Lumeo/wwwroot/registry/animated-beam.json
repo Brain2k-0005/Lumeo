@@ -1,0 +1,193 @@
+{
+  "name": "AnimatedBeam",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "SVG beam that traces an animated gradient path between two DOM elements.",
+  "thumbnail": "/preview-cards/animated-beam.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/AnimatedBeam/AnimatedBeam.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "AnimatedBeam",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "SVG beam that traces an animated gradient path between two DOM elements.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/AnimatedBeam/AnimatedBeam.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "ContainerId",
+        "type": "string?",
+        "default": null,
+        "description": "The id of the container element that holds both the from/to nodes and this AnimatedBeam. Coordinates are measured relative to this element (matching Magic UI's containerRef pattern). If null, the SVG's own bounding rect is used as fallback.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "FromId",
+        "type": "string?",
+        "default": null,
+        "description": "The element id of the source node.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ToId",
+        "type": "string?",
+        "default": null,
+        "description": "The element id of the destination node.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "DurationMs",
+        "type": "int",
+        "default": "3000",
+        "description": "Duration of one full beam cycle in milliseconds.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "DelayMs",
+        "type": "int",
+        "default": "0",
+        "description": "Delay before the first animation cycle starts.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Curvature",
+        "type": "double",
+        "default": "0",
+        "description": "Curvature of the bezier path. 0 = straight. Positive = bows up.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Reverse",
+        "type": "bool",
+        "default": "false",
+        "description": "Reverses the direction of travel.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "GradientStartColor",
+        "type": "string",
+        "default": "\"#ffaa40\"",
+        "description": "Color at the start of the gradient.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "GradientStopColor",
+        "type": "string",
+        "default": "\"#9c40ff\"",
+        "description": "Color at the end of the gradient.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "PathColor",
+        "type": "string",
+        "default": "\"var(--color-border)\"",
+        "description": "CSS color of the guide track path.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "PathWidth",
+        "type": "double",
+        "default": "1",
+        "description": "Width of the guide track in px.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "PathOpacity",
+        "type": "double",
+        "default": "0.3",
+        "description": "Opacity of the guide track (0–1).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "BeamWidth",
+        "type": "double",
+        "default": "2",
+        "description": "Width of the animated beam stroke in px.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "animated-beam",
+  "docsUrl": "https://lumeo.nativ.sh/components/animated-beam",
+  "sourceUrl": [
+    {
+      "file": "UI/AnimatedBeam/AnimatedBeam.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/AnimatedBeam/AnimatedBeam.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/AnimatedBeam/AnimatedBeam.razor",
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n@* The SVG is absolutely positioned inside the container via Blazor's wrapper.\n   ContainerId MUST be the id of the position:relative parent that holds both\n   the from/to nodes and this component. *@\n<svg id=\"@_elementId\"\n     class=\"@CssClass\"\n     aria-hidden=\"true\"\n     style=\"position:absolute;top:0;left:0;pointer-events:none;overflow:visible;\"\n     @attributes=\"AdditionalAttributes\">\n    <defs>\n        <linearGradient id=\"@_gradientId\" gradientUnits=\"userSpaceOnUse\"\n                        x1=\"0\" y1=\"0\" x2=\"100\" y2=\"0\">\n            <stop offset=\"0%\" stop-color=\"@GradientStartColor\" stop-opacity=\"0\" />\n            <stop offset=\"40%\" stop-color=\"@GradientStartColor\" />\n            <stop offset=\"70%\" stop-color=\"@GradientStopColor\" />\n            <stop offset=\"100%\" stop-color=\"@GradientStopColor\" stop-opacity=\"0\" />\n        </linearGradient>\n    </defs>\n    @* Guide path — always visible as a faint track *@\n    <path id=\"@(_elementId + \"-track\")\"\n          stroke=\"@PathColor\"\n          stroke-width=\"@PathWidth\"\n          stroke-opacity=\"@(PathOpacity.ToString(\"F2\", System.Globalization.CultureInfo.InvariantCulture))\"\n          stroke-linecap=\"round\"\n          fill=\"none\" />\n    @* Animated beam path — gradient travels along the track *@\n    <path id=\"@(_elementId + \"-beam\")\"\n          stroke=\"url(#@_gradientId)\"\n          stroke-width=\"@BeamWidth\"\n          stroke-linecap=\"round\"\n          fill=\"none\" />\n</svg>\n\n@code {\n    /// <summary>\n    /// The <c>id</c> of the container element that holds both the from/to nodes\n    /// and this AnimatedBeam. Coordinates are measured relative to this element\n    /// (matching Magic UI's containerRef pattern). If null, the SVG's own\n    /// bounding rect is used as fallback.\n    /// </summary>\n    [Parameter] public string? ContainerId { get; set; }\n    /// <summary>The element id of the source node.</summary>\n    [Parameter] public string? FromId { get; set; }\n    /// <summary>The element id of the destination node.</summary>\n    [Parameter] public string? ToId { get; set; }\n    /// <summary>Duration of one full beam cycle in milliseconds.</summary>\n    [Parameter] public int DurationMs { get; set; } = 3000;\n    /// <summary>Delay before the first animation cycle starts.</summary>\n    [Parameter] public int DelayMs { get; set; } = 0;\n    /// <summary>Curvature of the bezier path. 0 = straight. Positive = bows up.</summary>\n    [Parameter] public double Curvature { get; set; } = 0;\n    /// <summary>Reverses the direction of travel.</summary>\n    [Parameter] public bool Reverse { get; set; } = false;\n    /// <summary>Color at the start of the gradient.</summary>\n    [Parameter] public string GradientStartColor { get; set; } = \"#ffaa40\";\n    /// <summary>Color at the end of the gradient.</summary>\n    [Parameter] public string GradientStopColor { get; set; } = \"#9c40ff\";\n    /// <summary>CSS color of the guide track path.</summary>\n    [Parameter] public string PathColor { get; set; } = \"var(--color-border)\";\n    /// <summary>Width of the guide track in px.</summary>\n    [Parameter] public double PathWidth { get; set; } = 1;\n    /// <summary>Opacity of the guide track (0–1).</summary>\n    [Parameter] public double PathOpacity { get; set; } = 0.3;\n    /// <summary>Width of the animated beam stroke in px.</summary>\n    [Parameter] public double BeamWidth { get; set; } = 2;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-animated-beam-{Guid.NewGuid():N}\";\n    private readonly string _gradientId = $\"lumeo-beam-grad-{Guid.NewGuid():N}\";\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-animated-beam\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered && !string.IsNullOrEmpty(FromId) && !string.IsNullOrEmpty(ToId))\n        {\n            _registered = true;\n            try\n            {\n                await Interop.MotionAnimatedBeam(_elementId, FromId, ToId, new\n                {\n                    containerId = ContainerId,\n                    durationMs = DurationMs,\n                    delayMs = DelayMs,\n                    curvature = Curvature,\n                    reverse = Reverse\n                });\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_registered)\n        {\n            try { await Interop.MotionDisposeAnimatedBeam(_elementId); }\n            catch (JSDisconnectedException) { }\n        }\n    }\n}\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Docs.Tests/Helpers/DocsTestContext.cs",
+    "tests/Lumeo.Tests/Components/AnimatedBeam/AnimatedBeamTests.cs"
+  ],
+  "mdSummary": "# AnimatedBeam\r\n\r\nSVG beam that traces an animated gradient path between two DOM elements.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/animated-beam\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| AnimatedBeam | ContainerId | `string?` | `` | The id of the container element that holds both the from/to nodes and this AnimatedBeam. Coordinates are measured relative to this element (matching Magic UI's containerRef pattern). If null, the SVG's own bounding rect is used as fallback. |\r\n| AnimatedBeam | FromId | `string?` | `` | The element id of the source node. |\r\n| AnimatedBeam | ToId | `string?` | `` | The element id of the destination node. |\r\n| AnimatedBeam | DurationMs | `int` | `3000` | Duration of one full beam cycle in milliseconds. |\r\n| AnimatedBeam | DelayMs | `int` | `0` | Delay before the first animation cycle starts. |\r\n| AnimatedBeam | Curvature | `double` | `0` | Curvature of the bezier path. 0 = straight. Positive = bows up. |\r\n| AnimatedBeam | Reverse | `bool` | `false` | Reverses the direction of travel. |\r\n| AnimatedBeam | GradientStartColor | `string` | `\"#ffaa40\"` | Color at the start of the gradient. |\r\n| AnimatedBeam | GradientStopColor | `string` | `\"#9c40ff\"` | Color at the end of the gradient. |\r\n| AnimatedBeam | PathColor | `string` | `\"var(--color-border)\"` | CSS color of the guide track path. |\r\n| AnimatedBeam | PathWidth | `double` | `1` | Width of the guide track in px. |\r\n| AnimatedBeam | PathOpacity | `double` | `0.3` | Opacity of the guide track (0–1). |\r\n| AnimatedBeam | BeamWidth | `double` | `2` | Width of the animated beam stroke in px. |\r\n| AnimatedBeam | Class | `string?` | `` |  |\r\n| AnimatedBeam | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<AnimatedBeam />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/AnimatedBeam/AnimatedBeam.razor`\r\n"
+}

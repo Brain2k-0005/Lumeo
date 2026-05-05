@@ -1,0 +1,172 @@
+{
+  "name": "Sortable",
+  "category": "Drag & Drop",
+  "subcategory": null,
+  "description": "Drag-and-drop reorderable list.",
+  "thumbnail": "/preview-cards/sortable.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/Sortable/SortableList.razor"
+  ],
+  "dependencies": [
+    "list"
+  ],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
+  "cssVars": [
+    "--color-border",
+    "--color-card",
+    "--color-foreground",
+    "--color-muted",
+    "--color-muted-foreground",
+    "--color-primary",
+    "--radius"
+  ],
+  "api": {
+    "name": "Sortable",
+    "category": "Drag & Drop",
+    "subcategory": null,
+    "description": "Drag-and-drop reorderable list.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/Sortable/SortableList.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [],
+    "parameters": [
+      {
+        "name": "Items",
+        "type": "List<TItem>",
+        "default": "[]",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ItemsChanged",
+        "type": "EventCallback<List<TItem>>",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ItemTemplate",
+        "type": "RenderFragment<TItem>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Handle",
+        "type": "bool",
+        "default": "true",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Disabled",
+        "type": "bool",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Group",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [
+      {
+        "name": "ItemsChanged",
+        "type": "EventCallback<List<TItem>>",
+        "description": null
+      }
+    ],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-border",
+      "--color-card",
+      "--color-foreground",
+      "--color-muted",
+      "--color-muted-foreground",
+      "--color-primary",
+      "--radius"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "sortable",
+  "docsUrl": "https://lumeo.nativ.sh/components/sortable",
+  "sourceUrl": [
+    {
+      "file": "UI/Sortable/SortableList.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Sortable/SortableList.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Sortable/SortableList.razor",
+      "content": "@namespace Lumeo\r\n@typeparam TItem\r\n\r\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @foreach (var (item, index) in _items.Select((x, i) => (x, i)))\r\n    {\r\n        <div class=\"@GetItemClass(index)\"\r\n             draggable=\"@(!Disabled ? \"true\" : \"false\")\"\r\n             @ondragstart=\"() => OnDragStart(index)\"\r\n             @ondragover:preventDefault=\"true\"\r\n             @ondragover=\"() => OnDragOver(index)\"\r\n             @ondragleave=\"OnDragLeave\"\r\n             @ondrop=\"() => OnDrop(index)\"\r\n             @ondragend=\"OnDragEnd\">\r\n            @if (Handle && !Disabled)\r\n            {\r\n                <div class=\"flex-shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground mr-2 flex items-center\">\r\n                    <Blazicon Svg=\"Lucide.GripVertical\" class=\"h-4 w-4\" />\r\n                </div>\r\n            }\r\n            <div class=\"flex-1 min-w-0\">\r\n                @if (ItemTemplate is not null)\r\n                {\r\n                    @ItemTemplate(item)\r\n                }\r\n            </div>\r\n        </div>\r\n    }\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public List<TItem> Items { get; set; } = [];\r\n    [Parameter] public EventCallback<List<TItem>> ItemsChanged { get; set; }\r\n    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }\r\n    [Parameter] public bool Handle { get; set; } = true;\r\n    [Parameter] public bool Disabled { get; set; }\r\n    [Parameter] public string? Group { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private List<TItem> _items = [];\r\n    private int _dragFromIndex = -1;\r\n    private int _dragOverIndex = -1;\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        _items = Items.ToList();\r\n    }\r\n\r\n    private string CssClass => $\"flex flex-col gap-1 {Class}\".Trim();\r\n\r\n    private string GetItemClass(int index)\r\n    {\r\n        var classes = \"flex items-center rounded-md border border-border/40 bg-card px-3 py-2 transition-all\";\r\n        if (index == _dragFromIndex)\r\n            classes += \" opacity-50\";\r\n        if (index == _dragOverIndex && index != _dragFromIndex)\r\n            classes += \" border-primary border-2\";\r\n        if (!Handle && !Disabled)\r\n            classes += \" cursor-grab active:cursor-grabbing\";\r\n        return classes;\r\n    }\r\n\r\n    private void OnDragStart(int index)\r\n    {\r\n        _dragFromIndex = index;\r\n    }\r\n\r\n    private void OnDragOver(int index)\r\n    {\r\n        _dragOverIndex = index;\r\n    }\r\n\r\n    private void OnDragLeave()\r\n    {\r\n        _dragOverIndex = -1;\r\n    }\r\n\r\n    private async Task OnDrop(int toIndex)\r\n    {\r\n        if (_dragFromIndex < 0 || _dragFromIndex == toIndex)\r\n        {\r\n            _dragFromIndex = -1;\r\n            _dragOverIndex = -1;\r\n            return;\r\n        }\r\n\r\n        var item = _items[_dragFromIndex];\r\n        _items.RemoveAt(_dragFromIndex);\r\n        _items.Insert(toIndex, item);\r\n\r\n        _dragFromIndex = -1;\r\n        _dragOverIndex = -1;\r\n\r\n        await ItemsChanged.InvokeAsync(_items.ToList());\r\n    }\r\n\r\n    private void OnDragEnd()\r\n    {\r\n        _dragFromIndex = -1;\r\n        _dragOverIndex = -1;\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ItemTemplate",
+      "owner": "Sortable",
+      "type": "RenderFragment<TItem>?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [
+    {
+      "name": "SortableList",
+      "reason": "sub-component"
+    },
+    {
+      "name": "List",
+      "reason": "used internally"
+    }
+  ],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/DataGrid/DataGridAutoSaveStaleTests.cs",
+    "tests/Lumeo.Tests/Components/DataGrid/DataGridExpandableTests.cs",
+    "tests/Lumeo.Tests/Components/DataGrid/DataGridLayoutJsonTests.cs",
+    "tests/Lumeo.Tests/Components/DataGrid/DataGridTests.cs",
+    "tests/Lumeo.Tests/Components/DataGrid/DataGridToolbarTogglesTests.cs",
+    "tests/Lumeo.Tests/Contract/ComponentContractTests.cs"
+  ],
+  "mdSummary": "# Sortable\r\n\r\nDrag-and-drop reorderable list.\r\n\r\n**Package:** `Lumeo` · **Category:** Drag & Drop\r\n**Docs:** https://lumeo.nativ.sh/components/sortable\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Sortable | Items | `List<TItem>` | `[]` |  |\r\n| Sortable | ItemsChanged | `EventCallback<List<TItem>>` | `` |  |\r\n| Sortable | ItemTemplate | `RenderFragment<TItem>?` | `` |  |\r\n| Sortable | Handle | `bool` | `true` |  |\r\n| Sortable | Disabled | `bool` | `` |  |\r\n| Sortable | Group | `string?` | `` |  |\r\n| Sortable | Class | `string?` | `` |  |\r\n| Sortable | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ItemTemplate` (Sortable) — RenderFragment slot\r\n\r\n## Events\r\n- `ItemsChanged` (`EventCallback<List<TItem>>`)\r\n\r\n## Sub-components\r\n- `SortableList`\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Sortable />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-card`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--radius`\r\n\r\n## Files\r\n- `UI/Sortable/SortableList.razor`\r\n"
+}

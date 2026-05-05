@@ -1,0 +1,102 @@
+{
+  "name": "ThemeSwitcher",
+  "category": "Utility",
+  "subcategory": null,
+  "description": "Color-scheme picker that writes to ThemeService.",
+  "thumbnail": "/preview-cards/theme-switcher.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/ThemeSwitcher/ThemeSwitcher.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
+  "cssVars": [
+    "--color-background",
+    "--color-border",
+    "--color-foreground",
+    "--color-muted",
+    "--color-muted-foreground",
+    "--color-primary",
+    "--radius"
+  ],
+  "api": {
+    "name": "ThemeSwitcher",
+    "category": "Utility",
+    "subcategory": null,
+    "description": "Color-scheme picker that writes to ThemeService.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/ThemeSwitcher/ThemeSwitcher.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-background",
+      "--color-border",
+      "--color-foreground",
+      "--color-muted",
+      "--color-muted-foreground",
+      "--color-primary",
+      "--radius"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "theme-switcher",
+  "docsUrl": "https://lumeo.nativ.sh/components/theme-switcher",
+  "sourceUrl": [
+    {
+      "file": "UI/ThemeSwitcher/ThemeSwitcher.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/ThemeSwitcher/ThemeSwitcher.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/ThemeSwitcher/ThemeSwitcher.razor",
+      "content": "@namespace Lumeo\r\n@using Lumeo.Services\r\n@using Blazicons\r\n@implements IDisposable\r\n@inject ThemeService Theme\r\n\r\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    <!-- Color scheme swatches -->\r\n    <div>\r\n        <p class=\"mb-2 text-xs font-medium text-muted-foreground\">Color</p>\r\n        <div class=\"flex flex-wrap gap-2\">\r\n            @foreach (var scheme in ThemeService.AvailableSchemes)\r\n            {\r\n                <button class=\"@GetSwatchClass(scheme.Id)\"\r\n                        style=\"background-color: @scheme.PreviewColor;\"\r\n                        title=\"@scheme.DisplayName\"\r\n                        @onclick=\"() => SetScheme(scheme.Id)\">\r\n                    @if (scheme.Id == _currentScheme)\r\n                    {\r\n                        <Blazicon Svg=\"Lucide.Check\" class=\"h-3 w-3 text-white\" />\r\n                    }\r\n                </button>\r\n            }\r\n        </div>\r\n    </div>\r\n\r\n    <!-- Mode toggle -->\r\n    <div>\r\n        <p class=\"mb-2 text-xs font-medium text-muted-foreground\">Mode</p>\r\n        <div class=\"inline-flex items-center gap-1 rounded-lg border border-border/50 bg-muted p-1\">\r\n            <button class=\"@GetModeButtonClass(ThemeMode.Light)\"\r\n                    title=\"Light\"\r\n                    @onclick=\"() => SetMode(ThemeMode.Light)\">\r\n                <Blazicon Svg=\"Lucide.Sun\" class=\"h-3.5 w-3.5\" />\r\n            </button>\r\n            <button class=\"@GetModeButtonClass(ThemeMode.Dark)\"\r\n                    title=\"Dark\"\r\n                    @onclick=\"() => SetMode(ThemeMode.Dark)\">\r\n                <Blazicon Svg=\"Lucide.Moon\" class=\"h-3.5 w-3.5\" />\r\n            </button>\r\n            <button class=\"@GetModeButtonClass(ThemeMode.System)\"\r\n                    title=\"System\"\r\n                    @onclick=\"() => SetMode(ThemeMode.System)\">\r\n                <Blazicon Svg=\"Lucide.Monitor\" class=\"h-3.5 w-3.5\" />\r\n            </button>\r\n        </div>\r\n    </div>\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string _currentScheme = \"orange\";\r\n    private ThemeMode _currentMode = ThemeMode.System;\r\n\r\n    private string CssClass => $\"space-y-4 {Class}\".Trim();\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender)\r\n        {\r\n            await Theme.InitializeAsync();\r\n            _currentScheme = Theme.CurrentScheme;\r\n            _currentMode = Theme.CurrentMode;\r\n            Theme.OnThemeChanged += OnThemeChanged;\r\n            StateHasChanged();\r\n        }\r\n    }\r\n\r\n    private async Task SetScheme(string scheme)\r\n    {\r\n        _currentScheme = scheme;\r\n        await Theme.SetSchemeAsync(scheme);\r\n    }\r\n\r\n    private async Task SetMode(ThemeMode mode)\r\n    {\r\n        _currentMode = mode;\r\n        await Theme.SetModeAsync(mode);\r\n    }\r\n\r\n    private void OnThemeChanged()\r\n    {\r\n        _currentScheme = Theme.CurrentScheme;\r\n        _currentMode = Theme.CurrentMode;\r\n        InvokeAsync(StateHasChanged);\r\n    }\r\n\r\n    private string GetSwatchClass(string schemeId)\r\n    {\r\n        var baseClass = \"flex h-8 w-8 items-center justify-center rounded-full border border-primary transition-all\";\r\n        return schemeId == _currentScheme\r\n            ? $\"{baseClass} border-foreground scale-110\"\r\n            : $\"{baseClass} border-transparent hover:scale-105\";\r\n    }\r\n\r\n    private string GetModeButtonClass(ThemeMode mode)\r\n    {\r\n        var baseClass = \"inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-sm transition-colors\";\r\n        return mode == _currentMode\r\n            ? $\"{baseClass} bg-background text-foreground shadow-sm\"\r\n            : $\"{baseClass} text-muted-foreground hover:text-foreground\";\r\n    }\r\n\r\n    public void Dispose()\r\n    {\r\n        Theme.OnThemeChanged -= OnThemeChanged;\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [
+    {
+      "service": "ThemeService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/ThemeSwitcher/ThemeSwitcherTests.cs"
+  ],
+  "mdSummary": "# ThemeSwitcher\r\n\r\nColor-scheme picker that writes to ThemeService.\r\n\r\n**Package:** `Lumeo` · **Category:** Utility\r\n**Docs:** https://lumeo.nativ.sh/components/theme-switcher\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| ThemeSwitcher | Class | `string?` | `` |  |\r\n| ThemeSwitcher | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ThemeService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<ThemeSwitcher />\r\n```\r\n\r\n## CSS variables\r\n`--color-background`, `--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--radius`\r\n\r\n## Files\r\n- `UI/ThemeSwitcher/ThemeSwitcher.razor`\r\n"
+}

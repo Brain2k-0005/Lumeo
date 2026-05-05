@@ -1,0 +1,151 @@
+{
+  "name": "BlurFade",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "Motion primitive: blur + fade-in on mount or when in view.",
+  "thumbnail": "/preview-cards/blur-fade.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/BlurFade/BlurFade.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "BlurFade",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "Motion primitive: blur + fade-in on mount or when in view.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/BlurFade/BlurFade.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "DelayMs",
+        "type": "int",
+        "default": "0",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "DurationMs",
+        "type": "int",
+        "default": "600",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "BlurPx",
+        "type": "int",
+        "default": "8",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Yoffset",
+        "type": "int",
+        "default": "8",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Once",
+        "type": "bool",
+        "default": "true",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ForceHidden",
+        "type": "bool",
+        "default": null,
+        "description": "When true, always start in the hidden state and animate in — even if the element is already in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades stay statically visible to avoid a flash of blurred content on first paint. Set to true for docs demos or controlled \"Replay\" scenarios where you always want the animation to play.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "blur-fade",
+  "docsUrl": "https://lumeo.nativ.sh/components/blur-fade",
+  "sourceUrl": [
+    {
+      "file": "UI/BlurFade/BlurFade.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/BlurFade/BlurFade.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/BlurFade/BlurFade.razor",
+      "content": "@namespace Lumeo\r\n@implements IAsyncDisposable\r\n@inject ComponentInteropService Interop\r\n\r\n<div id=\"@_elementId\" class=\"@CssClass\" style=\"@StyleString\" data-motion-visible=\"@InitialMotionState\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public int DelayMs { get; set; } = 0;\r\n    [Parameter] public int DurationMs { get; set; } = 600;\r\n    [Parameter] public int BlurPx { get; set; } = 8;\r\n    [Parameter] public int Yoffset { get; set; } = 8;\r\n    [Parameter] public bool Once { get; set; } = true;\r\n    /// <summary>\r\n    /// When true, always start in the hidden state and animate in — even if the element is already\r\n    /// in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades\r\n    /// stay statically visible to avoid a flash of blurred content on first paint. Set to true for\r\n    /// docs demos or controlled \"Replay\" scenarios where you always want the animation to play.\r\n    /// </summary>\r\n    [Parameter] public bool ForceHidden { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private readonly string _elementId = $\"lumeo-blurfade-{Guid.NewGuid():N}\";\r\n    private bool _registered;\r\n\r\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-blur-fade\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\r\n\r\n    // When ForceHidden, render the initial hidden state directly via attribute so the very first\r\n    // paint already shows the to-be-animated state. Prevents a one-frame flash of fully-visible\r\n    // content before the JS observer marks it hidden.\r\n    private string? InitialMotionState => ForceHidden ? \"false\" : null;\r\n\r\n    private string StyleString =>\r\n        $\"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;\";\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender && !_registered)\r\n        {\r\n            _registered = true;\r\n            try\r\n            {\r\n                await Interop.MotionBlurFade(_elementId, DelayMs, Once, ForceHidden);\r\n            }\r\n            catch (JSDisconnectedException) { }\r\n        }\r\n    }\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        if (_registered)\r\n        {\r\n            await Interop.MotionDisposeObserver(_elementId);\r\n        }\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "BlurFade",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/BlurFade/BlurFadeTests.cs"
+  ],
+  "mdSummary": "# BlurFade\r\n\r\nMotion primitive: blur + fade-in on mount or when in view.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/blur-fade\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| BlurFade | ChildContent | `RenderFragment?` | `` |  |\r\n| BlurFade | DelayMs | `int` | `0` |  |\r\n| BlurFade | DurationMs | `int` | `600` |  |\r\n| BlurFade | BlurPx | `int` | `8` |  |\r\n| BlurFade | Yoffset | `int` | `8` |  |\r\n| BlurFade | Once | `bool` | `true` |  |\r\n| BlurFade | ForceHidden | `bool` | `` | When true, always start in the hidden state and animate in — even if the element is already in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades stay statically visible to avoid a flash of blurred content on first paint. Set to true for docs demos or controlled \"Replay\" scenarios where you always want the animation to play. |\r\n| BlurFade | Class | `string?` | `` |  |\r\n| BlurFade | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (BlurFade) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<BlurFade />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/BlurFade/BlurFade.razor`\r\n"
+}

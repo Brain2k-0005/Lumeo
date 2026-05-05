@@ -1,0 +1,155 @@
+{
+  "name": "Sparkline",
+  "category": "Data Display",
+  "subcategory": "Status & Indicators",
+  "description": "Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.",
+  "thumbnail": "/preview-cards/sparkline.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/Sparkline/Sparkline.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "Sparkline",
+    "category": "Data Display",
+    "subcategory": "Status & Indicators",
+    "description": "Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/Sparkline/Sparkline.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [],
+    "parameters": [
+      {
+        "name": "Values",
+        "type": "IEnumerable<double>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Height",
+        "type": "int",
+        "default": "32",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Color",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Type",
+        "type": "SparkType",
+        "default": "SparkType.Line",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowArea",
+        "type": "bool",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowLast",
+        "type": "bool",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "StrokeWidth",
+        "type": "double",
+        "default": "1.5",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AriaLabel",
+        "type": "string?",
+        "default": "\"Trend\"",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [
+      {
+        "name": "SparkType",
+        "values": [
+          "Line",
+          "Area",
+          "Bars"
+        ],
+        "description": null
+      }
+    ],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "sparkline",
+  "docsUrl": "https://lumeo.nativ.sh/components/sparkline",
+  "sourceUrl": [
+    {
+      "file": "UI/Sparkline/Sparkline.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Sparkline/Sparkline.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Sparkline/Sparkline.razor",
+      "content": "@namespace Lumeo\r\n\r\n<svg viewBox=\"0 0 100 @Height\"\r\n     preserveAspectRatio=\"none\"\r\n     class=\"@CssClass\"\r\n     style=\"@InlineStyle\"\r\n     aria-label=\"@AriaLabel\"\r\n     role=\"img\"\r\n     @attributes=\"AdditionalAttributes\">\r\n    @((MarkupString)_shapesHtml)\r\n</svg>\r\n\r\n@code {\r\n    public enum SparkType { Line, Area, Bars }\r\n\r\n    [Parameter] public IEnumerable<double>? Values { get; set; }\r\n    [Parameter] public int Height { get; set; } = 32;\r\n    [Parameter] public string? Color { get; set; }\r\n    [Parameter] public SparkType Type { get; set; } = SparkType.Line;\r\n    [Parameter] public bool ShowArea { get; set; }\r\n    [Parameter] public bool ShowLast { get; set; }\r\n    [Parameter] public double StrokeWidth { get; set; } = 1.5;\r\n    [Parameter] public string? AriaLabel { get; set; } = \"Trend\";\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string _shapesHtml = string.Empty;\r\n\r\n    private string CssClass => $\"inline-block w-full align-middle {Class}\".Trim();\r\n\r\n    private string InlineStyle\r\n    {\r\n        get\r\n        {\r\n            var style = $\"height: {Height}px;\";\r\n            if (!string.IsNullOrEmpty(Color)) style += $\" color: {Color};\";\r\n            return style;\r\n        }\r\n    }\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        _shapesHtml = BuildShapes();\r\n    }\r\n\r\n    private string BuildShapes()\r\n    {\r\n        var list = Values?.ToList();\r\n        if (list is null || list.Count == 0)\r\n        {\r\n            // Baseline rect so the component has a visible footprint.\r\n            return $\"<rect x=\\\"0\\\" y=\\\"{F(Height / 2.0 - 0.5)}\\\" width=\\\"100\\\" height=\\\"1\\\" fill=\\\"var(--color-muted-foreground, currentColor)\\\" opacity=\\\"0.35\\\" />\";\r\n        }\r\n\r\n        var color = string.IsNullOrEmpty(Color) ? \"var(--color-primary, currentColor)\" : Color;\r\n        var min = list.Min();\r\n        var max = list.Max();\r\n        var range = max - min;\r\n        const double pad = 2.0;\r\n        var usable = Height - (pad * 2);\r\n\r\n        double ScaleY(double v)\r\n        {\r\n            if (range == 0) return Height / 2.0;\r\n            var norm = (v - min) / range;\r\n            return Height - pad - (norm * usable);\r\n        }\r\n\r\n        var sb = new System.Text.StringBuilder();\r\n\r\n        if (Type == SparkType.Bars)\r\n        {\r\n            var n = list.Count;\r\n            var slot = 100.0 / n;\r\n            var barWidth = Math.Max(0.5, slot - 1);\r\n            var zeroY = Height - pad;\r\n            for (int i = 0; i < n; i++)\r\n            {\r\n                var x = i * slot + (slot - barWidth) / 2.0;\r\n                var y = ScaleY(list[i]);\r\n                var h = Math.Max(0.5, zeroY - y);\r\n                sb.Append($\"<rect x=\\\"{F(x)}\\\" y=\\\"{F(y)}\\\" width=\\\"{F(barWidth)}\\\" height=\\\"{F(h)}\\\" fill=\\\"{color}\\\" />\");\r\n            }\r\n        }\r\n        else\r\n        {\r\n            var n = list.Count;\r\n            var pts = new System.Text.StringBuilder();\r\n            for (int i = 0; i < n; i++)\r\n            {\r\n                var x = n == 1 ? 50.0 : (double)i / (n - 1) * 100.0;\r\n                var y = ScaleY(list[i]);\r\n                if (i > 0) pts.Append(' ');\r\n                pts.Append($\"{F(x)},{F(y)}\");\r\n            }\r\n            var pointsStr = pts.ToString();\r\n\r\n            if (Type == SparkType.Area || ShowArea)\r\n            {\r\n                var lastX = n == 1 ? 50.0 : 100.0;\r\n                var firstX = n == 1 ? 50.0 : 0.0;\r\n                var polyPoints = $\"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}\";\r\n                sb.Append($\"<polygon points=\\\"{polyPoints}\\\" fill=\\\"{color}\\\" fill-opacity=\\\"0.2\\\" stroke=\\\"none\\\" />\");\r\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\r\n            }\r\n            else\r\n            {\r\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\r\n            }\r\n        }\r\n\r\n        if (ShowLast && list.Count > 0)\r\n        {\r\n            double lx, ly;\r\n            if (Type == SparkType.Bars)\r\n            {\r\n                var n = list.Count;\r\n                var slot = 100.0 / n;\r\n                lx = (n - 1) * slot + slot / 2.0;\r\n                ly = ScaleY(list[^1]);\r\n            }\r\n            else\r\n            {\r\n                var n = list.Count;\r\n                lx = n == 1 ? 50.0 : 100.0;\r\n                ly = ScaleY(list[^1]);\r\n            }\r\n            var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;\r\n            sb.Append($\"<circle cx=\\\"{F(lx)}\\\" cy=\\\"{F(ly)}\\\" r=\\\"{F(r)}\\\" fill=\\\"{color}\\\" />\");\r\n        }\r\n\r\n        return sb.ToString();\r\n    }\r\n\r\n    private static string F(double v) => v.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture);\r\n}\r\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/Sparkline/SparklineTests.cs"
+  ],
+  "mdSummary": "# Sparkline\r\n\r\nInline SVG trend chart primitive — line, area, or bars for tables and KPI strips.\r\n\r\n**Package:** `Lumeo` · **Category:** Data Display/Status & Indicators\r\n**Docs:** https://lumeo.nativ.sh/components/sparkline\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Sparkline | Values | `IEnumerable<double>?` | `` |  |\r\n| Sparkline | Height | `int` | `32` |  |\r\n| Sparkline | Color | `string?` | `` |  |\r\n| Sparkline | Type | `SparkType` | `SparkType.Line` |  |\r\n| Sparkline | ShowArea | `bool` | `` |  |\r\n| Sparkline | ShowLast | `bool` | `` |  |\r\n| Sparkline | StrokeWidth | `double` | `1.5` |  |\r\n| Sparkline | AriaLabel | `string?` | `\"Trend\"` |  |\r\n| Sparkline | Class | `string?` | `` |  |\r\n| Sparkline | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Sparkline />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Sparkline/Sparkline.razor`\r\n"
+}

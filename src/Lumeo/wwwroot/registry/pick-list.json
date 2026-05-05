@@ -1,0 +1,179 @@
+{
+  "name": "PickList",
+  "category": "Dashboard",
+  "subcategory": null,
+  "description": "Two-column shuttle picker — move items between lists.",
+  "thumbnail": "/preview-cards/pick-list.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/PickList/PickList.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
+  "cssVars": [
+    "--color-accent",
+    "--color-accent-foreground",
+    "--color-background",
+    "--color-border",
+    "--color-card",
+    "--color-input",
+    "--color-muted",
+    "--color-muted-foreground",
+    "--color-ring",
+    "--radius"
+  ],
+  "api": {
+    "name": "PickList",
+    "category": "Dashboard",
+    "subcategory": null,
+    "description": "Two-column shuttle picker — move items between lists.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/PickList/PickList.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [],
+    "parameters": [
+      {
+        "name": "Items",
+        "type": "IEnumerable<TItem>",
+        "default": "[]",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "SelectedItems",
+        "type": "IEnumerable<TItem>",
+        "default": "[]",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "SelectedItemsChanged",
+        "type": "EventCallback<IEnumerable<TItem>>",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ItemTemplate",
+        "type": "RenderFragment<TItem>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "SourceTitle",
+        "type": "string",
+        "default": "\"Available\"",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "TargetTitle",
+        "type": "string",
+        "default": "\"Selected\"",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowSearch",
+        "type": "bool",
+        "default": "true",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Height",
+        "type": "string",
+        "default": "\"320px\"",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [
+      {
+        "name": "SelectedItemsChanged",
+        "type": "EventCallback<IEnumerable<TItem>>",
+        "description": null
+      }
+    ],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-accent",
+      "--color-accent-foreground",
+      "--color-background",
+      "--color-border",
+      "--color-card",
+      "--color-input",
+      "--color-muted",
+      "--color-muted-foreground",
+      "--color-ring",
+      "--radius"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "pick-list",
+  "docsUrl": "https://lumeo.nativ.sh/components/pick-list",
+  "sourceUrl": [
+    {
+      "file": "UI/PickList/PickList.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/PickList/PickList.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/PickList/PickList.razor",
+      "content": "@namespace Lumeo\r\n@typeparam TItem\r\n\r\n<div class=\"@CssClass\"\r\n     style=\"display:grid;grid-template-columns:1fr auto 1fr;gap:0.75rem;align-items:stretch;\"\r\n     @attributes=\"AdditionalAttributes\">\r\n\r\n    @* Source panel *@\r\n    <div class=\"flex flex-col border border-border/40 rounded-lg overflow-hidden bg-card\" style=\"min-width:0;\">\r\n        <div class=\"px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between\">\r\n            <span class=\"text-sm font-medium\">@SourceTitle</span>\r\n            <span class=\"text-xs text-muted-foreground\">@_sourceSelected.Count / @_sourceItems.Count</span>\r\n        </div>\r\n        @if (ShowSearch)\r\n        {\r\n            <div class=\"px-2 py-1.5 border-b border-border/40\">\r\n                <input type=\"text\" placeholder=\"Search…\"\r\n                       class=\"flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring\"\r\n                       value=\"@_sourceSearch\"\r\n                       @oninput=\"OnSourceSearch\" />\r\n            </div>\r\n        }\r\n        <div class=\"overflow-y-auto p-1\" style=\"height:@Height;\">\r\n            @if (FilteredSourceItems.Count > 0)\r\n            {\r\n                @foreach (var item in FilteredSourceItems)\r\n                {\r\n                    var selected = _sourceSelected.Contains(item);\r\n                    <button type=\"button\"\r\n                            class=\"@RowClass(selected)\"\r\n                            @onclick=\"() => ToggleSource(item)\">\r\n                        @if (ItemTemplate != null)\r\n                        {\r\n                            @ItemTemplate(item)\r\n                        }\r\n                        else\r\n                        {\r\n                            <span class=\"truncate\">@(item?.ToString() ?? \"\")</span>\r\n                        }\r\n                    </button>\r\n                }\r\n            }\r\n            else\r\n            {\r\n                <div class=\"text-center text-xs text-muted-foreground py-6\">No items</div>\r\n            }\r\n        </div>\r\n    </div>\r\n\r\n    @* Middle buttons *@\r\n    <div class=\"flex flex-col items-center justify-center gap-1.5\">\r\n        <button type=\"button\" class=\"@ButtonClass\" @onclick=\"MoveAllToTarget\" disabled=\"@(_sourceItems.Count == 0)\" title=\"Move all\">\r\n            <Blazicon Svg=\"Lucide.ChevronsRight\" class=\"h-4 w-4\" />\r\n        </button>\r\n        <button type=\"button\" class=\"@ButtonClass\" @onclick=\"MoveSelectedToTarget\" disabled=\"@(_sourceSelected.Count == 0)\" title=\"Move selected\">\r\n            <Blazicon Svg=\"Lucide.ChevronRight\" class=\"h-4 w-4\" />\r\n        </button>\r\n        <button type=\"button\" class=\"@ButtonClass\" @onclick=\"MoveSelectedToSource\" disabled=\"@(_targetSelected.Count == 0)\" title=\"Move back selected\">\r\n            <Blazicon Svg=\"Lucide.ChevronLeft\" class=\"h-4 w-4\" />\r\n        </button>\r\n        <button type=\"button\" class=\"@ButtonClass\" @onclick=\"MoveAllToSource\" disabled=\"@(_targetItems.Count == 0)\" title=\"Move back all\">\r\n            <Blazicon Svg=\"Lucide.ChevronsLeft\" class=\"h-4 w-4\" />\r\n        </button>\r\n    </div>\r\n\r\n    @* Target panel *@\r\n    <div class=\"flex flex-col border border-border/40 rounded-lg overflow-hidden bg-card\" style=\"min-width:0;\">\r\n        <div class=\"px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between\">\r\n            <span class=\"text-sm font-medium\">@TargetTitle</span>\r\n            <span class=\"text-xs text-muted-foreground\">@_targetSelected.Count / @_targetItems.Count</span>\r\n        </div>\r\n        @if (ShowSearch)\r\n        {\r\n            <div class=\"px-2 py-1.5 border-b border-border/40\">\r\n                <input type=\"text\" placeholder=\"Search…\"\r\n                       class=\"flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring\"\r\n                       value=\"@_targetSearch\"\r\n                       @oninput=\"OnTargetSearch\" />\r\n            </div>\r\n        }\r\n        <div class=\"overflow-y-auto p-1\" style=\"height:@Height;\">\r\n            @if (FilteredTargetItems.Count > 0)\r\n            {\r\n                @foreach (var item in FilteredTargetItems)\r\n                {\r\n                    var selected = _targetSelected.Contains(item);\r\n                    <button type=\"button\"\r\n                            class=\"@RowClass(selected)\"\r\n                            @onclick=\"() => ToggleTarget(item)\">\r\n                        @if (ItemTemplate != null)\r\n                        {\r\n                            @ItemTemplate(item)\r\n                        }\r\n                        else\r\n                        {\r\n                            <span class=\"truncate\">@(item?.ToString() ?? \"\")</span>\r\n                        }\r\n                    </button>\r\n                }\r\n            }\r\n            else\r\n            {\r\n                <div class=\"text-center text-xs text-muted-foreground py-6\">No items</div>\r\n            }\r\n        </div>\r\n    </div>\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public IEnumerable<TItem> Items { get; set; } = [];\r\n    [Parameter] public IEnumerable<TItem> SelectedItems { get; set; } = [];\r\n    [Parameter] public EventCallback<IEnumerable<TItem>> SelectedItemsChanged { get; set; }\r\n    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }\r\n    [Parameter] public string SourceTitle { get; set; } = \"Available\";\r\n    [Parameter] public string TargetTitle { get; set; } = \"Selected\";\r\n    [Parameter] public bool ShowSearch { get; set; } = true;\r\n    [Parameter] public string Height { get; set; } = \"320px\";\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private List<TItem> _sourceItems = new();\r\n    private List<TItem> _targetItems = new();\r\n    private readonly HashSet<TItem> _sourceSelected = new();\r\n    private readonly HashSet<TItem> _targetSelected = new();\r\n    private string _sourceSearch = \"\";\r\n    private string _targetSearch = \"\";\r\n\r\n    private string CssClass => $\"w-full {Class}\".Trim();\r\n\r\n    private const string ButtonClass = \"inline-flex items-center justify-center h-8 w-8 rounded-md border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed\";\r\n\r\n    private string RowClass(bool selected) =>\r\n        selected\r\n            ? \"w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm bg-accent text-accent-foreground transition-colors\"\r\n            : \"w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-accent/50 transition-colors\";\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        var all = (Items ?? []).ToList();\r\n        var sel = (SelectedItems ?? []).ToList();\r\n        var selSet = new HashSet<TItem>(sel);\r\n\r\n        _targetItems = sel;\r\n        _sourceItems = all.Where(i => !selSet.Contains(i)).ToList();\r\n\r\n        // Clean out selections that are no longer in their side\r\n        _sourceSelected.RemoveWhere(i => !_sourceItems.Contains(i));\r\n        _targetSelected.RemoveWhere(i => !_targetItems.Contains(i));\r\n    }\r\n\r\n    private List<TItem> FilteredSourceItems =>\r\n        string.IsNullOrWhiteSpace(_sourceSearch)\r\n            ? _sourceItems\r\n            : _sourceItems.Where(i => (i?.ToString() ?? \"\").Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase)).ToList();\r\n\r\n    private List<TItem> FilteredTargetItems =>\r\n        string.IsNullOrWhiteSpace(_targetSearch)\r\n            ? _targetItems\r\n            : _targetItems.Where(i => (i?.ToString() ?? \"\").Contains(_targetSearch, StringComparison.OrdinalIgnoreCase)).ToList();\r\n\r\n    private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? \"\";\r\n    private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? \"\";\r\n\r\n    private void ToggleSource(TItem item)\r\n    {\r\n        if (!_sourceSelected.Add(item)) _sourceSelected.Remove(item);\r\n    }\r\n\r\n    private void ToggleTarget(TItem item)\r\n    {\r\n        if (!_targetSelected.Add(item)) _targetSelected.Remove(item);\r\n    }\r\n\r\n    private Task MoveSelectedToTarget() => MoveToTarget(_sourceSelected.ToList());\r\n    private Task MoveAllToTarget() => MoveToTarget(_sourceItems.ToList());\r\n    private Task MoveSelectedToSource() => MoveToSource(_targetSelected.ToList());\r\n    private Task MoveAllToSource() => MoveToSource(_targetItems.ToList());\r\n\r\n    private async Task MoveToTarget(List<TItem> toMove)\r\n    {\r\n        if (toMove.Count == 0) return;\r\n        foreach (var i in toMove)\r\n        {\r\n            _sourceItems.Remove(i);\r\n            if (!_targetItems.Contains(i)) _targetItems.Add(i);\r\n        }\r\n        _sourceSelected.Clear();\r\n        await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());\r\n    }\r\n\r\n    private async Task MoveToSource(List<TItem> toMove)\r\n    {\r\n        if (toMove.Count == 0) return;\r\n        foreach (var i in toMove)\r\n        {\r\n            _targetItems.Remove(i);\r\n            if (!_sourceItems.Contains(i)) _sourceItems.Add(i);\r\n        }\r\n        _targetSelected.Clear();\r\n        await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());\r\n    }\r\n}\r\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ItemTemplate",
+      "owner": "PickList",
+      "type": "RenderFragment<TItem>?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/PickList/PickListTests.cs",
+    "tests/Lumeo.Tests/Contract/ComponentContractTests.cs"
+  ],
+  "mdSummary": "# PickList\r\n\r\nTwo-column shuttle picker — move items between lists.\r\n\r\n**Package:** `Lumeo` · **Category:** Dashboard\r\n**Docs:** https://lumeo.nativ.sh/components/pick-list\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| PickList | Items | `IEnumerable<TItem>` | `[]` |  |\r\n| PickList | SelectedItems | `IEnumerable<TItem>` | `[]` |  |\r\n| PickList | SelectedItemsChanged | `EventCallback<IEnumerable<TItem>>` | `` |  |\r\n| PickList | ItemTemplate | `RenderFragment<TItem>?` | `` |  |\r\n| PickList | SourceTitle | `string` | `\"Available\"` |  |\r\n| PickList | TargetTitle | `string` | `\"Selected\"` |  |\r\n| PickList | ShowSearch | `bool` | `true` |  |\r\n| PickList | Height | `string` | `\"320px\"` |  |\r\n| PickList | Class | `string?` | `` |  |\r\n| PickList | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ItemTemplate` (PickList) — RenderFragment slot\r\n\r\n## Events\r\n- `SelectedItemsChanged` (`EventCallback<IEnumerable<TItem>>`)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<PickList />\r\n```\r\n\r\n## CSS variables\r\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-border`, `--color-card`, `--color-input`, `--color-muted`, `--color-muted-foreground`, `--color-ring`, `--radius`\r\n\r\n## Files\r\n- `UI/PickList/PickList.razor`\r\n"
+}
