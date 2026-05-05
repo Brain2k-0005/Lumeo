@@ -475,8 +475,9 @@ function render(inst) {
                 applyDragVisual(inst, dx);
             };
             const onUp = (mu) => {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
+                // Funnel through _dragCleanup so destroy() and the normal
+                // mouseup path both go through the same listener-removal code.
+                inst._dragCleanup?.();
                 if (dragInitiated) {
                     commitDrag(inst, mu.clientX - mouseDownX);
                 } else if (mode === 'move') {
@@ -488,6 +489,15 @@ function render(inst) {
             };
             document.addEventListener('mousemove', onMove);
             document.addEventListener('mouseup', onUp);
+            // If the component unmounts mid-drag (route change, refresh()),
+            // destroy() calls _dragCleanup to release these document-level
+            // listeners. They'd otherwise survive and reference the dead
+            // instance forever.
+            inst._dragCleanup = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                inst._dragCleanup = null;
+            };
         };
 
         bgRect.addEventListener('mousedown', e => onMouseDown(e, 'move'));
@@ -719,6 +729,10 @@ export const gantt = {
     destroy(id) {
         const inst = instances.get(id);
         if (!inst) return;
+        // If a drag is in flight (e.g. component unmounted on route change
+        // before mouseup fired), tear down the document-level listeners so
+        // they don't leak references to the dead instance.
+        try { inst._dragCleanup?.(); } catch (_) {}
         if (inst.host) inst.host.innerHTML = '';
         instances.delete(id);
     },

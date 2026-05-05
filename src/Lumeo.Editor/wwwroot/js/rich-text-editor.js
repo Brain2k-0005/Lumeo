@@ -474,56 +474,87 @@ function createDragHandle(editor) {
         return null;
     }
 
-    dom.addEventListener('mousemove', (e) => {
-        const block = blockAt(e.target);
-        if (!block) {
+    // Named handlers tracked so destroy() can deterministically removeEventListener.
+    // Anonymous closures retain `editor`, `handle`, and DOM refs — without explicit
+    // removal they survive editor destruction and leak per instance.
+    const handlers = {};
+
+    handlers.dragHandleMouseMove = {
+        target: dom,
+        type: 'mousemove',
+        fn: (e) => {
+            const block = blockAt(e.target);
+            if (!block) {
+                handle.style.opacity = '0';
+                handle.style.display = 'none';
+                return;
+            }
+            const rect = block.getBoundingClientRect();
+            const wrapRect = (wrapper || document.body).getBoundingClientRect();
+            handle.style.display = 'flex';
+            handle.style.opacity = '1';
+            handle.style.top = (rect.top - wrapRect.top + 4) + 'px';
+            handle.style.left = (rect.left - wrapRect.left - 24) + 'px';
+            try {
+                activeNodePos = editor.view.posAtDOM(block, 0);
+                activeNodeEl = block;
+            } catch (_) { activeNodePos = null; }
+        },
+    };
+    dom.addEventListener(handlers.dragHandleMouseMove.type, handlers.dragHandleMouseMove.fn);
+
+    handlers.dragHandleMouseLeave = {
+        target: dom,
+        type: 'mouseleave',
+        fn: () => {
             handle.style.opacity = '0';
-            handle.style.display = 'none';
-            return;
-        }
-        const rect = block.getBoundingClientRect();
-        const wrapRect = (wrapper || document.body).getBoundingClientRect();
-        handle.style.display = 'flex';
-        handle.style.opacity = '1';
-        handle.style.top = (rect.top - wrapRect.top + 4) + 'px';
-        handle.style.left = (rect.left - wrapRect.left - 24) + 'px';
-        try {
-            activeNodePos = editor.view.posAtDOM(block, 0);
-            activeNodeEl = block;
-        } catch (_) { activeNodePos = null; }
-    });
+            setTimeout(() => { handle.style.display = 'none'; }, 200);
+        },
+    };
+    dom.addEventListener(handlers.dragHandleMouseLeave.type, handlers.dragHandleMouseLeave.fn);
 
-    dom.addEventListener('mouseleave', () => {
-        handle.style.opacity = '0';
-        setTimeout(() => { handle.style.display = 'none'; }, 200);
-    });
+    handlers.dragHandleMouseDown = {
+        target: handle,
+        type: 'mousedown',
+        fn: (e) => {
+            if (activeNodePos == null) return;
+            try {
+                const $pos = editor.state.doc.resolve(activeNodePos);
+                const node = $pos.nodeAfter || $pos.parent;
+                const start = $pos.before($pos.depth);
+                const end = start + (node ? node.nodeSize : 0);
+                editor.chain().focus().setNodeSelection(start).run();
+            } catch (_) {}
+        },
+    };
+    handle.addEventListener(handlers.dragHandleMouseDown.type, handlers.dragHandleMouseDown.fn);
 
-    handle.addEventListener('mousedown', (e) => {
-        if (activeNodePos == null) return;
-        try {
-            const $pos = editor.state.doc.resolve(activeNodePos);
-            const node = $pos.nodeAfter || $pos.parent;
-            const start = $pos.before($pos.depth);
-            const end = start + (node ? node.nodeSize : 0);
-            editor.chain().focus().setNodeSelection(start).run();
-        } catch (_) {}
-    });
-
-    handle.addEventListener('dragstart', (e) => {
-        if (!activeNodeEl) return;
-        // Let ProseMirror handle the drop; we need to put the block content
-        // on the dataTransfer so DOM-level drop targets get it too.
-        try {
-            const sel = editor.state.selection;
-            const slice = editor.state.doc.slice(sel.from, sel.to);
-            const html = activeNodeEl.outerHTML;
-            e.dataTransfer.setData('text/html', html);
-            e.dataTransfer.setData('text/plain', activeNodeEl.innerText || '');
-        } catch (_) {}
-    });
+    handlers.dragHandleDragStart = {
+        target: handle,
+        type: 'dragstart',
+        fn: (e) => {
+            if (!activeNodeEl) return;
+            // Let ProseMirror handle the drop; we need to put the block content
+            // on the dataTransfer so DOM-level drop targets get it too.
+            try {
+                const sel = editor.state.selection;
+                const slice = editor.state.doc.slice(sel.from, sel.to);
+                const html = activeNodeEl.outerHTML;
+                e.dataTransfer.setData('text/html', html);
+                e.dataTransfer.setData('text/plain', activeNodeEl.innerText || '');
+            } catch (_) {}
+        },
+    };
+    handle.addEventListener(handlers.dragHandleDragStart.type, handlers.dragHandleDragStart.fn);
 
     return {
-        destroy() { try { handle.remove(); } catch (_) {} },
+        handlers,
+        destroy() {
+            for (const h of Object.values(handlers)) {
+                try { h.target.removeEventListener(h.type, h.fn); } catch (_) {}
+            }
+            try { handle.remove(); } catch (_) {}
+        },
     };
 }
 
@@ -901,17 +932,26 @@ export const rte = {
         });
 
         // ---- Image drop/paste handler ----
-        el.addEventListener('drop', async (e) => {
-            const files = e.dataTransfer && e.dataTransfer.files;
-            if (!files || files.length === 0) return;
-            const imgs = [...files].filter(f => f.type.startsWith('image/'));
-            if (imgs.length === 0) return;
-            e.preventDefault();
-            for (const f of imgs) {
-                const url = await uploadImage(dotNetRef, f);
-                if (url) editor.chain().focus().setImage({ src: url }).run();
-            }
-        });
+        // Named handler tracked on the per-instance entry so destroy() can
+        // remove it. Anonymous addEventListener leaks the closure (which
+        // retains `editor`, `dotNetRef`, and uploadImage) past destruction.
+        const instanceHandlers = {};
+        instanceHandlers.editorDrop = {
+            target: el,
+            type: 'drop',
+            fn: async (e) => {
+                const files = e.dataTransfer && e.dataTransfer.files;
+                if (!files || files.length === 0) return;
+                const imgs = [...files].filter(f => f.type.startsWith('image/'));
+                if (imgs.length === 0) return;
+                e.preventDefault();
+                for (const f of imgs) {
+                    const url = await uploadImage(dotNetRef, f);
+                    if (url) editor.chain().focus().setImage({ src: url }).run();
+                }
+            },
+        };
+        el.addEventListener(instanceHandlers.editorDrop.type, instanceHandlers.editorDrop.fn);
 
         // ---- Bubble menu ----
         const bubble = createBubbleMenu(editor, dotNetRef, id, opts);
@@ -921,6 +961,7 @@ export const rte = {
 
         instances.set(id, {
             editor, dotNetRef, bubble, drag,
+            _handlers: instanceHandlers,
             snapshots: [],
         });
         return id;
@@ -1096,6 +1137,15 @@ export const rte = {
     destroy(id) {
         const entry = instances.get(id);
         if (!entry) return;
+        // Remove instance-level listeners first — anonymous closures held
+        // references to editor/dotNetRef/uploadImage and would survive
+        // editor teardown otherwise.
+        if (entry._handlers) {
+            for (const h of Object.values(entry._handlers)) {
+                try { h.target.removeEventListener(h.type, h.fn); } catch (_) {}
+            }
+            entry._handlers = null;
+        }
         try { entry.bubble && entry.bubble.destroy(); } catch (_) {}
         try { entry.drag && entry.drag.destroy(); } catch (_) {}
         try { entry.editor.destroy(); } catch (_) {}
