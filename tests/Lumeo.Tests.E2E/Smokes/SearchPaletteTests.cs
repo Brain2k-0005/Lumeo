@@ -52,8 +52,9 @@ public class SearchPaletteTests : PlaywrightTestBase
         // Type "button" and wait for results
         await searchInput.FillAsync("button");
 
-        // Results should appear — look for any element containing "Button"
-        var firstResult = Page.Locator("text=Button").First;
+        // Results should appear — scoped to the palette via data-testid so we
+        // don't accidentally match a page-level "Button" string outside the overlay.
+        var firstResult = Page.Locator("[data-testid='search-palette-result-button']").First;
         await firstResult.WaitForAsync(new()
         {
             State = WaitForSelectorState.Visible,
@@ -108,8 +109,9 @@ public class SearchPaletteTests : PlaywrightTestBase
 
         await searchInput.FillAsync("badge");
 
-        // Wait for Badge result
-        var badgeResult = Page.Locator("text=Badge").First;
+        // Wait for Badge result — scoped to the palette via data-testid so we
+        // don't accidentally match the "Badge" page-level text outside the overlay.
+        var badgeResult = Page.Locator("[data-testid='search-palette-result-badge']").First;
         await badgeResult.WaitForAsync(new()
         {
             State = WaitForSelectorState.Visible,
