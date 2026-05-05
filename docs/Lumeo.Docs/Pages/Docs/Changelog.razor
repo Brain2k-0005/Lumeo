@@ -15,6 +15,89 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.19 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.19</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Hardening pass</strong>. Closes every P1 + P2 + P3 from an external rc.18 deep review:
+            cross-instance drag state in DataGrid, EventCallback fire-and-forget, preset-codec namespace
+            collision, red E2E suite, lifecycle races in Alert / SafeAsyncDispatcher, JS event-handler
+            leaks in Editor + Gantt, eval() in docs, Worker payload + collision handling, Word-import
+            DoS surface, mobile-unfriendly block demos. Plus the big one: a complete auto-generated MCP
+            schema so Claude Code understands all 131 components without reading source.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added — MCP server is now fully complete</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>131 / 131 components in the schema</strong> — every component now has full parameters, types, defaults, XML doc descriptions, EventCallback events, nested enums + records, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@inherits</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code>, and sub-components grouped per folder. 3,152 parameters total, 86 enums, 48 records, 0 thin fallbacks.</li>
+                <li><strong>Auto-generated from Razor source</strong> via a new Roslyn-based pass in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.RegistryGen</code>. Every release regenerates the schema; no more manual catalog drift.</li>
+                <li><strong>Hand-curated examples preserved</strong> as an overlay — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo_get_component</code> still surfaces the existing example Razor snippets for ~30 popular components.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — DataGrid correctness (P1)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Column reorder cross-talk</strong>: a static <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ColumnDragState</code> was shared across every grid in the process — drops in grid B used grid A's source index. Replaced with an instance-bound <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataGridDragState</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OwnerGridId</code> guard. Same fix for row reorder. New regression tests cover both drag types.</li>
+                <li><strong>EventCallback fire-and-forget at 6 sites</strong> in DataGrid.razor — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SelectedItemsChanged</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnColumnReorder</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnRowReorder</code> were called without await. Now awaited where the call site can be async, dispatched via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SafeAsyncDispatcher.FireAndForget</code> where it must stay sync.</li>
+                <li><strong>Auto-save stale generation</strong>: the existing generation guard skipped LocalStorage writes but still called <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnLayoutSave</code> with stale snapshots. Guard now covers both paths.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — Lifecycle / async hardening (P2)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SafeAsyncDispatcher</code> outer task</strong> — the inner try/catch only covered the work delegate. If <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync</code> itself threw (renderer disposed), the outer Task was unobserved. Outer call now wrapped in an async helper that catches expected lifecycle exceptions silently and logs anything else.</li>
+                <li><strong>Alert AutoDismiss timer/dispose race</strong> — replaced <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">System.Threading.Timer</code> with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CancellationTokenSource</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task.Delay</code>; <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Dispose</code> cancels the token and flips a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_disposed</code> flag before any state mutation.</li>
+                <li><strong>Editor + Gantt JS listener leaks</strong> — anonymous <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">addEventListener</code> closures (mousemove, mouseleave, drop on the editor; document-level mousemove + mouseup on Gantt drag) survived <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">destroy(id)</code>. All listeners now stored as named handlers; destroy iterates and removes each.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — Theming + API + Security (P1 + P2)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Preset code / Worker ID namespace collision</strong> — both spaces were 6-char Base62. Some Worker IDs decoded as valid v1 local presets and never hit the server. New explicit prefix scheme: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">l_&lt;6&gt;</code> for local codes, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">p_&lt;6&gt;</code> for Worker IDs. Bare 6-char input keeps legacy fallback behavior with strict version checks.</li>
+                <li><strong>Worker payload check post-read</strong> — the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">content-length</code> header was the only authoritative check; missing or wrong header bypassed the limit. Now reads <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">arrayBuffer()</code> first and enforces real <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">byteLength</code>.</li>
+                <li><strong>Worker collision retry</strong> — same 6-char ID with different payloads no longer overwrites silently. Up to 8 salt-based retries; idempotent on matching payload; 409 if exhausted.</li>
+                <li><strong>Word-import 8 MiB cap</strong> — JS pre-arrayBuffer file.size check + .NET pre-Convert.FromBase64String size guard + new <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">WordImportSizeException</code>. New <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MaxWordImportBytes</code> parameter on RichTextEditor.</li>
+                <li><strong>Removed <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">eval()</code> in IconPage</strong> — replaced with a named JS helper. CSP-clean.</li>
+                <li><strong>Vendored TipTap stack (~1.4 MB ESM bundle)</strong> — RichTextEditor no longer dynamic-imports from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">esm.sh</code> at runtime. Ships at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_content/Lumeo.Editor/js/tiptap-bundle.js</code>; works under strict CSP and offline. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">window.lumeoTiptapBundleUrl</code> is the override hook for consumers who want to host their own.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — Overlay UX + Avatar shape</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>OverlayService double-backdrop</strong> when consumers nested another <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;SheetContent&gt;</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;DialogContent&gt;</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;DrawerContent&gt;</code> inside their service-opened component. New <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayShellMarker</code> cascade — nested *Content components self-detect the host shell and pass children through. Both patterns now render exactly one backdrop. Regression test asserts <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">bg-black/80</code> appears exactly once.</li>
+                <li><strong>Avatar outer wrapper follows ShapeClasses</strong> — consumer-applied borders / rings (e.g. AvatarGroup overlap framing) now follow the avatar's actual shape. Previously the border landed on the rectangular outer div while the inner div clipped to a circle, creating square frames around fallback initials.</li>
+                <li><strong>DropdownMenu keyboard nav</strong> — menu container had <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tabindex="-1"</code> but never received focus on open, so Escape and Arrow keys never fired. Now focuses the content on open per WAI-ARIA menu pattern. Surfaced while stabilizing the E2E suite.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Improved — E2E suite is green and CI-gated (P1)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>16 / 16 E2E tests passing</strong> (was 8 / 16). Stable selectors via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">data-testid</code> on the relevant docs elements; Search palette result locators scoped to the palette overlay; baseline snapshot committed at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tests/Lumeo.Tests.E2E/Snapshots/home-above-fold.png</code> with deterministic init-script (consent banner suppressed, animations zeroed).</li>
+                <li><strong>New <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.github/workflows/e2e.yml</code></strong> — installs Playwright browsers, builds the docs, runs the docs server on port 5290, runs E2E against it, uploads <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">docs-server.log</code> on failure.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Improved — Docs polish (P3)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Mobile / Desktop preview toggle</strong> on ComponentDemo — DashboardBlock / PricingTableBlock / SettingsPageBlock no longer force phone users into horizontal scroll. Toggle wraps the demo in a 420 px phone frame so the experience is honest, not painted-over.</li>
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet format --verify-no-changes</code> is green</strong> — formatting drift swept across 27 files in a single style pass, no behavior change. Ready to wire into CI as a release gate.</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.18 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
