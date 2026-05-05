@@ -23,16 +23,36 @@ public static class SafeAsyncDispatcher
     /// </summary>
     public static void FireAndForget(Func<Func<Task>, Task> invokeAsync, Func<Task> work, string source)
     {
-        _ = invokeAsync(async () =>
+        // Outer wrapper: protects against `invokeAsync(...)` itself faulting either
+        // synchronously (e.g. renderer/circuit already disposed before the delegate
+        // can be queued) OR returning a faulted Task. Without this wrapper that
+        // outer Task is never observed and surfaces as an UnobservedTaskException.
+        // The inner try/catch below still handles exceptions raised inside `work`.
+        _ = SafeDispatchAsync(invokeAsync, work, source);
+    }
+
+    private static async Task SafeDispatchAsync(Func<Func<Task>, Task> invokeAsync, Func<Task> work, string source)
+    {
+        try
         {
-            try { await work(); }
-            catch (JSDisconnectedException) { /* component unmounted mid-await */ }
-            catch (ObjectDisposedException) { /* renderer disposed mid-await */ }
-            catch (OperationCanceledException) { /* superseded by newer dispatch */ }
-            catch (Exception ex)
+            await invokeAsync(async () =>
             {
-                Console.Error.WriteLine($"[{source}] dispatch error: {ex}");
-            }
-        });
+                try { await work(); }
+                catch (JSDisconnectedException) { /* component unmounted mid-await */ }
+                catch (ObjectDisposedException) { /* renderer disposed mid-await */ }
+                catch (OperationCanceledException) { /* superseded by newer dispatch */ }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[{source}] dispatch error: {ex}");
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (JSDisconnectedException) { /* circuit closed before dispatch ran */ }
+        catch (ObjectDisposedException) { /* renderer disposed before dispatch ran */ }
+        catch (OperationCanceledException) { /* dispatcher canceled before dispatch ran (covers TaskCanceledException) */ }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[{source}] dispatcher error: {ex}");
+        }
     }
 }
