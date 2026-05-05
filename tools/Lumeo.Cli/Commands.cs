@@ -86,11 +86,11 @@ internal static class Commands
         {
             // Pick a setup mode: flag > interactive prompt > (--yes default = css).
             char mode;
-            if (opts.WithCss)            mode = '1';
-            else if (opts.WithTailwind)  mode = '2';
-            else if (opts.NoAssets)      mode = '3';
-            else if (opts.Yes)           mode = '1'; // safest CI default
-            else                         mode = PromptAssetSetup();
+            if (opts.WithCss) mode = '1';
+            else if (opts.WithTailwind) mode = '2';
+            else if (opts.NoAssets) mode = '3';
+            else if (opts.Yes) mode = '1'; // safest CI default
+            else mode = PromptAssetSetup();
 
             Console.WriteLine();
             switch (mode)

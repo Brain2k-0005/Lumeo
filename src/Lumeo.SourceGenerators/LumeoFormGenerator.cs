@@ -225,8 +225,8 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
 
         return name switch
         {
-            "string"          => InputKind.Text,
-            "bool"            => InputKind.Checkbox,
+            "string" => InputKind.Text,
+            "bool" => InputKind.Checkbox,
             "int" or "long" or "short" or "byte"
                 or "double" or "float" or "decimal"
                 or "uint" or "ulong" or "ushort" or "sbyte"
@@ -235,7 +235,7 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
                 or "System.DateOnly"
                 or "System.DateTimeOffset"
                                   => InputKind.Date,
-            _                 => InputKind.Unsupported
+            _ => InputKind.Unsupported
         };
     }
 

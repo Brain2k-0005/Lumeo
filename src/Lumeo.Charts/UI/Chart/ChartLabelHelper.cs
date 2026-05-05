@@ -36,7 +36,7 @@ public static class ChartLabelHelper
                     <= 10 => null,
                     <= 16 => -30,
                     <= 24 => -60,
-                    _     => -75,
+                    _ => -75,
                 };
                 break;
             case ChartLabelStrategy.ShowAll:

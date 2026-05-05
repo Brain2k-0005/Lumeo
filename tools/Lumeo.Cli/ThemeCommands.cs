@@ -34,14 +34,14 @@ public static class ThemeCommands
             return i;
         }
 
-        var themeIdx       = Idx(LumeoPresetOptions.Themes,         theme,       "theme",       0);
-        var styleIdx       = Idx(LumeoPresetOptions.Styles,         style,       "style",       0);
-        var baseIdx        = Idx(LumeoPresetOptions.BaseColors,     baseColor,   "base",        0);
-        var radiusIdx      = Idx(LumeoPresetOptions.Radii,          radius,      "radius",      2);
-        var fontIdx        = Idx(LumeoPresetOptions.Fonts,          font,        "font",        0);
-        var iconsIdx       = Idx(LumeoPresetOptions.IconLibraries,  icons,       "icons",       0);
-        var menuColorIdx   = Idx(LumeoPresetOptions.MenuColors,     menuColor,   "menu-color",  0);
-        var menuAccentIdx  = Idx(LumeoPresetOptions.MenuAccents,    menuAccent,  "menu-accent", 0);
+        var themeIdx = Idx(LumeoPresetOptions.Themes, theme, "theme", 0);
+        var styleIdx = Idx(LumeoPresetOptions.Styles, style, "style", 0);
+        var baseIdx = Idx(LumeoPresetOptions.BaseColors, baseColor, "base", 0);
+        var radiusIdx = Idx(LumeoPresetOptions.Radii, radius, "radius", 2);
+        var fontIdx = Idx(LumeoPresetOptions.Fonts, font, "font", 0);
+        var iconsIdx = Idx(LumeoPresetOptions.IconLibraries, icons, "icons", 0);
+        var menuColorIdx = Idx(LumeoPresetOptions.MenuColors, menuColor, "menu-color", 0);
+        var menuAccentIdx = Idx(LumeoPresetOptions.MenuAccents, menuAccent, "menu-accent", 0);
         if (themeIdx is null || styleIdx is null || baseIdx is null || radiusIdx is null
             || fontIdx is null || iconsIdx is null || menuColorIdx is null || menuAccentIdx is null)
         {
@@ -75,18 +75,18 @@ public static class ThemeCommands
     // Aliases so users don't need to type "iconLibrary" or "baseColor" for --only.
     private static readonly Dictionary<string, string[]> PartAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["theme"]      = new[] { "theme" },
-        ["style"]      = new[] { "style" },
-        ["basecolor"]  = new[] { "baseColor" },
-        ["base"]       = new[] { "baseColor" },
-        ["radius"]     = new[] { "radius" },
-        ["font"]       = new[] { "font" },
-        ["icons"]      = new[] { "iconLibrary" },
+        ["theme"] = new[] { "theme" },
+        ["style"] = new[] { "style" },
+        ["basecolor"] = new[] { "baseColor" },
+        ["base"] = new[] { "baseColor" },
+        ["radius"] = new[] { "radius" },
+        ["font"] = new[] { "font" },
+        ["icons"] = new[] { "iconLibrary" },
         ["iconlibrary"] = new[] { "iconLibrary" },
-        ["menu"]       = new[] { "menuColor", "menuAccent" },
-        ["menucolor"]  = new[] { "menuColor" },
+        ["menu"] = new[] { "menuColor", "menuAccent" },
+        ["menucolor"] = new[] { "menuColor" },
         ["menuaccent"] = new[] { "menuAccent" },
-        ["dark"]       = new[] { "dark" },
+        ["dark"] = new[] { "dark" },
     };
 
     public static async Task Apply(string preset, string? only, bool dryRun, bool yes, bool silent)
@@ -137,15 +137,15 @@ public static class ThemeCommands
         // Step 2: surface what was resolved.
         InfoBlank();
         Info(Ansi.Bold($"Preset {preset} decoded") + Ansi.Dim($" (via {source})") + ":");
-        Row("theme",        resolved.Theme,       silent);
-        Row("style",        resolved.Style,       silent);
-        Row("baseColor",    resolved.BaseColor,   silent);
-        Row("radius",       resolved.Radius,      silent);
-        Row("font",         resolved.Font,        silent);
-        Row("iconLibrary",  resolved.IconLibrary, silent);
-        Row("menuColor",    resolved.MenuColor,   silent);
-        Row("menuAccent",   resolved.MenuAccent,  silent);
-        Row("dark",         resolved.Dark?.ToString(), silent);
+        Row("theme", resolved.Theme, silent);
+        Row("style", resolved.Style, silent);
+        Row("baseColor", resolved.BaseColor, silent);
+        Row("radius", resolved.Radius, silent);
+        Row("font", resolved.Font, silent);
+        Row("iconLibrary", resolved.IconLibrary, silent);
+        Row("menuColor", resolved.MenuColor, silent);
+        Row("menuAccent", resolved.MenuAccent, silent);
+        Row("dark", resolved.Dark?.ToString(), silent);
         InfoBlank();
 
         if (allowed is not null)
@@ -257,15 +257,15 @@ public static class ThemeCommands
     // Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
     private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["lucide"]          = "Blazicons.Lucide",
-        ["bootstrap"]       = "Blazicons.Bootstrap",
-        ["fluentui"]        = "Blazicons.FluentUI",
-        ["font-awesome"]    = "Blazicons.FontAwesome",
+        ["lucide"] = "Blazicons.Lucide",
+        ["bootstrap"] = "Blazicons.Bootstrap",
+        ["fluentui"] = "Blazicons.FluentUI",
+        ["font-awesome"] = "Blazicons.FontAwesome",
         ["google-material"] = "Blazicons.GoogleMaterialDesign",
         ["material-design"] = "Blazicons.MaterialDesignIcons",
-        ["ionicons"]        = "Blazicons.Ionicons",
-        ["devicon"]         = "Blazicons.Devicon",
-        ["flag-icons"]      = "Blazicons.FlagIcons",
+        ["ionicons"] = "Blazicons.Ionicons",
+        ["devicon"] = "Blazicons.Devicon",
+        ["flag-icons"] = "Blazicons.FlagIcons",
     };
 
     private static async Task MaybeInstallIconPackageAsync(string iconLib, bool yes, bool silent)
@@ -338,15 +338,15 @@ public static class ThemeCommands
     // Resolve the numeric indices from the codec to human-readable string values.
     private static LumeoThemeConfig ResolveFromDecoded(LumeoPreset decoded) => new()
     {
-        Theme       = NullIfEmpty(LumeoPresetOptions.At(LumeoPresetOptions.Themes, decoded.Theme)),
-        Style       = LumeoPresetOptions.At(LumeoPresetOptions.Styles, decoded.Style, "default"),
-        BaseColor   = LumeoPresetOptions.At(LumeoPresetOptions.BaseColors, decoded.BaseColor, "slate"),
-        Radius      = LumeoPresetOptions.At(LumeoPresetOptions.Radii, decoded.Radius, "0.5"),
-        Font        = LumeoPresetOptions.At(LumeoPresetOptions.Fonts, decoded.Font, "system"),
+        Theme = NullIfEmpty(LumeoPresetOptions.At(LumeoPresetOptions.Themes, decoded.Theme)),
+        Style = LumeoPresetOptions.At(LumeoPresetOptions.Styles, decoded.Style, "default"),
+        BaseColor = LumeoPresetOptions.At(LumeoPresetOptions.BaseColors, decoded.BaseColor, "slate"),
+        Radius = LumeoPresetOptions.At(LumeoPresetOptions.Radii, decoded.Radius, "0.5"),
+        Font = LumeoPresetOptions.At(LumeoPresetOptions.Fonts, decoded.Font, "system"),
         IconLibrary = LumeoPresetOptions.At(LumeoPresetOptions.IconLibraries, decoded.IconLibrary, "lucide"),
-        MenuColor   = LumeoPresetOptions.At(LumeoPresetOptions.MenuColors, decoded.MenuColor, "default"),
-        MenuAccent  = LumeoPresetOptions.At(LumeoPresetOptions.MenuAccents, decoded.MenuAccent, "subtle"),
-        Dark        = decoded.Dark == 1,
+        MenuColor = LumeoPresetOptions.At(LumeoPresetOptions.MenuColors, decoded.MenuColor, "default"),
+        MenuAccent = LumeoPresetOptions.At(LumeoPresetOptions.MenuAccents, decoded.MenuAccent, "subtle"),
+        Dark = decoded.Dark == 1,
     };
 
     private static string? NullIfEmpty(string s) => string.IsNullOrEmpty(s) ? null : s;
@@ -419,15 +419,15 @@ public static class ThemeCommands
     private static void MergeInto(LumeoThemeConfig target, LumeoThemeConfig incoming, HashSet<string>? allowed)
     {
         bool Ok(string key) => allowed is null || allowed.Contains(key);
-        if (Ok("theme")       && incoming.Theme       is not null) target.Theme       = incoming.Theme;
-        if (Ok("style")       && incoming.Style       is not null) target.Style       = incoming.Style;
-        if (Ok("baseColor")   && incoming.BaseColor   is not null) target.BaseColor   = incoming.BaseColor;
-        if (Ok("radius")      && incoming.Radius      is not null) target.Radius      = incoming.Radius;
-        if (Ok("font")        && incoming.Font        is not null) target.Font        = incoming.Font;
+        if (Ok("theme") && incoming.Theme is not null) target.Theme = incoming.Theme;
+        if (Ok("style") && incoming.Style is not null) target.Style = incoming.Style;
+        if (Ok("baseColor") && incoming.BaseColor is not null) target.BaseColor = incoming.BaseColor;
+        if (Ok("radius") && incoming.Radius is not null) target.Radius = incoming.Radius;
+        if (Ok("font") && incoming.Font is not null) target.Font = incoming.Font;
         if (Ok("iconLibrary") && incoming.IconLibrary is not null) target.IconLibrary = incoming.IconLibrary;
-        if (Ok("menuColor")   && incoming.MenuColor   is not null) target.MenuColor   = incoming.MenuColor;
-        if (Ok("menuAccent")  && incoming.MenuAccent  is not null) target.MenuAccent  = incoming.MenuAccent;
-        if (Ok("dark")        && incoming.Dark        is not null) target.Dark        = incoming.Dark;
+        if (Ok("menuColor") && incoming.MenuColor is not null) target.MenuColor = incoming.MenuColor;
+        if (Ok("menuAccent") && incoming.MenuAccent is not null) target.MenuAccent = incoming.MenuAccent;
+        if (Ok("dark") && incoming.Dark is not null) target.Dark = incoming.Dark;
     }
 
     // Write or merge lumeo-theme.json, preserving keys the user added manually that we don't know about.
@@ -460,15 +460,15 @@ public static class ThemeCommands
             root[key] = value;
         }
 
-        Set("theme",       resolved.Theme is null ? null : JsonValue.Create(resolved.Theme));
-        Set("style",       resolved.Style is null ? null : JsonValue.Create(resolved.Style));
-        Set("baseColor",   resolved.BaseColor is null ? null : JsonValue.Create(resolved.BaseColor));
-        Set("radius",      resolved.Radius is null ? null : JsonValue.Create(resolved.Radius));
-        Set("font",        resolved.Font is null ? null : JsonValue.Create(resolved.Font));
+        Set("theme", resolved.Theme is null ? null : JsonValue.Create(resolved.Theme));
+        Set("style", resolved.Style is null ? null : JsonValue.Create(resolved.Style));
+        Set("baseColor", resolved.BaseColor is null ? null : JsonValue.Create(resolved.BaseColor));
+        Set("radius", resolved.Radius is null ? null : JsonValue.Create(resolved.Radius));
+        Set("font", resolved.Font is null ? null : JsonValue.Create(resolved.Font));
         Set("iconLibrary", resolved.IconLibrary is null ? null : JsonValue.Create(resolved.IconLibrary));
-        Set("menuColor",   resolved.MenuColor is null ? null : JsonValue.Create(resolved.MenuColor));
-        Set("menuAccent",  resolved.MenuAccent is null ? null : JsonValue.Create(resolved.MenuAccent));
-        Set("dark",        resolved.Dark is null ? null : JsonValue.Create(resolved.Dark));
+        Set("menuColor", resolved.MenuColor is null ? null : JsonValue.Create(resolved.MenuColor));
+        Set("menuAccent", resolved.MenuAccent is null ? null : JsonValue.Create(resolved.MenuAccent));
+        Set("dark", resolved.Dark is null ? null : JsonValue.Create(resolved.Dark));
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),

@@ -81,9 +81,9 @@ public static class WordImporter
         // Mammoth gives highest precedence to the last-added style map).
         var styleMap = options switch
         {
-            { StyleMap: not null, IncludeDefaultStyleMap: true }  => DefaultStyleMap + "\n" + options.StyleMap,
+            { StyleMap: not null, IncludeDefaultStyleMap: true } => DefaultStyleMap + "\n" + options.StyleMap,
             { StyleMap: not null, IncludeDefaultStyleMap: false } => options.StyleMap,
-            _                                                       => DefaultStyleMap
+            _ => DefaultStyleMap
         };
 
         // Capture the image callback so we can reference it inside Task.Run.

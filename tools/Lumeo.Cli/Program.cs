@@ -188,15 +188,15 @@ var presetEncodeCmd = new Command("encode", "Generate a 6-char preset code from 
 presetEncodeCmd.SetHandler(async ctx =>
 {
     await ThemeCommands.Encode(
-        theme:      ctx.ParseResult.GetValueForOption(encodeThemeOpt),
-        style:      ctx.ParseResult.GetValueForOption(encodeStyleOpt),
-        baseColor:  ctx.ParseResult.GetValueForOption(encodeBaseOpt),
-        radius:     ctx.ParseResult.GetValueForOption(encodeRadiusOpt),
-        font:       ctx.ParseResult.GetValueForOption(encodeFontOpt),
-        icons:      ctx.ParseResult.GetValueForOption(encodeIconsOpt),
-        menuColor:  ctx.ParseResult.GetValueForOption(encodeMenuColorOpt),
+        theme: ctx.ParseResult.GetValueForOption(encodeThemeOpt),
+        style: ctx.ParseResult.GetValueForOption(encodeStyleOpt),
+        baseColor: ctx.ParseResult.GetValueForOption(encodeBaseOpt),
+        radius: ctx.ParseResult.GetValueForOption(encodeRadiusOpt),
+        font: ctx.ParseResult.GetValueForOption(encodeFontOpt),
+        icons: ctx.ParseResult.GetValueForOption(encodeIconsOpt),
+        menuColor: ctx.ParseResult.GetValueForOption(encodeMenuColorOpt),
         menuAccent: ctx.ParseResult.GetValueForOption(encodeMenuAccentOpt),
-        dark:       ctx.ParseResult.GetValueForOption(encodeDarkOpt),
+        dark: ctx.ParseResult.GetValueForOption(encodeDarkOpt),
         commandOnly: ctx.ParseResult.GetValueForOption(encodeCommandOpt));
 });
 var presetCmd = new Command("preset", "Preset codec utilities (encode / decode).");
