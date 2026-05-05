@@ -46,4 +46,34 @@
     <ProjectReference Include="..\Lumeo\Lumeo.csproj" />
   </ItemGroup>
 
+  <!-- Keep the npm working tree out of the build/package output. The TipTap
+       bundle source lives in scripts/ + package.json; node_modules is build-time
+       only and the compiled artifact is wwwroot/js/tiptap-bundle.js (auto-globbed
+       by the Razor SDK as a static web asset under _content/Lumeo.Editor/js/). -->
+  <ItemGroup>
+    <Content Remove="node_modules\**" />
+    <None Remove="node_modules\**" />
+    <Compile Remove="node_modules\**" />
+    <EmbeddedResource Remove="node_modules\**" />
+    <Content Remove="scripts\**" />
+    <None Remove="scripts\**" />
+    <Content Remove="package.json" />
+    <None Remove="package.json" />
+    <Content Remove="package-lock.json" />
+    <None Remove="package-lock.json" />
+  </ItemGroup>
+
+  <!-- Optional: regenerate wwwroot/js/tiptap-bundle.js if it's missing AND
+       npm is available. The bundle is checked into git so contributors without
+       npm still get a working build; this target only kicks in when someone
+       deletes the bundle or pulls a branch where it's been removed. -->
+  <Target Name="EnsureTiptapBundle" BeforeTargets="BeforeBuild"
+          Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\js\tiptap-bundle.js')">
+    <Message Importance="high" Text="tiptap-bundle.js missing — running 'npm install &amp;&amp; npm run build:tiptap' in $(MSBuildProjectDirectory)" />
+    <Exec Command="npm install --no-audit --no-fund" WorkingDirectory="$(MSBuildProjectDirectory)" ContinueOnError="true" />
+    <Exec Command="npm run build:tiptap" WorkingDirectory="$(MSBuildProjectDirectory)" ContinueOnError="true" />
+    <Warning Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\js\tiptap-bundle.js')"
+             Text="tiptap-bundle.js could not be regenerated automatically. Install Node.js and run 'npm install &amp;&amp; npm run build:tiptap' inside src/Lumeo.Editor, or restore the checked-in bundle from git." />
+  </Target>
+
 </Project>
