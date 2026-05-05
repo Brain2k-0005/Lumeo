@@ -642,6 +642,77 @@ catch (Exception ex)
     return 2;
 }
 
+// ─────── Third pass: per-component JSON files for shadcn-style /registry/<key>.json ───────
+// The registryUrl field on every component in registry.json points at
+//   https://lumeo.nativ.sh/registry/<key>.json
+// We now actually emit those files. Each one is self-contained: catalog
+// metadata + full Razor parameter schema (params, enums, records, events,
+// sub-components). Consumers can fetch a single component without paging
+// through the monolithic registry.
+//
+// Output goes to BOTH:
+//   - src/Lumeo/wwwroot/registry/  (Razor SDK auto-globs → static web asset
+//     under _content/Lumeo/registry/<key>.json for self-hosted setups)
+//   - docs/Lumeo.Docs/wwwroot/registry/  (Cloudflare Pages serves
+//     https://lumeo.nativ.sh/registry/<key>.json)
+try
+{
+    var apiJson = File.ReadAllText(componentsApiPath, Encoding.UTF8);
+    var apiDoc = JsonSerializer.Deserialize<JsonElement>(apiJson);
+    var apiComponents = apiDoc.GetProperty("components");
+
+    var perComponentDirs = new[]
+    {
+        Path.Combine(repoRoot, "src", "Lumeo", "wwwroot", "registry"),
+        Path.Combine(repoRoot, "docs", "Lumeo.Docs", "wwwroot", "registry"),
+    };
+    foreach (var dir in perComponentDirs) Directory.CreateDirectory(dir);
+
+    var perComponentCount = 0;
+    foreach (var (key, entryObj) in components)
+    {
+        if (entryObj is not Dictionary<string, object?> entry) continue;
+
+        // Build per-component payload by merging catalog + api schema.
+        var payload = new Dictionary<string, object?>(entry, StringComparer.Ordinal)
+        {
+            ["$schema"] = "https://lumeo.nativ.sh/registry-component-schema.json",
+            ["key"] = key,
+        };
+
+        // Drop the self-referential URL inside the per-component file —
+        // the consumer already knows the URL they fetched it from.
+        payload.Remove("registryUrl");
+
+        // Merge in the API schema if we have one for this component.
+        if (apiComponents.ValueKind == JsonValueKind.Object)
+        {
+            // components-api.json is keyed by component name (PascalCase).
+            var name = entry.TryGetValue("name", out var n) ? n?.ToString() : null;
+            if (name is not null && apiComponents.TryGetProperty(name, out var apiEntry))
+            {
+                payload["api"] = JsonSerializer.Deserialize<JsonElement>(apiEntry.GetRawText());
+                PerComponentEnricher.Enrich(payload, key, name, repoRoot, apiEntry, knownComponentNames, Console.Error);
+            }
+        }
+
+        var perJson = JsonSerializer.Serialize(payload, jsonOpts);
+        foreach (var dir in perComponentDirs)
+        {
+            File.WriteAllText(Path.Combine(dir, key + ".json"), perJson, new UTF8Encoding(false));
+        }
+        perComponentCount++;
+    }
+
+    Console.Error.WriteLine($"[per-component] Wrote {perComponentCount} component files to {string.Join(" + ", perComponentDirs.Select(d => Path.GetRelativePath(repoRoot, d)))}");
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[per-component] FAILED to emit: {ex.Message}");
+    Console.Error.WriteLine(ex.StackTrace);
+    return 3;
+}
+
 return 0;
 
 // --- Helpers ---

@@ -1,0 +1,144 @@
+{
+  "name": "Confetti",
+  "category": "Motion",
+  "subcategory": null,
+  "description": "Burst of colored particles on demand via imperative Fire() method.",
+  "thumbnail": "/preview-cards/confetti.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Motion",
+  "files": [
+    "UI/Confetti/Confetti.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "Confetti",
+    "category": "Motion",
+    "subcategory": null,
+    "description": "Burst of colored particles on demand via imperative Fire() method.",
+    "nugetPackage": "Lumeo.Motion",
+    "files": [
+      "UI/Confetti/Confetti.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ParticleCount",
+        "type": "int",
+        "default": "80",
+        "description": "Number of confetti particles to emit per burst.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Spread",
+        "type": "int",
+        "default": "70",
+        "description": "Spread angle in degrees.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Colors",
+        "type": "string[]?",
+        "default": null,
+        "description": "Colors to use for confetti. Defaults to a festive palette using CSS variables (resolved at runtime).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OriginX",
+        "type": "double",
+        "default": "0.5",
+        "description": "Origin X position (0–1, relative to element width). Default: 0.5 (center).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OriginY",
+        "type": "double",
+        "default": "0.5",
+        "description": "Origin Y position (0–1, relative to element height). Default: 0.5 (center).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "confetti",
+  "docsUrl": "https://lumeo.nativ.sh/components/confetti",
+  "sourceUrl": [
+    {
+      "file": "UI/Confetti/Confetti.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Motion/UI/Confetti/Confetti.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Confetti/Confetti.razor",
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<div id=\"@_elementId\" class=\"@CssClass\" style=\"position:relative;display:inline-block;\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    <canvas id=\"@(_elementId + \"-canvas\")\" class=\"lumeo-confetti-canvas\" aria-hidden=\"true\" />\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Number of confetti particles to emit per burst.</summary>\n    [Parameter] public int ParticleCount { get; set; } = 80;\n    /// <summary>Spread angle in degrees.</summary>\n    [Parameter] public int Spread { get; set; } = 70;\n    /// <summary>Colors to use for confetti. Defaults to a festive palette using CSS variables (resolved at runtime).</summary>\n    [Parameter] public string[]? Colors { get; set; }\n    /// <summary>Origin X position (0–1, relative to element width). Default: 0.5 (center).</summary>\n    [Parameter] public double OriginX { get; set; } = 0.5;\n    /// <summary>Origin Y position (0–1, relative to element height). Default: 0.5 (center).</summary>\n    [Parameter] public double OriginY { get; set; } = 0.5;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-confetti-{Guid.NewGuid():N}\";\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-confetti\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                await Interop.MotionConfettiInit(_elementId);\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    /// <summary>Programmatically trigger a confetti burst from the configured origin.</summary>\n    public async Task Fire()\n    {\n        if (!_registered) return;\n        try\n        {\n            var colors = Colors ?? new[] { \"#ff595e\", \"#ffca3a\", \"#6a4c93\", \"#1982c4\", \"#8ac926\", \"#ff6b6b\" };\n            await Interop.MotionConfettiFire(_elementId, new\n            {\n                particleCount = ParticleCount,\n                spread = Spread,\n                colors,\n                origin = new { x = OriginX, y = OriginY }\n            });\n        }\n        catch (JSDisconnectedException) { }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_registered)\n        {\n            await Interop.MotionDisposeConfetti(_elementId);\n        }\n    }\n}\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "Confetti",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Docs.Tests/Helpers/DocsTestContext.cs",
+    "tests/Lumeo.Tests/Components/Confetti/ConfettiTests.cs"
+  ],
+  "mdSummary": "# Confetti\r\n\r\nBurst of colored particles on demand via imperative Fire() method.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/confetti\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Confetti | ChildContent | `RenderFragment?` | `` |  |\r\n| Confetti | ParticleCount | `int` | `80` | Number of confetti particles to emit per burst. |\r\n| Confetti | Spread | `int` | `70` | Spread angle in degrees. |\r\n| Confetti | Colors | `string[]?` | `` | Colors to use for confetti. Defaults to a festive palette using CSS variables (resolved at runtime). |\r\n| Confetti | OriginX | `double` | `0.5` | Origin X position (0–1, relative to element width). Default: 0.5 (center). |\r\n| Confetti | OriginY | `double` | `0.5` | Origin Y position (0–1, relative to element height). Default: 0.5 (center). |\r\n| Confetti | Class | `string?` | `` |  |\r\n| Confetti | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Confetti) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Confetti />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Confetti/Confetti.razor`\r\n"
+}

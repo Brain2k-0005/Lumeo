@@ -1,0 +1,137 @@
+{
+  "name": "Delta",
+  "category": "Dashboard",
+  "subcategory": null,
+  "description": "Trend indicator showing delta value with up/down arrow + color.",
+  "thumbnail": "/preview-cards/delta.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/Delta/Delta.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-destructive",
+    "--color-muted",
+    "--color-muted-foreground",
+    "--radius"
+  ],
+  "api": {
+    "name": "Delta",
+    "category": "Dashboard",
+    "subcategory": null,
+    "description": "Trend indicator showing delta value with up/down arrow + color.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/Delta/Delta.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [],
+    "parameters": [
+      {
+        "name": "Value",
+        "type": "double",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Format",
+        "type": "DeltaFormat",
+        "default": "DeltaFormat.Percent",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Positive",
+        "type": "DeltaDirection",
+        "default": "DeltaDirection.Good",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowArrow",
+        "type": "bool",
+        "default": "true",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [
+      {
+        "name": "DeltaFormat",
+        "values": [
+          "Percent",
+          "Absolute"
+        ],
+        "description": null
+      },
+      {
+        "name": "DeltaDirection",
+        "values": [
+          "Good",
+          "Bad"
+        ],
+        "description": null
+      }
+    ],
+    "records": [],
+    "cssVars": [
+      "--color-destructive",
+      "--color-muted",
+      "--color-muted-foreground",
+      "--radius"
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "delta",
+  "docsUrl": "https://lumeo.nativ.sh/components/delta",
+  "sourceUrl": [
+    {
+      "file": "UI/Delta/Delta.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Delta/Delta.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/Delta/Delta.razor",
+      "content": "@namespace Lumeo\r\n\r\n<span class=\"@RootClasses\" @attributes=\"AdditionalAttributes\">\r\n    @if (ShowArrow)\r\n    {\r\n        @if (IsUp)\r\n        {\r\n            <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"18 15 12 9 6 15\"/></svg>\r\n        }\r\n        else if (IsDown)\r\n        {\r\n            <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"6 9 12 15 18 9\"/></svg>\r\n        }\r\n    }\r\n    <span>@FormattedValue</span>\r\n</span>\r\n\r\n@code {\r\n    [Parameter] public double Value { get; set; }\r\n    [Parameter] public DeltaFormat Format { get; set; } = DeltaFormat.Percent;\r\n    [Parameter] public DeltaDirection Positive { get; set; } = DeltaDirection.Good;\r\n    [Parameter] public bool ShowArrow { get; set; } = true;\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private bool IsUp => Value > 0;\r\n    private bool IsDown => Value < 0;\r\n\r\n    private string FormattedValue\r\n    {\r\n        get\r\n        {\r\n            var sign = Value > 0 ? \"+\" : \"\";\r\n            var absFormat = Format switch\r\n            {\r\n                DeltaFormat.Percent =>\r\n                    $\"{sign}{Value.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture)}%\",\r\n                _ =>\r\n                    $\"{sign}{Value.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture)}\"\r\n            };\r\n            return absFormat;\r\n        }\r\n    }\r\n\r\n    private string ColorClasses\r\n    {\r\n        get\r\n        {\r\n            // Good = positive delta is \"good\" (green), negative is \"bad\" (red)\r\n            // Bad = inverted (e.g. churn rate where lower is better)\r\n            var goodColor = \"bg-positive-light text-positive-text\";\r\n            var badColor = \"bg-destructive-light text-destructive-text\";\r\n            var neutral = \"bg-muted text-muted-foreground\";\r\n\r\n            if (Value == 0) return neutral;\r\n\r\n            var isGood = Positive == DeltaDirection.Good ? IsUp : IsDown;\r\n            return isGood ? goodColor : badColor;\r\n        }\r\n    }\r\n\r\n    private string RootClasses =>\r\n        $\"inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium {ColorClasses} {Class}\".Trim();\r\n\r\n    public enum DeltaFormat { Percent, Absolute }\r\n    public enum DeltaDirection { Good, Bad }\r\n}\r\n"
+    }
+  ],
+  "slots": [],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/Delta/DeltaTests.cs",
+    "tests/Lumeo.Tests/Components/KpiCard/KpiCardTests.cs"
+  ],
+  "mdSummary": "# Delta\r\n\r\nTrend indicator showing delta value with up/down arrow + color.\r\n\r\n**Package:** `Lumeo` · **Category:** Dashboard\r\n**Docs:** https://lumeo.nativ.sh/components/delta\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Delta | Value | `double` | `` |  |\r\n| Delta | Format | `DeltaFormat` | `DeltaFormat.Percent` |  |\r\n| Delta | Positive | `DeltaDirection` | `DeltaDirection.Good` |  |\r\n| Delta | ShowArrow | `bool` | `true` |  |\r\n| Delta | Class | `string?` | `` |  |\r\n| Delta | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Delta />\r\n```\r\n\r\n## CSS variables\r\n`--color-destructive`, `--color-muted`, `--color-muted-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/Delta/Delta.razor`\r\n"
+}

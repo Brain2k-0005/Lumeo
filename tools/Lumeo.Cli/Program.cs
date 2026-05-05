@@ -397,11 +397,12 @@ namespace Lumeo.Cli
             return r2 ?? throw new InvalidOperationException($"Failed to fetch registry: {url}");
         }
 
-        /// <summary>Default registry URL — jsDelivr mirrors github content globally over CDN,
-        /// no hosting setup required. Pinned to an RC tag so the registry and the CLI binary
-        /// always agree on schema/shape.</summary>
-        public const string DefaultRegistryUrl =
-            "https://cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@v2.0.0-rc.9/src/Lumeo/wwwroot/registry/registry.json";
+        /// <summary>Default registry URL — points at the live docs site so the registry
+        /// always reflects the latest release. Cloudflare Pages serves this from
+        /// docs/Lumeo.Docs/wwwroot/registry.json on every deploy. Per-component JSON
+        /// files are at the same base under /registry/&lt;key&gt;.json. Override per-project
+        /// via the `registry` field in lumeo.json or --registry-url.</summary>
+        public const string DefaultRegistryUrl = "https://lumeo.nativ.sh/registry.json";
 
         /// <summary>Derive the base URL to fetch component source files from the registry URL.
         /// Supports three layouts:
