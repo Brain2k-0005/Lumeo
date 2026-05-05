@@ -33,6 +33,21 @@ public abstract class PlaywrightTestBase : IAsyncLifetime
             Headless = true,
         });
         Page = await Browser.NewPageAsync();
+
+        // Pre-seed the consent state so the GDPR banner doesn't render and steal
+        // role="dialog" / Escape key focus from the components under test. The
+        // ConsentService treats any non-empty dictionary as "user has decided",
+        // so a simple { analytics: false } entry is enough to suppress the banner.
+        // Also seeds a deterministic theme so visual snapshots are stable.
+        await Page.AddInitScriptAsync(@"
+            try {
+                localStorage.setItem('lumeo:consent:v1', JSON.stringify({
+                    analytics: false,
+                    marketing: false,
+                }));
+                localStorage.setItem('theme-mode', 'light');
+            } catch (e) { /* localStorage may be blocked in some contexts */ }
+        ");
     }
 
     public virtual async Task DisposeAsync()

@@ -1,0 +1,71 @@
+name: E2E
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Tailwind builds the CSS bundles consumed by the Lumeo + Lumeo.Docs
+      # output. Doing this first means the Blazor Release build picks up
+      # final lumeo-utilities.css + tailwind.out.css instead of stale copies.
+      - name: Build CSS bundles
+        run: |
+          npm install
+          npm run build:css
+          cd docs/Lumeo.Docs
+          npm install
+          npm run css:build
+
+      - name: Build Lumeo.Tests.E2E (also restores Playwright assets)
+        run: dotnet build tests/Lumeo.Tests.E2E/Lumeo.Tests.E2E.csproj -c Release --nologo
+
+      - name: Install Playwright browsers
+        run: pwsh tests/Lumeo.Tests.E2E/bin/Release/net10.0/playwright.ps1 install chromium --with-deps
+
+      - name: Build docs site
+        run: dotnet build docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release --nologo
+
+      - name: Start docs server
+        run: |
+          cd docs/Lumeo.Docs
+          nohup dotnet run -c Release --no-launch-profile --no-build --urls http://localhost:5290 > docs-server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5290 > /dev/null; then
+              echo "docs server ready (attempt $i)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "docs server failed to start within 120s"
+          tail -n 200 docs-server.log
+          exit 1
+
+      - name: Run E2E
+        env:
+          LUMEO_E2E_BASE_URL: http://localhost:5290
+        run: dotnet test tests/Lumeo.Tests.E2E/Lumeo.Tests.E2E.csproj -c Release --no-build --verbosity normal
+
+      - name: Upload docs server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-server-log
+          path: docs/Lumeo.Docs/docs-server.log
+          if-no-files-found: ignore

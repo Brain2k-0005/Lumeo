@@ -25,9 +25,16 @@ public class HomePageVisualTests : PlaywrightTestBase
     [Fact]
     public async Task Home_page_above_the_fold_matches_baseline()
     {
-        await Goto("/");
+        // Lock the viewport BEFORE navigation so layout-dependent elements
+        // (animations, lazy-loaded media) settle at their final size.
         await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await Goto("/");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        // Disable CSS animations + transitions so subsequent screenshot captures
+        // are deterministic (byte-equal compare can't tolerate animation drift).
+        await Page.AddStyleTagAsync(new() { Content = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important; }" });
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
 
         // Capture only the above-the-fold region for a stable baseline
         var screenshot = await Page.ScreenshotAsync(new PageScreenshotOptions
