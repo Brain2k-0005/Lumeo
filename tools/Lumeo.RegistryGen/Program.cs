@@ -601,6 +601,47 @@ var json = JsonSerializer.Serialize(root, jsonOpts);
 File.WriteAllText(outputPath, json, new UTF8Encoding(false));
 
 Console.WriteLine($"Wrote {components.Count} components to {outputPath}");
+
+// ─────── Second pass: full Razor parameter schema → components-api.json ───────
+// Consumed by tools/lumeo-mcp so Claude Code gets full schema for ALL components,
+// not just the ~30 hand-curated ones.
+var componentsApiPath = Path.Combine(repoRoot, "tools", "lumeo-mcp", "src", "components-api.json");
+
+ComponentsApiEmitter.ComponentMeta MetaFor(string name)
+{
+    var category = categoryMap.TryGetValue(name, out var cat) ? cat : "Utility";
+    var description = descriptions.TryGetValue(name, out var desc) ? desc : $"{InsertSpaces(name)} component.";
+    var subcategory = SubcategoryInferrer.Infer(name, category);
+    var pkg = componentToPackage.TryGetValue(name, out var p) ? p : "Lumeo";
+
+    // Pull files + cssVars from what we already computed in the registry pass.
+    var key = ToKebabCase(name);
+    if (components.TryGetValue(key, out var entryObj) && entryObj is Dictionary<string, object?> entry)
+    {
+        var files = entry.TryGetValue("files", out var f) && f is List<string> fl ? fl.ToArray() : Array.Empty<string>();
+        var cssVars = entry.TryGetValue("cssVars", out var cv) && cv is string[] cva ? cva : Array.Empty<string>();
+        return new ComponentsApiEmitter.ComponentMeta(name, category, subcategory, description, pkg, files, cssVars);
+    }
+    return new ComponentsApiEmitter.ComponentMeta(name, category, subcategory, description, pkg, Array.Empty<string>(), Array.Empty<string>());
+}
+
+try
+{
+    ComponentsApiEmitter.Emit(
+        outputPath: componentsApiPath,
+        componentDirs: componentDirs,
+        uiRoots: uiRoots,
+        metaResolver: MetaFor,
+        logger: Console.Error,
+        version: "2.0.0-rc.19");
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[components-api] FAILED to emit: {ex.Message}");
+    Console.Error.WriteLine(ex.StackTrace);
+    return 2;
+}
+
 return 0;
 
 // --- Helpers ---
