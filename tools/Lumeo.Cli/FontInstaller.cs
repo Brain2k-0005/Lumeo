@@ -25,11 +25,11 @@ internal static class FontInstaller
     // lumeoFontMap and LumeoPresetOptions.Fonts.
     private static readonly Dictionary<string, string> GoogleFontsCssUrls = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["inter"]          = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
-        ["geist"]          = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap",
-        ["ibm-plex-sans"]  = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap",
+        ["inter"] = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+        ["geist"] = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap",
+        ["ibm-plex-sans"] = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap",
         ["jetbrains-mono"] = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap",
-        ["fira-code"]      = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&display=swap",
+        ["fira-code"] = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&display=swap",
     };
 
     // Regex: matches Google's `src: url(...) format('woff2')` tuples.

@@ -67,10 +67,10 @@ public class ComponentContractTests : IAsyncLifetime
     private static readonly Dictionary<string, string> _classNameMismatches = new()
     {
         ["Resizable"] = "ResizablePanelGroup — no standalone Resizable class",
-        ["Overlay"]   = "OverlayProvider — no standalone Overlay class",
-        ["Sidebar"]   = "SidebarProvider — no standalone Sidebar class",
-        ["Filter"]    = "FilterBar — in Lumeo.DataGrid; class name differs from registry name",
-        ["Progress"]  = "Progress exists; but first file is CircularProgress — test runs fine",
+        ["Overlay"] = "OverlayProvider — no standalone Overlay class",
+        ["Sidebar"] = "SidebarProvider — no standalone Sidebar class",
+        ["Filter"] = "FilterBar — in Lumeo.DataGrid; class name differs from registry name",
+        ["Progress"] = "Progress exists; but first file is CircularProgress — test runs fine",
     };
 
     /// <summary>
