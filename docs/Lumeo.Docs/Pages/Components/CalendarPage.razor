@@ -63,6 +63,25 @@
         <Lumeo.Text Size="sm" Color="muted" Class="text-center mt-2">Selectable range: @_minDate.ToString("MMM d") — @_maxDate.ToString("MMM d, yyyy")</Lumeo.Text>
     </ComponentDemo>
 
+    <ComponentDemo Title="Booking calendar — disable + tooltip + badge" Code="@_bookingCode">
+        <Stack Gap="2">
+            <Flex Justify="center">
+                <Stack Class="rounded-md border bg-card p-1">
+                    <Calendar @bind-Value="_bookingDate"
+                              MinDate="DateOnly.FromDateTime(DateTime.Today)"
+                              MaxDate="DateOnly.FromDateTime(DateTime.Today.AddDays(60))"
+                              IsDateDisabled="@IsBookedOrClosed"
+                              DateClass="@GetBookingClass"
+                              DateTooltip="@GetBookingTooltip"
+                              DateBadge="@GetBookingBadge" />
+                </Stack>
+            </Flex>
+            <Lumeo.Text Size="sm" Color="muted" Class="text-center">
+                Hover any day for the tooltip; the badge dot indicates booking status — green = available, amber = partial, red = sold out, grey = closed.
+            </Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Date Range" Code="@_dateRangeCode">
         <Stack Gap="2">
             <Flex Justify="center">
@@ -118,6 +137,8 @@
                 <TableRow><TableCell Class="font-mono text-xs">InitialView</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Days"</TableCell><TableCell>Initial calendar view. Values: "Days", "Months", "Years".</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">IsDateDisabled</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateTime, bool&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom function to disable specific dates.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">DateClass</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateTime, string&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom function to add CSS classes to specific dates.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DateTooltip</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateTime, string?&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Per-date tooltip text rendered as the day cell's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">title</code> attribute (native browser tooltip on hover). Return null/empty for no tooltip. <Badge>rc.20</Badge></TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DateBadge</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateTime, RenderFragment?&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Per-date indicator slot rendered absolutely positioned in the bottom-right of the day cell — status dots, count badges, icons. Non-interactive (pointer-events-none) so clicks still hit the day button. <Badge>rc.20</Badge></TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FirstDayOfWeek</TableCell><TableCell Class="font-mono text-xs">DayOfWeek</TableCell><TableCell Class="font-mono text-xs">Sunday</TableCell><TableCell>The first day of the week in the calendar grid.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
@@ -142,6 +163,56 @@
     private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
     private DateOnly? _rangeStart;
     private DateOnly? _rangeEnd;
+
+    // Booking-style demo: synthesised hotel availability so the badges + tooltips
+    // light up at varied positions across the next 60 days.
+    private DateOnly? _bookingDate;
+    private HashSet<DateOnly> _booked = Enumerable.Range(2, 60)
+        .Where(i => i % 7 == 3 || i % 11 == 5)
+        .Select(i => DateOnly.FromDateTime(DateTime.Today.AddDays(i))).ToHashSet();
+    private HashSet<DateOnly> _partial = Enumerable.Range(1, 60)
+        .Where(i => i % 5 == 0)
+        .Select(i => DateOnly.FromDateTime(DateTime.Today.AddDays(i))).ToHashSet();
+    private HashSet<DateOnly> _closed = Enumerable.Range(1, 60)
+        .Select(i => DateOnly.FromDateTime(DateTime.Today.AddDays(i)))
+        .Where(d => d.DayOfWeek == DayOfWeek.Sunday).ToHashSet();
+
+    private bool IsBookedOrClosed(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        return _booked.Contains(date) || _closed.Contains(date);
+    }
+
+    private string GetBookingClass(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        if (_booked.Contains(date)) return "bg-destructive/10 text-destructive line-through";
+        if (_closed.Contains(date)) return "bg-muted/40 italic";
+        if (_partial.Contains(date)) return "bg-warning/15 ring-1 ring-warning/40";
+        return "";
+    }
+
+    private string? GetBookingTooltip(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        if (_booked.Contains(date)) return $"{date:MMM d} — Sold out";
+        if (_closed.Contains(date)) return $"{date:MMM d} — Closed (Sunday)";
+        if (_partial.Contains(date)) return $"{date:MMM d} — Limited availability";
+        if (date >= DateOnly.FromDateTime(DateTime.Today)) return $"{date:MMM d} — Available";
+        return null;
+    }
+
+    private RenderFragment? GetBookingBadge(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        if (date < DateOnly.FromDateTime(DateTime.Today)) return null;
+        var color =
+            _booked.Contains(date) ? "bg-destructive" :
+            _partial.Contains(date) ? "bg-warning" :
+            _closed.Contains(date) ? "bg-muted-foreground/40" :
+            "bg-success";
+        return @<span class="@($"block h-1.5 w-1.5 rounded-full {color}")"></span>;
+    }
 
     private string _defaultCode = @"<Calendar @bind-Value=""_selectedDate"" />";
 
@@ -171,6 +242,57 @@
     private DateOnly? _date;
     private DateOnly _minDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-7));
     private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+}";
+
+    private string _bookingCode = @"<Calendar @bind-Value=""_bookingDate""
+          MinDate=""DateOnly.FromDateTime(DateTime.Today)""
+          MaxDate=""DateOnly.FromDateTime(DateTime.Today.AddDays(60))""
+          IsDateDisabled=""@IsBookedOrClosed""
+          DateClass=""@GetBookingClass""
+          DateTooltip=""@GetBookingTooltip""
+          DateBadge=""@GetBookingBadge"" />
+
+@code {
+    private DateOnly? _bookingDate;
+    private HashSet<DateOnly> _booked = new();      // Sold out → disabled, red strike-through
+    private HashSet<DateOnly> _partial = new();     // Limited → amber ring
+    private HashSet<DateOnly> _closed = new();      // Closed → disabled, grey italic
+
+    private bool IsBookedOrClosed(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        return _booked.Contains(date) || _closed.Contains(date);
+    }
+
+    private string GetBookingClass(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        if (_booked.Contains(date))  return ""bg-destructive/10 text-destructive line-through"";
+        if (_closed.Contains(date))  return ""bg-muted/40 italic"";
+        if (_partial.Contains(date)) return ""bg-warning/15 ring-1 ring-warning/40"";
+        return """";
+    }
+
+    private string? GetBookingTooltip(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        if (_booked.Contains(date))  return $""{date:MMM d} — Sold out"";
+        if (_closed.Contains(date))  return $""{date:MMM d} — Closed"";
+        if (_partial.Contains(date)) return $""{date:MMM d} — Limited availability"";
+        return $""{date:MMM d} — Available"";
+    }
+
+    // Bottom-right indicator dot: green = available, amber = partial, red = booked, grey = closed.
+    private RenderFragment? GetBookingBadge(DateTime d)
+    {
+        var date = DateOnly.FromDateTime(d);
+        var color =
+            _booked.Contains(date)  ? ""bg-destructive"" :
+            _partial.Contains(date) ? ""bg-warning"" :
+            _closed.Contains(date)  ? ""bg-muted-foreground/40"" :
+            ""bg-success"";
+        return @<span class=""@($""block h-1.5 w-1.5 rounded-full {color}"")""></span>;
+    }
 }";
 
     private string _dateRangeCode = @"<Calendar IsRange=""true"" @bind-RangeStart=""_rangeStart"" @bind-RangeEnd=""_rangeEnd"" />
