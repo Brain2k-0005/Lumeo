@@ -72,9 +72,11 @@ public class CalendarTests : IAsyncLifetime
     public void Calendar_Renders_42_Day_Buttons()
     {
         var cut = RenderCalendar();
-        // There are 2 nav buttons + 2 header buttons (month, year) + 42 day buttons
+        // 2 nav buttons + 1 combined month+year header button + 42 day buttons.
+        // (rc.20: month + year merged into one click target — first click goes to
+        // Months view, then year header in Months view goes to Years view.)
         var buttons = cut.FindAll("button[type='button']");
-        Assert.Equal(46, buttons.Count); // 2 nav + 2 header + 42 days
+        Assert.Equal(45, buttons.Count); // 2 nav + 1 combined header + 42 days
     }
 
     [Fact]
@@ -109,10 +111,10 @@ public class CalendarTests : IAsyncLifetime
         var today = DateOnly.FromDateTime(DateTime.Today);
         var cut = RenderCalendar();
 
-        // Nav buttons: first is prev (chevron-left), then month button, year button, then next (chevron-right)
-        // The next button is the 4th button (index 3): prev, month-name, year, next
+        // Header layout: prev (chevron-left), combined month+year, next (chevron-right).
+        // Next button is index 2: prev, combined-header, next.
         var allButtons = cut.FindAll("button[type='button']");
-        allButtons[3].Click();
+        allButtons[2].Click();
 
         var nextMonth = today.AddMonths(1);
         Assert.Contains(nextMonth.ToString("MMMM"), cut.Markup);
@@ -127,8 +129,8 @@ public class CalendarTests : IAsyncLifetime
 
         // Click prev (index 0)
         cut.FindAll("button[type='button']")[0].Click();
-        // Click next (index 3: prev, month-name, year, next)
-        cut.FindAll("button[type='button']")[3].Click();
+        // Click next (index 2: prev, combined-header, next)
+        cut.FindAll("button[type='button']")[2].Click();
 
         Assert.Contains(today.ToString("MMMM"), cut.Markup);
         Assert.Contains(today.Year.ToString(), cut.Markup);
@@ -186,6 +188,47 @@ public class CalendarTests : IAsyncLifetime
         var cut = RenderCalendar();
         var div = cut.Find("div");
         Assert.Contains("p-3", div.GetAttribute("class"));
+    }
+
+    // --- rc.20 booking-API additions: DateTooltip + DateBadge ---
+
+    [Fact]
+    public void DateTooltip_Renders_Title_Attribute_On_Day_Buttons()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Calendar>(0);
+            builder.AddAttribute(1, "Value", today);
+            builder.AddAttribute(2, "DateTooltip",
+                (Func<DateTime, string?>)(d => d.Day == today.Day ? "today-tooltip" : null));
+            builder.CloseComponent();
+        });
+
+        // The day matching today should have title="today-tooltip"; days without
+        // a tooltip should have no title or an empty one.
+        Assert.Contains("title=\"today-tooltip\"", cut.Markup);
+    }
+
+    [Fact]
+    public void DateBadge_Renders_Slot_Inside_Day_Button()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Calendar>(0);
+            builder.AddAttribute(1, "Value", today);
+            builder.AddAttribute(2, "DateBadge",
+                (Func<DateTime, RenderFragment?>)(d => d.Day == today.Day
+                    ? (RenderFragment)(b => b.AddMarkupContent(0, "<span class=\"badge-marker\">DOT</span>"))
+                    : null));
+            builder.CloseComponent();
+        });
+
+        // The badge slot is wrapped in a span with absolute positioning so it
+        // sits in the bottom-right of the day cell. Confirm content + wrapper.
+        Assert.Contains("badge-marker", cut.Markup);
+        Assert.Contains("absolute -bottom-0.5 -right-0.5 pointer-events-none", cut.Markup);
     }
 
     // --- AdditionalAttributes ---

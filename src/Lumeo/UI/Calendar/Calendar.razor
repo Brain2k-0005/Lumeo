@@ -36,6 +36,17 @@
     [Parameter] public string InitialView { get; set; } = "Days";
     [Parameter] public Func<DateTime, bool>? IsDateDisabled { get; set; }
     [Parameter] public Func<DateTime, string>? DateClass { get; set; }
+    /// <summary>Optional per-date tooltip text. Returned string becomes the
+    /// day cell's <c>title</c> attribute (native browser tooltip on hover).
+    /// Return <c>null</c> or empty for no tooltip on that date. Useful for
+    /// booking calendars: "Booked by John, 14:00–17:00" or "Sold out".</summary>
+    [Parameter] public Func<DateTime, string?>? DateTooltip { get; set; }
+    /// <summary>Optional per-date indicator slot. Returns a <c>RenderFragment</c>
+    /// rendered absolutely positioned in the bottom-right of the day cell —
+    /// good for status dots, count badges, icons. Return <c>null</c> for no
+    /// badge on that date. The slot is non-interactive
+    /// (<c>pointer-events-none</c>) so clicks still hit the day button.</summary>
+    [Parameter] public Func<DateTime, RenderFragment?>? DateBadge { get; set; }
     [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Sunday;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -115,7 +126,8 @@
         var isSelected = !IsRange && Value.HasValue && day == Value.Value;
         var isToday = day == DateOnly.FromDateTime(DateTime.Today);
 
-        var baseClass = "inline-flex items-center justify-center rounded-md h-8 w-8 text-sm transition-colors";
+        // 'relative' kept on every day so DateBadge slots can absolute-position inside.
+        var baseClass = "relative inline-flex items-center justify-center rounded-md h-8 w-8 text-sm transition-colors";
         var extraClass = DateClass != null ? DateClass(day.ToDateTime(TimeOnly.MinValue)) : "";
 
         if (isDisabled)
@@ -383,8 +395,15 @@
                     @for (var col = 0; col < 7; col++)
                     {
                         var d = calDays[row * 7 + col];
-                        <button type="button" class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)">
+                        var dt = d.ToDateTime(TimeOnly.MinValue);
+                        var tooltip = DateTooltip?.Invoke(dt);
+                        var badge = DateBadge?.Invoke(dt);
+                        <button type="button" class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip" @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)">
                             @d.Day
+                            @if (badge is not null)
+                            {
+                                <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
+                            }
                         </button>
                     }
                 }
