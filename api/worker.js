@@ -13,6 +13,7 @@
 const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const MAX_BODY_BYTES = 8192; // presets are tiny; reject oversized payloads outright
 const ID_LEN = 6;
+const COLLISION_RETRIES = 8;
 
 // Canonical JSON: keys sorted alphabetically so order doesn't affect the hash.
 // Same logical config → same canonical string → same hash → same ID.
@@ -23,11 +24,12 @@ function canonicalize(obj) {
     return "{" + parts.join(",") + "}";
 }
 
-// Content-addressed ID: SHA-256 of the canonical JSON, truncated to 36 bits,
-// base62-encoded to 6 chars. Same config → same ID every time.
-async function contentId(obj) {
-    const canonical = canonicalize(obj);
-    const bytes = new TextEncoder().encode(canonical);
+// Content-addressed ID: SHA-256 of the canonical JSON (optionally salted to
+// dodge a real collision), truncated to 36 bits, base62-encoded to 6 chars.
+// Same config + same salt → same ID every time.
+async function contentId(canonical, salt = 0) {
+    const input = salt === 0 ? canonical : canonical + "\x00" + salt;
+    const bytes = new TextEncoder().encode(input);
     const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
     const hashBytes = new Uint8Array(hashBuf);
     let s = "";
@@ -69,11 +71,19 @@ export default {
 
         // POST /preset — store a new preset.
         if (request.method === "POST" && path === "/preset") {
-            if (request.headers.get("content-length") > MAX_BODY_BYTES) {
-                return json({ error: "payload too large" }, 413);
+            // Fast path: trust an honest content-length header to reject before reading.
+            const cl = parseInt(request.headers.get("content-length") || "", 10);
+            if (Number.isFinite(cl) && cl > MAX_BODY_BYTES) {
+                return json({ error: "payload_too_large" }, 413);
+            }
+            // Authoritative check: read the actual bytes and enforce the cap on byteLength,
+            // since the header is client-supplied and may be missing or wrong.
+            const buf = await request.arrayBuffer();
+            if (buf.byteLength > MAX_BODY_BYTES) {
+                return json({ error: "payload_too_large" }, 413);
             }
             let body;
-            try { body = await request.json(); }
+            try { body = JSON.parse(new TextDecoder().decode(buf)); }
             catch { return json({ error: "invalid json" }, 400); }
             if (!body || typeof body !== "object") {
                 return json({ error: "expected object" }, 400);
@@ -87,18 +97,34 @@ export default {
                     return json({ error: `bad value for ${k}` }, 400);
                 }
             }
-            // Content-addressed: same config always yields the same ID. If the ID already
-            // exists with the same payload, skip the write (saves KV writes). If it exists
-            // with a different payload we still overwrite — hash collisions are astronomically
-            // unlikely (1 in 2^36), but if it ever happens the newer payload wins.
-            const id = await contentId(body);
+            // Content-addressed: same config always yields the same ID. If the slot is empty
+            // or already holds this exact canonical payload we're done (idempotent — saves a
+            // KV write). On a real hash collision (different payload at the same ID, ~1 in 2^36
+            // per pair) we re-hash with an incrementing salt to land on a fresh ID instead of
+            // silently overwriting the existing preset. Bounded so worst-case latency stays sane.
             const canonicalValue = canonicalize(body);
-            const existing = await env.PRESETS.get(id);
-            if (existing !== canonicalValue) {
-                await env.PRESETS.put(id, canonicalValue, {
-                    // 2 years — plenty for sharing a preset in an issue / forum post.
-                    expirationTtl: 60 * 60 * 24 * 365 * 2,
-                });
+            let id;
+            let placed = false;
+            for (let salt = 0; salt < COLLISION_RETRIES; salt++) {
+                id = await contentId(canonicalValue, salt);
+                const existing = await env.PRESETS.get(id);
+                if (existing === null) {
+                    await env.PRESETS.put(id, canonicalValue, {
+                        // 2 years — plenty for sharing a preset in an issue / forum post.
+                        expirationTtl: 60 * 60 * 24 * 365 * 2,
+                    });
+                    placed = true;
+                    break;
+                }
+                if (existing === canonicalValue) {
+                    // Same payload already stored under this id — return idempotently.
+                    placed = true;
+                    break;
+                }
+                // Different payload at this id: real collision — try the next salt.
+            }
+            if (!placed) {
+                return json({ error: "id_collision_exhausted" }, 409);
             }
             return json({ id });
         }
