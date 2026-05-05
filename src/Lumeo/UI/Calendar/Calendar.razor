@@ -242,6 +242,11 @@
 
     private RenderFragment RenderMonth(DateOnly monthDate, bool showPrev = true, bool showNext = true) => __builder =>
     {
+        @* Fixed 224px content width matches the 7-column day grid (7 × w-8 = 224px),
+           so the Days, Months and Years views all render at the same outer width.
+           Without this the Months / Years 3-col grid (w-full cells) would collapse
+           to its natural width and the picker would visibly resize between views. *@
+        <div class="w-[224px] flex flex-col">
         <div class="flex items-center justify-between px-1 mb-2">
             @if (showPrev)
             {
@@ -282,14 +287,13 @@
             }
             else
             {
-                <div class="flex gap-1">
-                    <button type="button" class="text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md px-2 py-1" @onclick="SwitchToMonthView">
-                        @monthDate.ToString("MMMM")
-                    </button>
-                    <button type="button" class="text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md px-2 py-1" @onclick="SwitchToYearView">
-                        @monthDate.Year
-                    </button>
-                </div>
+                @* Single combined click target: 1st click → Months view, 2nd click
+                   (now in Months view, on the year header) → Years view. Cleaner
+                   than two adjacent buttons that look identical but route to
+                   different pickers. *@
+                <button type="button" class="text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md px-2 py-1" @onclick="SwitchToMonthView">
+                    @monthDate.ToString("MMMM") @monthDate.Year
+                </button>
             }
 
             @if (showNext)
@@ -386,5 +390,6 @@
                 }
             </div>
         }
+        </div> @* close the fixed-width wrapper *@
     };
 }
