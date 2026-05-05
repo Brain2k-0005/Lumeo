@@ -15,6 +15,12 @@ window.lumeo.navScrollActiveIntoView = function (id) {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+// Reset the scrollTop of an element by id. Avoids `eval()` for CSP compatibility.
+window.lumeo.resetScrollTopById = function (id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollTop = 0;
+};
+
 window.lumeo.setupSearch = function () {
     document.addEventListener('keydown', function (e) {
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
