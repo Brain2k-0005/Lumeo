@@ -1,7 +1,14 @@
 @namespace Lumeo
+@using Lumeo.Services
 @implements IAsyncDisposable
 
-@if (Context.IsOpen)
+@if (Shell is not null)
+{
+    @* See OverlayShellMarker — host DialogContent already painted the shell.
+       Pass children through to avoid a second backdrop + panel. *@
+    @ChildContent
+}
+else if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50 flex items-center justify-center">
         <!-- Backdrop -->
@@ -34,6 +41,7 @@
 
 @code {
     [CascadingParameter] public Dialog.DialogContext Context { get; set; } = default!;
+    [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool PreventClose { get; set; }
     [Parameter] public DialogSize Size { get; set; } = DialogSize.Default;
@@ -58,6 +66,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Passthrough mode — host DialogContent owns lifecycle effects.
+        if (Shell is not null) return;
+
         if (Context.IsOpen && !_wasOpen)
         {
             await Interop.LockScroll();

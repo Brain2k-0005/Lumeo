@@ -1,7 +1,14 @@
 @namespace Lumeo
+@using Lumeo.Services
 @implements IAsyncDisposable
 
-@if (Context.IsOpen)
+@if (Shell is not null)
+{
+    @* See OverlayShellMarker — host DrawerContent already painted the shell.
+       Pass children through to avoid a second backdrop + panel + swipe handler. *@
+    @ChildContent
+}
+else if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
@@ -19,6 +26,7 @@
 
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
+    [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public DrawerSide Side { get; set; } = DrawerSide.Bottom;
     [Parameter] public bool PreventClose { get; set; }
@@ -53,6 +61,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Passthrough mode — host DrawerContent owns scroll lock, focus trap, swipe.
+        if (Shell is not null) return;
+
         if (Context.IsOpen && !_wasOpen)
         {
             await Interop.LockScroll();

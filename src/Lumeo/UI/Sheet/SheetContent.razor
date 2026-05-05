@@ -1,7 +1,17 @@
 @namespace Lumeo
+@using Lumeo.Services
 @implements IAsyncDisposable
 
-@if (Context.IsOpen)
+@if (Shell is not null)
+{
+    @* OverlayProvider already rendered the SheetContent shell around our parent
+       component — rendering another shell here would stack a second backdrop +
+       sliding panel on top. Pass the children straight through to the host
+       shell instead. Side / Size / PreventClose / Class on this nested element
+       are intentionally ignored; the provider controls those via OverlayOptions. *@
+    @ChildContent
+}
+else if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
@@ -23,6 +33,7 @@
 
 @code {
     [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
+    [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public SheetSide Side { get; set; } = SheetSide.Right;
     [Parameter] public SheetSize Size { get; set; } = SheetSize.Default;
@@ -57,6 +68,10 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // When passthrough mode is active the host SheetContent owns scroll lock
+        // + focus trap; this nested instance is a no-op for lifecycle effects.
+        if (Shell is not null) return;
+
         if (Context.IsOpen && !_wasOpen)
         {
             await Interop.LockScroll();
