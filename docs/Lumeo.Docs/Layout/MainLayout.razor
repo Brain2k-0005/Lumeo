@@ -144,7 +144,7 @@
 <!-- Search Command Palette -->
 @if (_searchOpen)
 {
-    <div class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" @onkeydown="HandleSearchKeyDown">
+    <div class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" data-testid="search-palette" role="dialog" aria-label="Search palette" @onkeydown="HandleSearchKeyDown">
         @* backdrop-blur was removed — re-rasterizing the blur on every hover
            repaint made item hover feel laggy on content-heavy pages. A simple
            opaque-ish background is much cheaper and visually equivalent. *@
@@ -202,6 +202,7 @@
                         @foreach (var hit in _hits)
                         {
                             <button class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group"
+                                    data-testid="@($"search-palette-result-{SlugFromUrl(hit.Url)}")"
                                     @onclick="() => NavigateToHit(hit)">
                                 <DynamicIcon Name="@GetSearchIcon(hit.Category)" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                                 <span class="flex-1 text-foreground/90">@hit.Title</span>
@@ -484,6 +485,24 @@
     {
         CloseSearch();
         Nav.NavigateTo(hit.Url);
+    }
+
+    /// <summary>
+    /// Derives a slug suitable for a stable test-id from a search hit URL.
+    /// Strips path separators and any leading/trailing slashes so the result
+    /// is safe to embed in <c>data-testid="search-palette-result-{slug}"</c>.
+    /// </summary>
+    private static string SlugFromUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "unknown";
+        var trimmed = url.Trim('/').ToLowerInvariant();
+        // Take the last path segment (e.g. "components/badge" -> "badge")
+        var lastSlash = trimmed.LastIndexOf('/');
+        var slug = lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
+        // Strip query string if any
+        var q = slug.IndexOf('?');
+        if (q >= 0) slug = slug[..q];
+        return string.IsNullOrEmpty(slug) ? "unknown" : slug;
     }
 
     private static string GetSearchIcon(string category) => category switch

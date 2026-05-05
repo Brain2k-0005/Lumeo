@@ -22,10 +22,10 @@ public class DialogFocusTrapTests : PlaywrightTestBase
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
         // The first demo trigger is "Open Dialog"
-        var trigger = Page.Locator("button", new() { HasText = "Open Dialog" }).First;
+        var trigger = Page.Locator("[data-testid='dialog-open-trigger']").First;
         await trigger.ClickAsync();
 
-        var dialog = Page.Locator("[role='dialog']");
+        var dialog = Page.Locator("[role='dialog'][aria-modal='true']");
         await dialog.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
         Assert.True(await dialog.IsVisibleAsync());
     }
@@ -36,10 +36,10 @@ public class DialogFocusTrapTests : PlaywrightTestBase
         await Goto("/components/dialog");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        var trigger = Page.Locator("button", new() { HasText = "Open Dialog" }).First;
+        var trigger = Page.Locator("[data-testid='dialog-open-trigger']").First;
         await trigger.ClickAsync();
 
-        var dialog = Page.Locator("[role='dialog']");
+        var dialog = Page.Locator("[role='dialog'][aria-modal='true']");
         await dialog.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
 
         await Page.Keyboard.PressAsync("Escape");
@@ -55,10 +55,10 @@ public class DialogFocusTrapTests : PlaywrightTestBase
         await Goto("/components/dialog");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        var trigger = Page.Locator("button", new() { HasText = "Open Dialog" }).First;
+        var trigger = Page.Locator("[data-testid='dialog-open-trigger']").First;
         await trigger.ClickAsync();
 
-        var dialog = Page.Locator("[role='dialog']");
+        var dialog = Page.Locator("[role='dialog'][aria-modal='true']");
         await dialog.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
 
         // Tab through all focusable elements — after enough tabs the focus should cycle
@@ -70,7 +70,7 @@ public class DialogFocusTrapTests : PlaywrightTestBase
 
         // The currently focused element should be inside the dialog
         var focusedIsInsideDialog = await Page.EvaluateAsync<bool>(
-            "() => document.querySelector('[role=\"dialog\"]').contains(document.activeElement)");
+            "() => document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]').contains(document.activeElement)");
 
         Assert.True(focusedIsInsideDialog,
             "Focus escaped the dialog after tabbing — focus trap is not working.");

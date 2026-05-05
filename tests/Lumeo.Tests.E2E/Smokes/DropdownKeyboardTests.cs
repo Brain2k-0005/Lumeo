@@ -21,7 +21,7 @@ public class DropdownKeyboardTests : PlaywrightTestBase
         await Goto("/components/dropdown-menu");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        var trigger = Page.Locator("button", new() { HasText = "Open Menu" }).First;
+        var trigger = Page.Locator("[data-testid='dropdown-open-trigger']").First;
         await trigger.ClickAsync();
 
         // The dropdown menu content has role='menu'
@@ -36,7 +36,7 @@ public class DropdownKeyboardTests : PlaywrightTestBase
         await Goto("/components/dropdown-menu");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        var trigger = Page.Locator("button", new() { HasText = "Open Menu" }).First;
+        var trigger = Page.Locator("[data-testid='dropdown-open-trigger']").First;
         await trigger.ClickAsync();
 
         var menu = Page.Locator("[role='menu']").First;
@@ -54,7 +54,7 @@ public class DropdownKeyboardTests : PlaywrightTestBase
         await Goto("/components/dropdown-menu");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        var trigger = Page.Locator("button", new() { HasText = "Open Menu" }).First;
+        var trigger = Page.Locator("[data-testid='dropdown-open-trigger']").First;
         await trigger.ClickAsync();
 
         var menu = Page.Locator("[role='menu']").First;
