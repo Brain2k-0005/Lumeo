@@ -119,19 +119,48 @@ public static class ThemeCommands
             }
         }
 
-        // Step 1: decode. Client-side first; fall back to Worker for server-stored IDs.
+        // Step 1: decode. Namespace prefix scheme (rc.19):
+        //   p_<6>  → server-stored Worker ID, force-route to Worker.
+        //   l_<6>  → client-side codec, force-route to local decode.
+        //   <6>    → legacy bare input. Try local decode first (with strict version check),
+        //            fall back to server. Pre-rc.19 codes ship without prefix and we can't
+        //            silently break old shares — but we narrow the collision window by
+        //            rejecting any local decode whose version bits aren't a known version.
         LumeoThemeConfig? resolved;
         string source;
-        if (LumeoPresetCodec.TryDecode(preset, out var decoded))
+        var trimmed = preset.Trim();
+        if (trimmed.StartsWith(LumeoPresetCodec.ServerPrefix, StringComparison.Ordinal))
         {
+            source = "server";
+            resolved = await TryFetchFromWorker(trimmed.Substring(LumeoPresetCodec.ServerPrefix.Length));
+            if (resolved is null) return; // Error already printed + exit code set.
+        }
+        else if (trimmed.StartsWith(LumeoPresetCodec.LocalPrefix, StringComparison.Ordinal))
+        {
+            if (!LumeoPresetCodec.TryDecode(trimmed, out var decoded))
+            {
+                Console.Error.WriteLine(Ansi.Red(
+                    $"Preset '{preset}' is prefixed l_ but failed local decode (corrupt or unknown version)."));
+                Environment.ExitCode = 1;
+                return;
+            }
             source = "client-side";
             resolved = ResolveFromDecoded(decoded);
         }
         else
         {
-            source = "server";
-            resolved = await TryFetchFromWorker(preset);
-            if (resolved is null) return; // Error already printed + exit code set.
+            // Legacy unprefixed input — local first, server fallback.
+            if (LumeoPresetCodec.TryDecode(trimmed, out var decoded))
+            {
+                source = "client-side (legacy unprefixed)";
+                resolved = ResolveFromDecoded(decoded);
+            }
+            else
+            {
+                source = "server";
+                resolved = await TryFetchFromWorker(trimmed);
+                if (resolved is null) return; // Error already printed + exit code set.
+            }
         }
 
         // Step 2: surface what was resolved.

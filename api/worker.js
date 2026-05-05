@@ -1,12 +1,15 @@
 // Lumeo preset API — Cloudflare Worker + KV.
 //
 // Endpoints:
-//   POST /preset          → body = JSON config, returns { id: "b4Ndd7" }
+//   POST /preset          → body = JSON config, returns { id: "p_b4Ndd7" }
 //   GET  /preset/:id      → returns stored JSON (null on not-found)
+//                           (accepts both "p_b4Ndd7" and bare "b4Ndd7")
 //   OPTIONS /*            → CORS preflight
 //
 // Storage: Cloudflare KV namespace bound as `PRESETS` (see wrangler.toml).
-// IDs: 6-char base62, collision-retried up to 3 times.
+// IDs: 6-char base62, collision-retried up to 3 times. Returned with a `p_`
+// namespace prefix (rc.19) so consumers can disambiguate from the client-side
+// `l_<6>` codec — both spaces are 6-char Base62 and would otherwise collide.
 // Quotas (free tier): 100k requests/day + 1k KV writes/day + 100k KV reads/day.
 // More than enough for a preset-sharing API unless someone abuses it.
 
@@ -14,6 +17,8 @@ const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const MAX_BODY_BYTES = 8192; // presets are tiny; reject oversized payloads outright
 const ID_LEN = 6;
 const COLLISION_RETRIES = 8;
+const SERVER_PREFIX = "p_"; // namespace prefix for Worker IDs (see header).
+const LOCAL_PREFIX = "l_";  // client-side codec namespace — must never reach the Worker.
 
 // Canonical JSON: keys sorted alphabetically so order doesn't affect the hash.
 // Same logical config → same canonical string → same hash → same ID.
@@ -126,13 +131,22 @@ export default {
             if (!placed) {
                 return json({ error: "id_collision_exhausted" }, 409);
             }
-            return json({ id });
+            // rc.19: emit the prefixed form so callers route unambiguously.
+            return json({ id: SERVER_PREFIX + id });
         }
 
         // GET /preset/:id — fetch a stored preset.
-        const match = path.match(/^\/preset\/([0-9A-Za-z]{4,32})$/);
+        // Accepts both the prefixed form ("p_b4Ndd7") and the legacy bare form
+        // ("b4Ndd7") so old shared links keep working. The local-codec prefix
+        // ("l_*") is rejected outright — those should never round-trip the Worker.
+        const match = path.match(/^\/preset\/((?:p_)?[0-9A-Za-z]{4,32}|l_[0-9A-Za-z]{4,32})$/);
         if (request.method === "GET" && match) {
-            const value = await env.PRESETS.get(match[1]);
+            let id = match[1];
+            if (id.startsWith(LOCAL_PREFIX)) {
+                return json({ error: "client-side preset; decode locally" }, 400);
+            }
+            if (id.startsWith(SERVER_PREFIX)) id = id.substring(SERVER_PREFIX.length);
+            const value = await env.PRESETS.get(id);
             if (!value) return json({ error: "not found" }, 404);
             return new Response(value, {
                 status: 200,

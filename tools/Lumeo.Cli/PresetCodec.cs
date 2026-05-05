@@ -29,6 +29,10 @@ internal static class LumeoPresetCodec
     private const int CurrentVersion = 1;
     private const int CodeLength = 6;
 
+    // Namespace prefixes — keep in sync with src/Lumeo/Theming/LumeoPresetCodec.cs.
+    public const string LocalPrefix = "l_";
+    public const string ServerPrefix = "p_";
+
     private static readonly (int Width, int Max)[] FieldSpec =
     {
         (3, 8), (4, 16), (1, 2), (3, 8), (3, 8),
@@ -61,13 +65,17 @@ internal static class LumeoPresetCodec
             buf[i] = Base62Alphabet[(int)(bits % 62)];
             bits /= 62;
         }
-        return new string(buf);
+        return LocalPrefix + new string(buf);
     }
 
     public static bool TryDecode(string code, out LumeoPreset preset)
     {
         preset = new LumeoPreset(0, 0, 0, 0, 0, 0, 0, 0, 0);
-        if (string.IsNullOrWhiteSpace(code) || code.Length != CodeLength) return false;
+        if (string.IsNullOrWhiteSpace(code)) return false;
+        if (code.StartsWith(ServerPrefix, StringComparison.Ordinal)) return false;
+        if (code.StartsWith(LocalPrefix, StringComparison.Ordinal))
+            code = code.Substring(LocalPrefix.Length);
+        if (code.Length != CodeLength) return false;
 
         ulong bits;
         try { bits = Base62Decode(code); }
