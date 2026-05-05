@@ -287,4 +287,55 @@ public class SheetTests : IAsyncLifetime
 
         Assert.Contains("Sheet Description", cut.Markup);
     }
+
+    [Fact]
+    public void Nested_SheetContent_inside_OverlayShellMarker_renders_passthrough_no_double_backdrop()
+    {
+        // When OverlayProvider opens a Sheet via OverlayService, it cascades
+        // an OverlayShellMarker so nested SheetContent inside the user's
+        // component renders only its children — no second backdrop / panel.
+        // Regression: rc.18 user feedback hit a double backdrop because they
+        // copied the inline-declarative pattern (<Sheet><SheetContent>...</SheetContent></Sheet>)
+        // into a service-opened component.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Sheet>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(outer =>
+            {
+                // Outer SheetContent — this is the one OverlayProvider would render
+                outer.OpenComponent<L.SheetContent>(0);
+                outer.AddAttribute(1, "ChildContent", (RenderFragment)(host =>
+                {
+                    // OverlayShellMarker is what OverlayProvider cascades around the user component
+                    host.OpenComponent<CascadingValue<Lumeo.Services.OverlayShellMarker>>(0);
+                    host.AddAttribute(1, "Value", new Lumeo.Services.OverlayShellMarker("test-overlay-id"));
+                    host.AddAttribute(2, "IsFixed", true);
+                    host.AddAttribute(3, "ChildContent", (RenderFragment)(user =>
+                    {
+                        // Nested SheetContent inside the "user component" — should pass through
+                        user.OpenComponent<L.SheetContent>(0);
+                        user.AddAttribute(1, "ChildContent", (RenderFragment)(inner =>
+                        {
+                            inner.AddContent(0, "USER_BODY");
+                        }));
+                        user.CloseComponent();
+                    }));
+                    host.CloseComponent();
+                }));
+                outer.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // The user body must render exactly once
+        var markup = cut.Markup;
+        Assert.Contains("USER_BODY", markup);
+
+        // Backdrop appears in CSS class "bg-black/80" — escaped in HTML attribute
+        // as "bg-black\/80" or just "bg-black/80" depending on the renderer.
+        // We expect EXACTLY ONE backdrop element, not two.
+        var backdropCount = System.Text.RegularExpressions.Regex.Matches(markup, "bg-black\\\\?\\/80").Count;
+        Assert.Equal(1, backdropCount);
+    }
 }
