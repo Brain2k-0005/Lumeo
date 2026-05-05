@@ -29,7 +29,11 @@
 
 @if (!InsideFormField)
 {
-    @if (EffectiveInvalid && ErrorText is not null)
+    @if (_wordImportError is not null)
+    {
+        <p class="text-xs text-destructive mt-1.5" role="alert">@_wordImportError</p>
+    }
+    else if (EffectiveInvalid && ErrorText is not null)
     {
         <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
     }
@@ -97,6 +101,14 @@
     [Parameter] public int? MaxLength { get; set; }
     [Parameter] public bool AllowWordImport { get; set; }
 
+    /// <summary>
+    /// Maximum size, in bytes, of a Word document accepted by the in-browser import path.
+    /// Defaults to 8 MB. Larger files are refused before being read into memory and surfaced
+    /// to the user via <see cref="WordImportError"/>. Set explicitly when consumers expect
+    /// large documents and the deployment can afford the memory.
+    /// </summary>
+    [Parameter] public long MaxWordImportBytes { get; set; } = 8L * 1024L * 1024L;
+
     /// <summary>Resolves a picked image into a URL (or data URI). Receives file metadata
     /// from JS; consumer is expected to upload the file out-of-band (e.g. via a paired
     /// <c>InputFile</c>) and return a final URL. If null, images fall back to base64.</summary>
@@ -140,6 +152,10 @@
     // and bubble menu's Link button).
     private bool _linkDialogOpen;
     private string _linkDialogUrl = string.Empty;
+
+    // Surface the most-recent Word import failure (size cap, decode error, etc.)
+    // inline below the editor — same slot the EffectiveInvalid path uses.
+    private string? _wordImportError;
 
     private void OpenLinkDialog(string? initial)
     {
@@ -227,6 +243,7 @@
                 enableBubbleMenu = EnableBubbleMenu,
                 enableDragHandle = EnableDragHandle,
                 maxLength = MaxLength,
+                maxWordImportBytes = MaxWordImportBytes,
             };
 
             _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
@@ -330,7 +347,10 @@
     {
         try
         {
-            var bytes = Convert.FromBase64String(base64Content);
+            // Pre-allocation size guard — decoded length is computed from the base64
+            // string length, so an oversized payload is rejected BEFORE the .NET
+            // byte[] allocation that would normally double peak memory usage.
+            var bytes = WordImporter.DecodeBase64WithLimit(base64Content, MaxWordImportBytes);
             var payload = new WordImportPayload(fileName, bytes);
 
             string html;
@@ -347,13 +367,40 @@
 
             if (!string.IsNullOrEmpty(html))
             {
+                _wordImportError = null;
                 await SetHtmlAsync(html);
             }
         }
+        catch (WordImportSizeException sizeEx)
+        {
+            _wordImportError = $"Word document too large ({FormatBytes(sizeEx.ActualBytes)}). Limit is {FormatBytes(sizeEx.LimitBytes)}.";
+            StateHasChanged();
+        }
         catch (Exception ex)
         {
+            _wordImportError = "Word import failed. Try saving the document again or pick a different file.";
             Console.Error.WriteLine($"Word import failed: {ex.Message}");
+            StateHasChanged();
         }
+    }
+
+    [JSInvokable("OnWordImportFailed")]
+    public Task OnWordImportFailedJs(string reason, long size, long limit)
+    {
+        _wordImportError = reason switch
+        {
+            "file_too_large" => $"Word document too large ({FormatBytes(size)}). Limit is {FormatBytes(limit)}.",
+            _ => "Word import failed. Try saving the document again or pick a different file.",
+        };
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} KB";
+        return $"{bytes / (1024.0 * 1024.0):0.#} MB";
     }
 
     // ---------------- Toolbar dispatch ----------------

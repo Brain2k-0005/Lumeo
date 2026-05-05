@@ -31,6 +31,53 @@ public sealed class WordImportOptions
 public static class WordImporter
 {
     /// <summary>
+    /// Decodes a base64 string into a byte array, but rejects payloads whose
+    /// decoded length would exceed <paramref name="maxBytes"/> BEFORE calling
+    /// <see cref="Convert.FromBase64String"/> — so an attacker can't force a
+    /// large allocation by submitting an oversized base64 blob.
+    /// </summary>
+    /// <exception cref="WordImportSizeException">When the decoded payload would exceed the limit.</exception>
+    public static byte[] DecodeBase64WithLimit(string base64, long maxBytes)
+    {
+        if (base64 is null) throw new ArgumentNullException(nameof(base64));
+        if (maxBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maxBytes));
+
+        // Compute decoded length without allocating: every 4 base64 chars = 3 bytes,
+        // minus 1 byte per '=' padding char. Whitespace would skew this; we strip it
+        // up-front since Convert.FromBase64String tolerates it but we need a true count.
+        var sanitized = StripBase64Whitespace(base64);
+        var paddingChars = 0;
+        for (var i = sanitized.Length - 1; i >= 0 && sanitized[i] == '='; i--) paddingChars++;
+        var decodedLength = ((long)(sanitized.Length - paddingChars) * 3L) / 4L;
+
+        if (decodedLength > maxBytes)
+        {
+            throw new WordImportSizeException(decodedLength, maxBytes);
+        }
+
+        return Convert.FromBase64String(sanitized);
+    }
+
+    private static string StripBase64Whitespace(string s)
+    {
+        // Fast path: no whitespace.
+        var hasWs = false;
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (c == ' ' || c == '\r' || c == '\n' || c == '\t') { hasWs = true; break; }
+        }
+        if (!hasWs) return s;
+
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s)
+        {
+            if (c != ' ' && c != '\r' && c != '\n' && c != '\t') sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Default style map covering English and German Word built-in styles
     /// (Title/Titel, Heading 1-6/Überschrift 1-6, Body Text/Textkörper,
     /// List Paragraph/Listenabsatz, Quote/Zitat, Caption/Beschriftung,
