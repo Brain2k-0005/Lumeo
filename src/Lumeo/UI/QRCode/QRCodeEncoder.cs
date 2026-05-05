@@ -308,12 +308,12 @@ internal static class QRCodeEncoder
     private static void PlaceFinder(bool[,] m, bool[,] r, int row, int col)
     {
         for (int dr = 0; dr < 7; dr++)
-        for (int dc = 0; dc < 7; dc++)
-        {
-            bool dark = dr == 0 || dr == 6 || dc == 0 || dc == 6
-                        || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4);
-            SetReserved(m, r, row + dr, col + dc, dark);
-        }
+            for (int dc = 0; dc < 7; dc++)
+            {
+                bool dark = dr == 0 || dr == 6 || dc == 0 || dc == 6
+                            || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4);
+                SetReserved(m, r, row + dr, col + dc, dark);
+            }
     }
 
     private static void SetReserved(bool[,] m, bool[,] r, int row, int col, bool dark)
@@ -355,16 +355,16 @@ internal static class QRCodeEncoder
     {
         var positions = AlignmentPositions[version - 1];
         foreach (int row in positions)
-        foreach (int col in positions)
-        {
-            if (r[row, col]) continue; // overlaps finder
-            for (int dr = -2; dr <= 2; dr++)
-            for (int dc = -2; dc <= 2; dc++)
+            foreach (int col in positions)
             {
-                bool dark = dr == -2 || dr == 2 || dc == -2 || dc == 2 || (dr == 0 && dc == 0);
-                SetReserved(m, r, row + dr, col + dc, dark);
+                if (r[row, col]) continue; // overlaps finder
+                for (int dr = -2; dr <= 2; dr++)
+                    for (int dc = -2; dc <= 2; dc++)
+                    {
+                        bool dark = dr == -2 || dr == 2 || dc == -2 || dc == 2 || (dr == 0 && dc == 0);
+                        SetReserved(m, r, row + dr, col + dc, dark);
+                    }
             }
-        }
     }
 
     // ── Dark module ──────────────────────────────────────────────────────────
@@ -476,23 +476,23 @@ internal static class QRCodeEncoder
     private static void ApplyMask(bool[,] m, bool[,] r, int mask, int size)
     {
         for (int row = 0; row < size; row++)
-        for (int col = 0; col < size; col++)
-        {
-            if (r[row, col]) continue;
-            bool flip = mask switch
+            for (int col = 0; col < size; col++)
             {
-                0 => (row + col) % 2 == 0,
-                1 => row % 2 == 0,
-                2 => col % 3 == 0,
-                3 => (row + col) % 3 == 0,
-                4 => (row / 2 + col / 3) % 2 == 0,
-                5 => (row * col) % 2 + (row * col) % 3 == 0,
-                6 => ((row * col) % 2 + (row * col) % 3) % 2 == 0,
-                7 => ((row + col) % 2 + (row * col) % 3) % 2 == 0,
-                _ => false
-            };
-            if (flip) m[row, col] = !m[row, col];
-        }
+                if (r[row, col]) continue;
+                bool flip = mask switch
+                {
+                    0 => (row + col) % 2 == 0,
+                    1 => row % 2 == 0,
+                    2 => col % 3 == 0,
+                    3 => (row + col) % 3 == 0,
+                    4 => (row / 2 + col / 3) % 2 == 0,
+                    5 => (row * col) % 2 + (row * col) % 3 == 0,
+                    6 => ((row * col) % 2 + (row * col) % 3) % 2 == 0,
+                    7 => ((row + col) % 2 + (row * col) % 3) % 2 == 0,
+                    _ => false
+                };
+                if (flip) m[row, col] = !m[row, col];
+            }
     }
 
     // ── Penalty scoring ──────────────────────────────────────────────────────
@@ -516,34 +516,34 @@ internal static class QRCodeEncoder
 
         // Rule 2: 2x2 blocks
         for (int r = 0; r < size - 1; r++)
-        for (int c = 0; c < size - 1; c++)
-            if (m[r, c] == m[r, c + 1] && m[r, c] == m[r + 1, c] && m[r, c] == m[r + 1, c + 1])
-                penalty += 3;
+            for (int c = 0; c < size - 1; c++)
+                if (m[r, c] == m[r, c + 1] && m[r, c] == m[r + 1, c] && m[r, c] == m[r + 1, c + 1])
+                    penalty += 3;
 
         // Rule 3: finder-like patterns
         int[] pattern1 = { 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0 };
         int[] pattern2 = { 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1 };
         for (int r = 0; r < size; r++)
-        for (int c = 0; c + 10 < size; c++)
-        {
-            bool h1 = true, h2 = true, v1 = true, v2 = true;
-            for (int i = 0; i <= 10; i++)
+            for (int c = 0; c + 10 < size; c++)
             {
-                bool hm = m[r, c + i], vm = m[c + i, r];
-                if (hm != (pattern1[i] == 1)) h1 = false;
-                if (hm != (pattern2[i] == 1)) h2 = false;
-                if (vm != (pattern1[i] == 1)) v1 = false;
-                if (vm != (pattern2[i] == 1)) v2 = false;
+                bool h1 = true, h2 = true, v1 = true, v2 = true;
+                for (int i = 0; i <= 10; i++)
+                {
+                    bool hm = m[r, c + i], vm = m[c + i, r];
+                    if (hm != (pattern1[i] == 1)) h1 = false;
+                    if (hm != (pattern2[i] == 1)) h2 = false;
+                    if (vm != (pattern1[i] == 1)) v1 = false;
+                    if (vm != (pattern2[i] == 1)) v2 = false;
+                }
+                if (h1 || h2) penalty += 40;
+                if (v1 || v2) penalty += 40;
             }
-            if (h1 || h2) penalty += 40;
-            if (v1 || v2) penalty += 40;
-        }
 
         // Rule 4: dark proportion
         int dark = 0;
         for (int r = 0; r < size; r++)
-        for (int c = 0; c < size; c++)
-            if (m[r, c]) dark++;
+            for (int c = 0; c < size; c++)
+                if (m[r, c]) dark++;
         int total = size * size;
         int pct = dark * 100 / total;
         int prev5 = (pct / 5) * 5;

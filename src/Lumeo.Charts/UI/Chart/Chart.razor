@@ -138,10 +138,15 @@ else
 
     // Phantom-mode state: cycling random placeholder data while loading, then one
     // clean "notMerge=true" swap to real data so the muted palette doesn't bleed.
-    private System.Threading.Timer? _phantomTimer;
+    // Driven by a CancellationTokenSource + PeriodicTimer loop (replaces the older
+    // System.Threading.Timer) so DisposeAsync can deterministically cancel and
+    // await any in-flight callback before returning.
+    private CancellationTokenSource? _phantomCts;
+    private Task? _phantomLoopTask;
     private int _phantomTick;
     private bool _lastWasPhantom;
     private int _activePhantomCycleMs;
+    private volatile bool _disposed;
     private int EffectivePhantomCycleMs => Math.Max(200, PhantomCycleMs);
 
     // Components whose phantom styling (muted palette, transparent text, skeleton-box
@@ -257,18 +262,56 @@ else
 
     private void UpdatePhantomTimer()
     {
+        if (_disposed) return;
         var cycle = EffectivePhantomCycleMs;
         if (IsPhantomActive)
         {
-            if (_phantomTimer is null || _activePhantomCycleMs != cycle)
+            if (_phantomLoopTask is null || _activePhantomCycleMs != cycle)
             {
-                _phantomTimer?.Dispose();
+                StopPhantomLoop();
                 _activePhantomCycleMs = cycle;
-                _phantomTimer = new System.Threading.Timer(_ =>
-                {
-                    _phantomTick++;
-                    _ = InvokeAsync(async () =>
+                _phantomCts = new CancellationTokenSource();
+                var token = _phantomCts.Token;
+                _phantomLoopTask = RunPhantomLoopAsync(cycle, token);
+            }
+        }
+        else if (_phantomLoopTask is not null)
+        {
+            StopPhantomLoop();
+            _activePhantomCycleMs = 0;
+        }
+    }
+
+    private void StopPhantomLoop()
+    {
+        try { _phantomCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _phantomCts?.Dispose();
+        _phantomCts = null;
+        // Note: we deliberately do NOT await the loop task here to avoid blocking
+        // OnAfterRenderAsync. DisposeAsync awaits any final loop task to ensure
+        // no callback runs after dispose returns.
+        _phantomLoopTask = null;
+    }
+
+    private async Task RunPhantomLoopAsync(int cycle, CancellationToken token)
+    {
+        // PeriodicTimer ticks on a fixed cadence; cancellation breaks the loop
+        // immediately and lets DisposeAsync await completion deterministically.
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(cycle));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+            {
+                if (_disposed || token.IsCancellationRequested) return;
+                _phantomTick++;
+                // Dispatch via SafeAsyncDispatcher so any outer-task fault (circuit
+                // disposed mid-tick) is caught — InvokeAsync itself can throw
+                // synchronously after dispose.
+                SafeAsyncDispatcher.FireAndForget(
+                    fn => InvokeAsync(fn),
+                    async () =>
                     {
+                        if (_disposed || token.IsCancellationRequested) return;
                         if (!_initialized || _module is null || !IsPhantomActive) return;
                         var shape = PhantomShapeOverride ?? ChartPlaceholderFactory.InferShape(Option);
                         var json = ChartPlaceholderFactory.CreateJson(SkeletonKind, _phantomTick, shape);
@@ -279,16 +322,11 @@ else
                         }
                         catch (JSDisconnectedException) { }
                         catch (ObjectDisposedException) { }
-                    });
-                }, null, cycle, cycle);
+                    },
+                    "Lumeo.Chart.Phantom");
             }
         }
-        else if (_phantomTimer is not null)
-        {
-            _phantomTimer.Dispose();
-            _phantomTimer = null;
-            _activePhantomCycleMs = 0;
-        }
+        catch (OperationCanceledException) { /* expected on Dispose */ }
     }
 
     private async Task RegisterChartEventsAsync()
@@ -366,8 +404,23 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        _phantomTimer?.Dispose();
-        _phantomTimer = null;
+        // Set the disposed flag BEFORE any await so the loop's flag check can
+        // short-circuit even if Dispose runs concurrently with a tick.
+        _disposed = true;
+
+        // Cancel and await the phantom loop so no callback can run after this
+        // method returns — Timer.Dispose() did NOT give us this guarantee.
+        try { _phantomCts?.Cancel(); } catch (ObjectDisposedException) { }
+        var loop = _phantomLoopTask;
+        _phantomLoopTask = null;
+        if (loop is not null)
+        {
+            try { await loop.ConfigureAwait(false); }
+            catch (OperationCanceledException) { /* covers TaskCanceledException too */ }
+        }
+        _phantomCts?.Dispose();
+        _phantomCts = null;
+
         if (_module is not null && _initialized)
         {
             try
