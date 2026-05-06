@@ -15,6 +15,140 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.21 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.21</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Production-feedback pass.</strong> Driven by a detailed real-world migration
+            report — closes the slide-animation transform trap that broke popovers in Sheets/Drawers,
+            generalizes TagInput, expands the Lumeo.Text color map, adds a controlled-mode override
+            for popover state, and ships a new EditForm + Localization guide.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — popover containing-block trap</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Slide keyframes now end at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">transform: none</code></strong>
+                    (was identity <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">translateX(0)</code>). Per CSS spec, any non-<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">none</code>
+                    transform — including identity translates — establishes a containing block for
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">position: fixed</code>
+                    descendants. The old keyframes meant Select / DatePicker / Combobox popovers inside
+                    a slid-in Sheet rendered relative to the Sheet instead of the viewport, ending up
+                    off-screen. The 99 % step keeps the visual landing identical; the 100 % step
+                    disposes of the transform.
+                </li>
+                <li>Apps with the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.animate-slide-in-* { animation: fade-in !important }</code>
+                    workaround can drop it.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added — Sheet + Drawer Animation variant</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetContent.Animation</code>
+                    and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DrawerContent.Animation</code>
+                    accept <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Slide</code>
+                    (default), <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Fade</code>,
+                    or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">None</code>.
+                    Slide is now safe (transform-trap fixed); Fade / None remain available for consumers
+                    who want maximum predictability inside re-render-heavy parents.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added — TagInput is now generic</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TagInput&lt;TItem&gt;</code></strong>
+                    with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TItem</code>
+                    defaulting to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">string</code>
+                    so existing string consumers compile unchanged. Real apps now build user-pickers,
+                    mention-pickers, etc. on top of structured items.
+                </li>
+                <li>New params: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">GetTagText</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">GetSuggestionText</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TagTemplate</code> (RenderFragment&lt;TItem&gt;),
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SuggestionTemplate</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Separators[]</code> (multi-separator paste),
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ValidateInput</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ValidateInputAsync</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CreateTag</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MaxTagsHelperText</code>.
+                </li>
+                <li>New User-picker demo on the TagInput docs page (avatar + name in tag chip + name/email
+                    rows in suggestion popup, comma/semicolon/space separators).
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added — Controlled-mode popover state</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DatePicker</code>
+                    gains optional <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Open?</code>
+                    + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OpenChanged</code>
+                    (Select / Combobox already had it). When non-null, the consumer owns popover state — survives parent
+                    re-renders. Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@bind-Open</code>
+                    inside heavily re-rendering parents (EditForm with active validation) to keep the popover open through
+                    validation cycles.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added — Lumeo.Text full theme-token map + small param expansions</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;Lumeo.Text Color="..."/&gt;</code>
+                    now accepts every theme token: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">foreground</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">muted</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">primary</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">destructive</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">success</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">warning</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">info</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">accent</code>.
+                    Case-insensitive. Unknown values fall back to no class (deliberate hardening).
+                </li>
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FileUpload</code>
+                    gains <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Size</code>
+                    parameter (Sm / Default / Lg) for the Button variant.
+                </li>
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">BottomNavItem</code>
+                    gains <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IconSize</code>
+                    (default <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"h-5 w-5"</code>);
+                    consumer can pass <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"h-7 w-7"</code>
+                    to fit an avatar in the icon slot.
+                </li>
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToggleGroupItem</code>
+                    auto-spaces icon + label (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">gap-1.5</code>
+                    on the base class) — no more manual <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Class="gap-1.5"</code>.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Docs — EditForm + Localization guides</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>New: <a class="underline" href="/docs/edit-form">EditForm + Lumeo Validation guide</a></strong>
+                    explaining why Lumeo inputs are not <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InputBase&lt;T&gt;</code>
+                    derivatives, the canonical pattern with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">EditContext.GetValidationMessages</code>
+                    + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Invalid</code> wiring,
+                    server-side error injection, and the nullable-EventCallback lambda workaround.
+                </li>
+                <li><strong>New: <a class="underline" href="/docs/localization">Localization guide</a></strong>
+                    documenting Blazor WASM's en-US default and how to set browser-locale at startup.
+                </li>
+                <li>Sheet + Drawer docs pages gained an info Alert about the rc.21 transform-trap fix and the new Animation variants.</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.20 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

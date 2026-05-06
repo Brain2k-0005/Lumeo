@@ -192,4 +192,38 @@ public class DatePickerTests : IAsyncLifetime
         var cls = button.GetAttribute("class") ?? "";
         Assert.Contains("border-input", cls);
     }
+
+    // --- rc.21: controlled-mode Open + OpenChanged ---
+
+    [Fact]
+    public void Controlled_Open_Parameter_Raises_OpenChanged_When_Trigger_Clicked()
+    {
+        var openStates = new List<bool>();
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.DatePicker>(0);
+            builder.AddAttribute(1, "Open", false);
+            builder.AddAttribute(2, "OpenChanged",
+                EventCallback.Factory.Create<bool>(this, v => openStates.Add(v)));
+            builder.CloseComponent();
+        });
+
+        // Click the trigger — Popover SetOpen flows back through DatePicker._isOpen
+        // setter, which raises OpenChanged because the parent is controlling state.
+        cut.Find("button[type='button']").Click();
+
+        Assert.NotEmpty(openStates);
+        Assert.Contains(true, openStates);
+    }
+
+    [Fact]
+    public void Uncontrolled_Mode_Still_Works_When_Open_Param_Is_Null()
+    {
+        // With no Open/OpenChanged binding, the picker falls back to internal
+        // state — the trigger should still toggle the popover and not throw.
+        var cut = RenderDatePicker();
+        var button = cut.Find("button[type='button']");
+        var ex = Record.Exception(() => button.Click());
+        Assert.Null(ex);
+    }
 }

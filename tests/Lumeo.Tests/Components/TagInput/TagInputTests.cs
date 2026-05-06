@@ -2,6 +2,7 @@ using Bunit;
 using Xunit;
 using Lumeo;
 using Lumeo.Tests.Helpers;
+using TagInputCmp = global::Lumeo.TagInput<string>;
 
 namespace Lumeo.Tests.Components.TagInput;
 
@@ -20,7 +21,7 @@ public class TagInputTests : IAsyncLifetime
     [Fact]
     public void Renders_Input_Element()
     {
-        var cut = _ctx.Render<Lumeo.TagInput>();
+        var cut = _ctx.Render<TagInputCmp>();
 
         Assert.NotNull(cut.Find("input[type='text']"));
     }
@@ -28,7 +29,7 @@ public class TagInputTests : IAsyncLifetime
     [Fact]
     public void Container_Has_Border_And_RoundedMd_Classes()
     {
-        var cut = _ctx.Render<Lumeo.TagInput>();
+        var cut = _ctx.Render<TagInputCmp>();
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("rounded-md", cls);
@@ -38,7 +39,7 @@ public class TagInputTests : IAsyncLifetime
     [Fact]
     public void Tags_Are_Rendered_As_Spans()
     {
-        var cut = _ctx.Render<Lumeo.TagInput>(p => p
+        var cut = _ctx.Render<TagInputCmp>(p => p
             .Add(t => t.Tags, new List<string> { "alpha", "beta" }));
 
         var spans = cut.FindAll("span.inline-flex");
@@ -50,7 +51,7 @@ public class TagInputTests : IAsyncLifetime
     [Fact]
     public void Placeholder_Is_Set_On_Input()
     {
-        var cut = _ctx.Render<Lumeo.TagInput>(p => p
+        var cut = _ctx.Render<TagInputCmp>(p => p
             .Add(t => t.Placeholder, "Type here..."));
 
         var input = cut.Find("input");
@@ -60,7 +61,7 @@ public class TagInputTests : IAsyncLifetime
     [Fact]
     public void Custom_Class_Is_Appended()
     {
-        var cut = _ctx.Render<Lumeo.TagInput>(p => p
+        var cut = _ctx.Render<TagInputCmp>(p => p
             .Add(t => t.Class, "my-tag-input"));
 
         var cls = cut.Find("div").GetAttribute("class");
