@@ -1,0 +1,122 @@
+@page "/docs/localization"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Localization — Lumeo</PageTitle>
+
+<PageHeader Title="Localization"
+            Description="How Lumeo picks the locale for component strings, dates, and numbers — and the Blazor WASM gotcha you need to know about." />
+
+<Stack Gap="10">
+
+    <!-- Setting the default locale -->
+    <Stack>
+        <Heading Level="2">Setting the default locale</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Blazor WASM does <strong>NOT</strong> auto-detect the browser locale. Lumeo's
+            components use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CultureInfo.CurrentCulture</code>
+            for date/number formatting and
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ILumeoLocalizer</code>
+            (which reads <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CultureInfo.CurrentUICulture</code>)
+            for component strings — both default to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">en-US</code>
+            until you set them.
+        </Lumeo.Text>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            That's why a DatePicker shows "Mon", "Tue" in English even when the browser is configured
+            for <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">de-DE</code>: the runtime never
+            propagated the OS / browser preference into <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CurrentCulture</code>.
+        </Lumeo.Text>
+
+        <Heading Level="3" Class="mt-6">Pin a culture in Program.cs</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The simplest fix is to set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DefaultThreadCurrentCulture</code>
+            and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DefaultThreadCurrentUICulture</code> on
+            the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CultureInfo</code> static, before
+            the host runs:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_pinCultureCode</pre>
+
+        <Heading Level="3" Class="mt-6">Detect the browser locale at startup</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            For a UX that adapts to the user's browser, read
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">navigator.language</code>
+            via JS interop before <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">RunAsync()</code>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_browserDetectCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Component strings -->
+    <Stack>
+        <Heading Level="2">Component strings (ILumeoLocalizer)</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo ships with English and German default translations for all built-in component strings
+            (close buttons, "no results", pagination labels, etc). The lookup order is:
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>Exact culture match (e.g. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">de-DE</code>)</li>
+            <li>Neutral / parent culture (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">de</code>)</li>
+            <li>English fallback (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">en</code>)</li>
+            <li>The key itself (so unresolved keys are visible, never silently empty)</li>
+        </ul>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Override or extend translations in your <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">AddLumeo</code> call:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_addLumeoCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- See also -->
+    <Stack>
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="docs/culture">Culture &amp; Localized Formatting</a> — date/number/currency formatting and per-component <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Culture</code> overrides</li>
+            <li><a class="text-primary hover:underline" href="docs/rtl">RTL Support</a> — right-to-left layout</li>
+        </ul>
+    </Stack>
+</Stack>
+
+@code {
+    private const string _pinCultureCode = @"using System.Globalization;
+
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+// Hardcoded — replace with your preferred default
+var culture = new CultureInfo(""de-DE"");
+CultureInfo.DefaultThreadCurrentCulture = culture;
+CultureInfo.DefaultThreadCurrentUICulture = culture;
+
+builder.Services.AddLumeo();
+await builder.Build().RunAsync();";
+
+    private const string _browserDetectCode = @"using System.Globalization;
+using Microsoft.JSInterop;
+
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+builder.Services.AddLumeo();
+var host = builder.Build();
+
+// Read navigator.language, fall back to en-US.
+var js = host.Services.GetRequiredService<IJSRuntime>();
+var browserLocale = await js.InvokeAsync<string>(""eval"", ""navigator.language"");
+var culture = new CultureInfo(string.IsNullOrEmpty(browserLocale) ? ""en-US"" : browserLocale);
+CultureInfo.DefaultThreadCurrentCulture = culture;
+CultureInfo.DefaultThreadCurrentUICulture = culture;
+
+await host.RunAsync();";
+
+    private const string _addLumeoCode = @"builder.Services.AddLumeo(opts =>
+{
+    // Override a single key for an existing culture
+    opts.Add(""de"", ""DataGrid.NoData"", ""Keine Datensätze"");
+
+    // Add a whole new culture
+    opts.AddMany(""fr"", new Dictionary<string, string>
+    {
+        [""DataGrid.NoData""] = ""Aucune donnée"",
+        [""Pagination.Previous""] = ""Précédent"",
+    });
+});";
+}

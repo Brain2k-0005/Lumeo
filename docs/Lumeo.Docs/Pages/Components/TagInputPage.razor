@@ -29,6 +29,40 @@
     <ComponentDemo Title="Max Tags" Code="@_maxCode">
         <TagInput @bind-Tags="_tags3" MaxTags="3" Placeholder="Max 3 tags..." Class="max-w-md" />
     </ComponentDemo>
+
+    <ComponentDemo Title="Generic TItem — User picker" Code="@_genericCode">
+        <Stack Gap="2" Class="max-w-md">
+            <TagInput TItem="UserOption"
+                      @bind-Tags="_userTags"
+                      Suggestions="@_userSuggestions"
+                      GetTagText="@(u => u.Name)"
+                      GetSuggestionText="@(u => $"{u.Name} {u.Email}")"
+                      CreateTag="@CreateUserFromText"
+                      Separators="@(new[] { ",", ";", " " })"
+                      Placeholder="Search users…">
+                <TagTemplate Context="user">
+                    <span class="inline-flex items-center gap-2 rounded-md border border-border/40 bg-secondary pl-1 pr-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                            @user.Name.Substring(0, 1)
+                        </span>
+                        @user.Name
+                    </span>
+                </TagTemplate>
+                <SuggestionTemplate Context="user">
+                    <div class="flex flex-row items-center gap-2 w-full">
+                        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                            @user.Name.Substring(0, 1)
+                        </span>
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm">@user.Name</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">@user.Email</Lumeo.Text>
+                        </Stack>
+                    </div>
+                </SuggestionTemplate>
+            </TagInput>
+            <Lumeo.Text Size="sm" Color="muted">Selected: @string.Join(", ", _userTags.Select(u => u.Name))</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -90,6 +124,66 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
                             <td class="p-3 text-muted-foreground">Disables user interaction.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TItem</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">@@typeparam</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Item type. Use a custom record/class for non-string tags (e.g. user picker).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetTagText</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;TItem, string&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ToString()</td>
+                            <td class="p-3 text-muted-foreground">Maps an item to its tag display text. Required for non-string TItem when not using TagTemplate.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">GetSuggestionText</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;TItem, string&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">GetTagText</td>
+                            <td class="p-3 text-muted-foreground">Maps an item to its searchable suggestion text. Falls back to GetTagText, then ToString().</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">TagTemplate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;TItem&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Custom render fragment for each tag (e.g. avatar + name).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SuggestionTemplate</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;TItem&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Custom render fragment for each suggestion row in the popup.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Separators</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string[]</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">[","]</td>
+                            <td class="p-3 text-muted-foreground">Strings that split typed/pasted input into multiple tags. Pass {",", ";", "\n", "\t"} for richer paste support.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ValidateInput</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;string, string?&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Synchronous validation. Return null to accept, or an error string to block + display inline.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ValidateInputAsync</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;string, Task&lt;string?&gt;&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Async validation (e.g. server-side uniqueness check).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">CreateTag</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;string, TItem?&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">cast for string</td>
+                            <td class="p-3 text-muted-foreground">Converts free-text input to a TItem when no suggestion matches. Required for non-string TItem.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">MaxTagsHelperText</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">localized</td>
+                            <td class="p-3 text-muted-foreground">Helper text shown below the field once MaxTags is reached.</td>
+                        </tr>
 </tbody>
                 </table>
             </Stack>
@@ -116,7 +210,51 @@
         "JavaScript", "TypeScript", "Python", "Rust", "Go", "Java", "Swift", "Kotlin"
     };
 
+    public record UserOption(string Name, string Email);
+
+    private UserOption? CreateUserFromText(string text) => new UserOption(text, text);
+
+    private List<UserOption> _userTags = new() { new("Ada Lovelace", "ada@lumeo.dev") };
+
+    private List<UserOption> _userSuggestions = new()
+    {
+        new("Ada Lovelace",  "ada@lumeo.dev"),
+        new("Alan Turing",   "alan@lumeo.dev"),
+        new("Grace Hopper",  "grace@lumeo.dev"),
+        new("Linus Torvalds","linus@lumeo.dev"),
+        new("Margaret Hamilton","margaret@lumeo.dev"),
+    };
+
     private string _basicCode = @"<TagInput @bind-Tags=""_tags"" Placeholder=""Add tags..."" />";
     private string _suggestionsCode = @"<TagInput @bind-Tags=""_tags"" Suggestions=""@_suggestions"" />";
     private string _maxCode = @"<TagInput @bind-Tags=""_tags"" MaxTags=""3"" />";
+
+    private string _genericCode = @"public record UserOption(string Name, string Email);
+
+private List<UserOption> _users = new();
+private List<UserOption> _suggestions = new() { /* … */ };
+
+<TagInput TItem=""UserOption""
+          @bind-Tags=""_users""
+          Suggestions=""@_suggestions""
+          GetTagText=""@(u => u.Name)""
+          GetSuggestionText=""@(u => $""{u.Name} {u.Email}"")""
+          CreateTag=""@(text => new UserOption(text, text))""
+          Separators=""@(new[] { "","", "";"", "" "" })"">
+    <TagTemplate Context=""user"">
+        <span class=""chip"">
+            <Avatar Initial=""@user.Name[0]"" />
+            @user.Name
+        </span>
+    </TagTemplate>
+    <SuggestionTemplate Context=""user"">
+        <Stack Direction=""Row"" Gap=""2"">
+            <Avatar Initial=""@user.Name[0]"" />
+            <Stack Gap=""0"">
+                <Text>@user.Name</Text>
+                <Text Color=""muted"">@user.Email</Text>
+            </Stack>
+        </Stack>
+    </SuggestionTemplate>
+</TagInput>";
 }

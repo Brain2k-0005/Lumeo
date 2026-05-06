@@ -1,0 +1,216 @@
+@page "/docs/edit-form"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>EditForm + Lumeo Validation — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <!-- Header -->
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">EditForm + Lumeo Validation</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo inputs work seamlessly inside Blazor's built-in
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;EditForm&gt;</code>
+            with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataAnnotationsValidator</code>.
+            This guide explains why Lumeo inputs are not <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InputBase&lt;T&gt;</code>
+            derivatives, the canonical wiring pattern, and the few sharp edges to know
+            about. If you'd rather use Lumeo's own form primitives, see
+            <a class="text-primary hover:underline" href="docs/form-validation">Form Validation</a>
+            and the <a class="text-primary hover:underline" href="docs/lumeo-form">[LumeoForm] generator</a>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Why not InputBase -->
+    <Stack Gap="4">
+        <Heading Level="2">Why Lumeo inputs aren't InputBase&lt;T&gt;</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            This is a deliberate design choice. Lumeo inputs use plain
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Value</code> +
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ValueChanged</code> two-way bindings.
+            That means:
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>They work universally — inside or outside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditForm</code>, with or without an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditContext</code>.</li>
+            <li>They never throw <em>"InputBase requires a cascading EditContext"</em> on consumers who don't use forms.</li>
+            <li>They compose cleanly with reactive state managers (signals, observables, plain fields).</li>
+            <li>You opt into validation by adding <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditForm</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">DataAnnotationsValidator</code> + the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Invalid</code> parameter described below.</li>
+        </ul>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Canonical pattern -->
+    <Stack Gap="4">
+        <Heading Level="2">EditForm + Lumeo — the canonical pattern</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Use Blazor's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditForm</code> for the lifecycle and
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">DataAnnotationsValidator</code> for the rules. Wire each
+            <a class="text-primary hover:underline" href="components/input">Input</a> /
+            <a class="text-primary hover:underline" href="components/select">Select</a> /
+            <a class="text-primary hover:underline" href="components/combobox">Combobox</a> through
+            <a class="text-primary hover:underline" href="components/form-field">FormField</a>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_canonicalCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Per-field invalid styling -->
+    <Stack Gap="4">
+        <Heading Level="2">Per-field invalid styling</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Every Lumeo input accepts an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Invalid="bool"</code>
+            parameter that toggles the destructive ring + border treatment. Wire it to
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditContext.GetValidationMessages(field)</code>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_hasErrorCode</pre>
+        <Lumeo.Text Size="sm" Color="muted">
+            Inject the cascading <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditContext</code> via
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">[CascadingParameter] EditContext? _editContext { get; set; }</code>
+            — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditForm</code> cascades it automatically.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Submit button -->
+    <Stack Gap="4">
+        <Heading Level="2">Submit button</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo's <a class="text-primary hover:underline" href="components/button">Button</a> defaults to
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">type="button"</code> as of rc.21 (the previous
+            browser default of <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">type="submit"</code> caused silent
+            submits when placed inside an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditForm</code>). You must
+            explicitly opt in to submit semantics by passing <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">type="submit"</code>
+            — Lumeo forwards unmatched attributes to the underlying <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;button&gt;</code>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_submitButtonCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- EventCallback nullable mismatch -->
+    <Stack Gap="4">
+        <Heading Level="2">EventCallback nullable mismatch</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            When you bind a Select to a nullable property and pass a method group as
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ValueChanged</code>, Razor may infer the non-nullable
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EventCallback&lt;T&gt;</code> instead of
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EventCallback&lt;T?&gt;</code>, producing a CS8622 warning
+            (or build error under strict nullability). Use an explicit lambda to pin the type:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_lambdaFixCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- Server-side errors -->
+    <Stack Gap="4">
+        <Heading Level="2">Server-side validation errors</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            After <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnValidSubmit</code>, if your API returns
+            field-level errors (e.g. <em>"email already taken"</em>), push them into the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditContext</code>'s
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ValidationMessageStore</code>. The
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">HasError</code> helper above will pick them up
+            automatically and re-render every affected input with the destructive ring:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_serverErrorsCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <!-- See also -->
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="components/input">Input</a> — the primary text/email/password field</li>
+            <li><a class="text-primary hover:underline" href="components/select">Select</a> — single-value dropdown</li>
+            <li><a class="text-primary hover:underline" href="components/form-field">FormField</a> — label + help text + ValidationMessage wrapper</li>
+            <li><a class="text-primary hover:underline" href="components/button">Button</a> — submit button defaults &amp; type semantics</li>
+            <li><a class="text-primary hover:underline" href="docs/form-validation">Form Validation</a> — Lumeo's own form primitives</li>
+            <li><a class="text-primary hover:underline" href="docs/lumeo-form">[LumeoForm] Generator</a> — model-driven form scaffolding</li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _canonicalCode = @"<EditForm Model=""@_form"" OnValidSubmit=""HandleSubmit"">
+    <DataAnnotationsValidator />
+
+    <Stack Gap=""3"">
+        <FormField Label=""Email"">
+            <Input @bind-Value=""_form.Email"" Invalid=""@HasError(nameof(_form.Email))"" />
+            <ValidationMessage For=""() => _form.Email"" />
+        </FormField>
+
+        <FormField Label=""Role"">
+            <Select @bind-Value=""_form.Role"" Invalid=""@HasError(nameof(_form.Role))"">
+                <SelectItem Value=""admin"">Admin</SelectItem>
+                <SelectItem Value=""member"">Member</SelectItem>
+            </Select>
+            <ValidationMessage For=""() => _form.Role"" />
+        </FormField>
+
+        <Button type=""submit"">Save</Button>
+    </Stack>
+</EditForm>
+
+@code {
+    private MyForm _form = new();
+    [CascadingParameter] private EditContext? _editContext { get; set; }
+
+    private bool HasError(string fieldName) =>
+        _editContext?.GetValidationMessages(_editContext.Field(fieldName)).Any() == true;
+
+    private void HandleSubmit() { /* call API */ }
+
+    private class MyForm
+    {
+        [Required, EmailAddress] public string? Email { get; set; }
+        [Required] public string? Role { get; set; }
+    }
+}";
+
+    private const string _hasErrorCode = @"private bool HasError(string fieldName) =>
+    _editContext?.GetValidationMessages(_editContext.Field(fieldName)).Any() == true;
+
+// usage:
+<Input @bind-Value=""_form.Email"" Invalid=""@HasError(nameof(_form.Email))"" />";
+
+    private const string _submitButtonCode = @"<!-- correct: explicit submit attribute (forwarded via AdditionalAttributes) -->
+<Button type=""submit"">Save</Button>
+
+<!-- wrong: rc.21 default is type=""button"", so this won't trigger EditForm.OnValidSubmit -->
+<Button OnClick=""HandleSubmit"">Save</Button>";
+
+    private const string _lambdaFixCode = @"<!-- bug: Razor infers EventCallback<string>, but _form.Role is string? -->
+<Select Value=""_form.Role"" ValueChanged=""OnRoleChanged"" />
+
+<!-- fix: explicit lambda pins the nullable type -->
+<Select Value=""_form.Role""
+        ValueChanged=""@((string? v) => OnRoleChanged(v))"" />
+
+@code {
+    private void OnRoleChanged(string? newValue) { _form.Role = newValue; }
+}";
+
+    private const string _serverErrorsCode = @"private async Task HandleSubmit()
+{
+    var result = await Api.SaveAsync(_form);
+    if (!result.IsSuccess && _editContext is not null)
+    {
+        var store = new ValidationMessageStore(_editContext);
+        foreach (var (field, errors) in result.FieldErrors)
+        {
+            store.Add(_editContext.Field(field), errors);
+        }
+        _editContext.NotifyValidationStateChanged();
+    }
+}";
+}
