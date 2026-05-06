@@ -21,7 +21,7 @@ else if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onanimationend="HandleAnimationEnd" tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
@@ -45,11 +45,11 @@ else if (Context.IsOpen)
 
     private readonly string _contentId = $"drawer-{Guid.NewGuid():N}";
     private bool _wasOpen;
-    // After the slide animation ends, drop the animate-slide-in-* class so
-    // animation-fill-mode: both no longer forces an identity transform on
-    // the element — that's what creates the containing block trap. See
-    // SheetContent + lumeo.css for the spec rationale.
-    private bool _animationDone;
+    // Slide-animation transform trap is fixed via JS interop:
+    // Interop.AttachOverlaySlideEnd registers a native animationend listener
+    // that filters strictly on slide-in-from-* AND on event.target === this
+    // element, then sets inline `transform: none`. See SheetContent for the
+    // full rationale.
 
     private bool ShowDragHandle => Side is DrawerSide.Top or DrawerSide.Bottom;
 
@@ -78,15 +78,7 @@ else if (Context.IsOpen)
     };
 
     private string CssClass =>
-        $"fixed z-50 mt-24 flex h-auto flex-col bg-background shadow-lg {PositionClasses} {ActiveAnimationClass} {Class}".Trim();
-
-    // ActiveAnimationClass returns the animation class only while the
-    // animation is still running. Once @onanimationend fires we set
-    // _animationDone=true and the class drops out — Chrome/Firefox/Safari
-    // then compute the element's transform back to `none`, restoring the
-    // viewport as the containing block for descendants (Select, DatePicker
-    // popovers).
-    private string ActiveAnimationClass => _animationDone ? "" : AnimationClass;
+        $"fixed z-50 mt-24 flex h-auto flex-col bg-background shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
     private string SwipeDirection => Side switch
     {
@@ -104,11 +96,14 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
-            // Reset the animation flag every time we re-open so the
-            // entrance animation runs fresh.
-            _animationDone = false;
             await Interop.LockScroll();
             await Interop.SetupFocusTrap(_contentId);
+            // Same animationend cleanup as SheetContent — bypasses Blazor
+            // event roundtrip + filters strictly on slide-in-from-* names.
+            if (Animation == DrawerAnimation.Slide)
+            {
+                await Interop.AttachOverlaySlideEnd(_contentId);
+            }
             if (!PreventClose)
             {
                 await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, Close);
@@ -129,12 +124,6 @@ else if (Context.IsOpen)
         if (!PreventClose) await Close();
     }
 
-    private void HandleAnimationEnd()
-    {
-        if (_animationDone) return;
-        _animationDone = true;
-        StateHasChanged();
-    }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
