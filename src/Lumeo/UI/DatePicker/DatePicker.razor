@@ -235,10 +235,51 @@
     [Parameter] public bool Clearable { get; set; }
     [Parameter] public RenderFragment? TriggerContent { get; set; }
     [Parameter] public int NumberOfMonths { get; set; } = 1;
+
+    /// <summary>
+    /// Optional controlled-mode override for the popover open state. When non-null,
+    /// the consumer holds the source of truth — the picker no longer mutates its
+    /// internal state and instead raises <see cref="OpenChanged"/>. Use this when
+    /// the picker lives inside a parent that re-renders heavily (e.g. an
+    /// <c>EditForm</c> with active <c>DataAnnotationsValidator</c>) and the
+    /// popover would otherwise close mid-click during a parameter cascade.
+    /// When null (default), the picker falls back to its internal open state and
+    /// behaves exactly as before.
+    /// </summary>
+    [Parameter] public bool? Open { get; set; }
+
+    /// <summary>
+    /// Fires whenever the popover would open or close. Pair with
+    /// <see cref="Open"/> via <c>@bind-Open</c> for the controlled-mode pattern
+    /// described above.
+    /// </summary>
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private bool _isOpen;
+    // Controlled-mode bridge: when Open is non-null, the parent owns the state and
+    // we never write to _internalOpen — every "set" just raises OpenChanged so the
+    // parent can decide. When Open is null, _internalOpen is the source of truth.
+    private bool _internalOpen;
+    private bool _isOpen
+    {
+        get => Open ?? _internalOpen;
+        set => SetIsOpen(value);
+    }
+
+    private void SetIsOpen(bool value)
+    {
+        if (Open is null)
+        {
+            _internalOpen = value;
+        }
+        if (OpenChanged.HasDelegate)
+        {
+            _ = OpenChanged.InvokeAsync(value);
+        }
+    }
+
     private DateTime? _prevDateTimeValue;
 
     protected override void OnParametersSet()

@@ -288,6 +288,58 @@ public class SheetTests : IAsyncLifetime
         Assert.Contains("Sheet Description", cut.Markup);
     }
 
+#if SHEET_ANIMATION_API
+    // Pending task #83 SheetAnimation API — wrapped to keep the rest of the test
+    // project compiling. Re-enable once SheetContent.SheetAnimation lands.
+    [Fact]
+    public void Sheet_Animation_None_renders_without_animate_class()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Sheet>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SheetContent>(0);
+                b.AddAttribute(1, "Animation", L.SheetContent.SheetAnimation.None);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
+                    inner.AddContent(0, "no-anim")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("animate-slide-in-from-", cls);
+        Assert.DoesNotContain("animate-fade-in", cls);
+    }
+
+    [Fact]
+    public void Sheet_Animation_Fade_uses_fade_in_class()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Sheet>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SheetContent>(0);
+                b.AddAttribute(1, "Animation", L.SheetContent.SheetAnimation.Fade);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
+                    inner.AddContent(0, "fade")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+        Assert.Contains("animate-fade-in", cls);
+        Assert.DoesNotContain("animate-slide-in-from-", cls);
+    }
+#endif
+
     [Fact]
     public void Nested_SheetContent_inside_OverlayShellMarker_renders_passthrough_no_double_backdrop()
     {

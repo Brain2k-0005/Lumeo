@@ -79,4 +79,67 @@ public class TextTests : IAsyncLifetime
         var cls = cut.Find("p").GetAttribute("class");
         Assert.Contains("truncate", cls);
     }
+
+    // --- rc.21: full theme-token color map ---
+
+    [Theory]
+    [InlineData("foreground", "text-foreground")]
+    [InlineData("muted", "text-muted-foreground")]
+    [InlineData("primary", "text-primary")]
+    [InlineData("destructive", "text-destructive")]
+    [InlineData("success", "text-success")]
+    [InlineData("warning", "text-warning")]
+    [InlineData("info", "text-info")]
+    [InlineData("accent", "text-accent-foreground")]
+    public void Color_Token_Maps_To_Expected_Class(string token, string expectedClass)
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.Color, token)
+            .AddChildContent("Tokenized"));
+
+        var cls = cut.Find("p").GetAttribute("class");
+        Assert.Contains(expectedClass, cls);
+    }
+
+    [Theory]
+    [InlineData("MUTED", "text-muted-foreground")]
+    [InlineData("Primary", "text-primary")]
+    [InlineData("DeStRuCtIvE", "text-destructive")]
+    public void Color_Token_Match_Is_Case_Insensitive(string token, string expectedClass)
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.Color, token)
+            .AddChildContent("Mixed case"));
+
+        var cls = cut.Find("p").GetAttribute("class");
+        Assert.Contains(expectedClass, cls);
+    }
+
+    [Fact]
+    public void Color_Default_Adds_No_Color_Class()
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.Color, "default")
+            .AddChildContent("Default"));
+
+        var cls = cut.Find("p").GetAttribute("class") ?? "";
+        // No theme color class should be applied when "default" is requested.
+        Assert.DoesNotContain("text-foreground", cls);
+        Assert.DoesNotContain("text-muted-foreground", cls);
+        Assert.DoesNotContain("text-primary", cls);
+    }
+
+    [Fact]
+    public void Unknown_Color_Token_Falls_Back_To_No_Class_Without_Throwing()
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.Color, "totally-not-a-real-token")
+            .AddChildContent("Unknown"));
+
+        // Pre-rc.21 behaviour was to emit `text-totally-not-a-real-token` — rc.21
+        // tightened the map so unknown tokens emit nothing rather than leaking
+        // an invalid Tailwind class into the DOM.
+        var cls = cut.Find("p").GetAttribute("class") ?? "";
+        Assert.DoesNotContain("text-totally-not-a-real-token", cls);
+    }
 }

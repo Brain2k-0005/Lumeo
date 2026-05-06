@@ -37,6 +37,11 @@ else if (Context.IsOpen)
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public SheetSide Side { get; set; } = SheetSide.Right;
     [Parameter] public SheetSize Size { get; set; } = SheetSize.Default;
+    /// <summary>How the sheet enters/leaves. <c>Slide</c> (default) animates
+    /// from the configured <see cref="Side"/>. <c>Fade</c> uses a simple
+    /// opacity tween — useful in dense forms where popovers and animations
+    /// compete. <c>None</c> disables the animation entirely.</summary>
+    [Parameter] public SheetAnimation Animation { get; set; } = SheetAnimation.Slide;
     [Parameter] public bool PreventClose { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -57,14 +62,36 @@ else if (Context.IsOpen)
         }
         : "";
 
-    private string SideClasses => Side switch
+    private string PositionClasses => Side switch
     {
-        SheetSide.Top => "inset-x-0 top-0 animate-slide-in-from-top",
-        SheetSide.Bottom => "inset-x-0 bottom-0 animate-slide-in-from-bottom",
-        SheetSide.Left => $"inset-y-0 left-0 h-full w-3/4 {SizeClass} animate-slide-in-from-left",
-        SheetSide.Right => $"inset-y-0 right-0 h-full w-3/4 {SizeClass} animate-slide-in-from-right",
-        _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass} animate-slide-in-from-right"
+        SheetSide.Top => "inset-x-0 top-0",
+        SheetSide.Bottom => "inset-x-0 bottom-0",
+        SheetSide.Left => $"inset-y-0 left-0 h-full w-3/4 {SizeClass}",
+        SheetSide.Right => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}",
+        _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}"
     };
+
+    // Animation=Slide is now safe (rc.21 fixed the transform-trap in lumeo.css),
+    // but Animation=Fade or None remain available for consumers who want
+    // maximum predictability inside re-render-heavy parents.
+    private string AnimationClass => Animation switch
+    {
+        SheetAnimation.None => "",
+        SheetAnimation.Fade => "animate-fade-in",
+        SheetAnimation.Slide => Side switch
+        {
+            SheetSide.Top => "animate-slide-in-from-top",
+            SheetSide.Bottom => "animate-slide-in-from-bottom",
+            SheetSide.Left => "animate-slide-in-from-left",
+            SheetSide.Right => "animate-slide-in-from-right",
+            _ => "animate-slide-in-from-right"
+        },
+        _ => ""
+    };
+
+    // Compose the same class string the previous SideClasses returned so
+    // existing tests asserting on inset-x-0 / inset-y-0 etc. keep passing.
+    private string SideClasses => $"{PositionClasses} {AnimationClass}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -114,4 +141,5 @@ else if (Context.IsOpen)
 
     public enum SheetSide { Top, Right, Bottom, Left }
     public enum SheetSize { Sm, Default, Lg, Xl, Full }
+    public enum SheetAnimation { Slide, Fade, None }
 }

@@ -45,14 +45,24 @@
 
             if (!string.IsNullOrEmpty(Color))
             {
-                classes.Add(Color switch
+                // Case-insensitive theme-token map. Unknown values fall back to no class
+                // (default text color) — never throw.
+                var token = Color.ToLowerInvariant();
+                var colorClass = token switch
                 {
+                    "default" => null,
+                    "foreground" => "text-foreground",
                     "muted" => "text-muted-foreground",
                     "primary" => "text-primary",
                     "destructive" => "text-destructive",
-                    "foreground" => "text-foreground",
-                    _ => $"text-{Color}"
-                });
+                    "success" => "text-success",
+                    "warning" => "text-warning",
+                    "info" => "text-info",
+                    "accent" => "text-accent-foreground",
+                    _ => null
+                };
+                if (!string.IsNullOrEmpty(colorClass))
+                    classes.Add(colorClass);
             }
 
             if (!string.IsNullOrEmpty(Leading))
