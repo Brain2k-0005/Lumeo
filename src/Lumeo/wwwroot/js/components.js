@@ -156,23 +156,31 @@ export async function attachOverlaySlideEnd(elementId) {
                   && a.animationName.startsWith('slide-in-from-'));
 
     if (slideAnimations.length === 0) {
-        // No slide animation found (Animation=Fade or None, or class
-        // dropped by some other path). Set transform defensively anyway —
-        // !important so it sticks regardless of any animation that might
-        // be reapplied later.
+        // No slide animation found — defensive: clear both transform AND
+        // animation (in case a partial state somehow remains).
         el.style.setProperty('transform', 'none', 'important');
+        el.style.setProperty('animation', 'none', 'important');
         return;
     }
 
-    // .finished resolves immediately if the animation already ended, or
-    // once it does. No event-listener race possible.
     await Promise.all(slideAnimations.map(async (anim) => {
         try { await anim.finished; }
         catch { /* playState 'cancelled' or 'idle' — ignore */ }
     }));
 
-    // !important is REQUIRED to defeat animation-fill-mode forwarding
-    // per CSS Cascade Level 4 (see the long comment above for why).
+    // CRITICAL: clear BOTH transform AND animation. Empirically verified
+    // (Chrome 131): clearing only transform is insufficient. Even with
+    // computed transform = 'none' (overridden via !important), the active
+    // 'animation' declaration makes Chrome establish a containing block
+    // for position:fixed descendants — Chrome's compositor pre-creates a
+    // layer for any element with a transform-animating animation,
+    // regardless of the current computed transform value.
+    //
+    // Smoking-gun test: with sheet at transform:none + animation declared,
+    // a position:fixed descendant popover renders at sheet.x + style.left
+    // (sheet acts as containing block). Set animation:none and the
+    // popover snaps back to viewport-relative positioning.
+    el.style.setProperty('animation', 'none', 'important');
     el.style.setProperty('transform', 'none', 'important');
 }
 
