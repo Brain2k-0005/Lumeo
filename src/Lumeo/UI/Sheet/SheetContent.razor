@@ -15,7 +15,7 @@ else if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onanimationend="HandleAnimationEnd" tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
             @if (!PreventClose)
             {
@@ -48,21 +48,15 @@ else if (Context.IsOpen)
 
     private readonly string _contentId = $"sheet-{Guid.NewGuid():N}";
     private bool _wasOpen;
-    // After the slide animation ends, drop the animate-slide-in-* class so
-    // animation-fill-mode: both no longer forces an identity transform
-    // matrix on the element — that matrix is what creates the containing
-    // block that breaks position:fixed popovers (Select / DatePicker /
-    // Combobox) inside the sheet. See lumeo.css for the spec rationale.
-    private bool _animationDone;
 
-    private string CssClass => $"fixed z-50 flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {ActiveAnimationClass} {Class}".Trim();
-
-    // ActiveAnimationClass returns the animation class only while the
-    // animation is still running. Once @onanimationend fires we set
-    // _animationDone=true and the class drops out — Chrome / Firefox /
-    // Safari then compute the element's transform back to `none`,
-    // restoring the viewport as the containing block for descendants.
-    private string ActiveAnimationClass => _animationDone ? "" : AnimationClass;
+    // Slide-animation transform trap is fixed via JS interop:
+    // Interop.AttachOverlaySlideEnd registers a native animationend listener
+    // that filters strictly on slide-in-from-* AND on event.target === this
+    // element (so descendant animations like Calendar's animate-zoom-in
+    // don't trigger us), then sets inline `transform: none`. Inline style
+    // beats the keyframe fill-mode forwarding — guarantees no containing
+    // block trap for popovers (Select / DatePicker / Combobox).
+    private string CssClass => $"fixed z-50 flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
     private string SizeClass => Side is SheetSide.Left or SheetSide.Right
         ? Size switch
@@ -84,10 +78,12 @@ else if (Context.IsOpen)
         _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}"
     };
 
-    // Animation=Slide is paired with @onanimationend → drop class trick
-    // (see _animationDone) so the post-animation transform doesn't trap
-    // descendant popovers. Fade / None are also fine; they don't use a
-    // transform at all so no trick is needed.
+    // Animation=Slide is paired with the JS-interop AttachOverlaySlideEnd
+    // (see OnAfterRenderAsync) which clears the inline transform once the
+    // slide animation completes — this defeats the `animation-fill-mode:
+    // both` identity-matrix trap that would otherwise create a containing
+    // block for fixed-positioned descendants. Fade / None don't use a
+    // transform at all, so no JS cleanup is needed.
     private string AnimationClass => Animation switch
     {
         SheetAnimation.None => "",
@@ -103,9 +99,8 @@ else if (Context.IsOpen)
         _ => ""
     };
 
-    // Kept for backward-compat with tests / consumers that read SideClasses;
-    // returns the same composed string the older versions returned.
-    private string SideClasses => $"{PositionClasses} {ActiveAnimationClass}".Trim();
+    // Kept for backward-compat with tests / consumers that read SideClasses.
+    private string SideClasses => $"{PositionClasses} {AnimationClass}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -115,11 +110,17 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
-            // Reset the animation flag every time we re-open so the
-            // entrance animation runs fresh.
-            _animationDone = false;
             await Interop.LockScroll();
             await Interop.SetupFocusTrap(_contentId);
+            // Native animationend listener sets inline transform:none after
+            // the slide animation completes (filtered on slide-in-from-* so
+            // descendant zoom-in / fade-in events don't trigger us). Inline
+            // style beats the keyframe fill-mode forwarding — guarantees no
+            // containing-block trap for popovers.
+            if (Animation == SheetAnimation.Slide)
+            {
+                await Interop.AttachOverlaySlideEnd(_contentId);
+            }
             _wasOpen = true;
         }
         else if (!Context.IsOpen && _wasOpen)
@@ -129,12 +130,6 @@ else if (Context.IsOpen)
         }
     }
 
-    private void HandleAnimationEnd()
-    {
-        if (_animationDone) return;
-        _animationDone = true;
-        StateHasChanged();
-    }
 
     private async Task Close() => await Context.SetOpen.InvokeAsync(false);
 

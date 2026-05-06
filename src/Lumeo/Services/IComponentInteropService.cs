@@ -25,6 +25,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask SetupFocusTrap(string elementId);
     ValueTask RemoveFocusTrap(string elementId);
 
+    /// <summary>Registers a native animationend listener that filters strictly on
+    /// the slide-in animation name and, on completion, sets the element's inline
+    /// <c>transform: none</c>. Bypasses Blazor's event roundtrip so the cleanup
+    /// runs synchronously from the browser's animation pipeline. Used by Sheet,
+    /// Drawer and any future slide-in overlay to defeat the
+    /// <c>animation-fill-mode: both</c> identity-matrix transform trap that
+    /// would otherwise establish a containing block for fixed-positioned
+    /// descendants (Select / DatePicker / Combobox popovers).</summary>
+    ValueTask AttachOverlaySlideEnd(string elementId);
+
     // ColorPicker SV Drag
     ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler);
     ValueTask UnregisterSvDrag(string elementId);

@@ -99,6 +99,33 @@ export function removeFocusTrap(elementId) {
     }
 }
 
+// --- Slide-animation transform cleanup (Sheet / Drawer) ---
+//
+// Ironclad fix for the slide-trap bug: even after rc.22's @onanimationend
+// Razor handler drops the animate-slide-in-* class, Chrome can keep the
+// element's computed transform at matrix(1,0,0,1,0,0) due to fill-mode
+// quirks. Plus descendant animations (Calendar's animate-zoom-in, Combobox
+// fade-in) bubble animationend events that confuse the Blazor handler.
+//
+// This native listener filters strictly on the slide-in animation name
+// AND ignores events from descendants (event.target === el), then sets
+// inline transform: none — which beats fill-mode forwarding (inline style
+// > stylesheet rule). The transform is removed → no containing block →
+// position:fixed popovers inside Sheet/Drawer position relative to the
+// viewport as expected.
+export function attachOverlaySlideEnd(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const handler = (event) => {
+        if (event.target !== el) return;
+        if (typeof event.animationName !== 'string') return;
+        if (!event.animationName.startsWith('slide-in-from-')) return;
+        el.style.transform = 'none';
+        el.removeEventListener('animationend', handler);
+    };
+    el.addEventListener('animationend', handler);
+}
+
 // --- Floating Position ---
 
 const positionCleanups = new Map();
@@ -266,6 +293,18 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
         if (cr.left < 0) {
             content.style.left = '8px';
             content.style.transform = '';
+        }
+
+        // Final defensive guard: NEVER allow `top` to go negative. If the
+        // computed top still ends up off-screen (regardless of which branch
+        // produced it — entrance-animation scaling, stale rect, weird parent
+        // flex layout), force it to a safe in-viewport value with maxHeight.
+        // Belt-and-suspenders for the user-reported rc.21/rc.22 `top: -1156`.
+        const finalTop = parseFloat(content.style.top);
+        if (Number.isFinite(finalTop) && finalTop < 0) {
+            content.style.top = '8px';
+            content.style.maxHeight = `${window.innerHeight - 16}px`;
+            content.style.overflow = 'auto';
         }
     }
 
