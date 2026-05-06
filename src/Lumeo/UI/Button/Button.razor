@@ -1,7 +1,7 @@
 @namespace Lumeo
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<button @ref="_el" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick">
+<button @ref="_el" type="@TypeAttr" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">
     @if (IsLoading)
     {
         <Spinner Class="h-4 w-4" />
@@ -44,6 +44,29 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public string? LoadingText { get; set; }
+
+    /// <summary>HTML button type. Defaults to <see cref="ButtonType.Button"/>
+    /// — explicitly NOT submit. The HTML spec says &lt;button&gt; inside
+    /// &lt;form&gt; defaults to <c>type="submit"</c>, which would submit the
+    /// form on every click. Lumeo defaults to a regular button so Buttons
+    /// don't silently submit EditForm; opt in via <c>Type="Submit"</c>.</summary>
+    [Parameter] public ButtonType Type { get; set; } = ButtonType.Button;
+
+    /// <summary>Stop click propagation to ancestors. Use this instead of
+    /// the Razor directive <c>@@onclick:stopPropagation</c> on a Lumeo
+    /// component — that directive creates an <c>onclick</c> parameter
+    /// that case-insensitively collides with the <c>OnClick</c>
+    /// parameter, producing a compile error. The directive only works
+    /// natively on HTML elements; this parameter is the equivalent for
+    /// the &lt;button&gt; element underneath.</summary>
+    [Parameter] public bool StopPropagation { get; set; }
+
+    /// <summary>Prevent the default click action on the underlying
+    /// &lt;button&gt; element. Same rationale as <see cref="StopPropagation"/>
+    /// — Razor's <c>@@onclick:preventDefault</c> directive collides
+    /// case-insensitively with the <c>OnClick</c> parameter on
+    /// components.</summary>
+    [Parameter] public bool PreventDefault { get; set; }
 
     /// <summary>
     /// Visual feedback when the button is pressed down. Default is <see cref="ButtonPressEffect.None"/>
@@ -101,6 +124,14 @@
 
     public enum ButtonVariant { Default, Destructive, Outline, Secondary, Ghost, Link }
     public enum ButtonSize { Default, Sm, Lg, Icon }
+    public enum ButtonType { Button, Submit, Reset }
+
+    private string TypeAttr => Type switch
+    {
+        ButtonType.Submit => "submit",
+        ButtonType.Reset => "reset",
+        _ => "button",
+    };
 
     /// <summary>Visual press feedback style for <see cref="Button"/>.</summary>
     public enum ButtonPressEffect
