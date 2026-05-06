@@ -15,6 +15,73 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.24 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.24</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Slide-trap finally fixed (4th attempt).</strong> rc.21–rc.23 were all
+            placebo: the keyframe trick (rc.21) and the inline-style approach (rc.22, rc.23)
+            could never defeat animation-fill-mode forwarding because of the CSS Cascade Level 4
+            priority order. Animations rank ABOVE normal author rules — including plain inline
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">style="transform: none"</code>.
+            The fix needs <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">!important</code>
+            on the inline style (rank: !important author > animations) to actually override the
+            forwarded keyframe value. Now done via
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">setProperty('transform', 'none', 'important')</code>
+            in the native animationend listener.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Why the previous attempts failed</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>rc.21 keyframe trick</strong> (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">99%: translateX(0); to: none</code>):
+                    Chrome resolves <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">to: none</code>
+                    under fill-mode:both as identity matrix. fill-mode forwards interpolated values,
+                    and the transition between <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">translateX(0)</code>
+                    and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">none</code>
+                    is treated as identity by all major engines. End state stuck at
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">matrix(1,0,0,1,0,0)</code>.
+                </li>
+                <li><strong>rc.22 Razor handler that drops the class</strong>: Blazor's
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onanimationend</code>
+                    EventArgs doesn't expose <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animationName</code>,
+                    so descendant zoom-in / fade-in animations bubbled up and prematurely dropped
+                    the class mid-slide. Plus the Razor → JS roundtrip latency was racy.
+                </li>
+                <li><strong>rc.23 native JS listener with plain inline style</strong>: filtered correctly
+                    on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">slide-in-from-*</code>
+                    + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">target === el</code>,
+                    but used <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">el.style.transform = 'none'</code>
+                    which is normal author cascade rank. Animations outrank that. Matrix stayed.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">The fix that actually works</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">el.style.setProperty('transform', 'none', 'important')</code>
+                    inside the same filtered animationend listener. Inline + !important is
+                    <em>!important author</em> in the cascade, which beats animations. The forwarded
+                    fill-mode value is properly overridden, computed transform becomes
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">none</code>,
+                    no containing block, popovers (Select / DatePicker / Combobox) inside Sheet/Drawer
+                    position relative to the viewport.
+                </li>
+                <li>Verified mechanism: per CSS Cascade Level 4 spec, the priority order from highest
+                    to lowest is — transitions, !important user-agent, !important user, <strong>!important author</strong>,
+                    animations, normal author (incl. plain inline style), normal user, normal user agent.
+                </li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.23 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
