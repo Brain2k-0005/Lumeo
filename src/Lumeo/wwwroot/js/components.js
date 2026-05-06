@@ -287,6 +287,15 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
         // Reset any prior maxHeight so we measure the natural content size
         // (otherwise a previous tight clamp would stick across reopens).
         content.style.maxHeight = '';
+        content.style.overflow = '';
+
+        // Force a synchronous layout BEFORE measuring. Without this, an
+        // in-flight animation scale-up or a Blazor render that hasn't
+        // committed yet can return stale / pre-final dimensions —
+        // empirically observed: cr.height = 1574 when the popover's
+        // settled height was 310. Reading offsetHeight forces the
+        // browser to flush layout.
+        void content.offsetHeight;
         const cr = content.getBoundingClientRect();
 
         // Flip vertical if overflows bottom — but ONLY if flipping up actually
@@ -345,16 +354,34 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
             content.style.transform = '';
         }
 
-        // Final defensive guard: NEVER allow `top` to go negative. If the
-        // computed top still ends up off-screen (regardless of which branch
-        // produced it — entrance-animation scaling, stale rect, weird parent
-        // flex layout), force it to a safe in-viewport value with maxHeight.
-        // Belt-and-suspenders for the user-reported rc.21/rc.22 `top: -1156`.
+        // Universal final guard: ensure the popover (a) never exceeds the
+        // viewport height and (b) never has a negative top. Belt-and-
+        // suspenders for the user-reported rc.21–rc.23 `top: -1156` —
+        // even if upstream logic somehow miscalculates (e.g. layout
+        // returning huge cr.height during an in-flight render), the
+        // popover is forced into the viewport with a scrollable cap.
+        const finalCr = content.getBoundingClientRect();
+        const maxAllowedHeight = window.innerHeight - 16;
+        if (finalCr.height > maxAllowedHeight) {
+            content.style.maxHeight = `${maxAllowedHeight}px`;
+            content.style.overflow = 'auto';
+        }
         const finalTop = parseFloat(content.style.top);
         if (Number.isFinite(finalTop) && finalTop < 0) {
             content.style.top = '8px';
-            content.style.maxHeight = `${window.innerHeight - 16}px`;
+            content.style.maxHeight = `${maxAllowedHeight}px`;
             content.style.overflow = 'auto';
+        }
+        // Also clamp if the popover extends past the viewport bottom (could
+        // happen if our flip-up branch wasn't reached for some side variant).
+        const updatedCr = content.getBoundingClientRect();
+        if (updatedCr.bottom > window.innerHeight - 8) {
+            const clampedTop = Math.max(8, window.innerHeight - 8 - updatedCr.height);
+            content.style.top = `${clampedTop}px`;
+            if (updatedCr.height > maxAllowedHeight) {
+                content.style.maxHeight = `${maxAllowedHeight}px`;
+                content.style.overflow = 'auto';
+            }
         }
     }
 
