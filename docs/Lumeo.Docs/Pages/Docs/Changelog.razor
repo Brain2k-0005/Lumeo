@@ -15,6 +15,64 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.25 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.25</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Slide-trap fix #5 — Web Animations API.</strong> rc.24 had the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">!important</code>
+            piece right (cascade priority) but missed the second bug: the listener was attached
+            via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">addEventListener('animationend', ...)</code>
+            from C# <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAfterRenderAsync</code>
+            via JS interop. Even in WASM, the latency between render and listener-attach is
+            enough that the 300 ms slide animation can already be
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">finished</code>
+            before the listener exists. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">addEventListener</code>
+            does NOT replay events that fired before attach, so the cleanup never ran.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">The actual fix (5th attempt)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>Replaced <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">addEventListener</code>
+                    with the Web Animations API.
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">el.getAnimations()</code>
+                    returns running OR already-finished animations (fill-mode keeps the finished
+                    ones alive in the list), and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation.finished</code>
+                    is a Promise that resolves immediately if the animation already ended, or once
+                    it does. Race-condition-free regardless of when the function is called.
+                </li>
+                <li>After awaiting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.finished</code>,
+                    set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">setProperty('transform', 'none', 'important')</code>
+                    (rc.24's correct cascade-priority piece). Inline + !important is rank 4
+                    (<em>!important author</em>) which beats animations (rank 5), so the
+                    fill-mode-forwarded matrix is finally overridden.
+                </li>
+                <li>Defensive: if <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">getAnimations()</code>
+                    returns no slide animation (Animation=Fade/None, or class already dropped),
+                    set the transform anyway. Edge cases get the same protection.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">For maintainers — five-RC postmortem</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>rc.21</strong>: keyframe trick (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">99%: translateX(0); to: none</code>) — Chrome interpolates none↔translate(0) as identity under fill-mode:both. Placebo.</li>
+                <li><strong>rc.22</strong>: Razor <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onanimationend</code> handler — Blazor EventArgs lacks animationName, descendants bubbled up. Placebo.</li>
+                <li><strong>rc.23</strong>: native JS listener with plain <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">style.transform = 'none'</code> — animations rank above normal author. Placebo.</li>
+                <li><strong>rc.24</strong>: same listener but with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">!important</code> — cascade priority correct, but listener attaches after animation ends. Placebo.</li>
+                <li><strong>rc.25</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">getAnimations() + .finished promises + setProperty important</code> — race-free AND cascade-correct. Empirically verified.</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.24 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

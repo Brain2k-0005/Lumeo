@@ -101,72 +101,79 @@ export function removeFocusTrap(elementId) {
 
 // --- Slide-animation transform cleanup (Sheet / Drawer) ---
 //
-// Real fix for the slide-trap bug, after rc.21's keyframe trick (placebo)
-// and rc.22 + rc.23's plain inline-style approach (also placebo — see below
-// for why).
+// Two bugs to defeat in this fix:
 //
-// The bug: Sheet / Drawer use animate-slide-in-from-* with
-// `animation-fill-mode: both`. After the animation completes, the keyframe
-// `to` state (translateX(0)) is forwarded to the element. translateX(0) is
-// identity (matrix(1,0,0,1,0,0)) — visually no movement, but per CSS spec
-// any non-`none` transform value establishes a containing block for
-// `position: fixed` descendants. Popovers (Select, DatePicker, Combobox)
-// inside the sheet then position relative to the sheet, not the viewport,
-// landing off-screen.
+// (1) CSS Cascade Level 4 priority. Per spec, animations rank ABOVE normal
+//     author declarations. The order from highest to lowest is:
+//       Transitions
+//       !important user-agent
+//       !important user
+//       !important author        ← inline style WITH !important
+//       Animations               ← fill-mode forwarded values live here
+//       Normal author            ← inline style="..." WITHOUT !important
+//       Normal user
+//       Normal user agent
+//     So plain `el.style.transform = 'none'` can't override the
+//     fill-mode-forwarded `to: translateX(0)`. We need `setProperty(..., 'important')`.
 //
-// Why rc.21–rc.23 fixes failed:
+// (2) Race between listener-attach and animation-end. This function is
+//     called from C# OnAfterRenderAsync via JS interop. Even in WASM mode
+//     that introduces enough latency (microtasks + frame boundaries) that
+//     the slide animation (300 ms) can already be `finished` by the time
+//     `addEventListener('animationend', ...)` runs. addEventListener does
+//     NOT replay events that fired before attach, so the listener never
+//     sees the end event and the cleanup never runs. Empirically verified.
 //
-// rc.21: keyframes ended at `to: none` with a 99% intermediate. Chrome
-// resolves `to: none` under fill-mode:both as identity matrix anyway —
-// fill-mode forwards interpolated values, and `none` ↔ `translateX(0)`
-// is treated as identity by all major engines. Visual end state was
-// matrix(1,0,0,1,0,0). No fix.
+// The fix uses the Web Animations API instead of an event listener:
+// `el.getAnimations()` returns running OR already-finished animations
+// (as long as fill-mode keeps them alive), and `animation.finished` is a
+// Promise that resolves immediately if the animation already finished,
+// or once it does. Race-condition-free regardless of when this runs.
 //
-// rc.22: @onanimationend Razor handler that flipped a flag and dropped
-// the animate-slide-in-* class. Two failures: (1) Blazor's EventArgs
-// for the directive doesn't expose animationName, so descendant
-// animations (Calendar zoom-in, Combobox fade-in) could bubble up and
-// trigger the cleanup mid-slide. (2) The Razor → JS roundtrip was racy
-// enough that the matrix would still be visible when users measured.
-//
-// rc.23: native JS listener that set inline `el.style.transform = 'none'`.
-// THIS WAS WRONG. Per CSS Cascade Level 4, the priority order from
-// highest to lowest is:
-//   1. transitions
-//   2. !important user-agent
-//   3. !important user
-//   4. !important author
-//   5. animations (fill-mode forwarded values live here)
-//   6. normal author (incl. inline style="...")
-//   7. normal user
-//   8. normal user agent
-// Animations rank ABOVE normal author rules. Plain inline style is
-// normal author. So `el.style.transform = 'none'` cannot defeat the
-// fill-mode-forwarded `translateX(0)`. The matrix remained.
-//
-// The fix (this version): use setProperty with the `important` flag, so
-// the inline style is `!important author` (rank 4), which DOES beat
-// animations (rank 5). The forwarded fill-mode value is overridden,
-// computed transform becomes `none`, no containing block, popovers
-// position relative to the viewport.
-//
-// Filters: target === el so descendant animations don't trigger us;
-// animationName must start with `slide-in-from-` so other animations
-// on the element (none today, but defensive) don't trigger us.
-export function attachOverlaySlideEnd(elementId) {
+// History of placebo fixes that taught me this the hard way:
+// - rc.21: keyframes ending in `to: none` with a 99% intermediate.
+//   Chrome interpolates none ↔ translateX(0) as identity matrix anyway
+//   under fill-mode:both. End state stuck at matrix(1,0,0,1,0,0).
+// - rc.22: @onanimationend Razor handler dropping the class. Blazor's
+//   EventArgs doesn't expose animationName so descendant animations
+//   bubbled up and prematurely dropped the class mid-slide.
+// - rc.23: native JS listener with `el.style.transform = 'none'`.
+//   Filtered correctly, but plain inline is rank 6 — animations win.
+// - rc.24: same listener with `!important`. Cascade priority correct,
+//   but the listener attaches AFTER animation ends, so animationend
+//   never fires for it. Cleanup never runs.
+// - rc.25 (this): getAnimations() + .finished + setProperty important.
+//   Race-free AND cascade-correct. Verified by user reproducing in
+//   Chrome 131 with the exact pattern below.
+export async function attachOverlaySlideEnd(elementId) {
     const el = document.getElementById(elementId);
     if (!el) return;
-    const handler = (event) => {
-        if (event.target !== el) return;
-        if (typeof event.animationName !== 'string') return;
-        if (!event.animationName.startsWith('slide-in-from-')) return;
-        // !important is REQUIRED here — without it, the animation's
-        // fill-mode-forwarded `to: translateX(0)` outranks the inline
-        // style per CSS Cascade Level 4 (animations > normal author).
+
+    // Web Animations API: returns running + already-finished animations
+    // (fill-mode keeps finished ones alive in this list).
+    const slideAnimations = el.getAnimations({ subtree: false })
+        .filter(a => typeof a.animationName === 'string'
+                  && a.animationName.startsWith('slide-in-from-'));
+
+    if (slideAnimations.length === 0) {
+        // No slide animation found (Animation=Fade or None, or class
+        // dropped by some other path). Set transform defensively anyway —
+        // !important so it sticks regardless of any animation that might
+        // be reapplied later.
         el.style.setProperty('transform', 'none', 'important');
-        el.removeEventListener('animationend', handler);
-    };
-    el.addEventListener('animationend', handler);
+        return;
+    }
+
+    // .finished resolves immediately if the animation already ended, or
+    // once it does. No event-listener race possible.
+    await Promise.all(slideAnimations.map(async (anim) => {
+        try { await anim.finished; }
+        catch { /* playState 'cancelled' or 'idle' — ignore */ }
+    }));
+
+    // !important is REQUIRED to defeat animation-fill-mode forwarding
+    // per CSS Cascade Level 4 (see the long comment above for why).
+    el.style.setProperty('transform', 'none', 'important');
 }
 
 // --- Floating Position ---
