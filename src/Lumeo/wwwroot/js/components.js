@@ -101,18 +101,58 @@ export function removeFocusTrap(elementId) {
 
 // --- Slide-animation transform cleanup (Sheet / Drawer) ---
 //
-// Ironclad fix for the slide-trap bug: even after rc.22's @onanimationend
-// Razor handler drops the animate-slide-in-* class, Chrome can keep the
-// element's computed transform at matrix(1,0,0,1,0,0) due to fill-mode
-// quirks. Plus descendant animations (Calendar's animate-zoom-in, Combobox
-// fade-in) bubble animationend events that confuse the Blazor handler.
+// Real fix for the slide-trap bug, after rc.21's keyframe trick (placebo)
+// and rc.22 + rc.23's plain inline-style approach (also placebo — see below
+// for why).
 //
-// This native listener filters strictly on the slide-in animation name
-// AND ignores events from descendants (event.target === el), then sets
-// inline transform: none — which beats fill-mode forwarding (inline style
-// > stylesheet rule). The transform is removed → no containing block →
-// position:fixed popovers inside Sheet/Drawer position relative to the
-// viewport as expected.
+// The bug: Sheet / Drawer use animate-slide-in-from-* with
+// `animation-fill-mode: both`. After the animation completes, the keyframe
+// `to` state (translateX(0)) is forwarded to the element. translateX(0) is
+// identity (matrix(1,0,0,1,0,0)) — visually no movement, but per CSS spec
+// any non-`none` transform value establishes a containing block for
+// `position: fixed` descendants. Popovers (Select, DatePicker, Combobox)
+// inside the sheet then position relative to the sheet, not the viewport,
+// landing off-screen.
+//
+// Why rc.21–rc.23 fixes failed:
+//
+// rc.21: keyframes ended at `to: none` with a 99% intermediate. Chrome
+// resolves `to: none` under fill-mode:both as identity matrix anyway —
+// fill-mode forwards interpolated values, and `none` ↔ `translateX(0)`
+// is treated as identity by all major engines. Visual end state was
+// matrix(1,0,0,1,0,0). No fix.
+//
+// rc.22: @onanimationend Razor handler that flipped a flag and dropped
+// the animate-slide-in-* class. Two failures: (1) Blazor's EventArgs
+// for the directive doesn't expose animationName, so descendant
+// animations (Calendar zoom-in, Combobox fade-in) could bubble up and
+// trigger the cleanup mid-slide. (2) The Razor → JS roundtrip was racy
+// enough that the matrix would still be visible when users measured.
+//
+// rc.23: native JS listener that set inline `el.style.transform = 'none'`.
+// THIS WAS WRONG. Per CSS Cascade Level 4, the priority order from
+// highest to lowest is:
+//   1. transitions
+//   2. !important user-agent
+//   3. !important user
+//   4. !important author
+//   5. animations (fill-mode forwarded values live here)
+//   6. normal author (incl. inline style="...")
+//   7. normal user
+//   8. normal user agent
+// Animations rank ABOVE normal author rules. Plain inline style is
+// normal author. So `el.style.transform = 'none'` cannot defeat the
+// fill-mode-forwarded `translateX(0)`. The matrix remained.
+//
+// The fix (this version): use setProperty with the `important` flag, so
+// the inline style is `!important author` (rank 4), which DOES beat
+// animations (rank 5). The forwarded fill-mode value is overridden,
+// computed transform becomes `none`, no containing block, popovers
+// position relative to the viewport.
+//
+// Filters: target === el so descendant animations don't trigger us;
+// animationName must start with `slide-in-from-` so other animations
+// on the element (none today, but defensive) don't trigger us.
 export function attachOverlaySlideEnd(elementId) {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -120,7 +160,10 @@ export function attachOverlaySlideEnd(elementId) {
         if (event.target !== el) return;
         if (typeof event.animationName !== 'string') return;
         if (!event.animationName.startsWith('slide-in-from-')) return;
-        el.style.transform = 'none';
+        // !important is REQUIRED here — without it, the animation's
+        // fill-mode-forwarded `to: translateX(0)` outranks the inline
+        // style per CSS Cascade Level 4 (animations > normal author).
+        el.style.setProperty('transform', 'none', 'important');
         el.removeEventListener('animationend', handler);
     };
     el.addEventListener('animationend', handler);
