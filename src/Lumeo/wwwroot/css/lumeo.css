@@ -501,36 +501,52 @@ input[type="range"]::-moz-range-thumb {
   to   { opacity: 1; transform: none; }
 }
 
-/* Slide-in keyframes intentionally end at `transform: none`, NOT identity
-   `translateX(0)` / `translateY(0)`. Per CSS spec, ANY non-`none` transform —
-   including identity translates — establishes a containing block for
-   `position: fixed` descendants. Without `to { transform: none }`, popovers
-   (Select, DatePicker, Combobox) inside a slid-in Sheet/Drawer/Toast render
-   relative to the sheet instead of the viewport, ending up off-screen.
-   The 99 % step keeps the visual landing identical; the 100 % step disposes
-   of the transform so the containing block reverts to the viewport. */
+/* Slide-in keyframes for Sheet / Drawer / Toast. Important: per CSS spec,
+   any non-`none` transform — including identity `translateX(0)` AND `to:
+   none` after `animation-fill-mode: both` (which Chrome resolves to
+   identity matrix) — establishes a containing block for `position: fixed`
+   descendants. That breaks popovers (Select / DatePicker / Combobox)
+   rendered inside the slid-in panel.
+
+   The fix lives in SheetContent.razor / DrawerContent.razor: an
+   `@onanimationend` handler removes the `animate-slide-in-*` class once
+   the animation completes, so `animation-fill-mode: both` no longer
+   forces the element to retain a transform. The static post-animation
+   state has no transform → no containing block → popovers position
+   relative to the viewport as expected. */
 @keyframes slide-in-from-bottom {
   from { transform: translateY(100%); }
-  99%  { transform: translateY(0); }
-  to   { transform: none; }
+  to   { transform: translateY(0); }
 }
 
 @keyframes slide-in-from-top {
   from { transform: translateY(-100%); }
-  99%  { transform: translateY(0); }
-  to   { transform: none; }
+  to   { transform: translateY(0); }
 }
 
 @keyframes slide-in-from-left {
   from { transform: translateX(-100%); }
-  99%  { transform: translateX(0); }
-  to   { transform: none; }
+  to   { transform: translateX(0); }
 }
 
 @keyframes slide-in-from-right {
   from { transform: translateX(100%); }
-  99%  { transform: translateX(0); }
-  to   { transform: none; }
+  to   { transform: translateX(0); }
+}
+
+/* EditForm-in-Sheet/Dialog flex compatibility. When a consumer wraps
+   their sheet body in <EditForm>, the rendered <form> is content-sized
+   by default — the SheetFooter then sticks below the last field instead
+   of pinning to the bottom. Make direct <form> children of a Lumeo
+   sheet/dialog inherit the flex-column layout so the footer pins
+   correctly without consumer-side CSS workarounds. */
+[role="dialog"][id^="sheet-"] > form,
+[role="dialog"][id^="dialog-"] > form,
+[role="dialog"][id^="drawer-"] > form {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 @keyframes accordion-down {

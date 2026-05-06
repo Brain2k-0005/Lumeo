@@ -206,19 +206,57 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
         content.style.right = right != null ? `${right}px` : '';
         content.style.transform = transform;
 
-        // Viewport bounds check (synchronous — no rAF to avoid stale refs)
+        // Viewport bounds check (synchronous — no rAF to avoid stale refs).
+        // Reset any prior maxHeight so we measure the natural content size
+        // (otherwise a previous tight clamp would stick across reopens).
+        content.style.maxHeight = '';
         const cr = content.getBoundingClientRect();
-        // Flip vertical if overflows bottom
+
+        // Flip vertical if overflows bottom — but ONLY if flipping up actually
+        // gives us more usable space. Without this guard, a popover that's
+        // taller than the trigger's `top` (e.g. a calendar grown to fill its
+        // parent flex container — observed at ~1574px inside a Sheet) ends
+        // up with `top: triggerTop - contentHeight - gap` going far negative,
+        // rendering off-screen at the top. Clamp to viewport with maxHeight.
         if (resolvedSide === 'bottom' && cr.bottom > window.innerHeight) {
             const newRefRect = reference.getBoundingClientRect();
-            content.style.top = `${newRefRect.top - cr.height - gap}px`;
-            content.style.transform = transform.replace('translateY(-100%)', '').trim() || '';
+            const spaceAbove = newRefRect.top - 8;        // 8px breathing room
+            const spaceBelow = window.innerHeight - newRefRect.bottom - 8;
+            if (spaceAbove >= cr.height + gap) {
+                // Flip up — fits naturally
+                content.style.top = `${newRefRect.top - cr.height - gap}px`;
+                content.style.transform = transform.replace('translateY(-100%)', '').trim() || '';
+            } else if (spaceAbove > spaceBelow) {
+                // More room above than below — flip up and cap height
+                content.style.top = `8px`;
+                content.style.maxHeight = `${spaceAbove - gap}px`;
+                content.style.overflow = 'auto';
+                content.style.transform = transform.replace('translateY(-100%)', '').trim() || '';
+            } else {
+                // Stick below the trigger and cap height to viewport
+                content.style.top = `${newRefRect.bottom + gap}px`;
+                content.style.maxHeight = `${spaceBelow}px`;
+                content.style.overflow = 'auto';
+            }
         }
-        // Flip vertical if overflows top
+        // Flip vertical if overflows top — same guard logic
         if (resolvedSide === 'top' && cr.top < 0) {
             const newRefRect = reference.getBoundingClientRect();
-            content.style.top = `${newRefRect.bottom + gap}px`;
-            content.style.transform = transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
+            const spaceAbove = newRefRect.top - 8;
+            const spaceBelow = window.innerHeight - newRefRect.bottom - 8;
+            if (spaceBelow >= cr.height + gap) {
+                content.style.top = `${newRefRect.bottom + gap}px`;
+                content.style.transform = transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
+            } else if (spaceBelow > spaceAbove) {
+                content.style.top = `${newRefRect.bottom + gap}px`;
+                content.style.maxHeight = `${spaceBelow}px`;
+                content.style.overflow = 'auto';
+                content.style.transform = transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
+            } else {
+                content.style.top = `8px`;
+                content.style.maxHeight = `${spaceAbove - gap}px`;
+                content.style.overflow = 'auto';
+            }
         }
         // Clamp horizontal
         if (cr.right > window.innerWidth) {
