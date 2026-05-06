@@ -15,6 +15,84 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.22 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.22</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>rc.21 verification fixes.</strong> Three issues surfaced after rc.21 shipped:
+            the slide-keyframes trick from rc.21 didn't actually work (Chrome resolves
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">to: none</code>
+            to identity matrix under <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation-fill-mode: both</code>);
+            DatePicker calendar popovers can render at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">top: -1156px</code>
+            inside Sheets when the popover stretches taller than the viewport;
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;EditForm&gt;</code>
+            wrapping a Sheet's body broke the footer-pin layout. All three fixed.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — slide-animation transform trap (real fix this time)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>The rc.21 fix used a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">99% / to: none</code>
+                    keyframe trick. That doesn't work: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation-fill-mode: both</code>
+                    keeps the element in the animation's end state, and Chrome resolves
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">transform: none</code>
+                    to identity matrix when blended through animation. The element ends up with
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">matrix(1,0,0,1,0,0)</code>
+                    — still a containing block, popovers still off-screen.
+                </li>
+                <li><strong>Real fix:</strong> SheetContent and DrawerContent now bind
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onanimationend</code>
+                    and drop the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animate-slide-in-*</code>
+                    class once the animation completes. Without the class, there's no animation,
+                    no fill-mode, no transform — the element returns to its static state and the
+                    viewport regains its natural role as the containing block. Visually identical
+                    landing; popovers (Select, DatePicker, Combobox) inside Sheets/Drawers position
+                    correctly. Apps with the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation: fade-in !important</code>
+                    workaround can drop it.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — DatePicker / popover overflow clamping</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>Inside a Sheet's flex layout, the calendar popover could stretch to ~1574 px.
+                    The flip-up logic in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">positionFixed</code>
+                    then computed
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">top = triggerTop − contentHeight − gap</code>,
+                    which went deeply negative (e.g. −1156 px) — popover invisible above the viewport.
+                </li>
+                <li>Now compares <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">spaceAbove</code>
+                    vs <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">spaceBelow</code>
+                    and picks the side with more available room, capping the popover with
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">max-height</code>
+                    + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">overflow: auto</code>
+                    when neither side fits the natural content height. The popover is always visible.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — EditForm-in-Sheet footer pin</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>When consumers wrapped a Sheet's body in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;EditForm&gt;</code>,
+                    the rendered <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;form&gt;</code>
+                    was content-sized — SheetFooter stuck below the last field instead of pinning
+                    to the bottom. New CSS rule in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.css</code>
+                    makes direct <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;form&gt;</code>
+                    children of Lumeo sheet/dialog/drawer dialogs inherit the flex-column layout —
+                    no consumer-side CSS workaround needed.
+                </li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.21 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

@@ -15,7 +15,7 @@ else if (Context.IsOpen)
 {
     <div class="fixed inset-0 z-50">
         <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onanimationend="HandleAnimationEnd" tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
             @if (!PreventClose)
             {
@@ -48,8 +48,21 @@ else if (Context.IsOpen)
 
     private readonly string _contentId = $"sheet-{Guid.NewGuid():N}";
     private bool _wasOpen;
+    // After the slide animation ends, drop the animate-slide-in-* class so
+    // animation-fill-mode: both no longer forces an identity transform
+    // matrix on the element — that matrix is what creates the containing
+    // block that breaks position:fixed popovers (Select / DatePicker /
+    // Combobox) inside the sheet. See lumeo.css for the spec rationale.
+    private bool _animationDone;
 
-    private string CssClass => $"fixed z-50 gap-4 bg-background p-6 shadow-lg {SideClasses} {Class}".Trim();
+    private string CssClass => $"fixed z-50 flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {ActiveAnimationClass} {Class}".Trim();
+
+    // ActiveAnimationClass returns the animation class only while the
+    // animation is still running. Once @onanimationend fires we set
+    // _animationDone=true and the class drops out — Chrome / Firefox /
+    // Safari then compute the element's transform back to `none`,
+    // restoring the viewport as the containing block for descendants.
+    private string ActiveAnimationClass => _animationDone ? "" : AnimationClass;
 
     private string SizeClass => Side is SheetSide.Left or SheetSide.Right
         ? Size switch
@@ -71,9 +84,10 @@ else if (Context.IsOpen)
         _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}"
     };
 
-    // Animation=Slide is now safe (rc.21 fixed the transform-trap in lumeo.css),
-    // but Animation=Fade or None remain available for consumers who want
-    // maximum predictability inside re-render-heavy parents.
+    // Animation=Slide is paired with @onanimationend → drop class trick
+    // (see _animationDone) so the post-animation transform doesn't trap
+    // descendant popovers. Fade / None are also fine; they don't use a
+    // transform at all so no trick is needed.
     private string AnimationClass => Animation switch
     {
         SheetAnimation.None => "",
@@ -89,9 +103,9 @@ else if (Context.IsOpen)
         _ => ""
     };
 
-    // Compose the same class string the previous SideClasses returned so
-    // existing tests asserting on inset-x-0 / inset-y-0 etc. keep passing.
-    private string SideClasses => $"{PositionClasses} {AnimationClass}".Trim();
+    // Kept for backward-compat with tests / consumers that read SideClasses;
+    // returns the same composed string the older versions returned.
+    private string SideClasses => $"{PositionClasses} {ActiveAnimationClass}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -101,6 +115,9 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
+            // Reset the animation flag every time we re-open so the
+            // entrance animation runs fresh.
+            _animationDone = false;
             await Interop.LockScroll();
             await Interop.SetupFocusTrap(_contentId);
             _wasOpen = true;
@@ -110,6 +127,13 @@ else if (Context.IsOpen)
             await Cleanup();
             _wasOpen = false;
         }
+    }
+
+    private void HandleAnimationEnd()
+    {
+        if (_animationDone) return;
+        _animationDone = true;
+        StateHasChanged();
     }
 
     private async Task Close() => await Context.SetOpen.InvokeAsync(false);
