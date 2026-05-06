@@ -15,6 +15,69 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.27 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.27</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Empirically reproduced + root-caused the popover-in-Sheet positioning bug.</strong>
+            Bug #1 (slide transform-trap) and Bug #16 (DatePicker positioned relative to sheet, not
+            viewport) turned out to be the SAME root cause. Verified end-to-end in Chrome 131 via
+            instrumented diagnostics — toggling the sheet's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation</code>
+            property on/off snapped the popover x from 3278 (sheet-relative) to 1742 (viewport-relative).
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">The real root cause (took 6 RCs to find)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Chrome creates a containing block for any element with an active
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">transform</code>-animating
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation</code>
+                    declaration — INDEPENDENT of the current computed
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">transform</code> value</strong>.
+                    Even with computed <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">transform: none</code>
+                    (overridden via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">!important</code>),
+                    the active <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation: ... slide-in-from-right</code>
+                    declaration alone makes Chrome establish the sheet as a containing block for fixed-positioned descendants.
+                </li>
+                <li>Empirically verified: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">popover.x = 3278</code>
+                    when sheet has the animation declared (sheet at x=1536 + popover style.left=1742 ≈ 3278).
+                    Add <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation: none !important</code>
+                    on the sheet → <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">popover.x = 1742.86</code>
+                    (viewport-relative). Confirmed via instrumented Chrome 131 DevTools session.
+                </li>
+                <li>This is Chrome's compositor optimization — it pre-creates a layer for transform-animating
+                    elements (treating them as <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">will-change: transform</code>
+                    implicitly). Per CSS spec strict reading this is technically aggressive but Chrome does it.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">The fix</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">attachOverlaySlideEnd</code>
+                    in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">components.js</code>
+                    now sets BOTH <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animation: none !important</code>
+                    AND <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">transform: none !important</code>
+                    after the slide animation finishes. The animation property is what kills Chrome's
+                    containing-block treatment; the transform is belt-and-suspenders.
+                </li>
+                <li>Bug #1 (matrix containing block) and Bug #16 (DatePicker top:-1156, popover at sheet x)
+                    both resolve. Same fix.
+                </li>
+                <li>Slide animation visual is preserved (animation runs to completion, then properties
+                    are cleared in the post-finished state).
+                </li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.26 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
