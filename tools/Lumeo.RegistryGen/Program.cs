@@ -633,7 +633,7 @@ try
         uiRoots: uiRoots,
         metaResolver: MetaFor,
         logger: Console.Error,
-        version: "2.0.0-rc.22");
+        version: "2.0.0-rc.23");
 }
 catch (Exception ex)
 {

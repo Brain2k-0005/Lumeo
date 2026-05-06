@@ -15,6 +15,72 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.23 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.23</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Ironclad slide-trap + defensive popover clamp.</strong> rc.22's Razor-side
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onanimationend</code>
+            handler had two timing issues: (1) Blazor's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">EventArgs</code>
+            for the directive doesn't expose <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animationName</code>,
+            so we couldn't filter; descendant animations (Calendar's
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animate-zoom-in</code>,
+            Combobox fade-in) bubbled up and could trigger the cleanup mid-slide. (2) The Razor →
+            JS roundtrip was racy enough that some users still observed the matrix sticking.
+            Replaced with a native JS listener.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — slide-trap (third time's the charm)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>New <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Interop.AttachOverlaySlideEnd(elementId)</code>
+                    JS interop registers a native
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animationend</code>
+                    listener that filters strictly on
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">slide-in-from-*</code>
+                    AND on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">event.target === el</code>
+                    (descendants don't trigger it), then sets inline
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">style.transform = 'none'</code>.
+                    Inline-style precedence beats keyframe fill-mode forwarding — the matrix is
+                    cleared, no containing block, popovers position relative to viewport.
+                </li>
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetContent</code> +
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DrawerContent</code>
+                    now call this on every open with
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Animation=Slide</code>.
+                </li>
+                <li>Removed the racy Razor-side
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onanimationend</code>
+                    handler + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_animationDone</code>
+                    flag — JS interop is the sole, reliable path.
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed — defensive popover top clamp</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">positionFixed</code>
+                    now applies a final guard: if the computed
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">top</code>
+                    ends up negative for any reason (entrance-animation scaling, stale rect, weird
+                    parent flex layout), it's forced to
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">8px</code>
+                    with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">max-height</code>
+                    + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">overflow: auto</code>.
+                    Belt-and-suspenders for the rc.21 / rc.22 user-reported
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">top: -1156</code>.
+                </li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.22 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

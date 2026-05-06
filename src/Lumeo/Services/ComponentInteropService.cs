@@ -93,6 +93,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _focus.LockScroll(module);
     }
 
+    public async ValueTask AttachOverlaySlideEnd(string elementId)
+    {
+        var module = await GetModuleAsync();
+        try
+        {
+            await module.InvokeVoidAsync("attachOverlaySlideEnd", elementId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
     public async ValueTask UnlockScroll()
     {
         var module = await GetModuleAsync();
