@@ -47,7 +47,15 @@
     /// badge on that date. The slot is non-interactive
     /// (<c>pointer-events-none</c>) so clicks still hit the day button.</summary>
     [Parameter] public Func<DateTime, RenderFragment?>? DateBadge { get; set; }
-    [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Sunday;
+    /// <summary>The day of the week to render in the leftmost column.
+    /// When <c>null</c> (default), uses
+    /// <c>CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek</c> —
+    /// so de-DE / fr-FR / etc. start on Monday automatically, en-US on
+    /// Sunday. Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    private DayOfWeek EffectiveFirstDayOfWeek =>
+        FirstDayOfWeek ?? System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -81,12 +89,22 @@
 
     private string[] GetDayHeaders()
     {
-        var allDays = new[] { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
-        var startIndex = (int)FirstDayOfWeek;
+        // .NET's ShortestDayNames collapses to 1 letter per culture
+        // ("S,M,T,W,T,F,S"), which is ambiguous in any language. Use
+        // AbbreviatedDayNames and take the first two letters of each so we
+        // get culture-correct, distinguishable headers:
+        //   en-US → Su/Mo/Tu/We/Th/Fr/Sa
+        //   de-DE → So/Mo/Di/Mi/Do/Fr/Sa
+        //   fr-FR → di/lu/ma/me/je/ve/sa
+        var abbr = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames;
+        var startIndex = (int)EffectiveFirstDayOfWeek;
         var result = new string[7];
         for (var i = 0; i < 7; i++)
         {
-            result[i] = allDays[(startIndex + i) % 7];
+            var raw = abbr[(startIndex + i) % 7];
+            // Strip trailing punctuation (de-DE returns "So.", "Mo." …) before slicing.
+            var letters = new string(raw.TakeWhile(char.IsLetter).ToArray());
+            result[i] = letters.Length >= 2 ? letters[..2] : letters;
         }
         return result;
     }
@@ -95,7 +113,7 @@
     {
         var days = new List<DateOnly>();
         var firstOfMonth = new DateOnly(monthDate.Year, monthDate.Month, 1);
-        var startOffset = ((int)firstOfMonth.DayOfWeek - (int)FirstDayOfWeek + 7) % 7;
+        var startOffset = ((int)firstOfMonth.DayOfWeek - (int)EffectiveFirstDayOfWeek + 7) % 7;
         var start = firstOfMonth.AddDays(-startOffset);
 
         for (var i = 0; i < 42; i++)

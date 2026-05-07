@@ -571,6 +571,62 @@
         </DataGrid>
     </ComponentDemo>
 
+    <div class="space-y-3">
+        <Heading Id="virtualization" Level="2" Class="scroll-mt-20">Virtualization &amp; large datasets</Heading>
+        <Text Size="sm" Color="muted">
+            Lumeo's DataGrid supports two distinct strategies for large datasets — pick the one that matches where your data lives:
+        </Text>
+        <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm pl-2">
+            <li>
+                <strong>Client virtualization</strong> — items are already in memory. Set <code>ShowPagination="false"</code>
+                and pass all rows; once the row count exceeds <code>VirtualizeThreshold</code> (default 500),
+                Blazor's built-in <code>&lt;Virtualize&gt;</code> renders only the rows in the viewport. Tune
+                <code>VirtualItemSize</code> if your rows are denser/taller than the 41 px default — an inaccurate
+                value makes the scrollbar drift. Paged grids never trigger this path because they only render
+                <code>PageSize</code> rows at a time.
+            </li>
+            <li>
+                <strong>Server-side paging</strong> — items live on a backend. Set <code>ServerMode="true"</code>,
+                handle <code>OnServerRequest</code> (Skip/Take/Sort/Filter), and report <code>TotalCount</code>.
+                The grid shows numbered pages and the <code>PageSizeOptions</code> selector. Use this when you have
+                many pages of data but only want to fetch one page at a time.
+            </li>
+        </ul>
+        <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm pl-2 mt-1">
+            <li>
+                <strong>Virtualised server mode (infinite scroll)</strong> — the third mode. Set
+                <code>Virtualized="true"</code> + provide an <code>OnRangeRequest</code> callback. The grid drops
+                pagination, renders one tall scrollable body, and fetches a sliding window of rows from your
+                backend as the user scrolls. Sort, column filters and global search all trigger an automatic
+                refetch via <code>Virtualize.RefreshDataAsync()</code> — no manual wiring needed. Use this when you
+                have hundreds of thousands of rows and want a grid that feels native, not paged.
+            </li>
+        </ul>
+    </div>
+
+    <ComponentDemo Title="Virtualised server mode (infinite scroll)" Description="Set Virtualized=true + provide OnRangeRequest. The grid fetches a sliding window of rows from your backend as the user scrolls, hides pagination, and re-fetches automatically when sort/filter/search change. Demo fakes a 50000-row backend with an in-memory list." Code="@_virtualizedServerCode">
+        <DataGrid TItem="Employee"
+                  Items="@(Array.Empty<Employee>())"
+                  Virtualized="true"
+                  Height="320px"
+                  OnRangeRequest="@FakeRangeRequest"
+                  ShowToolbar="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom page-size options" Description="Pass a custom array to the rows-per-page selector — useful for grids with many rows where 100 isn't enough. Empty array hides the selector." Code="@_pageSizeOptionsCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="10" PageSizeOptions="new[] { 10, 50, 100, 200, 300 }" ShowPagination="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Fixed Height with Scroll" Description="Set a fixed height on the grid to enable vertical scrolling for long lists." Code="@_fixedHeightCode">
         <DataGrid TItem="Employee" Items="@_employees" Height="250px" ShowPagination="false">
             <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
@@ -684,7 +740,12 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowReorderable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable drag-and-drop row reordering.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowClass</td><td class="px-4 py-2 font-mono text-xs">Func&lt;TItem, string&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Function returning CSS class(es) for each row.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowStyle</td><td class="px-4 py-2 font-mono text-xs">Func&lt;TItem, string&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Function returning inline style for each row.</td></tr>
-                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">VirtualizeThreshold</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">500</td><td class="px-4 py-2 text-muted-foreground">Item count threshold above which virtualization kicks in automatically.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">PageSizeOptions</td><td class="px-4 py-2 font-mono text-xs">int[]</td><td class="px-4 py-2 text-xs">[10, 25, 50, 100]</td><td class="px-4 py-2 text-muted-foreground">Page-size options shown in the rows-per-page selector. Pass <code>new[] { 10, 50, 100, 200, 300 }</code> for larger datasets, or an empty array to hide the selector entirely.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">VirtualizeThreshold</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">500</td><td class="px-4 py-2 text-muted-foreground">Row count above which Blazor's <code>&lt;Virtualize&gt;</code> kicks in. Only relevant when <code>ShowPagination=false</code> — paged grids never reach the threshold and never virtualize.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">VirtualItemSize</td><td class="px-4 py-2 font-mono text-xs">float</td><td class="px-4 py-2 text-xs">41</td><td class="px-4 py-2 text-muted-foreground">Estimated row height in CSS pixels. Tune if rows are denser/taller than the default.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">VirtualOverscanCount</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">3</td><td class="px-4 py-2 text-muted-foreground">Extra rows rendered above/below the viewport to hide pop-in during fast scrolling.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Virtualized</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enables ItemsProvider-based infinite-scroll mode. Hides pagination and fetches a sliding row window via <code>OnRangeRequest</code> as the user scrolls. Sort/filter/search refresh the virtualizer automatically.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRangeRequest</td><td class="px-4 py-2 font-mono text-xs">Func&lt;DataGridRangeRequest, ValueTask&lt;DataGridRangeResponse&lt;TItem&gt;&gt;&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Range-fetch callback for virtualised server mode. Receives <code>StartIndex</code>, <code>Count</code>, current Sort/Filter/Search context; must return the slice plus current <code>TotalCount</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ServerMode</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable server-side sorting, filtering, and pagination.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">TotalCount</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">0</td><td class="px-4 py-2 text-muted-foreground">Total item count for server-side pagination.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">IsLoading</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show loading skeleton overlay.</td></tr>
@@ -934,6 +995,80 @@
 </div>
 
 @code {
+    // ---- Virtualised server mode demo ----------------------------------
+    // Simulates a 50,000-row backend on top of the existing _employees seed.
+    // Sort/filter/search context arrives in DataGridRangeRequest; we apply
+    // it in-memory and slice the requested window.
+    private List<Employee>? _virtualBackend;
+
+    private List<Employee> VirtualBackend
+    {
+        get
+        {
+            if (_virtualBackend is not null) return _virtualBackend;
+            _virtualBackend = new List<Employee>(50_000);
+            for (var i = 0; i < 50_000; i++)
+            {
+                var seed = _employees[i % _employees.Count];
+                _virtualBackend.Add(new Employee(
+                    $"{seed.Name} #{i + 1}",
+                    seed.Department,
+                    seed.Salary + (i % 13) * 100,
+                    seed.Status,
+                    seed.StartDate));
+            }
+            return _virtualBackend;
+        }
+    }
+
+    private ValueTask<DataGridRangeResponse<Employee>> FakeRangeRequest(DataGridRangeRequest req)
+    {
+        IEnumerable<Employee> q = VirtualBackend;
+        if (!string.IsNullOrWhiteSpace(req.GlobalSearch))
+        {
+            var s = req.GlobalSearch.ToLowerInvariant();
+            q = q.Where(e => e.Name.ToLowerInvariant().Contains(s)
+                          || e.Department.ToLowerInvariant().Contains(s)
+                          || e.Status.ToLowerInvariant().Contains(s));
+        }
+        if (req.Filters is not null)
+        {
+            foreach (var f in req.Filters)
+            {
+                if (string.IsNullOrEmpty(f.Field) || string.IsNullOrEmpty(f.Value?.ToString())) continue;
+                var fieldVal = f.Value!.ToString()!.ToLowerInvariant();
+                q = f.Field switch
+                {
+                    "Name"       => q.Where(e => e.Name.ToLowerInvariant().Contains(fieldVal)),
+                    "Department" => q.Where(e => e.Department.ToLowerInvariant().Contains(fieldVal)),
+                    "Status"     => q.Where(e => e.Status.ToLowerInvariant().Contains(fieldVal)),
+                    _ => q
+                };
+            }
+        }
+        if (req.Sorts is not null && req.Sorts.Count > 0)
+        {
+            IOrderedEnumerable<Employee>? ordered = null;
+            foreach (var s in req.Sorts)
+            {
+                Func<Employee, object?> key = s.Field switch
+                {
+                    "Name"       => e => e.Name,
+                    "Department" => e => e.Department,
+                    "Salary"     => e => e.Salary,
+                    _ => e => e.Name
+                };
+                ordered = ordered is null
+                    ? (s.Direction == SortDirection.Descending ? q.OrderByDescending(key) : q.OrderBy(key))
+                    : (s.Direction == SortDirection.Descending ? ordered.ThenByDescending(key) : ordered.ThenBy(key));
+            }
+            q = ordered ?? q;
+        }
+        var materialised = q.ToList();
+        var slice = materialised.Skip(req.StartIndex).Take(req.Count).ToList();
+        return ValueTask.FromResult(new DataGridRangeResponse<Employee>(slice, materialised.Count));
+    }
+
     private Employee? _selectedEmployee;
     private int _multiSelectedCount;
     private string? _lastEditInfo;
@@ -1486,6 +1621,37 @@
     private string _fixedHeightCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
           Height=""250px"" ShowPagination=""false"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>";
+
+    private string _virtualizedServerCode = @"// Backend interface — replace with your real API call
+async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest req) {
+    var resp = await Http.GetFromJsonAsync<EmployeeRangeResponse>(
+        $""api/employees?skip={req.StartIndex}&take={req.Count}""
+        + $""&sort={Encode(req.Sorts)}&filter={Encode(req.Filters)}""
+        + $""&q={req.GlobalSearch}"",
+        req.CancellationToken);
+    return new DataGridRangeResponse<Employee>(resp!.Items, resp.TotalCount);
+}
+
+<DataGrid TItem=""Employee""
+          Virtualized=""true""
+          Height=""400px""
+          OnRangeRequest=""@LoadRange""
+          ShowToolbar=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
+                       Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Sortable=""true"" />
+</DataGrid>";
+
+    private string _pageSizeOptionsCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
+          PageSize=""10""
+          PageSizeOptions=""new[] { 10, 50, 100, 200, 300 }""
+          ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />

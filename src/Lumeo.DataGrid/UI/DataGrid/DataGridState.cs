@@ -61,6 +61,34 @@ public record DataGridServerResponse<TItem>(
     int TotalCount
 );
 
+/// <summary>
+/// Request issued by virtualised server mode (<c>Virtualized=true</c> +
+/// <c>OnRangeRequest</c>). Unlike <see cref="DataGridServerRequest"/>,
+/// this is range-based — the grid asks for a window of N items starting
+/// at <see cref="StartIndex"/>, driven by the user's scroll position
+/// rather than page numbers. Sort/filter/search context is still passed
+/// so the backend can apply the same query as the rest of the grid.
+/// </summary>
+public record DataGridRangeRequest(
+    int StartIndex,
+    int Count,
+    List<SortDescriptor>? Sorts,
+    List<FilterDescriptor>? Filters,
+    string? GlobalSearch,
+    CancellationToken CancellationToken = default
+);
+
+/// <summary>
+/// Response from a virtualised server-mode range fetch. <see cref="Items"/>
+/// is the slice the backend returned for the requested window;
+/// <see cref="TotalCount"/> is the total number of matching rows server-side
+/// (used to size the scroll spacers).
+/// </summary>
+public record DataGridRangeResponse<TItem>(
+    IReadOnlyList<TItem> Items,
+    int TotalCount
+);
+
 public record CellEditEventArgs<TItem>(
     TItem Item,
     string Field,
