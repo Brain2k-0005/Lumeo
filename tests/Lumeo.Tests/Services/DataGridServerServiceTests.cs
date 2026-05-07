@@ -344,8 +344,16 @@ public class DataGridServerServiceTests : IDisposable
         _service.DebounceSearch(_ => { callCount++; return Task.CompletedTask; }, delayMs: 100);
         _service.DebounceSearch(_ => { callCount++; return Task.CompletedTask; }, delayMs: 100);
 
-        // Wait longer than debounce delay so the last call has time to fire
-        await Task.Delay(400);
+        // Poll for the debounced fire instead of a fixed sleep — Linux CI
+        // runners under load can starve the fire-and-forget continuation
+        // for 500ms+, which made a fixed Task.Delay(400) flake here.
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (callCount < 1 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
+        // Then a small idle window to confirm the first call doesn't ALSO fire.
+        await Task.Delay(150);
         Assert.Equal(1, callCount);
     }
 
