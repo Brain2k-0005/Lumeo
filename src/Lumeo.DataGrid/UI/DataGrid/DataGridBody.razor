@@ -95,10 +95,45 @@ else if (Context is not null && Context.DisplayedItems.Count == 0)
         </tr>
     </tbody>
 }
+else if (Context is not null && ServerVirtualizationProvider is not null)
+{
+    @* Virtualised server mode: rows are fetched in scroll-driven windows
+       via ItemsProvider, so the in-memory list is empty until the user
+       scrolls. SpacerElement="tr" is non-negotiable inside <tbody>. *@
+    <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
+        <Virtualize @ref="_virtualize" TItem="IndexedItem"
+                    ItemsProvider="ServerVirtualizationProvider"
+                    Context="entry"
+                    SpacerElement="tr"
+                    ItemSize="@VirtualItemSize"
+                    OverscanCount="@VirtualOverscanCount">
+            <ItemContent>
+                <DataGridRow TItem="TItem"
+                             Item="entry.Item"
+                             RowIndex="entry.Index"
+                             DetailTemplate="DetailTemplate"
+                             OnContextMenu="OnContextMenu" />
+            </ItemContent>
+            <Placeholder>
+                <tr class="border-b border-border/40">
+                    <td colspan="@ColSpan" class="px-3 py-2">
+                        <Skeleton Class="h-4 w-full rounded" />
+                    </td>
+                </tr>
+            </Placeholder>
+        </Virtualize>
+    </tbody>
+}
 else if (Context is not null && UseVirtualization)
 {
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
-        <Virtualize Items="@_indexedItems" Context="entry">
+        @* SpacerElement="tr" is required: <Virtualize> defaults to <div>
+           spacers, but <div> is invalid as a direct child of <tbody> and the
+           browser hoists it out of the table, breaking layout. *@
+        <Virtualize Items="@_indexedItems" Context="entry"
+                    SpacerElement="tr"
+                    ItemSize="@VirtualItemSize"
+                    OverscanCount="@VirtualOverscanCount">
             <DataGridRow TItem="TItem"
                          Item="entry.Item"
                          RowIndex="entry.Index"
@@ -158,6 +193,11 @@ else if (Context is not null)
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
     [Parameter] public RenderFragment? EmptyContent { get; set; }
     [Parameter] public bool UseVirtualization { get; set; }
+    [Parameter] public float VirtualItemSize { get; set; } = 41f;
+    [Parameter] public int VirtualOverscanCount { get; set; } = 3;
+    /// <summary>When set, switches the body to ItemsProvider-mode
+    /// virtualisation (window-fetched server scrolling). Null disables.</summary>
+    [Parameter] public Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderDelegate<IndexedItem>? ServerVirtualizationProvider { get; set; }
     [Parameter] public bool HasDetailTemplate { get; set; }
     [Parameter] public int SkeletonRowCount { get; set; } = 5;
     [Parameter] public EventCallback<(TItem, double, double)> OnContextMenu { get; set; }
@@ -166,14 +206,21 @@ else if (Context is not null)
 
     private string CssClass => $"{Class}".Trim();
 
-    private List<IndexedItem<TItem>> _indexedItems = new();
+    private List<IndexedItem> _indexedItems = new();
+    private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<IndexedItem>? _virtualize;
+
+    /// <summary>Tells the inner <c>Virtualize</c> component to discard its
+    /// window cache and refetch via <see cref="ServerVirtualizationProvider"/>.
+    /// No-op when not in ItemsProvider mode (no virtualizer in tree).</summary>
+    public Task RefreshVirtualizeAsync() =>
+        _virtualize is not null ? _virtualize.RefreshDataAsync() : Task.CompletedTask;
 
     protected override void OnParametersSet()
     {
         if (UseVirtualization && Context is not null)
         {
             _indexedItems = Context.DisplayedItems
-                .Select((item, idx) => new IndexedItem<TItem>(item, idx))
+                .Select((item, idx) => new IndexedItem(item, idx))
                 .ToList();
         }
     }
@@ -189,5 +236,5 @@ else if (Context is not null)
         }
     }
 
-    private record IndexedItem<T>(T Item, int Index);
+    public record IndexedItem(TItem Item, int Index);
 }

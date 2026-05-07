@@ -5,20 +5,23 @@
 @if (Context is not null)
 {
     <div data-slot="datagrid-pagination" class="@CssClass" @attributes="AdditionalAttributes">
-        <div class="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
-            <span class="text-xs">@L["Pagination.RowsPerPage"]</span>
-            <Select Value="@Context.PageSize.ToString()" ValueChanged="@OnPageSizeSelected">
-                <SelectTrigger Class="h-8 w-[70px]">
-                    <span class="text-sm">@Context.PageSize</span>
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem Value="10">10</SelectItem>
-                    <SelectItem Value="25">25</SelectItem>
-                    <SelectItem Value="50">50</SelectItem>
-                    <SelectItem Value="100">100</SelectItem>
-                </SelectContent>
-            </Select>
-        </div>
+        @if (PageSizeOptions is { Length: > 0 })
+        {
+            <div class="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+                <span class="text-xs">@L["Pagination.RowsPerPage"]</span>
+                <Select Value="@Context.PageSize.ToString()" ValueChanged="@OnPageSizeSelected">
+                    <SelectTrigger Class="h-8 w-[70px]">
+                        <span class="text-sm">@Context.PageSize</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        @foreach (var size in PageSizeOptions)
+                        {
+                            <SelectItem Value="@size.ToString()">@size</SelectItem>
+                        }
+                    </SelectContent>
+                </Select>
+            </div>
+        }
 
         <div class="ml-auto flex items-center gap-4 text-sm text-muted-foreground whitespace-nowrap">
             <span class="tabular-nums">@L["Pagination.RangeOfTotal", StartItem, EndItem, Context.TotalCount]</span>
@@ -50,6 +53,9 @@
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [Parameter] public EventCallback<int> PageChanged { get; set; }
     [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+    /// <summary>Page-size options shown in the rows-per-page selector.
+    /// Empty array hides the selector entirely.</summary>
+    [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

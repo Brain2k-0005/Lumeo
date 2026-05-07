@@ -126,9 +126,13 @@
                                 OnColumnReorder="HandleColumnReorder" />
 
                 <DataGridBody TItem="TItem"
+                              @ref="_bodyRef"
                               DetailTemplate="DetailTemplate"
                               EmptyContent="EmptyContent"
                               UseVirtualization="@UseVirtualization"
+                              VirtualItemSize="@VirtualItemSize"
+                              VirtualOverscanCount="@VirtualOverscanCount"
+                              ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
                               HasDetailTemplate="@(DetailTemplate is not null)"
                               SkeletonRowCount="@PageSize"
                               OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
@@ -139,11 +143,12 @@
             </table>
         </div>
 
-        @if (ShowPagination && !IsLoading)
+        @if (ShowPagination && !IsLoading && !_useServerVirtualization)
         {
             <DataGridPagination TItem="TItem"
                                 PageChanged="HandlePageChanged"
-                                PageSizeChanged="HandlePageSizeChanged" />
+                                PageSizeChanged="HandlePageSizeChanged"
+                                PageSizeOptions="@PageSizeOptions" />
         }
     </div>;
 }
@@ -207,6 +212,11 @@
     [Parameter] public DataGridSelectionMode SelectionMode { get; set; } = DataGridSelectionMode.None;
     [Parameter] public DataGridEditMode EditMode { get; set; } = DataGridEditMode.None;
     [Parameter] public int PageSize { get; set; } = 10;
+    /// <summary>The list of page-size options shown in the rows-per-page
+    /// selector. Defaults to <c>{ 10, 25, 50, 100 }</c>. Set to e.g.
+    /// <c>{ 10, 50, 100, 200, 300 }</c> for larger datasets, or to an
+    /// empty array to hide the selector entirely.</summary>
+    [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
     [Parameter] public bool ShowPagination { get; set; } = true;
     [Parameter] public bool ShowToolbar { get; set; }
 
@@ -229,7 +239,19 @@
     /// When no flags are set (or <see cref="ShowExport"/> is false), the Export button is hidden.
     /// </summary>
     [Parameter] public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
+    /// <summary>Item count above which Blazor's <c>&lt;Virtualize&gt;</c>
+    /// kicks in. Only relevant when <see cref="ShowPagination"/> is false
+    /// (or <see cref="PageSize"/> &gt; this threshold) — paged grids show
+    /// at most <see cref="PageSize"/> rows at once and never trigger
+    /// virtualization. Default 500.</summary>
     [Parameter] public int VirtualizeThreshold { get; set; } = 500;
+    /// <summary>Estimated row height in CSS pixels — used by
+    /// <c>&lt;Virtualize&gt;</c> to size the scroll spacers. Tune if your
+    /// rows are taller (dense badges, two-line cells). Default 41px.</summary>
+    [Parameter] public float VirtualItemSize { get; set; } = 41f;
+    /// <summary>Extra rows rendered above and below the viewport to
+    /// hide pop-in during fast scrolling. Default 3.</summary>
+    [Parameter] public int VirtualOverscanCount { get; set; } = 3;
     [Parameter] public bool Reorderable { get; set; }
     [Parameter] public bool RowReorderable { get; set; }
     [Parameter] public string? GroupBy { get; set; }
@@ -277,6 +299,23 @@
     [Parameter] public int TotalCount { get; set; }
     [Parameter] public bool IsLoading { get; set; }
 
+    // --- Virtualised server mode (infinite-scroll, window-fetched) ---
+    /// <summary>
+    /// Enables <see cref="Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize{TItem}"/>
+    /// with an <c>ItemsProvider</c> — rows are fetched from the backend
+    /// in scroll-driven windows instead of paged. Requires
+    /// <see cref="OnRangeRequest"/>. When active, pagination is hidden
+    /// automatically and the grid renders a single tall scrollable body.
+    /// </summary>
+    [Parameter] public bool Virtualized { get; set; }
+    /// <summary>
+    /// Range-fetch callback used in virtualised server mode. The grid
+    /// invokes this whenever the viewport scrolls into an unloaded
+    /// window. The callback must return the requested slice plus the
+    /// current total row count so the scroll spacers stay accurate.
+    /// </summary>
+    [Parameter] public Func<DataGridRangeRequest, ValueTask<DataGridRangeResponse<TItem>>>? OnRangeRequest { get; set; }
+
     // --- Templates ---
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
@@ -315,6 +354,42 @@
         Culture ?? System.Globalization.CultureInfo.CurrentCulture;
 
     // --- Internal state ---
+    private DataGridBody<TItem>? _bodyRef;
+    private bool _useServerVirtualization => Virtualized && OnRangeRequest is not null;
+
+    private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>>
+        ServerVirtualizationProviderImpl(Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest req)
+    {
+        if (OnRangeRequest is null)
+        {
+            return new Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>(
+                Array.Empty<DataGridBody<TItem>.IndexedItem>(), 0);
+        }
+        var rangeRequest = new DataGridRangeRequest(
+            req.StartIndex,
+            req.Count,
+            _sorts.Count > 0 ? new List<SortDescriptor>(_sorts) : null,
+            _filters.Count > 0 ? new List<FilterDescriptor>(_filters) : null,
+            _globalSearch,
+            req.CancellationToken);
+        var resp = await OnRangeRequest(rangeRequest);
+        var indexed = resp.Items
+            .Select((it, i) => new DataGridBody<TItem>.IndexedItem(it, req.StartIndex + i))
+            .ToList();
+        TotalCount = resp.TotalCount;
+        return new Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>(
+            indexed, resp.TotalCount);
+    }
+
+    /// <summary>
+    /// Forces the virtualised server view to discard its window cache and
+    /// refetch from the current scroll position. Called automatically when
+    /// sort/filter/search change; expose as <c>@ref</c> if you need to
+    /// trigger it manually (e.g. after an external data mutation).
+    /// </summary>
+    public Task RefreshVirtualizedAsync() =>
+        _bodyRef is not null ? _bodyRef.RefreshVirtualizeAsync() : Task.CompletedTask;
+
     private List<DataGridColumn<TItem>> _columnDefs = new();
     private List<DataGridColumn<TItem>> _orderedColumns = new();
     private List<TItem> _processedItems = new();
@@ -937,7 +1012,11 @@
         _currentPage = 1;
         ScheduleAutoSave();
 
-        if (ServerMode)
+        if (_useServerVirtualization)
+        {
+            await RefreshVirtualizedAsync();
+        }
+        else if (ServerMode)
         {
             await RequestServerData();
         }
@@ -954,7 +1033,11 @@
         _currentPage = 1;
         ScheduleAutoSave();
 
-        if (ServerMode)
+        if (_useServerVirtualization)
+        {
+            await RefreshVirtualizedAsync();
+        }
+        else if (ServerMode)
         {
             await RequestServerData();
         }
@@ -970,7 +1053,11 @@
         _currentPage = 1;
         ScheduleAutoSave();
 
-        if (ServerMode)
+        if (_useServerVirtualization)
+        {
+            await RefreshVirtualizedAsync();
+        }
+        else if (ServerMode)
         {
             await RequestServerData();
         }
@@ -986,7 +1073,24 @@
         _currentPage = 1;
         ScheduleAutoSave();
 
-        if (ServerMode)
+        if (_useServerVirtualization)
+        {
+            // Debounce the same way ServerMode does — typing should not
+            // round-trip on every keystroke. Guard against lazy init: the
+            // service is normally created in OnAfterRender, but search may
+            // fire before that on a slow first paint.
+            _serverService ??= new DataGridServerService();
+            _serverService.DebounceSearch(async ct =>
+            {
+                if (ct.IsCancellationRequested) return;
+                await InvokeAsync(async () =>
+                {
+                    await RefreshVirtualizedAsync();
+                    StateHasChanged();
+                });
+            });
+        }
+        else if (ServerMode)
         {
             _serverService!.DebounceSearch(async ct =>
             {
