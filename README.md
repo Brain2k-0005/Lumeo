@@ -125,12 +125,16 @@ dotnet new lumeo-component  -n FancyCard
 
 ### `@lumeo-ui/mcp-server` — MCP server for LLM codegen
 
-Give Claude, ChatGPT, Copilot, or Cursor the schemas + examples they need to write correct Lumeo markup.
+Give Claude, ChatGPT, Copilot, or Cursor the schemas + examples they need to write correct Lumeo markup. Nine tools: `lumeo_list_components`, `lumeo_search`, `lumeo_get_component` (full per-parameter schema), `lumeo_get_example`, `lumeo_get_install`, `lumeo_validate_markup` (pre-flight check Razor for hallucinated APIs / bad enums / bad nesting), `lumeo_get_theme_tokens`, `lumeo_list_patterns` / `lumeo_get_pattern`, `lumeo_changelog`.
 
 ```bash
 npm install -g @lumeo-ui/mcp-server
 # then wire into Claude Desktop / Cursor / your MCP client config
 ```
+
+### Lumeo Agent Skill — `skills/lumeo/`
+
+A [Claude Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) that teaches an AI agent the Lumeo conventions and how to drive the MCP server. Copy `skills/lumeo/` into `~/.claude/skills/` (or your project's `.claude/skills/`), or install it from an agent-skill registry. See [`skills/lumeo/README.md`](skills/lumeo/README.md).
 
 ## Setup
 
