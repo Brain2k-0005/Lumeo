@@ -19,57 +19,131 @@
         <TreeView TItem="string" Items="_basicItems" Class="max-w-sm" />
     </ComponentDemo>
 
-    <ComponentDemo Title="With Checkboxes" Code="@_codeCheckbox">
-        <TreeView TItem="string" Items="_checkItems" ShowCheckboxes="true" Class="max-w-sm" />
+    <ComponentDemo Title="With Checkboxes (Tri-state)" Code="@_codeCheckbox">
+        <TreeView TItem="string" Items="_checkItems" ShowCheckboxes="true" CascadeCheck="true" Class="max-w-sm" />
     </ComponentDemo>
 
     <ComponentDemo Title="With Search" Code="@_codeSearch">
         <TreeView TItem="string" Items="_basicItems" ShowSearch="true" Class="max-w-sm" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multi-select" Code="@_codeMultiSelect">
+        <Stack Gap="2" Class="max-w-sm">
+            <TreeView TItem="string" Items="_basicItems" MultiSelect="true" @bind-SelectedValues="_selectedValues" Class="max-w-sm" />
+            @if (_selectedValues.Count > 0)
+            {
+                <Lumeo.Text Size="sm" Color="muted">Selected: @string.Join(", ", _selectedValues.Where(v => v is not null))</Lumeo.Text>
+            }
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Lazy Load Children" Code="@_codeLazy">
+        <TreeView TItem="string" Items="_lazyItems" LoadChildren="LoadChildrenAsync" Class="max-w-sm" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom Node Template" Code="@_codeTemplate">
+        <TreeView TItem="string" Items="_basicItems" Class="max-w-sm">
+            <NodeTemplate Context="item">
+                <Flex Gap="2" Align="center">
+                    <DynamicIcon Name="@(item.Children is { Count: > 0 } ? "Folder" : "File")" Class="h-4 w-4 text-muted-foreground" />
+                    <Lumeo.Text As="span" Size="sm">@item.Text</Lumeo.Text>
+                </Flex>
+            </NodeTemplate>
+        </TreeView>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Expand All / Collapse All" Code="@_codeExpandAll">
+        <Stack Gap="2" Class="max-w-sm">
+            <Flex Gap="2">
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="() => _treeRef?.ExpandAllNodes()">Expand All</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="() => _treeRef?.CollapseAllNodes()">Collapse All</Button>
+            </Flex>
+            <TreeView @ref="_treeRef" TItem="string" Items="_basicItems" />
+        </Stack>
     </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
 <Stack Gap="6" Class="mt-12">
     <Heading Level="2" Class="text-2xl font-bold text-foreground">API Reference</Heading>
-    <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
-        <table class="w-full min-w-[600px] text-sm">
-            <thead>
-                <tr class="border-b border-border/40 bg-muted/40">
-                    <th class="text-left p-3 font-medium text-foreground">Property</th>
-                    <th class="text-left p-3 font-medium text-foreground">Type</th>
-                    <th class="text-left p-3 font-medium text-foreground">Default</th>
-                    <th class="text-left p-3 font-medium text-foreground">Description</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-border/40">
-                <tr><td class="p-3 font-mono text-xs text-primary">Items</td><td class="p-3 font-mono text-xs text-muted-foreground">List&lt;TreeViewItem&lt;T&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Tree data source.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">ShowCheckboxes</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Show checkboxes on each node.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">Expandable</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Allow expanding/collapsing nodes.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">ShowSearch</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Show search filter above the tree.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">OnItemClick</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;TreeViewItem&lt;T&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fired when a node is clicked.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">OnItemCheck</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;TreeViewItem&lt;T&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fired when a node checkbox is toggled.</td></tr>
-            </tbody>
-        </table>
-    </Stack>
 
-    <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
-        <table class="w-full min-w-[600px] text-sm">
-            <thead>
-                <tr class="border-b border-border/40 bg-muted/40">
-                    <th class="text-left p-3 font-medium text-foreground" colspan="4">TreeViewNode (internal — used when building custom node templates)</th>
-                </tr>
-                <tr class="border-b border-border/40 bg-muted/40">
-                    <th class="text-left p-3 font-medium text-foreground">Property</th>
-                    <th class="text-left p-3 font-medium text-foreground">Type</th>
-                    <th class="text-left p-3 font-medium text-foreground">Default</th>
-                    <th class="text-left p-3 font-medium text-foreground">Description</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-border/40">
-                <tr><td class="p-3 font-mono text-xs text-primary">Item</td><td class="p-3 font-mono text-xs text-muted-foreground">TreeViewItem&lt;T&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">The node data for this row. Required.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">Level</td><td class="p-3 font-mono text-xs text-muted-foreground">int</td><td class="p-3 font-mono text-xs text-muted-foreground">0</td><td class="p-3 text-muted-foreground">Depth of this node; controls indentation.</td></tr>
-            </tbody>
-        </table>
+    <Stack Gap="8" Class="mt-8">
+        <Stack Gap="3">
+            <Heading Level="3">TreeView&lt;T&gt;</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Items</td><td class="p-3 font-mono text-xs text-muted-foreground">List&lt;TreeViewItem&lt;T&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Tree data source.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ShowCheckboxes</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Show checkboxes on each node.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">CascadeCheck</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">When true, checking a parent automatically checks its children and parent state reflects an indeterminate state when only some children are checked.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Expandable</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Allow expanding/collapsing nodes.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ExpandAll</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">When true, all nodes start expanded.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ShowSearch</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Show search filter above the tree.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">MultiSelect</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Enables selecting multiple nodes at once.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">SelectedValues</td><td class="p-3 font-mono text-xs text-muted-foreground">List&lt;T&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Currently selected node values (multi-select). Use with @@bind-SelectedValues.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">SelectedValuesChanged</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;List&lt;T&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Callback invoked when the selection changes.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">LoadChildren</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;TreeViewItem&lt;T&gt;, Task&lt;List&lt;TreeViewItem&lt;T&gt;&gt;&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Async function to lazily load children when a node is first expanded. The node's IsLoading flag is set while the task runs.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">CheckedValuesChanged</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;List&lt;T?&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Callback invoked with all currently-checked values whenever a checkbox is toggled.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">NodeTemplate</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;TreeViewItem&lt;T&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Custom template for the label area of each node. Receives the TreeViewItem as context.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnItemClick</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;TreeViewItem&lt;T&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fired when a node is clicked.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnItemCheck</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;TreeViewItem&lt;T&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fired when a node checkbox is toggled.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">TreeView&lt;T&gt; Public Methods</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Method</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">ExpandAllNodes()</td><td class="p-3 text-muted-foreground">Programmatically expands every node in the tree.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">CollapseAllNodes()</td><td class="p-3 text-muted-foreground">Programmatically collapses every node in the tree.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">TreeViewItem&lt;T&gt;</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Text</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 text-muted-foreground">Display label for the node.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Value</td><td class="p-3 font-mono text-xs text-muted-foreground">T?</td><td class="p-3 text-muted-foreground">Application-domain value associated with the node.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Children</td><td class="p-3 font-mono text-xs text-muted-foreground">List&lt;TreeViewItem&lt;T&gt;&gt;?</td><td class="p-3 text-muted-foreground">Child nodes. Null/empty = leaf node unless IsLeaf is set.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsExpanded</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 text-muted-foreground">Whether the node is currently expanded.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsChecked</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 text-muted-foreground">Whether the node's checkbox is checked.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsIndeterminate</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 text-muted-foreground">True when some (but not all) children are checked — shown as a mixed/indeterminate checkbox.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsLeaf</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 text-muted-foreground">When true, hides the expand chevron and the loading indicator even if the node has no children yet.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsLoading</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 text-muted-foreground">Set automatically while LoadChildren is running. Renders a spinner in place of the chevron.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">IsDisabled</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 text-muted-foreground">Disables the node so it cannot be clicked or checked.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Icon</td><td class="p-3 font-mono text-xs text-muted-foreground">SvgIcon?</td><td class="p-3 text-muted-foreground">Optional icon rendered before the node label (uses the Blazicons SvgIcon type).</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
     </Stack>
 </Stack>
 
@@ -82,6 +156,9 @@
 </div>
 
 @code {
+    private TreeView<string>? _treeRef;
+    private List<string> _selectedValues = new();
+
     private List<TreeView<string>.TreeViewItem<string>> _basicItems = new()
     {
         new() { Text = "Documents", Children = new()
@@ -119,7 +196,78 @@
         }},
     };
 
+    // Lazy-load demo: root nodes have no children until expanded
+    private List<TreeView<string>.TreeViewItem<string>> _lazyItems = new()
+    {
+        new() { Text = "src", Value = "src" },
+        new() { Text = "tests", Value = "tests" },
+        new() { Text = "docs", Value = "docs", IsLeaf = true },
+    };
+
+    private async Task<List<TreeView<string>.TreeViewItem<string>>> LoadChildrenAsync(TreeView<string>.TreeViewItem<string> item)
+    {
+        await Task.Delay(600); // simulate network
+        return item.Value switch
+        {
+            "src" => new()
+            {
+                new() { Text = "Components", Value = "components" },
+                new() { Text = "Services", Value = "services" },
+                new() { Text = "wwwroot", Value = "wwwroot" },
+            },
+            "tests" => new()
+            {
+                new() { Text = "Unit", Value = "unit" },
+                new() { Text = "Integration", Value = "integration" },
+            },
+            _ => new()
+        };
+    }
+
     private string _codeBasic = @"<TreeView TItem=""string"" Items=""_items"" />";
-    private string _codeCheckbox = @"<TreeView TItem=""string"" Items=""_items"" ShowCheckboxes=""true"" />";
+    private string _codeCheckbox = @"<TreeView TItem=""string"" Items=""_items"" ShowCheckboxes=""true"" CascadeCheck=""true"" />";
     private string _codeSearch = @"<TreeView TItem=""string"" Items=""_items"" ShowSearch=""true"" />";
+
+    private string _codeMultiSelect = @"<TreeView TItem=""string"" Items=""_items"" MultiSelect=""true"" @bind-SelectedValues=""_selectedValues"" />";
+
+    private string _codeLazy = @"<TreeView TItem=""string"" Items=""_lazyItems"" LoadChildren=""LoadChildrenAsync"" />
+
+@code {
+    private List<TreeView<string>.TreeViewItem<string>> _lazyItems = new()
+    {
+        new() { Text = ""src"", Value = ""src"" },
+        new() { Text = ""tests"", Value = ""tests"" },
+        new() { Text = ""docs"", Value = ""docs"", IsLeaf = true },
+    };
+
+    private async Task<List<TreeView<string>.TreeViewItem<string>>> LoadChildrenAsync(TreeView<string>.TreeViewItem<string> item)
+    {
+        await Task.Delay(600);
+        return item.Value switch
+        {
+            ""src"" => new() { new() { Text = ""Components"" }, new() { Text = ""Services"" } },
+            ""tests"" => new() { new() { Text = ""Unit"" }, new() { Text = ""Integration"" } },
+            _ => new()
+        };
+    }
+}";
+
+    private string _codeTemplate = @"<TreeView TItem=""string"" Items=""_items"">
+    <NodeTemplate Context=""item"">
+        <Flex Gap=""2"" Align=""center"">
+            <Blazicon Svg=""@(item.Children is { Count: > 0 } ? Lucide.Folder : Lucide.File)"" class=""h-4 w-4 text-muted-foreground"" />
+            <span class=""text-sm"">@item.Text</span>
+        </Flex>
+    </NodeTemplate>
+</TreeView>";
+
+    private string _codeExpandAll = @"<Flex Gap=""2"">
+    <Button Size=""Button.ButtonSize.Sm"" Variant=""Button.ButtonVariant.Outline"" OnClick=""() => _tree?.ExpandAllNodes()"">Expand All</Button>
+    <Button Size=""Button.ButtonSize.Sm"" Variant=""Button.ButtonVariant.Outline"" OnClick=""() => _tree?.CollapseAllNodes()"">Collapse All</Button>
+</Flex>
+<TreeView @ref=""_tree"" TItem=""string"" Items=""_items"" />
+
+@code {
+    private TreeView<string>? _tree;
+}";
 }

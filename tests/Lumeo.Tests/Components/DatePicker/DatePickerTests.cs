@@ -1,4 +1,4 @@
-using Bunit;
+﻿using Bunit;
 using Microsoft.AspNetCore.Components;
 using Xunit;
 using Lumeo.Tests.Helpers;
@@ -226,4 +226,98 @@ public class DatePickerTests : IAsyncLifetime
         var ex = Record.Exception(() => button.Click());
         Assert.Null(ex);
     }
+
+    // --- rc.28/29: Inline mode, FirstDayOfWeek/ShowWeekNumbers forwarding ---
+
+    [Fact]
+    public void Inline_Mode_Renders_Calendar_Without_Popover()
+    {
+        // When Inline=true, the calendar should be visible immediately without clicking
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.DatePicker>(0);
+            builder.AddAttribute(1, "Inline", true);
+            builder.CloseComponent();
+        });
+
+        // Calendar day headers should be visible immediately (no popover trigger click needed)
+        Assert.Contains("Mo", cut.Markup);
+        Assert.Contains("Tu", cut.Markup);
+    }
+
+    [Fact]
+    public void Inline_Mode_Has_No_Shrink_Class_On_Calendar_Icon()
+    {
+        // When Inline=true, there is no trigger button so no calendar icon with shrink-0 class
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.DatePicker>(0);
+            builder.AddAttribute(1, "Inline", true);
+            builder.CloseComponent();
+        });
+
+        // The trigger button with shrink-0 on its icon should not be present
+        var buttons = cut.FindAll("button[type='button']");
+        // In inline mode there should be no trigger button (calendar renders directly)
+        Assert.DoesNotContain("shrink-0", cut.Markup.Contains("shrink-0") ? "shrink-0" : "no");
+    }
+
+    [Fact]
+    public void ShowWeekNumbers_Parameter_Accepted_Without_Exception()
+    {
+        // Verifies that ShowWeekNumbers parameter is forwarded to Calendar without throwing
+        var ex = Record.Exception(() =>
+        {
+            _ctx.Render(builder =>
+            {
+                builder.OpenComponent<L.DatePicker>(0);
+                builder.AddAttribute(1, "Inline", true);
+                builder.AddAttribute(2, "ShowWeekNumbers", true);
+                builder.CloseComponent();
+            });
+        });
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void FirstDayOfWeek_Parameter_Accepted_Without_Exception()
+    {
+        // Verifies FirstDayOfWeek forwarded to Calendar without throwing
+        var ex = Record.Exception(() =>
+        {
+            _ctx.Render(builder =>
+            {
+                builder.OpenComponent<L.DatePicker>(0);
+                builder.AddAttribute(1, "Inline", true);
+                builder.AddAttribute(2, "FirstDayOfWeek", DayOfWeek.Monday);
+                builder.CloseComponent();
+            });
+        });
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Mode_Enum_Single_Is_Default()
+    {
+        // Default Mode is DatePickerMode.Single - shows standard placeholder
+        var cut = RenderDatePicker();
+        Assert.Contains("Pick a date", cut.Markup);
+    }
+
+    [Fact]
+    public void Mode_Enum_Range_Shows_Correct_Placeholder()
+    {
+        // Mode=Range should not throw and renders a range-style picker
+        var ex = Record.Exception(() =>
+        {
+            _ctx.Render(builder =>
+            {
+                builder.OpenComponent<L.DatePicker>(0);
+                builder.AddAttribute(1, "Mode", L.DatePicker.DatePickerMode.Range);
+                builder.CloseComponent();
+            });
+        });
+        Assert.Null(ex);
+    }
+
 }

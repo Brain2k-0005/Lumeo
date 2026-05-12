@@ -1,7 +1,7 @@
 @namespace Lumeo
 @typeparam T
 
-<div class="@CssClass" role="tree" @attributes="AdditionalAttributes">
+<div class="@CssClass" role="tree" aria-multiselectable="@MultiSelect.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
     @if (ShowSearch)
     {
         <div class="mb-2">
@@ -19,8 +19,15 @@
             <TreeViewNode T="T" @key="item" Item="item" Level="0"
                           ShowCheckboxes="ShowCheckboxes"
                           Expandable="Expandable"
-                          OnItemClick="OnItemClick"
-                          OnItemCheck="OnItemCheck" />
+                          CascadeCheck="CascadeCheck"
+                          MultiSelect="MultiSelect"
+                          SelectedValues="_selectedValues"
+                          NodeTemplate="NodeTemplate"
+                          LoadChildren="LoadChildren"
+                          OnItemClick="HandleItemClick"
+                          OnItemCheck="HandleItemCheck"
+                          OnExpandChanged="HandleExpandChanged"
+                          OnSelectionChanged="HandleSelectionChanged" />
         }
     }
 </div>
@@ -35,23 +42,93 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    [Parameter] public Func<TreeViewItem<T>, Task<List<TreeViewItem<T>>>>? LoadChildren { get; set; }
+    [Parameter] public bool CascadeCheck { get; set; } = true;
+    [Parameter] public EventCallback<List<T?>> CheckedValuesChanged { get; set; }
+    [Parameter] public RenderFragment<TreeViewItem<T>>? NodeTemplate { get; set; }
+    [Parameter] public bool ExpandAll { get; set; }
+    [Parameter] public bool MultiSelect { get; set; }
+    [Parameter] public List<T>? SelectedValues { get; set; }
+    [Parameter] public EventCallback<List<T>> SelectedValuesChanged { get; set; }
+
     private string _searchText = "";
     private List<TreeViewItem<T>>? _previousItems;
+    private bool _previousExpandAll;
     private List<TreeViewItem<T>> _filteredCache = [];
-
-    // The list actually rendered — either the full tree or the cached filtered result.
     private List<TreeViewItem<T>> _displayItems = [];
+    private HashSet<T> _selectedValues = [];
 
     private string CssClass => $"text-sm {Class}".Trim();
 
     protected override void OnParametersSet()
     {
-        // Recompute whenever the Items reference changes (or on first call).
-        if (!ReferenceEquals(Items, _previousItems))
+        if (SelectedValues is not null)
+            _selectedValues = [..SelectedValues];
+
+        bool itemsChanged = !ReferenceEquals(Items, _previousItems);
+        bool expandAllChanged = ExpandAll != _previousExpandAll;
+
+        if (itemsChanged)
         {
             _previousItems = Items;
+            if (ExpandAll)
+                ApplyExpandAll(Items ?? [], true);
             RebuildDisplay();
         }
+        else if (expandAllChanged)
+        {
+            _previousExpandAll = ExpandAll;
+            ApplyExpandAll(Items ?? [], ExpandAll);
+            RebuildDisplay();
+        }
+    }
+
+    public void ExpandAllNodes()
+    {
+        ApplyExpandAll(Items ?? [], true);
+        StateHasChanged();
+    }
+
+    public void CollapseAllNodes()
+    {
+        ApplyExpandAll(Items ?? [], false);
+        StateHasChanged();
+    }
+
+    private async Task HandleItemClick(TreeViewItem<T> item)
+    {
+        await OnItemClick.InvokeAsync(item);
+    }
+
+    private async Task HandleItemCheck(TreeViewItem<T> item)
+    {
+        if (CascadeCheck && ShowCheckboxes)
+        {
+            SetChildrenChecked(item.Children, item.IsChecked);
+            UpdateAncestorStates(Items ?? []);
+        }
+        await OnItemCheck.InvokeAsync(item);
+
+        if (CheckedValuesChanged.HasDelegate)
+        {
+            var allChecked = CollectChecked(Items ?? []);
+            await CheckedValuesChanged.InvokeAsync(allChecked);
+        }
+
+        StateHasChanged();
+    }
+
+    private Task HandleExpandChanged(TreeViewItem<T> _)
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleSelectionChanged(TreeViewItem<T> item)
+    {
+        if (SelectedValuesChanged.HasDelegate)
+            await SelectedValuesChanged.InvokeAsync([.._selectedValues]);
+        StateHasChanged();
     }
 
     private void OnSearchInput(ChangeEventArgs e)
@@ -60,7 +137,6 @@
         RebuildDisplay();
     }
 
-    // Called whenever Items or _searchText changes — rebuilds _displayItems once.
     private void RebuildDisplay()
     {
         if (string.IsNullOrWhiteSpace(_searchText))
@@ -86,19 +162,96 @@
 
             if (item.Text.Contains(filter, StringComparison.OrdinalIgnoreCase) || childMatches.Count > 0)
             {
-                result.Add(item with { Children = childMatches.Count > 0 ? childMatches : item.Children, IsExpanded = childMatches.Count > 0 || item.IsExpanded });
+                result.Add(item with
+                {
+                    Children = childMatches.Count > 0 ? childMatches : item.Children,
+                    IsExpanded = childMatches.Count > 0 || item.IsExpanded
+                });
             }
         }
         return result;
+    }
+
+    private static void SetChildrenChecked(List<TreeViewItem<T>>? children, bool value)
+    {
+        if (children is null) return;
+        foreach (var child in children)
+        {
+            child.IsChecked = value;
+            child.IsIndeterminate = false;
+            SetChildrenChecked(child.Children, value);
+        }
+    }
+
+    private static (bool allChecked, bool anyChecked) UpdateAncestorStates(List<TreeViewItem<T>> items)
+    {
+        bool allChecked = true;
+        bool anyChecked = false;
+
+        foreach (var item in items)
+        {
+            if (item.Children is { Count: > 0 })
+            {
+                var (childAll, childAny) = UpdateAncestorStates(item.Children);
+                if (childAll)
+                {
+                    item.IsChecked = true;
+                    item.IsIndeterminate = false;
+                }
+                else if (childAny || item.IsChecked)
+                {
+                    item.IsIndeterminate = true;
+                    item.IsChecked = false;
+                }
+                else
+                {
+                    item.IsChecked = false;
+                    item.IsIndeterminate = false;
+                }
+            }
+
+            if (item.IsChecked) anyChecked = true;
+            else allChecked = false;
+            if (item.IsIndeterminate) anyChecked = true;
+        }
+
+        return (allChecked, anyChecked);
+    }
+
+    private static List<T?> CollectChecked(List<TreeViewItem<T>> items)
+    {
+        var result = new List<T?>();
+        foreach (var item in items)
+        {
+            if (item.IsChecked) result.Add(item.Value);
+            if (item.Children is { Count: > 0 })
+                result.AddRange(CollectChecked(item.Children));
+        }
+        return result;
+    }
+
+    private static void ApplyExpandAll(List<TreeViewItem<T>> items, bool expanded)
+    {
+        foreach (var item in items)
+        {
+            item.IsExpanded = expanded;
+            if (item.Children is { Count: > 0 })
+                ApplyExpandAll(item.Children, expanded);
+        }
     }
 
     public record TreeViewItem<TValue>
     {
         public string Text { get; init; } = "";
         public TValue? Value { get; init; }
-        public List<TreeViewItem<TValue>>? Children { get; init; }
+        public List<TreeViewItem<TValue>>? Children { get; set; }
         public bool IsExpanded { get; set; }
         public bool IsChecked { get; set; }
         public SvgIcon? Icon { get; init; }
+        public bool IsLeaf { get; init; }
+        public bool IsLoading { get; set; }
+        public bool IsIndeterminate { get; set; }
+        public bool IsDisabled { get; init; }
+        public bool ChildrenLoaded { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-@namespace Lumeo
+﻿@namespace Lumeo
 
 @if (Label is not null && !InsideFormField)
 {
@@ -11,87 +11,17 @@
     </label>
 }
 
-<Popover @bind-Open="_isOpen">
-    <PopoverTrigger>
-        <button type="button"
-                name="@Name"
-                aria-required="@Required.ToString().ToLower()"
-                aria-invalid="@EffectiveInvalid.ToString().ToLower()"
-                class="@CssClass"
-                disabled="@Disabled"
-                @attributes="AdditionalAttributes">
-            <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4 shrink-0" />
-            @if (TriggerContent != null)
-            {
-                @TriggerContent
-            }
-            else if (Mode == "Range")
-            {
-                @if (RangeStart.HasValue && RangeEnd.HasValue)
-                {
-                    <span>@RangeStart.Value.ToString(EffectiveFormat, EffectiveCulture) - @RangeEnd.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
-                }
-                else if (RangeStart.HasValue)
-                {
-                    <span>@RangeStart.Value.ToString(EffectiveFormat, EffectiveCulture) - ...</span>
-                }
-                else
-                {
-                    <span class="text-muted-foreground">@EffectivePlaceholder</span>
-                }
-            }
-            else if (Mode == "Month")
-            {
-                @if (Value.HasValue)
-                {
-                    <span>@Value.Value.ToString("MMMM yyyy", EffectiveCulture)</span>
-                }
-                else
-                {
-                    <span class="text-muted-foreground">@EffectivePlaceholder</span>
-                }
-            }
-            else if (Mode == "Year")
-            {
-                @if (Value.HasValue)
-                {
-                    <span>@Value.Value.Year</span>
-                }
-                else
-                {
-                    <span class="text-muted-foreground">@EffectivePlaceholder</span>
-                }
-            }
-            else
-            {
-                @if (Value.HasValue)
-                {
-                    <span>@Value.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
-                }
-                else
-                {
-                    <span class="text-muted-foreground">@EffectivePlaceholder</span>
-                }
-            }
-
-            @if (Clearable && HasValue)
-            {
-                <button type="button" class="ml-auto pl-1 hover:text-foreground" aria-label="@L["Common.Clear"]" @onclick="HandleClear" @onclick:stopPropagation="true">
-                    <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
-                </button>
-            }
-        </button>
-    </PopoverTrigger>
-    <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
-        @if (Mode == "Month")
+@if (Inline)
+{
+        @if (Mode == DatePickerMode.Month)
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="Months" />
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
         }
-        else if (Mode == "Year")
+        else if (Mode == DatePickerMode.Year)
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="Years" />
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Years" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
         }
-        else if (Mode == "Range")
+        else if (Mode == DatePickerMode.Range)
         {
             @if (Presets != null && Presets.Count > 0)
             {
@@ -107,14 +37,14 @@
                     </div>
                     <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
                               RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
-                              MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" />
+                              MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
                 </div>
             }
             else
             {
                 <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
                           RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
-                          MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" />
+                          MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
             }
         }
         else
@@ -132,12 +62,12 @@
                                 </button>
                             }
                         </div>
-                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" />
+                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
                     </div>
                 }
                 else
                 {
-                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" />
+                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
                 }
 
                 @if (ShowTimePicker)
@@ -148,8 +78,149 @@
                 }
             </div>
         }
-    </PopoverContent>
-</Popover>
+}
+else
+{
+    <Popover @bind-Open="_isOpen">
+        <PopoverTrigger>
+            <button type="button"
+                    name="@Name"
+                    aria-required="@Required.ToString().ToLower()"
+                    aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                    class="@CssClass"
+                    disabled="@Disabled"
+                    @attributes="AdditionalAttributes">
+                <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4 shrink-0" />
+                @if (TriggerContent != null)
+                {
+                    @TriggerContent
+                }
+                else if (Mode == DatePickerMode.Range)
+                {
+                    @if (RangeStart.HasValue && RangeEnd.HasValue)
+                    {
+                        <span>@RangeStart.Value.ToString(EffectiveFormat, EffectiveCulture) - @RangeEnd.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
+                    }
+                    else if (RangeStart.HasValue)
+                    {
+                        <span>@RangeStart.Value.ToString(EffectiveFormat, EffectiveCulture) - ...</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground">@EffectivePlaceholder</span>
+                    }
+                }
+                else if (Mode == DatePickerMode.Month)
+                {
+                    @if (Value.HasValue)
+                    {
+                        <span>@Value.Value.ToString("MMMM yyyy", EffectiveCulture)</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground">@EffectivePlaceholder</span>
+                    }
+                }
+                else if (Mode == DatePickerMode.Year)
+                {
+                    @if (Value.HasValue)
+                    {
+                        <span>@Value.Value.Year</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground">@EffectivePlaceholder</span>
+                    }
+                }
+                else
+                {
+                    @if (Value.HasValue)
+                    {
+                        <span>@Value.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground">@EffectivePlaceholder</span>
+                    }
+                }
+    
+                @if (Clearable && HasValue)
+                {
+                    <button type="button" class="ml-auto pl-1 hover:text-foreground" aria-label="@L["Common.Clear"]" @onclick="HandleClear" @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                    </button>
+                }
+            </button>
+        </PopoverTrigger>
+        <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
+            @if (Mode == DatePickerMode.Month)
+            {
+                <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+            }
+            else if (Mode == DatePickerMode.Year)
+            {
+                <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Years" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+            }
+            else if (Mode == DatePickerMode.Range)
+            {
+                @if (Presets != null && Presets.Count > 0)
+                {
+                    <div class="flex">
+                        <div class="flex flex-col gap-1 border-r border-border/40 p-2 min-w-[120px]">
+                            @foreach (var preset in Presets)
+                            {
+                                var p = preset;
+                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors" @onclick="() => HandlePresetSelected(p)">
+                                    @p.Label
+                                </button>
+                            }
+                        </div>
+                        <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
+                                  RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
+                                  MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                    </div>
+                }
+                else
+                {
+                    <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
+                              RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
+                              MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                }
+            }
+            else
+            {
+                <div>
+                    @if (Presets != null && Presets.Count > 0)
+                    {
+                        <div class="flex">
+                            <div class="flex flex-col gap-1 border-r border-border/40 p-2 min-w-[120px]">
+                                @foreach (var preset in Presets)
+                                {
+                                    var p = preset;
+                                    <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors" @onclick="() => HandlePresetSelected(p)">
+                                        @p.Label
+                                    </button>
+                                }
+                            </div>
+                            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                        </div>
+                    }
+                    else
+                    {
+                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                    }
+    
+                    @if (ShowTimePicker)
+                    {
+                        <div class="border-t border-border/40 p-3">
+                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Use24Hour="true" />
+                        </div>
+                    }
+                </div>
+            }
+        </PopoverContent>
+    </Popover>
+}
 
 @if (!InsideFormField)
 {
@@ -166,6 +237,8 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    public enum DatePickerMode { Single, Range, Month, Year }
+
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     [Parameter] public bool Required { get; set; }
@@ -190,7 +263,7 @@
 
     [Parameter] public string? Placeholder { get; set; }
 
-    private string EffectivePlaceholder => Placeholder ?? (Mode == "Range" ? L["DateRange.Placeholder"] : L["DatePicker.Placeholder"]);
+    private string EffectivePlaceholder => Placeholder ?? (Mode == DatePickerMode.Range ? L["DateRange.Placeholder"] : L["DatePicker.Placeholder"]);
     /// <summary>
     /// Date format string. When null (default), the display falls back to the current
     /// culture's <c>ShortDatePattern</c> — so a <c>de-DE</c> user sees <c>15.03.2026</c>
@@ -223,7 +296,7 @@
     /// rendered absolutely positioned in the bottom-right of the day cell.</summary>
     [Parameter] public Func<DateTime, RenderFragment?>? DateBadge { get; set; }
     [Parameter] public List<DatePickerPreset>? Presets { get; set; }
-    [Parameter] public string Mode { get; set; } = "Single";
+    [Parameter] public DatePickerMode Mode { get; set; } = DatePickerMode.Single;
     [Parameter] public DateOnly? RangeStart { get; set; }
     [Parameter] public EventCallback<DateOnly?> RangeStartChanged { get; set; }
     [Parameter] public DateOnly? RangeEnd { get; set; }
@@ -246,6 +319,15 @@
     /// When null (default), the picker falls back to its internal open state and
     /// behaves exactly as before.
     /// </summary>
+    /// <summary>When true, renders the calendar inline (always visible) without a popover wrapper.</summary>
+    [Parameter] public bool Inline { get; set; }
+
+    /// <summary>Leftmost column day of week. Null means culture default.</summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>When true, renders an ISO week-number column.</summary>
+    [Parameter] public bool ShowWeekNumbers { get; set; }
+
     [Parameter] public bool? Open { get; set; }
 
     /// <summary>
@@ -292,22 +374,22 @@
         }
     }
 
-    private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == "Range" ? 2 : 1);
+    private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == DatePickerMode.Range ? 2 : 1);
 
-    private bool HasValue => Mode == "Range" ? RangeStart.HasValue : Value.HasValue;
+    private bool HasValue => Mode == DatePickerMode.Range ? RangeStart.HasValue : Value.HasValue;
 
     private string CssClass => $"flex h-9 w-full items-center rounded-md border {(EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input")} bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private async Task HandleDateSelected(DateOnly? date)
     {
-        if (Mode == "Month" && date.HasValue)
+        if (Mode == DatePickerMode.Month && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, date.Value.Month, 1);
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
         }
-        else if (Mode == "Year" && date.HasValue)
+        else if (Mode == DatePickerMode.Year && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, 1, 1);
             await ValueChanged.InvokeAsync(Value);
@@ -358,7 +440,7 @@
 
     private async Task HandleClear()
     {
-        if (Mode == "Range")
+        if (Mode == DatePickerMode.Range)
         {
             RangeStart = null;
             RangeEnd = null;

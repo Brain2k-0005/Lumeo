@@ -64,7 +64,7 @@
 
     <ComponentDemo Title="Month Picker" Code="@_monthCode">
         <Container MaxWidth="xs" Center="false" Padding="">
-            <DatePicker @bind-Value="_monthDate" Mode="Month" Placeholder="Select a month" />
+            <DatePicker @bind-Value="_monthDate" Mode="DatePicker.DatePickerMode.Month" Placeholder="Select a month" />
             @if (_monthDate.HasValue)
             {
                 <Lumeo.Text Size="sm" Color="muted" Class="mt-2">Selected: @_monthDate.Value.ToString("MMMM yyyy")</Lumeo.Text>
@@ -74,7 +74,7 @@
 
     <ComponentDemo Title="Year Picker" Code="@_yearCode">
         <Container MaxWidth="xs" Center="false" Padding="">
-            <DatePicker @bind-Value="_yearDate" Mode="Year" Placeholder="Select a year" />
+            <DatePicker @bind-Value="_yearDate" Mode="DatePicker.DatePickerMode.Year" Placeholder="Select a year" />
             @if (_yearDate.HasValue)
             {
                 <Lumeo.Text Size="sm" Color="muted" Class="mt-2">Selected: @_yearDate.Value.Year</Lumeo.Text>
@@ -101,6 +101,22 @@
     <ComponentDemo Title="Disabled" Code="@_disabledDateCode">
         <Container MaxWidth="xs" Center="false" Padding="">
             <DatePicker Value="@(DateOnly.FromDateTime(DateTime.Today))" Disabled="true" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Inline Calendar" Code="@_inlineCode">
+        <Container MaxWidth="xs" Center="false" Padding="">
+            <DatePicker @bind-Value="_inlineDate" Inline="true" />
+            @if (_inlineDate.HasValue)
+            {
+                <Lumeo.Text Size="sm" Color="muted" Class="mt-2">Selected: @_inlineDate.Value.ToString("MMMM d, yyyy")</Lumeo.Text>
+            }
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Week Numbers" Code="@_weekNumbersCode">
+        <Container MaxWidth="xs" Center="false" Padding="">
+            <DatePicker @bind-Value="_weekDate" ShowWeekNumbers="true" Placeholder="Pick a date (with week numbers)" />
         </Container>
     </ComponentDemo>
 </Stack>
@@ -149,7 +165,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">MinDate</TableCell><TableCell Class="font-mono text-xs">DateOnly?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Earliest selectable date.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">MaxDate</TableCell><TableCell Class="font-mono text-xs">DateOnly?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Latest selectable date.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Presets</TableCell><TableCell Class="font-mono text-xs">List&lt;DatePickerPreset&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Quick-select preset dates shown beside the calendar.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Mode</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Single"</TableCell><TableCell>Picker mode: "Single", "Range", "Month", or "Year".</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Mode</TableCell><TableCell Class="font-mono text-xs">DatePicker.DatePickerMode</TableCell><TableCell Class="font-mono text-xs">Single</TableCell><TableCell>Picker mode. Values: <code>DatePicker.DatePickerMode.Single</code>, <code>Range</code>, <code>Month</code>, <code>Year</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">RangeStart</TableCell><TableCell Class="font-mono text-xs">DateOnly?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Start date for range mode. Use with @@bind-RangeStart.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">RangeStartChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;DateOnly?&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Callback invoked when range start changes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">RangeEnd</TableCell><TableCell Class="font-mono text-xs">DateOnly?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>End date for range mode. Use with @@bind-RangeEnd.</TableCell></TableRow>
@@ -164,6 +180,9 @@
                 <TableRow><TableCell Class="font-mono text-xs">Clearable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shows a clear button to reset the selected date.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">TriggerContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom content for the trigger button.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">NumberOfMonths</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">1</TableCell><TableCell>Number of months to display. Defaults to 2 in Range mode.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Inline</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Renders the calendar directly in the page without a popover trigger button.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ShowWeekNumbers</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shows ISO week numbers alongside the calendar rows.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FirstDayOfWeek</TableCell><TableCell Class="font-mono text-xs">DayOfWeek?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the first day of the week. When null, falls back to the current culture's setting.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
             </TableBody>
@@ -267,9 +286,9 @@
     private DateOnly? _rangeEnd;
 }";
 
-    private string _monthCode = @"<DatePicker @bind-Value=""_monthDate"" Mode=""Month"" Placeholder=""Select a month"" />";
+    private string _monthCode = @"<DatePicker @bind-Value=""_monthDate"" Mode=""DatePicker.DatePickerMode.Month"" Placeholder=""Select a month"" />";
 
-    private string _yearCode = @"<DatePicker @bind-Value=""_yearDate"" Mode=""Year"" Placeholder=""Select a year"" />";
+    private string _yearCode = @"<DatePicker @bind-Value=""_yearDate"" Mode=""DatePicker.DatePickerMode.Year"" Placeholder=""Select a year"" />";
 
     private string _dateTimeCode = @"<DatePicker @bind-Value=""_date"" @bind-Time=""_time"" ShowTimePicker=""true"" Placeholder=""Pick date and time"" />
 
@@ -281,4 +300,11 @@
     private string _clearableCode = @"<DatePicker @bind-Value=""_date"" Clearable=""true"" Placeholder=""Pick a date (clearable)"" />";
 
     private string _disabledDateCode = @"<DatePicker Value=""@(DateOnly.FromDateTime(DateTime.Today))"" Disabled=""true"" />";
+
+    private DateOnly? _inlineDate;
+    private DateOnly? _weekDate;
+
+    private string _inlineCode = @"<DatePicker @bind-Value=""_date"" Inline=""true"" />";
+
+    private string _weekNumbersCode = @"<DatePicker @bind-Value=""_date"" ShowWeekNumbers=""true"" Placeholder=""Pick a date (with week numbers)"" />";
 }
