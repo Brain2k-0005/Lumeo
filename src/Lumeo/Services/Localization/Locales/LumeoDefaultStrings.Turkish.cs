@@ -218,5 +218,13 @@ internal static partial class LumeoDefaultStrings
         // Empty
         ["Empty.Title"] = "Henüz bir şey yok",
         ["Empty.Description"] = "Gösterilecek veri yok.",
+
+        // Kanban
+        ["Kanban.AddCard"] = "Kart ekle",
+
+        // Carousel
+        ["Carousel.PreviousSlide"] = "Önceki slayt",
+        ["Carousel.NextSlide"] = "Sonraki slayt",
+        ["Carousel.SlideXofY"] = "{1} slayttan {0}. slayt",
     };
 }

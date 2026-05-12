@@ -1,0 +1,214 @@
+@page "/components/pivot-grid"
+
+<PageTitle>PivotGrid — Lumeo</PageTitle>
+
+<PageHeader Title="PivotGrid" Description="A cross-tab grid that pivots flat data into a row hierarchy × columns × aggregated measures — like an Excel PivotTable." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Summarize transactional rows by one or more dimensions — e.g. sales by region and year.</li>
+        <li>Compare a measure (sum, average, count, min, max) across categories at a glance.</li>
+        <li>Give analysts a collapsible, subtotalled cross-tab without wiring up a full BI tool.</li>
+        <li>Reach for <a href="/components/data-grid" class="text-primary hover:underline">DataGrid</a> instead when users need to see, sort and edit the raw rows themselves.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Sales by region × year" Code="@_basicCode">
+        <PivotGrid TItem="Sale"
+                   Items="_sales"
+                   RowFields="_regionField"
+                   ColumnFields="_yearField"
+                   Measures="_amountMeasure" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multiple measures (sum + count)" Code="@_multiCode">
+        <PivotGrid TItem="Sale"
+                   Items="_sales"
+                   RowFields="_regionField"
+                   ColumnFields="_yearField"
+                   Measures="_amountAndUnits" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Collapsible nested row groups" Code="@_collapseCode">
+        <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">Click a region row to collapse its countries; the subtotal stays visible.</Lumeo.Text>
+        <PivotGrid TItem="Sale"
+                   Items="_sales"
+                   RowFields="_regionCountryFields"
+                   ColumnFields="_yearField"
+                   Measures="_amountMeasure"
+                   Collapsible="true"
+                   Compact="true" />
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Id="api" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-4">
+        <Stack>
+            <Heading Level="3" Class="mb-3">PivotGrid&lt;TItem&gt;</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[640px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Items</td><td class="p-3 font-mono text-xs text-muted-foreground">IEnumerable&lt;TItem&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">The flat source rows to pivot.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">RowFields</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotField&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">Fields forming the (nested) row hierarchy, outermost first.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ColumnFields</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotField&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">Fields forming the column hierarchy. The current build honours a single column-field level.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Measures</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotMeasure&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">The value fields and their aggregation (Sum / Average / Count / Min / Max).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ShowRowGrandTotal</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Adds a trailing grand-total column aggregating across all column groups.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ShowColumnGrandTotal</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Adds a bottom grand-total row aggregating across all rows.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ShowSubtotals</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Renders a subtotal row under each non-leaf row group.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Collapsible</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Lets users collapse/expand a row group; collapsed groups show only their subtotal.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Compact</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Tighter cell padding.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">GrandTotalLabel</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 font-mono text-xs text-muted-foreground">"Grand Total"</td><td class="p-3 text-muted-foreground">Label used for the grand-total row and column.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">EmptyContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Shown when <code>Items</code> is empty.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnCellClick</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;PivotCellClickArgs&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Invoked when a data cell is clicked; carries the row keys, column keys, measure header and the underlying rows for drill-down.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">PivotField&lt;TItem&gt;</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[640px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Member</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Header</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 text-muted-foreground">Header label for this field level.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Selector</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;TItem, object?&gt;</td><td class="p-3 text-muted-foreground">Extracts the grouping value from a source row.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Format</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;object?, string&gt;?</td><td class="p-3 text-muted-foreground">Optional formatter for the displayed group label.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">SortComparer</td><td class="p-3 font-mono text-xs text-muted-foreground">IComparer&lt;object?&gt;?</td><td class="p-3 text-muted-foreground">Optional custom ordering of the distinct values (natural order otherwise).</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">PivotMeasure&lt;TItem&gt;</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[640px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Member</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Header</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 text-muted-foreground">Header label for the measure.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Value</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;TItem, decimal&gt;</td><td class="p-3 text-muted-foreground">Extracts the numeric value to aggregate.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Aggregate</td><td class="p-3 font-mono text-xs text-muted-foreground">PivotAggregate</td><td class="p-3 text-muted-foreground">Sum (default), Average, Count, Min or Max.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Format</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;decimal, string&gt;?</td><td class="p-3 text-muted-foreground">Optional formatter for the aggregated number.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/data-grid" class="text-primary hover:underline">DataGrid</a> — Enterprise grid with grouping, sorting, inline edit and export over raw rows.</li>
+        <li><a href="/components/data-table" class="text-primary hover:underline">DataTable</a> — Lightweight sortable/paginated table for flat data.</li>
+        <li><a href="/components/table" class="text-primary hover:underline">Table</a> — The styled HTML table primitive PivotGrid is built on.</li>
+        <li><a href="/components/chart" class="text-primary hover:underline">Chart</a> — Visualise the same aggregates as bars, lines or a heatmap.</li>
+    </ul>
+</div>
+
+@code {
+    private record Sale(string Region, string Country, int Year, int Quarter, decimal Amount, int Units);
+
+    private readonly List<Sale> _sales = new()
+    {
+        new("Americas", "USA",    2023, 1, 120_000m, 320),
+        new("Americas", "USA",    2023, 3,  98_000m, 260),
+        new("Americas", "USA",    2024, 1, 145_000m, 380),
+        new("Americas", "Canada", 2023, 2,  42_000m, 110),
+        new("Americas", "Canada", 2024, 2,  51_000m, 130),
+        new("Americas", "Brazil", 2024, 4,  33_000m,  90),
+        new("EMEA",     "Germany",2023, 1,  88_000m, 210),
+        new("EMEA",     "Germany",2024, 1,  96_000m, 230),
+        new("EMEA",     "UK",     2023, 2,  72_000m, 180),
+        new("EMEA",     "UK",     2024, 3,  68_000m, 165),
+        new("APAC",     "Japan",  2023, 4,  64_000m, 150),
+        new("APAC",     "Japan",  2024, 2,  79_000m, 190),
+        new("APAC",     "India",  2024, 1,  41_000m, 220),
+    };
+
+    private static string Money(decimal d) => "$" + d.ToString("N0");
+
+    private readonly IReadOnlyList<PivotField<Sale>> _regionField = new List<PivotField<Sale>>
+    {
+        new("Region", s => s.Region),
+    };
+
+    private readonly IReadOnlyList<PivotField<Sale>> _regionCountryFields = new List<PivotField<Sale>>
+    {
+        new("Region", s => s.Region),
+        new("Country", s => s.Country),
+    };
+
+    private readonly IReadOnlyList<PivotField<Sale>> _yearField = new List<PivotField<Sale>>
+    {
+        new("Year", s => s.Year, v => "FY " + v),
+    };
+
+    private readonly IReadOnlyList<PivotMeasure<Sale>> _amountMeasure = new List<PivotMeasure<Sale>>
+    {
+        new("Revenue", s => s.Amount, PivotAggregate.Sum, Money),
+    };
+
+    private readonly IReadOnlyList<PivotMeasure<Sale>> _amountAndUnits = new List<PivotMeasure<Sale>>
+    {
+        new("Revenue", s => s.Amount, PivotAggregate.Sum, Money),
+        new("Deals", s => s.Units, PivotAggregate.Count),
+    };
+
+    private string _basicCode = @"<PivotGrid TItem=""Sale""
+           Items=""_sales""
+           RowFields=""@(new List<PivotField<Sale>> { new(""Region"", s => s.Region) })""
+           ColumnFields=""@(new List<PivotField<Sale>> { new(""Year"", s => s.Year, v => ""FY "" + v) })""
+           Measures=""@(new List<PivotMeasure<Sale>> { new(""Revenue"", s => s.Amount, PivotAggregate.Sum, d => ""$"" + d.ToString(""N0"")) })"" />
+
+@code {
+    record Sale(string Region, string Country, int Year, int Quarter, decimal Amount, int Units);
+    List<Sale> _sales = new() { /* ... */ };
+}";
+
+    private string _multiCode = @"<PivotGrid TItem=""Sale""
+           Items=""_sales""
+           RowFields=""_regionField""
+           ColumnFields=""_yearField""
+           Measures=""@(new List<PivotMeasure<Sale>> {
+               new(""Revenue"", s => s.Amount, PivotAggregate.Sum, d => ""$"" + d.ToString(""N0"")),
+               new(""Deals"", s => s.Units, PivotAggregate.Count),
+           })"" />";
+
+    private string _collapseCode = @"<PivotGrid TItem=""Sale""
+           Items=""_sales""
+           RowFields=""@(new List<PivotField<Sale>> {
+               new(""Region"", s => s.Region),
+               new(""Country"", s => s.Country),
+           })""
+           ColumnFields=""_yearField""
+           Measures=""_amountMeasure""
+           Collapsible=""true""
+           Compact=""true"" />";
+}

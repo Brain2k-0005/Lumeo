@@ -218,5 +218,13 @@ internal static partial class LumeoDefaultStrings
         // Empty
         ["Empty.Title"] = "아직 아무것도 없습니다",
         ["Empty.Description"] = "표시할 데이터가 없습니다.",
+
+        // Kanban
+        ["Kanban.AddCard"] = "카드 추가",
+
+        // Carousel
+        ["Carousel.PreviousSlide"] = "이전 슬라이드",
+        ["Carousel.NextSlide"] = "다음 슬라이드",
+        ["Carousel.SlideXofY"] = "{1}개 중 {0}번째 슬라이드",
     };
 }

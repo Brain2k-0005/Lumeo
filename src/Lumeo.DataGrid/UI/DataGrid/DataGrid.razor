@@ -6,6 +6,11 @@
 @inject Lumeo.Services.ToastService Toast
 
 @{
+    // Defensive: keep the roving-focus cell within the current data extents.
+    // This is a pure clamp of two ints — it never triggers a re-render — so it's
+    // safe to run during render and covers every path that mutates _displayedItems
+    // (sort, filter, paging, grouping, external data changes).
+    ClampFocusedCell();
     var context = new DataGridContext<TItem>(
         Columns: _visibleColumns,
         DisplayedItems: _displayedItems.AsReadOnly(),
@@ -48,7 +53,14 @@
         IsGrouped: !string.IsNullOrEmpty(GroupBy) && _groupedSections.Count > 0,
         IsGroupExpanded: IsGroupExpanded,
         ToggleGroupExpand: ToggleGroupExpand,
-        Culture: EffectiveCulture
+        Culture: EffectiveCulture,
+        GridId: _gridId,
+        FocusedRow: _focusedRow,
+        FocusedCol: _focusedCol,
+        RowCount: _displayedItems.Count,
+        ColCount: _visibleColumns.Count,
+        OnCellKeyDown: HandleCellKeyDownAsync,
+        OnHeaderKeyDown: HandleHeaderKeyDownAsync
     );
 }
 
@@ -116,7 +128,13 @@
         }
 
         <div class="overflow-auto flex-1" @onclick="CloseContextMenu">
-            <table class="w-full caption-bottom text-sm">
+            <table class="w-full caption-bottom text-sm"
+                   id="@_gridId"
+                   role="grid"
+                   aria-rowcount="@(_displayedItems.Count + 1)"
+                   aria-colcount="@_visibleColumns.Count"
+                   aria-readonly="@(EditMode == DataGridEditMode.None ? "true" : null)"
+                   aria-multiselectable="@(SelectionMode == DataGridSelectionMode.Multiple ? "true" : null)">
                 <DataGridHeader TItem="TItem"
                                 HasDetailTemplate="@(DetailTemplate is not null)"
                                 ActiveFilterColumn="@_activeFilterColumn"
@@ -356,6 +374,146 @@
     // --- Internal state ---
     private DataGridBody<TItem>? _bodyRef;
     private bool _useServerVirtualization => Virtualized && OnRangeRequest is not null;
+
+    // --- Keyboard navigation / roving tabindex (rc.32) ---
+    private readonly string _gridId = $"dg-{Guid.NewGuid():N}";
+    // Roving-focus cell coordinates. _focusedRow == -1 → header row.
+    private int _focusedRow = -1;
+    private int _focusedCol = 0;
+    // Approximate "page" jump for PageUp/PageDown in rows.
+    private int KeyboardPageStep => Math.Max(1, Math.Min(PageSize, 10));
+
+    private string CellElementId(int row, int col) => $"{_gridId}-cell-{(row < 0 ? "h" : row.ToString())}-{col}";
+
+    /// <summary>Clamp the roving-focus coordinates to the current data extents.
+    /// Called after any data/sort/filter/page change so the stored cell never
+    /// dangles past the visible range.</summary>
+    private void ClampFocusedCell()
+    {
+        var colCount = _visibleColumns.Count;
+        if (colCount == 0) { _focusedCol = 0; _focusedRow = -1; return; }
+        if (_focusedCol < 0) _focusedCol = 0;
+        if (_focusedCol >= colCount) _focusedCol = colCount - 1;
+        var rowCount = _displayedItems.Count;
+        if (_focusedRow < -1) _focusedRow = -1;
+        if (_focusedRow >= rowCount) _focusedRow = rowCount - 1; // may land on -1 if no rows
+    }
+
+    private async Task MoveFocusAsync(int newRow, int newCol)
+    {
+        var colCount = _visibleColumns.Count;
+        if (colCount == 0) return;
+        newCol = Math.Clamp(newCol, 0, colCount - 1);
+        var rowCount = _displayedItems.Count;
+        // Allow -1 (header). Don't allow going past last body row.
+        if (newRow < -1) newRow = -1;
+        if (newRow > rowCount - 1) newRow = Math.Max(-1, rowCount - 1);
+        if (newRow == _focusedRow && newCol == _focusedCol)
+        {
+            // Still re-focus the DOM element (e.g. Home pressed twice).
+            await FocusCellAsync(newRow, newCol);
+            return;
+        }
+        _focusedRow = newRow;
+        _focusedCol = newCol;
+        StateHasChanged();
+        await FocusCellAsync(newRow, newCol);
+    }
+
+    private async Task FocusCellAsync(int row, int col)
+    {
+        try { await Interop.FocusElement(CellElementId(row, col)); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+        catch { /* element may not be rendered (virtualized / grouped) — acceptable */ }
+    }
+
+    /// <summary>Keydown handler invoked from a body <see cref="DataGridCell{TItem}"/>
+    /// whose <c>&lt;td&gt;</c> currently has focus.</summary>
+    internal async Task HandleCellKeyDownAsync(int row, int col, KeyboardEventArgs e)
+    {
+        // Keep our notion of the focused cell in sync with where the event came from.
+        _focusedRow = row;
+        _focusedCol = col;
+        var colCount = _visibleColumns.Count;
+        var rowCount = _displayedItems.Count;
+        if (colCount == 0) return;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                await MoveFocusAsync(row + 1, col);
+                break;
+            case "ArrowUp":
+                // From the first body row, jump up into the header row.
+                await MoveFocusAsync(row <= 0 ? -1 : row - 1, col);
+                break;
+            case "ArrowRight":
+                await MoveFocusAsync(row, col + 1);
+                break;
+            case "ArrowLeft":
+                await MoveFocusAsync(row, col - 1);
+                break;
+            case "Home":
+                if (e.CtrlKey) await MoveFocusAsync(0, 0);
+                else await MoveFocusAsync(row, 0);
+                break;
+            case "End":
+                if (e.CtrlKey) await MoveFocusAsync(rowCount - 1, colCount - 1);
+                else await MoveFocusAsync(row, colCount - 1);
+                break;
+            case "PageDown":
+                await MoveFocusAsync(row + KeyboardPageStep, col);
+                break;
+            case "PageUp":
+                await MoveFocusAsync(Math.Max(0, row - KeyboardPageStep), col);
+                break;
+            case " ":
+            case "Spacebar":
+                if (SelectionMode != DataGridSelectionMode.None && row >= 0 && row < rowCount)
+                {
+                    ToggleSelection(_displayedItems[row]);
+                }
+                break;
+            case "a":
+            case "A":
+                if (e.CtrlKey && SelectionMode == DataGridSelectionMode.Multiple)
+                {
+                    SelectAll();
+                }
+                break;
+            // Enter / F2 (enter edit mode) are handled inside DataGridCell itself
+            // because that's where the per-cell edit state lives.
+        }
+    }
+
+    /// <summary>Keydown handler invoked from a header <see cref="DataGridHeaderCell{TItem}"/>.</summary>
+    internal async Task HandleHeaderKeyDownAsync(int col, KeyboardEventArgs e)
+    {
+        _focusedRow = -1;
+        _focusedCol = col;
+        var colCount = _visibleColumns.Count;
+        if (colCount == 0) return;
+
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await MoveFocusAsync(-1, col + 1);
+                break;
+            case "ArrowLeft":
+                await MoveFocusAsync(-1, col - 1);
+                break;
+            case "ArrowDown":
+                await MoveFocusAsync(0, col);
+                break;
+            case "Home":
+                await MoveFocusAsync(-1, 0);
+                break;
+            case "End":
+                await MoveFocusAsync(-1, colCount - 1);
+                break;
+            // Enter / Space → trigger sort is handled inside DataGridHeaderCell.
+        }
+    }
 
     private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>>
         ServerVirtualizationProviderImpl(Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest req)

@@ -30,10 +30,27 @@
         </ToggleGroup>
     </div>
 
+    @* Resource legend — rendered when Resources are provided.
+       Uses simple color-coded dots; no FullCalendar Premium plugin required. *@
+    @if (_resolvedResources is { Count: > 0 })
+    {
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pb-1" aria-label="Resource legend">
+            @foreach (var resource in _resolvedResources)
+            {
+                <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span class="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0"
+                          style="background: @(resource.Color ?? "var(--color-primary)")"></span>
+                    <span>@resource.Title</span>
+                </div>
+            }
+        </div>
+    }
+
     <div @ref="_hostRef" style="height: @Height;"></div>
 </div>
 
 @code {
+    // ── Core parameters ──────────────────────────────────────────────────
     [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
     [Parameter] public EventCallback<IEnumerable<SchedulerEvent>> EventsChanged { get; set; }
     [Parameter] public SchedulerView InitialView { get; set; } = SchedulerView.Month;
@@ -46,6 +63,60 @@
     [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
     [Parameter] public EventCallback<SchedulerDateRange> OnDateSelect { get; set; }
     [Parameter] public EventCallback<SchedulerEvent> OnEventChange { get; set; }
+
+    // ── Time-grid display parameters ─────────────────────────────────────
+    /// <summary>
+    /// Show the current-time indicator line in time-grid views. Default: true.
+    /// Maps to FullCalendar's <c>nowIndicator</c> option.
+    /// </summary>
+    [Parameter] public bool NowIndicator { get; set; } = true;
+
+    /// <summary>
+    /// Earliest visible time slot in time-grid views (e.g. 07:00).
+    /// Maps to FullCalendar's <c>slotMinTime</c>. Default: 00:00 (FullCalendar shows the full day).
+    /// </summary>
+    [Parameter] public TimeOnly? SlotMinTime { get; set; }
+
+    /// <summary>
+    /// Latest visible time slot in time-grid views (e.g. 22:00).
+    /// Maps to FullCalendar's <c>slotMaxTime</c>. Default: 24:00 (FullCalendar shows the full day).
+    /// </summary>
+    [Parameter] public TimeOnly? SlotMaxTime { get; set; }
+
+    /// <summary>
+    /// Duration of each time slot row in time-grid views.
+    /// Maps to FullCalendar's <c>slotDuration</c> (formatted as HH:mm:ss). Default: 00:30:00.
+    /// </summary>
+    [Parameter] public TimeSpan? SlotDuration { get; set; }
+
+    // ── Resource / color-coding parameters ──────────────────────────────
+    /// <summary>
+    /// Optional list of resources (people, rooms, equipment). When provided, events
+    /// are color-coded by their <see cref="SchedulerEvent.ResourceId"/> and a legend
+    /// is rendered above the calendar.
+    /// <br />
+    /// Note: this uses Lumeo's color-coding fallback, NOT FullCalendar Premium resource
+    /// lanes (which require a paid FullCalendar Premium license not bundled here).
+    /// </summary>
+    [Parameter] public IReadOnlyList<SchedulerResource>? Resources { get; set; }
+
+    // ── Event styling callbacks ──────────────────────────────────────────
+    /// <summary>
+    /// Optional callback that returns extra CSS class names for an event chip.
+    /// The classes are appended to the FullCalendar event's <c>classNames</c>.
+    /// Use for conditional styling without touching <see cref="SchedulerEvent.Color"/>.
+    /// </summary>
+    [Parameter] public Func<SchedulerEvent, string>? EventClassNames { get; set; }
+
+    /// <summary>
+    /// Optional callback that returns a CSS color string for an event.
+    /// Applied as <c>backgroundColor</c> / <c>borderColor</c> in FullCalendar.
+    /// Supersedes <see cref="SchedulerEvent.Color"/> when both are set; resource
+    /// color applies as a fallback when neither is set.
+    /// </summary>
+    [Parameter] public Func<SchedulerEvent, string>? EventColor { get; set; }
+
+    // ── Standard pass-through ────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -63,16 +134,25 @@
     // been replaced by the parent since init).
     private List<SchedulerEvent> _events = new();
 
+    // Resolved resource lookup — built once and used for both legend rendering
+    // and event color-coding in ToJsEvent.
+    private List<SchedulerResource> _resolvedResources = new();
+    private Dictionary<string, SchedulerResource> _resourceById = new(StringComparer.Ordinal);
+
     protected override void OnInitialized()
     {
         _currentView = InitialView;
         _events = Events?.ToList() ?? new List<SchedulerEvent>();
         _lastEventsHash = ComputeEventsHash(_events);
         _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
+        RebuildResourceLookup();
     }
 
     protected override async Task OnParametersSetAsync()
     {
+        // Rebuild the resource lookup whenever the Resources param changes.
+        RebuildResourceLookup();
+
         if (_initialized && Events is not null)
         {
             var incoming = Events.ToList();
@@ -101,7 +181,11 @@
             selectable = Selectable,
             businessHours = BusinessHours,
             height = Height,
-            firstDay = FirstDayOfWeek
+            firstDay = FirstDayOfWeek,
+            nowIndicator = NowIndicator,
+            slotMinTime = SlotMinTime.HasValue ? SlotMinTime.Value.ToString("HH:mm:ss") : (string?)null,
+            slotMaxTime = SlotMaxTime.HasValue ? SlotMaxTime.Value.ToString("HH:mm:ss") : (string?)null,
+            slotDuration = SlotDuration.HasValue ? $"{(int)SlotDuration.Value.TotalHours:D2}:{SlotDuration.Value.Minutes:D2}:{SlotDuration.Value.Seconds:D2}" : (string?)null
         };
 
         try
@@ -118,17 +202,64 @@
         }
     }
 
-    private static object ToJsEvent(SchedulerEvent ev) => new
+    private object ToJsEvent(SchedulerEvent ev)
     {
-        id = ev.Id,
-        title = ev.Title,
-        start = ev.Start.ToString("o"),
-        end = ev.End.ToString("o"),
-        allDay = ev.AllDay,
-        color = ev.Color,
-        url = ev.Url,
-        extendedProps = ev.ExtendedProps
-    };
+        // Determine the effective color: EventColor callback > event.Color > resource color.
+        var effectiveColor = EventColor?.Invoke(ev)
+            ?? ev.Color
+            ?? (ev.ResourceId is not null && _resourceById.TryGetValue(ev.ResourceId, out var res) ? res.Color : null);
+
+        // Effective class names: EventClassNames callback merged with event.ClassNames.
+        var cbClasses = EventClassNames?.Invoke(ev);
+        var effectiveClassNames = string.IsNullOrEmpty(cbClasses)
+            ? ev.ClassNames
+            : string.IsNullOrEmpty(ev.ClassNames) ? cbClasses : $"{ev.ClassNames} {cbClasses}";
+
+        // For recurring events with DaysOfWeek we use FullCalendar's free simple
+        // recurrence model: the start/end fields become time-of-day values only.
+        if (ev.DaysOfWeek is { Count: > 0 })
+        {
+            return new
+            {
+                id = ev.Id,
+                title = ev.Title,
+                // Time-of-day string for recurring events (HH:mm:ss).
+                startTime = ev.Start.ToString("HH:mm:ss"),
+                endTime = ev.End.ToString("HH:mm:ss"),
+                daysOfWeek = ev.DaysOfWeek.Select(d => (int)d).ToArray(),
+                startRecur = ev.Start.ToString("yyyy-MM-dd"),
+                endRecur = ev.RecurrenceEnd.HasValue
+                    ? ev.RecurrenceEnd.Value.ToString("yyyy-MM-dd")
+                    : (string?)null,
+                exdate = ev.ExceptionDates?.Select(d => d.ToString("yyyy-MM-dd")).ToArray(),
+                allDay = ev.AllDay,
+                color = effectiveColor,
+                url = ev.Url,
+                classNames = effectiveClassNames,
+                extendedProps = ev.ExtendedProps
+            };
+        }
+
+        // Standard (non-recurring) event.
+        return new
+        {
+            id = ev.Id,
+            title = ev.Title,
+            start = ev.Start.ToString("o"),
+            end = ev.End.ToString("o"),
+            allDay = ev.AllDay,
+            color = effectiveColor,
+            url = ev.Url,
+            classNames = effectiveClassNames,
+            extendedProps = ev.ExtendedProps
+        };
+    }
+
+    private void RebuildResourceLookup()
+    {
+        _resolvedResources = Resources?.ToList() ?? new List<SchedulerResource>();
+        _resourceById = _resolvedResources.ToDictionary(r => r.Id, StringComparer.Ordinal);
+    }
 
     private static int ComputeEventsHash(IEnumerable<SchedulerEvent> events)
     {
@@ -143,6 +274,9 @@
             hash.Add(ev.End);
             hash.Add(ev.AllDay);
             hash.Add(ev.Color);
+            hash.Add(ev.ResourceId);
+            hash.Add(ev.DaysOfWeek?.Count ?? 0);
+            hash.Add(ev.RecurrenceEnd);
         }
         return hash.ToHashCode();
     }

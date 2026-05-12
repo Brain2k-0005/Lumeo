@@ -23,27 +23,31 @@
             <span>@(Label ?? L["FileUpload.ChooseFile"])</span>
             <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
-        @if (_errorMessage is not null)
+        @if (!AutoUpload && _uploadItems.Any(i => i.Status == FileUploadStatus.Pending))
         {
-            <p class="text-xs text-destructive">@_errorMessage</p>
+            <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                    @onclick="StartUploadAsync">
+                <Blazicon Svg="Lucide.Upload" class="h-3.5 w-3.5" />
+                Upload
+            </button>
         }
-        @if (_selectedFiles.Count > 0)
+        @if (_globalErrorMessage is not null)
+        {
+            <p class="text-xs text-destructive">@_globalErrorMessage</p>
+        }
+        @if (_uploadItems.Count > 0)
         {
             <div class="flex flex-col gap-1">
-                @foreach (var file in _selectedFiles)
+                @foreach (var item in _uploadItems)
                 {
-                    <div @key="@($"{file.Name}:{file.Size}:{file.LastModified.Ticks}")">
+                    <div @key="item.Id">
                     @if (FileTemplate is not null)
                     {
-                        @FileTemplate(file)
+                        @FileTemplate(item.File)
                     }
                     else
                     {
-                        <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Blazicon Svg="Lucide.File" class="h-4 w-4" />
-                            <span class="truncate">@file.Name</span>
-                            <span class="text-xs">(@FormatSize(file.Size))</span>
-                        </div>
+                        @RenderFileItem(item)
                     }
                     </div>
                 }
@@ -79,9 +83,9 @@ else if (Variant == FileUploadVariant.Avatar)
             }
             <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="false" accept="@(Accept ?? "image/*")" />
         </label>
-        @if (_errorMessage is not null)
+        @if (_globalErrorMessage is not null)
         {
-            <p class="text-xs text-destructive">@_errorMessage</p>
+            <p class="text-xs text-destructive">@_globalErrorMessage</p>
         }
         @if (!InsideFormField)
         {
@@ -127,45 +131,39 @@ else
             </div>
             <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
-        @if (_errorMessage is not null)
+        @if (_globalErrorMessage is not null)
         {
-            <p class="text-xs text-destructive">@_errorMessage</p>
+            <p class="text-xs text-destructive">@_globalErrorMessage</p>
         }
-        @if (ShowProgress)
+        @* Legacy global progress bar — kept for back-compat *@
+        @if (ShowProgress && OnUpload is null)
         {
             <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div class="h-full rounded-full bg-primary transition-all duration-300"
                      style="width: @(Math.Clamp(Progress, 0, 100))%"></div>
             </div>
         }
-        @if (_selectedFiles.Count > 0)
+        @if (!AutoUpload && _uploadItems.Any(i => i.Status == FileUploadStatus.Pending))
+        {
+            <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors self-start"
+                    @onclick="StartUploadAsync">
+                <Blazicon Svg="Lucide.Upload" class="h-4 w-4" />
+                Upload @(_uploadItems.Count(i => i.Status == FileUploadStatus.Pending)) file@(_uploadItems.Count(i => i.Status == FileUploadStatus.Pending) != 1 ? "s" : "")
+            </button>
+        }
+        @if (_uploadItems.Count > 0)
         {
             <div class="flex flex-col gap-2">
-                @foreach (var file in _selectedFiles)
+                @foreach (var item in _uploadItems)
                 {
-                    <div @key="@($"{file.Name}:{file.Size}:{file.LastModified.Ticks}")">
+                    <div @key="item.Id">
                     @if (FileTemplate is not null)
                     {
-                        @FileTemplate(file)
+                        @FileTemplate(item.File)
                     }
                     else
                     {
-                        <div class="flex items-center gap-2 rounded-md border border-border/40 bg-card p-2">
-                            @if (ShowThumbnails && IsImageFile(file))
-                            {
-                                <div class="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                                    <img src="@GetThumbnailUrl(file)" alt="@file.Name" class="h-full w-full object-cover" />
-                                </div>
-                            }
-                            else
-                            {
-                                <Blazicon Svg="Lucide.File" class="h-5 w-5 shrink-0 text-muted-foreground" />
-                            }
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium truncate">@file.Name</p>
-                                <p class="text-xs text-muted-foreground">@FormatSize(file.Size)</p>
-                            </div>
-                        </div>
+                        @RenderFileItem(item)
                     }
                     </div>
                 }
@@ -186,6 +184,7 @@ else
 }
 
 @code {
+    // ── Form-field integration ───────────────────────────────────────────────
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     [Parameter] public bool Required { get; set; }
@@ -197,13 +196,11 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // ── Visual / selection params ────────────────────────────────────────────
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Description { get; set; }
     [Parameter] public bool Multiple { get; set; }
     [Parameter] public string? Accept { get; set; }
-    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
-    [Parameter] public bool ShowProgress { get; set; }
-    [Parameter] public int Progress { get; set; }
     [Parameter] public long MaxFileSize { get; set; } = 10 * 1024 * 1024;
     [Parameter] public int MaxFiles { get; set; } = 10;
     [Parameter] public bool ShowThumbnails { get; set; }
@@ -218,15 +215,104 @@ else
     /// </summary>
     [Parameter] public FileUploadSize Size { get; set; } = FileUploadSize.Default;
 
-    public enum FileUploadVariant
-    {
-        Dropzone,
-        Button,
-        Avatar
-    }
+    // ── Legacy back-compat progress params ──────────────────────────────────
+    [Parameter] public bool ShowProgress { get; set; }
 
+    /// <remarks>Obsolete when <see cref="OnUpload"/> is set — per-file progress is tracked automatically via <see cref="FileUploadItem.ProgressPercent"/>.</remarks>
+    [Parameter] public int Progress { get; set; }
+
+    // ── Upload pipeline params ───────────────────────────────────────────────
+    /// <summary>
+    /// Consumer-supplied upload handler. Called once per file after selection
+    /// (or after explicit <c>StartUploadAsync</c> if <see cref="AutoUpload"/> is false).
+    /// Receives the item, an <see cref="IProgress{T}"/> for reporting percent 0-100,
+    /// and a <see cref="CancellationToken"/> that fires if the user clicks Cancel.
+    /// Should return the server-assigned URL/id on success, or throw/return null on failure.
+    /// </summary>
+    [Parameter] public Func<FileUploadItem, IProgress<int>, CancellationToken, Task<string?>>? OnUpload { get; set; }
+
+    /// <summary>
+    /// When <c>true</c> (default), uploads begin immediately after files are selected.
+    /// When <c>false</c>, the user must click the Upload button to start.
+    /// Requires <see cref="OnUpload"/> to be set.
+    /// </summary>
+    [Parameter] public bool AutoUpload { get; set; } = true;
+
+    /// <summary>Maximum number of <see cref="OnUpload"/> calls running simultaneously.</summary>
+    [Parameter] public int MaxConcurrentUploads { get; set; } = 3;
+
+    /// <summary>
+    /// Optional chunk size hint (bytes) for consumers that want to implement
+    /// chunked/resumable upload inside their <see cref="OnUpload"/> handler.
+    /// The component passes this value through <see cref="FileUploadItem.ChunkSize"/>
+    /// but does NOT implement chunking itself.
+    /// </summary>
+    [Parameter] public long? ChunkSize { get; set; }
+
+    // ── Validation error message overrides ──────────────────────────────────
+    [Parameter] public string? MaxFileSizeError { get; set; }
+    [Parameter] public string? MaxFilesError { get; set; }
+    [Parameter] public string? FileTypeError { get; set; }
+
+    // ── Events ───────────────────────────────────────────────────────────────
+    /// <summary>Fires when files are selected (raw args, kept for back-compat).</summary>
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
+
+    /// <summary>Fires each time a file upload succeeds.</summary>
+    [Parameter] public EventCallback<FileUploadItem> OnFileUploaded { get; set; }
+
+    /// <summary>Fires when all queued uploads have finished (succeeded, failed, or cancelled).</summary>
+    [Parameter] public EventCallback<IReadOnlyList<FileUploadItem>> OnAllUploaded { get; set; }
+
+    /// <summary>Fires each time a file upload fails.</summary>
+    [Parameter] public EventCallback<FileUploadItem> OnFileFailed { get; set; }
+
+    /// <summary>Fires when a file is removed from the list.</summary>
+    [Parameter] public EventCallback<FileUploadItem> OnFileRemoved { get; set; }
+
+    /// <summary>Fires when a file is rejected due to type/size/count constraints.</summary>
+    [Parameter] public EventCallback<(IBrowserFile File, string Reason)> OnFileRejected { get; set; }
+
+    // ── CSS / additional attrs ───────────────────────────────────────────────
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Enums ────────────────────────────────────────────────────────────────
+    public enum FileUploadVariant { Dropzone, Button, Avatar }
     public enum FileUploadSize { Sm, Default, Lg }
 
+    /// <summary>Per-file upload state tracked internally and exposed via events.</summary>
+    public class FileUploadItem
+    {
+        public string Id { get; init; } = Guid.NewGuid().ToString("N");
+        public IBrowserFile File { get; init; } = default!;
+        public string Name { get; init; } = string.Empty;
+        public long Size { get; init; }
+        public FileUploadStatus Status { get; set; } = FileUploadStatus.Pending;
+        public int ProgressPercent { get; set; }
+        public string? ErrorMessage { get; set; }
+        /// <summary>Server-returned URL or id after a successful upload.</summary>
+        public string? Url { get; set; }
+        /// <summary>Chunk-size hint (bytes) from <see cref="FileUpload.ChunkSize"/>. Zero if not configured.</summary>
+        public long ChunkSize { get; init; }
+    }
+
+    public enum FileUploadStatus { Pending, Uploading, Succeeded, Failed, Cancelled }
+
+    // ── Internal state ───────────────────────────────────────────────────────
+    private bool _isDragOver;
+    private string? _globalErrorMessage;
+    private string? _thumbnailUrl;
+    private List<FileUploadItem> _uploadItems = new();
+    private Dictionary<string, string> _thumbnailUrls = new();
+    private readonly Dictionary<string, CancellationTokenSource> _cancellations = new();
+    private SemaphoreSlim? _concurrencySemaphore;
+
+    // Kept for back-compat so existing code that reads _selectedFiles-equivalent still compiles.
+    // Exposed as a convenience projection.
+    private List<IBrowserFile> _selectedFiles => _uploadItems.Select(i => i.File).ToList();
+
+    // ── CSS helpers ──────────────────────────────────────────────────────────
     private string ButtonSizeClasses => Size switch
     {
         FileUploadSize.Sm => "h-8 px-3 text-xs",
@@ -237,93 +323,394 @@ else
     private string ButtonLabelCssClass =>
         $"inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-primary {ButtonSizeClasses} font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50";
 
-    [Parameter] public string? Class { get; set; }
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    private string DropzoneCssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : EffectiveInvalid ? "border-destructive bg-destructive/5" : _globalErrorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
 
-    private bool _isDragOver;
-    private string? _errorMessage;
-    private string? _thumbnailUrl;
-    private List<IBrowserFile> _selectedFiles = new();
-    private Dictionary<string, string> _thumbnailUrls = new();
-
-    private string DropzoneCssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : EffectiveInvalid ? "border-destructive bg-destructive/5" : _errorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
-
+    // ── Drag handlers ────────────────────────────────────────────────────────
     private void HandleDragEnter(DragEventArgs e) => _isDragOver = true;
-
     private void HandleDragLeave(DragEventArgs e) => _isDragOver = false;
+    private async Task HandleDrop(DragEventArgs e) => _isDragOver = false;
 
-    private async Task HandleDrop(DragEventArgs e)
-    {
-        _isDragOver = false;
-    }
-
+    // ── File selected ────────────────────────────────────────────────────────
     private async Task HandleFileSelected(InputFileChangeEventArgs e)
     {
-        _errorMessage = null;
+        _globalErrorMessage = null;
 
-        var files = Multiple ? e.GetMultipleFiles(MaxFiles + 1).ToList() : new List<IBrowserFile> { e.File };
+        var candidates = Multiple ? e.GetMultipleFiles(MaxFiles + 1).ToList() : new List<IBrowserFile> { e.File };
 
-        if (files.Count > MaxFiles)
+        // Count check against existing non-failed items
+        var existing = _uploadItems.Count(i => i.Status != FileUploadStatus.Failed && i.Status != FileUploadStatus.Cancelled);
+        if (existing + candidates.Count > MaxFiles)
         {
-            _errorMessage = $"Maximum {MaxFiles} file{(MaxFiles != 1 ? "s" : "")} allowed.";
+            var reason = MaxFilesError ?? $"Maximum {MaxFiles} file{(MaxFiles != 1 ? "s" : "")} allowed.";
+            _globalErrorMessage = reason;
+            // Still add them as rejected items
+            foreach (var f in candidates)
+            {
+                var rejected = new FileUploadItem { File = f, Name = f.Name, Size = f.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0 };
+                _uploadItems.Add(rejected);
+                await OnFileRejected.InvokeAsync((f, reason));
+            }
+            await OnFilesSelected.InvokeAsync(e);
             return;
         }
 
-        foreach (var file in files)
+        var validFiles = new List<IBrowserFile>();
+
+        foreach (var file in candidates)
         {
+            // Size validation
             if (file.Size > MaxFileSize)
             {
-                _errorMessage = $"File \"{file.Name}\" exceeds the maximum size of {FormatSize(MaxFileSize)}.";
-                return;
+                var reason = MaxFileSizeError ?? $"File \"{file.Name}\" exceeds the maximum size of {FormatSize(MaxFileSize)}.";
+                var rejected = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0 };
+                _uploadItems.Add(rejected);
+                await OnFileRejected.InvokeAsync((file, reason));
+                continue;
             }
+
+            // Accept/type validation
+            if (!string.IsNullOrWhiteSpace(Accept) && !IsAccepted(file, Accept))
+            {
+                var reason = FileTypeError ?? $"File \"{file.Name}\" has an unsupported file type.";
+                var rejected = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0 };
+                _uploadItems.Add(rejected);
+                await OnFileRejected.InvokeAsync((file, reason));
+                continue;
+            }
+
+            validFiles.Add(file);
+            var item = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Pending, ChunkSize = ChunkSize ?? 0 };
+            _uploadItems.Add(item);
         }
 
-        _selectedFiles = files;
-
-        if (ShowThumbnails && Variant == FileUploadVariant.Avatar && files.Count > 0 && IsImageFile(files[0]))
+        // Thumbnails for avatar variant
+        if (ShowThumbnails && Variant == FileUploadVariant.Avatar && validFiles.Count > 0 && IsImageFile(validFiles[0]))
         {
             try
             {
-                var imageFile = files[0].OpenReadStream(MaxFileSize);
+                var stream = validFiles[0].OpenReadStream(MaxFileSize);
                 using var ms = new MemoryStream();
-                await imageFile.CopyToAsync(ms);
-                var base64 = Convert.ToBase64String(ms.ToArray());
-                _thumbnailUrl = $"data:{files[0].ContentType};base64,{base64}";
+                await stream.CopyToAsync(ms);
+                _thumbnailUrl = $"data:{validFiles[0].ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
             }
-            catch
-            {
-                _thumbnailUrl = null;
-            }
+            catch { _thumbnailUrl = null; }
         }
 
+        // Thumbnails for dropzone variant
         if (ShowThumbnails && Variant == FileUploadVariant.Dropzone)
         {
-            _thumbnailUrls.Clear();
-            foreach (var file in files.Where(IsImageFile))
+            foreach (var file in validFiles.Where(IsImageFile))
             {
                 try
                 {
-                    var imageFile = file.OpenReadStream(MaxFileSize);
+                    var stream = file.OpenReadStream(MaxFileSize);
                     using var ms = new MemoryStream();
-                    await imageFile.CopyToAsync(ms);
-                    var base64 = Convert.ToBase64String(ms.ToArray());
-                    _thumbnailUrls[file.Name] = $"data:{file.ContentType};base64,{base64}";
+                    await stream.CopyToAsync(ms);
+                    _thumbnailUrls[file.Name] = $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
                 }
-                catch
-                {
-                    // Skip thumbnails that fail to load
-                }
+                catch { /* skip failed thumbnails */ }
             }
         }
 
         await OnFilesSelected.InvokeAsync(e);
+
+        if (OnUpload is not null && AutoUpload && validFiles.Count > 0)
+        {
+            var pendingItems = _uploadItems.Where(i => i.Status == FileUploadStatus.Pending && validFiles.Contains(i.File)).ToList();
+            _ = Task.Run(() => RunUploadsAsync(pendingItems));
+        }
     }
 
+    // ── Public: start uploads manually (when AutoUpload=false) ───────────────
+    public async Task StartUploadAsync()
+    {
+        if (OnUpload is null) return;
+        var pending = _uploadItems.Where(i => i.Status == FileUploadStatus.Pending).ToList();
+        if (pending.Count == 0) return;
+        await RunUploadsAsync(pending);
+    }
+
+    // ── Retry a single failed item ───────────────────────────────────────────
+    private async Task RetryItemAsync(FileUploadItem item)
+    {
+        if (OnUpload is null) return;
+        item.Status = FileUploadStatus.Pending;
+        item.ErrorMessage = null;
+        item.ProgressPercent = 0;
+        await InvokeAsync(StateHasChanged);
+        await RunUploadsAsync(new[] { item });
+    }
+
+    // ── Remove / cancel item ─────────────────────────────────────────────────
+    private async Task RemoveItemAsync(FileUploadItem item)
+    {
+        if (item.Status == FileUploadStatus.Uploading)
+        {
+            if (_cancellations.TryGetValue(item.Id, out var cts))
+            {
+                cts.Cancel();
+                _cancellations.Remove(item.Id);
+            }
+        }
+        _uploadItems.Remove(item);
+        _thumbnailUrls.Remove(item.Name);
+        await OnFileRemoved.InvokeAsync(item);
+    }
+
+    private async Task CancelItemAsync(FileUploadItem item)
+    {
+        if (_cancellations.TryGetValue(item.Id, out var cts))
+        {
+            cts.Cancel();
+            _cancellations.Remove(item.Id);
+        }
+        item.Status = FileUploadStatus.Cancelled;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Upload orchestrator ───────────────────────────────────────────────────
+    private async Task RunUploadsAsync(IEnumerable<FileUploadItem> items)
+    {
+        _concurrencySemaphore ??= new SemaphoreSlim(MaxConcurrentUploads, MaxConcurrentUploads);
+
+        var tasks = items.Select(item => UploadOneAsync(item)).ToList();
+        await Task.WhenAll(tasks);
+
+        // Check if all items are now in a terminal state
+        if (_uploadItems.All(i => i.Status is FileUploadStatus.Succeeded or FileUploadStatus.Failed or FileUploadStatus.Cancelled))
+        {
+            await InvokeAsync(async () =>
+            {
+                await OnAllUploaded.InvokeAsync(_uploadItems.AsReadOnly());
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task UploadOneAsync(FileUploadItem item)
+    {
+        await _concurrencySemaphore!.WaitAsync();
+        try
+        {
+            var cts = new CancellationTokenSource();
+            _cancellations[item.Id] = cts;
+
+            item.Status = FileUploadStatus.Uploading;
+            item.ProgressPercent = 0;
+            await InvokeAsync(StateHasChanged);
+
+            var progress = new Progress<int>(pct =>
+            {
+                item.ProgressPercent = Math.Clamp(pct, 0, 100);
+                InvokeAsync(StateHasChanged);
+            });
+
+            try
+            {
+                var url = await OnUpload!(item, progress, cts.Token);
+                if (cts.Token.IsCancellationRequested)
+                {
+                    item.Status = FileUploadStatus.Cancelled;
+                }
+                else
+                {
+                    item.Status = FileUploadStatus.Succeeded;
+                    item.ProgressPercent = 100;
+                    item.Url = url;
+                    await InvokeAsync(async () =>
+                    {
+                        await OnFileUploaded.InvokeAsync(item);
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                item.Status = FileUploadStatus.Cancelled;
+            }
+            catch (Exception ex)
+            {
+                item.Status = FileUploadStatus.Failed;
+                item.ErrorMessage = ex.Message;
+                await InvokeAsync(async () =>
+                {
+                    await OnFileFailed.InvokeAsync(item);
+                    StateHasChanged();
+                });
+            }
+            finally
+            {
+                _cancellations.Remove(item.Id);
+                cts.Dispose();
+            }
+        }
+        finally
+        {
+            _concurrencySemaphore!.Release();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ── Per-file row renderer ────────────────────────────────────────────────
+    private RenderFragment RenderFileItem(FileUploadItem item) => builder =>
+    {
+        // Outer row
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "flex flex-col gap-1.5 rounded-md border border-border/40 bg-muted/30 p-2");
+
+        // Top row: icon + name + size + action buttons
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "class", "flex items-center gap-2");
+
+        // File icon or thumbnail
+        if (ShowThumbnails && IsImageFile(item.File) && _thumbnailUrls.TryGetValue(item.Name, out var thumb))
+        {
+            builder.OpenElement(4, "div");
+            builder.AddAttribute(5, "class", "h-8 w-8 shrink-0 overflow-hidden rounded bg-muted");
+            builder.OpenElement(6, "img");
+            builder.AddAttribute(7, "src", thumb);
+            builder.AddAttribute(8, "alt", item.Name);
+            builder.AddAttribute(9, "class", "h-full w-full object-cover");
+            builder.CloseElement(); // img
+            builder.CloseElement(); // div
+        }
+        else
+        {
+            builder.OpenComponent<Blazicon>(10);
+            builder.AddAttribute(11, "Svg", Lucide.File);
+            builder.AddAttribute(12, "class", item.Status == FileUploadStatus.Failed ? "h-4 w-4 shrink-0 text-destructive" : "h-4 w-4 shrink-0 text-muted-foreground");
+            builder.CloseComponent();
+        }
+
+        // Name + size
+        builder.OpenElement(13, "div");
+        builder.AddAttribute(14, "class", "flex-1 min-w-0");
+        builder.OpenElement(15, "p");
+        builder.AddAttribute(16, "class", "text-sm font-medium truncate");
+        builder.AddContent(17, item.Name);
+        builder.CloseElement(); // p
+        builder.OpenElement(18, "p");
+        builder.AddAttribute(19, "class", "text-xs text-muted-foreground");
+        builder.AddContent(20, FormatSize(item.Size));
+        builder.CloseElement(); // p
+        builder.CloseElement(); // div name+size
+
+        // Status icon
+        if (item.Status == FileUploadStatus.Succeeded)
+        {
+            builder.OpenComponent<Blazicon>(21);
+            builder.AddAttribute(22, "Svg", Lucide.Check);
+            builder.AddAttribute(23, "class", "h-4 w-4 shrink-0 text-success");
+            builder.CloseComponent();
+        }
+        else if (item.Status == FileUploadStatus.Failed)
+        {
+            builder.OpenComponent<Blazicon>(24);
+            builder.AddAttribute(25, "Svg", Lucide.CircleX);
+            builder.AddAttribute(26, "class", "h-4 w-4 shrink-0 text-destructive");
+            builder.CloseComponent();
+        }
+
+        // Action buttons
+        if (item.Status == FileUploadStatus.Uploading)
+        {
+            // Cancel button
+            builder.OpenElement(27, "button");
+            builder.AddAttribute(28, "type", "button");
+            builder.AddAttribute(29, "class", "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive transition-colors");
+            builder.AddAttribute(30, "title", "Cancel");
+            builder.AddAttribute(31, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => CancelItemAsync(item)));
+            builder.OpenComponent<Blazicon>(32);
+            builder.AddAttribute(33, "Svg", Lucide.X);
+            builder.AddAttribute(34, "class", "h-3.5 w-3.5");
+            builder.CloseComponent();
+            builder.CloseElement(); // button
+        }
+        else if (item.Status == FileUploadStatus.Failed && OnUpload is not null && item.ErrorMessage?.Contains("exceeds") == false && item.ErrorMessage?.Contains("unsupported") == false)
+        {
+            // Retry button (only for upload failures, not validation rejections)
+            builder.OpenElement(35, "button");
+            builder.AddAttribute(36, "type", "button");
+            builder.AddAttribute(37, "class", "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-primary transition-colors");
+            builder.AddAttribute(38, "title", "Retry");
+            builder.AddAttribute(39, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => RetryItemAsync(item)));
+            builder.OpenComponent<Blazicon>(40);
+            builder.AddAttribute(41, "Svg", Lucide.RotateCcw);
+            builder.AddAttribute(42, "class", "h-3.5 w-3.5");
+            builder.CloseComponent();
+            builder.CloseElement(); // button
+        }
+        else if (item.Status != FileUploadStatus.Uploading)
+        {
+            // Remove button
+            builder.OpenElement(43, "button");
+            builder.AddAttribute(44, "type", "button");
+            builder.AddAttribute(45, "class", "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive transition-colors");
+            builder.AddAttribute(46, "title", "Remove");
+            builder.AddAttribute(47, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => RemoveItemAsync(item)));
+            builder.OpenComponent<Blazicon>(48);
+            builder.AddAttribute(49, "Svg", Lucide.X);
+            builder.AddAttribute(50, "class", "h-3.5 w-3.5");
+            builder.CloseComponent();
+            builder.CloseElement(); // button
+        }
+
+        builder.CloseElement(); // div top row
+
+        // Progress bar (when uploading or showing progress for succeeded)
+        if (item.Status == FileUploadStatus.Uploading || (item.Status == FileUploadStatus.Succeeded && item.ProgressPercent > 0))
+        {
+            builder.OpenElement(51, "div");
+            builder.AddAttribute(52, "class", "h-1.5 w-full overflow-hidden rounded-full bg-muted");
+            builder.OpenElement(53, "div");
+            var pct = Math.Clamp(item.ProgressPercent, 0, 100);
+            var color = item.Status == FileUploadStatus.Succeeded ? "bg-success" : "bg-primary";
+            builder.AddAttribute(54, "class", $"h-full rounded-full {color} transition-all duration-300");
+            builder.AddAttribute(55, "style", $"width: {pct}%");
+            builder.CloseElement(); // inner div
+            builder.CloseElement(); // outer div
+        }
+
+        // Error message
+        if (item.Status == FileUploadStatus.Failed && item.ErrorMessage is not null)
+        {
+            builder.OpenElement(56, "p");
+            builder.AddAttribute(57, "class", "text-xs text-destructive");
+            builder.AddContent(58, item.ErrorMessage);
+            builder.CloseElement(); // p
+        }
+
+        builder.CloseElement(); // outer row div
+    };
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
     private bool IsImageFile(IBrowserFile file) =>
         file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
     private string? GetThumbnailUrl(IBrowserFile file) =>
         _thumbnailUrls.TryGetValue(file.Name, out var url) ? url : null;
+
+    private static bool IsAccepted(IBrowserFile file, string accept)
+    {
+        var tokens = accept.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in tokens)
+        {
+            if (token.StartsWith('.'))
+            {
+                if (file.Name.EndsWith(token, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            else if (token.EndsWith("/*"))
+            {
+                var prefix = token[..^1]; // e.g. "image/"
+                if (file.ContentType.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            else
+            {
+                if (string.Equals(file.ContentType, token, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+        }
+        return false;
+    }
 
     private static string FormatSize(long bytes)
     {
