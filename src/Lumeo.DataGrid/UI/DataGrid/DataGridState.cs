@@ -123,6 +123,34 @@ public record RowReorderEventArgs<TItem>(
     int NewIndex
 );
 
+/// <summary>
+/// A single row's pending change set in <see cref="DataGridEditMode.Batch"/> mode.
+/// <see cref="IsNew"/> is true for rows created via the "+ Add row" trigger
+/// (in which case <see cref="ChangedFields"/> still carries every field the user
+/// touched). <see cref="ChangedFields"/> maps the column <c>Field</c> to its new value.
+/// </summary>
+public record DataGridBatchChange<TItem>(
+    TItem Item,
+    Dictionary<string, object?> ChangedFields,
+    bool IsNew
+);
+
+/// <summary>
+/// Event args for <see cref="DataGrid{TItem}.OnBatchSave"/>. Carries the buffered
+/// edits when the user clicks "Save all". <see cref="Modified"/> are existing rows
+/// with pending field changes; <see cref="Added"/> are new rows from the add-row
+/// trigger. <see cref="All"/> is the concatenation for convenience. The consumer
+/// applies these to its backing store; on success the grid's buffer is cleared
+/// automatically once the handler returns without throwing.
+/// </summary>
+public record DataGridBatchSaveEventArgs<TItem>(
+    IReadOnlyList<DataGridBatchChange<TItem>> Modified,
+    IReadOnlyList<DataGridBatchChange<TItem>> Added
+)
+{
+    public IEnumerable<DataGridBatchChange<TItem>> All => Modified.Concat(Added);
+}
+
 public class DataGridLayout
 {
     public string? Name { get; set; }
@@ -142,7 +170,36 @@ public class ColumnLayout
     public int Order { get; set; }
 }
 
-public record DataGridGroupSection<TItem>(string Key, List<TItem> Items, int TotalCount);
+public record DataGridGroupSection<TItem>(string Key, List<TItem> Items, int TotalCount)
+{
+    /// <summary>Per-group aggregate strip (one entry per column that declares an
+    /// <see cref="AggregateType"/>). Populated by the grid when grouping is active.</summary>
+    public IReadOnlyList<DataGridGroupAggregate> Aggregates { get; init; } = Array.Empty<DataGridGroupAggregate>();
+}
+
+/// <summary>A single per-group aggregate value, keyed by the column it belongs to.</summary>
+/// <param name="ColumnId">The owning <see cref="DataGridColumn{TItem}.Id"/>.</param>
+/// <param name="Label">Localized aggregate label (e.g. "Sum").</param>
+/// <param name="Value">Pre-formatted aggregate value.</param>
+public record DataGridGroupAggregate(string ColumnId, string Label, string Value);
+
+/// <summary>
+/// A node in a multi-level grouping tree. <see cref="Children"/> is non-empty for
+/// every level except the deepest; <see cref="Items"/> carries the leaf rows at the
+/// deepest level (empty for intermediate nodes). <see cref="Path"/> is a stable
+/// "/"-joined identity used for expand/collapse state ("Region/Country").
+/// </summary>
+public record DataGridGroupNode<TItem>(
+    string Key,
+    string Path,
+    int Level,
+    string Field,
+    int TotalCount,
+    List<TItem> Items,
+    List<DataGridGroupNode<TItem>> Children)
+{
+    public IReadOnlyList<DataGridGroupAggregate> Aggregates { get; init; } = Array.Empty<DataGridGroupAggregate>();
+}
 
 public record DataGridNamedLayout(
     string Id,

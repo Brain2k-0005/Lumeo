@@ -25,7 +25,14 @@ public enum DataGridEditMode
 {
     None,
     Cell,
-    Row
+    Row,
+    /// <summary>
+    /// Buffered editing: cell edits are collected into a per-cell pending-changes
+    /// buffer instead of committing immediately. Dirty cells are visually marked,
+    /// and "Save all" / "Discard" controls appear above the grid. Saving fires
+    /// <see cref="DataGrid{TItem}.OnBatchSave"/> with the modified/added rows.
+    /// </summary>
+    Batch
 }
 
 public enum DataGridFilterType

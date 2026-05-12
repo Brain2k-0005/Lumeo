@@ -1,0 +1,476 @@
+@page "/components/file-manager"
+
+<PageTitle>FileManager — Lumeo</PageTitle>
+
+<PageHeader Title="FileManager" Description="A headless file and folder explorer with a folder tree, breadcrumb navigation, list and grid views, lazy loading, inline rename, and context-menu operations. The consumer provides the data and handles all filesystem operations." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Cloud storage or asset manager UIs (S3 browser, media library, document vault)</li>
+        <li>CMS file pickers where the tree of folders and files is fetched from an API</li>
+        <li>Any app that needs to expose a hierarchical data store with rename / delete / new-folder operations</li>
+        <li>Design tools or code editors with a sidebar file-explorer panel</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    @* ── Demo 1: Basic file manager ────────────────────────────────────────── *@
+    <ComponentDemo Title="Basic File Manager" Description="A full-featured file explorer wired to an in-memory tree. Double-click a folder to navigate into it." Code="@_basicCode">
+        <div style="height: 420px">
+            <FileManager Root="@_tree"
+                         @bind-CurrentPath="_currentPath"
+                         @bind-SelectedNode="_selectedNode"
+                         OnFileOpen="@(n => _openedFile = n.Name)" />
+        </div>
+        @if (_selectedNode is not null)
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-2">
+                Selected: @_selectedNode.Name (@(_selectedNode.IsFolder ? "folder" : FormatSizeStatic(_selectedNode.Size ?? 0)))
+            </Lumeo.Text>
+        }
+        @if (_openedFile is not null)
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Opened: @_openedFile</Lumeo.Text>
+        }
+    </ComponentDemo>
+
+    @* ── Demo 2: Grid view ─────────────────────────────────────────────────── *@
+    <ComponentDemo Title="Grid View" Description="Switch to icon-grid tiles with ViewMode.Grid. The view-mode toggle in the toolbar is also available." Code="@_gridCode">
+        <div style="height: 420px">
+            <FileManager Root="@_tree"
+                         ViewMode="FileManager.FileManagerViewMode.Grid"
+                         @bind-CurrentPath="_currentPath2"
+                         @bind-SelectedNode="_selectedNode2" />
+        </div>
+    </ComponentDemo>
+
+    @* ── Demo 3: Rename / Delete wired up ─────────────────────────────────── *@
+    <ComponentDemo Title="With Rename and Delete" Description="Right-click any item or use the toolbar to rename or delete. Changes are applied to the in-memory sample tree." Code="@_renameDeleteCode">
+        <div style="height: 420px">
+            <FileManager Root="@_editableTree"
+                         @bind-CurrentPath="_currentPath3"
+                         @bind-SelectedNode="_selectedNode3"
+                         OnRename="@HandleRename"
+                         OnDelete="@HandleDelete"
+                         OnNewFolder="@HandleNewFolder" />
+        </div>
+        @if (_statusMessage is not null)
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-2">@_statusMessage</Lumeo.Text>
+        }
+    </ComponentDemo>
+
+</Stack>
+
+@* ── API Reference ──────────────────────────────────────────────────────────── *@
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+    <Stack Gap="8">
+
+        @* FileManager parameters *@
+        <Stack>
+            <Heading Level="3" Class="mb-3">FileManager</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Root</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;FileSystemNode&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Top-level nodes of the file tree. Required.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">CurrentPath</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">ID of the currently open folder. <code>null</code> = root. Uses <code>FileSystemNode.Id</code> as the identifier. Supports two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">LoadChildren</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;FileSystemNode, Task&lt;List&lt;FileSystemNode&gt;&gt;&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Lazy-load callback invoked the first time a folder with <code>Children == null</code> is opened. Return the loaded children.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ViewMode</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">FileManagerViewMode</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">List</td>
+                            <td class="p-3 text-muted-foreground"><code>List</code> shows a table (Name / Size / Modified). <code>Grid</code> shows icon tiles. Supports two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SelectedNode</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">FileSystemNode?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">The currently selected file or folder node. Supports two-way binding.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnFileOpen</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;FileSystemNode&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired when a file is double-clicked. Use this to open a preview, download, etc.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnRename</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;(FileSystemNode, string)&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired when the user commits an inline rename. Tuple contains the node and the new name. When set, the Rename option appears in the context menu.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnDelete</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;IReadOnlyList&lt;FileSystemNode&gt;&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired when the user deletes one or more nodes via the context menu or toolbar. When set, a Delete toolbar button appears for the selected item.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnNewFolder</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;FileSystemNode&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fired when the user clicks New Folder in the toolbar. Receives the currently open folder (or a synthetic root node). When set, the toolbar button appears.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes applied to the root element.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        @* FileSystemNode model *@
+        <Stack>
+            <Heading Level="3" Class="mb-3">FileSystemNode</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Id</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Unique identifier used as the navigation key for <code>CurrentPath</code>.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Name</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
+                            <td class="p-3 text-muted-foreground">Display name shown in the tree and file list.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsFolder</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 text-muted-foreground">True for folders, false for files. Determines tree visibility and double-click behavior.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Size</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">long?</td>
+                            <td class="p-3 text-muted-foreground">File size in bytes. Displayed as a human-readable string (KB / MB / GB). Null for folders.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Modified</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DateTime?</td>
+                            <td class="p-3 text-muted-foreground">Last-modified timestamp displayed in <code>yyyy-MM-dd HH:mm</code> format.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Children</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">List&lt;FileSystemNode&gt;?</td>
+                            <td class="p-3 text-muted-foreground">Child nodes for folders. Null triggers lazy loading (if <code>LoadChildren</code> is provided). An empty list renders the "empty folder" state.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IconName</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 text-muted-foreground">Optional Lucide icon property name (e.g. <code>"Star"</code>) that overrides the automatic icon selection by file extension.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Path</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 text-muted-foreground">Optional full display path. Informational only — the component uses <code>Id</code> for navigation.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Tag</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">object?</td>
+                            <td class="p-3 text-muted-foreground">Arbitrary consumer payload. Not used by the component itself.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+    </Stack>
+</Stack>
+
+@* ── Related Components ──────────────────────────────────────────────────────── *@
+<Stack Gap="4" Class="mt-12">
+    <Heading Level="2">Related Components</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li><strong>TreeView</strong> — the standalone tree used for hierarchical data outside a file manager context</li>
+        <li><strong>DataGrid</strong> — for tabular data with sorting, filtering, pagination, and export</li>
+        <li><strong>Breadcrumb</strong> — the standalone breadcrumb navigation primitive</li>
+        <li><strong>FileUpload</strong> — drag-and-drop file upload with progress tracking</li>
+    </ul>
+</Stack>
+
+@code {
+    // ── Navigation state ──────────────────────────────────────────────────────
+
+    private string? _currentPath;
+    private string? _currentPath2;
+    private string? _currentPath3;
+    private FileSystemNode? _selectedNode;
+    private FileSystemNode? _selectedNode2;
+    private FileSystemNode? _selectedNode3;
+    private string? _openedFile;
+    private string? _statusMessage;
+
+    // ── Sample tree (shared for demos 1 and 2) ────────────────────────────────
+
+    private readonly List<FileSystemNode> _tree =
+    [
+        new FileSystemNode
+        {
+            Id = "documents",
+            Name = "Documents",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = "proposal",  Name = "proposal.pdf",    IsFolder = false, Size = 512_000,   Modified = new DateTime(2024, 3, 1) },
+                new FileSystemNode { Id = "budget",    Name = "budget.xlsx",      IsFolder = false, Size = 98_304,    Modified = new DateTime(2024, 4, 12) },
+                new FileSystemNode { Id = "notes",     Name = "meeting-notes.md", IsFolder = false, Size = 4_096,     Modified = new DateTime(2024, 5, 3) },
+                new FileSystemNode
+                {
+                    Id = "archive",
+                    Name = "Archive",
+                    IsFolder = true,
+                    Children =
+                    [
+                        new FileSystemNode { Id = "old-budget", Name = "budget-2023.xlsx", IsFolder = false, Size = 81_920 }
+                    ]
+                }
+            ]
+        },
+        new FileSystemNode
+        {
+            Id = "images",
+            Name = "Images",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = "banner",    Name = "banner.png",  IsFolder = false, Size = 2_097_152, Modified = new DateTime(2024, 2, 20) },
+                new FileSystemNode { Id = "avatar",    Name = "avatar.jpg",  IsFolder = false, Size = 204_800,  Modified = new DateTime(2024, 1, 8) },
+                new FileSystemNode { Id = "logo-svg",  Name = "logo.svg",    IsFolder = false, Size = 3_200,    Modified = new DateTime(2024, 3, 15) }
+            ]
+        },
+        new FileSystemNode
+        {
+            Id = "src",
+            Name = "Source",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = "main-cs",  Name = "Program.cs",   IsFolder = false, Size = 2_048, Modified = new DateTime(2024, 5, 10) },
+                new FileSystemNode { Id = "app-razor", Name = "App.razor",   IsFolder = false, Size = 1_024, Modified = new DateTime(2024, 5, 9) }
+            ]
+        },
+        new FileSystemNode { Id = "readme", Name = "README.md",    IsFolder = false, Size = 3_584, Modified = new DateTime(2024, 1, 1) },
+        new FileSystemNode { Id = "config", Name = "config.json",  IsFolder = false, Size = 512,   Modified = new DateTime(2024, 4, 30) }
+    ];
+
+    // ── Editable tree for demo 3 ──────────────────────────────────────────────
+
+    private List<FileSystemNode> _editableTree =
+    [
+        new FileSystemNode
+        {
+            Id = "e-docs",
+            Name = "Documents",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = "e-report", Name = "annual-report.pdf", IsFolder = false, Size = 1_048_576, Modified = new DateTime(2024, 3, 20) },
+                new FileSystemNode { Id = "e-notes",  Name = "notes.txt",          IsFolder = false, Size = 2_048,    Modified = new DateTime(2024, 4, 5) }
+            ]
+        },
+        new FileSystemNode
+        {
+            Id = "e-media",
+            Name = "Media",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = "e-intro", Name = "intro.mp4",  IsFolder = false, Size = 52_428_800, Modified = new DateTime(2024, 2, 14) },
+                new FileSystemNode { Id = "e-thumb", Name = "thumb.png",  IsFolder = false, Size = 153_600,   Modified = new DateTime(2024, 2, 14) }
+            ]
+        },
+        new FileSystemNode { Id = "e-readme", Name = "README.md", IsFolder = false, Size = 1_024 }
+    ];
+
+    // ── Operation handlers ────────────────────────────────────────────────────
+
+    private void HandleRename((FileSystemNode Node, string NewName) args)
+    {
+        var node = FindNode(_editableTree, args.Node.Id);
+        if (node is not null)
+        {
+            node.Name = args.NewName;
+            _statusMessage = $"Renamed to: {args.NewName}";
+            StateHasChanged();
+        }
+    }
+
+    private void HandleDelete(IReadOnlyList<FileSystemNode> nodes)
+    {
+        foreach (var node in nodes)
+            RemoveNode(_editableTree, node.Id);
+
+        _statusMessage = $"Deleted: {string.Join(", ", nodes.Select(n => n.Name))}";
+        StateHasChanged();
+    }
+
+    private void HandleNewFolder(FileSystemNode parentFolder)
+    {
+        var newFolder = new FileSystemNode
+        {
+            Id = $"new-folder-{Guid.NewGuid():N}",
+            Name = "New Folder",
+            IsFolder = true,
+            Children = []
+        };
+
+        if (string.IsNullOrEmpty(parentFolder.Id))
+        {
+            _editableTree.Add(newFolder);
+        }
+        else
+        {
+            var parent = FindNode(_editableTree, parentFolder.Id);
+            if (parent is not null)
+            {
+                parent.Children ??= [];
+                parent.Children.Add(newFolder);
+            }
+        }
+
+        _statusMessage = $"Created folder in: {(string.IsNullOrEmpty(parentFolder.Id) ? "root" : parentFolder.Name)}";
+        StateHasChanged();
+    }
+
+    private static FileSystemNode? FindNode(List<FileSystemNode> nodes, string id)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Id == id) return n;
+            if (n.Children is { Count: > 0 })
+            {
+                var found = FindNode(n.Children, id);
+                if (found is not null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static bool RemoveNode(List<FileSystemNode> nodes, string id)
+    {
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (nodes[i].Id == id)
+            {
+                nodes.RemoveAt(i);
+                return true;
+            }
+            if (nodes[i].Children is { Count: > 0 } && RemoveNode(nodes[i].Children, id))
+                return true;
+        }
+        return false;
+    }
+
+    private static string FormatSizeStatic(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+    }
+
+    // ── Code snippets ─────────────────────────────────────────────────────────
+
+    private readonly string _basicCode = @"<div style=""height: 420px"">
+    <FileManager Root=""@_tree""
+                 @bind-CurrentPath=""_currentPath""
+                 @bind-SelectedNode=""_selectedNode""
+                 OnFileOpen=""@(n => _openedFile = n.Name)"" />
+</div>
+
+@code {
+    private string? _currentPath;
+    private FileSystemNode? _selectedNode;
+    private string? _openedFile;
+
+    private readonly List<FileSystemNode> _tree =
+    [
+        new FileSystemNode
+        {
+            Id = ""documents"", Name = ""Documents"", IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = ""proposal"", Name = ""proposal.pdf"", IsFolder = false, Size = 512_000 },
+                new FileSystemNode { Id = ""notes"",    Name = ""notes.md"",     IsFolder = false, Size = 4_096  }
+            ]
+        },
+        new FileSystemNode { Id = ""readme"", Name = ""README.md"", IsFolder = false, Size = 3_584 }
+    ];
+}";
+
+    private readonly string _gridCode = @"<div style=""height: 420px"">
+    <FileManager Root=""@_tree""
+                 ViewMode=""FileManager.FileManagerViewMode.Grid""
+                 @bind-CurrentPath=""_currentPath""
+                 @bind-SelectedNode=""_selectedNode"" />
+</div>";
+
+    private readonly string _renameDeleteCode = @"<div style=""height: 420px"">
+    <FileManager Root=""@_editableTree""
+                 @bind-CurrentPath=""_currentPath""
+                 @bind-SelectedNode=""_selectedNode""
+                 OnRename=""HandleRename""
+                 OnDelete=""HandleDelete""
+                 OnNewFolder=""HandleNewFolder"" />
+</div>
+
+@code {
+    private void HandleRename((FileSystemNode Node, string NewName) args)
+    {
+        var node = FindNode(_editableTree, args.Node.Id);
+        if (node is not null) node.Name = args.NewName;
+    }
+
+    private void HandleDelete(IReadOnlyList<FileSystemNode> nodes)
+    {
+        foreach (var n in nodes) RemoveNode(_editableTree, n.Id);
+    }
+
+    private void HandleNewFolder(FileSystemNode parentFolder)
+    {
+        var newFolder = new FileSystemNode
+        {
+            Id = Guid.NewGuid().ToString(), Name = ""New Folder"",
+            IsFolder = true, Children = []
+        };
+        // Add to parent or root depending on parentFolder.Id
+    }
+}";
+}

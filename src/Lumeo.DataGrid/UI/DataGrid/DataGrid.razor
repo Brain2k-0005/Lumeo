@@ -50,10 +50,30 @@
         PinnedRightOffsets: ComputePinnedRightOffsets(),
         GroupedSections: _groupedSections.Count > 0 ? _groupedSections.AsReadOnly() : null,
         GroupBy: GroupBy,
-        IsGrouped: !string.IsNullOrEmpty(GroupBy) && _groupedSections.Count > 0,
+        IsGrouped: !IsTreeGridMode && EffectiveGroupFields.Count == 1 && _groupedSections.Count > 0,
         IsGroupExpanded: IsGroupExpanded,
         ToggleGroupExpand: ToggleGroupExpand,
         Culture: EffectiveCulture,
+        GroupFields: _runtimeGroupFields.AsReadOnly(),
+        GroupTree: (!IsTreeGridMode && EffectiveGroupFields.Count > 1 && _groupedTree.Count > 0)
+            ? _groupedTree.AsReadOnly() : null,
+        IsGroupPathExpanded: IsGroupPathExpanded,
+        ToggleGroupPath: ToggleGroupPath,
+        AddGroupField: AddGroupField,
+        RemoveGroupField: RemoveGroupField,
+        ChildItemsSelector: ChildItemsSelector,
+        IsTreeGrid: IsTreeGridMode,
+        TreeColumnField: EffectiveTreeColumnField,
+        IsTreeNodeExpanded: IsTreeNodeExpanded,
+        ToggleTreeNode: it => _ = ToggleTreeNodeAsync(it),
+        TreeLevelOf: TreeLevelOf,
+        TreeHasChildren: TreeHasChildrenOf,
+        // --- Batch-edit context fields — owned by a separate wave; these are
+        // no-op defaults so the tree-grid/grouping wave compiles + runs standalone.
+        IsBatchEdit: EditMode == DataGridEditMode.Batch,
+        IsCellDirty: static (_, _) => false,
+        GetBatchValue: static (item, col) => col.GetValue(item),
+        SetBatchValue: static (_, _, _) => { },
         GridId: _gridId,
         FocusedRow: _focusedRow,
         FocusedCol: _focusedCol,
@@ -127,10 +147,61 @@
             </div>
         }
 
+        @if (ShowGroupPanel)
+        {
+            <div data-slot="datagrid-group-panel"
+                 class="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-dashed border-border/40 bg-muted/30 text-xs">
+                @if (_runtimeGroupFields.Count == 0)
+                {
+                    <span class="text-muted-foreground">@(GroupPanelText ?? "Drag a column header here to group by it")</span>
+                }
+                else
+                {
+                    @for (var gi = 0; gi < _runtimeGroupFields.Count; gi++)
+                    {
+                        var field = _runtimeGroupFields[gi];
+                        var col = EffectiveColumns.FirstOrDefault(c => c.Field == field);
+                        var label = col?.Title ?? field;
+                        <span class="inline-flex items-center gap-1 rounded bg-card border border-border/60 px-2 py-0.5">
+                            <Blazicon Svg="Lucide.Group" class="h-3 w-3 text-muted-foreground" />
+                            <span>@label</span>
+                            <button type="button"
+                                    class="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-muted text-muted-foreground"
+                                    title="Remove grouping"
+                                    @onclick="@(() => RemoveGroupField(field))">
+                                <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                            </button>
+                        </span>
+                        @if (gi < _runtimeGroupFields.Count - 1)
+                        {
+                            <Blazicon Svg="Lucide.ChevronRight" class="h-3 w-3 text-muted-foreground/60" />
+                        }
+                    }
+                }
+                @{
+                    var addableCols = EffectiveColumns
+                        .Where(c => c.Groupable && c.Field is not null && !_runtimeGroupFields.Contains(c.Field!))
+                        .ToList();
+                }
+                @if (addableCols.Count > 0)
+                {
+                    <select class="ml-auto h-6 rounded border border-border/60 bg-card px-1 text-xs text-muted-foreground"
+                            value=""
+                            @onchange="@(e => { var v = e.Value?.ToString(); if (!string.IsNullOrEmpty(v)) AddGroupField(v!); })">
+                        <option value="">+ Add group level</option>
+                        @foreach (var c in addableCols)
+                        {
+                            <option value="@c.Field">@(c.Title ?? c.Field)</option>
+                        }
+                    </select>
+                }
+            </div>
+        }
+
         <div class="overflow-auto flex-1" @onclick="CloseContextMenu">
             <table class="w-full caption-bottom text-sm"
                    id="@_gridId"
-                   role="grid"
+                   role="@(IsTreeGridMode ? "treegrid" : "grid")"
                    aria-rowcount="@(_displayedItems.Count + 1)"
                    aria-colcount="@_visibleColumns.Count"
                    aria-readonly="@(EditMode == DataGridEditMode.None ? "true" : null)"
@@ -274,6 +345,46 @@
     [Parameter] public bool RowReorderable { get; set; }
     [Parameter] public string? GroupBy { get; set; }
     [Parameter] public bool GroupsExpandedByDefault { get; set; } = true;
+
+    /// <summary>
+    /// Ordered list of fields for multi-level grouping. When set (non-empty) this
+    /// takes precedence over the single <see cref="GroupBy"/> parameter. Each entry
+    /// must be a column <c>Field</c>. The grid renders nested group rows with
+    /// increasing indentation per level; per-level aggregates are shown on each
+    /// group header row.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string>? GroupByFields { get; set; }
+
+    /// <summary>
+    /// Shows a slim bar above the grid that lists the current grouping levels as
+    /// removable chips, plus a dropdown to add a new level from any
+    /// <see cref="DataGridColumn{TItem}.Groupable"/> column. Default false.
+    /// </summary>
+    [Parameter] public bool ShowGroupPanel { get; set; }
+
+    /// <summary>Placeholder/hint text shown in the group panel when no fields are grouped.</summary>
+    [Parameter] public string? GroupPanelText { get; set; }
+
+    // --- Tree-grid mode ---
+    /// <summary>
+    /// When set, the grid renders a hierarchical tree-grid: this selector returns a
+    /// row's child rows (null/empty = leaf). Each parent row gets an expand chevron
+    /// in the tree column (see <see cref="TreeColumnField"/>). Distinct from
+    /// <see cref="DetailTemplate"/>, which is a flat expand-for-detail fragment.
+    /// Tree-grid mode and grouping are mutually exclusive — when both are configured,
+    /// tree-grid mode wins.
+    /// </summary>
+    [Parameter] public Func<TItem, IEnumerable<TItem>?>? ChildItemsSelector { get; set; }
+
+    /// <summary>Whether tree nodes start expanded. Default false.</summary>
+    [Parameter] public bool TreeGridDefaultExpanded { get; set; }
+
+    /// <summary>Field of the column that carries the tree chevron + indentation.
+    /// Null (default) uses the first visible column.</summary>
+    [Parameter] public string? TreeColumnField { get; set; }
+
+    /// <summary>Raised when a tree node is expanded or collapsed (the item, plus its new expanded state).</summary>
+    [Parameter] public EventCallback<TItem> OnTreeNodeExpand { get; set; }
 
     // --- Fullscreen / Expandable ---
     /// <summary>
@@ -585,6 +696,27 @@
     private HashSet<string> _knownGroupKeys = new();
     private string? _lastGroupBy;
     private bool? _lastGroupsExpandedByDefault;
+
+    // --- Multi-level grouping + group panel (rc.35) ---
+    // Effective grouping levels. Seeded from GroupByFields ?? [GroupBy] but mutable
+    // at runtime via the group panel chips / add-dropdown.
+    private List<string> _runtimeGroupFields = new();
+    // Tracks the (GroupBy, GroupByFields) parameter values last applied so an
+    // external parameter change re-seeds _runtimeGroupFields, but runtime panel
+    // edits are not stomped on the next render.
+    private string? _seededGroupBy;
+    private string? _seededGroupByFieldsKey;
+    private List<DataGridGroupNode<TItem>> _groupedTree = new();
+    private HashSet<string> _expandedGroupPaths = new();
+    private HashSet<string> _knownGroupPaths = new();
+
+    // --- Tree-grid mode (rc.35) ---
+    private HashSet<TItem> _expandedTreeNodes = new();
+    private bool _treeExpandSeeded;
+    // Per-render caches rebuilt by RebuildTreeView().
+    private List<TItem> _treeDisplayRows = new();
+    private Dictionary<TItem, int> _treeLevelOf = new();
+    private Dictionary<TItem, bool> _treeHasChildren = new();
     private string _layoutId = $"datagrid-{Guid.NewGuid():N}";
     private DataGridLayout? _defaultLayout; // snapshot of original column state for reset
     private bool _savedLayoutApplied; // tracks whether the SavedLayout parameter has been applied
@@ -646,7 +778,13 @@
 
     private int EffectiveTotalCount => ServerMode ? TotalCount : _processedItems.Count;
 
-    private bool UseVirtualization => _displayedItems.Count > VirtualizeThreshold;
+    // Row virtualization is incompatible with the recursive group-tree / tree-grid
+    // renderers (they need every group/parent row present to compute indentation
+    // and expand state), so it's disabled when those modes are active.
+    private bool UseVirtualization =>
+        _displayedItems.Count > VirtualizeThreshold
+        && !IsTreeGridMode
+        && EffectiveGroupFields.Count <= 1;
 
     private string? HeightStyle => Height is not null ? $"height: {Height};" : null;
 
@@ -804,6 +942,9 @@
         // calling it here covers the first render when Columns are provided via the Columns
         // parameter rather than via declarative ColumnDef children.
         RefreshVisibleColumns();
+
+        // Re-seed runtime grouping levels from GroupBy / GroupByFields if those params changed.
+        SyncGroupFieldsFromParameters();
 
         // Snapshot default layout once (before any external SavedLayout is applied)
         if (_defaultLayout is null && EffectiveColumns.Count > 0)
@@ -1098,62 +1239,35 @@
 
         _processedItems = (ordered as IEnumerable<TItem> ?? query).ToList();
 
-        // Row grouping
-        if (!string.IsNullOrEmpty(GroupBy))
+        // --- Tree-grid mode takes priority over grouping ---
+        if (IsTreeGridMode)
         {
-            var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == GroupBy);
-            if (groupCol is not null)
-            {
-                var groupByChanged = GroupBy != _lastGroupBy;
-                _lastGroupBy = GroupBy;
+            _groupedSections.Clear();
+            _groupedTree.Clear();
+            _runtimeGroupFields.Clear();
+            RebuildTreeView();
+            _displayedItems = _treeDisplayRows;
+            return; // tree-grid manages its own row set (no pagination)
+        }
+        _treeDisplayRows = new List<TItem>();
 
-                _groupedSections = _processedItems
-                    .GroupBy(item => groupCol.GetFormattedValue(item))
-                    .OrderBy(g => g.Key)
-                    .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
-                    .ToList();
-
-                var defaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
-                _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
-
-                if (groupByChanged || defaultChanged)
-                {
-                    // GroupBy field or default toggle changed — reset expand state based on default
-                    _expandedGroups.Clear();
-                    _knownGroupKeys.Clear();
-                    foreach (var section in _groupedSections)
-                    {
-                        _knownGroupKeys.Add(section.Key);
-                        if (GroupsExpandedByDefault)
-                            _expandedGroups.Add(section.Key);
-                    }
-                }
-                else
-                {
-                    // Keep user's expand/collapse state; remove stale keys
-                    var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
-                    _expandedGroups.IntersectWith(validKeys);
-                    _knownGroupKeys.IntersectWith(validKeys);
-                    // Apply default only to groups we haven't seen before (not to user-toggled ones)
-                    foreach (var section in _groupedSections)
-                    {
-                        if (_knownGroupKeys.Contains(section.Key)) continue;
-                        _knownGroupKeys.Add(section.Key);
-                        if (GroupsExpandedByDefault)
-                            _expandedGroups.Add(section.Key);
-                    }
-                }
-
-                // When grouped, show items from expanded groups (no pagination)
-                _displayedItems = _groupedSections
-                    .Where(g => _expandedGroups.Contains(g.Key))
-                    .SelectMany(g => g.Items)
-                    .ToList();
-                return; // Skip normal pagination when grouped
-            }
+        // --- Row grouping (single- or multi-level) ---
+        var groupFields = EffectiveGroupFields;
+        if (groupFields.Count == 1)
+        {
+            _groupedTree.Clear();
+            if (ProcessSingleLevelGrouping(groupFields[0]))
+                return; // skip normal pagination when grouped
+        }
+        else if (groupFields.Count > 1)
+        {
+            _groupedSections.Clear();
+            if (ProcessMultiLevelGrouping(groupFields))
+                return;
         }
         _lastGroupBy = null;
         _groupedSections.Clear();
+        _groupedTree.Clear();
 
         // Paginate
         if (ShowPagination && PageSize > 0)
@@ -1171,6 +1285,411 @@
         {
             _displayedItems = _processedItems;
         }
+    }
+
+    // =====================================================================
+    //  Multi-level grouping + tree-grid (rc.35)
+    // =====================================================================
+
+    /// <summary>True when the grid is in hierarchical tree-grid mode (a
+    /// <see cref="ChildItemsSelector"/> is set and no grouping is active —
+    /// tree-grid wins over grouping when both are configured).</summary>
+    internal bool IsTreeGridMode => ChildItemsSelector is not null;
+
+    /// <summary>The grouping levels actually in effect — runtime panel edits if
+    /// any have been made, otherwise seeded from the parameters.</summary>
+    private IReadOnlyList<string> EffectiveGroupFields => _runtimeGroupFields;
+
+    /// <summary>Re-seeds <see cref="_runtimeGroupFields"/> from the parameters when
+    /// <see cref="GroupBy"/> / <see cref="GroupByFields"/> change. Runtime panel
+    /// edits (via AddGroupField/RemoveGroupField) are preserved across renders
+    /// because the seed only re-applies when the parameter values themselves change.</summary>
+    private void SyncGroupFieldsFromParameters()
+    {
+        var byFieldsKey = GroupByFields is null ? null : string.Join("", GroupByFields);
+        if (byFieldsKey == _seededGroupByFieldsKey && GroupBy == _seededGroupBy) return;
+        _seededGroupByFieldsKey = byFieldsKey;
+        _seededGroupBy = GroupBy;
+
+        _runtimeGroupFields = (GroupByFields is { Count: > 0 }
+            ? GroupByFields.ToList()
+            : (!string.IsNullOrEmpty(GroupBy) ? new List<string> { GroupBy! } : new List<string>()))
+            .Where(f => EffectiveColumns.Any(c => c.Field == f))
+            .Distinct()
+            .ToList();
+        _expandedGroupPaths.Clear();
+        _knownGroupPaths.Clear();
+        _expandedGroups.Clear();
+        _knownGroupKeys.Clear();
+        _lastGroupBy = null;
+    }
+
+    private void AddGroupField(string field)
+    {
+        if (string.IsNullOrEmpty(field)) return;
+        if (_runtimeGroupFields.Contains(field)) return;
+        if (!EffectiveColumns.Any(c => c.Field == field && c.Groupable)) return;
+        _runtimeGroupFields.Add(field);
+        _expandedGroupPaths.Clear();
+        _knownGroupPaths.Clear();
+        _expandedGroups.Clear();
+        _knownGroupKeys.Clear();
+        _currentPage = 1;
+        if (!ServerMode) ProcessClientData();
+        StateHasChanged();
+    }
+
+    private void RemoveGroupField(string field)
+    {
+        if (!_runtimeGroupFields.Remove(field)) return;
+        _expandedGroupPaths.Clear();
+        _knownGroupPaths.Clear();
+        _expandedGroups.Clear();
+        _knownGroupKeys.Clear();
+        _currentPage = 1;
+        if (!ServerMode) ProcessClientData();
+        StateHasChanged();
+    }
+
+    /// <summary>Computes the per-group aggregate strip for a set of items.</summary>
+    private IReadOnlyList<DataGridGroupAggregate> ComputeGroupAggregates(IReadOnlyList<TItem> items)
+    {
+        var result = new List<DataGridGroupAggregate>();
+        foreach (var col in EffectiveColumns.Where(c => c.Visible && c.Aggregate != AggregateType.None))
+        {
+            result.Add(new DataGridGroupAggregate(
+                col.Id,
+                AggregateLabel(col.Aggregate),
+                ComputeColumnAggregate(col, items)));
+        }
+        return result;
+    }
+
+    private string AggregateLabel(AggregateType t) => t switch
+    {
+        AggregateType.Sum => L["DataGrid.AggregateSum"],
+        AggregateType.Average => L["DataGrid.AggregateAvg"],
+        AggregateType.Count => L["DataGrid.AggregateCount"],
+        AggregateType.Min => L["DataGrid.AggregateMin"],
+        AggregateType.Max => L["DataGrid.AggregateMax"],
+        _ => ""
+    };
+
+    private string ComputeColumnAggregate(DataGridColumn<TItem> col, IReadOnlyList<TItem> items)
+    {
+        if (items.Count == 0) return "-";
+        var values = items.Select(col.GetValue).Where(v => v is not null).ToList();
+        if (col.Aggregate == AggregateType.Count) return values.Count.ToString();
+
+        var numeric = new List<double>();
+        foreach (var v in values)
+        {
+            if (v is IConvertible conv)
+            {
+                try { numeric.Add(conv.ToDouble(System.Globalization.CultureInfo.InvariantCulture)); }
+                catch { /* skip non-numeric */ }
+            }
+        }
+        if (numeric.Count == 0) return "-";
+        double r = col.Aggregate switch
+        {
+            AggregateType.Sum => numeric.Sum(),
+            AggregateType.Average => numeric.Average(),
+            AggregateType.Min => numeric.Min(),
+            AggregateType.Max => numeric.Max(),
+            _ => 0
+        };
+        return r.ToString("N2");
+    }
+
+    // ---- Single-level grouping (classic; now with per-group aggregates) ----
+    private bool ProcessSingleLevelGrouping(string field)
+    {
+        var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == field);
+        if (groupCol is null) return false;
+
+        var groupByChanged = field != _lastGroupBy;
+        _lastGroupBy = field;
+
+        _groupedSections = _processedItems
+            .GroupBy(item => groupCol.GetFormattedValue(item, EffectiveCulture))
+            .OrderBy(g => g.Key, StringComparer.CurrentCulture)
+            .Select(g =>
+            {
+                var its = g.ToList();
+                return new DataGridGroupSection<TItem>(g.Key, its, its.Count)
+                {
+                    Aggregates = ComputeGroupAggregates(its)
+                };
+            })
+            .ToList();
+
+        var defaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
+        _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
+
+        if (groupByChanged || defaultChanged)
+        {
+            _expandedGroups.Clear();
+            _knownGroupKeys.Clear();
+            foreach (var section in _groupedSections)
+            {
+                _knownGroupKeys.Add(section.Key);
+                if (GroupsExpandedByDefault) _expandedGroups.Add(section.Key);
+            }
+        }
+        else
+        {
+            var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
+            _expandedGroups.IntersectWith(validKeys);
+            _knownGroupKeys.IntersectWith(validKeys);
+            foreach (var section in _groupedSections)
+            {
+                if (_knownGroupKeys.Contains(section.Key)) continue;
+                _knownGroupKeys.Add(section.Key);
+                if (GroupsExpandedByDefault) _expandedGroups.Add(section.Key);
+            }
+        }
+
+        _displayedItems = _groupedSections
+            .Where(g => _expandedGroups.Contains(g.Key))
+            .SelectMany(g => g.Items)
+            .ToList();
+        return true;
+    }
+
+    // ---- Multi-level grouping (nested tree) ----
+    private bool ProcessMultiLevelGrouping(IReadOnlyList<string> fields)
+    {
+        _groupedTree = BuildGroupNodes(_processedItems, fields, 0, "");
+        if (_groupedTree.Count == 0)
+        {
+            _groupedSections.Clear();
+            return false;
+        }
+
+        var defaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
+        _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
+
+        // Collect every node path (depth-first) to manage expand state.
+        var allPaths = new List<string>();
+        void Collect(IEnumerable<DataGridGroupNode<TItem>> nodes)
+        {
+            foreach (var n in nodes) { allPaths.Add(n.Path); Collect(n.Children); }
+        }
+        Collect(_groupedTree);
+        var validSet = allPaths.ToHashSet();
+
+        if (defaultChanged)
+        {
+            _expandedGroupPaths.Clear();
+            _knownGroupPaths.Clear();
+        }
+        _expandedGroupPaths.IntersectWith(validSet);
+        _knownGroupPaths.IntersectWith(validSet);
+        foreach (var p in allPaths)
+        {
+            if (_knownGroupPaths.Contains(p)) continue;
+            _knownGroupPaths.Add(p);
+            if (GroupsExpandedByDefault) _expandedGroupPaths.Add(p);
+        }
+
+        // Flatten leaf items that live under fully-expanded ancestor chains.
+        var visible = new List<TItem>();
+        void Flatten(IEnumerable<DataGridGroupNode<TItem>> nodes)
+        {
+            foreach (var n in nodes)
+            {
+                if (!_expandedGroupPaths.Contains(n.Path)) continue;
+                if (n.Children.Count > 0) Flatten(n.Children);
+                else visible.AddRange(n.Items);
+            }
+        }
+        Flatten(_groupedTree);
+        _displayedItems = visible;
+        return true;
+    }
+
+    private List<DataGridGroupNode<TItem>> BuildGroupNodes(
+        IReadOnlyList<TItem> items, IReadOnlyList<string> fields, int level, string parentPath)
+    {
+        if (level >= fields.Count) return new();
+        var col = EffectiveColumns.FirstOrDefault(c => c.Field == fields[level]);
+        if (col is null)
+        {
+            // Skip a missing field — try the next level so grouping degrades gracefully.
+            return BuildGroupNodes(items, fields, level + 1, parentPath);
+        }
+        return items
+            .GroupBy(it => col.GetFormattedValue(it, EffectiveCulture))
+            .OrderBy(g => g.Key, StringComparer.CurrentCulture)
+            .Select(g =>
+            {
+                var its = g.ToList();
+                var path = string.IsNullOrEmpty(parentPath) ? g.Key : parentPath + " / " + g.Key;
+                var children = level + 1 < fields.Count
+                    ? BuildGroupNodes(its, fields, level + 1, path)
+                    : new List<DataGridGroupNode<TItem>>();
+                return new DataGridGroupNode<TItem>(
+                    Key: g.Key,
+                    Path: path,
+                    Level: level,
+                    Field: fields[level],
+                    TotalCount: its.Count,
+                    Items: children.Count > 0 ? new List<TItem>() : its,
+                    Children: children)
+                {
+                    Aggregates = ComputeGroupAggregates(its)
+                };
+            })
+            .ToList();
+    }
+
+    private bool IsGroupPathExpanded(string path) => _expandedGroupPaths.Contains(path);
+
+    private void ToggleGroupPath(string path)
+    {
+        if (!_expandedGroupPaths.Remove(path)) _expandedGroupPaths.Add(path);
+        ProcessClientData();
+        StateHasChanged();
+    }
+
+    // ---- Tree-grid mode ----
+
+    /// <summary>Currently-resolved tree column field (null = first visible column).</summary>
+    private string? EffectiveTreeColumnField
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(TreeColumnField) &&
+                _visibleColumns.Any(c => c.Field == TreeColumnField))
+                return TreeColumnField;
+            return _visibleColumns.FirstOrDefault()?.Field;
+        }
+    }
+
+    private bool MatchesCurrentFilters(TItem item)
+    {
+        if (!string.IsNullOrWhiteSpace(_globalSearch))
+        {
+            var s = _globalSearch;
+            if (!EffectiveColumns.Any(col => col.GetFormattedValue(item, EffectiveCulture).Contains(s, StringComparison.OrdinalIgnoreCase)))
+                return false;
+        }
+        foreach (var filter in _filters)
+        {
+            var column = EffectiveColumns.FirstOrDefault(c => c.Field == filter.Field);
+            if (column is null) continue;
+            if (!DataGridFilterOperator.Evaluate(filter, column.GetValue(item))) return false;
+        }
+        return true;
+    }
+
+    private IEnumerable<TItem> SortSiblings(IEnumerable<TItem> items)
+    {
+        IOrderedEnumerable<TItem>? ordered = null;
+        foreach (var sort in _sorts.Where(s => s.Direction != SortDirection.None))
+        {
+            var column = EffectiveColumns.FirstOrDefault(c => c.Field == sort.Field);
+            if (column is null) continue;
+            Func<TItem, object?> keySel = column.GetValue;
+            if (ordered is null)
+            {
+                ordered = column.CustomSort is not null
+                    ? (sort.Direction == SortDirection.Ascending
+                        ? items.OrderBy(keySel, Comparer<object?>.Create(column.CustomSort))
+                        : items.OrderByDescending(keySel, Comparer<object?>.Create(column.CustomSort)))
+                    : (sort.Direction == SortDirection.Ascending
+                        ? items.OrderBy(it => column.GetValue(it) as IComparable)
+                        : items.OrderByDescending(it => column.GetValue(it) as IComparable));
+            }
+            else
+            {
+                ordered = column.CustomSort is not null
+                    ? (sort.Direction == SortDirection.Ascending
+                        ? ordered.ThenBy(keySel, Comparer<object?>.Create(column.CustomSort))
+                        : ordered.ThenByDescending(keySel, Comparer<object?>.Create(column.CustomSort)))
+                    : (sort.Direction == SortDirection.Ascending
+                        ? ordered.ThenBy(it => column.GetValue(it) as IComparable)
+                        : ordered.ThenByDescending(it => column.GetValue(it) as IComparable));
+            }
+        }
+        return ordered ?? items;
+    }
+
+    /// <summary>Recursively filters a tree: keeps a node when it matches the current
+    /// filters OR has a kept descendant. Returns null when the node is pruned.</summary>
+    private bool TreeNodeKept(TItem item)
+    {
+        if (MatchesCurrentFilters(item)) return true;
+        var kids = ChildItemsSelector?.Invoke(item);
+        return kids is not null && kids.Any(TreeNodeKept);
+    }
+
+    /// <summary>Rebuilds the flattened tree-grid view (visible rows + per-row level
+    /// and has-children caches) from <see cref="_processedItems"/>.</summary>
+    private void RebuildTreeView()
+    {
+        _treeDisplayRows = new List<TItem>();
+        _treeLevelOf = new Dictionary<TItem, int>();
+        _treeHasChildren = new Dictionary<TItem, bool>();
+
+        var hasFilter = !string.IsNullOrWhiteSpace(_globalSearch) || _filters.Count > 0;
+
+        // Seed expand state once (or when the default flips).
+        if (!_treeExpandSeeded)
+        {
+            _treeExpandSeeded = true;
+            if (TreeGridDefaultExpanded)
+            {
+                void SeedExpand(IEnumerable<TItem> nodes)
+                {
+                    foreach (var n in nodes)
+                    {
+                        var kids = ChildItemsSelector?.Invoke(n);
+                        if (kids is not null && kids.Any())
+                        {
+                            _expandedTreeNodes.Add(n);
+                            SeedExpand(kids);
+                        }
+                    }
+                }
+                SeedExpand(_processedItems);
+            }
+        }
+
+        void Walk(IEnumerable<TItem> nodes, int level)
+        {
+            // Sort siblings; in tree mode _processedItems was already sorted at root,
+            // but children come straight from the selector, so sort them here too.
+            var siblings = (level == 0 ? nodes : SortSiblings(nodes)).ToList();
+            foreach (var node in siblings)
+            {
+                if (hasFilter && !TreeNodeKept(node)) continue;
+                var kids = ChildItemsSelector?.Invoke(node)?.ToList();
+                var keptKids = kids is null ? null : (hasFilter ? kids.Where(TreeNodeKept).ToList() : kids);
+                var hasKids = keptKids is { Count: > 0 };
+                _treeLevelOf[node] = level;
+                _treeHasChildren[node] = hasKids;
+                _treeDisplayRows.Add(node);
+                if (hasKids && _expandedTreeNodes.Contains(node))
+                    Walk(keptKids!, level + 1);
+            }
+        }
+        Walk(_processedItems, 0);
+    }
+
+    private bool IsTreeNodeExpanded(TItem item) => _expandedTreeNodes.Contains(item);
+
+    private int TreeLevelOf(TItem item) => _treeLevelOf.TryGetValue(item, out var l) ? l : 0;
+
+    private bool TreeHasChildrenOf(TItem item) => _treeHasChildren.TryGetValue(item, out var b) && b;
+
+    private async Task ToggleTreeNodeAsync(TItem item)
+    {
+        if (!_expandedTreeNodes.Remove(item)) _expandedTreeNodes.Add(item);
+        if (!ServerMode) ProcessClientData();
+        if (OnTreeNodeExpand.HasDelegate) await OnTreeNodeExpand.InvokeAsync(item);
+        StateHasChanged();
     }
 
     private async Task HandleSort(SortDescriptor sort)

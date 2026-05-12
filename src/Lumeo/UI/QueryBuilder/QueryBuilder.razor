@@ -1,0 +1,101 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="_context" IsFixed="false">
+        <QueryBuilderGroup Group="EffectiveQuery" Depth="0" Parent="null" />
+    </CascadingValue>
+
+    @if (ShowJsonPreview)
+    {
+        <div class="mt-4 rounded-md border border-border/40 bg-muted/30">
+            <div class="border-b border-border/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">JSON</div>
+            <pre class="overflow-x-auto p-3 text-xs text-foreground"><code>@QueryBuilderSerialization.ToJson(EffectiveQuery)</code></pre>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The fields the consumer can build conditions against. Required.</summary>
+    [Parameter] public IReadOnlyList<QueryField> Fields { get; set; } = Array.Empty<QueryField>();
+
+    /// <summary>The query tree. Two-way bindable via <c>@bind-Query</c>. When <c>null</c> on
+    /// first render, an empty root group (And, no rules) is created.</summary>
+    [Parameter] public QueryGroup? Query { get; set; }
+    [Parameter] public EventCallback<QueryGroup> QueryChanged { get; set; }
+
+    /// <summary>When <c>true</c>, renders a read-only JSON view of the query below the builder.</summary>
+    [Parameter] public bool ShowJsonPreview { get; set; }
+
+    /// <summary>Maximum group nesting depth. The "Add group" button is disabled at this depth.</summary>
+    [Parameter] public int MaxDepth { get; set; } = 5;
+
+    /// <summary>When <c>false</c>, "Remove rule" / "Remove group" are hidden when it would leave
+    /// a group empty (the root may always be empty).</summary>
+    [Parameter] public bool AllowEmptyGroups { get; set; } = true;
+
+    /// <summary>Optional override for how a rule's value editor renders. Receives the rule.
+    /// When supplied, replaces the built-in per-type editor entirely (the consumer is then
+    /// responsible for binding to <see cref="QueryRule.Value"/> and calling
+    /// <c>NotifyChanged</c> via the cascaded context — see docs).</summary>
+    [Parameter] public RenderFragment<QueryRule>? ValueEditorTemplate { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private QueryBuilderContext _context = default!;
+
+    private QueryGroup EffectiveQuery => Query ??= QueryGroup.CreateEmpty();
+
+    private string CssClass => $"w-full text-sm {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        Query ??= QueryGroup.CreateEmpty();
+        RebuildContext();
+    }
+
+    protected override void OnParametersSet()
+    {
+        Query ??= QueryGroup.CreateEmpty();
+        RebuildContext();
+    }
+
+    private void RebuildContext()
+    {
+        _context = new QueryBuilderContext(
+            Fields,
+            MaxDepth,
+            AllowEmptyGroups,
+            ValueEditorTemplate,
+            NotifyChanged);
+    }
+
+    private async Task NotifyChanged()
+    {
+        await QueryChanged.InvokeAsync(EffectiveQuery);
+        StateHasChanged();
+    }
+
+    // --- Static helpers (re-exported for convenience) ---
+
+    /// <summary>Serializes a query tree to indented JSON (System.Text.Json, camelCase, string enums).</summary>
+    public static string ToJson(QueryGroup query) => QueryBuilderSerialization.ToJson(query);
+
+    /// <summary>Parses a query tree from JSON produced by <see cref="ToJson"/>. Returns <c>null</c> on failure.</summary>
+    public static QueryGroup? FromJson(string json) => QueryBuilderSerialization.FromJson(json);
+
+    /// <summary>Compiles a query tree to a LINQ predicate. Returns <c>null</c> for an empty tree.</summary>
+    public static System.Linq.Expressions.Expression<Func<T, bool>>? ToExpression<T>(QueryGroup query)
+        => QueryBuilderSerialization.ToExpression<T>(query);
+
+    /// <summary>Cascaded state shared with the recursive <see cref="QueryBuilderGroup"/> renderer.</summary>
+    public sealed record QueryBuilderContext(
+        IReadOnlyList<QueryField> Fields,
+        int MaxDepth,
+        bool AllowEmptyGroups,
+        RenderFragment<QueryRule>? ValueEditorTemplate,
+        Func<Task> NotifyChanged)
+    {
+        public QueryField? FindField(string name) => Fields.FirstOrDefault(f => f.Name == name);
+    }
+}
