@@ -7,7 +7,7 @@
 
 @{
     var context = new DataGridContext<TItem>(
-        Columns: _orderedColumns.Where(c => c.Visible).ToList().AsReadOnly(),
+        Columns: _visibleColumns,
         DisplayedItems: _displayedItems.AsReadOnly(),
         SelectedItems: _selectedItems.AsReadOnly(),
         Sorts: _sorts,
@@ -392,6 +392,13 @@
 
     private List<DataGridColumn<TItem>> _columnDefs = new();
     private List<DataGridColumn<TItem>> _orderedColumns = new();
+    // Cached visible-columns projection — recomputed only when columns change or
+    // visibility is toggled, not on every Blazor render cycle.
+    private System.Collections.ObjectModel.ReadOnlyCollection<DataGridColumn<TItem>> _visibleColumns =
+        new List<DataGridColumn<TItem>>().AsReadOnly();
+
+    private void RefreshVisibleColumns() =>
+        _visibleColumns = _orderedColumns.Where(c => c.Visible).ToList().AsReadOnly();
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
     private List<TItem> _selectedItems = new();
@@ -571,6 +578,7 @@
         if (removed)
         {
             _orderedColumns.RemoveAll(c => ColumnKey(c) == key);
+            RefreshVisibleColumns();
             _ = InvokeAsync(StateHasChanged);
         }
     }
@@ -608,6 +616,7 @@
         var added = source.Where(c => !orderedIds.Contains(c.Id)).ToList();
         newOrder.AddRange(added);
         _orderedColumns = newOrder;
+        RefreshVisibleColumns();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -632,6 +641,11 @@
         }
 
         SyncOrderedColumns();
+        // Keep the cached visible-columns list in sync whenever parameters are evaluated.
+        // SyncOrderedColumns only calls RefreshVisibleColumns when the column-ID set changes;
+        // calling it here covers the first render when Columns are provided via the Columns
+        // parameter rather than via declarative ColumnDef children.
+        RefreshVisibleColumns();
 
         // Snapshot default layout once (before any external SavedLayout is applied)
         if (_defaultLayout is null && EffectiveColumns.Count > 0)
@@ -1305,6 +1319,7 @@
         var col = _orderedColumns[args.OldIndex];
         _orderedColumns.RemoveAt(args.OldIndex);
         _orderedColumns.Insert(args.NewIndex, col);
+        RefreshVisibleColumns();
 
         // Await consumer handler so async handlers complete before we re-render.
         // Previously the returned Task was discarded which let the next
@@ -1368,6 +1383,7 @@
 
     private void HandleColumnVisibilityChanged(DataGridColumn<TItem> column)
     {
+        RefreshVisibleColumns();
         if (!ServerMode) ProcessClientData();
         ScheduleAutoSave();
         StateHasChanged();
@@ -1514,6 +1530,7 @@
             ordered.AddRange(missing);
 
             _orderedColumns = ordered;
+            RefreshVisibleColumns();
         }
 
         // Restore sorts
