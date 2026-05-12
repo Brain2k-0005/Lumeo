@@ -11,7 +11,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **v2.0 is in release-candidate phase (latest: `2.0.0-rc.34`).** The API is stable; we're gathering field feedback before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
+> **v2.0 is in release-candidate phase (latest: `2.0.0-rc.35`).** The API is stable; we're gathering field feedback before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
 
 ## What's new in 2.0
 
@@ -85,14 +85,14 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) â
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="2.0.0-rc.34" />
+  <PackageReference Include="Lumeo"            Version="2.0.0-rc.35" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.34" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.34" />
-  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.34" />
-  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.34" />
-  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.34" />
-  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.34" />
+  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.35" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.35" />
+  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.35" />
+  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.35" />
+  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.35" />
+  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.35" />
 </ItemGroup>
 ```
 

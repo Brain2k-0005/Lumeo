@@ -1,0 +1,252 @@
+@page "/components/query-builder"
+
+<PageTitle>QueryBuilder — Lumeo</PageTitle>
+
+<PageHeader Title="QueryBuilder" Description="A visual AND/OR predicate-tree builder — compose nested conditions over a set of fields and serialize them to JSON or a LINQ predicate." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Let users build advanced filters or saved searches over a dataset.</li>
+        <li>Capture rules for report definitions, automation triggers, segmentation, or audience targeting.</li>
+        <li>Produce a structured query you can send to a backend (the JSON shape) or run client-side (the LINQ predicate).</li>
+        <li>For a single column's quick filter, prefer the DataGrid's built-in column filter; reach for QueryBuilder when conditions span multiple fields with nested AND/OR logic.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic builder" Code="@_basicCode">
+        <QueryBuilder Fields="_fields" @bind-Query="_basicQuery" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="With JSON preview" Code="@_jsonCode">
+        <QueryBuilder Fields="_fields" @bind-Query="_jsonQuery" ShowJsonPreview="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Pre-populated nested groups" Code="@_nestedCode">
+        <QueryBuilder Fields="_fields" @bind-Query="_nestedQuery" MaxDepth="3" />
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">QueryBuilder</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Fields</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;QueryField&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">The fields the user can build conditions against. Required.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Query</td><td class="p-3 font-mono text-xs text-muted-foreground">QueryGroup?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">The query tree. Use with <code>@@bind-Query</code>. When null on first render, an empty root group (And, no rules) is created.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryChanged</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;QueryGroup&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires whenever the tree changes (add/remove rule or group, combinator, field, operator, value).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ShowJsonPreview</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">When true, renders a read-only JSON view of the query below the builder.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">MaxDepth</td><td class="p-3 font-mono text-xs text-muted-foreground">int</td><td class="p-3 font-mono text-xs text-muted-foreground">5</td><td class="p-3 text-muted-foreground">Maximum group nesting depth. "Add group" is disabled at this depth.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">AllowEmptyGroups</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">When false, "Remove rule"/"Remove group" are hidden when removal would leave a group empty (the root may always be empty).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ValueEditorTemplate</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;QueryRule&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Optional override for a rule's value editor. When set, replaces the built-in per-type editor; the consumer binds to <code>QueryRule.Value</code> and notifies via the cascaded context.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Class</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Extra CSS classes for the root element.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+            <Lumeo.Text Size="sm" Color="muted" Class="mt-3">Static helpers: <code>QueryBuilder.ToJson(query)</code> · <code>QueryBuilder.FromJson(json)</code> · <code>QueryBuilder.ToExpression&lt;T&gt;(query)</code> (returns <code>Expression&lt;Func&lt;T,bool&gt;&gt;?</code> — null for an empty tree).</Lumeo.Text>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">QueryField</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Name</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 text-muted-foreground">Stable key written to <code>QueryRule.Field</code>. Required.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Label</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 text-muted-foreground">Human-facing label in the field picker. Falls back to <code>Name</code>.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Type</td><td class="p-3 font-mono text-xs text-muted-foreground">QueryFieldType</td><td class="p-3 text-muted-foreground"><code>Text</code>, <code>Number</code>, <code>Date</code>, <code>Boolean</code>, or <code>Select</code>. Determines the default operator set and the built-in value editor.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Operators</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;string&gt;?</td><td class="p-3 text-muted-foreground">Allowed operator keys. Null = the default set for <code>Type</code>.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Options</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;(string Value, string Label)&gt;?</td><td class="p-3 text-muted-foreground">Options shown when <code>Type</code> is <code>Select</code>.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">QueryRule / QueryGroup / QueryNode</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Member</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryNode</td><td class="p-3 font-mono text-xs text-muted-foreground">abstract</td><td class="p-3 text-muted-foreground">Base of the tree — either a <code>QueryRule</code> (leaf) or a <code>QueryGroup</code> (branch).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryRule.Field</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 text-muted-foreground">The <code>QueryField.Name</code> this rule targets.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryRule.Operator</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 text-muted-foreground">One of the field's allowed operator keys.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryRule.Value / Value2</td><td class="p-3 font-mono text-xs text-muted-foreground">object?</td><td class="p-3 text-muted-foreground">The comparison value(s). <code>Value2</code> is used only by range operators ("between").</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryGroup.Combinator</td><td class="p-3 font-mono text-xs text-muted-foreground">QueryCombinator</td><td class="p-3 text-muted-foreground"><code>And</code> or <code>Or</code> — applied across <code>Rules</code>.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryGroup.Rules</td><td class="p-3 font-mono text-xs text-muted-foreground">List&lt;QueryNode&gt;</td><td class="p-3 text-muted-foreground">Child rules and/or nested groups.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">QueryGroup.CreateEmpty()</td><td class="p-3 font-mono text-xs text-muted-foreground">static</td><td class="p-3 text-muted-foreground">A new empty root group (And, no rules).</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Level="3" Class="mb-3">Default operator sets</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Field type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Operators (key → label)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Text</td><td class="p-3 text-muted-foreground"><code>=</code> equals, <code>!=</code> not equals, <code>contains</code>, <code>notContains</code>, <code>startsWith</code>, <code>endsWith</code>, <code>isEmpty</code>, <code>isNotEmpty</code></td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Number</td><td class="p-3 text-muted-foreground"><code>=</code>, <code>!=</code>, <code>&lt;</code> less than, <code>&lt;=</code>, <code>&gt;</code> greater than, <code>&gt;=</code>, <code>between</code>, <code>isNull</code>, <code>isNotNull</code></td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Date</td><td class="p-3 text-muted-foreground"><code>=</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>between</code>, <code>isNull</code>, <code>isNotNull</code></td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Boolean</td><td class="p-3 text-muted-foreground"><code>=</code>, <code>!=</code></td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Select</td><td class="p-3 text-muted-foreground"><code>=</code>, <code>!=</code>, <code>in</code>, <code>notIn</code>, <code>isNull</code>, <code>isNotNull</code> (<code>in</code>/<code>notIn</code> take a comma-separated value)</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+            <Lumeo.Text Size="sm" Color="muted" Class="mt-3"><code>isEmpty</code> / <code>isNotEmpty</code> / <code>isNull</code> / <code>isNotNull</code> render no value editor; <code>between</code> renders two. Override the set per field via <code>QueryField.Operators</code>.</Lumeo.Text>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/data-grid" class="text-primary hover:underline">DataGrid</a> — Apply the produced query as a server- or client-side filter over tabular data.</li>
+        <li><a href="/components/filter" class="text-primary hover:underline">Filter</a> — A lighter, single-level filter bar when nested AND/OR logic isn't needed.</li>
+        <li><a href="/components/select" class="text-primary hover:underline">Select</a> — The picker primitive; QueryBuilder uses native selects internally for compact rule rows.</li>
+    </ul>
+</div>
+
+@code {
+    private readonly IReadOnlyList<QueryField> _fields = new List<QueryField>
+    {
+        new() { Name = "name", Label = "Name", Type = QueryFieldType.Text },
+        new() { Name = "email", Label = "Email", Type = QueryFieldType.Text },
+        new() { Name = "age", Label = "Age", Type = QueryFieldType.Number },
+        new() { Name = "signupDate", Label = "Signup date", Type = QueryFieldType.Date },
+        new() { Name = "isActive", Label = "Active", Type = QueryFieldType.Boolean },
+        new()
+        {
+            Name = "plan", Label = "Plan", Type = QueryFieldType.Select,
+            Options = new[] { ("free", "Free"), ("pro", "Pro"), ("enterprise", "Enterprise") }
+        }
+    };
+
+    private QueryGroup _basicQuery = new()
+    {
+        Combinator = QueryCombinator.And,
+        Rules =
+        {
+            new QueryRule { Field = "name", Operator = "contains", Value = "an" },
+            new QueryRule { Field = "age", Operator = ">=", Value = 18d }
+        }
+    };
+
+    private QueryGroup _jsonQuery = new()
+    {
+        Combinator = QueryCombinator.And,
+        Rules =
+        {
+            new QueryRule { Field = "plan", Operator = "=", Value = "pro" },
+            new QueryRule { Field = "isActive", Operator = "=", Value = true }
+        }
+    };
+
+    private QueryGroup _nestedQuery = new()
+    {
+        Combinator = QueryCombinator.And,
+        Rules =
+        {
+            new QueryRule { Field = "isActive", Operator = "=", Value = true },
+            new QueryGroup
+            {
+                Combinator = QueryCombinator.Or,
+                Rules =
+                {
+                    new QueryRule { Field = "plan", Operator = "=", Value = "pro" },
+                    new QueryRule { Field = "plan", Operator = "=", Value = "enterprise" }
+                }
+            },
+            new QueryGroup
+            {
+                Combinator = QueryCombinator.And,
+                Rules =
+                {
+                    new QueryRule { Field = "age", Operator = "between", Value = 25d, Value2 = 40d }
+                }
+            }
+        }
+    };
+
+    private string _basicCode = @"<QueryBuilder Fields=""_fields"" @bind-Query=""_query"" />
+
+@code {
+    private readonly IReadOnlyList<QueryField> _fields = new List<QueryField>
+    {
+        new() { Name = ""name"", Label = ""Name"", Type = QueryFieldType.Text },
+        new() { Name = ""age"", Label = ""Age"", Type = QueryFieldType.Number },
+        new() { Name = ""isActive"", Label = ""Active"", Type = QueryFieldType.Boolean },
+        new() { Name = ""plan"", Label = ""Plan"", Type = QueryFieldType.Select,
+                Options = new[] { (""free"", ""Free""), (""pro"", ""Pro"") } }
+    };
+
+    private QueryGroup _query = QueryGroup.CreateEmpty();
+}";
+
+    private string _jsonCode = @"<QueryBuilder Fields=""_fields"" @bind-Query=""_query"" ShowJsonPreview=""true"" />
+
+@code {
+    // ShowJsonPreview renders the live System.Text.Json shape — handy for
+    // showing the consumer exactly what would be sent to a backend, or for debugging.
+    // Programmatically: var json = QueryBuilder.ToJson(_query);
+    //                   var back = QueryBuilder.FromJson(json);
+}";
+
+    private string _nestedCode = @"<QueryBuilder Fields=""_fields"" @bind-Query=""_query"" MaxDepth=""3"" />
+
+@code {
+    private QueryGroup _query = new()
+    {
+        Combinator = QueryCombinator.And,
+        Rules =
+        {
+            new QueryRule { Field = ""isActive"", Operator = ""="", Value = true },
+            new QueryGroup
+            {
+                Combinator = QueryCombinator.Or,
+                Rules =
+                {
+                    new QueryRule { Field = ""plan"", Operator = ""="", Value = ""pro"" },
+                    new QueryRule { Field = ""plan"", Operator = ""="", Value = ""enterprise"" }
+                }
+            }
+        }
+    };
+
+    // Run it client-side:
+    // var predicate = QueryBuilder.ToExpression<Customer>(_query);
+    // var matches = customers.Where(predicate.Compile());
+}";
+}

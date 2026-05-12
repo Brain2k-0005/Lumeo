@@ -1,0 +1,337 @@
+@namespace Lumeo
+
+@{
+    var isRoot = Depth == 0;
+    var canNest = Depth < Ctx.MaxDepth;
+}
+
+<div class="@GroupClass" role="group" aria-label="@(isRoot ? "Query group" : "Nested query group")">
+    <div class="flex flex-wrap items-center gap-2">
+        <div class="inline-flex items-center rounded-md bg-muted p-0.5" role="radiogroup" aria-label="Combinator">
+            <button type="button"
+                    role="radio"
+                    aria-checked="@((Group.Combinator == QueryCombinator.And).ToString().ToLowerInvariant())"
+                    class="@CombinatorPillClass(Group.Combinator == QueryCombinator.And)"
+                    @onclick="@(() => SetCombinator(QueryCombinator.And))">
+                AND
+            </button>
+            <button type="button"
+                    role="radio"
+                    aria-checked="@((Group.Combinator == QueryCombinator.Or).ToString().ToLowerInvariant())"
+                    class="@CombinatorPillClass(Group.Combinator == QueryCombinator.Or)"
+                    @onclick="@(() => SetCombinator(QueryCombinator.Or))">
+                OR
+            </button>
+        </div>
+
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                OnClick="AddRule" aria-label="Add rule">
+            <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+            <span>Rule</span>
+        </Button>
+
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                OnClick="AddGroup" Disabled="@(!canNest)" aria-label="Add group">
+            <Blazicon Svg="Lucide.FolderPlus" class="h-3.5 w-3.5" />
+            <span>Group</span>
+        </Button>
+
+        <div class="ml-auto"></div>
+
+        @if (!isRoot && CanRemoveSelf)
+        {
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                    OnClick="RemoveSelf" Class="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    aria-label="Remove group">
+                <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+            </Button>
+        }
+    </div>
+
+    @if (Group.Rules.Count == 0)
+    {
+        <p class="px-1 py-2 text-xs text-muted-foreground">No conditions yet. Add a rule or a group.</p>
+    }
+    else
+    {
+        <div class="space-y-2">
+            @foreach (var node in Group.Rules.ToList())
+            {
+                @if (node is QueryRule rule)
+                {
+                    <div class="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-card p-2">
+                        @* Field picker *@
+                        <select class="@SelectClass" value="@rule.Field" @onchange="@(e => OnFieldChanged(rule, e.Value?.ToString()))" aria-label="Field">
+                            @if (string.IsNullOrEmpty(rule.Field))
+                            {
+                                <option value="" disabled selected>Select field…</option>
+                            }
+                            @foreach (var f in Ctx.Fields)
+                            {
+                                <option value="@f.Name" selected="@(f.Name == rule.Field)">@f.DisplayLabel</option>
+                            }
+                        </select>
+
+                        @{
+                            var field = string.IsNullOrEmpty(rule.Field) ? null : Ctx.FindField(rule.Field);
+                        }
+                        @if (field is not null)
+                        {
+                            @* Operator picker *@
+                            <select class="@SelectClass" value="@rule.Operator" @onchange="@(e => OnOperatorChanged(rule, e.Value?.ToString()))" aria-label="Operator">
+                                @foreach (var op in field.EffectiveOperators)
+                                {
+                                    <option value="@op" selected="@(op == rule.Operator)">@QueryBuilderOperators.LabelFor(op)</option>
+                                }
+                            </select>
+
+                            @* Value editor *@
+                            @if (Ctx.ValueEditorTemplate is not null)
+                            {
+                                @Ctx.ValueEditorTemplate(rule)
+                            }
+                            else if (!QueryBuilderOperators.NoValueOperators.Contains(rule.Operator))
+                            {
+                                @RenderValueEditor(field, rule, isSecond: false)
+                                @if (QueryBuilderOperators.RangeOperators.Contains(rule.Operator))
+                                {
+                                    <span class="text-xs text-muted-foreground">and</span>
+                                    @RenderValueEditor(field, rule, isSecond: true)
+                                }
+                            }
+                        }
+
+                        <div class="ml-auto"></div>
+
+                        @if (CanRemoveChild)
+                        {
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                                    OnClick="@(() => RemoveNode(rule))" Class="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                    aria-label="Remove rule">
+                                <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                            </Button>
+                        }
+                    </div>
+                }
+                else if (node is QueryGroup childGroup)
+                {
+                    <QueryBuilderGroup Group="childGroup" Depth="@(Depth + 1)" Parent="Group" />
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public QueryBuilder.QueryBuilderContext Ctx { get; set; } = default!;
+
+    [Parameter, EditorRequired] public QueryGroup Group { get; set; } = default!;
+    [Parameter] public int Depth { get; set; }
+
+    /// <summary>The parent group (null for the root) — used to support self-removal.</summary>
+    [Parameter] public QueryGroup? Parent { get; set; }
+
+    private bool AllowEmpty => Ctx.AllowEmptyGroups;
+
+    // Removing a child is allowed when empties are permitted, or when more than one child remains.
+    private bool CanRemoveChild => AllowEmpty || Group.Rules.Count > 1;
+
+    // Removing this (non-root) group is allowed when empties are permitted in the parent,
+    // or when the parent would still have at least one child afterwards.
+    private bool CanRemoveSelf => Parent is not null && (AllowEmpty || Parent.Rules.Count > 1);
+
+    private const string GroupBase = "rounded-lg p-3 space-y-3";
+
+    private string GroupClass => Depth == 0
+        ? $"{GroupBase} border border-border/40 bg-card"
+        : $"{GroupBase} border-l-2 border-border/40 bg-muted/30 pl-4";
+
+    private const string SelectClass =
+        "h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+    private const string InputClass =
+        "h-8 w-40 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-[1.5px] focus-visible:ring-ring";
+
+    private static string CombinatorPillClass(bool active) => active
+        ? "inline-flex items-center justify-center rounded-[5px] bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground"
+        : "inline-flex items-center justify-center rounded-[5px] px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground";
+
+    private async Task SetCombinator(QueryCombinator c)
+    {
+        if (Group.Combinator == c) return;
+        Group.Combinator = c;
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task AddRule()
+    {
+        var firstField = Ctx.Fields.FirstOrDefault();
+        var rule = new QueryRule
+        {
+            Field = firstField?.Name ?? "",
+            Operator = firstField?.EffectiveOperators.FirstOrDefault() ?? "",
+            Value = DefaultValueFor(firstField)
+        };
+        Group.Rules.Add(rule);
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task AddGroup()
+    {
+        if (Depth >= Ctx.MaxDepth) return;
+        Group.Rules.Add(QueryGroup.CreateEmpty());
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task RemoveNode(QueryNode node)
+    {
+        Group.Rules.Remove(node);
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task RemoveSelf()
+    {
+        if (Parent is null) return;
+        Parent.Rules.Remove(Group);
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task OnFieldChanged(QueryRule rule, string? newField)
+    {
+        if (string.IsNullOrEmpty(newField) || rule.Field == newField) return;
+        rule.Field = newField;
+        var field = Ctx.FindField(newField);
+        // Field type changed — reset operator to the field's first, clear value.
+        rule.Operator = field?.EffectiveOperators.FirstOrDefault() ?? "";
+        rule.Value = DefaultValueFor(field);
+        rule.Value2 = null;
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task OnOperatorChanged(QueryRule rule, string? newOp)
+    {
+        if (string.IsNullOrEmpty(newOp) || rule.Operator == newOp) return;
+        var wasRange = QueryBuilderOperators.RangeOperators.Contains(rule.Operator);
+        rule.Operator = newOp;
+        if (!QueryBuilderOperators.RangeOperators.Contains(newOp)) rule.Value2 = null;
+        if (QueryBuilderOperators.NoValueOperators.Contains(newOp)) { rule.Value = null; rule.Value2 = null; }
+        await Ctx.NotifyChanged();
+    }
+
+    private async Task SetValue(QueryRule rule, bool isSecond, object? value)
+    {
+        if (isSecond) rule.Value2 = value;
+        else rule.Value = value;
+        await Ctx.NotifyChanged();
+    }
+
+    private static object? DefaultValueFor(QueryField? field) => field?.Type switch
+    {
+        QueryFieldType.Boolean => false,
+        _ => null
+    };
+
+    private static string? AsString(object? v) => v?.ToString();
+
+    private RenderFragment RenderValueEditor(QueryField field, QueryRule rule, bool isSecond) => builder =>
+    {
+        var current = isSecond ? rule.Value2 : rule.Value;
+        switch (field.Type)
+        {
+            case QueryFieldType.Number:
+            {
+                builder.OpenElement(0, "input");
+                builder.AddAttribute(1, "type", "number");
+                builder.AddAttribute(2, "class", InputClass + " w-28");
+                builder.AddAttribute(3, "value", AsString(current));
+                builder.AddAttribute(4, "aria-label", isSecond ? "Value (upper bound)" : "Value");
+                builder.AddAttribute(5, "onchange",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                        this, async e =>
+                        {
+                            var raw = e.Value?.ToString();
+                            object? parsed = double.TryParse(raw, System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : raw;
+                            await SetValue(rule, isSecond, parsed);
+                        }));
+                builder.CloseElement();
+                break;
+            }
+            case QueryFieldType.Date:
+            {
+                builder.OpenElement(0, "input");
+                builder.AddAttribute(1, "type", "date");
+                builder.AddAttribute(2, "class", InputClass);
+                builder.AddAttribute(3, "value", AsString(current));
+                builder.AddAttribute(4, "aria-label", isSecond ? "Date (upper bound)" : "Date");
+                builder.AddAttribute(5, "onchange",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                        this, async e => await SetValue(rule, isSecond, e.Value?.ToString())));
+                builder.CloseElement();
+                break;
+            }
+            case QueryFieldType.Boolean:
+            {
+                var isChecked = current is bool b && b;
+                builder.OpenElement(0, "label");
+                builder.AddAttribute(1, "class", "inline-flex items-center gap-1.5 text-sm text-foreground");
+                builder.OpenElement(2, "input");
+                builder.AddAttribute(3, "type", "checkbox");
+                builder.AddAttribute(4, "class", "h-4 w-4 rounded border-input accent-primary");
+                builder.AddAttribute(5, "checked", isChecked);
+                builder.AddAttribute(6, "aria-label", "Value");
+                builder.AddAttribute(7, "onchange",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                        this, async e => await SetValue(rule, isSecond, e.Value is bool bb && bb)));
+                builder.CloseElement();
+                builder.AddContent(8, isChecked ? "true" : "false");
+                builder.CloseElement();
+                break;
+            }
+            case QueryFieldType.Select:
+            {
+                builder.OpenElement(0, "select");
+                builder.AddAttribute(1, "class", SelectClass);
+                builder.AddAttribute(2, "value", AsString(current));
+                builder.AddAttribute(3, "aria-label", "Value");
+                builder.AddAttribute(4, "onchange",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                        this, async e => await SetValue(rule, isSecond, e.Value?.ToString())));
+                if (string.IsNullOrEmpty(AsString(current)))
+                {
+                    builder.OpenElement(5, "option");
+                    builder.AddAttribute(6, "value", "");
+                    builder.AddAttribute(7, "disabled", true);
+                    builder.AddAttribute(8, "selected", true);
+                    builder.AddContent(9, "Select…");
+                    builder.CloseElement();
+                }
+                var idx = 10;
+                foreach (var (val, label) in field.Options ?? Array.Empty<(string, string)>())
+                {
+                    builder.OpenElement(idx++, "option");
+                    builder.AddAttribute(idx++, "value", val);
+                    builder.AddAttribute(idx++, "selected", val == AsString(current));
+                    builder.AddContent(idx++, label);
+                    builder.CloseElement();
+                }
+                builder.CloseElement();
+                break;
+            }
+            default: // Text
+            {
+                builder.OpenElement(0, "input");
+                builder.AddAttribute(1, "type", "text");
+                builder.AddAttribute(2, "class", InputClass);
+                builder.AddAttribute(3, "value", AsString(current));
+                builder.AddAttribute(4, "placeholder", "Value");
+                builder.AddAttribute(5, "aria-label", "Value");
+                builder.AddAttribute(6, "onchange",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                        this, async e => await SetValue(rule, isSecond, e.Value?.ToString())));
+                builder.CloseElement();
+                break;
+            }
+        }
+    };
+}

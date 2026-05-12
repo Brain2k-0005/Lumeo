@@ -188,6 +188,12 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Window"] = "Overlay",
     ["Toolbar"] = "Navigation",
     ["AppBar"] = "Navigation",
+    ["Gauge"] = "Data Display",
+    ["Barcode"] = "Data Display",
+    ["RingProgress"] = "Feedback",
+    ["Highlighter"] = "Typography",
+    ["FileManager"] = "Data Display",
+    ["QueryBuilder"] = "Forms",
     // Navigation
     ["Tabs"] = "Navigation",
     ["Breadcrumb"] = "Navigation",
@@ -270,6 +276,12 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
 {
     ["Stepper"] = "Stateful multi-step wizard with navigation, validation gating, and header indicators.",
     ["Window"] = "Non-modal draggable and resizable floating panel with minimize and maximize support.",
+    ["Gauge"] = "Single-value gauge with radial, arc, and linear variants and threshold colour bands.",
+    ["Barcode"] = "Inline SVG Code 128B barcode renderer (scannable).",
+    ["RingProgress"] = "Circular determinate progress ring with optional centre label or custom content.",
+    ["Highlighter"] = "Wraps occurrences of one or more search terms in the text with highlight marks.",
+    ["FileManager"] = "Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.",
+    ["QueryBuilder"] = "Visual AND/OR predicate-tree builder; serializes to JSON or a LINQ predicate.",
     ["Toolbar"] = "Horizontal toolbar container with separator, spacer, and group sub-components.",
     ["AppBar"] = "Top application bar with start, center, and end slots; sticky and elevated variants.",
     ["Accordion"] = "Vertically stacked collapsible sections that expand to reveal content.",
@@ -644,7 +656,7 @@ try
         uiRoots: uiRoots,
         metaResolver: MetaFor,
         logger: Console.Error,
-        version: "2.0.0-rc.34",
+        version: "2.0.0-rc.35",
         repoRoot: repoRoot);
 }
 catch (Exception ex)

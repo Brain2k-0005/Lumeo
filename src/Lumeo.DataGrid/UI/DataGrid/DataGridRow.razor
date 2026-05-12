@@ -5,6 +5,8 @@
 <tr data-slot="datagrid-row" class="@CssClass" style="@RowStyleString"
     role="row"
     aria-rowindex="@AriaRowIndex"
+    aria-level="@AriaLevel"
+    aria-expanded="@AriaExpanded"
     aria-selected="@(Context?.SelectionMode != DataGridSelectionMode.None ? (IsSelected ? "true" : "false") : null)"
     @onclick="HandleClick"
     @ondblclick="HandleDoubleClick"
@@ -121,7 +123,7 @@
                               RowIndex="RowIndex"
                               ColumnIndex="ci"
                               AriaColIndex="@(leadingCols + ci + 1)"
-                              Navigable="@(!(Context.IsGrouped))" />
+                              Navigable="@(!Context.IsGrouped && Context.GroupTree is null && !Context.IsTreeGrid)" />
                 colIdx++;
             }
             @if (Context.EditMode == DataGridEditMode.Row)
@@ -163,6 +165,10 @@
 
     // 1-based ARIA row index; header occupies row 1 so body rows start at 2.
     private int AriaRowIndex => RowIndex + 2;
+
+    // ARIA tree-grid attributes — only meaningful when IsTreeGrid is true.
+    private int? AriaLevel => (Context?.IsTreeGrid == true) ? (Context.TreeLevelOf(Item) + 1) : null;
+    private string? AriaExpanded => (Context?.IsTreeGrid == true) ? (IsExpanded ? "true" : "false") : null;
 
     /// <summary>Count of non-data leading columns rendered before the first data
     /// cell (drag handle, selection, detail toggle). Mirrors DataGridHeader so

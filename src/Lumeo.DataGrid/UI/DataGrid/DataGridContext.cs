@@ -48,6 +48,50 @@ public record DataGridContext<TItem>(
     Action<string> ToggleGroupExpand,
     CultureInfo Culture,
 
+    // --- Multi-level grouping + drag-to-group panel (rc.35) ---
+    /// <summary>Ordered list of fields the grid is currently grouped by (1 entry =
+    /// classic single-level grouping, &gt;1 = nested tree). Empty when not grouped.</summary>
+    IReadOnlyList<string> GroupFields,
+    /// <summary>Multi-level group tree. Non-null only when <see cref="GroupFields"/>
+    /// has more than one entry; single-level grouping still uses <see cref="GroupedSections"/>.</summary>
+    IReadOnlyList<DataGridGroupNode<TItem>>? GroupTree,
+    /// <summary>Tests whether a group node at the given "/"-joined path is expanded.</summary>
+    Func<string, bool> IsGroupPathExpanded,
+    /// <summary>Toggles the expand state of the group node at the given path.</summary>
+    Action<string> ToggleGroupPath,
+    /// <summary>Adds a field as a new (deepest) grouping level — called from the group panel.</summary>
+    Action<string> AddGroupField,
+    /// <summary>Removes a field from the grouping levels.</summary>
+    Action<string> RemoveGroupField,
+
+    // --- Tree-grid mode (rc.35) ---
+    /// <summary>When non-null, the grid is in tree-grid mode: this returns a row's
+    /// child rows (or null/empty for leaves).</summary>
+    Func<TItem, IEnumerable<TItem>?>? ChildItemsSelector,
+    /// <summary>True when the grid is rendering hierarchical (tree-grid) rows.</summary>
+    bool IsTreeGrid,
+    /// <summary>Field of the column that carries the tree chevron + indentation
+    /// (null = first visible column).</summary>
+    string? TreeColumnField,
+    /// <summary>Tests whether a tree node is expanded.</summary>
+    Func<TItem, bool> IsTreeNodeExpanded,
+    /// <summary>Toggles a tree node's expand state.</summary>
+    Action<TItem> ToggleTreeNode,
+    /// <summary>Per-row tree depth (0 = root). Only meaningful in tree-grid mode.</summary>
+    Func<TItem, int> TreeLevelOf,
+    /// <summary>True when a row has child rows (used to show the chevron).</summary>
+    Func<TItem, bool> TreeHasChildren,
+
+    // --- Batch / buffered edit mode (rc.35) ---
+    /// <summary>True when <see cref="EditMode"/> is <see cref="DataGridEditMode.Batch"/>.</summary>
+    bool IsBatchEdit,
+    /// <summary>Tests whether a (row, field) pair currently has a buffered edit.</summary>
+    Func<TItem, string, bool> IsCellDirty,
+    /// <summary>Returns the buffered value for (row, field) if dirty, else the row's current value.</summary>
+    Func<TItem, DataGridColumn<TItem>, object?> GetBatchValue,
+    /// <summary>Writes a buffered value for (row, column) into the pending-changes buffer.</summary>
+    Action<TItem, DataGridColumn<TItem>, object?> SetBatchValue,
+
     // --- Keyboard navigation / ARIA (rc.32) ---
     /// <summary>Stable element-id prefix for the grid. Cells get id
     /// <c>{GridId}-cell-{row}-{col}</c> (row = "h" for the header row).</summary>

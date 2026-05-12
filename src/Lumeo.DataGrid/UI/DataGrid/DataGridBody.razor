@@ -46,6 +46,85 @@
         }
     </tbody>
 }
+else if (Context is not null && Context.IsTreeGrid)
+{
+    <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
+        @if (Context.DisplayedItems.Count == 0)
+        {
+            <tr>
+                <td colspan="@ColSpan" class="px-3 py-8 text-center text-muted-foreground">
+                    @if (EmptyContent is not null) { @EmptyContent }
+                    else
+                    {
+                        <div class="flex flex-col items-center gap-2">
+                            <Blazicon Svg="Lucide.Inbox" class="h-8 w-8 text-muted-foreground/50" />
+                            <span class="text-sm">@L["DataGrid.NoData"]</span>
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+        else
+        {
+            var ti = 0;
+            foreach (var item in Context.DisplayedItems)
+            {
+                <DataGridRow @key="item" TItem="TItem"
+                             Item="item"
+                             RowIndex="ti"
+                             DetailTemplate="DetailTemplate"
+                             OnContextMenu="OnContextMenu" />
+                ti++;
+            }
+        }
+    </tbody>
+}
+else if (Context is not null && Context.GroupTree is not null && Context.GroupTree.Count > 0)
+{
+    // Multi-level grouping: render a nested forest of group rows.
+    RenderFragment<DataGridGroupNode<TItem>>? renderNode = null;
+    renderNode = node => __builder =>
+    {
+        var expanded = Context.IsGroupPathExpanded(node.Path);
+        <DataGridGroupRow @key="@("g:" + node.Path)" TItem="TItem"
+                          GroupKey="@node.Key"
+                          Count="@node.TotalCount"
+                          Level="@node.Level"
+                          IsExpanded="@expanded"
+                          Aggregates="@node.Aggregates"
+                          ColSpan="@ColSpan"
+                          OnToggle="@(() => Context.ToggleGroupPath(node.Path))" />
+        if (expanded)
+        {
+            if (node.Children.Count > 0)
+            {
+                foreach (var child in node.Children)
+                {
+                    @renderNode!(child)
+                }
+            }
+            else
+            {
+                var li = 0;
+                foreach (var item in node.Items)
+                {
+                    <DataGridRow @key="item" TItem="TItem"
+                                 Item="item"
+                                 RowIndex="li"
+                                 DetailTemplate="DetailTemplate"
+                                 OnContextMenu="OnContextMenu" />
+                    li++;
+                }
+            }
+        }
+    };
+    <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
+        @foreach (var root in Context.GroupTree)
+        {
+            @renderNode(root)
+        }
+    </tbody>
+}
 else if (Context is not null && Context.IsGrouped && Context.GroupedSections is not null && Context.GroupedSections.Count > 0)
 {
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
@@ -57,6 +136,7 @@ else if (Context is not null && Context.IsGrouped && Context.GroupedSections is 
                               GroupKey="@groupKey"
                               Count="@grp.TotalCount"
                               IsExpanded="@expanded"
+                              Aggregates="@grp.Aggregates"
                               ColSpan="@ColSpan"
                               OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
             if (expanded)

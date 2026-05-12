@@ -12,8 +12,13 @@
     "UI/Toolbar/ToolbarSeparator.razor",
     "UI/Toolbar/ToolbarSpacer.razor"
   ],
-  "dependencies": [],
-  "packageDependencies": [],
+  "dependencies": [
+    "button",
+    "dropdown-menu"
+  ],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
   "cssVars": [
     "--color-border",
     "--color-card",
@@ -58,11 +63,50 @@
         "description": null,
         "isCascading": false,
         "captureUnmatched": true
+      },
+      {
+        "name": "Overflow",
+        "type": "bool",
+        "default": null,
+        "description": "When true the toolbar collapses items that don't fit into a trailing \"⋯\" dropdown. Use VisibleCount to control how many items are shown inline.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "VisibleCount",
+        "type": "int",
+        "default": "-1",
+        "description": "Number of leading items to show inline when Overflow is true. Items past this index are collapsed into the \"⋯\" dropdown. -1 (default) means show all items (no overflow). Set to a positive integer to collapse trailing items.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OverflowLabel",
+        "type": "string?",
+        "default": null,
+        "description": "aria-label for the \"⋯\" overflow button. Default: \"More\".",
+        "isCascading": false,
+        "captureUnmatched": false
       }
     ],
     "events": [],
-    "enums": [],
-    "records": [],
+    "enums": [
+      {
+        "name": "ToolbarRenderSlot",
+        "values": [
+          "Visible",
+          "Dropdown"
+        ],
+        "description": "Slot that a child item should render for in overflow mode."
+      }
+    ],
+    "records": [
+      {
+        "name": "ToolbarOverflowContext",
+        "signature": "ToolbarOverflowContext(ToolbarRenderSlot Slot, int VisibleCount, int TotalCount)",
+        "description": "Cascaded by Toolbar to all descendant items when overflow mode is active. Items use this to decide whether to render normally (Visible slot) or as a dropdown row (Dropdown slot), and whether to hide themselves when they fall past the VisibleCount boundary."
+      }
+    ],
     "cssVars": [
       "--color-border",
       "--color-card",
@@ -71,15 +115,19 @@
     "examples": [
       {
         "title": "Basic Toolbar",
-        "code": "<Toolbar>\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">\n        <Blazicon Svg=\"Lucide.Bold\" class=\"h-4 w-4\" />\n    </Button>\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">\n        <Blazicon Svg=\"Lucide.Italic\" class=\"h-4 w-4\" />\n    </Button>\n    <ToolbarSeparator />\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">\n        <Blazicon Svg=\"Lucide.AlignLeft\" class=\"h-4 w-4\" />\n    </Button>\n</Toolbar>"
+        "code": "<Toolbar>\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">\r\n        <Blazicon Svg=\"Lucide.Bold\" class=\"h-4 w-4\" />\r\n    </Button>\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">\r\n        <Blazicon Svg=\"Lucide.Italic\" class=\"h-4 w-4\" />\r\n    </Button>\r\n    <ToolbarSeparator />\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">\r\n        <Blazicon Svg=\"Lucide.AlignLeft\" class=\"h-4 w-4\" />\r\n    </Button>\r\n</Toolbar>"
       },
       {
         "title": "With Spacer and Groups",
-        "code": "<Toolbar>\n    <ToolbarGroup>\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Undo</Button>\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Redo</Button>\n    </ToolbarGroup>\n    <ToolbarSeparator />\n    <ToolbarGroup>\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Bold</Button>\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Italic</Button>\n    </ToolbarGroup>\n    <ToolbarSpacer />\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Settings</Button>\n</Toolbar>"
+        "code": "<Toolbar>\r\n    <ToolbarGroup>\r\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Undo</Button>\r\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Redo</Button>\r\n    </ToolbarGroup>\r\n    <ToolbarSeparator />\r\n    <ToolbarGroup>\r\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Bold</Button>\r\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Italic</Button>\r\n    </ToolbarGroup>\r\n    <ToolbarSpacer />\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Settings</Button>\r\n</Toolbar>"
+      },
+      {
+        "title": "Overflow Menu",
+        "code": "<!-- VisibleCount=3: first 3 items inline, rest collapse into ⋯ menu -->\r\n<Toolbar Overflow=\"true\" VisibleCount=\"3\">\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Bold</Button>\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Italic</Button>\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Underline</Button>\r\n    <ToolbarSeparator />\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Left</Button>\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Center</Button>\r\n</Toolbar>"
       },
       {
         "title": "With Input",
-        "code": "<Toolbar>\n    <Input Placeholder=\"Search...\" Class=\"h-7 text-sm w-48\" />\n    <ToolbarSeparator />\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Filter</Button>\n    <ToolbarSpacer />\n    <Button Size=\"Button.ButtonSize.Sm\">Export</Button>\n</Toolbar>"
+        "code": "<Toolbar>\r\n    <Input Placeholder=\"Search...\" Class=\"h-7 text-sm w-48\" />\r\n    <ToolbarSeparator />\r\n    <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">Filter</Button>\r\n    <ToolbarSpacer />\r\n    <Button Size=\"Button.ButtonSize.Sm\">Export</Button>\r\n</Toolbar>"
       }
     ],
     "subComponents": {
@@ -209,7 +257,7 @@
   "source": [
     {
       "path": "UI/Toolbar/Toolbar.razor",
-      "content": "@namespace Lumeo\n\n<div role=\"toolbar\"\n     aria-orientation=\"horizontal\"\n     class=\"@CssClass\"\n     @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => $\"flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg {Class}\".Trim();\n}\n"
+      "content": "@namespace Lumeo\n\n@if (!Overflow)\n{\n    <div role=\"toolbar\"\n         aria-orientation=\"horizontal\"\n         class=\"@CssClass\"\n         @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n}\nelse\n{\n    <div role=\"toolbar\"\n         aria-orientation=\"horizontal\"\n         class=\"@CssClassOverflow\"\n         @attributes=\"AdditionalAttributes\">\n        <CascadingValue Value=\"_overflowCtx\" IsFixed=\"false\">\n            @ChildContent\n        </CascadingValue>\n\n        @if (_overflowCtx.VisibleCount >= 0 && _overflowCtx.VisibleCount < _overflowCtx.TotalCount)\n        {\n            <div class=\"shrink-0\">\n                <DropdownMenu @bind-Open=\"_overflowOpen\">\n                    <DropdownMenuTrigger>\n                        <Button Variant=\"Button.ButtonVariant.Ghost\"\n                                Size=\"Button.ButtonSize.Sm\"\n                                aria-label=\"@(OverflowLabel ?? \"More\")\">\n                            <Blazicon Svg=\"Lucide.Ellipsis\" class=\"h-4 w-4\" />\n                        </Button>\n                    </DropdownMenuTrigger>\n                    <DropdownMenuContent Align=\"DropdownMenuContent.DropdownMenuAlign.End\">\n                        <CascadingValue Value=\"_dropdownCtx\" IsFixed=\"false\">\n                            @ChildContent\n                        </CascadingValue>\n                    </DropdownMenuContent>\n                </DropdownMenu>\n            </div>\n        }\n    </div>\n}\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    /// <summary>\n    /// When true the toolbar collapses items that don't fit into a trailing \"⋯\" dropdown.\n    /// Use <see cref=\"VisibleCount\"/> to control how many items are shown inline.\n    /// </summary>\n    [Parameter] public bool Overflow { get; set; }\n\n    /// <summary>\n    /// Number of leading items to show inline when <see cref=\"Overflow\"/> is true.\n    /// Items past this index are collapsed into the \"⋯\" dropdown.\n    /// -1 (default) means show all items (no overflow). Set to a positive integer to\n    /// collapse trailing items.\n    /// </summary>\n    [Parameter] public int VisibleCount { get; set; } = -1;\n\n    /// <summary>aria-label for the \"⋯\" overflow button. Default: \"More\".</summary>\n    [Parameter] public string? OverflowLabel { get; set; }\n\n    private bool _overflowOpen;\n\n    private ToolbarOverflowContext _overflowCtx = new(ToolbarRenderSlot.Visible, -1, 0);\n    private ToolbarOverflowContext _dropdownCtx = new(ToolbarRenderSlot.Dropdown, -1, 0);\n\n    protected override void OnParametersSet()\n    {\n        if (!Overflow) return;\n\n        // VisibleCount=-1 means no overflow; VisibleCount>=0 means collapse past that index.\n        // TotalCount is not statically known, so set to int.MaxValue as a sentinel.\n        // ToolbarItem children must read the context and render/hide accordingly.\n        _overflowCtx = new ToolbarOverflowContext(ToolbarRenderSlot.Visible, VisibleCount, int.MaxValue);\n        _dropdownCtx = new ToolbarOverflowContext(ToolbarRenderSlot.Dropdown, VisibleCount, int.MaxValue);\n    }\n\n    // ── CSS ──────────────────────────────────────────────────────────────────\n    private string CssClass =>\n        $\"flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg {Class}\".Trim();\n\n    private string CssClassOverflow =>\n        $\"flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg overflow-hidden {Class}\".Trim();\n\n    // ── Context record ────────────────────────────────────────────────────────\n\n    /// <summary>Slot that a child item should render for in overflow mode.</summary>\n    public enum ToolbarRenderSlot { Visible, Dropdown }\n\n    /// <summary>\n    /// Cascaded by <see cref=\"Toolbar\"/> to all descendant items when overflow mode is active.\n    /// Items use this to decide whether to render normally (Visible slot) or as a dropdown row\n    /// (Dropdown slot), and whether to hide themselves when they fall past the VisibleCount boundary.\n    /// </summary>\n    public record ToolbarOverflowContext(ToolbarRenderSlot Slot, int VisibleCount, int TotalCount);\n}\n"
     },
     {
       "path": "UI/Toolbar/ToolbarGroup.razor",
@@ -252,6 +300,14 @@
     {
       "name": "ToolbarSpacer",
       "reason": "sub-component"
+    },
+    {
+      "name": "DropdownMenu",
+      "reason": "used internally"
+    },
+    {
+      "name": "Button",
+      "reason": "used internally"
     }
   ],
   "keyboardInteractions": [],
@@ -261,5 +317,5 @@
     "tests/Lumeo.Tests/Components/Scheduler/SchedulerTests.cs",
     "tests/Lumeo.Tests/Components/Toolbar/ToolbarTests.cs"
   ],
-  "mdSummary": "# Toolbar\r\n\r\nHorizontal toolbar container with separator, spacer, and group sub-components.\r\n\r\n**Package:** `Lumeo` · **Category:** Navigation\r\n**Docs:** https://lumeo.nativ.sh/components/toolbar\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Toolbar | ChildContent | `RenderFragment?` | `` |  |\r\n| Toolbar | Class | `string?` | `` |  |\r\n| Toolbar | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| ToolbarGroup | ChildContent | `RenderFragment?` | `` |  |\r\n| ToolbarGroup | Class | `string?` | `` |  |\r\n| ToolbarGroup | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| ToolbarSeparator | Class | `string?` | `` |  |\r\n| ToolbarSeparator | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| ToolbarSpacer | Class | `string?` | `` |  |\r\n| ToolbarSpacer | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Toolbar) — RenderFragment slot\r\n- `ChildContent` (ToolbarGroup) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `ToolbarGroup`, `ToolbarSeparator`, `ToolbarSpacer`\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Toolbar />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-card`, `--radius`\r\n\r\n## Files\r\n- `UI/Toolbar/Toolbar.razor`\r\n- `UI/Toolbar/ToolbarGroup.razor`\r\n- `UI/Toolbar/ToolbarSeparator.razor`\r\n- `UI/Toolbar/ToolbarSpacer.razor`\r\n"
+  "mdSummary": "# Toolbar\r\n\r\nHorizontal toolbar container with separator, spacer, and group sub-components.\r\n\r\n**Package:** `Lumeo` · **Category:** Navigation\r\n**Docs:** https://lumeo.nativ.sh/components/toolbar\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Toolbar | ChildContent | `RenderFragment?` | `` |  |\r\n| Toolbar | Class | `string?` | `` |  |\r\n| Toolbar | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| Toolbar | Overflow | `bool` | `` | When true the toolbar collapses items that don't fit into a trailing \"⋯\" dropdown. Use VisibleCount to control how many items are shown inline. |\r\n| Toolbar | VisibleCount | `int` | `-1` | Number of leading items to show inline when Overflow is true. Items past this index are collapsed into the \"⋯\" dropdown. -1 (default) means show all items (no overflow). Set to a positive integer to collapse trailing items. |\r\n| Toolbar | OverflowLabel | `string?` | `` | aria-label for the \"⋯\" overflow button. Default: \"More\". |\r\n| ToolbarGroup | ChildContent | `RenderFragment?` | `` |  |\r\n| ToolbarGroup | Class | `string?` | `` |  |\r\n| ToolbarGroup | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| ToolbarSeparator | Class | `string?` | `` |  |\r\n| ToolbarSeparator | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| ToolbarSpacer | Class | `string?` | `` |  |\r\n| ToolbarSpacer | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Toolbar) — RenderFragment slot\r\n- `ChildContent` (ToolbarGroup) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `ToolbarGroup`, `ToolbarSeparator`, `ToolbarSpacer`\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Toolbar />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-card`, `--radius`\r\n\r\n## Files\r\n- `UI/Toolbar/Toolbar.razor`\r\n- `UI/Toolbar/ToolbarGroup.razor`\r\n- `UI/Toolbar/ToolbarSeparator.razor`\r\n- `UI/Toolbar/ToolbarSpacer.razor`\r\n"
 }
