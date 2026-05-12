@@ -256,4 +256,63 @@ public class DataTableTests : IAsyncLifetime
         var emptyTd = cut.Find("tbody tr td");
         Assert.Equal("100", emptyTd.GetAttribute("colspan"));
     }
+
+    // --- Virtualization ---
+
+    [Fact]
+    public void DataTable_Virtualize_True_Renders_Rows_In_Initial_Batch()
+    {
+        // bUnit renders the full Virtualize initial batch synchronously in the headless DOM.
+        // Verify all 3 sample rows are present and the table structure is intact.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.DataTable<Person>>(0);
+            builder.AddAttribute(1, "Items", SampleData);
+            builder.AddAttribute(2, "Virtualize", true);
+            builder.AddAttribute(3, "ItemSize", 41f);
+            builder.AddAttribute(4, "HeaderTemplate", (RenderFragment)(h =>
+            {
+                h.OpenElement(0, "th"); h.AddContent(1, "Name"); h.CloseElement();
+            }));
+            builder.AddAttribute(5, "RowTemplate", (RenderFragment<Person>)(p => rb =>
+            {
+                rb.OpenElement(0, "td"); rb.AddContent(1, p.Name); rb.CloseElement();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("Alice", cut.Markup);
+        Assert.Contains("Bob", cut.Markup);
+        Assert.Contains("Charlie", cut.Markup);
+        Assert.NotNull(cut.Find("table"));
+        Assert.NotNull(cut.Find("tbody"));
+    }
+
+    [Fact]
+    public void DataTable_Virtualize_False_Renders_All_Rows_NonVirtualized()
+    {
+        // Confirm the standard (non-virtualized) path still renders all rows with @key.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.DataTable<Person>>(0);
+            builder.AddAttribute(1, "Items", SampleData);
+            builder.AddAttribute(2, "Virtualize", false);
+            builder.AddAttribute(3, "HeaderTemplate", (RenderFragment)(h =>
+            {
+                h.OpenElement(0, "th"); h.AddContent(1, "Name"); h.CloseElement();
+            }));
+            builder.AddAttribute(4, "RowTemplate", (RenderFragment<Person>)(p => rb =>
+            {
+                rb.OpenElement(0, "td"); rb.AddContent(1, p.Name); rb.CloseElement();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("Alice", cut.Markup);
+        Assert.Contains("Bob", cut.Markup);
+        Assert.Contains("Charlie", cut.Markup);
+
+        var rows = cut.FindAll("tbody tr");
+        Assert.Equal(3, rows.Count);
+    }
 }

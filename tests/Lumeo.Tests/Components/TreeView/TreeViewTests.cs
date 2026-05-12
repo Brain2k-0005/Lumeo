@@ -56,4 +56,66 @@ public class TreeViewTests : IAsyncLifetime
         var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.ShowSearch, true));
         Assert.NotEmpty(cut.FindAll("input[type='text']"));
     }
+
+    [Fact]
+    public void Search_filters_items_live()
+    {
+        var items = new List<L.TreeView<string>.TreeViewItem<string>>
+        {
+            new() { Text = "Documents", Value = "docs" },
+            new() { Text = "Images",    Value = "imgs" },
+            new() { Text = "Downloads", Value = "dl"   }
+        };
+
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.ShowSearch, true));
+
+        // All items visible initially.
+        Assert.Contains("Documents",  cut.Markup);
+        Assert.Contains("Images",     cut.Markup);
+        Assert.Contains("Downloads",  cut.Markup);
+
+        // Type "mage" — only "Images" contains it (case-insensitive).
+        cut.Find("input[type='text']").Input("mage");
+
+        Assert.DoesNotContain("Documents", cut.Markup);
+        Assert.Contains("Images",          cut.Markup);
+        Assert.DoesNotContain("Downloads", cut.Markup);
+
+        // Clear search — all items return.
+        cut.Find("input[type='text']").Input("");
+
+        Assert.Contains("Documents",  cut.Markup);
+        Assert.Contains("Images",     cut.Markup);
+        Assert.Contains("Downloads",  cut.Markup);
+    }
+
+    [Fact]
+    public void Search_filters_nested_children()
+    {
+        var items = new List<L.TreeView<string>.TreeViewItem<string>>
+        {
+            new()
+            {
+                Text = "Root", Value = "root",
+                Children =
+                [
+                    new() { Text = "Alpha", Value = "alpha" },
+                    new() { Text = "Beta",  Value = "beta"  }
+                ]
+            }
+        };
+
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.ShowSearch, true)
+            .Add(c => c.Expandable, true));
+
+        // Search for child that matches; parent should also be present.
+        cut.Find("input[type='text']").Input("Alpha");
+
+        Assert.Contains("Root",  cut.Markup);
+        Assert.Contains("Alpha", cut.Markup);
+    }
 }

@@ -1,8 +1,8 @@
 @namespace Lumeo
 
-@if (Context.IsOpen)
+@if (ForceMount || Context.IsOpen)
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="@CssClass" hidden="@(Context.IsOpen ? null : "hidden")" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -10,6 +10,15 @@
 @code {
     [CascadingParameter] public Collapsible.CollapsibleContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// When true, this content is always rendered into the DOM (with the
+    /// <c>hidden</c> attribute when the collapsible is closed) instead of
+    /// being unmounted. Use when child state must survive collapsing.
+    /// Default <c>false</c> preserves the original unmount behaviour.
+    /// </summary>
+    [Parameter] public bool ForceMount { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

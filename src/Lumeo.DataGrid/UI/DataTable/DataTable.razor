@@ -43,8 +43,7 @@
             }
             else if (Virtualize)
             {
-                @foreach (var item in ItemsList)
-                {
+                <Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize Items="@_itemsList" Context="item" SpacerElement="tr" ItemSize="@(ItemSize > 0 ? ItemSize : 41f)">
                     <tr class="border-b border-border/40 transition-colors hover:bg-muted/50">
                         @if (Selectable)
                         {
@@ -54,13 +53,13 @@
                         }
                         @RowTemplate!(item)
                     </tr>
-                }
+                </Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize>
             }
             else
             {
-                @foreach (var item in Items)
+                @foreach (var item in _itemsList)
                 {
-                    <tr class="border-b border-border/40 transition-colors hover:bg-muted/50">
+                    <tr @key="item" class="border-b border-border/40 transition-colors hover:bg-muted/50">
                         @if (Selectable)
                         {
                             <td class="w-10 px-2 py-2 align-middle">
@@ -99,16 +98,27 @@
     [Parameter] public EventCallback<HashSet<TItem>> SelectedItemsChanged { get; set; }
 
     // Virtualization
+    /// <summary>Virtualize the row list using Blazor's &lt;Virtualize&gt; — only renders rows in the viewport.</summary>
     [Parameter] public bool Virtualize { get; set; }
+    /// <summary>Estimated row height in pixels used by the virtualizer (default 41). Only relevant when <see cref="Virtualize"/> is true.</summary>
     [Parameter] public float ItemSize { get; set; } = 48;
 
     private string CssClass => $"w-full caption-bottom text-sm {Class}".Trim();
 
-    private List<TItem> ItemsList => Items?.ToList() ?? [];
+    // Cached per-render — recomputed in OnParametersSet to avoid repeated LINQ on every render pass.
+    private List<TItem> _itemsList = [];
+    private bool _isAllSelected;
+    private bool _isSomeSelected;
 
-    private bool IsAllSelected => Items is not null && Items.Any() && SelectedItems is not null && Items.All(i => SelectedItems.Contains(i));
+    private bool IsAllSelected => _isAllSelected;
+    private bool IsSomeSelected => _isSomeSelected;
 
-    private bool IsSomeSelected => SelectedItems is not null && SelectedItems.Count > 0 && !IsAllSelected;
+    protected override void OnParametersSet()
+    {
+        _itemsList = Items?.ToList() ?? [];
+        _isAllSelected = _itemsList.Count > 0 && SelectedItems is not null && _itemsList.All(i => SelectedItems.Contains(i));
+        _isSomeSelected = SelectedItems is not null && SelectedItems.Count > 0 && !_isAllSelected;
+    }
 
     private async Task ToggleSelectAll(bool select)
     {
@@ -122,6 +132,7 @@
         {
             SelectedItems.Clear();
         }
+        RefreshSelectionCache();
         await SelectedItemsChanged.InvokeAsync(SelectedItems);
     }
 
@@ -130,7 +141,14 @@
         SelectedItems ??= [];
         if (selected) SelectedItems.Add(item);
         else SelectedItems.Remove(item);
+        RefreshSelectionCache();
         await SelectedItemsChanged.InvokeAsync(SelectedItems);
+    }
+
+    private void RefreshSelectionCache()
+    {
+        _isAllSelected = _itemsList.Count > 0 && SelectedItems is not null && _itemsList.All(i => SelectedItems.Contains(i));
+        _isSomeSelected = SelectedItems is not null && SelectedItems.Count > 0 && !_isAllSelected;
     }
 
     public enum SortDirection { None, Ascending, Descending }
