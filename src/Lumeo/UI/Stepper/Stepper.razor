@@ -1,0 +1,290 @@
+@namespace Lumeo
+
+@{
+    _stepIndex = 0;
+    var context = new StepperContext(
+        ActiveStep,
+        EventCallback.Factory.Create<int>(this, SetActiveStep),
+        Orientation,
+        Linear,
+        _stepCount,
+        this);
+}
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    <CascadingValue Value="context" IsFixed="false">
+        @* Render ChildContent first (hidden) so StepperStep components register themselves *@
+        <div style="display:none">@ChildContent</div>
+    </CascadingValue>
+
+    @* Header: step indicators *@
+    <div role="tablist"
+         aria-orientation="@(Orientation == StepperOrientation.Vertical ? "vertical" : "horizontal")"
+         class="@HeaderCssClass">
+        @for (int i = 0; i < _steps.Count; i++)
+        {
+            var idx = i;
+            var step = _steps[idx];
+            var isActive = idx == ActiveStep;
+            var isCompleted = step.Completed || idx < ActiveStep;
+            var isError = !step.IsStepValid() && idx < ActiveStep;
+            <button type="button"
+                    role="tab"
+                    aria-selected="@isActive.ToString().ToLower()"
+                    aria-current="@(isActive ? "step" : null)"
+                    aria-disabled="@(CanClickStep(idx) ? null : "true")"
+                    tabindex="@(isActive ? 0 : -1)"
+                    class="@GetStepIndicatorClass(idx, isActive, isCompleted, isError)"
+                    @onclick="() => HandleStepClick(idx)">
+                @if (step.IconContent is not null && !isCompleted && !isError)
+                {
+                    @step.IconContent
+                }
+                else if (isError)
+                {
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                }
+                else if (isCompleted)
+                {
+                    <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
+                }
+                else
+                {
+                    <span class="text-sm font-semibold">@(idx + 1)</span>
+                }
+            </button>
+            @if (Orientation == StepperOrientation.Horizontal)
+            {
+                <div class="@GetStepLabelClass(idx, isActive, isCompleted)">
+                    <span class="text-sm font-medium">@step.Title</span>
+                    @if (!string.IsNullOrEmpty(step.Description))
+                    {
+                        <span class="text-xs text-muted-foreground">@step.Description</span>
+                    }
+                    @if (step.Optional)
+                    {
+                        <span class="text-xs text-muted-foreground italic">Optional</span>
+                    }
+                </div>
+                @if (idx < _steps.Count - 1)
+                {
+                    <div class="@GetConnectorClass(idx, isCompleted)"></div>
+                }
+            }
+        }
+    </div>
+
+    @* Vertical: labels beside indicators *@
+    @if (Orientation == StepperOrientation.Vertical)
+    {
+        <div class="flex flex-col gap-0">
+            @for (int i = 0; i < _steps.Count; i++)
+            {
+                var idx = i;
+                var step = _steps[idx];
+                var isActive = idx == ActiveStep;
+                var isCompleted = step.Completed || idx < ActiveStep;
+                <div class="flex flex-row items-start gap-3 @(idx < _steps.Count - 1 ? "pb-6" : "")">
+                    <div class="flex flex-col items-center">
+                        <div class="h-8 w-8 shrink-0"></div>
+                        @if (idx < _steps.Count - 1)
+                        {
+                            <div class="w-px flex-1 min-h-[24px] @(isCompleted ? "bg-primary" : "bg-border")"></div>
+                        }
+                    </div>
+                    <div class="pt-1 pb-2">
+                        <p class="@GetVerticalTitleClass(idx, isActive, isCompleted)">@step.Title</p>
+                        @if (!string.IsNullOrEmpty(step.Description))
+                        {
+                            <p class="text-xs text-muted-foreground">@step.Description</p>
+                        }
+                        @if (step.Optional)
+                        {
+                            <p class="text-xs text-muted-foreground italic">Optional</p>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* Step body panel *@
+    <div role="tabpanel" class="mt-4">
+        @if (ActiveStep >= 0 && ActiveStep < _steps.Count)
+        {
+            var activeStep = _steps[ActiveStep];
+            @activeStep.ChildContent
+        }
+    </div>
+
+    @* Footer: navigation buttons *@
+    <div class="@FooterCssClass">
+        <button type="button"
+                disabled="@(ActiveStep == 0)"
+                class="@GetNavButtonClass(ActiveStep == 0)"
+                @onclick="GoBack">
+            @BackLabel
+        </button>
+        <div class="flex-1"></div>
+        @if (ActiveStep == _steps.Count - 1)
+        {
+            <button type="button"
+                    disabled="@(!CanAdvance())"
+                    class="@GetNavButtonClass(!CanAdvance(), primary: true)"
+                    @onclick="Finish">
+                @FinishLabel
+            </button>
+        }
+        else
+        {
+            <button type="button"
+                    disabled="@(!CanAdvance())"
+                    class="@GetNavButtonClass(!CanAdvance(), primary: true)"
+                    @onclick="GoNext">
+                @NextLabel
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public int ActiveStep { get; set; }
+    [Parameter] public EventCallback<int> ActiveStepChanged { get; set; }
+    [Parameter] public StepperOrientation Orientation { get; set; } = StepperOrientation.Horizontal;
+    [Parameter] public bool Linear { get; set; } = true;
+    [Parameter] public bool AllowStepClick { get; set; }
+    [Parameter] public EventCallback OnFinish { get; set; }
+    [Parameter] public string NextLabel { get; set; } = "Next";
+    [Parameter] public string BackLabel { get; set; } = "Back";
+    [Parameter] public string FinishLabel { get; set; } = "Finish";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Internal step registry — populated by StepperStep on each render pass
+    internal readonly List<StepperStep.StepRegistration> _steps = new();
+    internal int _stepIndex;
+    internal int _stepCount;
+
+    internal void RegisterStep(StepperStep.StepRegistration step)
+    {
+        // Steps register themselves during the hidden render pass
+        if (_steps.Count <= _stepIndex)
+            _steps.Add(step);
+        else
+            _steps[_stepIndex] = step;
+        _stepIndex++;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Reset index so re-render re-registers
+        _stepIndex = 0;
+        _stepCount = _steps.Count;
+    }
+
+    private bool CanAdvance()
+    {
+        if (ActiveStep >= _steps.Count) return false;
+        var current = _steps[ActiveStep];
+        return current.IsStepValid();
+    }
+
+    private bool CanClickStep(int idx)
+    {
+        if (!AllowStepClick) return false;
+        if (!Linear) return true;
+        // In linear mode: can only click steps that are completed or the next available
+        return idx <= ActiveStep + (CanAdvance() ? 1 : 0);
+    }
+
+    private async Task HandleStepClick(int idx)
+    {
+        if (!CanClickStep(idx)) return;
+        await SetActiveStep(idx);
+    }
+
+    private async Task GoNext()
+    {
+        if (!CanAdvance()) return;
+        if (ActiveStep < _steps.Count - 1)
+            await SetActiveStep(ActiveStep + 1);
+    }
+
+    private async Task GoBack()
+    {
+        if (ActiveStep > 0)
+            await SetActiveStep(ActiveStep - 1);
+    }
+
+    private async Task Finish()
+    {
+        if (!CanAdvance()) return;
+        await OnFinish.InvokeAsync();
+    }
+
+    private async Task SetActiveStep(int value)
+    {
+        ActiveStep = value;
+        await ActiveStepChanged.InvokeAsync(value);
+    }
+
+    private string CssClass => Orientation == StepperOrientation.Vertical
+        ? $"flex flex-row gap-4 {Class}".Trim()
+        : $"flex flex-col gap-0 {Class}".Trim();
+
+    private string HeaderCssClass => Orientation == StepperOrientation.Horizontal
+        ? "flex flex-row items-center"
+        : "flex flex-col items-center gap-0";
+
+    private string FooterCssClass => "flex flex-row items-center gap-2 mt-6 pt-4 border-t border-border/40";
+
+    private string GetStepIndicatorClass(int idx, bool isActive, bool isCompleted, bool isError)
+    {
+        var baseClasses = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors";
+        var stateClasses = isError
+            ? "border-2 border-destructive bg-background text-destructive"
+            : isCompleted
+                ? "bg-primary text-primary-foreground"
+                : isActive
+                    ? "border-2 border-primary bg-background text-primary"
+                    : "bg-muted text-muted-foreground";
+        var cursorClasses = CanClickStep(idx)
+            ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            : "cursor-default";
+        return $"{baseClasses} {stateClasses} {cursorClasses}";
+    }
+
+    private string GetStepLabelClass(int idx, bool isActive, bool isCompleted) =>
+        "flex flex-col items-start mx-2";
+
+    private string GetVerticalTitleClass(int idx, bool isActive, bool isCompleted) =>
+        isActive
+            ? "text-sm font-semibold text-foreground"
+            : isCompleted
+                ? "text-sm font-medium text-foreground"
+                : "text-sm text-muted-foreground";
+
+    private string GetConnectorClass(int idx, bool isCompleted) =>
+        $"flex-1 h-px mx-2 {(isCompleted ? "bg-primary" : "bg-border/40")}";
+
+    private string GetNavButtonClass(bool disabled, bool primary = false)
+    {
+        var baseClasses = "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+        var variantClasses = primary
+            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+            : "border border-border/40 bg-background text-foreground hover:bg-muted/50";
+        var disabledClasses = disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer";
+        return $"{baseClasses} {variantClasses} {disabledClasses}";
+    }
+
+    public enum StepperOrientation { Horizontal, Vertical }
+
+    public record StepperContext(
+        int ActiveStep,
+        EventCallback<int> SetActiveStep,
+        StepperOrientation Orientation,
+        bool Linear,
+        int StepCount,
+        Stepper Parent);
+}

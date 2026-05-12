@@ -96,6 +96,8 @@ public class ComponentContractTests : IAsyncLifetime
         "BackToTop",
         // @if (Open && _currentStepConfig is not null) — invisible by default; Open defaults to false
         "Tour",
+        // @if (Open) — non-modal floating panel; Open defaults to false, so nothing renders by default
+        "Window",
     };
 
     // -------------------------------------------------------------------------
