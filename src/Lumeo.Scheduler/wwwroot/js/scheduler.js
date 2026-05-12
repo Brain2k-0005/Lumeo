@@ -81,12 +81,44 @@ function normalizeEvent(e) {
     // Accept either camelCase or PascalCase keys (JSON from .NET can ship either).
     const id = e.id ?? e.Id;
     const title = e.title ?? e.Title;
-    const start = e.start ?? e.Start;
-    const end = e.end ?? e.End;
     const allDay = e.allDay ?? e.AllDay ?? false;
     const color = e.color ?? e.Color ?? null;
     const url = e.url ?? e.Url ?? null;
     const extendedProps = e.extendedProps ?? e.ExtendedProps ?? null;
+    const classNames = e.classNames ?? e.ClassNames ?? null;
+
+    // ── Simple recurrence (free FullCalendar model, no rrule premium plugin) ──
+    const daysOfWeek = e.daysOfWeek ?? e.DaysOfWeek ?? null;
+    if (Array.isArray(daysOfWeek) && daysOfWeek.length > 0) {
+        const obj = {
+            id: id != null ? String(id) : undefined,
+            title: title || '',
+            daysOfWeek: daysOfWeek,
+            allDay: !!allDay,
+        };
+        const startTime = e.startTime ?? e.StartTime ?? null;
+        const endTime = e.endTime ?? e.EndTime ?? null;
+        if (startTime) obj.startTime = startTime;
+        if (endTime) obj.endTime = endTime;
+        const startRecur = e.startRecur ?? e.StartRecur ?? null;
+        const endRecur = e.endRecur ?? e.EndRecur ?? null;
+        if (startRecur) obj.startRecur = startRecur;
+        if (endRecur) obj.endRecur = endRecur;
+        // exdate: array of ISO date strings to skip (exception dates).
+        const exdate = e.exdate ?? e.Exdate ?? null;
+        if (Array.isArray(exdate) && exdate.length > 0) obj.exdate = exdate;
+        if (color) obj.backgroundColor = color, obj.borderColor = color;
+        if (url) obj.url = url;
+        if (classNames) obj.classNames = typeof classNames === 'string'
+            ? classNames.split(/\s+/).filter(Boolean)
+            : classNames;
+        if (extendedProps) obj.extendedProps = extendedProps;
+        return obj;
+    }
+
+    // ── Standard (non-recurring) event ────────────────────────────────────
+    const start = e.start ?? e.Start;
+    const end = e.end ?? e.End;
     const obj = {
         id: id != null ? String(id) : undefined,
         title: title || '',
@@ -96,6 +128,9 @@ function normalizeEvent(e) {
     };
     if (color) obj.backgroundColor = color, obj.borderColor = color;
     if (url) obj.url = url;
+    if (classNames) obj.classNames = typeof classNames === 'string'
+        ? classNames.split(/\s+/).filter(Boolean)
+        : classNames;
     if (extendedProps) obj.extendedProps = extendedProps;
     return obj;
 }
@@ -108,7 +143,7 @@ export const scheduler = {
         const opts = options || {};
         const events = Array.isArray(opts.events) ? opts.events.map(normalizeEvent) : [];
 
-        const calendar = new Calendar(el, {
+        const calOpts = {
             plugins: [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin],
             initialView: mapView(opts.view),
             initialDate: opts.initialDate || undefined,
@@ -120,6 +155,8 @@ export const scheduler = {
             height: opts.height || '640px',
             firstDay: typeof opts.firstDay === 'number' ? opts.firstDay : 1,
             headerToolbar: false, // Lumeo supplies its own toolbar
+            // ── New: time-grid display options ──────────────────────────────
+            nowIndicator: opts.nowIndicator !== false, // default true
             events: events,
             eventClick(info) {
                 info.jsEvent?.preventDefault?.();
@@ -131,12 +168,19 @@ export const scheduler = {
                     end: info.end.toISOString(),
                     allDay: !!info.allDay,
                 });
-                calendar.unselect();
             },
             eventChange(info) {
                 dotNetRef.invokeMethodAsync('JsOnEventChange', eventToJson(info.event));
             },
-        });
+        };
+
+        // Only set slotMinTime / slotMaxTime / slotDuration when explicitly provided
+        // so FullCalendar's built-in defaults (00:00 / 24:00 / 00:30) remain unchanged.
+        if (opts.slotMinTime) calOpts.slotMinTime = opts.slotMinTime;
+        if (opts.slotMaxTime) calOpts.slotMaxTime = opts.slotMaxTime;
+        if (opts.slotDuration) calOpts.slotDuration = opts.slotDuration;
+
+        const calendar = new Calendar(el, calOpts);
 
         calendar.render();
 

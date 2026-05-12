@@ -2,7 +2,7 @@
 
 <PageTitle>File Upload — Lumeo</PageTitle>
 
-<PageHeader Title="File Upload" Description="A drag-and-drop file upload area with customizable labels and file type restrictions." />
+<PageHeader Title="File Upload" Description="A drag-and-drop file upload area with per-file progress tracking, validation, cancel, and retry." />
 
 <div class="mt-10 space-y-3">
     <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
@@ -10,7 +10,7 @@
         <li>File attachments in forms such as resumes, invoices, or supporting documents</li>
         <li>Image uploads for profile pictures, product photos, or galleries</li>
         <li>Document submissions with drag-and-drop zones for a better user experience</li>
-        <li>Bulk file uploads with progress indicators</li>
+        <li>Bulk file uploads with per-file progress indicators, cancel, and retry</li>
     </ul>
 </div>
 
@@ -45,7 +45,33 @@
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="With Progress" Code="@_progressCode">
+    <ComponentDemo Title="Upload with progress (fake delay)" Code="@_uploadPipelineCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <FileUpload
+                Multiple="true"
+                Label="Upload files"
+                Description="Each file uploads with simulated progress"
+                OnUpload="@SimulateUpload"
+                OnFileUploaded="@(item => _uploadedCount++)"
+                OnAllUploaded="@(items => _allDoneMsg = $"All {items.Count} file(s) done!")" />
+            @if (_allDoneMsg is not null)
+            {
+                <Lumeo.Text Size="sm" Color="muted" Class="mt-2">@_allDoneMsg</Lumeo.Text>
+            }
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Manual upload trigger (AutoUpload=false)" Code="@_manualCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <FileUpload
+                Multiple="true"
+                AutoUpload="false"
+                Label="Choose files, then click Upload"
+                OnUpload="@SimulateUpload" />
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Progress (legacy)" Code="@_progressCode">
         <Stack Gap="4" Class="w-full max-w-md">
             <FileUpload ShowProgress="true" Progress="@_uploadProgress" OnFilesSelected="@HandleFileUpload" Accept="image/*" Multiple="true"
                         Label="Upload Images" Description="PNG, JPG up to 10MB" />
@@ -65,8 +91,8 @@
         <Table>
             <TableHeader>
                 <TableRow>
-                    <TableHead Class="w-[180px]">Prop</TableHead>
-                    <TableHead Class="w-[180px]">Type</TableHead>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
                     <TableHead Class="w-[120px]">Default</TableHead>
                     <TableHead>Description</TableHead>
                 </TableRow>
@@ -76,16 +102,54 @@
                 <TableRow><TableCell Class="font-mono text-xs">Description</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Secondary description text shown below the label.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Multiple</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Allows selecting multiple files at once.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Accept</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>File types accepted (e.g. "image/*", ".pdf,.docx").</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">OnFilesSelected</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;InputFileChangeEventArgs&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Callback invoked when files are selected or dropped.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">ShowProgress</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Displays a progress bar in the drop zone.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Progress</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Upload progress percentage (0-100).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">MaxFileSize</TableCell><TableCell Class="font-mono text-xs">long</TableCell><TableCell Class="font-mono text-xs">10 MB</TableCell><TableCell>Maximum allowed file size in bytes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">MaxFiles</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">10</TableCell><TableCell>Maximum number of files when Multiple is true.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ShowThumbnails</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shows image thumbnails for uploaded image files.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FileTemplate</TableCell><TableCell Class="font-mono text-xs">RenderFragment&lt;IBrowserFile&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom template for rendering each selected file.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Variant</TableCell><TableCell Class="font-mono text-xs">FileUpload.FileUploadVariant</TableCell><TableCell Class="font-mono text-xs">Dropzone</TableCell><TableCell>Upload style variant. Values: <code>FileUpload.FileUploadVariant.Dropzone</code>, <code>Button</code>, <code>Avatar</code>.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FileTemplate</TableCell><TableCell Class="font-mono text-xs">RenderFragment&lt;IBrowserFile&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom template for rendering each selected file row (overrides default per-file UI).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Variant</TableCell><TableCell Class="font-mono text-xs">FileUpload.FileUploadVariant</TableCell><TableCell Class="font-mono text-xs">Dropzone</TableCell><TableCell>Upload style variant. Values: <code>Dropzone</code>, <code>Button</code>, <code>Avatar</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Size</TableCell><TableCell Class="font-mono text-xs">FileUpload.FileUploadSize</TableCell><TableCell Class="font-mono text-xs">Default</TableCell><TableCell>Button size for <code>Variant=Button</code>. Values: <code>Sm</code>, <code>Default</code>, <code>Lg</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnFilesSelected</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;InputFileChangeEventArgs&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when files are selected (raw args, kept for back-compat).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnUpload</TableCell><TableCell Class="font-mono text-xs">Func&lt;FileUploadItem, IProgress&lt;int&gt;, CancellationToken, Task&lt;string?&gt;&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Upload handler called per file. Report percent via IProgress, return the server URL/id on success, or throw on failure.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AutoUpload</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Start uploads immediately after selection. Set false to show an explicit Upload button.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MaxConcurrentUploads</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">3</TableCell><TableCell>Maximum number of simultaneous OnUpload calls.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ChunkSize</TableCell><TableCell Class="font-mono text-xs">long?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Optional chunk-size hint (bytes) passed to each FileUploadItem for consumers implementing chunked upload.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnFileUploaded</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;FileUploadItem&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when a single file upload succeeds.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnAllUploaded</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;IReadOnlyList&lt;FileUploadItem&gt;&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when all queued uploads finish (succeeded, failed, or cancelled).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnFileFailed</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;FileUploadItem&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when a file upload fails.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnFileRemoved</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;FileUploadItem&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when a file is removed from the list.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnFileRejected</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;(IBrowserFile, string)&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when a file is rejected by validation (size / type / count).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MaxFileSizeError</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom error message when a file exceeds MaxFileSize.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MaxFilesError</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom error message when MaxFiles is exceeded.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FileTypeError</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom error message when a file type doesn't match Accept.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ShowProgress</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Legacy: shows a global progress bar (only when OnUpload is not set).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Progress</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Legacy: global upload progress % (0–100). Superseded by per-file tracking when OnUpload is set.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes on the root element.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes forwarded to the root element.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="fileuploaditem" Level="3" Class="mt-8 scroll-mt-20">FileUploadItem</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">Represents the state of each file in the upload queue. Passed to <code>OnUpload</code>, <code>OnFileUploaded</code>, <code>OnFileFailed</code>, etc.</p>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[160px]">Property</TableHead>
+                    <TableHead Class="w-[160px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Id</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Unique identifier (Guid hex) for this upload item.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">File</TableCell><TableCell Class="font-mono text-xs">IBrowserFile</TableCell><TableCell>The underlying browser file reference.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>File name.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Size</TableCell><TableCell Class="font-mono text-xs">long</TableCell><TableCell>File size in bytes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Status</TableCell><TableCell Class="font-mono text-xs">FileUploadStatus</TableCell><TableCell>Current status: <code>Pending</code>, <code>Uploading</code>, <code>Succeeded</code>, <code>Failed</code>, <code>Cancelled</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ProgressPercent</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell>Upload progress 0–100, updated via IProgress.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ErrorMessage</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Error message if Status is Failed.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Url</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Server-returned URL or id after a successful upload.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ChunkSize</TableCell><TableCell Class="font-mono text-xs">long</TableCell><TableCell>Chunk-size hint from the <code>ChunkSize</code> parameter (0 if not set).</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -106,6 +170,8 @@
     private int _fileCount;
     private int _uploadProgress;
     private bool _isUploading;
+    private int _uploadedCount;
+    private string? _allDoneMsg;
 
     private void HandleFiles(InputFileChangeEventArgs e)
     {
@@ -136,6 +202,21 @@
         StateHasChanged();
     }
 
+    // Fake upload handler — simulates 500ms upload with progress reporting
+    private async Task<string?> SimulateUpload(
+        FileUpload.FileUploadItem item,
+        IProgress<int> progress,
+        CancellationToken ct)
+    {
+        for (int pct = 0; pct <= 100; pct += 10)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress.Report(pct);
+            await Task.Delay(50, ct);
+        }
+        return $"https://cdn.example.com/{item.Name}";
+    }
+
     private string _defaultCode = @"<FileUpload OnFilesSelected=""HandleFiles"" />";
 
     private string _imageCode = @"<FileUpload
@@ -149,6 +230,35 @@
     Description=""Select one or more files""
     Multiple=""true""
     OnFilesSelected=""HandleFiles"" />";
+
+    private string _uploadPipelineCode = @"<FileUpload
+    Multiple=""true""
+    Label=""Upload files""
+    OnUpload=""@SimulateUpload""
+    OnFileUploaded=""@(item => _uploadedCount++)""
+    OnAllUploaded=""@(items => _allDoneMsg = $""All {items.Count} file(s) done!"")""  />
+
+@code {
+    private async Task<string?> SimulateUpload(
+        FileUpload.FileUploadItem item,
+        IProgress<int> progress,
+        CancellationToken ct)
+    {
+        for (int pct = 0; pct <= 100; pct += 10)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress.Report(pct);
+            await Task.Delay(50, ct);
+        }
+        return $""https://cdn.example.com/{item.Name}"";
+    }
+}";
+
+    private string _manualCode = @"<FileUpload
+    Multiple=""true""
+    AutoUpload=""false""
+    Label=""Choose files, then click Upload""
+    OnUpload=""@SimulateUpload"" />";
 
     private string _progressCode = @"<FileUpload
     ShowProgress=""true""

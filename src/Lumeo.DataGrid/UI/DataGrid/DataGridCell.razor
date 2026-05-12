@@ -1,7 +1,16 @@
 @namespace Lumeo
 @typeparam TItem
 
-<td data-slot="datagrid-cell" class="@CssClass" style="@PinStyle" @onclick="HandleClick" @ondblclick="HandleDoubleClick" @attributes="AdditionalAttributes">
+<td data-slot="datagrid-cell" class="@CssClass" style="@PinStyle"
+    id="@CellId"
+    role="gridcell"
+    aria-colindex="@AriaColIndex"
+    aria-readonly="@AriaReadonly"
+    tabindex="@TabIndexValue"
+    @onclick="HandleClick"
+    @ondblclick="HandleDoubleClick"
+    @onkeydown="HandleCellKeyDown"
+    @attributes="AdditionalAttributes">
     @if (_isEditing && Column.EditTemplate is not null)
     {
         @Column.EditTemplate(_editContext!)
@@ -28,6 +37,15 @@
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [Parameter] public TItem Item { get; set; } = default!;
     [Parameter] public DataGridColumn<TItem> Column { get; set; } = default!;
+    /// <summary>0-based index of the owning row within DisplayedItems (non-grouped).</summary>
+    [Parameter] public int RowIndex { get; set; }
+    /// <summary>0-based index of this column within the visible columns.</summary>
+    [Parameter] public int ColumnIndex { get; set; }
+    /// <summary>1-based ARIA column index (includes any leading non-data columns).</summary>
+    [Parameter] public int AriaColIndex { get; set; }
+    /// <summary>Whether this cell participates in roving-tabindex keyboard navigation.
+    /// False in grouped mode where row indices are not globally unique.</summary>
+    [Parameter] public bool Navigable { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -35,6 +53,36 @@
     private string? _editValue;
     private object? _originalValue;
     private CellEditContext<TItem>? _editContext;
+
+    // --- Keyboard navigation / ARIA (rc.32) ---
+    private bool CellEditable =>
+        Context?.EditMode == DataGridEditMode.Cell && Column.Field is not null;
+
+    private string? AriaReadonly => CellEditable ? null : "true";
+
+    private string? CellId =>
+        Navigable && Context is not null ? $"{Context.GridId}-cell-{RowIndex}-{ColumnIndex}" : null;
+
+    // Roving tabindex: exactly one cell across header + body carries tabindex="0".
+    private int TabIndexValue =>
+        Navigable && Context is not null && Context.FocusedRow == RowIndex && Context.FocusedCol == ColumnIndex
+            ? 0 : -1;
+
+    private async Task HandleCellKeyDown(KeyboardEventArgs e)
+    {
+        if (!Navigable || Context is null) return;
+
+        // Enter / F2 → enter edit mode for this cell (when editable). Edit-mode key
+        // handling (Escape/Enter/Tab) lives in the <input>'s own OnEditKeyDown.
+        if ((e.Key == "Enter" || e.Key == "F2") && CellEditable && !_isEditing)
+        {
+            StartEdit();
+            return;
+        }
+
+        // Navigation / selection keys → delegate to the grid.
+        await Context.OnCellKeyDown(RowIndex, ColumnIndex, e);
+    }
 
     private string CssClass
     {
@@ -47,7 +95,15 @@
                 PinDirection.Right => "sticky z-10 bg-inherit",
                 _ => (string?)null
             };
-            return string.Join(" ", new[] { "px-3 py-2 text-sm", pinClass, Column.CssClass, cellClass, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            return string.Join(" ", new[]
+            {
+                "px-3 py-2 text-sm",
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                pinClass,
+                Column.CssClass,
+                cellClass,
+                Class
+            }.Where(s => !string.IsNullOrWhiteSpace(s)));
         }
     }
 
@@ -111,15 +167,31 @@
         if (e.Key == "Enter")
         {
             await CommitEdit();
+            // Excel-like: after committing, move focus down one row.
+            if (Navigable && Context is not null)
+            {
+                await Context.OnCellKeyDown(RowIndex, ColumnIndex, new KeyboardEventArgs { Key = "ArrowDown" });
+            }
         }
         else if (e.Key == "Escape")
         {
             CancelEdit();
+            if (Navigable && Context is not null)
+            {
+                // Re-focus the cell <td> so arrow nav resumes immediately.
+                await Context.OnCellKeyDown(RowIndex, ColumnIndex, new KeyboardEventArgs { Key = "Home" });
+                await Context.OnCellKeyDown(RowIndex, ColumnIndex, new KeyboardEventArgs { Key = "End" });
+            }
         }
         else if (e.Key == "Tab")
         {
             await CommitEdit();
-            // Focus is handled by browser's natural Tab order since inputs are in DOM order
+            // Move to the next editable cell to the right (browser handles plain
+            // Tab too, but committing first keeps state consistent).
+            if (Navigable && Context is not null)
+            {
+                await Context.OnCellKeyDown(RowIndex, ColumnIndex, new KeyboardEventArgs { Key = "ArrowRight" });
+            }
         }
     }
 

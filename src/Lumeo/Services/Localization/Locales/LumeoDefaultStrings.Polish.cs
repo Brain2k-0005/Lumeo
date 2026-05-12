@@ -218,5 +218,13 @@ internal static partial class LumeoDefaultStrings
         // Empty
         ["Empty.Title"] = "Jeszcze nic tu nie ma",
         ["Empty.Description"] = "Brak danych do wyświetlenia.",
+
+        // Kanban
+        ["Kanban.AddCard"] = "Dodaj kartę",
+
+        // Carousel
+        ["Carousel.PreviousSlide"] = "Poprzedni slajd",
+        ["Carousel.NextSlide"] = "Następny slajd",
+        ["Carousel.SlideXofY"] = "Slajd {0} z {1}",
     };
 }

@@ -3,6 +3,12 @@
 @implements IAsyncDisposable
 
 <th data-slot="datagrid-header-cell" class="@CssClass" style="@StyleString"
+    id="@CellId"
+    role="columnheader"
+    aria-colindex="@AriaColIndex"
+    aria-sort="@AriaSort"
+    tabindex="@TabIndexValue"
+    @onkeydown="HandleKeyDown"
     draggable="@(EffectiveReorderable ? "true" : "false")"
     @ondragstart="HandleDragStart"
     @ondragover="HandleDragOver"
@@ -91,6 +97,8 @@
 
     [Parameter] public DataGridColumn<TItem> Column { get; set; } = default!;
     [Parameter] public int ColumnIndex { get; set; }
+    /// <summary>1-based ARIA column index (includes any leading non-data columns).</summary>
+    [Parameter] public int AriaColIndex { get; set; }
     [Parameter] public SortDirection SortDirection { get; set; } = SortDirection.None;
     [Parameter] public bool HasActiveFilter { get; set; }
     [Parameter] public bool IsFilterOpen { get; set; }
@@ -102,6 +110,40 @@
     [Parameter] public int TotalSortCount { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // --- Keyboard navigation / ARIA (rc.32) ---
+    private string? CellId => Context is null ? null : $"{Context.GridId}-cell-h-{ColumnIndex}";
+
+    private string? AriaSort => Column.Sortable
+        ? SortDirection switch
+        {
+            SortDirection.Ascending => "ascending",
+            SortDirection.Descending => "descending",
+            _ => "none"
+        }
+        : null;
+
+    // Roving tabindex: exactly one header/body cell carries tabindex="0".
+    private int TabIndexValue =>
+        Context is not null && Context.FocusedRow == -1 && Context.FocusedCol == ColumnIndex ? 0 : -1;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        // Note: we intentionally do NOT preventDefault here. Doing it conditionally
+        // per-key in Blazor requires the directive value to be known at render time,
+        // which would also block Tab from leaving the grid. Arrow keys may scroll the
+        // container a little, but FocusElement() scrolls the target cell back into
+        // view, so the net effect is correct.
+        if (Context is null) return;
+
+        if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Column.Sortable)
+        {
+            await HandleSort();
+            return;
+        }
+
+        await Context.OnHeaderKeyDown(ColumnIndex, e);
+    }
 
     private FilterDescriptor? CurrentFilter =>
         Column?.Field is null || Context is null
@@ -132,6 +174,7 @@
             return string.Join(" ", new[]
             {
                 "group/th relative px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider",
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 pinClass,
                 EffectiveReorderable ? "cursor-grab" : null,
                 Column.HeaderCssClass,

@@ -67,8 +67,40 @@
 
     <ComponentDemo Title="View modes" Code="@_viewModesCode">
         <Stack Gap="3">
-            <Lumeo.Text Size="sm" Color="muted">Use the built-in toolbar above the chart to toggle between Day, Week, Month, and Year.</Lumeo.Text>
+            <Lumeo.Text Size="sm" Color="muted">Use the built-in toolbar above the chart to toggle between Day, Week, Month, and Year. Pass <code>GanttViewMode.QuarterDay</code> or <code>GanttViewMode.HalfDay</code> programmatically for hour-granularity views.</Lumeo.Text>
             <Gantt Tasks="_viewModesTasks" ViewMode="GanttViewMode.Week" Height="420px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Milestones" Code="@_milestoneCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Set <code>IsMilestone = true</code> on any task to render it as a diamond at a point in time.
+                Milestones are read-only (drag is suppressed) and can carry dependencies just like regular bars.
+            </Lumeo.Text>
+            <Gantt Tasks="_milestoneTasks" ViewMode="GanttViewMode.Day" Height="320px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Grouping / swim-lanes" Code="@_groupCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Pass a <code>GroupBy</code> function and/or set <code>GroupLabel</code> on each <code>GanttTask</code>.
+                Tasks are sorted by group and a section-header row is injected before the first task of each group.
+            </Lumeo.Text>
+            <Gantt Tasks="_groupedTasks" ViewMode="GanttViewMode.Day" Height="380px"
+                   GroupBy="@(t => t.GroupLabel ?? "")" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Per-task bar colour" Code="@_barColorCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Use the <code>BarColor</code> delegate to return any CSS colour (hex, rgb, or a CSS variable like
+                <code>var(--color-destructive)</code>) per task. Useful for traffic-light status colouring.
+            </Lumeo.Text>
+            <Gantt Tasks="_colorTasks" ViewMode="GanttViewMode.Day" Height="280px"
+                   BarColor="@GetBarColor" />
         </Stack>
     </ComponentDemo>
 </Stack>
@@ -96,6 +128,11 @@
                 <TableRow><TableCell Class="font-mono text-xs">OnProgressChange</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;GanttTask&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated task after its progress handle is dragged.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Height</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"500px"</TableCell><TableCell>CSS height applied to the Gantt canvas (the toolbar sits above it).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Readonly</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>When true the user can no longer drag bars or change progress.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">TodayHighlight</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show/hide the vertical today-line and dot marker on the chart.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">BarHeight</TableCell><TableCell Class="font-mono text-xs">int?</TableCell><TableCell Class="font-mono text-xs">null (22)</TableCell><TableCell>Override the pixel height of each task bar. Defaults to 22 when null.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ColumnWidth</TableCell><TableCell Class="font-mono text-xs">int?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the pixel width of each date column. Each view mode has its own default; this lets you densify or expand the timeline.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">BarColor</TableCell><TableCell Class="font-mono text-xs">Func&lt;GanttTask, string?&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Per-task bar colour delegate. Return a CSS colour (hex, rgb, or var(--…)) or null to use the primary theme colour.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">GroupBy</TableCell><TableCell Class="font-mono text-xs">Func&lt;GanttTask, string&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>When set, tasks are sorted by the returned group key and a section-header row is injected before each group. Works in tandem with GanttTask.GroupLabel.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">TrailingContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Optional slot on the right side of the toolbar — typical usage is an "Add task" button.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes applied to the outer wrapper.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes forwarded to the root element.</TableCell></TableRow>
@@ -119,8 +156,10 @@
                 <TableRow><TableCell Class="font-mono text-xs">Start</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>Start date (inclusive). Frappe Gantt works at day granularity.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">End</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>End date.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Progress</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell>Completion percentage, 0–100. Drives the progress fill inside the bar.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Dependencies</TableCell><TableCell Class="font-mono text-xs">string[]?</TableCell><TableCell>Ids of tasks this task depends on. Rendered as arrows in the chart.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Dependencies</TableCell><TableCell Class="font-mono text-xs">string[]?</TableCell><TableCell>Ids of tasks this task depends on. Rendered as arrows in the chart. Read-only; interactive link creation is not supported by the SVG engine.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">CustomClass</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Extra CSS class applied to the bar — use to color-code milestones or delayed work.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">IsMilestone</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>When true, renders as a diamond at the Start date. End is clamped to Start. Drag is suppressed for milestones.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">GroupLabel</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Optional swim-lane label. When the Gantt's GroupBy parameter is set, tasks carrying the same GroupLabel are clustered together with a section header.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -220,6 +259,61 @@
         };
     }
 
+    // ── Milestone demo ───────────────────────────────────────────────────
+    private List<GanttTask> _milestoneTasks = BuildMilestoneTasks();
+
+    private static List<GanttTask> BuildMilestoneTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("design",    "Design",      d,               d.AddDays(8)),
+            new("m-design",  "Design Done", d.AddDays(8),    d.AddDays(8),  IsMilestone: true, Dependencies: new[] { "design" }),
+            new("dev",       "Development", d.AddDays(8),    d.AddDays(20), Dependencies: new[] { "m-design" }),
+            new("m-dev",     "Dev Done",    d.AddDays(20),   d.AddDays(20), IsMilestone: true, Dependencies: new[] { "dev" }),
+            new("launch",    "Launch",      d.AddDays(20),   d.AddDays(22), Dependencies: new[] { "m-dev" }),
+        };
+    }
+
+    // ── Grouping demo ────────────────────────────────────────────────────
+    private List<GanttTask> _groupedTasks = BuildGroupedTasks();
+
+    private static List<GanttTask> BuildGroupedTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("fe1",  "UI Design",    d,               d.AddDays(6),  GroupLabel: "Frontend"),
+            new("fe2",  "Components",   d.AddDays(6),    d.AddDays(14), GroupLabel: "Frontend",  Dependencies: new[] { "fe1" }),
+            new("be1",  "API Design",   d,               d.AddDays(5),  GroupLabel: "Backend"),
+            new("be2",  "REST Impl",    d.AddDays(5),    d.AddDays(15), GroupLabel: "Backend",   Dependencies: new[] { "be1" }),
+            new("qa1",  "Test Plan",    d.AddDays(10),   d.AddDays(14), GroupLabel: "QA"),
+            new("qa2",  "E2E Tests",    d.AddDays(14),   d.AddDays(20), GroupLabel: "QA",        Dependencies: new[] { "qa1" }),
+        };
+    }
+
+    // ── Bar colour demo ──────────────────────────────────────────────────
+    private List<GanttTask> _colorTasks = BuildColorTasks();
+
+    private static List<GanttTask> BuildColorTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("t1", "On Track",    d,               d.AddDays(5)),
+            new("t2", "At Risk",     d.AddDays(5),    d.AddDays(12)),
+            new("t3", "Delayed",     d.AddDays(12),   d.AddDays(20)),
+        };
+    }
+
+    private static string? GetBarColor(GanttTask t) => t.Name switch
+    {
+        "On Track" => "var(--color-success, #22c55e)",
+        "At Risk"  => "var(--color-warning, #f59e0b)",
+        "Delayed"  => "var(--color-destructive)",
+        _ => null,
+    };
+
     // ── Code snippets ────────────────────────────────────────────────────
     private string _basicCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""420px"" />
 
@@ -258,4 +352,46 @@
 }";
 
     private string _viewModesCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Week"" Height=""420px"" />";
+
+    private string _milestoneCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""320px"" />
+
+@code {
+    // IsMilestone=true renders a diamond at the Start date.
+    // End is clamped to Start automatically.
+    private List<GanttTask> _tasks = new()
+    {
+        new(""design"",   ""Design"",      d,             d.AddDays(8)),
+        new(""m-design"", ""Design Done"", d.AddDays(8),  d.AddDays(8), IsMilestone: true,
+            Dependencies: new[] { ""design"" }),
+        new(""dev"",      ""Development"", d.AddDays(8),  d.AddDays(20),
+            Dependencies: new[] { ""m-design"" }),
+    };
+}";
+
+    private string _groupCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""380px""
+       GroupBy=""@(t => t.GroupLabel ?? """")""  />
+
+@code {
+    // Set GroupLabel on each task; pass GroupBy to cluster + show headers.
+    private List<GanttTask> _tasks = new()
+    {
+        new(""fe1"", ""UI Design"",  d,           d.AddDays(6),  GroupLabel: ""Frontend""),
+        new(""fe2"", ""Components"", d.AddDays(6),d.AddDays(14), GroupLabel: ""Frontend""),
+        new(""be1"", ""API Design"", d,           d.AddDays(5),  GroupLabel: ""Backend""),
+        new(""be2"", ""REST Impl"",  d.AddDays(5),d.AddDays(15), GroupLabel: ""Backend""),
+    };
+}";
+
+    private string _barColorCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""280px""
+       BarColor=""@GetBarColor"" />
+
+@code {
+    private static string? GetBarColor(GanttTask t) => t.Name switch
+    {
+        ""On Track"" => ""var(--color-success, #22c55e)"",
+        ""At Risk""  => ""var(--color-warning, #f59e0b)"",
+        ""Delayed""  => ""var(--color-destructive)"",
+        _ => null,
+    };
+}";
 }

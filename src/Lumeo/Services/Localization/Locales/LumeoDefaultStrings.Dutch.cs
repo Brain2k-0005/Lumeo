@@ -218,5 +218,13 @@ internal static partial class LumeoDefaultStrings
         // Empty
         ["Empty.Title"] = "Nog niets hier",
         ["Empty.Description"] = "Er zijn geen gegevens om weer te geven.",
+
+        // Kanban
+        ["Kanban.AddCard"] = "Kaart toevoegen",
+
+        // Carousel
+        ["Carousel.PreviousSlide"] = "Vorige dia",
+        ["Carousel.NextSlide"] = "Volgende dia",
+        ["Carousel.SlideXofY"] = "Dia {0} van {1}",
     };
 }

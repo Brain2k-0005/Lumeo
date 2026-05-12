@@ -8,8 +8,9 @@
 <Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true" Class="mt-6">
     <ChildContent>
         <strong>In active development.</strong> Theme integration just landed — please refresh and report any
-        residual visual issues. Some FullCalendar Premium features (resource view, vertical resource view,
-        timeline view) are not wrapped — see the licensing note below.
+        residual visual issues. FullCalendar Premium features (resource lane views, vertical resource view,
+        true timeline view) are NOT wrapped — see the licensing note below. This release adds simple
+        recurrence, resource color-coding, now-indicator, and slot-time controls.
     </ChildContent>
 </Alert>
 
@@ -93,6 +94,37 @@
             </div>
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Recurring Events" Code="@_recurringCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Events with <Lumeo.Code>DaysOfWeek</Lumeo.Code> repeat on the selected days.
+                Use <Lumeo.Code>RecurrenceEnd</Lumeo.Code> to bound the series and
+                <Lumeo.Code>ExceptionDates</Lumeo.Code> to skip specific occurrences.
+                This uses FullCalendar's free simple recurrence model — no premium plugin required.
+            </Lumeo.Text>
+            <Scheduler Events="_recurringEvents"
+                       InitialView="SchedulerView.Week"
+                       Height="540px"
+                       NowIndicator="true"
+                       SlotMinTime="@(new TimeOnly(7, 0))"
+                       SlotMaxTime="@(new TimeOnly(20, 0))" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Resource Color-Coding" Code="@_resourceCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Provide a <Lumeo.Code>Resources</Lumeo.Code> list and set <Lumeo.Code>ResourceId</Lumeo.Code> on each event
+                to automatically color-code events by resource and render a legend above the calendar.
+                This does NOT require the FullCalendar Premium resource plugin.
+            </Lumeo.Text>
+            <Scheduler Events="_resourceEvents"
+                       Resources="_demoResources"
+                       InitialView="SchedulerView.Week"
+                       Height="540px" />
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-16">
@@ -122,6 +154,13 @@
                 <TableRow><TableCell Class="font-mono text-xs">OnEventClick</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;SchedulerEvent&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the user clicks an event.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">OnDateSelect</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;SchedulerDateRange&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the user drag-selects a range — typical usage is to open a "new event" dialog.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">OnEventChange</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;SchedulerEvent&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the updated event after a drag or resize completes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">NowIndicator</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show the current-time line in time-grid views. Maps to FullCalendar's <Lumeo.Code>nowIndicator</Lumeo.Code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SlotMinTime</TableCell><TableCell Class="font-mono text-xs">TimeOnly?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Earliest visible time in time-grid views (e.g. <Lumeo.Code>new TimeOnly(7,0)</Lumeo.Code>). Null = FullCalendar default (midnight).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SlotMaxTime</TableCell><TableCell Class="font-mono text-xs">TimeOnly?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Latest visible time in time-grid views. Null = FullCalendar default (midnight next day).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SlotDuration</TableCell><TableCell Class="font-mono text-xs">TimeSpan?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Duration of each slot row, e.g. <Lumeo.Code>TimeSpan.FromMinutes(15)</Lumeo.Code>. Null = FullCalendar default (30 min).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Resources</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;SchedulerResource&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Resource list for color-coding events by person/room. A legend is rendered above the calendar. Does not require FullCalendar Premium.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">EventClassNames</TableCell><TableCell Class="font-mono text-xs">Func&lt;SchedulerEvent, string&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Callback returning extra CSS class names for an event chip.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">EventColor</TableCell><TableCell Class="font-mono text-xs">Func&lt;SchedulerEvent, string&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Callback returning a CSS color for an event. Priority: callback &gt; event.Color &gt; resource color.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes applied to the outer wrapper.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
             </TableBody>
@@ -147,6 +186,29 @@
                 <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>CSS color or variable reference like <Lumeo.Code>"var(--color-primary)"</Lumeo.Code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Url</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Optional link opened on click instead of firing <Lumeo.Code>OnEventClick</Lumeo.Code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ExtendedProps</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell>Arbitrary app-level metadata round-tripped through the JS layer.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DaysOfWeek</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;DayOfWeek&gt;?</TableCell><TableCell>Recurring: days of the week on which the event repeats. Uses FullCalendar's free simple recurrence model. When set, Start/End provide the time-of-day only.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">RecurrenceEnd</TableCell><TableCell Class="font-mono text-xs">DateTime?</TableCell><TableCell>Recurring: last date on which the event appears. Only meaningful when <Lumeo.Code>DaysOfWeek</Lumeo.Code> is set.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ExceptionDates</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;DateTime&gt;?</TableCell><TableCell>Recurring: specific dates to skip (one-off exclusions). Only meaningful when <Lumeo.Code>DaysOfWeek</Lumeo.Code> is set.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ResourceId</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Matches this event to a <Lumeo.Code>SchedulerResource</Lumeo.Code> for color-coding when the Scheduler has a <Lumeo.Code>Resources</Lumeo.Code> list.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ClassNames</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Extra CSS class names applied directly to this event's chip (space-separated).</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="scheduler-resource" Level="3" Class="mt-8 scroll-mt-20">SchedulerResource</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Field</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Id</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Identifier matched against <Lumeo.Code>SchedulerEvent.ResourceId</Lumeo.Code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Title</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Display name shown in the resource legend.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>CSS color applied to events belonging to this resource when the event has no explicit color.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -325,5 +387,101 @@
 
 @code {
     private IEnumerable<SchedulerEvent> _events = new List<SchedulerEvent> { /* ... */ };
+}";
+
+    // ── Recurring events demo ────────────────────────────────────────────
+    private List<SchedulerEvent> _recurringEvents = BuildRecurringEvents();
+
+    private static List<SchedulerEvent> BuildRecurringEvents()
+    {
+        var today = DateTime.Today;
+        return new List<SchedulerEvent>
+        {
+            // Repeats Mon/Wed/Fri at 09:00–09:15 for 3 months
+            new("rec1", "Daily stand-up",
+                today.AddHours(9), today.AddHours(9).AddMinutes(15),
+                DaysOfWeek: new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday },
+                RecurrenceEnd: today.AddMonths(3),
+                Color: "var(--color-primary)"),
+            // Repeats every Tuesday at 14:00–15:00 (no end date = forever)
+            new("rec2", "Design review",
+                today.AddHours(14), today.AddHours(15),
+                DaysOfWeek: new[] { DayOfWeek.Tuesday },
+                Color: "var(--color-destructive)"),
+            // One-off event on current day
+            new("rec3", "Team lunch",
+                today.AddHours(12), today.AddHours(13),
+                Color: "var(--color-accent)")
+        };
+    }
+
+    private string _recurringCode = @"@* Events with DaysOfWeek repeat on the selected days.
+   Start/End time-of-day parts are used as the recurrence time window.
+   RecurrenceEnd bounds the series; ExceptionDates skips specific days. *@
+<Scheduler Events=""_events""
+           InitialView=""SchedulerView.Week""
+           NowIndicator=""true""
+           SlotMinTime=""@(new TimeOnly(7, 0))""
+           SlotMaxTime=""@(new TimeOnly(20, 0))"" />
+
+@code {
+    private List<SchedulerEvent> _events = new()
+    {
+        new(""rec1"", ""Stand-up"",
+            DateTime.Today.AddHours(9), DateTime.Today.AddHours(9).AddMinutes(30),
+            DaysOfWeek: new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday },
+            RecurrenceEnd: DateTime.Today.AddMonths(3),
+            Color: ""var(--color-primary)""),
+        new(""rec2"", ""Design review"",
+            DateTime.Today.AddHours(14), DateTime.Today.AddHours(15),
+            DaysOfWeek: new[] { DayOfWeek.Tuesday },
+            Color: ""var(--color-destructive)""),
+    };
+}";
+
+    // ── Resource color-coding demo ───────────────────────────────────────
+    private IReadOnlyList<SchedulerResource> _demoResources = new[]
+    {
+        new SchedulerResource("alice", "Alice Chen", "var(--color-primary)"),
+        new SchedulerResource("bob", "Bob Kim", "var(--color-destructive)"),
+        new SchedulerResource("carol", "Carol Wu", "var(--color-accent)"),
+    };
+
+    private List<SchedulerEvent> _resourceEvents = BuildResourceEvents();
+
+    private static List<SchedulerEvent> BuildResourceEvents()
+    {
+        var today = DateTime.Today;
+        var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        return new List<SchedulerEvent>
+        {
+            new("r1", "Sprint planning", monday.AddHours(10), monday.AddHours(11), ResourceId: "alice"),
+            new("r2", "Code review", monday.AddHours(14), monday.AddHours(15), ResourceId: "bob"),
+            new("r3", "Design crit", monday.AddDays(1).AddHours(9), monday.AddDays(1).AddHours(10), ResourceId: "carol"),
+            new("r4", "1:1 w/ Alice", monday.AddDays(1).AddHours(11), monday.AddDays(1).AddHours(11).AddMinutes(30), ResourceId: "alice"),
+            new("r5", "Backend sync", monday.AddDays(2).AddHours(13), monday.AddDays(2).AddHours(14), ResourceId: "bob"),
+            new("r6", "UX walkthrough", monday.AddDays(3).AddHours(10), monday.AddDays(3).AddHours(11), ResourceId: "carol"),
+        };
+    }
+
+    private string _resourceCode = @"@* Provide Resources to color-code events by person/room.
+   Set ResourceId on each SchedulerEvent to link it to a resource.
+   A legend is rendered automatically above the calendar.
+   Note: this is NOT FullCalendar Premium resource lanes. *@
+<Scheduler Events=""_events""
+           Resources=""_resources""
+           InitialView=""SchedulerView.Week"" />
+
+@code {
+    private IReadOnlyList<SchedulerResource> _resources = new[]
+    {
+        new SchedulerResource(""alice"", ""Alice Chen"", ""var(--color-primary)""),
+        new SchedulerResource(""bob"",   ""Bob Kim"",   ""var(--color-destructive)""),
+    };
+    private List<SchedulerEvent> _events = new()
+    {
+        new(""r1"", ""Sprint planning"", monday.AddHours(10), monday.AddHours(11), ResourceId: ""alice""),
+        new(""r2"", ""Code review"",     monday.AddHours(14), monday.AddHours(15), ResourceId: ""bob""),
+    };
 }";
 }

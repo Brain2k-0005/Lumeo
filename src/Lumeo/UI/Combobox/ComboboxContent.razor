@@ -1,5 +1,6 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 
 @if (Context.IsOpen)
 {
@@ -12,22 +13,76 @@
                 @L["Combobox.Loading"]
             </div>
         }
-        @ChildContent
-        @if (!Context.IsSearchLoading && Context.ItemCount == 0 && ChildContent is null)
+        @if (Context.Items is not null)
         {
-            @* Fallback default empty — only renders if the consumer didn't supply any children at all.
-               The real empty state is `<ComboboxEmpty>` which renders itself when ItemCount hits 0. *@
-            <div class="py-6 text-center text-sm text-muted-foreground">
-                @(EmptyText ?? L["Combobox.NoResults"])
-            </div>
+            @* Data-bound mode *@
+            var filteredItems = FilteredItems;
+            @if (Context.Virtualize)
+            {
+                <Virtualize Items="@filteredItems" Context="item" ItemSize="@Context.ItemSize">
+                    @RenderBoundItem(item)
+                </Virtualize>
+            }
+            else if (Context.ItemGroup is not null)
+            {
+                @foreach (var group in filteredItems.GroupBy(i => Context.ItemGroup(i) ?? ""))
+                {
+                    <div role="group">
+                        @if (!string.IsNullOrEmpty(group.Key))
+                        {
+                            <div class="px-2 py-1.5 text-sm font-semibold">@group.Key</div>
+                        }
+                        @foreach (var item in group)
+                        {
+                            @RenderBoundItem(item)
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                @foreach (var item in filteredItems)
+                {
+                    @RenderBoundItem(item)
+                }
+            }
+
+            @if (filteredItems.Count == 0 && !Context.IsSearchLoading)
+            {
+                <div class="py-6 text-center text-sm text-muted-foreground">
+                    @(EmptyText ?? L["Combobox.NoResults"])
+                </div>
+            }
+
+            @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText) && filteredItems.Count == 0)
+            {
+                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground border-t border-border/40 mt-1 pt-2"
+                        @onclick="HandleCreate">
+                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                    <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
+                </button>
+            }
         }
-        @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText) && Context.ItemCount == 0)
+        else
         {
-            <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground border-t border-border/40 mt-1 pt-2"
-                    @onclick="HandleCreate">
-                <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
-                <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
-            </button>
+            @* Composition mode *@
+            @ChildContent
+            @if (!Context.IsSearchLoading && Context.ItemCount == 0 && ChildContent is null)
+            {
+                @* Fallback default empty — only renders if the consumer didn't supply any children at all.
+                   The real empty state is `<ComboboxEmpty>` which renders itself when ItemCount hits 0. *@
+                <div class="py-6 text-center text-sm text-muted-foreground">
+                    @(EmptyText ?? L["Combobox.NoResults"])
+                </div>
+            }
+            @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText) && Context.ItemCount == 0)
+            {
+                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground border-t border-border/40 mt-1 pt-2"
+                        @onclick="HandleCreate">
+                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                    <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
+                </button>
+            }
         }
     </div>
 }
@@ -45,6 +100,71 @@
     private bool _registered;
 
     private string CssClass => $"fixed z-50 overflow-hidden rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
+
+    /// <summary>Items filtered by the current search text (data-bound mode only).</summary>
+    private List<object> FilteredItems
+    {
+        get
+        {
+            if (Context.Items is null) return [];
+            if (string.IsNullOrEmpty(Context.SearchText))
+                return Context.Items.ToList();
+
+            return Context.Items.Where(item =>
+            {
+                var text = Context.ItemText?.Invoke(item) ?? Context.ItemValue(item);
+                return text.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
+            }).ToList();
+        }
+    }
+
+    private RenderFragment RenderBoundItem(object item) => builder =>
+    {
+        var value = Context.ItemValue(item);
+        var isSelected = Context.Multiple
+            ? Context.Values?.Contains(value) == true
+            : Context.Value == value;
+        var isDisabled = Context.ItemDisabled?.Invoke(item) ?? false;
+        var itemId = $"combobox-item-bound-{value.GetHashCode():X}";
+        var isFocused = Context.FocusedItemId == itemId;
+
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "type", "button");
+        builder.AddAttribute(2, "id", itemId);
+        builder.AddAttribute(3, "role", "option");
+        builder.AddAttribute(4, "aria-selected", isSelected.ToString().ToLower());
+        var cssClass = string.Join(" ", new[]
+        {
+            "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+            isFocused ? "bg-accent text-accent-foreground" : null
+        }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        builder.AddAttribute(5, "class", cssClass);
+        if (!isDisabled)
+        {
+            builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => Context.OnSelect.InvokeAsync(value)));
+        }
+        builder.OpenElement(7, "span");
+        builder.AddAttribute(8, "class", "flex h-3.5 w-3.5 items-center justify-center");
+        if (isSelected)
+        {
+            builder.OpenComponent<Blazicons.Blazicon>(9);
+            builder.AddAttribute(10, "Svg", Blazicons.Lucide.Check);
+            builder.AddAttribute(11, "class", "h-3.5 w-3.5");
+            builder.CloseComponent();
+        }
+        builder.CloseElement(); // span
+
+        if (Context.ItemTemplate is not null)
+        {
+            builder.AddContent(12, Context.ItemTemplate(item));
+        }
+        else
+        {
+            var label = Context.ItemText?.Invoke(item) ?? value;
+            builder.AddContent(12, label);
+        }
+        builder.CloseElement(); // button
+    };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

@@ -9,9 +9,13 @@
 //   gantt.destroy(id)
 //
 // Options:
-//   tasks:    [{ id, name, start, end, progress, dependencies, customClass }]
-//   viewMode: 'QuarterDay' | 'HalfDay' | 'Day' | 'Week' | 'Month' | 'Year'
-//   readonly: bool
+//   tasks:         [{ id, name, start, end, progress, dependencies, customClass,
+//                     is_milestone, group_label, bar_color }]
+//   viewMode:      'QuarterDay' | 'HalfDay' | 'Day' | 'Week' | 'Month' | 'Year'
+//   readonly:      bool
+//   todayHighlight: bool (default true)
+//   barHeight:     number | null  (override default 22)
+//   columnWidth:   number | null  (override default for current viewMode)
 //
 // .NET callbacks (best-effort, swallowed on failure):
 //   JsOnTaskClick(taskJson)
@@ -32,7 +36,7 @@ const VIEW_MODES = {
 };
 
 const ROW_HEIGHT = 36;
-const BAR_HEIGHT = 22;
+const DEFAULT_BAR_HEIGHT = 22;
 const HEADER_HEIGHT = 56;
 const PADDING_X = 8;
 const RESIZE_HANDLE_W = 8;
@@ -73,13 +77,19 @@ function normalizeTasks(rawTasks) {
         const id = t.id ?? t.Id ?? `task-${i}`;
         const name = t.name ?? t.Name ?? '';
         const start = parseDate(t.start ?? t.Start);
-        const end = parseDate(t.end ?? t.End);
+        let end = parseDate(t.end ?? t.End);
         const progress = Math.max(0, Math.min(100, Number(t.progress ?? t.Progress ?? 0)));
         const depsRaw = t.dependencies ?? t.Dependencies ?? [];
         const dependencies = Array.isArray(depsRaw)
             ? depsRaw
             : String(depsRaw).split(',').map(s => s.trim()).filter(Boolean);
-        return { id: String(id), name, start, end, progress, dependencies };
+        const isMilestone = !!(t.is_milestone ?? t.IsMilestone ?? false);
+        const groupLabel = t.group_label ?? t.GroupLabel ?? null;
+        const barColor = t.bar_color ?? t.BarColor ?? null;
+        // Milestones: if start == end (zero-duration), that's intentional
+        if (isMilestone && start) end = start;
+        return { id: String(id), name, start, end, progress, dependencies,
+                 isMilestone, groupLabel, barColor };
     }).filter(t => t.start && t.end && t.end >= t.start);
 }
 
@@ -108,6 +118,8 @@ function taskToJson(task) {
         Progress: task.progress,
         Dependencies: task.dependencies,
         CustomClass: null,
+        IsMilestone: task.isMilestone,
+        GroupLabel: task.groupLabel,
     };
 }
 
@@ -116,7 +128,12 @@ function taskToJson(task) {
 function render(inst) {
     const { host, tasks, viewMode, readonly, dotNetRef } = inst;
     const tokens = readTokens(host);
-    const cfg = VIEW_MODES[viewMode] || VIEW_MODES.Day;
+    const cfgBase = VIEW_MODES[viewMode] || VIEW_MODES.Day;
+    // Allow caller to override column width per-instance
+    const cfg = inst.columnWidth
+        ? Object.assign({}, cfgBase, { columnWidth: inst.columnWidth })
+        : cfgBase;
+    const BAR_HEIGHT = inst.barHeight || DEFAULT_BAR_HEIGHT;
 
     // Preserve scroll position across re-renders so user's pan doesn't get
     // wiped every time refresh() runs. innerHTML='' resets scrollLeft to 0.
@@ -162,7 +179,19 @@ function render(inst) {
 
     const colW = cfg.columnWidth;
     const totalWidth = dateUnits.length * colW;
-    const totalHeight = HEADER_HEIGHT + Math.max(1, tasks.length) * ROW_HEIGHT;
+
+    // Count extra group-header rows that will be injected before the first
+    // task of each group (when tasks carry a groupLabel).
+    let groupHeaderCount = 0;
+    let lastSeenGroup = undefined;
+    for (const t of tasks) {
+        if (t.groupLabel && t.groupLabel !== lastSeenGroup) {
+            groupHeaderCount++;
+            lastSeenGroup = t.groupLabel;
+        }
+    }
+
+    const totalHeight = HEADER_HEIGHT + Math.max(1, tasks.length + groupHeaderCount) * ROW_HEIGHT;
 
     // Date <-> X mapping
     function dateToX(d) {
@@ -281,12 +310,12 @@ function render(inst) {
         }, svg);
     }
 
-    // Today indicator
+    // Today indicator (suppressed when todayHighlight=false)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayX = dateToX(today);
     const todayInRange = todayX >= 0 && todayX <= totalWidth;
-    if (todayInRange) {
+    if (inst.todayHighlight !== false && todayInRange) {
         el('line', {
             x1: todayX, y1: HEADER_HEIGHT - 4, x2: todayX, y2: totalHeight,
             stroke: tokens.primary, 'stroke-width': '2', opacity: '0.8',
@@ -364,11 +393,94 @@ function render(inst) {
         return;
     }
 
-    // Task bars
+    // Task bars — rowSlot tracks the current visual row (may be > task index
+    // when group headers are inserted).
     const taskById = new Map();
-    tasks.forEach((task, idx) => {
+    let rowSlot = 0;
+    let lastGroupLabel = undefined;
+
+    tasks.forEach((task) => {
+        // ── Group header row ──────────────────────────────────────────────
+        if (task.groupLabel && task.groupLabel !== lastGroupLabel) {
+            lastGroupLabel = task.groupLabel;
+            const ghY = HEADER_HEIGHT + rowSlot * ROW_HEIGHT;
+            // Subtle stripe background for the group header
+            el('rect', {
+                x: 0, y: ghY,
+                width: totalWidth, height: ROW_HEIGHT,
+                fill: tokens.accent, 'fill-opacity': '0.18',
+            }, svg);
+            const ghText = el('text', {
+                x: PADDING_X, y: ghY + ROW_HEIGHT / 2 + 4,
+                'font-size': '11',
+                'font-family': 'system-ui,sans-serif',
+                'font-weight': '700',
+                fill: tokens.muted,
+                'pointer-events': 'none',
+                'text-transform': 'uppercase',
+                'letter-spacing': '0.04em',
+            }, svg);
+            ghText.textContent = task.groupLabel;
+            rowSlot++;
+        }
+
+        const idx = rowSlot;
+        rowSlot++;
+
         const rowY = HEADER_HEIGHT + idx * ROW_HEIGHT;
         const barY = rowY + (ROW_HEIGHT - BAR_HEIGHT) / 2;
+        // Determine the bar colour: per-task override → primary token
+        const barFill = task.barColor || tokens.primary;
+
+        // ── Milestone rendering ───────────────────────────────────────────
+        if (task.isMilestone) {
+            const cx = dateToX(task.start) + colW / 2;
+            const cy = barY + BAR_HEIGHT / 2;
+            const half = BAR_HEIGHT / 2;
+            // Diamond = rotated square rendered as a polygon
+            const points = [
+                `${cx},${cy - half}`,
+                `${cx + half},${cy}`,
+                `${cx},${cy + half}`,
+                `${cx - half},${cy}`,
+            ].join(' ');
+
+            const group = el('g', {
+                class: 'lumeo-gantt-bar-wrapper lumeo-gantt-milestone',
+                'data-task-id': task.id,
+                style: 'cursor:pointer',
+            }, svg);
+
+            el('polygon', {
+                points,
+                fill: barFill,
+                'fill-opacity': '0.85',
+                stroke: barFill,
+                'stroke-width': '1.5',
+            }, group);
+
+            const mlabel = el('text', {
+                class: 'lumeo-gantt-bar-label',
+                x: cx + half + 6, y: cy + 4,
+                'font-size': '12',
+                'font-family': 'system-ui,sans-serif',
+                'font-weight': '500',
+                fill: tokens.fg,
+                'pointer-events': 'none',
+            }, group);
+            mlabel.textContent = task.name;
+
+            taskById.set(task.id, { task, x: cx - half, y: barY, w: half * 2, idx });
+
+            group.addEventListener('mouseenter', () => showTooltip(host, task, group));
+            group.addEventListener('mouseleave', () => hideTooltip(host));
+            group.addEventListener('click', () => {
+                dotNetRef.invokeMethodAsync('JsOnTaskClick', taskToJson(task)).catch(() => {});
+            });
+            return; // skip regular bar rendering
+        }
+
+        // ── Regular bar ───────────────────────────────────────────────────
         const x1 = dateToX(task.start);
         const x2 = dateToX(addDays(task.end, 1));
         const barW = Math.max(8, x2 - x1);
@@ -387,7 +499,7 @@ function render(inst) {
             x: x1, y: barY,
             width: barW, height: BAR_HEIGHT,
             rx: 4, ry: 4,
-            fill: tokens.primary,
+            fill: barFill,
             'fill-opacity': '0.30',
         }, group);
 
@@ -398,7 +510,7 @@ function render(inst) {
             x: x1, y: barY,
             width: progressW, height: BAR_HEIGHT,
             rx: 4, ry: 4,
-            fill: tokens.primary,
+            fill: barFill,
         }, group);
 
         // Label (clipped to bar)
@@ -431,7 +543,7 @@ function render(inst) {
                 cx: x1 + progressW, cy: barY + BAR_HEIGHT,
                 r: 4,
                 fill: tokens.primaryFg,
-                stroke: tokens.primary,
+                stroke: barFill,
                 'stroke-width': '2',
                 style: 'cursor:ns-resize',
                 opacity: '0',
@@ -689,6 +801,9 @@ export const gantt = {
             tasks: normalizeTasks(options.tasks),
             viewMode: options.viewMode || 'Day',
             readonly: !!options.readonly,
+            todayHighlight: options.todayHighlight !== false,
+            barHeight: options.barHeight || null,
+            columnWidth: options.columnWidth || null,
         };
         instances.set(id, inst);
 
@@ -712,6 +827,9 @@ export const gantt = {
         if (options.tasks !== undefined) inst.tasks = normalizeTasks(options.tasks);
         if (options.viewMode !== undefined) inst.viewMode = options.viewMode;
         if (options.readonly !== undefined) inst.readonly = !!options.readonly;
+        if (options.todayHighlight !== undefined) inst.todayHighlight = options.todayHighlight !== false;
+        if (options.barHeight !== undefined) inst.barHeight = options.barHeight || null;
+        if (options.columnWidth !== undefined) inst.columnWidth = options.columnWidth || null;
         render(inst);
     },
 
