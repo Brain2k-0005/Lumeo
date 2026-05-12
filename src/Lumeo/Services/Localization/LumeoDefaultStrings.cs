@@ -227,6 +227,18 @@ internal static partial class LumeoDefaultStrings
         ["Rating.RateOf"] = "Rate {0} out of {1}",
         ["Otp.Placeholder"] = "Enter code",
 
+        // ── Stepper ─────────────────────────────────────────────────
+        ["Stepper.Back"] = "Back",
+        ["Stepper.Next"] = "Next",
+        ["Stepper.Finish"] = "Finish",
+        ["Stepper.Optional"] = "Optional",
+
+        // ── Window ──────────────────────────────────────────────────
+        ["Window.Close"] = "Close",
+        ["Window.Minimize"] = "Minimize",
+        ["Window.Maximize"] = "Maximize",
+        ["Window.Restore"] = "Restore",
+
         // ── Empty state defaults ────────────────────────────────────
         ["Empty.Title"] = "Nothing here yet",
         ["Empty.Description"] = "There's no data to display.",

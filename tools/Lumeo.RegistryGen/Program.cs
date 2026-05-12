@@ -182,6 +182,11 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["PopConfirm"] = "Overlay",
     ["Tour"] = "Overlay",
     ["Overlay"] = "Overlay",
+    // New components
+    ["Stepper"] = "Navigation",
+    ["Window"] = "Overlay",
+    ["Toolbar"] = "Navigation",
+    ["AppBar"] = "Navigation",
     // Navigation
     ["Tabs"] = "Navigation",
     ["Breadcrumb"] = "Navigation",
@@ -262,6 +267,10 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
 // One-line descriptions (hand-written-ish, name-based).
 var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 {
+    ["Stepper"] = "Stateful multi-step wizard with navigation, validation gating, and header indicators.",
+    ["Window"] = "Non-modal draggable and resizable floating panel with minimize and maximize support.",
+    ["Toolbar"] = "Horizontal toolbar container with separator, spacer, and group sub-components.",
+    ["AppBar"] = "Top application bar with start, center, and end slots; sticky and elevated variants.",
     ["Accordion"] = "Vertically stacked collapsible sections that expand to reveal content.",
     ["Affix"] = "Pins an element to the viewport edge as the user scrolls.",
     ["AgentMessageList"] = "Chat message stream for AI agents with role-based styling.",
@@ -633,7 +642,7 @@ try
         uiRoots: uiRoots,
         metaResolver: MetaFor,
         logger: Console.Error,
-        version: "2.0.0-rc.32",
+        version: "2.0.0-rc.33",
         repoRoot: repoRoot);
 }
 catch (Exception ex)

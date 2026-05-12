@@ -1,0 +1,65 @@
+@namespace Lumeo
+
+<header class="@CssClass" @attributes="AdditionalAttributes">
+    @if (StartContent is not null)
+    {
+        <div class="flex items-center shrink-0">
+            @StartContent
+        </div>
+    }
+    <div class="flex-1 flex items-center min-w-0">
+        @ChildContent
+    </div>
+    @if (EndContent is not null)
+    {
+        <div class="flex items-center shrink-0 gap-2">
+            @EndContent
+        </div>
+    }
+</header>
+
+@code {
+    [Parameter] public RenderFragment? StartContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? EndContent { get; set; }
+
+    /// <summary>When true (default), pins to the top of the viewport.</summary>
+    [Parameter] public bool Sticky { get; set; } = true;
+
+    /// <summary>When true, adds a subtle shadow beneath the bar.</summary>
+    [Parameter] public bool Elevated { get; set; }
+
+    /// <summary>When true (default), adds a bottom border.</summary>
+    [Parameter] public bool Bordered { get; set; } = true;
+
+    /// <summary>Tailwind height class for the bar. Default is "h-14".</summary>
+    [Parameter] public string Height { get; set; } = "h-14";
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass
+    {
+        get
+        {
+            var classes = new System.Text.StringBuilder("flex items-center px-4 gap-4 bg-card text-foreground");
+
+            if (!string.IsNullOrWhiteSpace(Height))
+                classes.Append($" {Height}");
+
+            if (Sticky)
+                classes.Append(" sticky top-0 z-30");
+
+            if (Elevated)
+                classes.Append(" shadow-sm");
+
+            if (Bordered)
+                classes.Append(" border-b border-border/40");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Append($" {Class}");
+
+            return classes.ToString().Trim();
+        }
+    }
+}
