@@ -1,0 +1,46 @@
+@namespace Lumeo
+
+@* StepperStep registers itself into the parent Stepper's step list on each render.
+   The actual rendering is done by Stepper using the registered data. *@
+
+@code {
+    [CascadingParameter] public Stepper.StepperContext? Context { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public bool Optional { get; set; }
+    [Parameter] public bool Completed { get; set; }
+    [Parameter] public Func<bool>? IsValid { get; set; }
+    [Parameter] public RenderFragment? IconContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool KeepMounted { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Context?.Parent.RegisterStep(new StepRegistration(
+            Title,
+            Description,
+            Optional,
+            Completed,
+            IsValid,
+            IconContent,
+            ChildContent,
+            KeepMounted));
+    }
+
+    public bool IsStepValid() => IsValid?.Invoke() ?? true;
+
+    public record StepRegistration(
+        string Title,
+        string? Description,
+        bool Optional,
+        bool Completed,
+        Func<bool>? IsValid,
+        RenderFragment? IconContent,
+        RenderFragment? ChildContent,
+        bool KeepMounted)
+    {
+        public bool IsStepValid() => IsValid?.Invoke() ?? true;
+    }
+}
