@@ -170,6 +170,27 @@
         </Container>
     </ComponentDemo>
 
+    <ComponentDemo Title="Render mode — preserving panel state" Code="@_renderModeCode">
+        <Container MaxWidth="md" Center="false">
+            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">Type something in the input, switch tabs and come back. With <code>RenderMode="Tabs.TabsRenderMode.Lazy"</code> the text survives — the panel stays mounted (hidden) once visited. The default <code>Active</code> mode would lose it.</Lumeo.Text>
+            <Tabs ActiveValue="@_rmTab" ActiveValueChanged="@(v => _rmTab = v)" RenderMode="Tabs.TabsRenderMode.Lazy">
+                <TabsList>
+                    <TabsTrigger Value="form">Form</TabsTrigger>
+                    <TabsTrigger Value="preview">Preview</TabsTrigger>
+                    <TabsTrigger Value="settings">Settings</TabsTrigger>
+                </TabsList>
+                <TabsContent Value="form">
+                    <div class="p-4 space-y-2">
+                        <Lumeo.Text Size="sm" Class="font-medium">Your name</Lumeo.Text>
+                        <Input Placeholder="Type here, then switch tabs..." />
+                    </div>
+                </TabsContent>
+                <TabsContent Value="preview"><Lumeo.Text Size="sm" Color="muted" Class="p-4">Switch back to the Form tab — the input keeps its value.</Lumeo.Text></TabsContent>
+                <TabsContent Value="settings"><Lumeo.Text Size="sm" Color="muted" Class="p-4">Once a tab has been visited, its panel stays in the DOM (hidden).</Lumeo.Text></TabsContent>
+            </Tabs>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="Sliding Indicator" Code="@_slidingCode">
         <Container MaxWidth="md" Center="false">
             <Tabs @bind-ActiveValue="_animatedTab" AnimatedIndicator="true">
@@ -258,6 +279,12 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">"default"</td>
                             <td class="p-3 text-muted-foreground">Visual style of the list/triggers. Values: "default", "underline", "pills", "segmented".</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">RenderMode</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">TabsRenderMode</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Active</td>
+                            <td class="p-3 text-muted-foreground">When each panel is rendered and whether its state survives a tab switch. <code>Active</code> (default) — only the active panel is in the DOM; switching away unmounts it (form input, scroll, component state lost). <code>Lazy</code> — a panel renders on first activation and stays mounted (hidden) afterwards. <code>Eager</code> — all panels render immediately; inactive ones hidden. Values: <code>Tabs.TabsRenderMode.Active / Lazy / Eager</code>.</td>
+                        </tr>
                     </tbody>
                 </table>
             </Stack>
@@ -309,7 +336,13 @@
                             <td class="p-3 font-mono text-xs text-primary">Value</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">string</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">""</td>
-                            <td class="p-3 text-muted-foreground">The value of this tab panel. Renders only when it matches the parent Tabs ActiveValue. Required.</td>
+                            <td class="p-3 text-muted-foreground">The value of this tab panel. Must match the Value of the corresponding TabsTrigger. Required.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ForceMount</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Always render this panel into the DOM (hidden when inactive), regardless of the parent <code>RenderMode</code>. Use for a single panel whose state must survive every switch — e.g. a half-filled form — while the rest of the set stays on the lighter default mode.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -350,6 +383,25 @@
 @code {
     private string _verticalTab = "account";
     private string _animatedTab = "home";
+    private string _rmTab = "form";
+
+    private string _renderModeCode = @"@* Lazy: a panel renders the first time its tab is shown,
+   then stays in the DOM (hidden) — its state survives switches.
+   Active (default): only the active panel exists; switching unmounts it.
+   Eager: every panel renders up-front, inactive ones hidden. *@
+<Tabs @bind-ActiveValue=""_tab"" RenderMode=""Tabs.TabsRenderMode.Lazy"">
+    <TabsList>
+        <TabsTrigger Value=""form"">Form</TabsTrigger>
+        <TabsTrigger Value=""preview"">Preview</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""form"">
+        <Input Placeholder=""Survives a tab switch"" />
+    </TabsContent>
+    <TabsContent Value=""preview"">...</TabsContent>
+
+    @* Or pin just one panel, leaving the rest on the light default: *@
+    @* <TabsContent Value=""form"" ForceMount=""true"">...</TabsContent> *@
+</Tabs>";
 
     private string _slidingCode = @"<Tabs @bind-ActiveValue=""_active"" AnimatedIndicator=""true"">
     <TabsList>

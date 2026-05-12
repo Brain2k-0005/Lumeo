@@ -285,4 +285,89 @@
         var tab = cut.Find("[role='tab']");
         Assert.Null(tab.GetAttribute("aria-disabled"));
     }
+
+    // --- RenderMode ---
+
+    [Fact]
+    public void Default_RenderMode_Active_Only_Renders_Active_Panel()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        // Only one panel in the DOM, and it's the active one.
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+        Assert.Contains("Content 1", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    [Fact]
+    public void RenderMode_Eager_Renders_All_Panels_With_Inactive_Hidden()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1" RenderMode="Tabs.TabsRenderMode.Eager">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        var panels = cut.FindAll("[role='tabpanel']");
+        Assert.Equal(2, panels.Count);
+        // Active panel is visible (no hidden attr), inactive one is hidden.
+        Assert.Null(panels[0].GetAttribute("hidden"));
+        Assert.NotNull(panels[1].GetAttribute("hidden"));
+        Assert.Contains("Content 2", panels[1].TextContent);
+    }
+
+    [Fact]
+    public void RenderMode_Lazy_Mounts_Panel_After_First_Activation_And_Keeps_It()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1" RenderMode="Tabs.TabsRenderMode.Lazy">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        // tab2 never activated yet → not in DOM.
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+
+        // Activate tab2 → it mounts.
+        cut.FindAll("[role='tab']")[1].Click();
+        Assert.Equal(2, cut.FindAll("[role='tabpanel']").Count);
+
+        // Switch back to tab1 → tab2 STAYS in the DOM (hidden), state preserved.
+        cut.FindAll("[role='tab']")[0].Click();
+        var panels = cut.FindAll("[role='tabpanel']");
+        Assert.Equal(2, panels.Count);
+        var tab2Panel = panels.First(p => p.TextContent.Contains("Content 2"));
+        Assert.NotNull(tab2Panel.GetAttribute("hidden"));
+    }
+
+    [Fact]
+    public void ForceMount_Keeps_Panel_Mounted_Even_In_Active_Mode()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2" ForceMount="true">Content 2</TabsContent>
+        </Tabs>);
+
+        // Default Active mode would drop tab2, but ForceMount keeps it (hidden).
+        var panels = cut.FindAll("[role='tabpanel']");
+        Assert.Equal(2, panels.Count);
+        var tab2Panel = panels.First(p => p.TextContent.Contains("Content 2"));
+        Assert.NotNull(tab2Panel.GetAttribute("hidden"));
+    }
 }
