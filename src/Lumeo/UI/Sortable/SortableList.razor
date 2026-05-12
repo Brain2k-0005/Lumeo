@@ -4,7 +4,7 @@
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @foreach (var (item, index) in _items.Select((x, i) => (x, i)))
     {
-        <div class="@GetItemClass(index)"
+        <div @key="@(Key is not null ? Key(item) : (object?)item)" class="@GetItemClass(index)"
              draggable="@(!Disabled ? "true" : "false")"
              @ondragstart="() => OnDragStart(index)"
              @ondragover:preventDefault="true"
@@ -35,6 +35,15 @@
     [Parameter] public bool Handle { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Group { get; set; }
+
+    /// <summary>
+    /// Optional selector that returns a stable, unique key for each item.
+    /// Providing this ensures Blazor's diffing engine tracks items by identity
+    /// rather than index — critical for drag-reorder to map DOM state correctly.
+    /// If omitted, the item reference itself is used as the key.
+    /// </summary>
+    [Parameter] public Func<TItem, object>? Key { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

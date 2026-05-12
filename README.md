@@ -2,7 +2,7 @@
 
 **130+ accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-130+ components · 1,727 tests · 14 locales · MIT · .NET 10
+131 components · 2,180+ tests · 14 locales · MIT · .NET 10
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -11,7 +11,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **v2.0 is currently `2.0.0-rc.10`.** The API is stable; we're gathering field feedback for a short window before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
+> **v2.0 is in release-candidate phase (latest: `2.0.0-rc.31`).** The API is stable; we're gathering field feedback before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
 
 ## What's new in 2.0
 
@@ -45,7 +45,7 @@
 - **DataGrid** — sort, filter, inline edit, column pin, row group, drag-to-reorder, fullscreen, layout JSON, Excel/PDF/CSV export
 - **Form validation** — DataAnnotations + custom validators with styled error states
 - **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
-- **1,727 bUnit tests** — CI-enforced on every PR
+- **2,180+ bUnit tests** — CI-enforced on every PR
 
 ## Component Categories
 
@@ -85,14 +85,14 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="2.0.0-rc.30" />
+  <PackageReference Include="Lumeo"            Version="2.0.0-rc.31" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.30" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.30" />
-  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.30" />
-  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.30" />
-  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.30" />
-  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.30" />
+  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.31" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.31" />
+  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.31" />
+  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.31" />
+  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.31" />
+  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.31" />
 </ItemGroup>
 ```
 

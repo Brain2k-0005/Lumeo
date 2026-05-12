@@ -7,7 +7,7 @@
     @switch (overlay.Type)
     {
         case OverlayType.Dialog:
-            <Dialog Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+            <Dialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <DialogContent PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
@@ -16,7 +16,7 @@
                         </DialogHeader>
                     }
                     <CascadingValue Value="@(new OverlayShellMarker(overlay.Id))" IsFixed="true">
-                        <CascadingValue Value="@CreateReference(overlay)">
+                        <CascadingValue Value="@GetOrCreateReference(overlay)" IsFixed="true">
                             <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
                         </CascadingValue>
                     </CascadingValue>
@@ -25,7 +25,7 @@
             break;
 
         case OverlayType.Sheet:
-            <Sheet Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+            <Sheet @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <SheetContent Side="@MapSheetSide(overlay.Options.SheetSide)" Size="@MapSheetSize(overlay.Options.SheetSize)" PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
@@ -34,7 +34,7 @@
                         </SheetHeader>
                     }
                     <CascadingValue Value="@(new OverlayShellMarker(overlay.Id))" IsFixed="true">
-                        <CascadingValue Value="@CreateReference(overlay)">
+                        <CascadingValue Value="@GetOrCreateReference(overlay)" IsFixed="true">
                             <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
                         </CascadingValue>
                     </CascadingValue>
@@ -43,7 +43,7 @@
             break;
 
         case OverlayType.Drawer:
-            <Drawer Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+            <Drawer @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <DrawerContent PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
@@ -52,7 +52,7 @@
                         </DrawerHeader>
                     }
                     <CascadingValue Value="@(new OverlayShellMarker(overlay.Id))" IsFixed="true">
-                        <CascadingValue Value="@CreateReference(overlay)">
+                        <CascadingValue Value="@GetOrCreateReference(overlay)" IsFixed="true">
                             <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
                         </CascadingValue>
                     </CascadingValue>
@@ -61,7 +61,7 @@
             break;
 
         case OverlayType.AlertDialog:
-            <AlertDialog Open="true">
+            <AlertDialog @key="overlay.Id" Open="true">
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>@(overlay.AlertOptions?.Title ?? "Are you sure?")</AlertDialogTitle>
@@ -91,6 +91,7 @@
 
 @code {
     private readonly List<OverlayInstance> _overlays = new();
+    private readonly Dictionary<string, OverlayReference> _referenceCache = new();
 
     protected override void OnInitialized()
     {
@@ -106,6 +107,9 @@
     private Task HandleShowAsync(OverlayInstance instance)
     {
         _overlays.Add(instance);
+        // Pre-cache the reference so the CascadingValue always receives the same
+        // object reference for the lifetime of this overlay (prevents subtree re-renders).
+        _referenceCache[instance.Id] = new OverlayReference(instance.Id, instance.Parameters, OverlayService);
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -121,6 +125,7 @@
         if (overlay is null) return Task.CompletedTask;
 
         _overlays.Remove(overlay);
+        _referenceCache.Remove(id);
 
         if (cancelled)
             overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
@@ -151,9 +156,14 @@
 
     private class Fallback : Microsoft.AspNetCore.Components.ComponentBase { }
 
-    private OverlayReference CreateReference(OverlayInstance overlay)
+    private OverlayReference GetOrCreateReference(OverlayInstance overlay)
     {
-        return new OverlayReference(overlay.Id, overlay.Parameters, OverlayService);
+        if (!_referenceCache.TryGetValue(overlay.Id, out var reference))
+        {
+            reference = new OverlayReference(overlay.Id, overlay.Parameters, OverlayService);
+            _referenceCache[overlay.Id] = reference;
+        }
+        return reference;
     }
 
     private static SheetContent.SheetSide MapSheetSide(SheetSide side) => side switch
@@ -183,6 +193,7 @@
             overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
         }
         _overlays.Clear();
+        _referenceCache.Clear();
         await Task.CompletedTask;
     }
 }

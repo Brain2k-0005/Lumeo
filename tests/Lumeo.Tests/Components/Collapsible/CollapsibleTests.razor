@@ -223,4 +223,46 @@
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
         Assert.Contains("My Toggle Button", trigger.TextContent);
     }
+
+    // --- ForceMount ---
+
+    [Fact]
+    public void CollapsibleContent_ForceMount_Keeps_Content_In_Dom_When_Closed()
+    {
+        var cut = Render(@<Collapsible Open="false">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent ForceMount="true">Force Mounted</CollapsibleContent>
+        </Collapsible>);
+
+        // Content must be present in the DOM even when closed.
+        Assert.Contains("Force Mounted", cut.Markup);
+
+        // The content wrapper (overflow-hidden) must carry the hidden attribute.
+        var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("overflow-hidden") &&
+            d.TextContent.Contains("Force Mounted"));
+        Assert.NotNull(contentDiv);
+        // bUnit renders boolean hidden attr as "" (empty string), not null.
+        Assert.NotNull(contentDiv!.GetAttribute("hidden"));
+    }
+
+    [Fact]
+    public void CollapsibleContent_ForceMount_Removes_Hidden_Attr_When_Opened()
+    {
+        var cut = Render(@<Collapsible Open="false">
+            <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+            <CollapsibleContent ForceMount="true">Force Mounted</CollapsibleContent>
+        </Collapsible>);
+
+        var trigger = cut.FindAll("div").First(d =>
+            (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
+        trigger.Click();
+
+        // After opening, the hidden attribute must be absent.
+        var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
+            (d.GetAttribute("class") ?? "").Contains("overflow-hidden") &&
+            d.TextContent.Contains("Force Mounted"));
+        Assert.NotNull(contentDiv);
+        Assert.Null(contentDiv!.GetAttribute("hidden"));
+    }
 }
