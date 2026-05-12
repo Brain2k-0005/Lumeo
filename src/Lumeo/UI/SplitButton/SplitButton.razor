@@ -1,0 +1,74 @@
+@namespace Lumeo
+
+<div class="@RootCssClass" @attributes="AdditionalAttributes">
+    @* Primary action half *@
+    <Button Variant="Variant"
+            Size="Size"
+            Disabled="Disabled"
+            OnClick="OnClick"
+            Class="@PrimaryButtonClass">
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            @Text
+        }
+    </Button>
+
+    @* Chevron / dropdown half *@
+    <DropdownMenu @bind-Open="_open">
+        <DropdownMenuTrigger>
+            <Button Variant="Variant"
+                    Size="Size"
+                    Disabled="Disabled"
+                    Class="@ChevronButtonClass"
+                    aria-label="More options"
+                    aria-haspopup="menu">
+                <Blazicon Svg="Lucide.ChevronDown" Class="h-4 w-4 shrink-0" />
+            </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+            @MenuContent
+        </DropdownMenuContent>
+    </DropdownMenu>
+</div>
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? MenuContent { get; set; }
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;
+    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _open;
+
+    // Size-aware icon-only width for the chevron half
+    private string ChevronWidth => Size switch
+    {
+        Button.ButtonSize.Sm => "w-7",
+        Button.ButtonSize.Lg => "w-10",
+        _ => "w-9"
+    };
+
+    private string RootCssClass => string.Join(" ", new[]
+    {
+        "inline-flex",
+        Class
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    // Primary button: square right edge, collapsed right border
+    private const string PrimaryButtonClass = "rounded-r-none border-r-0";
+
+    // Chevron button: square left edge, collapsed left border (via -ml-px)
+    private string ChevronButtonClass => string.Join(" ", new[]
+    {
+        "rounded-l-none -ml-px px-0 shrink-0",
+        ChevronWidth
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+}

@@ -1,11 +1,31 @@
 @namespace Lumeo
 @typeparam T
 
-<div class="group" role="treeitem" aria-expanded="@(HasChildren && Item.IsExpanded)">
+<div class="group" role="treeitem"
+     aria-expanded="@AriaExpanded"
+     aria-selected="@IsSelected.ToString().ToLowerInvariant()"
+     aria-disabled="@Item.IsDisabled.ToString().ToLowerInvariant()"
+     tabindex="@TabIndex"
+     @onkeydown="HandleKeyDown"
+     @onkeydown:stopPropagation="true">
+
     <div class="@NodeClass" style="padding-left: @(Level * 16)px" @onclick="HandleClick">
-        @if (HasChildren && Expandable)
+
+        @* Expand chevron / loading spinner / leaf spacer *@
+        @if (Item.IsLoading)
         {
-            <button type="button" class="shrink-0 p-0.5 rounded hover:bg-accent transition-colors" @onclick="ToggleExpand" @onclick:stopPropagation="true">
+            <span class="shrink-0 p-0.5 w-6 flex items-center justify-center">
+                <Blazicon Svg="Lucide.Loader" class="h-4 w-4 text-muted-foreground animate-spin" />
+            </span>
+        }
+        else if (ShowExpandChevron && Expandable)
+        {
+            <button type="button"
+                    class="shrink-0 p-0.5 rounded hover:bg-accent transition-colors"
+                    @onclick="ToggleExpand"
+                    @onclick:stopPropagation="true"
+                    tabindex="-1"
+                    aria-label="@ExpandLabel">
                 <Blazicon Svg="Lucide.ChevronRight" class="@ChevronClass" />
             </button>
         }
@@ -14,20 +34,35 @@
             <span class="w-5"></span>
         }
 
+        @* Checkbox *@
         @if (ShowCheckboxes)
         {
-            <Checkbox Checked="@Item.IsChecked" CheckedChanged="HandleCheck" Class="mr-1" />
+            <span @onclick:stopPropagation="true">
+                <Checkbox Checked="@Item.IsChecked"
+                          IsIndeterminate="@Item.IsIndeterminate"
+                          CheckedChanged="HandleCheck"
+                          Disabled="@Item.IsDisabled"
+                          Class="mr-1" />
+            </span>
         }
 
-        @if (Item.Icon is { } icon)
+        @* Label area: custom template OR default icon + text *@
+        @if (NodeTemplate is not null)
         {
-            <Blazicon Svg="icon" class="h-4 w-4 text-muted-foreground shrink-0" />
+            @NodeTemplate(Item)
         }
-
-        <span class="truncate">@Item.Text</span>
+        else
+        {
+            @if (Item.Icon is { } icon)
+            {
+                <Blazicon Svg="icon" class="@IconClass" />
+            }
+            <span class="truncate">@Item.Text</span>
+        }
     </div>
 
-    @if (HasChildren && Item.IsExpanded)
+    @* Children *@
+    @if (HasLoadedChildren && Item.IsExpanded)
     {
         <div role="group">
             @foreach (var child in Item.Children!)
@@ -35,8 +70,15 @@
                 <TreeViewNode T="T" @key="child" Item="child" Level="@(Level + 1)"
                               ShowCheckboxes="ShowCheckboxes"
                               Expandable="Expandable"
+                              CascadeCheck="CascadeCheck"
+                              MultiSelect="MultiSelect"
+                              SelectedValues="SelectedValues"
+                              NodeTemplate="NodeTemplate"
+                              LoadChildren="LoadChildren"
                               OnItemClick="OnItemClick"
-                              OnItemCheck="OnItemCheck" />
+                              OnItemCheck="OnItemCheck"
+                              OnExpandChanged="OnExpandChanged"
+                              OnSelectionChanged="OnSelectionChanged" />
             }
         </div>
     }
@@ -50,25 +92,141 @@
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnItemClick { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnItemCheck { get; set; }
 
-    private bool HasChildren => Item.Children is { Count: > 0 };
+    [Parameter] public bool CascadeCheck { get; set; }
+    [Parameter] public bool MultiSelect { get; set; }
+    [Parameter] public HashSet<T>? SelectedValues { get; set; }
+    [Parameter] public RenderFragment<TreeView<T>.TreeViewItem<T>>? NodeTemplate { get; set; }
+    [Parameter] public Func<TreeView<T>.TreeViewItem<T>, Task<List<TreeView<T>.TreeViewItem<T>>>>? LoadChildren { get; set; }
+    [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnExpandChanged { get; set; }
+    [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnSelectionChanged { get; set; }
 
-    private const string NodeClass = "flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm";
+    private string TabIndex => Level == 0 ? "0" : "-1";
+    private string ExpandLabel => Item.IsExpanded ? "Collapse" : "Expand";
 
-    private string ChevronClass => string.Join(" ", new[] { "h-4 w-4 text-muted-foreground transition-transform", Item.IsExpanded ? "rotate-90" : null }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private bool HasLoadedChildren => Item.Children is { Count: > 0 };
 
-    private void ToggleExpand()
+    private bool ShowExpandChevron =>
+        HasLoadedChildren ||
+        (LoadChildren is not null && !Item.IsLeaf && !Item.ChildrenLoaded);
+
+    private bool IsSelected => SelectedValues?.Contains(Item.Value!) == true;
+
+    private string? AriaExpanded => ShowExpandChevron
+        ? Item.IsExpanded.ToString().ToLowerInvariant()
+        : null;
+
+    private string NodeClass
     {
-        Item.IsExpanded = !Item.IsExpanded;
+        get
+        {
+            var parts = new List<string>
+            {
+                "flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors text-sm",
+                Item.IsDisabled ? "opacity-50 cursor-not-allowed text-muted-foreground" : "cursor-pointer hover:bg-accent/50"
+            };
+            if (IsSelected && !Item.IsDisabled)
+                parts.Add("bg-accent text-accent-foreground");
+            return string.Join(" ", parts);
+        }
+    }
+
+    private string ChevronClass =>
+        string.Join(" ", new[]
+        {
+            "h-4 w-4 text-muted-foreground transition-transform",
+            Item.IsExpanded ? "rotate-90" : null
+        }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private string IconClass =>
+        Item.IsDisabled
+            ? "h-4 w-4 text-muted-foreground opacity-50 shrink-0"
+            : "h-4 w-4 text-muted-foreground shrink-0";
+
+    private async Task ToggleExpand()
+    {
+        if (Item.IsExpanded)
+        {
+            Item.IsExpanded = false;
+            await OnExpandChanged.InvokeAsync(Item);
+            return;
+        }
+
+        if (LoadChildren is not null && !Item.ChildrenLoaded && !Item.IsLeaf && !HasLoadedChildren)
+        {
+            Item.IsLoading = true;
+            StateHasChanged();
+
+            try
+            {
+                var loaded = await LoadChildren(Item);
+                Item.Children = loaded;
+                Item.ChildrenLoaded = true;
+            }
+            finally
+            {
+                Item.IsLoading = false;
+            }
+        }
+
+        Item.IsExpanded = true;
+        await OnExpandChanged.InvokeAsync(Item);
     }
 
     private async Task HandleClick()
     {
+        if (Item.IsDisabled) return;
         await OnItemClick.InvokeAsync(Item);
     }
 
     private async Task HandleCheck(bool value)
     {
+        if (Item.IsDisabled) return;
         Item.IsChecked = value;
+        if (Item.IsIndeterminate && !value)
+            Item.IsIndeterminate = false;
         await OnItemCheck.InvokeAsync(Item);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                if (ShowExpandChevron && Expandable && !Item.IsExpanded)
+                    await ToggleExpand();
+                break;
+
+            case "ArrowLeft":
+                if (Item.IsExpanded)
+                {
+                    Item.IsExpanded = false;
+                    await OnExpandChanged.InvokeAsync(Item);
+                }
+                break;
+
+            case "Enter":
+            case " ":
+                if (!Item.IsDisabled)
+                {
+                    if (ShowCheckboxes)
+                    {
+                        if (Item.IsIndeterminate)
+                        {
+                            Item.IsIndeterminate = false;
+                            Item.IsChecked = true;
+                        }
+                        else
+                        {
+                            Item.IsChecked = !Item.IsChecked;
+                        }
+                        await OnItemCheck.InvokeAsync(Item);
+                    }
+                    else
+                    {
+                        await OnItemClick.InvokeAsync(Item);
+                    }
+                }
+                break;
+        }
     }
 }

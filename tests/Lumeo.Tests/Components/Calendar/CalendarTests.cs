@@ -246,4 +246,35 @@ public class CalendarTests : IAsyncLifetime
         var div = cut.Find("div");
         Assert.Equal("my-calendar", div.GetAttribute("data-testid"));
     }
+    [Fact]
+    public void InitialView_Months_Shows_Month_Grid_On_First_Render()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Calendar>(0);
+            builder.AddAttribute(1, "InitialView", L.Calendar.CalendarView.Months);
+            builder.CloseComponent();
+        });
+
+        var dayHeaders = cut.FindAll("div.grid > *").Where(e => e.TagName == "DIV" && (e.TextContent == "Mo" || e.TextContent == "Su")).ToList();
+        Assert.Empty(dayHeaders);
+        var buttons = cut.FindAll("button");
+        Assert.True(buttons.Count >= 12, string.Format("Expected >= 12 buttons in month view, got {0}", buttons.Count));
+    }
+
+    [Fact]
+    public void InitialView_Years_Shows_Year_Grid_On_First_Render()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Calendar>(0);
+            builder.AddAttribute(1, "InitialView", L.Calendar.CalendarView.Years);
+            builder.CloseComponent();
+        });
+
+        Assert.Contains(" - ", cut.Markup);
+        var buttons = cut.FindAll("button");
+        Assert.True(buttons.Count >= 12, string.Format("Expected >= 12 buttons in year view, got {0}", buttons.Count));
+    }
+
 }
