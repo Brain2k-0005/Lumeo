@@ -2,16 +2,16 @@
 @typeparam TItem
 
 <thead data-slot="datagrid-header" class="@CssClass" @attributes="AdditionalAttributes">
-    <tr>
+    <tr role="row" aria-rowindex="1">
         @* Row reorder handle column *@
         @if (Context?.RowReorderable == true)
         {
-            <th class="px-1 py-2 w-8 bg-muted/30"></th>
+            <th role="columnheader" class="px-1 py-2 w-8 bg-muted/30"></th>
         }
 
         @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
         {
-            <th class="px-3 py-2 w-10 bg-muted/30">
+            <th role="columnheader" class="px-3 py-2 w-10 bg-muted/30">
                 <Checkbox Checked="@AllSelected"
                           IsIndeterminate="@SomeSelected"
                           CheckedChanged="@OnSelectAllChanged" />
@@ -19,17 +19,18 @@
         }
         else if (Context?.SelectionMode == DataGridSelectionMode.Single)
         {
-            <th class="px-3 py-2 w-10 bg-muted/30"></th>
+            <th role="columnheader" class="px-3 py-2 w-10 bg-muted/30"></th>
         }
 
         @if (HasDetailTemplate)
         {
-            <th class="px-1 py-2 w-8 bg-muted/30"></th>
+            <th role="columnheader" class="px-1 py-2 w-8 bg-muted/30"></th>
         }
 
         @if (Context is not null)
         {
             var colIndex = 0;
+            var leading = LeadingColumnCount;
             @foreach (var column in Context.Columns.Where(c => c.Visible))
             {
                 var idx = colIndex;
@@ -39,6 +40,7 @@
                 <DataGridHeaderCell @key="column.Id" TItem="TItem"
                                     Column="column"
                                     ColumnIndex="idx"
+                                    AriaColIndex="@(leading + idx + 1)"
                                     SortDirection="sortDir"
                                     HasActiveFilter="hasFilter"
                                     IsFilterOpen="isFilterOpen"
@@ -55,7 +57,7 @@
         @* Row edit action column placeholder in header *@
         @if (Context?.EditMode == DataGridEditMode.Row)
         {
-            <th class="px-3 py-2 w-10 bg-muted/30"></th>
+            <th role="columnheader" class="px-3 py-2 w-10 bg-muted/30"></th>
         }
     </tr>
 </thead>
@@ -72,6 +74,21 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => $"sticky top-0 z-20 bg-card [&_tr]:border-b [&_tr]:border-border/40 {Class}".Trim();
+
+    /// <summary>Number of non-data leading columns (reorder handle, selection,
+    /// detail toggle) rendered before the first data column. Used to offset
+    /// 1-based <c>aria-colindex</c> values.</summary>
+    private int LeadingColumnCount
+    {
+        get
+        {
+            var n = 0;
+            if (Context?.RowReorderable == true) n++;
+            if (Context?.SelectionMode != DataGridSelectionMode.None) n++;
+            if (HasDetailTemplate) n++;
+            return n;
+        }
+    }
 
     private bool AllSelected =>
         Context is not null &&

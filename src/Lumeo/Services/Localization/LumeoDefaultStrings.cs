@@ -242,6 +242,14 @@ internal static partial class LumeoDefaultStrings
         // ── Empty state defaults ────────────────────────────────────
         ["Empty.Title"] = "Nothing here yet",
         ["Empty.Description"] = "There's no data to display.",
+
+        // ── Kanban ──────────────────────────────────────────────────────
+        ["Kanban.AddCard"] = "Add card",
+
+        // ── Carousel ────────────────────────────────────────────────────
+        ["Carousel.PreviousSlide"] = "Previous slide",
+        ["Carousel.NextSlide"] = "Next slide",
+        ["Carousel.SlideXofY"] = "Slide {0} of {1}",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -462,6 +470,14 @@ internal static partial class LumeoDefaultStrings
         // ── Empty state defaults ────────────────────────────────────
         ["Empty.Title"] = "Noch nichts hier",
         ["Empty.Description"] = "Es liegen keine Daten zum Anzeigen vor.",
+
+        // ── Kanban ──────────────────────────────────────────────────────
+        ["Kanban.AddCard"] = "Karte hinzufügen",
+
+        // ── Carousel ────────────────────────────────────────────────────
+        ["Carousel.PreviousSlide"] = "Vorherige Folie",
+        ["Carousel.NextSlide"] = "Nächste Folie",
+        ["Carousel.SlideXofY"] = "Folie {0} von {1}",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)

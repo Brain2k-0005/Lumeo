@@ -218,5 +218,13 @@ internal static partial class LumeoDefaultStrings
         // Empty
         ["Empty.Title"] = "まだ何もありません",
         ["Empty.Description"] = "表示するデータがありません。",
+
+        // Kanban
+        ["Kanban.AddCard"] = "カードを追加",
+
+        // Carousel
+        ["Carousel.PreviousSlide"] = "前のスライド",
+        ["Carousel.NextSlide"] = "次のスライド",
+        ["Carousel.SlideXofY"] = "{1} 枚中 {0} 枚目",
     };
 }

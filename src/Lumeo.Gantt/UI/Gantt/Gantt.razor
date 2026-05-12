@@ -46,6 +46,23 @@
     [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
     [Parameter] public string Height { get; set; } = "500px";
     [Parameter] public bool Readonly { get; set; }
+    /// <summary>Highlight today with a vertical line and dot marker. Default true.</summary>
+    [Parameter] public bool TodayHighlight { get; set; } = true;
+    /// <summary>Override the pixel height of each task bar (default 22).</summary>
+    [Parameter] public int? BarHeight { get; set; }
+    /// <summary>Override the pixel width of each date column for the current view mode.</summary>
+    [Parameter] public int? ColumnWidth { get; set; }
+    /// <summary>
+    /// Per-task bar colour override. Return a CSS colour string (hex, rgb, or a
+    /// CSS variable reference like "var(--color-destructive)") or null to use the
+    /// primary theme colour.
+    /// </summary>
+    [Parameter] public Func<GanttTask, string?>? BarColor { get; set; }
+    /// <summary>
+    /// Optional grouping function. When set, tasks are sorted by group label and
+    /// a visual section-header row is injected before the first task in each group.
+    /// </summary>
+    [Parameter] public Func<GanttTask, string>? GroupBy { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -76,8 +93,21 @@
     protected override void OnInitialized()
     {
         _currentViewMode = ViewMode;
-        _tasks = Tasks?.ToList() ?? new List<GanttTask>();
+        _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         _lastTasksHash = ComputeTasksHash(_tasks);
+    }
+
+    // When GroupBy is set, sort tasks so that each group clusters together.
+    // The original relative order within a group is preserved (stable sort).
+    private List<GanttTask> SortedTasks(List<GanttTask> raw)
+    {
+        if (GroupBy is null) return raw;
+        return raw
+            .Select((t, i) => (t, i))
+            .OrderBy(x => GroupBy(x.t))
+            .ThenBy(x => x.i)
+            .Select(x => x.t)
+            .ToList();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -86,7 +116,7 @@
 
         if (Tasks is not null)
         {
-            var incoming = Tasks.ToList();
+            var incoming = SortedTasks(Tasks.ToList());
             var hash = ComputeTasksHash(incoming);
             if (hash != _lastTasksHash)
             {
@@ -114,6 +144,9 @@
             tasks = _tasks.Select(ToJsTask).ToArray(),
             viewMode = ViewMode.ToString(),
             @readonly = Readonly,
+            todayHighlight = TodayHighlight,
+            barHeight = BarHeight,
+            columnWidth = ColumnWidth,
         };
 
         try
@@ -127,16 +160,25 @@
         }
     }
 
-    private static object ToJsTask(GanttTask t) => new
+    private object ToJsTask(GanttTask t)
     {
-        id = t.Id,
-        name = t.Name,
-        start = t.Start.ToString("yyyy-MM-dd"),
-        end = t.End.ToString("yyyy-MM-dd"),
-        progress = t.Progress,
-        dependencies = t.Dependencies ?? Array.Empty<string>(),
-        custom_class = t.CustomClass,
-    };
+        // For milestones render as zero-duration (start == end) so the renderer
+        // picks them up and draws a diamond shape.
+        var end = t.IsMilestone ? t.Start : t.End;
+        return new
+        {
+            id = t.Id,
+            name = t.Name,
+            start = t.Start.ToString("yyyy-MM-dd"),
+            end = end.ToString("yyyy-MM-dd"),
+            progress = t.Progress,
+            dependencies = t.Dependencies ?? Array.Empty<string>(),
+            custom_class = t.CustomClass,
+            is_milestone = t.IsMilestone,
+            group_label = t.GroupLabel,
+            bar_color = BarColor?.Invoke(t),
+        };
+    }
 
     private static int ComputeTasksHash(IEnumerable<GanttTask> tasks)
     {
@@ -151,6 +193,8 @@
             hash.Add(t.End);
             hash.Add(t.Progress);
             hash.Add(t.CustomClass);
+            hash.Add(t.IsMilestone);
+            hash.Add(t.GroupLabel);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
         }

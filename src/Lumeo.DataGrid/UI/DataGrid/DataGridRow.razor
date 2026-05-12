@@ -3,6 +3,9 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <tr data-slot="datagrid-row" class="@CssClass" style="@RowStyleString"
+    role="row"
+    aria-rowindex="@AriaRowIndex"
+    aria-selected="@(Context?.SelectionMode != DataGridSelectionMode.None ? (IsSelected ? "true" : "false") : null)"
     @onclick="HandleClick"
     @ondblclick="HandleDoubleClick"
     @oncontextmenu="HandleContextMenu"
@@ -16,20 +19,20 @@
     @* Row drag handle *@
     @if (Context?.RowReorderable == true)
     {
-        <td class="px-1 py-2 w-8 cursor-grab active:cursor-grabbing" @onclick:stopPropagation="true">
+        <td role="gridcell" class="px-1 py-2 w-8 cursor-grab active:cursor-grabbing" @onclick:stopPropagation="true">
             <Blazicon Svg="Lucide.GripVertical" class="h-4 w-4 text-muted-foreground/60" />
         </td>
     }
 
     @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
     {
-        <td class="px-3 py-2 w-10">
+        <td role="gridcell" class="px-3 py-2 w-10">
             <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" />
         </td>
     }
     else if (Context?.SelectionMode == DataGridSelectionMode.Single)
     {
-        <td class="px-3 py-2 w-10">
+        <td role="gridcell" class="px-3 py-2 w-10">
             <button type="button"
                     class="h-4 w-4 rounded-full border border-primary @(IsSelected ? "bg-primary" : "bg-background")"
                     @onclick="@(() => Context?.ToggleSelection(Item))"
@@ -44,7 +47,7 @@
 
     @if (HasDetailTemplate)
     {
-        <td class="px-1 py-2 w-8">
+        <td role="gridcell" class="px-1 py-2 w-8">
             <button type="button"
                     class="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors"
                     @onclick="ToggleExpand"
@@ -67,7 +70,7 @@
         {
             @foreach (var column in Context.Columns.Where(c => c.Visible))
             {
-                <td @key="column.Id" class="px-3 py-2 text-sm">
+                <td @key="column.Id" role="gridcell" class="px-3 py-2 text-sm">
                     @if (column.EditTemplate is not null)
                     {
                         var editCtx = new CellEditContext<TItem>
@@ -88,7 +91,7 @@
                 </td>
             }
             @* Save / Cancel buttons cell *@
-            <td class="px-3 py-2 text-sm w-24">
+            <td role="gridcell" class="px-3 py-2 text-sm w-24">
                 <div class="flex items-center gap-1">
                     <button type="button"
                             class="inline-flex items-center justify-center h-6 w-6 rounded bg-primary text-primary-foreground hover:bg-primary/90"
@@ -109,13 +112,21 @@
         }
         else
         {
+            var colIdx = 0;
+            var leadingCols = LeadingColumnCount;
             @foreach (var column in Context.Columns.Where(c => c.Visible))
             {
-                <DataGridCell @key="column.Id" TItem="TItem" Item="Item" Column="column" />
+                var ci = colIdx;
+                <DataGridCell @key="column.Id" TItem="TItem" Item="Item" Column="column"
+                              RowIndex="RowIndex"
+                              ColumnIndex="ci"
+                              AriaColIndex="@(leadingCols + ci + 1)"
+                              Navigable="@(!(Context.IsGrouped))" />
+                colIdx++;
             }
             @if (Context.EditMode == DataGridEditMode.Row)
             {
-                <td class="px-3 py-2 text-sm w-10">
+                <td role="gridcell" class="px-3 py-2 text-sm w-10">
                     <button type="button"
                             class="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors"
                             title="@L["DataGrid.Edit"]"
@@ -149,6 +160,24 @@
     private bool IsExpanded => Context?.IsRowExpanded(Item) ?? false;
     private bool IsEditing => Context?.IsRowEditing(Item) ?? false;
     private bool HasDetailTemplate => DetailTemplate is not null;
+
+    // 1-based ARIA row index; header occupies row 1 so body rows start at 2.
+    private int AriaRowIndex => RowIndex + 2;
+
+    /// <summary>Count of non-data leading columns rendered before the first data
+    /// cell (drag handle, selection, detail toggle). Mirrors DataGridHeader so
+    /// aria-colindex values line up between header and body.</summary>
+    private int LeadingColumnCount
+    {
+        get
+        {
+            var n = 0;
+            if (Context?.RowReorderable == true) n++;
+            if (Context?.SelectionMode != DataGridSelectionMode.None) n++;
+            if (HasDetailTemplate) n++;
+            return n;
+        }
+    }
 
     private int ColSpan
     {

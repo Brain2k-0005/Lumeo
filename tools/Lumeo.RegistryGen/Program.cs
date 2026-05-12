@@ -141,6 +141,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Table"] = "Data Display",
     ["DataTable"] = "Data Display",
     ["DataGrid"] = "Data Display",
+    ["PivotGrid"] = "Data Display",
     ["Card"] = "Data Display",
     ["Badge"] = "Data Display",
     ["Chip"] = "Data Display",
@@ -387,6 +388,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["StreamingText"] = "Token-by-token streaming text renderer for AI responses.",
     ["Switch"] = "Toggle switch for boolean settings.",
     ["Table"] = "Minimal styled HTML table with header, row, cell components.",
+    ["PivotGrid"] = "Cross-tab / pivot table that summarizes flat data into rows x columns x aggregated measures.",
     ["Tabs"] = "Tabbed content with keyboard nav and animated active indicator.",
     ["TagInput"] = "Input that turns entries into removable tag chips.",
     ["Text"] = "Paragraph text with size, color, weight props.",
@@ -642,7 +644,7 @@ try
         uiRoots: uiRoots,
         metaResolver: MetaFor,
         logger: Console.Error,
-        version: "2.0.0-rc.33",
+        version: "2.0.0-rc.34",
         repoRoot: repoRoot);
 }
 catch (Exception ex)

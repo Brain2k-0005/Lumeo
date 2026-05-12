@@ -1,5 +1,6 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 
 @if (Context.IsOpen)
 {
@@ -22,6 +23,50 @@
             <div class="flex items-center justify-center py-4">
                 <Spinner Size="Spinner.SpinnerSize.Sm" class="text-muted-foreground" />
             </div>
+        }
+        else if (Context.Items is not null)
+        {
+            @* Data-bound mode: render items from the Items collection *@
+            var filteredItems = FilteredItems;
+            @if (Context.Virtualize)
+            {
+                <Virtualize Items="@filteredItems" Context="item" ItemSize="@Context.ItemSize">
+                    @RenderBoundItem(item)
+                </Virtualize>
+            }
+            else if (Context.ItemGroup is not null)
+            {
+                @* Grouped rendering *@
+                @foreach (var group in filteredItems.GroupBy(i => Context.ItemGroup(i) ?? ""))
+                {
+                    <div role="group">
+                        @if (!string.IsNullOrEmpty(group.Key))
+                        {
+                            <div class="px-2 py-1.5 text-sm font-semibold">@group.Key</div>
+                        }
+                        @foreach (var item in group)
+                        {
+                            @RenderBoundItem(item)
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                @foreach (var item in filteredItems)
+                {
+                    @RenderBoundItem(item)
+                }
+            }
+
+            @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText))
+            {
+                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                        @onclick="HandleCreate">
+                    <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                    <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
+                </button>
+            }
         }
         else
         {
@@ -49,6 +94,79 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _registered;
+
+    /// <summary>Items filtered by the current search text (data-bound mode only).</summary>
+    private List<object> FilteredItems
+    {
+        get
+        {
+            if (Context.Items is null) return [];
+            if (!Context.Searchable || string.IsNullOrEmpty(Context.SearchText))
+                return Context.Items.ToList();
+
+            return Context.Items.Where(item =>
+            {
+                var text = Context.ItemText?.Invoke(item) ?? Context.ItemValue(item);
+                return text.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
+            }).ToList();
+        }
+    }
+
+    private RenderFragment RenderBoundItem(object item) => builder =>
+    {
+        var value = Context.ItemValue(item);
+        var isSelected = Context.Multiple
+            ? Context.Values != null && Context.Values.Contains(value)
+            : Context.Value == value;
+        var isDisabled = Context.ItemDisabled?.Invoke(item) ?? false;
+        var itemId = $"select-item-bound-{value.GetHashCode():X}";
+
+        // Register/unregister happens inline for bound items — we track them through a simple button render
+        // The keyboard nav uses the registered _items list on Select; bound items self-register by calling
+        // Context.RegisterItem from here just like SelectItem does, but without a persistent component.
+        // We render a plain button that matches SelectItem's markup so styling stays consistent.
+
+        var isFocused = Context.FocusedItemId == itemId;
+
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "type", "button");
+        builder.AddAttribute(2, "id", itemId);
+        builder.AddAttribute(3, "role", "option");
+        builder.AddAttribute(4, "aria-selected", isSelected.ToString().ToLower());
+        builder.AddAttribute(5, "aria-disabled", isDisabled.ToString().ToLower());
+        var cssClass = string.Join(" ", new[]
+        {
+            "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none",
+            isDisabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-accent hover:text-accent-foreground",
+            isFocused && !isDisabled ? "bg-accent text-accent-foreground" : null
+        }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        builder.AddAttribute(6, "class", cssClass);
+        if (!isDisabled)
+        {
+            builder.AddAttribute(7, "onclick", EventCallback.Factory.Create(this, () => Context.OnSelect.InvokeAsync(value)));
+        }
+        builder.OpenElement(8, "span");
+        builder.AddAttribute(9, "class", "flex h-3.5 w-3.5 shrink-0 items-center justify-center");
+        if (isSelected)
+        {
+            builder.OpenComponent<Blazicons.Blazicon>(10);
+            builder.AddAttribute(11, "Svg", Blazicons.Lucide.Check);
+            builder.AddAttribute(12, "class", "h-3.5 w-3.5");
+            builder.CloseComponent();
+        }
+        builder.CloseElement(); // span
+
+        if (Context.ItemTemplate is not null)
+        {
+            builder.AddContent(13, Context.ItemTemplate(item));
+        }
+        else
+        {
+            var label = Context.ItemText?.Invoke(item) ?? value;
+            builder.AddContent(13, label);
+        }
+        builder.CloseElement(); // button
+    };
 
     private string CssClass => $"fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
 

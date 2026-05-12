@@ -218,5 +218,13 @@ internal static partial class LumeoDefaultStrings
         // Empty
         ["Empty.Title"] = "暂无内容",
         ["Empty.Description"] = "没有可显示的数据。",
+
+        // Kanban
+        ["Kanban.AddCard"] = "添加卡片",
+
+        // Carousel
+        ["Carousel.PreviousSlide"] = "上一张幻灯片",
+        ["Carousel.NextSlide"] = "下一张幻灯片",
+        ["Carousel.SlideXofY"] = "第 {0} 张，共 {1} 张",
     };
 }

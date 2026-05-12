@@ -11,7 +11,8 @@
         EventCallback.Factory.Create<string>(this, OnCreateItem),
         _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
-        RegisterItem, UnregisterItem, _items.Count, EffectiveInvalid, Required);
+        RegisterItem, UnregisterItem, _items.Count, EffectiveInvalid, Required,
+        Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemTemplate, Virtualize, ItemSize);
 }
 
 @if (Label is not null && !InsideFormField)
@@ -89,6 +90,24 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+
+    // --- Data-bound mode (non-generic, purely additive) ---
+    /// <summary>Optional data source. When set, <see cref="ComboboxContent"/> renders options from this list instead of ChildContent.</summary>
+    [Parameter] public IEnumerable<object>? Items { get; set; }
+    /// <summary>Extracts the string value for each item. Defaults to <c>ToString()</c>.</summary>
+    [Parameter] public Func<object, string> ItemValue { get; set; } = it => it?.ToString() ?? "";
+    /// <summary>Extracts the display label for each item. Defaults to <see cref="ItemValue"/> when null.</summary>
+    [Parameter] public Func<object, string>? ItemText { get; set; }
+    /// <summary>Optional group key extractor. When set, options are grouped under sticky headers.</summary>
+    [Parameter] public Func<object, string?>? ItemGroup { get; set; }
+    /// <summary>Optional per-item disabled predicate.</summary>
+    [Parameter] public Func<object, bool>? ItemDisabled { get; set; }
+    /// <summary>Optional custom render fragment for an item's content. Receives the raw item object.</summary>
+    [Parameter] public RenderFragment<object>? ItemTemplate { get; set; }
+    /// <summary>When <c>true</c> and <see cref="Items"/> is set, uses Blazor's Virtualize component for the option list.</summary>
+    [Parameter] public bool Virtualize { get; set; }
+    /// <summary>Estimated pixel height of each option row used by the Virtualize component. Default 36.</summary>
+    [Parameter] public float ItemSize { get; set; } = 36f;
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
@@ -202,5 +221,14 @@
         string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
         Action<string, string> RegisterItem, Action<string> UnregisterItem, int ItemCount,
-        bool Invalid, bool Required);
+        bool Invalid, bool Required,
+        // Data-bound mode params (null when composition mode)
+        IEnumerable<object>? Items,
+        Func<object, string> ItemValue,
+        Func<object, string>? ItemText,
+        Func<object, string?>? ItemGroup,
+        Func<object, bool>? ItemDisabled,
+        RenderFragment<object>? ItemTemplate,
+        bool Virtualize,
+        float ItemSize);
 }
