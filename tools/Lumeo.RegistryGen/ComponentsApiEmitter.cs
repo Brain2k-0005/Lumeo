@@ -27,7 +27,8 @@ public static class ComponentsApiEmitter
         IEnumerable<string> uiRoots,
         Func<string, ComponentMeta> metaResolver,
         TextWriter logger,
-        string version)
+        string version,
+        string? repoRoot = null)
     {
         var components = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         var thinFallbacks = new List<(string Name, string Reason)>();
@@ -96,6 +97,12 @@ public static class ComponentsApiEmitter
 
             var relativeFiles = meta.Files;
 
+            var examples = repoRoot is not null
+                ? ExampleExtractor.ForComponent(repoRoot, name)
+                    .Select(e => (object)new Dictionary<string, object?> { ["title"] = e.Title, ["code"] = e.Code })
+                    .ToArray()
+                : Array.Empty<object>();
+
             var entry = new Dictionary<string, object?>
             {
                 ["name"] = name,
@@ -112,12 +119,32 @@ public static class ComponentsApiEmitter
                 ["enums"] = root?.Enums.Select(SerializeEnum).ToArray() ?? Array.Empty<object>(),
                 ["records"] = root?.Records.Select(SerializeRecord).ToArray() ?? Array.Empty<object>(),
                 ["cssVars"] = meta.CssVars,
+                ["examples"] = examples,
                 ["subComponents"] = subEntries,
                 ["parseFailed"] = root?.ParseFailed ?? false,
                 ["parseError"] = root?.ParseError,
             };
 
             components[name] = entry;
+        }
+
+        // Theme tokens + patterns — only when we know where the repo is.
+        object[] themeTokens = Array.Empty<object>();
+        object[] patterns = Array.Empty<object>();
+        if (repoRoot is not null)
+        {
+            themeTokens = ExampleExtractor.ThemeTokens(repoRoot)
+                .Select(t => (object)new Dictionary<string, object?> { ["token"] = t.Token, ["cssVar"] = t.CssVar })
+                .ToArray();
+            patterns = ExampleExtractor.Patterns(repoRoot)
+                .Select(p => (object)new Dictionary<string, object?>
+                {
+                    ["title"] = p.Title,
+                    ["route"] = p.Route,
+                    ["description"] = p.Description,
+                    ["examples"] = p.Examples.Select(e => (object)new Dictionary<string, object?> { ["title"] = e.Title, ["code"] = e.Code }).ToArray(),
+                })
+                .ToArray();
         }
 
         var rootJson = new Dictionary<string, object?>
@@ -133,6 +160,8 @@ public static class ComponentsApiEmitter
                 ["totalRecords"] = totalRecords,
                 ["thinFallbacks"] = thinFallbacks.Select(t => new { name = t.Name, reason = t.Reason }).ToArray(),
             },
+            ["themeTokens"] = themeTokens,
+            ["patterns"] = patterns,
             ["components"] = components,
         };
 
