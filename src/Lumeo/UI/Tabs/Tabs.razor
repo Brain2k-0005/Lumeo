@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -24,19 +24,50 @@
     /// </summary>
     [Parameter] public bool AnimatedIndicator { get; set; }
 
+    /// <summary>
+    /// Controls when each <see cref="TabsContent"/> panel is rendered into
+    /// the DOM and whether its state survives a tab switch:
+    /// <list type="bullet">
+    /// <item><see cref="TabsRenderMode.Active"/> (default) — only the active
+    /// panel is in the DOM; switching away unmounts it (form inputs, scroll
+    /// position and any component state are lost). Lightest footprint.</item>
+    /// <item><see cref="TabsRenderMode.Lazy"/> — a panel is rendered the
+    /// first time its tab becomes active, then kept in the DOM (hidden) so
+    /// its state is preserved on subsequent switches. Like DevExpress
+    /// <c>OnDemand</c>.</item>
+    /// <item><see cref="TabsRenderMode.Eager"/> — every panel is rendered
+    /// immediately; inactive ones are hidden. State always preserved, but
+    /// the heaviest initial render. Like DevExpress <c>Always</c>.</item>
+    /// </list>
+    /// A single <see cref="TabsContent"/> can opt into eager rendering
+    /// regardless of this setting via <c>ForceMount="true"</c>.
+    /// </summary>
+    [Parameter] public TabsRenderMode RenderMode { get; set; } = TabsRenderMode.Active;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Registry: value -> (tabId, panelId) — populated by TabsTrigger on first render
     private readonly Dictionary<string, (string TabId, string PanelId)> _tabIds = new();
+    // Set of tab values that have ever been the active tab — drives Lazy mode.
+    private readonly HashSet<string> _activatedValues = new();
 
     private string CssClass => Orientation == TabsOrientation.Vertical
         ? $"flex flex-row {Class}".Trim()
         : $"{Class}".Trim();
 
+    protected override void OnParametersSet()
+    {
+        // Track activations so Lazy mode knows which panels to keep mounted.
+        if (!string.IsNullOrEmpty(ActiveValue))
+            _activatedValues.Add(ActiveValue);
+    }
+
     private async Task SetValue(string value)
     {
         ActiveValue = value;
+        if (!string.IsNullOrEmpty(value))
+            _activatedValues.Add(value);
         await ActiveValueChanged.InvokeAsync(value);
     }
 
@@ -46,11 +77,25 @@
         TabsOrientation Orientation,
         string Variant,
         Dictionary<string, (string TabId, string PanelId)> TabIds,
-        bool AnimatedIndicator)
+        bool AnimatedIndicator,
+        TabsRenderMode RenderMode,
+        HashSet<string> ActivatedValues)
     {
         public TabsContext(string ActiveValue, EventCallback<string> SetValue, TabsOrientation Orientation = TabsOrientation.Horizontal, string Variant = "Default")
-            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false) { }
+            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false, TabsRenderMode.Active, new HashSet<string>()) { }
     }
 
     public enum TabsOrientation { Horizontal, Vertical }
+
+    /// <summary>Render strategy for <see cref="TabsContent"/> panels. See
+    /// <see cref="Tabs.RenderMode"/> for the semantics of each value.</summary>
+    public enum TabsRenderMode
+    {
+        /// <summary>Only the active panel is in the DOM; switching away unmounts it. Default.</summary>
+        Active,
+        /// <summary>Panels render on first activation and stay mounted (hidden) afterwards.</summary>
+        Lazy,
+        /// <summary>All panels render immediately; inactive ones are hidden.</summary>
+        Eager
+    }
 }

@@ -1,11 +1,12 @@
 @namespace Lumeo
 
-@if (Context.ActiveValue == Value)
+@if (ShouldRender_)
 {
     <div role="tabpanel"
          id="@PanelId"
          aria-labelledby="@TabId"
          tabindex="0"
+         hidden="@(IsActive ? null : "hidden")"
          class="@CssClass"
          @attributes="AdditionalAttributes">
         @ChildContent
@@ -16,8 +17,38 @@
     [CascadingParameter] public Tabs.TabsContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter, EditorRequired] public string Value { get; set; } = "";
+
+    /// <summary>
+    /// When true, this panel is always rendered into the DOM (hidden when
+    /// inactive), regardless of the parent <see cref="Tabs.RenderMode"/>.
+    /// Use for panels whose state must survive every tab switch — e.g. a
+    /// half-filled form — while leaving the rest of the tab set on the
+    /// lighter default mode.
+    /// </summary>
+    [Parameter] public bool ForceMount { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsActive => Context.ActiveValue == Value;
+
+    // Decide whether this panel's <div> exists in the DOM at all.
+    //   Active mode  → only when this tab is the active one
+    //   Lazy mode    → once this tab has ever been activated (or ForceMount)
+    //   Eager mode   → always (or ForceMount)
+    private bool ShouldRender_
+    {
+        get
+        {
+            if (ForceMount) return true;
+            return Context.RenderMode switch
+            {
+                Tabs.TabsRenderMode.Eager => true,
+                Tabs.TabsRenderMode.Lazy  => IsActive || Context.ActivatedValues.Contains(Value),
+                _                          => IsActive
+            };
+        }
+    }
 
     private string PanelId => Context.TabIds.TryGetValue(Value, out var ids) ? ids.PanelId : $"tabpanel-{Value}";
     private string TabId => Context.TabIds.TryGetValue(Value, out var ids) ? ids.TabId : $"tab-{Value}";
