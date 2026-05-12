@@ -1,16 +1,100 @@
 @namespace Lumeo
 
-<div role="toolbar"
-     aria-orientation="horizontal"
-     class="@CssClass"
-     @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (!Overflow)
+{
+    <div role="toolbar"
+         aria-orientation="horizontal"
+         class="@CssClass"
+         @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+else
+{
+    <div role="toolbar"
+         aria-orientation="horizontal"
+         class="@CssClassOverflow"
+         @attributes="AdditionalAttributes">
+        <CascadingValue Value="_overflowCtx" IsFixed="false">
+            @ChildContent
+        </CascadingValue>
+
+        @if (_overflowCtx.VisibleCount >= 0 && _overflowCtx.VisibleCount < _overflowCtx.TotalCount)
+        {
+            <div class="shrink-0">
+                <DropdownMenu @bind-Open="_overflowOpen">
+                    <DropdownMenuTrigger>
+                        <Button Variant="Button.ButtonVariant.Ghost"
+                                Size="Button.ButtonSize.Sm"
+                                aria-label="@(OverflowLabel ?? "More")">
+                            <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent Align="DropdownMenuContent.DropdownMenuAlign.End">
+                        <CascadingValue Value="_dropdownCtx" IsFixed="false">
+                            @ChildContent
+                        </CascadingValue>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg {Class}".Trim();
+    /// <summary>
+    /// When true the toolbar collapses items that don't fit into a trailing "⋯" dropdown.
+    /// Use <see cref="VisibleCount"/> to control how many items are shown inline.
+    /// </summary>
+    [Parameter] public bool Overflow { get; set; }
+
+    /// <summary>
+    /// Number of leading items to show inline when <see cref="Overflow"/> is true.
+    /// Items past this index are collapsed into the "⋯" dropdown.
+    /// -1 (default) means show all items (no overflow). Set to a positive integer to
+    /// collapse trailing items.
+    /// </summary>
+    [Parameter] public int VisibleCount { get; set; } = -1;
+
+    /// <summary>aria-label for the "⋯" overflow button. Default: "More".</summary>
+    [Parameter] public string? OverflowLabel { get; set; }
+
+    private bool _overflowOpen;
+
+    private ToolbarOverflowContext _overflowCtx = new(ToolbarRenderSlot.Visible, -1, 0);
+    private ToolbarOverflowContext _dropdownCtx = new(ToolbarRenderSlot.Dropdown, -1, 0);
+
+    protected override void OnParametersSet()
+    {
+        if (!Overflow) return;
+
+        // VisibleCount=-1 means no overflow; VisibleCount>=0 means collapse past that index.
+        // TotalCount is not statically known, so set to int.MaxValue as a sentinel.
+        // ToolbarItem children must read the context and render/hide accordingly.
+        _overflowCtx = new ToolbarOverflowContext(ToolbarRenderSlot.Visible, VisibleCount, int.MaxValue);
+        _dropdownCtx = new ToolbarOverflowContext(ToolbarRenderSlot.Dropdown, VisibleCount, int.MaxValue);
+    }
+
+    // ── CSS ──────────────────────────────────────────────────────────────────
+    private string CssClass =>
+        $"flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg {Class}".Trim();
+
+    private string CssClassOverflow =>
+        $"flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg overflow-hidden {Class}".Trim();
+
+    // ── Context record ────────────────────────────────────────────────────────
+
+    /// <summary>Slot that a child item should render for in overflow mode.</summary>
+    public enum ToolbarRenderSlot { Visible, Dropdown }
+
+    /// <summary>
+    /// Cascaded by <see cref="Toolbar"/> to all descendant items when overflow mode is active.
+    /// Items use this to decide whether to render normally (Visible slot) or as a dropdown row
+    /// (Dropdown slot), and whether to hide themselves when they fall past the VisibleCount boundary.
+    /// </summary>
+    public record ToolbarOverflowContext(ToolbarRenderSlot Slot, int VisibleCount, int TotalCount);
 }

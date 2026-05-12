@@ -1,0 +1,99 @@
+@namespace Lumeo
+
+<span class="@ContainerClass" @attributes="AdditionalAttributes">
+    @foreach (var segment in _segments)
+    {
+        if (segment.IsMatch)
+        {
+            <mark class="@MarkClass">@segment.Text</mark>
+        }
+        else
+        {
+            @segment.Text
+        }
+    }
+</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public string? Highlight { get; set; }
+    [Parameter] public IEnumerable<string>? HighlightTerms { get; set; }
+    [Parameter] public bool CaseSensitive { get; set; }
+    [Parameter] public bool WholeWord { get; set; }
+    [Parameter] public string? HighlightClass { get; set; }
+    [Parameter] public string Tag { get; set; } = "mark";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private List<Segment> _segments = new();
+
+    private string ContainerClass => $"{Class}".Trim();
+
+    private string MarkClass =>
+        ($"bg-warning/30 text-foreground rounded-sm px-0.5 {HighlightClass}").Trim();
+
+    protected override void OnParametersSet() => Rebuild();
+
+    private void Rebuild()
+    {
+        _segments.Clear();
+
+        if (string.IsNullOrEmpty(Text))
+            return;
+
+        // Collect terms, largest first to ensure longest match wins
+        var terms = new List<string>();
+        if (!string.IsNullOrEmpty(Highlight))
+            terms.Add(Highlight);
+        if (HighlightTerms is not null)
+            terms.AddRange(HighlightTerms.Where(t => !string.IsNullOrEmpty(t)));
+
+        // De-duplicate
+        terms = terms.Distinct(
+            CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase
+        ).OrderByDescending(t => t.Length).ToList();
+
+        if (terms.Count == 0)
+        {
+            _segments.Add(new Segment(Text, false));
+            return;
+        }
+
+        // Build a combined regex: alternate longest-first
+        var escaped = terms.Select(t =>
+        {
+            var e = System.Text.RegularExpressions.Regex.Escape(t);
+            return WholeWord ? $@"\b{e}\b" : e;
+        });
+        var pattern = string.Join("|", escaped);
+        var options = System.Text.RegularExpressions.RegexOptions.None;
+        if (!CaseSensitive)
+            options |= System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+
+        System.Text.RegularExpressions.Regex? regex = null;
+        try
+        {
+            regex = new System.Text.RegularExpressions.Regex(pattern, options);
+        }
+        catch
+        {
+            // Bad pattern — render plain
+            _segments.Add(new Segment(Text, false));
+            return;
+        }
+
+        int pos = 0;
+        foreach (System.Text.RegularExpressions.Match m in regex.Matches(Text))
+        {
+            if (m.Index > pos)
+                _segments.Add(new Segment(Text[pos..m.Index], false));
+            _segments.Add(new Segment(m.Value, true));
+            pos = m.Index + m.Length;
+        }
+
+        if (pos < Text.Length)
+            _segments.Add(new Segment(Text[pos..], false));
+    }
+
+    private record Segment(string Text, bool IsMatch);
+}

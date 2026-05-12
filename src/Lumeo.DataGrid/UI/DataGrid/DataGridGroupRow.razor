@@ -2,8 +2,10 @@
 @typeparam TItem
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<tr data-slot="datagrid-group-row" class="@CssClass" @onclick="Toggle" @attributes="AdditionalAttributes">
-    <td colspan="@ColSpan" class="px-3 py-2 font-medium">
+<tr data-slot="datagrid-group-row" class="@CssClass"
+    role="row"
+    @onclick="Toggle" @attributes="AdditionalAttributes">
+    <td colspan="@ColSpan" class="px-3 py-2 font-medium" style="@IndentStyle">
         <div class="flex items-center gap-2">
             <button type="button" class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted">
                 @if (IsExpanded)
@@ -17,20 +19,43 @@
             </button>
             <span class="text-sm">@GroupKey</span>
             <span class="text-xs text-muted-foreground">@L["DataGrid.ItemsCount", Count]</span>
+            @if (Aggregates is { Count: > 0 })
+            {
+                <span class="ml-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground font-normal">
+                    @foreach (var agg in Aggregates)
+                    {
+                        var colTitle = ColumnTitle(agg.ColumnId);
+                        <span>@(string.IsNullOrEmpty(colTitle) ? "" : colTitle + " ")@agg.Label: <span class="font-medium text-foreground">@agg.Value</span></span>
+                    }
+                </span>
+            }
         </div>
     </td>
 </tr>
 
 @code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [Parameter] public string? GroupKey { get; set; }
     [Parameter] public int Count { get; set; }
     [Parameter] public bool IsExpanded { get; set; }
     [Parameter] public EventCallback OnToggle { get; set; }
     [Parameter] public int ColSpan { get; set; } = 1;
+    /// <summary>Nesting depth for multi-level grouping (0 = top level). Controls indentation.</summary>
+    [Parameter] public int Level { get; set; }
+    /// <summary>Per-group aggregate strip rendered next to the group label.</summary>
+    [Parameter] public IReadOnlyList<DataGridGroupAggregate>? Aggregates { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => $"bg-muted/40 border-b border-border/40 cursor-pointer hover:bg-muted/60 transition-colors {Class}".Trim();
+
+    private string? IndentStyle => Level > 0 ? $"padding-left: {0.75 + Level * 1.25:0.##}rem;" : null;
+
+    private string ColumnTitle(string columnId)
+    {
+        var col = Context?.Columns.FirstOrDefault(c => c.Id == columnId);
+        return col?.Title ?? col?.Field ?? "";
+    }
 
     private async Task Toggle()
     {

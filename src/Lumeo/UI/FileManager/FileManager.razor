@@ -1,0 +1,795 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @* ── Toolbar ─────────────────────────────────────────────────────────── *@
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card shrink-0">
+        @* Up button *@
+        <button type="button"
+                class="@UpButtonClass"
+                @onclick="NavigateUp"
+                disabled="@(_pathStack.Count == 0)"
+                title="Up one level"
+                aria-label="Navigate up">
+            <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4" />
+        </button>
+
+        @* Breadcrumb path *@
+        <nav aria-label="file manager path" class="flex-1 min-w-0">
+            <ol class="flex items-center flex-wrap gap-0.5 text-sm">
+                @* Root segment *@
+                <li>
+                    <button type="button"
+                            class="@BreadcrumbLinkClass"
+                            @onclick="() => NavigateToStackDepth(-1)"
+                            aria-label="Root">
+                        <Blazicon Svg="Lucide.HardDrive" class="h-3.5 w-3.5" />
+                    </button>
+                </li>
+
+                @for (int i = 0; i < _pathStack.Count; i++)
+                {
+                    var depth = i;
+                    var seg = _pathStack[i];
+                    var isLast = i == _pathStack.Count - 1;
+
+                    <li class="flex items-center gap-0.5">
+                        <span class="text-muted-foreground">/</span>
+                        @if (isLast)
+                        {
+                            <span class="font-medium text-foreground truncate max-w-[120px]">@seg.Name</span>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="@BreadcrumbLinkClass truncate max-w-[120px]"
+                                    @onclick="() => NavigateToStackDepth(depth)">
+                                @seg.Name
+                            </button>
+                        }
+                    </li>
+                }
+            </ol>
+        </nav>
+
+        @* Toolbar actions *@
+        <div class="flex items-center gap-1 shrink-0">
+            @if (OnNewFolder.HasDelegate)
+            {
+                <button type="button"
+                        class="@ToolbarButtonClass"
+                        @onclick="HandleNewFolder"
+                        title="New folder"
+                        aria-label="New folder">
+                    <Blazicon Svg="Lucide.FolderPlus" class="h-4 w-4" />
+                </button>
+            }
+            @if (OnDelete.HasDelegate && SelectedNode is not null)
+            {
+                <button type="button"
+                        class="@ToolbarButtonClass"
+                        @onclick="HandleDeleteSelected"
+                        title="Delete selected"
+                        aria-label="Delete selected">
+                    <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
+                </button>
+            }
+            <div class="w-px h-4 bg-border/60 mx-0.5"></div>
+            @* View mode toggle *@
+            <button type="button"
+                    class="@(ViewMode == FileManagerViewMode.List ? ToolbarButtonActiveClass : ToolbarButtonClass)"
+                    @onclick="() => SetViewMode(FileManagerViewMode.List)"
+                    title="List view"
+                    aria-label="Switch to list view"
+                    aria-pressed="@(ViewMode == FileManagerViewMode.List)">
+                <Blazicon Svg="Lucide.List" class="h-4 w-4" />
+            </button>
+            <button type="button"
+                    class="@(ViewMode == FileManagerViewMode.Grid ? ToolbarButtonActiveClass : ToolbarButtonClass)"
+                    @onclick="() => SetViewMode(FileManagerViewMode.Grid)"
+                    title="Grid view"
+                    aria-label="Switch to grid view"
+                    aria-pressed="@(ViewMode == FileManagerViewMode.Grid)">
+                <Blazicon Svg="Lucide.LayoutGrid" class="h-4 w-4" />
+            </button>
+        </div>
+    </div>
+
+    @* ── Body ─────────────────────────────────────────────────────────────── *@
+    <div class="flex flex-1 min-h-0 overflow-hidden">
+
+        @* ── Left: folder tree ──────────────────────────────────────────── *@
+        <div class="w-52 shrink-0 border-r border-border/40 overflow-y-auto bg-card p-2" role="tree" aria-label="Folder tree">
+            @foreach (var node in Root ?? [])
+            {
+                @RenderTreeNode(node, 0)
+            }
+        </div>
+
+        @* ── Right: file list ───────────────────────────────────────────── *@
+        <div class="flex-1 overflow-auto bg-background p-2">
+            @{
+                var items = GetCurrentFolderContents();
+            }
+
+            @if (_loadingFolder)
+            {
+                <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                    <Blazicon Svg="Lucide.Loader" class="h-5 w-5 animate-spin mr-2" />
+                    Loading...
+                </div>
+            }
+            else if (items.Count == 0)
+            {
+                <div class="flex flex-col items-center justify-center h-32 text-center">
+                    <Blazicon Svg="Lucide.FolderOpen" class="h-10 w-10 text-muted-foreground mb-3" />
+                    <p class="text-sm font-medium text-foreground">This folder is empty</p>
+                    <p class="text-xs text-muted-foreground mt-1">No files or folders here.</p>
+                </div>
+            }
+            else if (ViewMode == FileManagerViewMode.List)
+            {
+                @RenderListView(items)
+            }
+            else
+            {
+                @RenderGridView(items)
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    // ──────────────────────────────────────────────────────────────────────────
+    // Parameters
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Parameter] public IReadOnlyList<FileSystemNode>? Root { get; set; }
+
+    /// <summary>
+    /// The ID of the currently open folder. Null means the root level.
+    /// Uses <see cref="FileSystemNode.Id"/> as the path identifier.
+    /// </summary>
+    [Parameter] public string? CurrentPath { get; set; }
+    [Parameter] public EventCallback<string?> CurrentPathChanged { get; set; }
+
+    /// <summary>Called the first time a folder is opened if its Children is null. Return the loaded children.</summary>
+    [Parameter] public Func<FileSystemNode, Task<List<FileSystemNode>>>? LoadChildren { get; set; }
+
+    [Parameter] public FileManagerViewMode ViewMode { get; set; } = FileManagerViewMode.List;
+    [Parameter] public EventCallback<FileManagerViewMode> ViewModeChanged { get; set; }
+
+    [Parameter] public FileSystemNode? SelectedNode { get; set; }
+    [Parameter] public EventCallback<FileSystemNode?> SelectedNodeChanged { get; set; }
+
+    [Parameter] public EventCallback<FileSystemNode> OnFileOpen { get; set; }
+
+    [Parameter] public EventCallback<(FileSystemNode Node, string NewName)> OnRename { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<FileSystemNode>> OnDelete { get; set; }
+    [Parameter] public EventCallback<FileSystemNode> OnNewFolder { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // State
+    // ──────────────────────────────────────────────────────────────────────────
+
+    // Navigation stack: list of ancestor nodes from root to current folder
+    private List<FileSystemNode> _pathStack = [];
+    private bool _loadingFolder;
+    // Which nodes currently have their children expanded in the tree pane
+    private readonly HashSet<string> _expandedTreeNodes = [];
+    // Inline-rename state
+    private FileSystemNode? _renamingNode;
+    private string _renameValue = "";
+    // Context menu state
+    private FileSystemNode? _contextMenuNode;
+    private bool _contextMenuOpen;
+    private double _contextMenuX;
+    private double _contextMenuY;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // CSS helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private string CssClass => $"flex flex-col rounded-lg border border-border/40 bg-card overflow-hidden h-full min-h-[400px] {Class}".Trim();
+    private const string ToolbarButtonClass = "inline-flex items-center justify-center h-7 w-7 rounded-md transition-colors hover:bg-accent text-muted-foreground hover:text-accent-foreground";
+    private const string ToolbarButtonActiveClass = "inline-flex items-center justify-center h-7 w-7 rounded-md transition-colors bg-accent text-accent-foreground";
+    private const string BreadcrumbLinkClass = "transition-colors hover:text-foreground text-muted-foreground rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+    private const string UpButtonClass = "inline-flex items-center justify-center h-7 w-7 rounded-md transition-colors hover:bg-accent text-muted-foreground hover:text-accent-foreground disabled:opacity-40 disabled:pointer-events-none";
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ──────────────────────────────────────────────────────────────────────────
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Sync _pathStack when CurrentPath is changed externally
+        if (CurrentPath is null)
+        {
+            _pathStack = [];
+            return;
+        }
+
+        // If path stack already ends at this id, nothing to do
+        if (_pathStack.Count > 0 && _pathStack[^1].Id == CurrentPath)
+            return;
+
+        // Rebuild stack by finding the path in the tree
+        var newStack = new List<FileSystemNode>();
+        if (FindPath(Root ?? [], CurrentPath, newStack))
+            _pathStack = newStack;
+
+        // Ensure current folder's children are loaded
+        if (_pathStack.Count > 0)
+        {
+            var current = _pathStack[^1];
+            if (current.IsFolder && current.Children is null && LoadChildren is not null)
+            {
+                _loadingFolder = true;
+                try
+                {
+                    current.Children = await LoadChildren(current);
+                }
+                finally
+                {
+                    _loadingFolder = false;
+                }
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Navigation helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private List<FileSystemNode> GetCurrentFolderContents()
+    {
+        if (_pathStack.Count == 0)
+            return (Root ?? []).ToList();
+
+        var current = _pathStack[^1];
+        return current.Children ?? [];
+    }
+
+    private static bool FindPath(IEnumerable<FileSystemNode> nodes, string targetId, List<FileSystemNode> stack)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == targetId)
+            {
+                stack.Add(node);
+                return true;
+            }
+            if (node.IsFolder && node.Children is { Count: > 0 })
+            {
+                stack.Add(node);
+                if (FindPath(node.Children, targetId, stack))
+                    return true;
+                stack.RemoveAt(stack.Count - 1);
+            }
+        }
+        return false;
+    }
+
+    private async Task NavigateToFolder(FileSystemNode folder)
+    {
+        // Build new path stack up to this folder
+        var newStack = new List<FileSystemNode>();
+        if (!FindPath(Root ?? [], folder.Id, newStack))
+            return;
+
+        _pathStack = newStack;
+
+        // Lazy-load children if needed
+        if (folder.Children is null && LoadChildren is not null)
+        {
+            _loadingFolder = true;
+            StateHasChanged();
+            try
+            {
+                folder.Children = await LoadChildren(folder);
+            }
+            finally
+            {
+                _loadingFolder = false;
+            }
+        }
+
+        // Expand in tree pane
+        _expandedTreeNodes.Add(folder.Id);
+
+        CurrentPath = folder.Id;
+        await CurrentPathChanged.InvokeAsync(CurrentPath);
+    }
+
+    private async Task NavigateToStackDepth(int depth)
+    {
+        if (depth < 0)
+        {
+            // Navigate to root
+            _pathStack = [];
+            CurrentPath = null;
+            await CurrentPathChanged.InvokeAsync(null);
+            return;
+        }
+
+        _pathStack = _pathStack.Take(depth + 1).ToList();
+        CurrentPath = _pathStack[^1].Id;
+        await CurrentPathChanged.InvokeAsync(CurrentPath);
+    }
+
+    private async Task NavigateUp()
+    {
+        if (_pathStack.Count == 0) return;
+        await NavigateToStackDepth(_pathStack.Count - 2);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // View mode
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task SetViewMode(FileManagerViewMode mode)
+    {
+        ViewMode = mode;
+        await ViewModeChanged.InvokeAsync(mode);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Selection
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task SelectNode(FileSystemNode node)
+    {
+        SelectedNode = node;
+        await SelectedNodeChanged.InvokeAsync(node);
+    }
+
+    private async Task HandleNodeDoubleClick(FileSystemNode node)
+    {
+        if (node.IsFolder)
+        {
+            await NavigateToFolder(node);
+        }
+        else
+        {
+            await SelectNode(node);
+            await OnFileOpen.InvokeAsync(node);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Context menu / toolbar operations
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void OpenContextMenu(FileSystemNode node, MouseEventArgs e)
+    {
+        _contextMenuNode = node;
+        _contextMenuX = e.ClientX;
+        _contextMenuY = e.ClientY;
+        _contextMenuOpen = true;
+    }
+
+    private void CloseContextMenu()
+    {
+        _contextMenuOpen = false;
+        _contextMenuNode = null;
+    }
+
+    private void BeginRename(FileSystemNode node)
+    {
+        CloseContextMenu();
+        _renamingNode = node;
+        _renameValue = node.Name;
+    }
+
+    private async Task CommitRename()
+    {
+        if (_renamingNode is null) return;
+        var node = _renamingNode;
+        var newName = _renameValue.Trim();
+        _renamingNode = null;
+        _renameValue = "";
+
+        if (!string.IsNullOrWhiteSpace(newName) && newName != node.Name)
+            await OnRename.InvokeAsync((node, newName));
+    }
+
+    private void CancelRename()
+    {
+        _renamingNode = null;
+        _renameValue = "";
+    }
+
+    private async Task HandleDeleteNode(FileSystemNode node)
+    {
+        CloseContextMenu();
+        await OnDelete.InvokeAsync([node]);
+    }
+
+    private async Task HandleDeleteSelected()
+    {
+        if (SelectedNode is null) return;
+        await OnDelete.InvokeAsync([SelectedNode]);
+    }
+
+    private async Task HandleNewFolder()
+    {
+        var currentFolder = _pathStack.Count > 0 ? _pathStack[^1] : null;
+        await OnNewFolder.InvokeAsync(currentFolder ?? new FileSystemNode { Id = "", Name = "Root", IsFolder = true });
+    }
+
+    private async Task HandleOpenNode(FileSystemNode node)
+    {
+        CloseContextMenu();
+        if (node.IsFolder)
+            await NavigateToFolder(node);
+        else
+            await OnFileOpen.InvokeAsync(node);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Tree toggle
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task ToggleTreeFolder(FileSystemNode folder)
+    {
+        if (_expandedTreeNodes.Contains(folder.Id))
+        {
+            _expandedTreeNodes.Remove(folder.Id);
+        }
+        else
+        {
+            _expandedTreeNodes.Add(folder.Id);
+
+            if (folder.Children is null && LoadChildren is not null)
+            {
+                _loadingFolder = true;
+                StateHasChanged();
+                try
+                {
+                    folder.Children = await LoadChildren(folder);
+                }
+                finally
+                {
+                    _loadingFolder = false;
+                }
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Renderers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private RenderFragment RenderTreeNode(FileSystemNode node, int level) => builder =>
+    {
+        if (!node.IsFolder) return;
+
+        bool expanded = _expandedTreeNodes.Contains(node.Id);
+        bool isCurrentFolder = _pathStack.Count > 0 && _pathStack[^1].Id == node.Id;
+        bool hasChildren = node.Children is { Count: > 0 } || (LoadChildren is not null && node.Children is null);
+
+        var rowClass = $"flex items-center gap-1.5 py-1 px-2 rounded-md text-sm cursor-pointer transition-colors {(isCurrentFolder ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-foreground")}";
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "role", "treeitem");
+        builder.AddAttribute(2, "aria-expanded", expanded.ToString().ToLowerInvariant());
+        builder.AddAttribute(3, "aria-selected", isCurrentFolder.ToString().ToLowerInvariant());
+
+        builder.OpenElement(10, "div");
+        builder.AddAttribute(11, "class", rowClass);
+        builder.AddAttribute(12, "style", $"padding-left: {level * 12 + 4}px");
+        builder.AddAttribute(13, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => NavigateToFolder(node)));
+
+        // Chevron
+        builder.OpenElement(20, "button");
+        builder.AddAttribute(21, "type", "button");
+        builder.AddAttribute(22, "class", "shrink-0 w-4 h-4 flex items-center justify-center text-muted-foreground");
+        builder.AddAttribute(23, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, async (_evt) =>
+        {
+            await ToggleTreeFolder(node);
+        }));
+        builder.AddAttribute(24, "onclick:stopPropagation", true);
+        builder.AddAttribute(25, "aria-label", expanded ? "Collapse" : "Expand");
+        if (hasChildren)
+        {
+            builder.OpenComponent<Blazicon>(30);
+            builder.AddAttribute(31, "Svg", expanded ? Lucide.ChevronDown : Lucide.ChevronRight);
+            builder.AddAttribute(32, "class", "h-3 w-3");
+            builder.CloseComponent();
+        }
+        builder.CloseElement(); // button
+
+        // Folder icon
+        builder.OpenComponent<Blazicon>(40);
+        builder.AddAttribute(41, "Svg", expanded ? Lucide.FolderOpen : Lucide.Folder);
+        builder.AddAttribute(42, "class", "h-4 w-4 shrink-0 text-muted-foreground");
+        builder.CloseComponent();
+
+        // Name
+        builder.OpenElement(50, "span");
+        builder.AddAttribute(51, "class", "truncate");
+        builder.AddContent(52, node.Name);
+        builder.CloseElement();
+
+        builder.CloseElement(); // row div
+
+        // Children
+        if (expanded && node.Children is { Count: > 0 })
+        {
+            builder.OpenElement(60, "div");
+            builder.AddAttribute(61, "role", "group");
+            foreach (var child in node.Children.Where(c => c.IsFolder))
+            {
+                var c = child;
+                builder.AddContent(62, RenderTreeNode(c, level + 1));
+            }
+            builder.CloseElement();
+        }
+
+        builder.CloseElement(); // treeitem div
+    };
+
+    private RenderFragment RenderListView(List<FileSystemNode> items) => builder =>
+    {
+        builder.OpenElement(0, "table");
+        builder.AddAttribute(1, "class", "w-full text-sm border-collapse");
+        builder.AddAttribute(2, "role", "grid");
+        builder.AddAttribute(3, "aria-label", "File list");
+
+        // thead
+        builder.OpenElement(10, "thead");
+        builder.OpenElement(11, "tr");
+        builder.AddAttribute(12, "class", "border-b border-border/40 text-muted-foreground");
+        AppendTh(builder, 13, "Name", "text-left p-2 font-medium w-full");
+        AppendTh(builder, 14, "Size", "text-right p-2 font-medium whitespace-nowrap w-28");
+        AppendTh(builder, 15, "Modified", "text-right p-2 font-medium whitespace-nowrap w-40");
+        AppendTh(builder, 16, "", "w-8 p-2"); // context menu column
+        builder.CloseElement(); // tr
+        builder.CloseElement(); // thead
+
+        // tbody
+        builder.OpenElement(20, "tbody");
+        foreach (var node in items)
+        {
+            var n = node;
+            bool isSelected = SelectedNode?.Id == n.Id;
+            var rowClass = $"group border-b border-border/20 cursor-pointer transition-colors {(isSelected ? "bg-accent" : "hover:bg-muted/40")}";
+
+            builder.OpenElement(30, "tr");
+            builder.AddAttribute(31, "class", rowClass);
+            builder.AddAttribute(32, "role", "row");
+            builder.AddAttribute(33, "aria-selected", isSelected.ToString().ToLowerInvariant());
+            builder.AddAttribute(34, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
+            builder.AddAttribute(35, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(36, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(37, "oncontextmenu:preventDefault", true);
+
+            // Name cell
+            builder.OpenElement(40, "td");
+            builder.AddAttribute(41, "class", "p-2");
+            builder.OpenElement(42, "div");
+            builder.AddAttribute(43, "class", "flex items-center gap-2");
+
+            // File icon
+            builder.OpenComponent<Blazicon>(50);
+            builder.AddAttribute(51, "Svg", GetNodeIcon(n));
+            builder.AddAttribute(52, "class", "h-4 w-4 shrink-0 text-muted-foreground");
+            builder.CloseComponent();
+
+            // Inline rename or plain text
+            if (_renamingNode?.Id == n.Id)
+            {
+                builder.OpenElement(60, "input");
+                builder.AddAttribute(61, "type", "text");
+                builder.AddAttribute(62, "class", "flex-1 px-1 py-0 text-sm border border-ring rounded bg-background focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring");
+                builder.AddAttribute(63, "value", _renameValue);
+                builder.AddAttribute(64, "oninput", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(this, e => _renameValue = e.Value?.ToString() ?? ""));
+                builder.AddAttribute(65, "onblur", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.FocusEventArgs>(this, _ => CommitRename()));
+                builder.AddAttribute(66, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, async e =>
+                {
+                    if (e.Key == "Enter") await CommitRename();
+                    else if (e.Key == "Escape") CancelRename();
+                }));
+                builder.AddAttribute(67, "onclick:stopPropagation", true);
+                builder.CloseElement();
+            }
+            else
+            {
+                builder.OpenElement(70, "span");
+                builder.AddAttribute(71, "class", "truncate");
+                builder.AddContent(72, n.Name);
+                builder.CloseElement();
+            }
+
+            builder.CloseElement(); // inner div
+            builder.CloseElement(); // td name
+
+            // Size cell
+            builder.OpenElement(80, "td");
+            builder.AddAttribute(81, "class", "p-2 text-right text-muted-foreground whitespace-nowrap");
+            builder.AddContent(82, n.IsFolder ? "—" : FormatSize(n.Size ?? 0));
+            builder.CloseElement();
+
+            // Modified cell
+            builder.OpenElement(90, "td");
+            builder.AddAttribute(91, "class", "p-2 text-right text-muted-foreground whitespace-nowrap");
+            builder.AddContent(92, n.Modified.HasValue ? n.Modified.Value.ToString("yyyy-MM-dd HH:mm") : "—");
+            builder.CloseElement();
+
+            // Context menu cell
+            builder.OpenElement(100, "td");
+            builder.AddAttribute(101, "class", "p-2");
+            builder.OpenElement(102, "button");
+            builder.AddAttribute(103, "type", "button");
+            builder.AddAttribute(104, "class", "inline-flex items-center justify-center h-6 w-6 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent text-muted-foreground hover:text-accent-foreground");
+            builder.AddAttribute(105, "title", "More actions");
+            builder.AddAttribute(106, "aria-label", $"More actions for {n.Name}");
+            builder.AddAttribute(107, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(108, "onclick:stopPropagation", true);
+            builder.OpenComponent<Blazicon>(109);
+            builder.AddAttribute(110, "Svg", Lucide.EllipsisVertical);
+            builder.AddAttribute(111, "class", "h-3.5 w-3.5");
+            builder.CloseComponent();
+            builder.CloseElement(); // button
+            builder.CloseElement(); // td
+
+            builder.CloseElement(); // tr
+        }
+        builder.CloseElement(); // tbody
+        builder.CloseElement(); // table
+    };
+
+    private RenderFragment RenderGridView(List<FileSystemNode> items) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2 p-2");
+        builder.AddAttribute(2, "role", "listbox");
+        builder.AddAttribute(3, "aria-label", "File grid");
+
+        foreach (var node in items)
+        {
+            var n = node;
+            bool isSelected = SelectedNode?.Id == n.Id;
+            var tileClass = $"flex flex-col items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors border {(isSelected ? "bg-accent border-ring" : "border-transparent hover:bg-muted/40 hover:border-border/40")}";
+
+            builder.OpenElement(10, "div");
+            builder.AddAttribute(11, "class", tileClass);
+            builder.AddAttribute(12, "role", "option");
+            builder.AddAttribute(13, "aria-selected", isSelected.ToString().ToLowerInvariant());
+            builder.AddAttribute(14, "aria-label", n.Name);
+            builder.AddAttribute(15, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
+            builder.AddAttribute(16, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(17, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(18, "oncontextmenu:preventDefault", true);
+
+            // Icon
+            builder.OpenComponent<Blazicon>(20);
+            builder.AddAttribute(21, "Svg", GetNodeIcon(n));
+            builder.AddAttribute(22, "class", "h-10 w-10 text-muted-foreground");
+            builder.CloseComponent();
+
+            // Name
+            builder.OpenElement(30, "span");
+            builder.AddAttribute(31, "class", "text-xs text-center truncate w-full leading-tight");
+            builder.AddAttribute(32, "title", n.Name);
+            builder.AddContent(33, n.Name);
+            builder.CloseElement();
+
+            builder.CloseElement(); // tile
+        }
+
+        builder.CloseElement(); // grid div
+    };
+
+    private static void AppendTh(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder, int seq, string text, string cls)
+    {
+        builder.OpenElement(seq, "th");
+        builder.AddAttribute(seq + 1, "class", cls);
+        builder.AddAttribute(seq + 2, "scope", "col");
+        builder.AddContent(seq + 3, text);
+        builder.CloseElement();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Icon resolution
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static SvgIcon GetNodeIcon(FileSystemNode node)
+    {
+        if (!string.IsNullOrEmpty(node.IconName))
+        {
+            // Try to look up by name via reflection — fall through to defaults if missing
+            var prop = typeof(Lucide).GetProperty(node.IconName,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (prop?.GetValue(null) is SvgIcon icon) return icon;
+        }
+
+        if (node.IsFolder) return Lucide.Folder;
+
+        var ext = System.IO.Path.GetExtension(node.Name).ToLowerInvariant();
+        return ext switch
+        {
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".svg" or ".webp" or ".bmp" or ".ico" => Lucide.Image,
+            ".pdf" => Lucide.FileText,
+            ".zip" or ".tar" or ".gz" or ".rar" or ".7z" or ".bz2" => Lucide.FileArchive,
+            ".mp3" or ".wav" or ".ogg" or ".flac" or ".aac" or ".m4a" => Lucide.Music,
+            ".mp4" or ".mov" or ".avi" or ".mkv" or ".webm" or ".wmv" => Lucide.Video,
+            ".txt" or ".md" or ".log" or ".rst" or ".rtf" => Lucide.FileText,
+            ".cs" or ".js" or ".ts" or ".jsx" or ".tsx" or ".razor" or ".json" or ".xml"
+                or ".html" or ".htm" or ".css" or ".scss" or ".less" or ".yaml" or ".yml"
+                or ".toml" or ".ini" or ".sh" or ".bash" or ".ps1" or ".py" or ".rb"
+                or ".java" or ".cpp" or ".c" or ".h" or ".go" or ".rs" or ".swift" => Lucide.FileCode,
+            _ => Lucide.File
+        };
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Size formatting
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Enums
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public enum FileManagerViewMode
+    {
+        List,
+        Grid
+    }
+}
+
+@* ── Context menu overlay ───────────────────────────────────────────────── *@
+@if (_contextMenuOpen && _contextMenuNode is not null)
+{
+    var node = _contextMenuNode;
+    <div class="fixed inset-0 z-40" @onclick="CloseContextMenu" aria-hidden="true"></div>
+    <div class="fixed z-50 min-w-[10rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+         style="@($"left:{_contextMenuX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;top:{_contextMenuY.ToString(System.Globalization.CultureInfo.InvariantCulture)}px")"
+         role="menu"
+         aria-label="File actions">
+        @if (node.IsFolder)
+        {
+            <button type="button" class="@MenuItemClass" role="menuitem" @onclick="() => HandleOpenNode(node)">
+                <Blazicon Svg="Lucide.FolderOpen" class="h-4 w-4" />
+                Open
+            </button>
+        }
+        else
+        {
+            <button type="button" class="@MenuItemClass" role="menuitem" @onclick="() => HandleOpenNode(node)">
+                <Blazicon Svg="Lucide.ExternalLink" class="h-4 w-4" />
+                Open
+            </button>
+        }
+        @if (OnRename.HasDelegate)
+        {
+            <button type="button" class="@MenuItemClass" role="menuitem" @onclick="() => BeginRename(node)">
+                <Blazicon Svg="Lucide.Pencil" class="h-4 w-4" />
+                Rename
+            </button>
+        }
+        @if (OnDelete.HasDelegate)
+        {
+            <div class="my-0.5 h-px bg-border/40"></div>
+            <button type="button" class="@MenuItemDeleteClass" role="menuitem" @onclick="() => HandleDeleteNode(node)">
+                <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
+                Delete
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private const string MenuItemClass = "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground";
+    private const string MenuItemDeleteClass = "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-destructive/10 hover:text-destructive text-destructive";
+}

@@ -1,0 +1,170 @@
+@namespace Lumeo
+
+@if (Variant == GaugeVariant.Linear)
+{
+    <div class="@ContainerClass"
+         role="meter"
+         aria-valuenow="@Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-valuemin="@Min.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-valuemax="@Max.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-label="@(Label ?? DisplayValue)"
+         @attributes="AdditionalAttributes">
+        <svg width="@Size" height="@StrokeWidth" viewBox="0 0 @Size @StrokeWidth"
+             xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="@Size" height="@StrokeWidth"
+                  rx="@(StrokeWidth / 2)"
+                  fill="var(--color-@TrackColor)" />
+            <rect x="0" y="0" width="@LinearFillWidth" height="@StrokeWidth"
+                  rx="@(StrokeWidth / 2)"
+                  fill="@ActiveColor"
+                  style="transition: width 0.3s ease;" />
+        </svg>
+        @if (ShowValue)
+        {
+            <span class="text-xs text-foreground font-medium mt-1 block text-center"
+                  style="width: @(Size)px">@DisplayValue</span>
+        }
+    </div>
+}
+else
+{
+    @* Radial = 270° arc (gap at bottom), Arc = 180° semicircle (top half) *@
+    <div class="@ArcContainerClass"
+         role="meter"
+         aria-valuenow="@Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-valuemin="@Min.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-valuemax="@Max.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-label="@(Label ?? DisplayValue)"
+         style="@ArcContainerStyle"
+         @attributes="AdditionalAttributes">
+        <svg width="@Size" height="@SvgHeight"
+             viewBox="0 0 @Size @SvgHeight"
+             xmlns="http://www.w3.org/2000/svg"
+             style="overflow: visible; display: block;">
+            @* Track arc *@
+            <circle cx="@CxStr" cy="@CyStr" r="@RadiusStr"
+                    fill="none"
+                    stroke="var(--color-@TrackColor)"
+                    stroke-width="@StrokeWidth"
+                    stroke-linecap="round"
+                    stroke-dasharray="@TrackDash"
+                    stroke-dashoffset="0"
+                    transform="rotate(@StartAngleDeg @CxStr @CyStr)" />
+            @* Value arc *@
+            <circle cx="@CxStr" cy="@CyStr" r="@RadiusStr"
+                    fill="none"
+                    stroke="@ActiveColor"
+                    stroke-width="@StrokeWidth"
+                    stroke-linecap="round"
+                    stroke-dasharray="@ValueDash"
+                    stroke-dashoffset="0"
+                    transform="rotate(@StartAngleDeg @CxStr @CyStr)"
+                    style="transition: stroke-dasharray 0.3s ease;" />
+        </svg>
+        @if (ShowValue)
+        {
+            <span class="absolute inset-0 flex items-center justify-center text-foreground font-medium pointer-events-none"
+                  style="font-size: @(LabelFontSize)px; @LabelOffset">@DisplayValue</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Min { get; set; } = 0;
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public GaugeVariant Variant { get; set; } = GaugeVariant.Radial;
+    [Parameter] public int Size { get; set; } = 120;
+    [Parameter] public int StrokeWidth { get; set; } = 8;
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool ShowValue { get; set; } = true;
+    [Parameter] public string Color { get; set; } = "primary";
+    [Parameter] public string TrackColor { get; set; } = "muted";
+    [Parameter] public IReadOnlyList<GaugeThreshold>? Thresholds { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private double Percentage => Max > Min
+        ? Math.Clamp((Value - Min) / (Max - Min) * 100.0, 0.0, 100.0)
+        : 0;
+
+    private string DisplayValue => Label ?? $"{(int)Math.Round(Percentage)}%";
+
+    private string ActiveColor
+    {
+        get
+        {
+            if (Thresholds is { Count: > 0 })
+            {
+                foreach (var t in Thresholds.OrderByDescending(t => t.Value))
+                {
+                    if (Value >= t.Value)
+                        return t.Color;
+                }
+            }
+            return $"var(--color-{Color})";
+        }
+    }
+
+    // ── Geometry helpers (InvariantCulture strings for SVG attributes) ────────
+    private double Cx => Size / 2.0;
+    private double Cy => Size / 2.0;
+    private double Radius => (Size - StrokeWidth) / 2.0;
+    private double Circumference => 2 * Math.PI * Radius;
+
+    private string CxStr => Cx.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private string CyStr => Cy.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private string RadiusStr => Radius.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private double ArcDegrees => Variant == GaugeVariant.Arc ? 180.0 : 270.0;
+    private double ArcLength => Circumference * ArcDegrees / 360.0;
+
+    private string StartAngleDeg => Variant == GaugeVariant.Arc ? "-180" : "-135";
+
+    private string TrackDash
+    {
+        get
+        {
+            var rest = Circumference - ArcLength;
+            return $"{ArcLength.ToString(System.Globalization.CultureInfo.InvariantCulture)} {rest.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        }
+    }
+
+    private string ValueDash
+    {
+        get
+        {
+            var fill = ArcLength * Percentage / 100.0;
+            var rest = Circumference - fill;
+            return $"{fill.ToString(System.Globalization.CultureInfo.InvariantCulture)} {rest.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        }
+    }
+
+    private int SvgHeight => Variant == GaugeVariant.Arc
+        ? (int)Math.Ceiling(Size / 2.0 + StrokeWidth * 1.5)
+        : Size;
+
+    private int LabelFontSize => Math.Max(10, Size / 7);
+
+    /// For Arc variant, shift label up slightly so it sits inside the semicircle.
+    private string LabelOffset => Variant == GaugeVariant.Arc
+        ? $"padding-bottom: {(int)(Size * 0.3)}px;"
+        : "";
+
+    // ── Linear geometry ───────────────────────────────────────────────────────
+    private string LinearFillWidth
+        => (Size * Percentage / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private string ContainerClass
+        => $"inline-flex flex-col items-center {Class}".Trim();
+
+    private string ArcContainerClass
+        => $"relative inline-flex items-center justify-center {Class}".Trim();
+
+    private string ArcContainerStyle
+        => $"width: {Size}px; height: {SvgHeight}px;";
+
+    public enum GaugeVariant { Radial, Linear, Arc }
+
+    public record GaugeThreshold(double Value, string Color);
+}

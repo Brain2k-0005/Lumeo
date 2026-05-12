@@ -1,0 +1,81 @@
+@namespace Lumeo
+
+<div class="@ContainerClass"
+     role="progressbar"
+     aria-valuenow="@Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+     aria-valuemin="0"
+     aria-valuemax="100"
+     @attributes="AdditionalAttributes"
+     style="@ContainerStyle">
+    <svg width="@Size" height="@Size"
+         viewBox="0 0 @Size @Size"
+         xmlns="http://www.w3.org/2000/svg">
+        @* Track circle *@
+        <circle cx="@Cx" cy="@Cy" r="@Radius"
+                fill="none"
+                stroke="var(--color-@TrackColor, var(--color-muted))"
+                stroke-width="@Thickness" />
+        @* Value circle *@
+        <circle cx="@Cx" cy="@Cy" r="@Radius"
+                fill="none"
+                stroke="var(--color-@Color, var(--color-primary))"
+                stroke-width="@Thickness"
+                stroke-linecap="@(RoundedCaps ? "round" : "butt")"
+                stroke-dasharray="@DashArray"
+                stroke-dashoffset="@DashOffset"
+                transform="rotate(-90 @Cx @Cy)"
+                style="transition: stroke-dashoffset 0.3s ease;" />
+    </svg>
+    @* Centre content *@
+    @if (LabelContent is not null)
+    {
+        <div class="absolute inset-0 flex items-center justify-center">
+            @LabelContent
+        </div>
+    }
+    else if (ShowLabel)
+    {
+        <span class="absolute inset-0 flex items-center justify-center text-foreground font-medium"
+              style="font-size: @(Size / 5)px;">
+            @((int)Math.Round(ClampedValue))%
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public int Size { get; set; } = 64;
+    [Parameter] public int Thickness { get; set; } = 6;
+    [Parameter] public string Color { get; set; } = "primary";
+    [Parameter] public string TrackColor { get; set; } = "muted";
+    [Parameter] public bool ShowLabel { get; set; }
+    [Parameter] public RenderFragment? LabelContent { get; set; }
+    [Parameter] public bool RoundedCaps { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private double ClampedValue => Math.Clamp(Value, 0.0, 100.0);
+
+    private double Cx => Size / 2.0;
+    private double Cy => Size / 2.0;
+    private double Radius => (Size - Thickness) / 2.0;
+    private double Circumference => 2 * Math.PI * Radius;
+
+    private string DashArray
+        => Circumference.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private string DashOffset
+    {
+        get
+        {
+            var offset = Circumference * (1.0 - ClampedValue / 100.0);
+            return offset.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    private string ContainerClass
+        => $"relative inline-flex items-center justify-center {Class}".Trim();
+
+    private string ContainerStyle
+        => $"width: {Size}px; height: {Size}px;";
+}
