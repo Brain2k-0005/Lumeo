@@ -53,6 +53,11 @@ export interface ApiSubComponent {
   parseError: string | null;
 }
 
+export interface ApiExample {
+  title: string;
+  code: string;
+}
+
 export interface ApiComponent {
   name: string;
   category: string;
@@ -68,9 +73,22 @@ export interface ApiComponent {
   enums: ApiEnum[];
   records: ApiRecord[];
   cssVars: string[];
+  examples?: ApiExample[];
   subComponents: Record<string, ApiSubComponent>;
   parseFailed: boolean;
   parseError: string | null;
+}
+
+export interface ApiThemeToken {
+  token: string;
+  cssVar: string;
+}
+
+export interface ApiPattern {
+  title: string;
+  route: string;
+  description: string;
+  examples: ApiExample[];
 }
 
 export interface ApiDocument {
@@ -83,6 +101,8 @@ export interface ApiDocument {
     totalRecords: number;
     thinFallbacks: { name: string; reason: string }[];
   };
+  themeTokens?: ApiThemeToken[];
+  patterns?: ApiPattern[];
   components: Record<string, ApiComponent>;
 }
 
