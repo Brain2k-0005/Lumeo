@@ -33,7 +33,7 @@
     [Parameter] public int NumberOfMonths { get; set; } = 1;
     [Parameter] public bool ShowWeekNumbers { get; set; }
     [Parameter] public bool ShowYearPicker { get; set; }
-    [Parameter] public string InitialView { get; set; } = "Days";
+    [Parameter] public CalendarView InitialView { get; set; } = CalendarView.Days;
     [Parameter] public Func<DateTime, bool>? IsDateDisabled { get; set; }
     [Parameter] public Func<DateTime, string>? DateClass { get; set; }
     /// <summary>Optional per-date tooltip text. Returned string becomes the
@@ -61,7 +61,7 @@
 
     private DateOnly DisplayDate { get; set; }
     private DateOnly? _hoverDate;
-    private string _currentView = "Days";
+    private CalendarView _currentView = CalendarView.Days;
 
     private string CssClass => $"p-3 {Class}".Trim();
 
@@ -233,19 +233,19 @@
     private void PreviousMonth() => DisplayDate = DisplayDate.AddMonths(-1);
     private void NextMonth() => DisplayDate = DisplayDate.AddMonths(1);
 
-    private void SwitchToMonthView() => _currentView = "Months";
-    private void SwitchToYearView() => _currentView = "Years";
+    private void SwitchToMonthView() => _currentView = CalendarView.Months;
+    private void SwitchToYearView() => _currentView = CalendarView.Years;
 
     private void SelectMonth(int month)
     {
         DisplayDate = new DateOnly(DisplayDate.Year, month, 1);
-        _currentView = "Days";
+        _currentView = CalendarView.Days;
     }
 
     private void SelectYear(int year)
     {
         DisplayDate = new DateOnly(year, DisplayDate.Month, 1);
-        _currentView = "Months";
+        _currentView = CalendarView.Months;
     }
 
     private void PreviousDecade()
@@ -280,13 +280,13 @@
         <div class="flex items-center justify-between px-1 mb-2">
             @if (showPrev)
             {
-                if (_currentView == "Years")
+                if (_currentView == CalendarView.Years)
                 {
                     <button type="button" aria-label="@L["Calendar.PrevYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousDecade">
                         <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
                     </button>
                 }
-                else if (_currentView == "Months")
+                else if (_currentView == CalendarView.Months)
                 {
                     <button type="button" aria-label="@L["Calendar.PrevYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousYear">
                         <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
@@ -304,12 +304,12 @@
                 <div class="w-7"></div>
             }
 
-            @if (_currentView == "Years")
+            @if (_currentView == CalendarView.Years)
             {
                 var decadeStart = GetDecadeStart(monthDate.Year);
                 <span class="text-sm font-medium">@decadeStart - @(decadeStart + 9)</span>
             }
-            else if (_currentView == "Months")
+            else if (_currentView == CalendarView.Months)
             {
                 <button type="button" class="text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md px-2 py-1" @onclick="SwitchToYearView">
                     @monthDate.Year
@@ -328,13 +328,13 @@
 
             @if (showNext)
             {
-                if (_currentView == "Years")
+                if (_currentView == CalendarView.Years)
                 {
                     <button type="button" aria-label="@L["Calendar.NextYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextDecade">
                         <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
                     </button>
                 }
-                else if (_currentView == "Months")
+                else if (_currentView == CalendarView.Months)
                 {
                     <button type="button" aria-label="@L["Calendar.NextYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextYear">
                         <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
@@ -353,7 +353,7 @@
             }
         </div>
 
-        @if (_currentView == "Years")
+        @if (_currentView == CalendarView.Years)
         {
             var decadeStart = GetDecadeStart(monthDate.Year);
             <div class="grid grid-cols-3 gap-2 p-1">
@@ -371,7 +371,7 @@
                 }
             </div>
         }
-        else if (_currentView == "Months")
+        else if (_currentView == CalendarView.Months)
         {
             var monthNames = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedMonthNames;
             <div class="grid grid-cols-3 gap-2 p-1">
@@ -429,4 +429,12 @@
         }
         </div> @* close the fixed-width wrapper *@
     };
+
+    public enum CalendarView
+    {
+        Days,
+        Months,
+        Years
+    }
+
 }

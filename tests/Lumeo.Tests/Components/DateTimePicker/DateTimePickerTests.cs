@@ -1,4 +1,4 @@
-using Bunit;
+﻿using Bunit;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -51,4 +51,34 @@ public class DateTimePickerTests : IAsyncLifetime
         var cut = _ctx.Render<L.DateTimePicker>(p => p.Add(c => c.Placeholder, "Select date and time"));
         Assert.Contains("Select date and time", cut.Markup);
     }
+
+    // --- rc.28/29: MinDate/MaxDate/IsDateDisabled parameters ---
+
+    [Fact]
+    public void MinDate_And_MaxDate_Parameters_Accepted_Without_Exception()
+    {
+        // Verifies MinDate/MaxDate are forwarded to Calendar without throwing
+        var minDate = new DateTime(2025, 1, 1);
+        var maxDate = new DateTime(2025, 12, 31);
+        var ex = Record.Exception(() =>
+        {
+            _ctx.Render<L.DateTimePicker>(p => p
+                .Add(c => c.MinDate, minDate)
+                .Add(c => c.MaxDate, maxDate));
+        });
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void IsDateDisabled_Parameter_Accepted_Without_Exception()
+    {
+        // Verifies IsDateDisabled predicate is forwarded without throwing
+        var ex = Record.Exception(() =>
+        {
+            _ctx.Render<L.DateTimePicker>(p => p
+                .Add(c => c.IsDateDisabled, (DateTime d) => d.DayOfWeek == DayOfWeek.Sunday));
+        });
+        Assert.Null(ex);
+    }
+
 }

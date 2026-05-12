@@ -1,0 +1,38 @@
+@namespace Lumeo
+
+<div class="@CssClass" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public ButtonGroupOrientation Orientation { get; set; } = ButtonGroupOrientation.Horizontal;
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => string.Join(" ", new[]
+    {
+        Orientation == ButtonGroupOrientation.Horizontal ? HorizontalClasses : VerticalClasses,
+        Class
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    // Horizontal: first button gets left-rounded, last gets right-rounded, middle ones square.
+    // -ml-px collapses the shared border between adjacent buttons.
+    private const string HorizontalClasses =
+        "inline-flex flex-row " +
+        "[&>button:not(:first-child)]:rounded-l-none " +
+        "[&>button:not(:last-child)]:rounded-r-none " +
+        "[&>button:not(:first-child)]:-ml-px " +
+        "[&>button:not(:first-child)]:border-l-border/40";
+
+    // Vertical: first button gets top-rounded, last gets bottom-rounded, middle ones square.
+    // -mt-px collapses the shared border between adjacent buttons.
+    private const string VerticalClasses =
+        "inline-flex flex-col " +
+        "[&>button:not(:first-child)]:rounded-t-none " +
+        "[&>button:not(:last-child)]:rounded-b-none " +
+        "[&>button:not(:first-child)]:-mt-px " +
+        "[&>button:not(:first-child)]:border-t-border/40";
+
+    public enum ButtonGroupOrientation { Horizontal, Vertical }
+}

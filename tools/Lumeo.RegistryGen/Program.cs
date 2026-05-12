@@ -633,7 +633,7 @@ try
         uiRoots: uiRoots,
         metaResolver: MetaFor,
         logger: Console.Error,
-        version: "2.0.0-rc.31",
+        version: "2.0.0-rc.32",
         repoRoot: repoRoot);
 }
 catch (Exception ex)

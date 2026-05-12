@@ -1,7 +1,7 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@if (Label is not null && !InsideFormField && Variant != "Button" && Variant != "Avatar")
+@if (Label is not null && !InsideFormField && Variant != FileUploadVariant.Button && Variant != FileUploadVariant.Avatar)
 {
     <label class="text-sm font-medium leading-none">
         @Label
@@ -12,7 +12,7 @@
     </label>
 }
 
-@if (Variant == "Button")
+@if (Variant == FileUploadVariant.Button)
 {
     <div class="@($"inline-flex flex-col gap-2 {Class}".Trim())"
          aria-required="@Required.ToString().ToLower()"
@@ -62,7 +62,7 @@
         }
     </div>
 }
-else if (Variant == "Avatar")
+else if (Variant == FileUploadVariant.Avatar)
 {
     <div class="@($"inline-flex flex-col items-center gap-2 {Class}".Trim())"
          aria-required="@Required.ToString().ToLower()"
@@ -208,7 +208,7 @@ else
     [Parameter] public int MaxFiles { get; set; } = 10;
     [Parameter] public bool ShowThumbnails { get; set; }
     [Parameter] public RenderFragment<IBrowserFile>? FileTemplate { get; set; }
-    [Parameter] public string Variant { get; set; } = "Dropzone";
+    [Parameter] public FileUploadVariant Variant { get; set; } = FileUploadVariant.Dropzone;
 
     /// <summary>
     /// Size of the trigger when <c>Variant="Button"</c>. Mirrors
@@ -217,6 +217,13 @@ else
     /// effect on <c>Dropzone</c> or <c>Avatar</c> variants today.
     /// </summary>
     [Parameter] public FileUploadSize Size { get; set; } = FileUploadSize.Default;
+
+    public enum FileUploadVariant
+    {
+        Dropzone,
+        Button,
+        Avatar
+    }
 
     public enum FileUploadSize { Sm, Default, Lg }
 
@@ -273,7 +280,7 @@ else
 
         _selectedFiles = files;
 
-        if (ShowThumbnails && Variant == "Avatar" && files.Count > 0 && IsImageFile(files[0]))
+        if (ShowThumbnails && Variant == FileUploadVariant.Avatar && files.Count > 0 && IsImageFile(files[0]))
         {
             try
             {
@@ -289,7 +296,7 @@ else
             }
         }
 
-        if (ShowThumbnails && Variant == "Dropzone")
+        if (ShowThumbnails && Variant == FileUploadVariant.Dropzone)
         {
             _thumbnailUrls.Clear();
             foreach (var file in files.Where(IsImageFile))

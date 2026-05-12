@@ -150,4 +150,24 @@ public class FileUploadTests : IAsyncLifetime
         var root = cut.Find("[data-testid='file-upload-zone']");
         Assert.NotNull(root);
     }
+    [Fact]
+    public void FileUploadVariant_Button_Renders_Inline_Flex_Wrapper()
+    {
+        var cut = _ctx.Render<Lumeo.FileUpload>(p => p
+            .Add(b => b.Variant, Lumeo.FileUpload.FileUploadVariant.Button));
+
+        var root = cut.Find("div");
+        Assert.Contains("inline-flex", root.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void FileUploadVariant_Avatar_Renders_Circular_Label()
+    {
+        var cut = _ctx.Render<Lumeo.FileUpload>(p => p
+            .Add(b => b.Variant, Lumeo.FileUpload.FileUploadVariant.Avatar));
+
+        var label = cut.Find("label");
+        Assert.Contains("rounded-full", label.GetAttribute("class") ?? "");
+    }
+
 }
