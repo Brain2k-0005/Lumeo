@@ -1,0 +1,42 @@
+@namespace Lumeo
+
+@if (Context is not null)
+{
+    var isActive = Value == Context.Value;
+    <button type="button"
+            role="radio"
+            aria-checked="@isActive.ToString().ToLower()"
+            class="@Context.GetItemClasses(isActive)"
+            disabled="@Disabled"
+            @onclick="HandleClick"
+            @attributes="AdditionalAttributes">
+        @if (IconContent is not null)
+        {
+            <span class="mr-1.5">@IconContent</span>
+        }
+        @ChildContent
+    </button>
+}
+
+@code {
+    [CascadingParameter] public Segmented.SegmentedContext? Context { get; set; }
+
+    /// <summary>The value selected when this item is clicked. Must match one of
+    /// the parent <see cref="Segmented"/>'s expected values.</summary>
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Optional leading icon slot.</summary>
+    [Parameter] public RenderFragment? IconContent { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (Context is null || Disabled) return;
+        await Context.Select.InvokeAsync(Value);
+    }
+}
