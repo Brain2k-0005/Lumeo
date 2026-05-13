@@ -106,19 +106,24 @@
           Condition="Exists('..\Lumeo.SourceGenerators\bin\$(Configuration)\netstandard2.0\Lumeo.SourceGenerators.dll')" />
   </ItemGroup>
 
-  <!--
-    Ship the generated component registry as a static web asset so consumers
-    (docs site, tooling, third-party apps) can fetch it at runtime from
-    `/_content/Lumeo/registry/registry.json`. The Razor SDK auto-globs
-    `wwwroot/`, so we sync registry/registry.json into wwwroot/registry/ at
-    the start of the build.
-  -->
-  <Target Name="SyncRegistryIntoWwwroot" BeforeTargets="BeforeBuild"
-          Inputs="registry/registry.json" Outputs="wwwroot/registry/registry.json">
-    <MakeDir Directories="wwwroot/registry" />
-    <Copy SourceFiles="registry/registry.json"
-          DestinationFiles="wwwroot/registry/registry.json"
-          SkipUnchangedFiles="true" />
-  </Target>
+  <!-- registry/registry.json — master index of all 145 components, generated
+       by Lumeo.RegistryGen, consumed by Lumeo.CLI and MCP via HTTPS from the
+       docs CDN (https://lumeo.nativ.sh/registry.json — served directly from
+       docs/Lumeo.Docs/wwwroot/registry.json, not from this project).
+       The per-component snippet JSONs (~146 files) used to live in
+       src/Lumeo/wwwroot/registry/ and shipped inside Lumeo.nupkg as static
+       web assets — ~3.9 MB compressed of dev-time-only payload that never
+       reached an end user's browser. rc.40 removes them entirely from this
+       project; RegistryGen now writes them only into docs/Lumeo.Docs/wwwroot/
+       registry/, which is the canonical CDN source. End-user apps don't
+       need them at runtime (the CLI fetches from the CDN).
+       The master index file at src/Lumeo/registry/registry.json stays here
+       (and in source control) as RegistryGen's primary output, but is
+       excluded from the NuGet package — same rationale. -->
+  <ItemGroup>
+    <Content Remove="registry\**" />
+    <None Remove="registry\**" />
+    <None Include="registry\registry.json" Pack="false" />
+  </ItemGroup>
 
 </Project>

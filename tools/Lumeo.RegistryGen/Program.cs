@@ -674,11 +674,13 @@ catch (Exception ex)
 // sub-components). Consumers can fetch a single component without paging
 // through the monolithic registry.
 //
-// Output goes to BOTH:
-//   - src/Lumeo/wwwroot/registry/  (Razor SDK auto-globs → static web asset
-//     under _content/Lumeo/registry/<key>.json for self-hosted setups)
-//   - docs/Lumeo.Docs/wwwroot/registry/  (Cloudflare Pages serves
-//     https://lumeo.nativ.sh/registry/<key>.json)
+// Output goes to docs/Lumeo.Docs/wwwroot/registry/ only — Cloudflare Pages
+// serves it as https://lumeo.nativ.sh/registry/<key>.json.
+// Before rc.40 we ALSO wrote to src/Lumeo/wwwroot/registry/ so the Razor
+// SDK would auto-pack the snippets into Lumeo.nupkg as static web assets.
+// That added ~3.9 MB to every consumer's package download for a payload
+// that NEVER reached their browser — the CLI fetches from the CDN, not
+// from _content/Lumeo/registry/. rc.40 drops the duplicate.
 try
 {
     var apiJson = File.ReadAllText(componentsApiPath, Encoding.UTF8);
@@ -687,7 +689,6 @@ try
 
     var perComponentDirs = new[]
     {
-        Path.Combine(repoRoot, "src", "Lumeo", "wwwroot", "registry"),
         Path.Combine(repoRoot, "docs", "Lumeo.Docs", "wwwroot", "registry"),
     };
     foreach (var dir in perComponentDirs) Directory.CreateDirectory(dir);

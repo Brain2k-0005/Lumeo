@@ -140,8 +140,14 @@ jobs:
 
       - name: Copy registry + raw source for CLI consumers
         run: |
+          # Per-component registry snippets — rc.40 moved the canonical source
+          # to docs/Lumeo.Docs/wwwroot/registry/ (out of Lumeo.nupkg). This cp
+          # is a no-op when docs/Lumeo.Docs's own publish output already
+          # includes the registry/ folder via the SDK static-web-asset
+          # pipeline, but kept as a safety net in case the publish ordering
+          # ever drops it.
           mkdir -p release/wwwroot/registry
-          cp -r src/Lumeo/wwwroot/registry/* release/wwwroot/registry/ || true
+          cp -r docs/Lumeo.Docs/wwwroot/registry/* release/wwwroot/registry/ || true
           mkdir -p release/wwwroot/raw
           rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' \
                 src/Lumeo/ release/wwwroot/raw/
