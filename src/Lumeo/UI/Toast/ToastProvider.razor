@@ -2,35 +2,45 @@
 @using Lumeo.Services
 @implements IAsyncDisposable
 
-<ToastViewport Position="Position">
-    @foreach (var toast in _toasts)
-    {
-        <Toast Variant="@toast.Options.Variant" Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)" @key="@toast.Id">
-            @if (toast.Options.CustomContent is not null)
-            {
-                @toast.Options.CustomContent
-            }
-            else
-            {
-                <div class="grid gap-1">
-                    <ToastTitle>@toast.Options.Title</ToastTitle>
-                    @if (toast.Options.Description is not null)
-                    {
-                        <ToastDescription>@toast.Options.Description</ToastDescription>
-                    }
-                    @if (toast.Options.ActionLabel is not null)
-                    {
-                        <ToastAction OnClick="@(() => InvokeAction(toast))" Label="@toast.Options.ActionLabel" />
-                    }
-                </div>
-            }
-            @if (toast.Options.Dismissible)
-            {
-                <ToastClose OnClose="@(() => Remove(toast.Id))" />
-            }
-        </Toast>
-    }
-</ToastViewport>
+@*  rc.42 — Per-toast Position routing.
+    Up to rc.41 we mounted a single <ToastViewport Position="Position"> and every
+    toast landed there, silently ignoring ToastOptions.Position (the per-call
+    override added in rc.37). Now we group toasts by their effective position
+    (options.Position ?? provider Position) and render one viewport per group.
+    Each viewport is position:fixed at its corner, so multiple coexist without
+    conflict; viewports with no toasts emit nothing. *@
+@foreach (var positionGroup in _toasts.GroupBy(t => ResolvePosition(t.Options.Position)))
+{
+    <ToastViewport Position="@positionGroup.Key" @key="@positionGroup.Key">
+        @foreach (var toast in positionGroup)
+        {
+            <Toast Variant="@toast.Options.Variant" Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)" @key="@toast.Id">
+                @if (toast.Options.CustomContent is not null)
+                {
+                    @toast.Options.CustomContent
+                }
+                else
+                {
+                    <div class="grid gap-1">
+                        <ToastTitle>@toast.Options.Title</ToastTitle>
+                        @if (toast.Options.Description is not null)
+                        {
+                            <ToastDescription>@toast.Options.Description</ToastDescription>
+                        }
+                        @if (toast.Options.ActionLabel is not null)
+                        {
+                            <ToastAction OnClick="@(() => InvokeAction(toast))" Label="@toast.Options.ActionLabel" />
+                        }
+                    </div>
+                }
+                @if (toast.Options.Dismissible)
+                {
+                    <ToastClose OnClose="@(() => Remove(toast.Id))" />
+                }
+            </Toast>
+        }
+    </ToastViewport>
+}
 
 @inject ToastService ToastService
 
@@ -240,4 +250,14 @@
     }
 
     private record ToastItem(string Id, ToastOptions Options, bool Leaving = false);
+
+    /// <summary>Resolves a per-toast <see cref="ToastPosition"/> to the
+    /// <see cref="ToastViewport.ToastPosition"/> the viewport component uses,
+    /// falling back to the provider's default <see cref="Position"/> when the
+    /// toast didn't override. Two enums exist (one in
+    /// <c>Lumeo.Services</c> for the service-facing API, one nested in
+    /// <c>ToastViewport</c> for the visual component) — same members,
+    /// integer-cast bridges them. (rc.42)</summary>
+    private ToastViewport.ToastPosition ResolvePosition(ToastPosition? optionsPosition)
+        => optionsPosition is { } p ? (ToastViewport.ToastPosition)(int)p : Position;
 }
