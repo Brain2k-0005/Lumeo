@@ -67,6 +67,31 @@
         </PopConfirm>
         <Lumeo.Text Class="text-sm text-muted-foreground mt-2">@_completeResult</Lumeo.Text>
     </ComponentDemo>
+
+    <ComponentDemo Title="IsDestructive — interactive preview" Description="Toggle the switch to flip between standard and destructive confirmation styles." Code="@_interactiveDestructiveCode">
+        <Stack Gap="4">
+            <Flex Align="center" Gap="3">
+                <Switch @bind-Checked="_popConfirmDestructive" />
+                <Lumeo.Text Size="sm" Color="muted">Destructive mode</Lumeo.Text>
+            </Flex>
+            <Flex Align="center" Gap="3" Wrap="true">
+                <PopConfirm Title="Remove this item?"
+                            Description="This will permanently remove the item from your workspace."
+                            ConfirmText="@(_popConfirmDestructive ? "Yes, remove" : "Confirm")"
+                            IsDestructive="@_popConfirmDestructive"
+                            OnConfirm="@(() => _interactiveResult = _popConfirmDestructive ? "Removed!" : "Confirmed!")">
+                    <Button Variant="@(_popConfirmDestructive ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Outline)">
+                        @(_popConfirmDestructive ? "Remove item" : "Perform action")
+                    </Button>
+                </PopConfirm>
+                @if (!string.IsNullOrEmpty(_interactiveResult))
+                {
+                    <Lumeo.Text Class="text-sm text-muted-foreground">@_interactiveResult</Lumeo.Text>
+                }
+            </Flex>
+            <Lumeo.Text Class="text-xs text-muted-foreground">Currently: @(_popConfirmDestructive ? "destructive" : "standard")</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -167,6 +192,8 @@
     private string _deleteResult = "";
     private string _archiveResult = "";
     private string _completeResult = "";
+    private bool _popConfirmDestructive;
+    private string _interactiveResult = "";
 
     private string _basicCode = @"<PopConfirm Title=""Delete this item?""
             Description=""This action cannot be undone.""
@@ -192,4 +219,20 @@
     private string _noDescCode = @"<PopConfirm Title=""Mark as complete?"" OnConfirm=""@HandleComplete"">
     <Button Variant=""Button.ButtonVariant.Ghost"">Complete</Button>
 </PopConfirm>";
+
+    private string _interactiveDestructiveCode = @"<Switch @bind-Checked=""_destructive"" />
+
+<PopConfirm Title=""Remove this item?""
+            Description=""This will permanently remove the item from your workspace.""
+            ConfirmText=""@(_destructive ? \""Yes, remove\"" : \""Confirm\"")""
+            IsDestructive=""@_destructive""
+            OnConfirm=""@HandleConfirm"">
+    <Button Variant=""@(_destructive ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Outline)"">
+        @(_destructive ? ""Remove item"" : ""Perform action"")
+    </Button>
+</PopConfirm>
+
+@code {
+    private bool _destructive;
+}";
 }
