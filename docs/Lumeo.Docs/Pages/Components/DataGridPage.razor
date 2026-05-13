@@ -346,6 +346,39 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Group Panel (Interactive)" Description="Set ShowGroupPanel=&quot;true&quot; to render the chip-strip panel above the grid. Flag columns Groupable=&quot;true&quot; to make them addable. Use GroupByFields for ordered multi-level grouping — each level adds a nested row with its own aggregate." Code="@_groupPanelCode">
+        <Stack Gap="3">
+            <Flex Align="center" Gap="4" Wrap="true">
+                <Flex Align="center" Gap="2">
+                    <Lumeo.Text Size="sm" Weight="medium">Group panel:</Lumeo.Text>
+                    <Segmented @bind-Value="_groupPanelMode">
+                        <SegmentedItem Value="off">Off</SegmentedItem>
+                        <SegmentedItem Value="on">On</SegmentedItem>
+                    </Segmented>
+                </Flex>
+                <Flex Align="center" Gap="2">
+                    <Lumeo.Text Size="sm" Weight="medium">Levels:</Lumeo.Text>
+                    <Segmented @bind-Value="_groupPanelLevels">
+                        <SegmentedItem Value="single">Single (Department)</SegmentedItem>
+                        <SegmentedItem Value="multi">Multi (Department → Status)</SegmentedItem>
+                    </Segmented>
+                </Flex>
+            </Flex>
+            <DataGrid TItem="Employee" Items="@_employees"
+                      ShowGroupPanel="@(_groupPanelMode == "on")"
+                      GroupByFields="@(_groupPanelLevels == "multi"
+                                        ? new[] { "Department", "Status" }
+                                        : new[] { "Department" })"
+                      Striped="true">
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Groupable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Groupable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Average" />
+                <DataGridColumnDef TItem="Employee" Title="Start Date" Field="StartDate" Format="yyyy-MM-dd" />
+            </DataGrid>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Column Reordering" Description="Drag column headers to reorder them. Enable with the Reorderable property on the grid." Code="@_reorderCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" Reorderable="true">
             <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
@@ -1146,6 +1179,8 @@
     private string? _savedLayoutNotice;
     private string _groupBy = "Department";
     private bool _groupsExpandedByDefault = true;
+    private string _groupPanelMode = "on";
+    private string _groupPanelLevels = "single";
 
     private List<DataGridNamedLayout> _globalLayouts = new()
     {
@@ -1395,6 +1430,22 @@
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
                        Format=""C0"" Aggregate=""AggregateType.Average"" />
+</DataGrid>";
+
+    private string _groupPanelCode = @"@*  ShowGroupPanel renders a chip bar above the grid; users drag
+    chips to reorder grouping levels and click × to remove them.
+    Columns flagged Groupable=""true"" appear in the ""add level"" dropdown.
+    GroupByFields is an ordered list — index 0 is the outermost level. *@
+<DataGrid TItem=""Employee"" Items=""@employees""
+          ShowGroupPanel=""true""
+          GroupByFields=""@(new[] { ""Department"", ""Status"" })"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
+                       Sortable=""true"" Groupable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Groupable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
+                       Format=""C0"" Sortable=""true""
+                       Aggregate=""AggregateType.Average"" />
 </DataGrid>";
 
     private string _templateCode = @"<DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name"">

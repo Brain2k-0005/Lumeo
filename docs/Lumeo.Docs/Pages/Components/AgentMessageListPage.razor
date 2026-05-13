@@ -61,6 +61,33 @@
         </div>
     </ComponentDemo>
 
+    <ComponentDemo Title="Role Switcher — interactive" Description="Pick a role to see how a single AgentMessage renders for each turn type." Code="@_roleSwitcherCode">
+        <Stack Gap="4" Class="w-full max-w-xl">
+            <Segmented @bind-Value="_agentRole">
+                <SegmentedItem Value="User">User</SegmentedItem>
+                <SegmentedItem Value="Assistant">Assistant</SegmentedItem>
+                <SegmentedItem Value="System">System</SegmentedItem>
+                <SegmentedItem Value="Tool">Tool</SegmentedItem>
+            </Segmented>
+            <AgentMessageList>
+                @if (_agentRole == "Tool")
+                {
+                    <AgentMessage Role="AgentMessage.AgentMessageRole.Tool">
+                        <ToolCallCard ToolName="example_tool" Status="ToolCallCard.ToolCallStatus.Success"
+                                      Input="@("{}")" Output="OK" DurationMs="12" />
+                    </AgentMessage>
+                }
+                else
+                {
+                    <AgentMessage Role="@_agentRoleEnum"
+                                  Name="@(_agentRole == "User" ? "You" : _agentRole == "Assistant" ? "Copilot" : null)">
+                        This is a <strong>@_agentRole</strong> message. Its bubble style, alignment, and label adapt to the selected role.
+                    </AgentMessage>
+                }
+            </AgentMessageList>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Roles at a Glance" Code="@_rolesCode">
         <div class="w-full max-w-xl">
             <AgentMessageList>
@@ -190,6 +217,27 @@
 </div>
 
 @code {
+    private string _agentRole = "Assistant";
+    private AgentMessage.AgentMessageRole _agentRoleEnum =>
+        Enum.TryParse<AgentMessage.AgentMessageRole>(_agentRole, out var r) ? r : AgentMessage.AgentMessageRole.Assistant;
+
+    private const string _roleSwitcherCode = """
+<Segmented @bind-Value="_role">
+    <SegmentedItem Value="User">User</SegmentedItem>
+    <SegmentedItem Value="Assistant">Assistant</SegmentedItem>
+    <SegmentedItem Value="System">System</SegmentedItem>
+    <SegmentedItem Value="Tool">Tool</SegmentedItem>
+</Segmented>
+<AgentMessageList>
+    <AgentMessage Role="@Enum.Parse<AgentMessage.AgentMessageRole>(_role)"
+                  Name="@(_role == "User" ? "You" : _role == "Assistant" ? "Copilot" : null)">
+        This is a @_role message.
+    </AgentMessage>
+</AgentMessageList>
+
+@code { private string _role = "Assistant"; }
+""";
+
     private string? _promptValue;
     private string _streamedText = "The fastest grower was DACH at +18% YoY, driven mainly by…";
     private bool _isStreaming;
