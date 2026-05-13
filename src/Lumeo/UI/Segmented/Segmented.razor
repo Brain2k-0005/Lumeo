@@ -3,6 +3,8 @@
 <div class="@CssClass" role="radiogroup" @attributes="AdditionalAttributes">
     @if (Options is not null)
     {
+        @* Data-driven mode: a flat List<SegmentedOption> handed in via the
+           Options parameter. Original API; kept verbatim. *@
         @foreach (var option in Options)
         {
             var isActive = option.Value == Value;
@@ -20,15 +22,41 @@
             </button>
         }
     }
+    else if (ChildContent is not null)
+    {
+        @* Compound mode: <SegmentedItem Value="..."> children register
+           themselves via the cascading context. Matches the shadcn-style
+           composition the rest of the library uses (TabsTrigger, SelectItem,
+           …) and is what the docs reach for. *@
+        <CascadingValue Value="@_context" IsFixed="false">
+            @ChildContent
+        </CascadingValue>
+    }
 </div>
 
 @code {
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>Data-driven options. When set, takes precedence over
+    /// <see cref="ChildContent"/>. Leave null and pass <see cref="SegmentedItem"/>
+    /// children for the compound-component flavour.</summary>
     [Parameter] public List<SegmentedOption>? Options { get; set; }
+    /// <summary>Compound-mode content — one or more <see cref="SegmentedItem"/>.
+    /// Ignored when <see cref="Options"/> is set.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool Block { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private SegmentedContext _context = default!;
+
+    protected override void OnParametersSet()
+    {
+        _context = new SegmentedContext(
+            Value,
+            EventCallback.Factory.Create<string>(this, SelectOption),
+            GetItemClasses);
+    }
 
     private string CssClass => string.Join(" ", new[] { "inline-flex items-center rounded-lg bg-muted p-1", Block ? "w-full" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
@@ -52,4 +80,13 @@
 
         public bool Disabled { get; set; }
     }
+
+    /// <summary>Cascading context for compound-mode <see cref="SegmentedItem"/>
+    /// children — they read the active value + the parent's item-class function
+    /// (so style stays consistent with Options-mode) and invoke
+    /// <see cref="Select"/> on click.</summary>
+    public sealed record SegmentedContext(
+        string? Value,
+        EventCallback<string> Select,
+        Func<bool, string> GetItemClasses);
 }
