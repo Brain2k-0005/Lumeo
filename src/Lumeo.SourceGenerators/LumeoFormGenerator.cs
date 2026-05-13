@@ -467,8 +467,13 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
 
         if (m.IncludeSubmitButton)
         {
+            // rc.44 hotfix: Button.Type is the ButtonType enum (Button/Submit/Reset),
+            // NOT a string. The lowercase "type" attribute name + string "submit"
+            // value matched Blazor's native <button type="submit"> conventions but
+            // tripped Lumeo.Button's strongly-typed Type parameter at runtime with
+            // InvalidCastException. Use the PascalCase parameter name + enum value.
             sb.Append("                __form.OpenComponent<global::Lumeo.Button>(").Append(next()).AppendLine(");");
-            sb.Append("                __form.AddAttribute(").Append(next()).AppendLine(", \"type\", \"submit\");");
+            sb.Append("                __form.AddAttribute(").Append(next()).AppendLine(", \"Type\", global::Lumeo.Button.ButtonType.Submit);");
             sb.Append("                __form.AddAttribute(").Append(next()).AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__b) =>");
             sb.AppendLine("                {");
             sb.Append("                    __b.AddContent(").Append(next()).Append(", ").Append(Str(m.SubmitLabel)).AppendLine(");");
