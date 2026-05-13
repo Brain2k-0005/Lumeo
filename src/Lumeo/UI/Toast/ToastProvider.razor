@@ -5,14 +5,27 @@
 @*  rc.42 — Per-toast Position routing.
     Up to rc.41 we mounted a single <ToastViewport Position="Position"> and every
     toast landed there, silently ignoring ToastOptions.Position (the per-call
-    override added in rc.37). Now we group toasts by their effective position
-    (options.Position ?? provider Position) and render one viewport per group.
-    Each viewport is position:fixed at its corner, so multiple coexist without
-    conflict; viewports with no toasts emit nothing. *@
-@foreach (var positionGroup in _toasts.GroupBy(t => ResolvePosition(t.Options.Position)))
+    override added in rc.37). Now we route each toast to a viewport keyed by its
+    effective position (options.Position ?? provider Position). The provider's
+    own default Position viewport is ALWAYS rendered (even when empty) so
+    consumers that rely on the viewport DOM being present — for styling, layout
+    measurement, or test assertions on position classes — still see it. Extra
+    viewports are only spawned when a toast actually targets a different
+    position. *@
+@{
+    var positionsToRender = _toasts
+        .Select(t => ResolvePosition(t.Options.Position))
+        .Distinct()
+        .ToList();
+    if (!positionsToRender.Contains(Position))
+    {
+        positionsToRender.Insert(0, Position);
+    }
+}
+@foreach (var pos in positionsToRender)
 {
-    <ToastViewport Position="@positionGroup.Key" @key="@positionGroup.Key">
-        @foreach (var toast in positionGroup)
+    <ToastViewport Position="@pos" @key="@pos">
+        @foreach (var toast in _toasts.Where(t => ResolvePosition(t.Options.Position) == pos))
         {
             <Toast Variant="@toast.Options.Variant" Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)" @key="@toast.Id">
                 @if (toast.Options.CustomContent is not null)
@@ -41,6 +54,7 @@
         }
     </ToastViewport>
 }
+
 
 @inject ToastService ToastService
 
