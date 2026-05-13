@@ -9,7 +9,7 @@
     aria-sort="@AriaSort"
     tabindex="@TabIndexValue"
     @onkeydown="HandleKeyDown"
-    draggable="@(EffectiveReorderable ? "true" : "false")"
+    draggable="@(IsDraggable ? "true" : "false")"
     @ondragstart="HandleDragStart"
     @ondragover="HandleDragOver"
     @ondragover:preventDefault="true"
@@ -161,6 +161,15 @@
     /// </summary>
     private bool EffectiveReorderable => Reorderable && Column.Reorderable;
 
+    /// <summary>True when this header is HTML5-draggable. Two reasons to drag a
+    /// header: reorder columns (Reorderable, drop on another header) or add the
+    /// column as a new grouping level (Groupable, drop on the group panel —
+    /// rc.41). The two pathways share <see cref="DataGridDragState"/> for the
+    /// source-column record; drop targets decide which action to take.</summary>
+    private bool IsDraggable =>
+        EffectiveReorderable
+        || (Context?.ShowGroupPanel == true && Column.Groupable);
+
     private string CssClass
     {
         get
@@ -260,7 +269,11 @@
 
     private void HandleDragStart(DragEventArgs e)
     {
-        if (!EffectiveReorderable || DragState is null) return;
+        // rc.41: also start the drag when the column is Groupable + ShowGroupPanel
+        // (drag target = the group panel, not another header). The single
+        // StartColumnDrag call covers both code paths — reorder vs group is
+        // decided at the drop site.
+        if (!IsDraggable || DragState is null) return;
         DragState.StartColumnDrag(ColumnIndex, Column.Id);
     }
 

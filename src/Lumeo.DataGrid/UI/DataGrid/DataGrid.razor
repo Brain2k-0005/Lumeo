@@ -61,6 +61,7 @@
         ToggleGroupPath: ToggleGroupPath,
         AddGroupField: AddGroupField,
         RemoveGroupField: RemoveGroupField,
+        ShowGroupPanel: ShowGroupPanel,
         ChildItemsSelector: ChildItemsSelector,
         IsTreeGrid: IsTreeGridMode,
         TreeColumnField: EffectiveTreeColumnField,
@@ -179,11 +180,21 @@
 
         @if (ShowGroupPanel)
         {
+            @* rc.41: real drop zone — header DnD now lands here. Visual highlight
+               via _isGroupPanelDragOver. The dropped column's field comes from
+               _dragState.SourceColumnId (set by HeaderCell.HandleDragStart). *@
             <div data-slot="datagrid-group-panel"
-                 class="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-dashed border-border/40 bg-muted/30 text-xs">
+                 class="@($"flex flex-wrap items-center gap-2 px-3 py-2 border-b border-dashed text-xs transition-colors {(_isGroupPanelDragOver ? "border-primary bg-primary/10" : "border-border/40 bg-muted/30")}")"
+                 @ondragover="HandleGroupPanelDragOver"
+                 @ondragover:preventDefault="true"
+                 @ondragenter="HandleGroupPanelDragEnter"
+                 @ondragleave="HandleGroupPanelDragLeave"
+                 @ondrop="HandleGroupPanelDrop">
                 @if (_runtimeGroupFields.Count == 0)
                 {
-                    <span class="text-muted-foreground">@(GroupPanelText ?? "Drag a column header here to group by it")</span>
+                    <span class="text-muted-foreground select-none pointer-events-none">
+                        @(GroupPanelText ?? "Drag a Groupable column header here, or use the dropdown")
+                    </span>
                 }
                 else
                 {
@@ -213,9 +224,28 @@
                         .Where(c => c.Groupable && c.Field is not null && !_runtimeGroupFields.Contains(c.Field!))
                         .ToList();
                 }
+                @if (_runtimeGroupFields.Count > 0)
+                {
+                    @* Clear-all button: lives next to the chips so it's discoverable
+                       and matches the per-chip X visual. rc.41 polish. *@
+                    <button type="button"
+                            class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            title="Clear all grouping"
+                            @onclick="ClearGroupFields">
+                        <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                        Clear
+                    </button>
+                }
                 @if (addableCols.Count > 0)
                 {
-                    <select class="ml-auto h-6 rounded border border-border/60 bg-card px-1 text-xs text-muted-foreground"
+                    @* @key on the select forces a fresh DOM element every time the
+                       group-fields count changes — fixes the rc.39 bug where the
+                       <select>'s native DOM value stuck on the last-picked option
+                       and the placeholder option ("+ Add group level") wouldn't
+                       re-appear, making the dropdown feel broken after the second
+                       add. (rc.41) *@
+                    <select @key="@($"group-add-{_runtimeGroupFields.Count}")"
+                            class="ml-auto h-6 rounded border border-border/60 bg-card px-1 text-xs text-muted-foreground"
                             value=""
                             @onchange="@(e => { var v = e.Value?.ToString(); if (!string.IsNullOrEmpty(v)) AddGroupField(v!); })">
                         <option value="">+ Add group level</option>
@@ -1496,6 +1526,68 @@
         _currentPage = 1;
         if (!ServerMode) ProcessClientData();
         StateHasChanged();
+    }
+
+    /// <summary>Removes all grouping levels at once. Wired to the panel's "Clear"
+    /// button (rc.41). Resets group expansion state the same way single-field
+    /// removal does so re-grouping after Clear has a clean slate.</summary>
+    private void ClearGroupFields()
+    {
+        if (_runtimeGroupFields.Count == 0) return;
+        _runtimeGroupFields.Clear();
+        _expandedGroupPaths.Clear();
+        _knownGroupPaths.Clear();
+        _expandedGroups.Clear();
+        _knownGroupKeys.Clear();
+        _currentPage = 1;
+        if (!ServerMode) ProcessClientData();
+        StateHasChanged();
+    }
+
+    // --- Drag-to-group: panel drop-zone handlers (rc.41) -----------------
+    // HeaderCell sets _dragState.SourceColumnId on dragstart (when the column
+    // is Groupable + ShowGroupPanel). The panel reads it on drop and resolves
+    // back to the column field to add a grouping level.
+    private bool _isGroupPanelDragOver;
+
+    private void HandleGroupPanelDragOver(DragEventArgs e)
+    {
+        // No-op — :preventDefault is the only thing the browser needs to accept
+        // the drop. We track over/enter/leave via the dedicated events below
+        // because dragover fires continuously and would over-render.
+    }
+
+    private void HandleGroupPanelDragEnter(DragEventArgs e)
+    {
+        // Only show the drop-accept highlight when the dragged column is
+        // actually a valid drop target — Groupable, has a field, not already
+        // grouped. Avoids the misleading "primary-blue ready" highlight for
+        // Reorderable-only drags or columns the panel can't accept.
+        if (_dragState.SourceColumnIndex < 0) return;
+        var srcCol = EffectiveColumns.FirstOrDefault(c => c.Id == _dragState.SourceColumnId);
+        if (srcCol?.Groupable != true || srcCol.Field is null) return;
+        if (_runtimeGroupFields.Contains(srcCol.Field)) return;
+        _isGroupPanelDragOver = true;
+    }
+
+    private void HandleGroupPanelDragLeave(DragEventArgs e)
+    {
+        _isGroupPanelDragOver = false;
+    }
+
+    private void HandleGroupPanelDrop(DragEventArgs e)
+    {
+        _isGroupPanelDragOver = false;
+        if (_dragState.SourceColumnIndex < 0) return;
+
+        // Resolve source column → field. Fall back to ID-based lookup if the
+        // index drifted (column reorder during the drag); ID is stable.
+        var srcCol = EffectiveColumns.FirstOrDefault(c => c.Id == _dragState.SourceColumnId)
+                    ?? EffectiveColumns.ElementAtOrDefault(_dragState.SourceColumnIndex);
+        _dragState.ResetColumn();
+
+        if (srcCol?.Field is null || !srcCol.Groupable) return;
+        AddGroupField(srcCol.Field);
     }
 
     /// <summary>Computes the per-group aggregate strip for a set of items.</summary>
