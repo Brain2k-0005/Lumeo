@@ -63,6 +63,11 @@ public record DataGridContext<TItem>(
     Action<string> AddGroupField,
     /// <summary>Removes a field from the grouping levels.</summary>
     Action<string> RemoveGroupField,
+    /// <summary>When true, the grid renders the group-panel strip and Groupable
+    /// column headers are drag-source-eligible (drag-to-group target is the panel
+    /// itself). Header cells read this to decide whether to set draggable=true
+    /// even for columns that aren't Reorderable. (rc.41)</summary>
+    bool ShowGroupPanel,
 
     // --- Tree-grid mode (rc.35) ---
     /// <summary>When non-null, the grid is in tree-grid mode: this returns a row's
