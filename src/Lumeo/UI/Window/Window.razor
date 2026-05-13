@@ -326,12 +326,26 @@ else if (Open && _maximized)
             var dx = e.ClientX - _dragStartX;
             var dy = e.ClientY - _dragStartY;
 
-            // Clamp both lower AND upper bounds so the window stays recoverable:
+            // rc.44 hotfix: clamp ONLY when viewport dimensions are known.
+            // Without this guard, `Math.Clamp(value, 0, -40)` throws when the
+            // viewport fetch hasn't completed yet (or returned null in tests/SSR).
+            // Mirror the ClampPosition() guard so drag-during-init doesn't crash.
+            //
+            // Clamp meaning when valid:
             //   X: allow almost-fully-left (right edge stays visible) but not past right edge.
             //   Y: never above 0 (title bar stays in viewport top) and never below
             //      (viewport height − title bar height) so the controls are always reachable.
-            _posX = Math.Clamp(_dragStartPosX + dx, MinVisible - _width, _viewportWidth - MinVisible);
-            _posY = Math.Clamp(_dragStartPosY + dy, 0, _viewportHeight - TitleBarHeight);
+            if (_viewportWidth > 0 && _viewportHeight > TitleBarHeight)
+            {
+                _posX = Math.Clamp(_dragStartPosX + dx, MinVisible - _width, _viewportWidth - MinVisible);
+                _posY = Math.Clamp(_dragStartPosY + dy, 0, _viewportHeight - TitleBarHeight);
+            }
+            else
+            {
+                // Pre-viewport-fetch fallback: lower-bound only (matches pre-rc.44 behavior).
+                _posX = Math.Max(0, _dragStartPosX + dx);
+                _posY = Math.Max(0, _dragStartPosY + dy);
+            }
             StateHasChanged();
         }
         else if (_isResizing)
