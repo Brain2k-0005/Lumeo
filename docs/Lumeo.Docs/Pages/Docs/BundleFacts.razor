@@ -1,0 +1,449 @@
+@page "/docs/bundle-facts"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Bundle Facts — Lumeo</PageTitle>
+
+<Container MaxWidth="4xl" Padding="0" Center="false">
+<Stack Gap="16">
+
+    <!-- ====================================================
+         1. HERO — Giant brotli number
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="5" Class="py-10 text-center items-center">
+                <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Performance</Badge>
+
+                <Heading Level="1" Class="text-4xl sm:text-5xl font-bold tracking-tight leading-tight">
+                    How Lumeo stays at
+                    <Sparkles Count="6" Class="inline-flex items-baseline">
+                        <NumberTicker Value="400"
+                                      Suffix=" KB"
+                                      DurationMs="2000"
+                                      Class="text-primary font-mono" />
+                    </Sparkles>
+                </Heading>
+
+                <Lumeo.Text Size="base" Color="muted" Class="max-w-xl leading-relaxed">
+                    What the browser actually downloads — brotli-compressed assembly size, measured
+                    <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-05-13 (rc.45)</Lumeo.Text>.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         2. BREAKDOWN — 7 package size bars
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="80">
+            <Stack Gap="3" Class="mb-8">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Per-package breakdown</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Install only the satellites you use. Each row shows the brotli-compressed size that package adds to your published WASM app.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <Stack Gap="3">
+            @{ int _i = 0; }
+            @foreach (var pkg in _packages)
+            {
+                var delay = 80 + (_i * 80);
+                _i++;
+                <BlurFade DelayMs="@delay" ForceHidden="true">
+                    <div class="rounded-xl border border-border/40 bg-card p-4 hover:border-primary/40 transition-colors">
+                        <Flex Align="center" Justify="between" Class="mb-2.5">
+                            <Flex Align="center" Gap="2">
+                                <span class="h-2 w-2 rounded-full @(pkg.IsCore ? "bg-primary" : "bg-primary/50")"></span>
+                                <Lumeo.Text As="span" Weight="@(pkg.IsCore ? "semibold" : "medium")" Color="foreground" Size="sm">@pkg.Name</Lumeo.Text>
+                                @if (!string.IsNullOrEmpty(pkg.Note))
+                                {
+                                    <Lumeo.Text As="span" Size="xs" Color="muted">@pkg.Note</Lumeo.Text>
+                                }
+                            </Flex>
+                            <Lumeo.Text As="span" Size="xs" Class="@(pkg.IsCore ? "font-mono font-semibold text-primary" : "font-mono text-muted-foreground")">@pkg.SizeLabel</Lumeo.Text>
+                        </Flex>
+                        <div class="relative h-2 rounded-full bg-muted/40 overflow-hidden">
+                            <div class="@(pkg.IsCore ? "bg-primary" : "bg-primary/50") h-full rounded-full transition-all duration-700"
+                                 style="width: @(pkg.Percent)%;"></div>
+                        </div>
+                    </div>
+                </BlurFade>
+            }
+        </Stack>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         3. WHAT'S IN THE .nupkg — animated breakdown
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-8">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">What's actually in the core .nupkg</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    The .nupkg contains more than what reaches the browser. Here's the full inventory.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <Stack Gap="3">
+            @{ int _j = 0; }
+            @foreach (var asset in _nupkgAssets)
+            {
+                var assetDelay = _j * 80;
+                _j++;
+                <BlurFade DelayMs="@assetDelay" ForceHidden="true">
+                    <Card Class="p-4">
+                        <Flex Align="start" Gap="3">
+                            <Lumeo.Text As="span" Class="text-lg leading-none mt-0.5 shrink-0">@asset.Icon</Lumeo.Text>
+                            <Stack Gap="1" Class="flex-1 min-w-0">
+                                <Flex Align="center" Justify="between" Gap="2">
+                                    <Lumeo.Text As="span" Weight="semibold" Size="sm" Color="foreground">@asset.Title</Lumeo.Text>
+                                    <Chip Class="shrink-0 font-mono text-xs">@asset.Size</Chip>
+                                </Flex>
+                                <Lumeo.Text Size="xs" Color="muted" Leading="relaxed">@asset.Description</Lumeo.Text>
+                            </Stack>
+                        </Flex>
+                    </Card>
+                </BlurFade>
+            }
+        </Stack>
+
+        <BlurFade DelayMs="320" ForceHidden="true">
+            <div class="mt-4 rounded-lg border border-border/40 bg-muted/20 px-4 py-3">
+                <Lumeo.Text Size="xs" Color="muted">
+                    Total: <Lumeo.Text As="span" Weight="semibold" Color="foreground">~556 KB compressed</Lumeo.Text> in the .nupkg —
+                    matches the NuGet "Download package" badge. The <Lumeo.Text As="span" Weight="semibold" Color="foreground">400 KB brotli number</Lumeo.Text>
+                    is just the DLL, which is the only thing the WASM linker ships to the browser.
+                </Lumeo.Text>
+            </div>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         4. WHAT'S NOT IN CORE — Marquee strip
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-6">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">What's not in core</Heading>
+                <Lumeo.Text Size="sm" Color="muted">The dependencies we said no to.</Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <BlurFade DelayMs="80" ForceHidden="true">
+            <div class="relative overflow-hidden rounded-xl border border-border/40 bg-muted/10 py-6">
+                <!-- fade edges -->
+                <div class="pointer-events-none absolute inset-y-0 left-0 w-24 z-10"
+                     style="background: linear-gradient(to right, hsl(var(--background)), transparent)"></div>
+                <div class="pointer-events-none absolute inset-y-0 right-0 w-24 z-10"
+                     style="background: linear-gradient(to left, hsl(var(--background)), transparent)"></div>
+
+                <Marquee Speed="Marquee.MarqueeSpeed.Normal" PauseOnHover="true" Class="gap-3">
+                    @foreach (var dep in _excludedDeps)
+                    {
+                        <Chip Class="mx-2 shrink-0 text-xs whitespace-nowrap">@dep</Chip>
+                    }
+                </Marquee>
+            </div>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         5. COMPARISON TABLE — Lumeo vs alternatives
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-6">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">How it compares</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Brotli-compressed DLL size for the core package of each library.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <BlurFade DelayMs="80" ForceHidden="true">
+            <div class="overflow-hidden rounded-xl border border-border/40">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/20">
+                            <th class="py-3 px-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Library</th>
+                            <th class="py-3 px-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Core brotli size</th>
+                            <th class="py-3 px-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Note</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _comparisonRows)
+                        {
+                            var trClass = row.IsUs ? "border-b border-border/40 last:border-0 bg-primary/5 transition-colors" : "border-b border-border/40 last:border-0 hover:bg-muted/10 transition-colors";
+                            var sizeClass = row.IsUs ? "font-mono text-primary font-semibold" : "font-mono text-muted-foreground";
+                            var nameWeight = row.IsUs ? "semibold" : "normal";
+                            var nameColor = row.IsUs ? "foreground" : "muted";
+                            <tr class="@trClass">
+                                <td class="py-3 px-4">
+                                    <Flex Align="center" Gap="2">
+                                        @if (row.IsUs)
+                                        {
+                                            <Badge Variant="Badge.BadgeVariant.Default" Class="px-1.5 py-0 text-[10px] leading-none h-4">You</Badge>
+                                        }
+                                        <Lumeo.Text As="span" Weight="@nameWeight" Color="@nameColor">@row.Name</Lumeo.Text>
+                                    </Flex>
+                                </td>
+                                <td class="py-3 px-4 text-right">
+                                    <Lumeo.Text As="span" Class="@sizeClass">@row.Size</Lumeo.Text>
+                                </td>
+                                <td class="py-3 px-4 hidden sm:table-cell">
+                                    <Lumeo.Text As="span" Size="xs" Color="muted">@row.Note</Lumeo.Text>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Lumeo.Text Size="xs" Color="muted" Class="mt-3 italic leading-relaxed">
+                * Approximate brotli sizes for the core library DLL of each project at their latest stable release as of 2026.
+                Independent verification recommended — numbers vary by build configuration and linker trimming.
+            </Lumeo.Text>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         6. HEAVY FEATURES ARE OPT-IN — explainer bento
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-8">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Heavy features are opt-in</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Don't need charts? ECharts never touches your build. Don't need a data grid? ClosedXML and QuestPDF aren't downloaded.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <Bento Columns="3" Gap="Bento.BentoGap.Md">
+            <BentoTile Span="1" Class="border-border/60 p-6">
+                <BlurFade DelayMs="80" ForceHidden="true">
+                    <Stack Gap="3">
+                        <Flex Align="center" Gap="2">
+                            <Lumeo.Text As="span" Class="text-xl leading-none">📊</Lumeo.Text>
+                            <Chip Class="font-mono text-xs">120 KB</Chip>
+                        </Flex>
+                        <Heading Level="3" Class="text-base font-semibold">Charts</Heading>
+                        <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="font-mono">Lumeo.Charts</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            ECharts lazy-loaded only when a chart component mounts — never included
+                            unless you reference the package.
+                        </Lumeo.Text>
+                    </Stack>
+                </BlurFade>
+            </BentoTile>
+
+            <BentoTile Span="1" Class="border-border/60 p-6">
+                <BlurFade DelayMs="160" ForceHidden="true">
+                    <Stack Gap="3">
+                        <Flex Align="center" Gap="2">
+                            <Lumeo.Text As="span" Class="text-xl leading-none">📋</Lumeo.Text>
+                            <Chip Class="font-mono text-xs">100 KB</Chip>
+                        </Flex>
+                        <Heading Level="3" Class="text-base font-semibold">DataGrid</Heading>
+                        <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="font-mono">Lumeo.DataGrid</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            ClosedXML + QuestPDF are pulled in only when the package is referenced.
+                            Full virtualization, group-by, and export — on demand.
+                        </Lumeo.Text>
+                    </Stack>
+                </BlurFade>
+            </BentoTile>
+
+            <BentoTile Span="1" Class="border-border/60 p-6">
+                <BlurFade DelayMs="240" ForceHidden="true">
+                    <Stack Gap="3">
+                        <Flex Align="center" Gap="2">
+                            <Lumeo.Text As="span" Class="text-xl leading-none">✏️</Lumeo.Text>
+                            <Chip Class="font-mono text-xs">26 KB</Chip>
+                        </Flex>
+                        <Heading Level="3" Class="text-base font-semibold">Rich Text Editor</Heading>
+                        <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="font-mono">Lumeo.Editor</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            TipTap JS lazy-loaded at component mount time. The DLL
+                            is only 26 KB — the heavy JS only streams when the editor renders.
+                        </Lumeo.Text>
+                    </Stack>
+                </BlurFade>
+            </BentoTile>
+        </Bento>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         7. WHY BROTLI, NOT .nupkg — accordion
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-6">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Why brotli, not .nupkg?</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    NuGet shows 1.35 MB for the core .nupkg — here's what that actually means.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <BlurFade DelayMs="80" ForceHidden="true">
+            <Accordion Class="border border-border/40 rounded-xl overflow-hidden divide-y divide-border/40">
+                <AccordionItem Value="why-nupkg">
+                    <AccordionTrigger Class="px-5">Why isn't .nupkg size the right number?</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            The .nupkg bundles everything the package author ships: the compiled DLL, debug symbols, MSBuild
+                            integration props, XML documentation, and — until rc.40 — a full shadcn-style CLI source registry
+                            (~700 KB of JSON). None of that registry JSON reaches the browser; it only exists so
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add</code>
+                            and the MCP server can resolve component source offline.
+                            Since rc.40, the registry is CDN-only, so the .nupkg dropped from ~1.35 MB to ~660 KB.
+                            But even 660 KB overstates the browser cost by ~40% because symbols and build props never ship.
+                        </Lumeo.Text>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem Value="wasm-linker">
+                    <AccordionTrigger Class="px-5">What does WASM linker trimming do?</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            When you publish a Blazor WebAssembly app with
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet publish -c Release</code>,
+                            the .NET IL linker (trimmer) walks your dependency graph and removes every type, method, and
+                            field that is not reachable from your entry points. A component you never instantiate is stripped
+                            entirely. The resulting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.dll</code>
+                            is then brotli-compressed before being transferred to the browser. The 400 KB figure is what
+                            survives that process for a reference Lumeo app that uses all 135 core components — real apps
+                            using a subset will be smaller.
+                        </Lumeo.Text>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem Value="how-measured">
+                    <AccordionTrigger Class="px-5">How was this measured?</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            A reference Blazor WASM app that imports every Lumeo core component (no satellite packages)
+                            was published with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet publish -c Release</code>
+                            against .NET 10. The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_framework/</code>
+                            folder in the publish output was inspected; the
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
+                            file was 400 KB. Measurement was taken on 2026-05-13 against v2.0.0-rc.45.
+                            .NET runtime DLLs (~3–4 MB brotli total) are excluded — they are shared across all Blazor apps
+                            and cached aggressively by the browser.
+                        </Lumeo.Text>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         8. CTA FOOTER
+         ==================================================== -->
+    <section class="pb-10">
+        <BlurFade DelayMs="0">
+            <Stack Gap="5" Class="items-center text-center">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">See it for yourself</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="max-w-sm">
+                    Add Lumeo to a project, publish it, and measure. We believe the numbers.
+                </Lumeo.Text>
+                <Flex Gap="3" Wrap="true" Justify="center">
+                    <Lumeo.Link Href="/docs/installation" Class="no-underline">
+                        <ShimmerButton Size="Button.ButtonSize.Lg" Class="rounded-lg">
+                            Get Started
+                            <DynamicIcon Name="ArrowRight" Class="h-4 w-4" />
+                        </ShimmerButton>
+                    </Lumeo.Link>
+                    <Lumeo.Link Href="https://github.com/mberger/lumeo/releases"
+                                Class="inline-flex h-10 items-center gap-2 justify-center rounded-lg border border-border/60 bg-background px-6 text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-colors no-underline">
+                        <DynamicIcon Name="Github" Class="h-4 w-4" />
+                        GitHub Releases
+                    </Lumeo.Link>
+                </Flex>
+            </Stack>
+        </BlurFade>
+    </section>
+
+</Stack>
+</Container>
+
+@code {
+    private record PackageRow(string Name, string SizeLabel, int Percent, bool IsCore, string Note = "");
+    private record NupkgAsset(string Icon, string Title, string Size, string Description);
+    private record ComparisonRow(string Name, string Size, string Note, bool IsUs = false);
+
+    private readonly List<PackageRow> _packages =
+    [
+        new("Lumeo",            "400 KB", 100, true,  "core — 135 components"),
+        new("Lumeo.Charts",     "120 KB",  30, false, "opt-in satellite"),
+        new("Lumeo.DataGrid",   "100 KB",  25, false, "opt-in satellite"),
+        new("Lumeo.Editor",      "26 KB",   7, false, "opt-in satellite"),
+        new("Lumeo.Motion",      "18 KB",   5, false, "opt-in satellite"),
+        new("Lumeo.Scheduler",   "16 KB",   4, false, "opt-in satellite"),
+        new("Lumeo.Gantt",       "12 KB",   3, false, "opt-in satellite"),
+    ];
+
+    private readonly List<NupkgAsset> _nupkgAssets =
+    [
+        new("📦", "Lumeo.dll",
+            "400 KB brotli",
+            "1.9 MB raw IL → 400 KB after WASM linker trimming + brotli compression. This is the only file the browser downloads from the Lumeo package."),
+        new("🎨", "lumeo.css",
+            "49 KB",
+            "Theme tokens, dark-mode variable swaps, and component-scoped styles. Generated by Tailwind v4 at build time — no CSS-in-JS, no runtime style injection."),
+        new("⚡", "components.js",
+            "57 KB",
+            "Focus traps, scroll lock, element measurement, and third-party canvas wrappers. JS is reserved for what Blazor genuinely cannot do in pure Razor."),
+        new("📜", "Build props + symbols",
+            "~50 KB",
+            "MSBuild .props integration (auto-imports lumeo.css + components.js), PDB symbols for debugging. Never reaches the browser."),
+    ];
+
+    private readonly List<ComparisonRow> _comparisonRows =
+    [
+        new("Lumeo (core)",      "400 KB",   "Brotli DLL — measured 2026-05-13 (rc.45)",            IsUs: true),
+        new("FluentUI Blazor",   "~500 KB",  "Approximate; varies by component set referenced"),
+        new("MudBlazor",         "~600 KB",  "Approximate; typical published-app measurement"),
+        new("Radzen Blazor",     "~700 KB",  "Approximate; includes bundled JS interop"),
+        new("Telerik UI Blazor", "~1 MB+",   "Estimate; runtime licensing + JS runtime included"),
+    ];
+
+    private readonly List<string> _excludedDeps =
+    [
+        "Newtonsoft.Json",
+        "AutoMapper",
+        "ReactiveUI",
+        "Theme-provider JS",
+        "CSS-in-JS runtime",
+        "Bootstrap CSS",
+        "jQuery",
+        "MudBlazor dependency tree",
+        "Telerik runtime",
+        "Syncfusion bloat",
+        "Runtime reflection helpers",
+        "Source generators in core hot path",
+        "Newtonsoft.Json",
+        "AutoMapper",
+        "ReactiveUI",
+        "Theme-provider JS",
+        "CSS-in-JS runtime",
+        "Bootstrap CSS",
+    ];
+}
