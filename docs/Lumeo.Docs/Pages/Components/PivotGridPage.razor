@@ -41,6 +41,16 @@
                    Collapsible="true"
                    Compact="true" />
     </ComponentDemo>
+
+    <ComponentDemo Title="Multi-level column hierarchy (Year &gt; Quarter)" Code="@_multiColumnCode">
+        <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">Two column-field levels nest into a tree of headers, with the measure-name row at the bottom.</Lumeo.Text>
+        <PivotGrid TItem="Sale"
+                   Items="_sales"
+                   RowFields="_regionCountryFields"
+                   ColumnFields="_yearQuarterFields"
+                   Measures="_amountMeasure"
+                   Compact="true" />
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -63,7 +73,7 @@
                     <tbody class="divide-y divide-border/40">
                         <tr><td class="p-3 font-mono text-xs text-primary">Items</td><td class="p-3 font-mono text-xs text-muted-foreground">IEnumerable&lt;TItem&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">The flat source rows to pivot.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">RowFields</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotField&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">Fields forming the (nested) row hierarchy, outermost first.</td></tr>
-                        <tr><td class="p-3 font-mono text-xs text-primary">ColumnFields</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotField&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">Fields forming the column hierarchy. The current build honours a single column-field level.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ColumnFields</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotField&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">Fields forming the (nested) column hierarchy, outermost first. The header renders one row per level plus a final row for the measure names. Column subtotals are not produced — only row subtotals; the trailing grand-total column aggregates across all columns.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">Measures</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;PivotMeasure&lt;TItem&gt;&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">[]</td><td class="p-3 text-muted-foreground">The value fields and their aggregation (Sum / Average / Count / Min / Max).</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">ShowRowGrandTotal</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Adds a trailing grand-total column aggregating across all column groups.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">ShowColumnGrandTotal</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Adds a bottom grand-total row aggregating across all rows.</td></tr>
@@ -170,6 +180,12 @@
         new("Year", s => s.Year, v => "FY " + v),
     };
 
+    private readonly IReadOnlyList<PivotField<Sale>> _yearQuarterFields = new List<PivotField<Sale>>
+    {
+        new("Year",    s => s.Year, v => "FY " + v),
+        new("Quarter", s => s.Quarter, v => "Q" + v),
+    };
+
     private readonly IReadOnlyList<PivotMeasure<Sale>> _amountMeasure = new List<PivotMeasure<Sale>>
     {
         new("Revenue", s => s.Amount, PivotAggregate.Sum, Money),
@@ -210,5 +226,15 @@
            ColumnFields=""_yearField""
            Measures=""_amountMeasure""
            Collapsible=""true""
+           Compact=""true"" />";
+
+    private string _multiColumnCode = @"<PivotGrid TItem=""Sale""
+           Items=""_sales""
+           RowFields=""_regionCountryFields""
+           ColumnFields=""@(new List<PivotField<Sale>> {
+               new(""Year"",    s => s.Year, v => ""FY "" + v),
+               new(""Quarter"", s => s.Quarter, v => ""Q"" + v),
+           })""
+           Measures=""_amountMeasure""
            Compact=""true"" />";
 }

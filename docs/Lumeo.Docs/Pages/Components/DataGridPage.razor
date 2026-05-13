@@ -275,6 +275,23 @@
         }
     </ComponentDemo>
 
+    <ComponentDemo Title="Batch / Buffered Editing"
+                   Description="Edit cells inline as in Cell mode, but commits land in a per-row pending-changes buffer. A pending strip and Save all / Discard buttons appear above the grid. Optional + Add row trigger pushes new rows into the Added buffer. OnBatchSave receives Modified + Added when the user clicks Save all.">
+        <DataGrid TItem="Employee" Items="@_batchEmployees" PageSize="5" ShowPagination="true"
+                  EditMode="DataGridEditMode.Batch"
+                  ShowAddRow="true"
+                  NewItemFactory="@(() => new Employee("(new)", "Engineering", 0, "Active", DateTime.Today))"
+                  OnBatchSave="@HandleBatchSave">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+        @if (_lastBatchSummary is not null)
+        {
+            <Alert Class="mt-4" Title="Batch Saved" Description="@_lastBatchSummary" />
+        }
+    </ComponentDemo>
+
     <ComponentDemo Title="Row Editing" Description="Edit an entire row at once. Click the edit button to enter edit mode, then save or cancel." Code="@_rowEditCode">
         <DataGrid TItem="Employee" Items="@_rowEditEmployees" PageSize="5" ShowPagination="true"
                   EditMode="DataGridEditMode.Row" OnRowEdit="@HandleRowEdit">
@@ -730,7 +747,14 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowExport</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Show the Export button and its format dropdown. Set <code>false</code> to hide export entirely; for per-format control see <code>ExportFormats</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ExportFormats</td><td class="px-4 py-2 font-mono text-xs">DataGridExportFormat</td><td class="px-4 py-2 text-xs">All</td><td class="px-4 py-2 text-muted-foreground">Flags enum controlling which formats appear in the Export dropdown. Combine with bitwise OR, e.g. <code>DataGridExportFormat.Csv | DataGridExportFormat.Excel</code>. When no flags are set the Export button is hidden.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">SelectionMode</td><td class="px-4 py-2 font-mono text-xs">DataGridSelectionMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Row selection: None, Single, or Multiple.</td></tr>
-                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditMode</td><td class="px-4 py-2 font-mono text-xs">DataGridEditMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Inline editing: None, Cell, or Row.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditMode</td><td class="px-4 py-2 font-mono text-xs">DataGridEditMode</td><td class="px-4 py-2 text-xs">None</td><td class="px-4 py-2 text-muted-foreground">Inline editing: None, Cell, Row, or Batch (buffered).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnBatchSave</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;DataGridBatchSaveEventArgs&lt;TItem&gt;&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when the user clicks "Save all" in <code>EditMode=Batch</code>. Carries <code>Modified</code> + <code>Added</code> rows. The grid's pending-changes buffer is cleared automatically on a clean return.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowAddRow</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Renders a "+ Add row" trigger below the body in batch mode. Requires <code>NewItemFactory</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">NewItemFactory</td><td class="px-4 py-2 font-mono text-xs">Func&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Factory used by the "+ Add row" trigger. Each click produces a fresh row that lives in the batch buffer until <code>OnBatchSave</code> commits it.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">HasPendingChanges</td><td class="px-4 py-2 font-mono text-xs">bool (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">True when the batch buffer contains a buffered edit or a new row. Bind via <code>@@ref</code> for warn-on-navigate workflows.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">BatchSaveAllText / BatchDiscardText / BatchAddRowText</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">Save all / Discard / Add row</td><td class="px-4 py-2 text-muted-foreground">Button labels for the batch-mode toolbar. Override for localization.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ColumnVirtualize</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Simplified column virtualization — caps the number of horizontally-rendered data columns at <code>MaxVisibleColumns</code>. Pinned columns always render. Useful for very wide grids.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">MaxVisibleColumns</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">30</td><td class="px-4 py-2 text-muted-foreground">Column cap used when <code>ColumnVirtualize=true</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Striped</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Alternate row background colors.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Bordered</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show cell borders.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Compact</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Smaller row height and text.</td></tr>
@@ -1191,6 +1215,22 @@
         new("David Brown", "Sales", 68000, "Inactive", new DateTime(2022, 1, 10)),
         new("Eve Davis", "Engineering", 98000, "Active", new DateTime(2020, 5, 5)),
     };
+
+    // --- Batch-edit demo ---
+    private List<Employee> _batchEmployees = new()
+    {
+        new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
+        new("Bob Smith", "Marketing", 72000, "Active", new DateTime(2020, 7, 1)),
+        new("Carol White", "Engineering", 105000, "Active", new DateTime(2019, 11, 20)),
+    };
+    private string? _lastBatchSummary;
+
+    private Task HandleBatchSave(DataGridBatchSaveEventArgs<Employee> args)
+    {
+        _lastBatchSummary =
+            $"Saved {args.Modified.Count} modified row(s), {args.Added.Count} new row(s).";
+        return Task.CompletedTask;
+    }
 
     // Server-side demo state
     private List<Employee> _serverItems = new();

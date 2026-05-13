@@ -1,12 +1,12 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
-  "version": "2.0.0-rc.35",
-  "generated": "2026-05-12T20:42:26.5402362Z",
+  "version": "2.0.0-rc.36",
+  "generated": "2026-05-13T06:19:03.9303031Z",
   "stats": {
     "componentCount": 145,
-    "totalParameters": 3423,
+    "totalParameters": 3431,
     "totalEnums": 101,
-    "totalRecords": 56,
+    "totalRecords": 57,
     "thinFallbacks": []
   },
   "themeTokens": [
@@ -5099,8 +5099,8 @@
         {
           "name": "LoadingText",
           "type": "string?",
-          "default": "\"Loading…\"",
-          "description": "Label rendered next to the spinner inside the loading pill. Set to null or empty to hide the text and show only the spinner. Defaults to \"Loading…\".",
+          "default": null,
+          "description": "Label rendered next to the spinner inside the loading pill. Set to null or empty to hide the text and show only the spinner. When not set, uses the active locale's \"Chart.Loading\" string (default: \"Loading…\").",
           "isCascading": false,
           "captureUnmatched": false
         }
@@ -15819,6 +15819,70 @@
           "captureUnmatched": false
         },
         {
+          "name": "OnBatchSave",
+          "type": "EventCallback<DataGridBatchSaveEventArgs<TItem>>",
+          "default": null,
+          "description": "Fired when the user clicks \"Save all\" while EditMode is Batch. Args carry the buffered modifications + added rows. On a clean callback return (no exception), the grid's pending-changes buffer is cleared automatically.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "ShowAddRow",
+          "type": "bool",
+          "default": null,
+          "description": "When true and NewItemFactory is set, renders a thin \"+ Add row\" trigger below the body. Each click creates a TItem via the factory, pushes it into the added-rows buffer, and immediately shows it inline so cells can be filled in. Only meaningful in Batch.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "NewItemFactory",
+          "type": "Func<TItem>?",
+          "default": null,
+          "description": "Factory used by the \"+ Add row\" trigger to produce a fresh TItem. Required when ShowAddRow is true. The returned item is stored in the added-rows buffer; the user fills its cells inline and the row is delivered via OnBatchSave.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "ColumnVirtualize",
+          "type": "bool",
+          "default": null,
+          "description": "Simplified column virtualization: caps the number of horizontally- rendered data columns at MaxVisibleColumns. Pinned columns always make the cut. Default false.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "MaxVisibleColumns",
+          "type": "int",
+          "default": "30",
+          "description": "Maximum columns rendered when ColumnVirtualize is true. Default 30.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "BatchSaveAllText",
+          "type": "string?",
+          "default": "\"Save all\"",
+          "description": "Label for the batch-mode \"Save all\" button. Override for localization.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "BatchDiscardText",
+          "type": "string?",
+          "default": "\"Discard\"",
+          "description": "Label for the batch-mode \"Discard\" button. Override for localization.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "BatchAddRowText",
+          "type": "string?",
+          "default": "\"Add row\"",
+          "description": "Label for the batch-mode \"+ Add row\" trigger. Override for localization.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
           "name": "OnColumnReorder",
           "type": "EventCallback<ColumnReorderEventArgs>",
           "default": null,
@@ -15933,6 +15997,11 @@
           "name": "OnRowEdit",
           "type": "EventCallback<RowEditEventArgs<TItem>>",
           "description": null
+        },
+        {
+          "name": "OnBatchSave",
+          "type": "EventCallback<DataGridBatchSaveEventArgs<TItem>>",
+          "description": "Fired when the user clicks \"Save all\" while EditMode is Batch. Args carry the buffered modifications + added rows. On a clean callback return (no exception), the grid's pending-changes buffer is cleared automatically."
         },
         {
           "name": "OnColumnReorder",
@@ -27794,7 +27863,12 @@
       "records": [
         {
           "name": "ColumnLeaf",
-          "signature": "ColumnLeaf(string Label, object? Key, IReadOnlyList<TItem> Items)",
+          "signature": "ColumnLeaf(\r\n        string Label,\r\n        string PathKey,\r\n        object?[] Path,\r\n        IReadOnlyList<TItem> Items,\r\n        bool IsGrandTotal)",
+          "description": null
+        },
+        {
+          "name": "HeaderEntry",
+          "signature": "HeaderEntry(string Label, int ColSpan, int RowSpan, bool IsGrandTotal)",
           "description": null
         },
         {
@@ -27815,15 +27889,19 @@
       "examples": [
         {
           "title": "Sales by region × year",
-          "code": "<PivotGrid TItem=\"Sale\"\n           Items=\"_sales\"\n           RowFields=\"@(new List<PivotField<Sale>> { new(\"Region\", s => s.Region) })\"\n           ColumnFields=\"@(new List<PivotField<Sale>> { new(\"Year\", s => s.Year, v => \"FY \" + v) })\"\n           Measures=\"@(new List<PivotMeasure<Sale>> { new(\"Revenue\", s => s.Amount, PivotAggregate.Sum, d => \"$\" + d.ToString(\"N0\")) })\" />\n\n@code {\n    record Sale(string Region, string Country, int Year, int Quarter, decimal Amount, int Units);\n    List<Sale> _sales = new() { /* ... */ };\n}"
+          "code": "<PivotGrid TItem=\"Sale\"\r\n           Items=\"_sales\"\r\n           RowFields=\"@(new List<PivotField<Sale>> { new(\"Region\", s => s.Region) })\"\r\n           ColumnFields=\"@(new List<PivotField<Sale>> { new(\"Year\", s => s.Year, v => \"FY \" + v) })\"\r\n           Measures=\"@(new List<PivotMeasure<Sale>> { new(\"Revenue\", s => s.Amount, PivotAggregate.Sum, d => \"$\" + d.ToString(\"N0\")) })\" />\r\n\r\n@code {\r\n    record Sale(string Region, string Country, int Year, int Quarter, decimal Amount, int Units);\r\n    List<Sale> _sales = new() { /* ... */ };\r\n}"
         },
         {
           "title": "Multiple measures (sum + count)",
-          "code": "<PivotGrid TItem=\"Sale\"\n           Items=\"_sales\"\n           RowFields=\"_regionField\"\n           ColumnFields=\"_yearField\"\n           Measures=\"@(new List<PivotMeasure<Sale>> {\n               new(\"Revenue\", s => s.Amount, PivotAggregate.Sum, d => \"$\" + d.ToString(\"N0\")),\n               new(\"Deals\", s => s.Units, PivotAggregate.Count),\n           })\" />"
+          "code": "<PivotGrid TItem=\"Sale\"\r\n           Items=\"_sales\"\r\n           RowFields=\"_regionField\"\r\n           ColumnFields=\"_yearField\"\r\n           Measures=\"@(new List<PivotMeasure<Sale>> {\r\n               new(\"Revenue\", s => s.Amount, PivotAggregate.Sum, d => \"$\" + d.ToString(\"N0\")),\r\n               new(\"Deals\", s => s.Units, PivotAggregate.Count),\r\n           })\" />"
         },
         {
           "title": "Collapsible nested row groups",
-          "code": "<PivotGrid TItem=\"Sale\"\n           Items=\"_sales\"\n           RowFields=\"@(new List<PivotField<Sale>> {\n               new(\"Region\", s => s.Region),\n               new(\"Country\", s => s.Country),\n           })\"\n           ColumnFields=\"_yearField\"\n           Measures=\"_amountMeasure\"\n           Collapsible=\"true\"\n           Compact=\"true\" />"
+          "code": "<PivotGrid TItem=\"Sale\"\r\n           Items=\"_sales\"\r\n           RowFields=\"@(new List<PivotField<Sale>> {\r\n               new(\"Region\", s => s.Region),\r\n               new(\"Country\", s => s.Country),\r\n           })\"\r\n           ColumnFields=\"_yearField\"\r\n           Measures=\"_amountMeasure\"\r\n           Collapsible=\"true\"\r\n           Compact=\"true\" />"
+        },
+        {
+          "title": "Multi-level column hierarchy (Year &gt; Quarter)",
+          "code": "<PivotGrid TItem=\"Sale\"\r\n           Items=\"_sales\"\r\n           RowFields=\"_regionCountryFields\"\r\n           ColumnFields=\"@(new List<PivotField<Sale>> {\r\n               new(\"Year\",    s => s.Year, v => \"FY \" + v),\r\n               new(\"Quarter\", s => s.Quarter, v => \"Q\" + v),\r\n           })\"\r\n           Measures=\"_amountMeasure\"\r\n           Compact=\"true\" />"
         }
       ],
       "subComponents": {},
@@ -38678,7 +38756,9 @@
       ],
       "namespace": "Lumeo",
       "inheritsFrom": null,
-      "implements": [],
+      "implements": [
+        "IAsyncDisposable"
+      ],
       "parameters": [
         {
           "name": "ChildContent",
@@ -38708,7 +38788,7 @@
           "name": "Overflow",
           "type": "bool",
           "default": null,
-          "description": "When true the toolbar collapses items that don't fit into a trailing \"⋯\" dropdown. Use VisibleCount to control how many items are shown inline.",
+          "description": "When true the toolbar collapses items that don't fit into a trailing \"⋯\" dropdown. Use VisibleCount to control how many items are shown inline, or leave it at -1 (the default) to let the toolbar auto-measure via ResizeObserver.",
           "isCascading": false,
           "captureUnmatched": false
         },
@@ -38716,7 +38796,7 @@
           "name": "VisibleCount",
           "type": "int",
           "default": "-1",
-          "description": "Number of leading items to show inline when Overflow is true. Items past this index are collapsed into the \"⋯\" dropdown. -1 (default) means show all items (no overflow). Set to a positive integer to collapse trailing items.",
+          "description": "Number of leading items to show inline when Overflow is true. -1 (default) — auto-measure mode: a ResizeObserver measures the container width on every resize and computes the maximum number of items that fit before a \"⋯\" trigger button is needed. No consumer configuration required. Positive integer — manual mode: exactly that many items are shown inline and the rest collapse into the \"⋯\" dropdown regardless of available space.",
           "isCascading": false,
           "captureUnmatched": false
         },

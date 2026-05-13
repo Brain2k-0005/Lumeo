@@ -144,6 +144,114 @@ public class PivotGridTests : IAsyncLifetime
         Assert.Contains("Brazil", cut.Markup);
     }
 
+    // ---- Multi-level column hierarchy -------------------------------------
+
+    private record QSale(string Region, int Year, int Quarter, decimal Amount);
+
+    private static List<QSale> QData() => new()
+    {
+        new("North", 2023, 1, 100m),
+        new("North", 2023, 2,  20m),
+        new("North", 2024, 1, 200m),
+        new("North", 2024, 3,  50m),
+        new("South", 2023, 1,  30m),
+        new("South", 2024, 2,  70m),
+    };
+
+    private static IReadOnlyList<L.PivotField<QSale>> YearQuarterFields() => new List<L.PivotField<QSale>>
+    {
+        new("Year",    s => s.Year),
+        new("Quarter", s => s.Quarter, v => "Q" + v),
+    };
+
+    private static IReadOnlyList<L.PivotMeasure<QSale>> QSumMeasure() => new List<L.PivotMeasure<QSale>>
+    {
+        new("Amount", s => s.Amount, L.PivotAggregate.Sum),
+    };
+
+    [Fact]
+    public void MultiLevel_Columns_Render_Two_Plus_One_Header_Rows()
+    {
+        // ColumnFields = [Year, Quarter] => 2 column-tree levels + 1 measure-name row = 3 thead rows.
+        var cut = _ctx.Render<L.PivotGrid<QSale>>(p => p
+            .Add(g => g.Items, QData())
+            .Add(g => g.RowFields, new List<L.PivotField<QSale>> { new("Region", s => s.Region) })
+            .Add(g => g.ColumnFields, YearQuarterFields())
+            .Add(g => g.Measures, QSumMeasure()));
+
+        var theadRows = cut.FindAll("thead tr");
+        // 2 column-field levels + 1 measure-name row = 3.
+        Assert.Equal(3, theadRows.Count);
+
+        // The Year level should show "2023" and "2024".
+        Assert.Contains("2023", cut.Markup);
+        Assert.Contains("2024", cut.Markup);
+        // The Quarter level should show formatted quarters.
+        Assert.Contains("Q1", cut.Markup);
+        Assert.Contains("Q2", cut.Markup);
+        Assert.Contains("Q3", cut.Markup);
+    }
+
+    [Fact]
+    public void MultiLevel_Columns_Cell_Lookup_Returns_Right_Aggregate()
+    {
+        // North x 2023 x Q1 = 100; North x 2024 x Q1 = 200; North x 2024 x Q3 = 50; South x 2024 x Q2 = 70.
+        var cut = _ctx.Render<L.PivotGrid<QSale>>(p => p
+            .Add(g => g.Items, QData())
+            .Add(g => g.RowFields, new List<L.PivotField<QSale>> { new("Region", s => s.Region) })
+            .Add(g => g.ColumnFields, YearQuarterFields())
+            .Add(g => g.Measures, QSumMeasure())
+            .Add(g => g.ShowColumnGrandTotal, false));
+
+        var markup = cut.Markup;
+        // Specific cell aggregates appear (formatted "N0" — counts are whole, otherwise no decimals when integral).
+        Assert.Contains(">100<", markup);
+        Assert.Contains(">200<", markup);
+        Assert.Contains(">50<", markup);
+        Assert.Contains(">70<", markup);
+        // North x 2023 x Q2 = 20 (the row total for North 2023 = 120 should NOT be the cell value).
+        Assert.Contains(">20<", markup);
+    }
+
+    [Fact]
+    public void MultiLevel_Columns_Grand_Total_Column_Aggregates_Across_All_Columns()
+    {
+        // North overall = 100+20+200+50 = 370; South overall = 30+70 = 100; grand-total bottom-right = 470.
+        var cut = _ctx.Render<L.PivotGrid<QSale>>(p => p
+            .Add(g => g.Items, QData())
+            .Add(g => g.RowFields, new List<L.PivotField<QSale>> { new("Region", s => s.Region) })
+            .Add(g => g.ColumnFields, YearQuarterFields())
+            .Add(g => g.Measures, QSumMeasure())
+            .Add(g => g.ShowRowGrandTotal, true)
+            .Add(g => g.ShowColumnGrandTotal, true));
+
+        var markup = cut.Markup;
+        Assert.Contains("Grand Total", markup);
+        Assert.Contains(">370<", markup);
+        Assert.Contains(">100<", markup);
+        Assert.Contains(">470<", markup);
+    }
+
+    [Fact]
+    public void SingleLevel_Column_Fallback_Renders_Two_Header_Rows()
+    {
+        // Backwards-compat: ColumnFields = [Year] only — must still render the classic 1 col-level + 1 measure row.
+        var cut = _ctx.Render<L.PivotGrid<Sale>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.RowFields, new List<L.PivotField<Sale>> { new("Region", s => s.Region) })
+            .Add(g => g.ColumnFields, ColumnFields())
+            .Add(g => g.Measures, SumMeasure()));
+
+        var theadRows = cut.FindAll("thead tr");
+        Assert.Equal(2, theadRows.Count);
+
+        // Sanity: aggregates still match the legacy single-level expectations.
+        Assert.Contains("150", cut.Markup); // North 2023
+        Assert.Contains("200", cut.Markup); // North 2024
+        Assert.Contains("70",  cut.Markup); // South 2024
+        Assert.Contains("Grand Total", cut.Markup);
+    }
+
     [Fact]
     public void Empty_Items_Shows_EmptyContent()
     {
