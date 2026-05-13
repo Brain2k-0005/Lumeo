@@ -2,79 +2,6 @@
 
 <PageTitle>Lumeo — The Blazor component library you'd actually want to ship</PageTitle>
 
-@*  ---- "How Lumeo stays small" easter-egg dialog ----
-    Rendered at root of the page tree so its fixed-position backdrop
-    covers the whole viewport. Inside a BlurFade or any transformed
-    ancestor, the backdrop would be clipped to the transformed element. *@
-<Dialog @bind-Open="_bundleSizeDialogOpen">
-    @* max-h-[90vh] caps total dialog height so the footer never falls below the fold on
-       small screens; the middle Stack is the only scrollable region. *@
-    <DialogContent Class="sm:max-w-lg max-h-[90vh] flex flex-col">
-        <DialogHeader>
-            <DialogTitle>
-                <Flex Align="center" Gap="2">
-                    <DynamicIcon Name="Package" Class="h-5 w-5 text-primary" />
-                    How we stay at ~400 KB core
-                </Flex>
-            </DialogTitle>
-            <DialogDescription>
-                Lumeo 2.0 split into 7 packages — install only what you use. Core ships ~135 components; heavy components (Chart, DataGrid, RichTextEditor, Scheduler, Gantt) and 10 motion primitives (Lumeo.Motion) live in opt-in satellites. 145 component families total across all packages.
-            </DialogDescription>
-        </DialogHeader>
-        @* The scrollable region — content overflow stays inside the dialog on small screens
-           instead of pushing the footer off-viewport. Negative margins bleed the scrollbar
-           to the content edge so the dialog padding matches the header/footer. *@
-        <Stack Gap="4" Class="py-2 overflow-y-auto -mx-6 px-6 flex-1 min-h-0">
-            <Flex Align="start" Gap="3">
-                <DynamicIcon Name="Boxes" Class="h-4 w-4 text-primary mt-1 shrink-0" />
-                <div>
-                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Heavy components are their own NuGet packages</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">If you don't reference <code class="text-foreground">Lumeo.Charts</code>, ECharts isn't in your project. If you don't reference <code class="text-foreground">Lumeo.DataGrid</code>, ClosedXML and QuestPDF aren't either. The DLLs aren't even downloaded.</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-1 opacity-75">Lumeo.Charts ~120 KB · Lumeo.DataGrid ~100 KB · Lumeo.Editor ~26 KB · Lumeo.Motion ~18 KB · Lumeo.Scheduler ~16 KB · Lumeo.Gantt ~12 KB · all opt-in</Lumeo.Text>
-                </div>
-            </Flex>
-            <Flex Align="start" Gap="3">
-                <DynamicIcon Name="Palette" Class="h-4 w-4 text-primary mt-1 shrink-0" />
-                <div>
-                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Tailwind utilities aren't bundled in core</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">A 275 KB pre-compiled utility snapshot used to ship in every install. Now you generate the utility classes you actually use via your own Tailwind build — same bytes you'd build anyway.</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-1 opacity-75">~46 KB lumeo.css ships in core (theme tokens, component styles, dark-mode swap) · no CSS-in-JS, no theme-provider JS · dark mode via CSS variable swaps</Lumeo.Text>
-                </div>
-            </Flex>
-            <Flex Align="start" Gap="3">
-                <DynamicIcon Name="Blocks" Class="h-4 w-4 text-primary mt-1 shrink-0" />
-                <div>
-                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Almost everything is Razor — JS is the exception</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">JS is reserved for what Blazor genuinely can't do: focus traps, scroll lock, element measurement, third-party canvas wrappers.</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-1 opacity-75">~50 KB combined JS in core (theme.js + components.js) · third-party JS (TipTap, ECharts, FullCalendar) lazy-loaded by satellites only when their components mount</Lumeo.Text>
-                </div>
-            </Flex>
-            <Flex Align="start" Gap="3">
-                <DynamicIcon Name="ListChecks" Class="h-4 w-4 text-primary mt-1 shrink-0" />
-                <div>
-                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">Form validation without runtime ceremony</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">Wrap any input in <code class="text-foreground">&lt;FormField&gt;</code> and use stock <code class="text-foreground">EditForm</code> + DataAnnotations. No code generators required, no <code class="text-foreground">System.Reflection</code> at runtime in the hot path.</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-1 opacity-75">FormField is ~3 KB · uses CascadingValue for label/error/help-text composition · works with any standard EditContext-based validator</Lumeo.Text>
-                </div>
-            </Flex>
-            <Flex Align="start" Gap="3">
-                <DynamicIcon Name="Layers" Class="h-4 w-4 text-primary mt-1 shrink-0" />
-                <div>
-                    <Lumeo.Text As="div" Size="sm" Weight="medium" Color="foreground">No legacy dependency bloat</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="sm" Color="muted" Class="mt-0.5">Unused components get IL-stripped during publish. The dependency surface is intentionally narrow.</Lumeo.Text>
-                    <Lumeo.Text As="div" Size="xs" Color="muted" Class="mt-1 opacity-75">No Newtonsoft.Json (System.Text.Json) · no AutoMapper · no runtime code generators in core · NuGet <code class="text-foreground">.nupkg</code> is ~660 KB (rc.40 moved the shadcn-style CLI source registry to the docs CDN)</Lumeo.Text>
-                </div>
-            </Flex>
-        </Stack>
-        <DialogFooter>
-            <Lumeo.Text Size="xs" Color="muted" Class="mr-auto italic">Brotli-compressed assembly size — what the browser actually downloads. Measured <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-05-13</Lumeo.Text> (rc.38).</Lumeo.Text>
-            <DialogClose>
-                <Button>Neat</Button>
-            </DialogClose>
-        </DialogFooter>
-    </DialogContent>
-</Dialog>
-
 <!-- ======================= HERO ======================= -->
 <section class="relative overflow-hidden">
     <!-- Subtle grid pattern background -->
@@ -87,7 +14,7 @@
                 <Lumeo.Link Href="docs/changelog" Class="no-underline group">
                     <Flex Inline="true" Align="center" Gap="2" Class="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm hover:border-primary/40 hover:text-foreground transition-colors">
                         <Badge Variant="Badge.BadgeVariant.Default" Class="h-4 px-1.5 text-[10px] leading-none">New</Badge>
-                        <Lumeo.Text As="span">v2.0-rc.45 — hotfix: Window drag-clamp + LumeoForm Button.Type crash</Lumeo.Text>
+                        <Lumeo.Text As="span">v2.0-rc.46 — new /docs/bundle-facts page (animated breakdown of the ~400 KB core)</Lumeo.Text>
                         <DynamicIcon Name="ArrowRight" Class="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
                     </Flex>
                 </Lumeo.Link>
@@ -98,16 +25,13 @@
                     you'd actually want to <Lumeo.Text As="span" Class="text-primary">ship</Lumeo.Text>.
                 </Heading>
 
-                <!-- Subtitle. Clicking "~400 KB core" opens a Dialog with the per-package
-                     breakdown — keeps the hero short while detail stays one click away. -->
+                <!-- Subtitle. "~400 KB core" links to /docs/bundle-facts for the full
+                     animated breakdown — keeps the hero short while detail stays one click away. -->
                 <Lumeo.Text Size="lg" Color="muted" Class="max-w-2xl leading-relaxed">
                     145 components across a
-                    <button type="button"
-                            class="font-semibold text-foreground decoration-dotted decoration-primary/60 underline underline-offset-4 hover:text-primary transition-colors cursor-pointer"
-                            title="How we got there"
-                            @onclick="() => _bundleSizeDialogOpen = true">
+                    <Lumeo.Link Href="/docs/bundle-facts" Class="font-semibold text-foreground decoration-dotted decoration-primary/60 underline underline-offset-4 hover:text-primary transition-colors no-underline">
                         ~400 KB core
-                    </button>
+                    </Lumeo.Link>
                     plus opt-in satellites.
                 </Lumeo.Text>
 
@@ -861,7 +785,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     private bool _checkOn = true;
     private bool _installCopied;
     private bool _showDialog;
-    private bool _bundleSizeDialogOpen;
     private DateOnly? _selectedDate = DateOnly.FromDateTime(DateTime.Today);
 
     private record FeatureItem(string Icon, string Title, string Body);
