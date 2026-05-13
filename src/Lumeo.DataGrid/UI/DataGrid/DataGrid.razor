@@ -68,12 +68,12 @@
         ToggleTreeNode: it => _ = ToggleTreeNodeAsync(it),
         TreeLevelOf: TreeLevelOf,
         TreeHasChildren: TreeHasChildrenOf,
-        // --- Batch-edit context fields — owned by a separate wave; these are
-        // no-op defaults so the tree-grid/grouping wave compiles + runs standalone.
+        // --- Batch-edit context fields — wired to the per-cell pending-changes
+        // buffer (_batchChanges) and the additive new-row buffer (_batchAdded).
         IsBatchEdit: EditMode == DataGridEditMode.Batch,
-        IsCellDirty: static (_, _) => false,
-        GetBatchValue: static (item, col) => col.GetValue(item),
-        SetBatchValue: static (_, _, _) => { },
+        IsCellDirty: IsCellDirty,
+        GetBatchValue: GetBatchValue,
+        SetBatchValue: SetBatchValue,
         GridId: _gridId,
         FocusedRow: _focusedRow,
         FocusedCol: _focusedCol,
@@ -144,6 +144,36 @@
                 {
                     @RowContextMenu(_contextMenuItem)
                 }
+            </div>
+        }
+
+        @if (EditMode == DataGridEditMode.Batch && HasPendingChanges)
+        {
+            @* Batch-edit pending-changes strip. Uses warning/amber theme tokens
+               from lumeo.css (--color-warning, --color-warning-text). Sits
+               above the table body so it's visually associated with dirty cells. *@
+            <div data-slot="datagrid-batch-strip"
+                 class="flex items-center gap-2 px-4 py-2 border-b border-warning/40 bg-warning/10 text-xs"
+                 role="status"
+                 aria-live="polite">
+                <Blazicon Svg="Lucide.CircleAlert" class="h-4 w-4 text-warning-text shrink-0" />
+                <span class="text-warning-text font-medium">
+                    @($"{_batchChanges.Count + _batchAdded.Count} pending change(s)")
+                </span>
+                <div class="ml-auto flex items-center gap-2">
+                    <button type="button"
+                            data-slot="datagrid-batch-save"
+                            class="inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                            @onclick="SaveBatchAsync">
+                        @BatchSaveAllText
+                    </button>
+                    <button type="button"
+                            data-slot="datagrid-batch-discard"
+                            class="inline-flex h-7 items-center rounded-md border border-border/60 bg-background px-3 text-xs font-medium hover:bg-muted"
+                            @onclick="DiscardBatch">
+                        @BatchDiscardText
+                    </button>
+                </div>
             </div>
         }
 
@@ -230,6 +260,19 @@
                                 AllItems="@_processedItems"
                                 HasDetailTemplate="@(DetailTemplate is not null)" />
             </table>
+            @if (EditMode == DataGridEditMode.Batch && ShowAddRow && NewItemFactory is not null)
+            {
+                <div data-slot="datagrid-add-row"
+                     class="flex items-center border-t border-border/40 bg-muted/20 px-3 py-1.5">
+                    <button type="button"
+                            data-slot="datagrid-add-row-button"
+                            class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                            @onclick="AddBatchRow">
+                        <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
+                        <span>@BatchAddRowText</span>
+                    </button>
+                </div>
+            }
         </div>
 
         @if (ShowPagination && !IsLoading && !_useServerVirtualization)
@@ -456,6 +499,63 @@
     [Parameter] public EventCallback<TItem> OnRowDoubleClick { get; set; }
     [Parameter] public EventCallback<CellEditEventArgs<TItem>> OnCellEdit { get; set; }
     [Parameter] public EventCallback<RowEditEventArgs<TItem>> OnRowEdit { get; set; }
+
+    // --- Batch / buffered edit mode (rc.36) ---
+    /// <summary>
+    /// Fired when the user clicks "Save all" while <see cref="EditMode"/> is
+    /// <see cref="DataGridEditMode.Batch"/>. Args carry the buffered
+    /// modifications + added rows. On a clean callback return (no exception),
+    /// the grid's pending-changes buffer is cleared automatically.
+    /// </summary>
+    [Parameter] public EventCallback<DataGridBatchSaveEventArgs<TItem>> OnBatchSave { get; set; }
+
+    /// <summary>
+    /// When true and <see cref="NewItemFactory"/> is set, renders a thin
+    /// "+ Add row" trigger below the body. Each click creates a TItem via
+    /// the factory, pushes it into the added-rows buffer, and immediately
+    /// shows it inline so cells can be filled in.
+    /// Only meaningful in <see cref="DataGridEditMode.Batch"/>.
+    /// </summary>
+    [Parameter] public bool ShowAddRow { get; set; }
+
+    /// <summary>
+    /// Factory used by the "+ Add row" trigger to produce a fresh TItem.
+    /// Required when <see cref="ShowAddRow"/> is true. The returned item
+    /// is stored in the added-rows buffer; the user fills its cells inline
+    /// and the row is delivered via <see cref="OnBatchSave"/>.
+    /// </summary>
+    [Parameter] public Func<TItem>? NewItemFactory { get; set; }
+
+    /// <summary>
+    /// True when the batch-edit buffer carries at least one pending change
+    /// (a buffered cell edit or a new row). Bind via <c>@ref</c> for warn-
+    /// on-navigate workflows.
+    /// </summary>
+    public bool HasPendingChanges => _batchChanges.Count > 0 || _batchAdded.Count > 0;
+
+    /// <summary>Read-only view of currently-buffered modified rows.</summary>
+    public IReadOnlyCollection<TItem> PendingModifiedItems => _batchChanges.Keys;
+
+    /// <summary>Read-only view of currently-buffered new rows.</summary>
+    public IReadOnlyList<TItem> PendingAddedItems => _batchAdded.AsReadOnly();
+
+    // --- Column virtualization (rc.36) ---
+    /// <summary>
+    /// Simplified column virtualization: caps the number of horizontally-
+    /// rendered data columns at <see cref="MaxVisibleColumns"/>. Pinned
+    /// columns always make the cut. Default false.
+    /// </summary>
+    [Parameter] public bool ColumnVirtualize { get; set; }
+
+    /// <summary>Maximum columns rendered when <see cref="ColumnVirtualize"/> is true. Default 30.</summary>
+    [Parameter] public int MaxVisibleColumns { get; set; } = 30;
+
+    /// <summary>Label for the batch-mode "Save all" button. Override for localization.</summary>
+    [Parameter] public string? BatchSaveAllText { get; set; } = "Save all";
+    /// <summary>Label for the batch-mode "Discard" button. Override for localization.</summary>
+    [Parameter] public string? BatchDiscardText { get; set; } = "Discard";
+    /// <summary>Label for the batch-mode "+ Add row" trigger. Override for localization.</summary>
+    [Parameter] public string? BatchAddRowText { get; set; } = "Add row";
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     [Parameter] public EventCallback<RowReorderEventArgs<TItem>> OnRowReorder { get; set; }
     [Parameter] public EventCallback<Exception> OnError { get; set; }
@@ -666,8 +766,29 @@
     private System.Collections.ObjectModel.ReadOnlyCollection<DataGridColumn<TItem>> _visibleColumns =
         new List<DataGridColumn<TItem>>().AsReadOnly();
 
-    private void RefreshVisibleColumns() =>
-        _visibleColumns = _orderedColumns.Where(c => c.Visible).ToList().AsReadOnly();
+    private void RefreshVisibleColumns()
+    {
+        IEnumerable<DataGridColumn<TItem>> q = _orderedColumns.Where(c => c.Visible);
+        // Simplified column virtualization (rc.36): cap the rendered-column
+        // count to keep wide grids cheap. Pinned columns always make the cut;
+        // unpinned columns are taken in order until MaxVisibleColumns is hit.
+        if (ColumnVirtualize && MaxVisibleColumns > 0)
+        {
+            var all = q.ToList();
+            if (all.Count > MaxVisibleColumns)
+            {
+                var pinned = all.Where(c => c.Pin != PinDirection.None).ToList();
+                var unpinned = all.Where(c => c.Pin == PinDirection.None).ToList();
+                var roomForUnpinned = Math.Max(0, MaxVisibleColumns - pinned.Count);
+                q = pinned.Concat(unpinned.Take(roomForUnpinned));
+            }
+            else
+            {
+                q = all;
+            }
+        }
+        _visibleColumns = q.ToList().AsReadOnly();
+    }
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
     private List<TItem> _selectedItems = new();
@@ -679,6 +800,17 @@
     // batch-edit dictionaries further down don't each need their own pragma.
 #pragma warning disable CS8714
     private Dictionary<TItem, Dictionary<string, object?>> _rowEditValues = new();
+
+    // --- Batch / buffered edit mode (rc.36) ---
+    // Per-row pending field changes. Outer key = the row instance; inner dict
+    // maps the column's Field to the buffered value. When EditMode == Batch,
+    // cell commits write here instead of mutating the row; "Save all" hands
+    // these to the consumer via OnBatchSave.
+    private Dictionary<TItem, Dictionary<string, object?>> _batchChanges = new();
+    // Rows created via the "+ Add row" trigger. Each entry is also represented
+    // in _batchChanges (so its dirty fields render the same way). We split
+    // Added vs Modified at save time using this list.
+    private List<TItem> _batchAdded = new();
     private List<SortDescriptor> _sorts = new();
     private List<FilterDescriptor> _filters = new();
     private string? _globalSearch;
@@ -1286,6 +1418,19 @@
         else
         {
             _displayedItems = _processedItems;
+        }
+
+        // Batch-edit: surface added-but-unsaved rows at the end of the
+        // displayed list so the user can fill them in inline. They are NOT in
+        // _processedItems (so not in sort/filter/aggregates) — they live only
+        // in the batch buffer until OnBatchSave commits them upstream.
+        if (EditMode == DataGridEditMode.Batch && _batchAdded.Count > 0)
+        {
+            if (ReferenceEquals(_displayedItems, _processedItems))
+            {
+                _displayedItems = new List<TItem>(_processedItems);
+            }
+            _displayedItems.AddRange(_batchAdded);
         }
     }
 
@@ -1987,6 +2132,110 @@
             _rowEditValues[item] = new Dictionary<string, object?>();
         _rowEditValues[item][column.Field] = value;
     }
+
+    // --- Batch-edit buffer ---
+
+    /// <summary>True when (item, field) currently has a buffered value.</summary>
+    private bool IsCellDirty(TItem item, string field) =>
+        item is not null
+        && _batchChanges.TryGetValue(item, out var dict)
+        && dict.ContainsKey(field);
+
+    /// <summary>Returns the buffered batch value for (item, column) if any,
+    /// else the row's current value. Used by cells in batch mode.</summary>
+    private object? GetBatchValue(TItem item, DataGridColumn<TItem> column)
+    {
+        if (column.Field is not null
+            && item is not null
+            && _batchChanges.TryGetValue(item, out var dict)
+            && dict.TryGetValue(column.Field, out var v))
+        {
+            return v;
+        }
+        return column.GetValue(item);
+    }
+
+    /// <summary>Writes a buffered value into the pending-changes buffer. No
+    /// row mutation and no immediate OnCellEdit/OnRowEdit; the value lives
+    /// until "Save all" or "Discard".</summary>
+    internal void SetBatchValue(TItem item, DataGridColumn<TItem> column, object? value)
+    {
+        if (item is null || column.Field is null) return;
+        if (!_batchChanges.TryGetValue(item, out var dict))
+        {
+            dict = new Dictionary<string, object?>();
+            _batchChanges[item] = dict;
+        }
+        dict[column.Field] = value;
+        StateHasChanged();
+    }
+
+    /// <summary>Fires <see cref="OnBatchSave"/> with the buffered changes.
+    /// On a clean return the buffer is cleared.</summary>
+    private async Task SaveBatchAsync()
+    {
+        if (!HasPendingChanges) return;
+
+        var addedSet = new HashSet<TItem>(_batchAdded);
+        var modified = new List<DataGridBatchChange<TItem>>();
+        var added = new List<DataGridBatchChange<TItem>>();
+        foreach (var (item, fields) in _batchChanges)
+        {
+            var copy = new Dictionary<string, object?>(fields);
+            var change = new DataGridBatchChange<TItem>(item, copy, addedSet.Contains(item));
+            (addedSet.Contains(item) ? added : modified).Add(change);
+        }
+        // Surface added rows that have no buffered field edits yet.
+        foreach (var item in _batchAdded)
+        {
+            if (!_batchChanges.ContainsKey(item))
+            {
+                added.Add(new DataGridBatchChange<TItem>(item, new Dictionary<string, object?>(), true));
+            }
+        }
+
+        var args = new DataGridBatchSaveEventArgs<TItem>(modified, added);
+        if (OnBatchSave.HasDelegate)
+        {
+            await OnBatchSave.InvokeAsync(args);
+        }
+        // Consumer exceptions propagate to Blazor's error boundary; we don't
+        // swallow them — but on clean return we clear the buffer.
+        _batchChanges.Clear();
+        _batchAdded.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>Drops all buffered edits and any unsaved added rows.</summary>
+    private void DiscardBatch()
+    {
+        if (!HasPendingChanges) return;
+        _batchChanges.Clear();
+        _batchAdded.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>Append a new row via <see cref="NewItemFactory"/>. The row
+    /// lives in the batch buffer until the consumer wires it up via
+    /// <see cref="OnBatchSave"/>.</summary>
+    private void AddBatchRow()
+    {
+        if (NewItemFactory is null) return;
+        var item = NewItemFactory();
+        if (item is null) return;
+        _batchAdded.Add(item);
+        // Seed an empty pending-changes dict so HasPendingChanges flips true
+        // even before the user types anything.
+        if (!_batchChanges.ContainsKey(item))
+        {
+            _batchChanges[item] = new Dictionary<string, object?>();
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Test-only hook for inspecting a row's dirty-field set.</summary>
+    internal IReadOnlyDictionary<string, object?>? GetBatchChanges(TItem item) =>
+        item is not null && _batchChanges.TryGetValue(item, out var d) ? d : null;
 
     // --- Column Reordering ---
 
