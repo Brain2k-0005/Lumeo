@@ -91,6 +91,36 @@
             </BorderBeam>
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Beam Size (interactive)">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a size to see the beam thickness change live.</Lumeo.Text>
+            <Segmented @bind-Value="_beamSizeStr" Options="_beamSizeOptions" />
+            <div class="flex justify-center">
+                <BorderBeam Size="@_beamSize" Class="w-full max-w-xs">
+                    <Card Class="p-6 text-center">
+                        <Lumeo.Text Class="text-sm font-medium">Size = @_beamSizeStr</Lumeo.Text>
+                    </Card>
+                </BorderBeam>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Orbit Speed (interactive)">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Drag the slider to change how fast the beam orbits (lower = faster).</Lumeo.Text>
+            <Slider @bind-Value="_beamDuration" Min="1000" Max="20000" Step="500" ShowTooltip="true"
+                    FormatTooltip="@(v => $"{(int)v} ms")" />
+            <Lumeo.Text Size="xs" Color="muted">DurationMs = @((int)_beamDuration)</Lumeo.Text>
+            <div class="flex justify-center">
+                <BorderBeam DurationMs="@((int)_beamDuration)" Class="w-full max-w-xs">
+                    <Card Class="p-6 text-center">
+                        <Lumeo.Text Class="text-sm font-medium">@((int)_beamDuration) ms per orbit</Lumeo.Text>
+                    </Card>
+                </BorderBeam>
+            </div>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -165,6 +195,22 @@
 </div>
 
 @code {
+    // Interactive state
+    private string _beamSizeStr = "Md";
+    private double _beamDuration = 8000;
+
+    private BorderBeam.BeamSize _beamSize =>
+        _beamSizeStr == "Sm" ? BorderBeam.BeamSize.Sm :
+        _beamSizeStr == "Lg" ? BorderBeam.BeamSize.Lg :
+        BorderBeam.BeamSize.Md;
+
+    private List<Segmented.SegmentedOption> _beamSizeOptions = new()
+    {
+        new() { Label = "Sm", Value = "Sm" },
+        new() { Label = "Md", Value = "Md" },
+        new() { Label = "Lg", Value = "Lg" },
+    };
+
     private const string _cardCode = @"<BorderBeam Class=""w-full max-w-sm"">
     <Card Class=""bg-card"">
         <CardHeader>

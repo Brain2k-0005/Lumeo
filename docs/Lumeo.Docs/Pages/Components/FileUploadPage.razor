@@ -81,6 +81,27 @@
             }
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Variant — interactive preview" Code="@_variantInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Switch between Dropzone, Button, and Avatar to see the upload surface change.</Lumeo.Text>
+            <Segmented @bind-Value="_previewVariant">
+                <SegmentedItem Value="Dropzone">Dropzone</SegmentedItem>
+                <SegmentedItem Value="Button">Button</SegmentedItem>
+                <SegmentedItem Value="Avatar">Avatar</SegmentedItem>
+            </Segmented>
+            <Container MaxWidth="md" Center="false" Padding="">
+                <FileUpload Variant="_fuVariantEnum"
+                            Label="Upload file"
+                            Description="PNG, JPG or PDF up to 10MB"
+                            OnFilesSelected="@(e => _previewFileName = e.File.Name)" />
+                @if (_previewFileName is not null)
+                {
+                    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">Selected: @_previewFileName</Lumeo.Text>
+                }
+            </Container>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-16">
@@ -125,6 +146,12 @@
                 <TableRow><TableCell Class="font-mono text-xs">Progress</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Legacy: global upload progress % (0–100). Superseded by per-file tracking when OnUpload is set.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes on the root element.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes forwarded to the root element.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Required</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Marks the field as required for form validation.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Invalid</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Applies a destructive ring to indicate a validation error.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ErrorText</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Error message shown below when Invalid is true (standalone, not inside FormField).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HelperText</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Help text shown below when there is no error (standalone).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML name attribute for form identification.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FormField</TableCell><TableCell Class="font-mono text-xs">FormFieldContext?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Cascaded context from a parent FormField; drives validation state automatically.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -167,6 +194,22 @@
 @code {
     private string? _fileName;
     private string? _imageName;
+    private string _previewVariant = "Dropzone";
+    private string? _previewFileName;
+    private FileUpload.FileUploadVariant _fuVariantEnum =>
+        Enum.TryParse<FileUpload.FileUploadVariant>(_previewVariant, out var v) ? v : FileUpload.FileUploadVariant.Dropzone;
+
+    private string _variantInteractiveCode = @"<Segmented @bind-Value=""_variant"">
+    <SegmentedItem Value=""Dropzone"">Dropzone</SegmentedItem>
+    <SegmentedItem Value=""Button"">Button</SegmentedItem>
+    <SegmentedItem Value=""Avatar"">Avatar</SegmentedItem>
+</Segmented>
+<FileUpload Variant=""@Enum.Parse<FileUpload.FileUploadVariant>(_variant)""
+            Label=""Upload file"" Description=""PNG, JPG or PDF"" />
+
+@code {
+    private string _variant = ""Dropzone"";
+}";
     private int _fileCount;
     private int _uploadProgress;
     private bool _isUploading;

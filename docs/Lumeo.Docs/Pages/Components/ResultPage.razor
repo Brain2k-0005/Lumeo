@@ -40,6 +40,24 @@
             <Result Status="Result.ResultStatus.Forbidden" Title="403 Forbidden" SubTitle="You do not have permission to access this." />
         </Grid>
     </ComponentDemo>
+
+    <ComponentDemo Title="Status — interactive" Code="@_codeStatusInteractive">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a status to see it applied live.</Lumeo.Text>
+            <Flex Wrap="true" Gap="2">
+                @foreach (var s in _statusOptions)
+                {
+                    var status = s;
+                    <Button Size="Button.ButtonSize.Sm"
+                            Variant="@(_selectedStatus == status ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                            OnClick="@(() => _selectedStatus = status)">@status</Button>
+                }
+            </Flex>
+            <Result Status="@ParseResultStatus(_selectedStatus)"
+                    Title="@($"{_selectedStatus} Result")"
+                    SubTitle="@($"This is a {_selectedStatus.ToLower()} result page.")" />
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -57,16 +75,13 @@
             </thead>
             <tbody class="divide-y divide-border/40">
                 <tr><td class="p-3 font-mono text-xs text-primary">Status</td><td class="p-3 font-mono text-xs text-muted-foreground">ResultStatus</td><td class="p-3 font-mono text-xs text-muted-foreground">Info</td><td class="p-3 text-muted-foreground">Status type. Values: Success, Error, Warning, Info, NotFound, Forbidden, ServerError.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">Size</td><td class="p-3 font-mono text-xs text-muted-foreground">ResultSize</td><td class="p-3 font-mono text-xs text-muted-foreground">Medium</td><td class="p-3 text-muted-foreground">Component size. Values: Small, Medium, Large.</td></tr>
                 <tr><td class="p-3 font-mono text-xs text-primary">Title</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Main heading text.</td></tr>
                 <tr><td class="p-3 font-mono text-xs text-primary">SubTitle</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Secondary description text.</td></tr>
-                <tr><td class="p-3 font-mono text-xs text-primary">Icon</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Custom icon replacing the default status icon.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">IconContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Custom icon slot that overrides the default status icon.</td></tr>
                 <tr><td class="p-3 font-mono text-xs text-primary">Extra</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Action buttons area below the description.</td></tr>
-                                    <tr>
-                            <td class="p-3 font-mono text-xs text-primary">IconContent</td>
-                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
-                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                            <td class="p-3 text-muted-foreground">Custom icon slot that overrides the default status icon.</td>
-                        </tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">Class</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Additional CSS classes.</td></tr>
+                <tr><td class="p-3 font-mono text-xs text-primary">AdditionalAttributes</td><td class="p-3 font-mono text-xs text-muted-foreground">Dictionary&lt;string, object&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Additional HTML attributes.</td></tr>
 </tbody>
         </table>
     </Stack>
@@ -82,6 +97,22 @@
 </div>
 
 @code {
+    private string[] _statusOptions = ["Success", "Error", "Warning", "Info", "NotFound", "Forbidden", "ServerError"];
+    private string _selectedStatus = "Success";
+
+    private Result.ResultStatus ParseResultStatus(string s) => s switch
+    {
+        "Error"       => Result.ResultStatus.Error,
+        "Warning"     => Result.ResultStatus.Warning,
+        "Info"        => Result.ResultStatus.Info,
+        "NotFound"    => Result.ResultStatus.NotFound,
+        "Forbidden"   => Result.ResultStatus.Forbidden,
+        "ServerError" => Result.ResultStatus.ServerError,
+        _             => Result.ResultStatus.Success,
+    };
+
+    private string _codeStatusInteractive = @"<Result Status=""Result.ResultStatus.Success"" Title=""Success Result"" SubTitle=""This is a success result page."" />";
+
     private string _codeSuccess = @"<Result Status=""Result.ResultStatus.Success"" Title=""Payment Successful"" SubTitle=""Order confirmed."">
     <Extra>
         <Button>Go to Dashboard</Button>
