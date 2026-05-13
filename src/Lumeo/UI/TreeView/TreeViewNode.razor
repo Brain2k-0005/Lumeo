@@ -161,6 +161,28 @@
                 var loaded = await LoadChildren(Item);
                 Item.Children = loaded;
                 Item.ChildrenLoaded = true;
+
+                // rc.42: if the parent was fully checked before lazy-load, cascade
+                // that state to the freshly-loaded children. Without this, a
+                // checked parent would expand to reveal unchecked children — a
+                // visibly broken tri-state. Indeterminate parents leave loaded
+                // children at their default (unchecked) state, then we
+                // recompute the parent to reflect actual loaded counts.
+                if (Item.IsChecked && !Item.IsIndeterminate)
+                {
+                    CascadeChecked(Item.Children, true);
+                }
+                else if (Item.IsIndeterminate)
+                {
+                    // All loaded children default to unchecked → parent is no
+                    // longer indeterminate if nothing is checked. Recompute.
+                    var anyChecked = Item.Children.Any(c => c.IsChecked || c.IsIndeterminate);
+                    if (!anyChecked)
+                    {
+                        Item.IsIndeterminate = false;
+                        Item.IsChecked = false;
+                    }
+                }
             }
             finally
             {
@@ -227,6 +249,22 @@
                     }
                 }
                 break;
+        }
+    }
+
+    /// <summary>Cascades a check state to a freshly-loaded subtree (rc.42).
+    /// Used after <see cref="LoadChildren"/> resolves so children inherit a
+    /// fully-checked parent's state instead of staying unchecked.</summary>
+    private static void CascadeChecked(List<TreeView<T>.TreeViewItem<T>> items, bool value)
+    {
+        foreach (var item in items)
+        {
+            item.IsChecked = value;
+            item.IsIndeterminate = false;
+            if (item.Children is { Count: > 0 })
+            {
+                CascadeChecked(item.Children, value);
+            }
         }
     }
 }

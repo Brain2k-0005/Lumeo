@@ -15,6 +15,48 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.42 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.42</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Audit sweep: 3 verified bugs fixed, 11 hypothesized bugs cleared.</strong>
+            Dispatched 4 parallel review agents over ~80 components looking for the same class of bug the DataGrid group panel had (UI promises something the implementation doesn't deliver). Found 4 real bugs — Window drag clamp is too involved to ship surgically and goes to rc.43; the other 3 are in this release. Plus a regression test suite for the rc.41 group-panel fix.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Toolbar overflow was completely broken at runtime.</strong> <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Toolbar.razor</code> called <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">observeToolbarOverflow</code> but <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">toolbar.js</code> only exported <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">observeToolbarWidth</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">measureToolbarChildren</code> — the function the component depended on didn't exist. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Overflow="true" VisibleCount="-1"</code> users got zero auto-collapse. Implemented the missing function (full ResizeObserver + child-width measurement + fitting-count computation in JS), switched C# to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeVoidAsync</code> with a stable per-component DOM id.</li>
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastOptions.Position</code> (rc.37 API) was silently ignored.</strong> The per-toast position override existed in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastService</code> but <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastProvider.razor</code> rendered every toast into a single <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;ToastViewport Position="Position"&gt;</code> — the provider's default. Now toasts are grouped by their effective position (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">options.Position ?? defaultPosition</code>) and rendered into one viewport per group. Multiple <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">position:fixed</code> viewports coexist without overlap.</li>
+                <li><strong>TreeView lazy-loaded children inherit parent's check state (bonus).</strong> When <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">LoadChildren</code> resolves, freshly-loaded children now inherit a fully-checked parent's state. Previously a checked parent would expand to reveal unchecked children — a visibly broken tri-state. Indeterminate parents recompute correctly when newly-loaded children land in their default state.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Tests</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>New <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataGridGroupPanelTests.cs</code> — 8 bUnit tests covering the rc.41 group-panel fixes: panel render, Groupable-only dropdown filtering, Add/Remove/Clear behavior, and the specific "add after clear still works" regression that the user reported.</li>
+                <li>All 8 pass green; one assertion was tightened from a panel-wide string match (which falsely included the "+ Add level" dropdown options) to a chip-span selector.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">False alarms (audit findings that turned out to be FINE)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>Sortable cross-container drag has <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnDragEnd</code> as a state-reset belt regardless of drop. TreeView MultiSelect cascade is correct (tri-state computed via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UpdateAncestorStates</code>). DataGrid virtualization is bypassed when grouping is active (no row-skip risk). Column-reorder during grouping is safe — fields are stored as strings, not indices. Combobox/Select filter clears on close. Tabs uses value-based active state, no index drift. Stepper's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">HandleStepClick</code> guards via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CanClickStep</code>. Splitter uses pointer events (touch works). Sheet/Drawer scroll-lock is refcounted. DateRangePicker provides visual feedback for inverted ranges. InplaceEditor's Esc-vs-blur race is synchronously guarded. PivotGrid handles empty data without NaN.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Deferred</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>Window component drag can push the window below the viewport (no upper-bound clamp on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_posY</code>). Clean fix needs viewport-aware JS interop — queued for rc.43. Workaround: don't drag the window far enough off-screen to lose it.</li>
+                <li>Splitter divider is keyboard-focusable but ArrowKey resize is missing (a11y gap). Same sprint.</li>
+            </ul>
+        </Stack>
+        <Lumeo.Text Size="sm" Color="muted">145 components · all 8 new DataGridGroupPanelTests pass · core + tests + docs build clean (0 warnings, 0 errors).</Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.41 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
