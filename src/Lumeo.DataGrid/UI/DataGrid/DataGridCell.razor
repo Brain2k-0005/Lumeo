@@ -27,6 +27,12 @@
     {
         @Column.CellTemplate(Item)
     }
+    else if (IsBatchDirty)
+    {
+        @* Batch-edit: show the buffered value (overrides the row's current
+           value) so the user sees what will be saved. *@
+        @FormatBatchValue(Context!.GetBatchValue(Item, Column))
+    }
     else
     {
         @Column.GetFormattedValue(Item, Context?.Culture ?? System.Globalization.CultureInfo.CurrentCulture)
@@ -55,10 +61,29 @@
     private CellEditContext<TItem>? _editContext;
 
     // --- Keyboard navigation / ARIA (rc.32) ---
+    // Cell-level inline editing applies in both Cell and Batch modes — the
+    // difference is where the commit lands (immediate vs buffered).
     private bool CellEditable =>
-        Context?.EditMode == DataGridEditMode.Cell && Column.Field is not null;
+        (Context?.EditMode == DataGridEditMode.Cell || Context?.EditMode == DataGridEditMode.Batch)
+        && Column.Field is not null;
+
+    // True when this (row, column) currently carries a buffered batch edit.
+    // Drives the dirty marker (left border accent) and the display override.
+    private bool IsBatchDirty =>
+        Context?.IsBatchEdit == true
+        && Column.Field is not null
+        && Context.IsCellDirty(Item, Column.Field!);
 
     private string? AriaReadonly => CellEditable ? null : "true";
+
+    private string FormatBatchValue(object? value)
+    {
+        if (value is null) return "";
+        var culture = Context?.Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        if (value is IFormattable f)
+            return f.ToString(Column.Format, culture);
+        return value.ToString() ?? "";
+    }
 
     private string? CellId =>
         Navigable && Context is not null ? $"{Context.GridId}-cell-{RowIndex}-{ColumnIndex}" : null;
@@ -100,6 +125,10 @@
                 "px-3 py-2 text-sm",
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 pinClass,
+                // Batch-edit dirty marker: subtle left border accent + warning
+                // background tint. Uses the lumeo.css --color-warning token so
+                // it stays theme-aware in dark mode.
+                IsBatchDirty ? "border-l-2 border-warning bg-warning/10" : null,
                 Column.CssClass,
                 cellClass,
                 Class
@@ -121,7 +150,7 @@
 
     private void HandleClick()
     {
-        if (Context?.EditMode == DataGridEditMode.Cell && !_isEditing)
+        if (CellEditable && !_isEditing)
         {
             StartEdit();
         }
@@ -129,7 +158,7 @@
 
     private void HandleDoubleClick()
     {
-        if (Context?.EditMode == DataGridEditMode.Cell && !_isEditing)
+        if (CellEditable && !_isEditing)
         {
             StartEdit();
         }
@@ -137,13 +166,18 @@
 
     private void StartEdit()
     {
+        // In batch mode, seed from the pending buffer if there's one — otherwise
+        // the user would have to retype an edit they just committed.
         _originalValue = Column.GetValue(Item);
-        _editValue = _originalValue?.ToString() ?? "";
+        var seedValue = Context?.IsBatchEdit == true
+            ? Context.GetBatchValue(Item, Column)
+            : _originalValue;
+        _editValue = seedValue?.ToString() ?? "";
         _editContext = new CellEditContext<TItem>
         {
             Item = Item,
             Column = Column,
-            Value = _originalValue,
+            Value = seedValue,
             ValueChanged = () =>
             {
                 _editValue = _editContext?.Value?.ToString();
@@ -200,7 +234,18 @@
         if (!_isEditing) return;
         _isEditing = false;
 
-        if (_editValue != _originalValue?.ToString() && Context is not null && Column.Field is not null)
+        if (Context is null || Column.Field is null) return;
+
+        // Batch mode → write into the pending-changes buffer; don't mutate the
+        // row and don't fire OnCellEdit (that fires later on Save all via the
+        // consumer's OnBatchSave handler).
+        if (Context.IsBatchEdit)
+        {
+            Context.SetBatchValue(Item, Column, _editValue);
+            return;
+        }
+
+        if (_editValue != _originalValue?.ToString())
         {
             var args = new CellEditEventArgs<TItem>(Item, Column.Field, _originalValue, _editValue);
             await Context.OnCellEdit.InvokeAsync(args);

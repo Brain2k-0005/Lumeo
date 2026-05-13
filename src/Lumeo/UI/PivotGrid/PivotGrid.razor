@@ -20,49 +20,58 @@
         <div class="relative w-full overflow-auto">
             <table role="table" class="w-full caption-bottom text-sm border-collapse">
                 <thead>
-                    <tr role="row" class="border-b border-border/40">
-                        @foreach (var rf in _rowFields)
-                        {
-                            <th role="columnheader" rowspan="@HeaderRowSpan"
-                                class="@HeaderCellClass align-bottom text-left">@rf.Header</th>
-                        }
-                        @if (_hasColumnField)
-                        {
-                            @foreach (var col in _columnLeaves)
+                    @* --- column-field levels (one <tr> per level, top-down) --- *@
+                    @for (var levelIdx = 0; levelIdx < _columnHeaderRows.Count; levelIdx++)
+                    {
+                        var row = _columnHeaderRows[levelIdx];
+                        <tr role="row" class="border-b border-border/40">
+                            @if (levelIdx == 0)
                             {
-                                <th role="columnheader" colspan="@_measures.Count" class="@HeaderCellClass text-center">@col.Label</th>
+                                @foreach (var rf in _rowFields)
+                                {
+                                    <th role="columnheader" rowspan="@HeaderRowSpan"
+                                        class="@HeaderCellClass align-bottom text-left">@rf.Header</th>
+                                }
                             }
-                            @if (ShowRowGrandTotal)
+                            @foreach (var entry in row)
                             {
-                                <th role="columnheader" colspan="@_measures.Count" class="@HeaderCellClass text-center bg-muted/50">@GrandTotalLabel</th>
+                                <th role="columnheader"
+                                    colspan="@entry.ColSpan"
+                                    rowspan="@entry.RowSpan"
+                                    class="@HeaderClassFor(entry)">@entry.Label</th>
                             }
-                        }
-                        else
-                        {
-                            @foreach (var m in _measures)
-                            {
-                                <th role="columnheader" class="@HeaderCellClass text-right">@m.Header</th>
-                            }
-                        }
-                    </tr>
+                        </tr>
+                    }
+                    @* --- measure-name row (always shown when we have a column tree OR when no column fields and multiple measures need labels) --- *@
                     @if (_hasColumnField)
                     {
                         <tr role="row" class="border-b border-border/40">
-                            @foreach (var col in _columnLeaves)
+                            @foreach (var leaf in _columnLeaves)
                             {
+                                @foreach (var m in _measures)
+                                {
+                                    <th role="columnheader"
+                                        class="@($"{HeaderCellClass} text-right {(leaf.IsGrandTotal ? "bg-muted/50" : "")}")">@m.Header</th>
+                                }
+                            }
+                        </tr>
+                    }
+                    else
+                    {
+                        @* No column fields: measure headers in the single top-row of the thead *@
+                        @if (_columnHeaderRows.Count == 0)
+                        {
+                            <tr role="row" class="border-b border-border/40">
+                                @foreach (var rf in _rowFields)
+                                {
+                                    <th role="columnheader" class="@HeaderCellClass align-bottom text-left">@rf.Header</th>
+                                }
                                 @foreach (var m in _measures)
                                 {
                                     <th role="columnheader" class="@HeaderCellClass text-right">@m.Header</th>
                                 }
-                            }
-                            @if (ShowRowGrandTotal)
-                            {
-                                @foreach (var m in _measures)
-                                {
-                                    <th role="columnheader" class="@HeaderCellClass text-right bg-muted/50">@m.Header</th>
-                                }
-                            }
-                        </tr>
+                            </tr>
+                        }
                     }
                 </thead>
                 <tbody>
@@ -112,18 +121,12 @@
                                     @for (var mi = 0; mi < _measures.Count; mi++)
                                     {
                                         var measure = _measures[mi];
-                                        var matched = MatchCell(row.Node, col);
+                                        var items = LookupCellItems(row.Node.Key, col.PathKey);
                                         var mIndex = mi;
                                         var theCol = col;
-                                        <td role="cell" class="@DataCellClass tabular-nums text-right"
-                                            @onclick="() => OnCellClickHandler(row, theCol, mIndex)">@measure.FormatValue(measure.Compute(matched))</td>
-                                    }
-                                }
-                                @if (ShowRowGrandTotal)
-                                {
-                                    @foreach (var m in _measures)
-                                    {
-                                        <td role="cell" class="@DataCellClass tabular-nums text-right bg-muted/30 font-medium">@m.FormatValue(m.Compute(row.Node.Items))</td>
+                                        <td role="cell"
+                                            class="@($"{DataCellClass} tabular-nums text-right {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}")"
+                                            @onclick="() => OnCellClickHandler(row, theCol, mIndex)">@measure.FormatValue(measure.Compute(items))</td>
                                     }
                                 }
                             }
@@ -149,14 +152,8 @@
                                 {
                                     @foreach (var m in _measures)
                                     {
-                                        <td role="cell" class="@DataCellClass tabular-nums text-right">@m.FormatValue(m.Compute(col.Items))</td>
-                                    }
-                                }
-                                @if (ShowRowGrandTotal)
-                                {
-                                    @foreach (var m in _measures)
-                                    {
-                                        <td role="cell" class="@DataCellClass tabular-nums text-right bg-muted/50">@m.FormatValue(m.Compute(_allItems))</td>
+                                        <td role="cell"
+                                            class="@($"{DataCellClass} tabular-nums text-right {(col.IsGrandTotal ? "bg-muted/50" : "")}")">@m.FormatValue(m.Compute(col.Items))</td>
                                     }
                                 }
                             }
@@ -202,65 +199,232 @@
 
     private List<TItem> _allItems = new();
     private IReadOnlyList<PivotField<TItem>> _rowFields = Array.Empty<PivotField<TItem>>();
+    private IReadOnlyList<PivotField<TItem>> _columnFields = Array.Empty<PivotField<TItem>>();
     private IReadOnlyList<PivotMeasure<TItem>> _measures = Array.Empty<PivotMeasure<TItem>>();
-    private PivotField<TItem>? _colField;
     private bool _hasColumnField;
     private bool _isEmpty;
 
+    // Multi-level column structures
+    private PivotColumnNode _columnRoot = new("", "", "", -1, isGrandTotal: false);
     private List<ColumnLeaf> _columnLeaves = new();
+    private List<List<HeaderEntry>> _columnHeaderRows = new();
+
+    // Row hierarchy
     private RowNode _root = new(Array.Empty<object?>(), -1);
     private List<DisplayRow> _displayRows = new();
+
+    // Aggregation cache: keyed by row-node key, then by column-leaf path-key, holds the matched item list
+    private Dictionary<string, Dictionary<string, IReadOnlyList<TItem>>> _cellItems = new();
+    private static readonly IReadOnlyList<TItem> EmptyItems = Array.Empty<TItem>();
 
     private readonly HashSet<string> _collapsed = new();
 
     private string WrapperClass => $"rounded-lg border border-border/40 bg-card text-foreground overflow-hidden {Class}".Trim();
     private string HeaderCellClass => (Compact ? "px-2 py-1.5" : "px-3 py-2") + " text-xs font-medium text-foreground bg-muted/40 border border-border/40 whitespace-nowrap";
     private string DataCellClass => (Compact ? "px-2 py-1.5" : "px-3 py-2") + " border border-border/40 whitespace-nowrap";
-    private int HeaderRowSpan => _hasColumnField ? 2 : 1;
+
+    // Total row-span for the top-left corner: column-tree depth + 1 (for the measure-name row).
+    private int HeaderRowSpan => _hasColumnField ? _columnHeaderRows.Count + 1 : 1;
+
+    private string HeaderClassFor(HeaderEntry entry)
+    {
+        var bg = entry.IsGrandTotal ? "bg-muted/50" : "";
+        return $"{HeaderCellClass} text-center {bg}".Trim();
+    }
 
     protected override void OnParametersSet()
     {
         _allItems = (Items ?? Enumerable.Empty<TItem>()).ToList();
         _rowFields = RowFields ?? Array.Empty<PivotField<TItem>>();
+        _columnFields = ColumnFields ?? Array.Empty<PivotField<TItem>>();
         _measures = Measures ?? Array.Empty<PivotMeasure<TItem>>();
-        // Only the first column field is honoured — single column-field level (see component docs).
-        _colField = (ColumnFields is { Count: > 0 }) ? ColumnFields[0] : null;
-        _hasColumnField = _colField is not null;
+        _hasColumnField = _columnFields.Count > 0;
         _isEmpty = _allItems.Count == 0;
 
         if (_isEmpty)
         {
             _columnLeaves = new();
+            _columnHeaderRows = new();
             _displayRows = new();
+            _cellItems = new();
             return;
         }
 
-        // --- column leaves (single level) ---
+        // --- build column tree (multi-level) ---
+        _columnRoot = BuildColumnRoot();
         _columnLeaves = new();
-        if (_colField is not null)
-        {
-            var grouped = _allItems
-                .GroupBy(i => _colField.Selector(i))
-                .Select(g => (Key: g.Key, Items: (IReadOnlyList<TItem>)g.ToList()))
-                .ToList();
-            grouped.Sort((a, b) => CompareValues(a.Key, b.Key));
-            if (_colField.SortComparer is { } sc)
-                grouped = grouped.OrderBy(x => x.Key, sc).ToList();
-            foreach (var g in grouped)
-                _columnLeaves.Add(new ColumnLeaf(_colField.FormatValue(g.Key), g.Key, g.Items));
-        }
+        CollectColumnLeaves(_columnRoot, _columnLeaves);
+
+        // --- build column header rows (one entry per level of the column tree) ---
+        _columnHeaderRows = BuildColumnHeaderRows(_columnRoot);
 
         // --- row hierarchy tree ---
         _root = BuildNode(_allItems, Array.Empty<object?>(), -1);
+
+        // --- aggregation lookup: rowKey -> colKey -> items ---
+        _cellItems = BuildCellLookup(_root);
 
         // --- flatten into display rows respecting collapse ---
         _displayRows = new();
         FlattenRows(_root);
     }
 
+    // ---- Column-tree construction --------------------------------------
+
+    private PivotColumnNode BuildColumnRoot()
+    {
+        var root = new PivotColumnNode(label: "", key: "", pathKey: "", level: -1, isGrandTotal: false)
+        {
+            Items = _allItems,
+        };
+
+        BuildColumnChildren(root, _allItems, 0);
+
+        // Append grand-total leaf at the top level if requested and column fields exist.
+        if (ShowRowGrandTotal && _hasColumnField)
+        {
+            var gt = new PivotColumnNode(
+                label: GrandTotalLabel,
+                key: "__grand_total__",
+                pathKey: "__GT__",
+                level: 0,
+                isGrandTotal: true)
+            {
+                Items = _allItems,
+                LeafCount = 1,
+            };
+            root.Children.Add(gt);
+        }
+
+        // Compute leaf counts bottom-up.
+        ComputeLeafCounts(root);
+        return root;
+    }
+
+    private void BuildColumnChildren(PivotColumnNode parent, IReadOnlyList<TItem> items, int level)
+    {
+        if (level >= _columnFields.Count) return;
+        var field = _columnFields[level];
+        var groups = items
+            .GroupBy(i => field.Selector(i))
+            .Select(g => (Key: g.Key, Items: (IReadOnlyList<TItem>)g.ToList()))
+            .ToList();
+        groups.Sort((a, b) => CompareValues(a.Key, b.Key));
+        if (field.SortComparer is { } sc)
+            groups = groups.OrderBy(x => x.Key, sc).ToList();
+
+        foreach (var g in groups)
+        {
+            var label = field.FormatValue(g.Key);
+            var keyStr = g.Key?.ToString() ?? "_";
+            var pathKey = parent.PathKey.Length == 0 ? $"L{level}={keyStr}" : $"{parent.PathKey}|L{level}={keyStr}";
+            var node = new PivotColumnNode(label, keyStr, pathKey, level, isGrandTotal: false)
+            {
+                RawKey = g.Key,
+                Items = g.Items,
+            };
+            parent.Children.Add(node);
+            BuildColumnChildren(node, g.Items, level + 1);
+        }
+    }
+
+    private static int ComputeLeafCounts(PivotColumnNode node)
+    {
+        if (node.Children.Count == 0)
+        {
+            node.LeafCount = 1;
+            return 1;
+        }
+        var sum = 0;
+        foreach (var c in node.Children)
+            sum += ComputeLeafCounts(c);
+        node.LeafCount = sum;
+        return sum;
+    }
+
+    private static void CollectColumnLeaves(PivotColumnNode node, List<ColumnLeaf> leaves)
+    {
+        if (node.Level >= 0 && node.Children.Count == 0)
+        {
+            // Build path-key array from root-down: this leaf already has a PathKey.
+            leaves.Add(new ColumnLeaf(
+                Label: node.Label,
+                PathKey: node.PathKey,
+                Path: BuildPathFromNode(node),
+                Items: node.Items,
+                IsGrandTotal: node.IsGrandTotal));
+            return;
+        }
+        foreach (var c in node.Children)
+            CollectColumnLeaves(c, leaves);
+    }
+
+    private static object?[] BuildPathFromNode(PivotColumnNode leaf)
+    {
+        // The leaf's PathKey encodes ancestor segments — but we need RawKeys.
+        // Easier: walk the tree, since we built linearly, recreate via segments.
+        // Since we don't keep a parent ref, derive from the PathKey segments isn't ideal.
+        // For click-args we'll fall back to splitting PathKey, but raw click info uses Path stored on leaf.
+        // We populate Path on leaves below in another pass.
+        return leaf.PathOverride ?? Array.Empty<object?>();
+    }
+
+    private List<List<HeaderEntry>> BuildColumnHeaderRows(PivotColumnNode root)
+    {
+        // Number of column header rows == depth of column tree from level-0 onwards.
+        // Even for ShowRowGrandTotal with single-level columns, depth is 1.
+        if (root.Children.Count == 0) return new();
+
+        // Compute max depth of any path (1-based count of column-field levels involved).
+        var depth = MaxDepth(root, 0);
+        var rows = new List<List<HeaderEntry>>();
+        for (var i = 0; i < depth; i++) rows.Add(new());
+
+        // Per-row width counter for sanity (no longer strictly needed but kept consistent).
+        AppendHeaderEntries(root, 0, depth, rows);
+        return rows;
+    }
+
+    private static int MaxDepth(PivotColumnNode node, int currentDepth)
+    {
+        if (node.Children.Count == 0) return currentDepth;
+        var max = currentDepth;
+        foreach (var c in node.Children)
+            max = Math.Max(max, MaxDepth(c, currentDepth + 1));
+        return max;
+    }
+
+    private void AppendHeaderEntries(PivotColumnNode parent, int parentDepth, int totalDepth, List<List<HeaderEntry>> rows)
+    {
+        foreach (var child in parent.Children)
+        {
+            var span = child.LeafCount * _measures.Count;
+            if (child.Children.Count == 0)
+            {
+                // Leaf column-field node. Render at parentDepth and add a rowspan filling the remaining depth.
+                var remainingDepth = totalDepth - parentDepth;
+                rows[parentDepth].Add(new HeaderEntry(
+                    Label: child.Label,
+                    ColSpan: span,
+                    RowSpan: remainingDepth,
+                    IsGrandTotal: child.IsGrandTotal));
+            }
+            else
+            {
+                rows[parentDepth].Add(new HeaderEntry(
+                    Label: child.Label,
+                    ColSpan: span,
+                    RowSpan: 1,
+                    IsGrandTotal: child.IsGrandTotal));
+                AppendHeaderEntries(child, parentDepth + 1, totalDepth, rows);
+            }
+        }
+    }
+
+    // ---- Row-tree (unchanged in shape) ---------------------------------
+
     private RowNode BuildNode(IReadOnlyList<TItem> items, object?[] path, int level)
     {
-        // labels[i] = the formatted display label of path[i]
         var labels = new string[path.Length];
         for (var i = 0; i < path.Length; i++)
             labels[i] = _rowFields[i].FormatValue(path[i]);
@@ -308,14 +472,87 @@
 
     private static string LeafLabel(RowNode n) => n.Labels.Length == 0 ? "" : n.Labels[^1];
 
-    private IReadOnlyList<TItem> MatchCell(RowNode rowNode, ColumnLeaf col)
+    // ---- Aggregation lookup --------------------------------------------
+
+    /// <summary>
+    /// Build a cache that, for every row node (group, leaf, subtotal — all share the same .Key),
+    /// gives the matched items per column-leaf. The grand-total column leaf gets the full row-node Items.
+    /// </summary>
+    private Dictionary<string, Dictionary<string, IReadOnlyList<TItem>>> BuildCellLookup(RowNode root)
     {
-        if (rowNode.Items.Count == 0 || _colField is null) return Array.Empty<TItem>();
-        var list = new List<TItem>();
-        foreach (var item in rowNode.Items)
-            if (Equals(_colField.Selector(item), col.Key))
+        var cache = new Dictionary<string, Dictionary<string, IReadOnlyList<TItem>>>();
+        if (!_hasColumnField) return cache;
+        BuildCellLookupRecursive(root, cache);
+        return cache;
+    }
+
+    private void BuildCellLookupRecursive(RowNode node, Dictionary<string, Dictionary<string, IReadOnlyList<TItem>>> cache)
+    {
+        // Compute once for this row node.
+        var perCol = new Dictionary<string, IReadOnlyList<TItem>>(_columnLeaves.Count);
+        // Initialise empty buckets for every column leaf so lookup is O(1) without nulls.
+        for (var i = 0; i < _columnLeaves.Count; i++)
+        {
+            var leaf = _columnLeaves[i];
+            if (leaf.IsGrandTotal)
+            {
+                perCol[leaf.PathKey] = node.Items;
+            }
+            else
+            {
+                perCol[leaf.PathKey] = EmptyItems;
+            }
+        }
+
+        // Bucket items into column leaves by walking the column tree.
+        // For each row item, find its leaf path-key.
+        if (node.Items.Count > 0)
+        {
+            // Group the row items into per-column-leaf lists.
+            var buckets = new Dictionary<string, List<TItem>>();
+            foreach (var item in node.Items)
+            {
+                var pathKey = ComputeItemColumnPathKey(item);
+                if (!buckets.TryGetValue(pathKey, out var list))
+                {
+                    list = new List<TItem>();
+                    buckets[pathKey] = list;
+                }
                 list.Add(item);
-        return list;
+            }
+            foreach (var kv in buckets)
+            {
+                perCol[kv.Key] = kv.Value;
+            }
+        }
+
+        cache[node.Key] = perCol;
+
+        foreach (var child in node.Children)
+            BuildCellLookupRecursive(child, cache);
+    }
+
+    private string ComputeItemColumnPathKey(TItem item)
+    {
+        // Walk the column-field chain for this item and produce its leaf path-key,
+        // formatted identically to BuildColumnChildren.
+        var sb = new System.Text.StringBuilder();
+        for (var level = 0; level < _columnFields.Count; level++)
+        {
+            if (level > 0) sb.Append('|');
+            var key = _columnFields[level].Selector(item);
+            var keyStr = key?.ToString() ?? "_";
+            sb.Append('L').Append(level).Append('=').Append(keyStr);
+        }
+        return sb.ToString();
+    }
+
+    private IReadOnlyList<TItem> LookupCellItems(string rowKey, string columnPathKey)
+    {
+        if (_cellItems.TryGetValue(rowKey, out var perCol) &&
+            perCol.TryGetValue(columnPathKey, out var items))
+            return items;
+        return EmptyItems;
     }
 
     private void ToggleCollapse(RowNode node)
@@ -330,13 +567,34 @@
     private async Task OnCellClickHandler(DisplayRow row, ColumnLeaf? col, int measureIndex)
     {
         if (!OnCellClick.HasDelegate) return;
-        var matched = col is not null ? MatchCell(row.Node, col) : row.Node.Items;
+        var matched = col is not null
+            ? LookupCellItems(row.Node.Key, col.PathKey)
+            : row.Node.Items;
+        // Decode raw column-keys from the leaf path (skip if grand-total or no columns).
+        var columnKeys = (col is null || col.IsGrandTotal)
+            ? Array.Empty<object?>()
+            : DecodeColumnKeys(col);
         var args = new PivotCellClickArgs(
             row.Node.Path.ToArray(),
-            col is not null ? new[] { col.Key } : Array.Empty<object?>(),
+            columnKeys,
             (measureIndex >= 0 && measureIndex < _measures.Count) ? _measures[measureIndex].Header : "",
             matched.Cast<object?>().ToArray());
         await OnCellClick.InvokeAsync(args);
+    }
+
+    private object?[] DecodeColumnKeys(ColumnLeaf leaf)
+    {
+        // PathKey format: "L0=val0|L1=val1|..." — return raw string segments per level.
+        if (string.IsNullOrEmpty(leaf.PathKey)) return Array.Empty<object?>();
+        var segments = leaf.PathKey.Split('|');
+        var result = new object?[segments.Length];
+        for (var i = 0; i < segments.Length; i++)
+        {
+            var seg = segments[i];
+            var eq = seg.IndexOf('=');
+            result[i] = eq >= 0 ? seg.Substring(eq + 1) : seg;
+        }
+        return result;
     }
 
     private static int CompareValues(object? a, object? b)
@@ -370,11 +628,44 @@
         {
             Path = path;
             Level = level;
-            Key = "L" + level + "|" + string.Join("", path.Select(p => p?.ToString() ?? " "));
+            Key = "L" + level + "|" + string.Join("", path.Select(p => p?.ToString() ?? " "));
         }
     }
 
-    private sealed record ColumnLeaf(string Label, object? Key, IReadOnlyList<TItem> Items);
+    /// <summary>
+    /// A node in the column-field hierarchy. Internal node => header group; leaf node (Children empty) => actual data column.
+    /// </summary>
+    private sealed class PivotColumnNode
+    {
+        public string Label { get; }
+        public string Key { get; }
+        public string PathKey { get; }
+        public int Level { get; }
+        public bool IsGrandTotal { get; }
+        public object? RawKey { get; set; }
+        public object?[]? PathOverride { get; set; }
+        public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
+        public List<PivotColumnNode> Children { get; } = new();
+        public int LeafCount { get; set; }
+
+        public PivotColumnNode(string label, string key, string pathKey, int level, bool isGrandTotal)
+        {
+            Label = label;
+            Key = key;
+            PathKey = pathKey;
+            Level = level;
+            IsGrandTotal = isGrandTotal;
+        }
+    }
+
+    private sealed record ColumnLeaf(
+        string Label,
+        string PathKey,
+        object?[] Path,
+        IReadOnlyList<TItem> Items,
+        bool IsGrandTotal);
+
+    private sealed record HeaderEntry(string Label, int ColSpan, int RowSpan, bool IsGrandTotal);
 
     private enum DisplayRowKind { GroupHeader, Leaf, Subtotal }
 

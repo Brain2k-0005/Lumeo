@@ -28,12 +28,15 @@ else
                so the cycling phantom data isn't mistaken for a bug. Doesn't block the
                chart underneath (small, corner-aligned). Disable via ShowLoadingLabel=false
                for bare phantom/silhouette visuals. *@
-            <div role="status" aria-live="polite" aria-label="@LoadingText"
+            <div role="status" aria-live="polite" aria-label="@(LoadingText ?? L["Chart.Loading"])"
                  class="absolute top-2 right-2 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 backdrop-blur-sm px-2.5 py-1 shadow-sm pointer-events-none">
                 <Blazicon Svg="Lucide.LoaderCircle" class="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-                @if (!string.IsNullOrEmpty(LoadingText))
+                @{
+                    var _chartLoadingLabel = LoadingText ?? L["Chart.Loading"];
+                }
+                @if (!string.IsNullOrEmpty(_chartLoadingLabel))
                 {
-                    <span class="text-xs font-medium text-muted-foreground">@LoadingText</span>
+                    <span class="text-xs font-medium text-muted-foreground">@_chartLoadingLabel</span>
                 }
             </div>
         }
@@ -41,6 +44,7 @@ else
 }
 
 @inject ComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [Parameter] public EChartOption? Option { get; set; }
@@ -93,9 +97,9 @@ else
     /// itself.</summary>
     [Parameter] public bool ShowLoadingLabel { get; set; } = true;
     /// <summary>Label rendered next to the spinner inside the loading pill. Set to
-    /// <c>null</c> or empty to hide the text and show only the spinner. Defaults to
-    /// "Loading…".</summary>
-    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    /// <c>null</c> or empty to hide the text and show only the spinner. When not set,
+    /// uses the active locale's "Chart.Loading" string (default: "Loading…").</summary>
+    [Parameter] public string? LoadingText { get; set; }
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
