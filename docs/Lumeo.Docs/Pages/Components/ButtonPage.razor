@@ -113,6 +113,47 @@
             <Button PressEffect="Button.ButtonPressEffect.Ripple">Ripple</Button>
         </Flex>
     </ComponentDemo>
+
+    <ComponentDemo Title="Variant — interactive preview" Code="@_interactiveVariantCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a variant to see it applied to the button below.</Lumeo.Text>
+            <Segmented @bind-Value="_previewVariant">
+                <SegmentedItem Value="Default">Default</SegmentedItem>
+                <SegmentedItem Value="Secondary">Secondary</SegmentedItem>
+                <SegmentedItem Value="Destructive">Destructive</SegmentedItem>
+                <SegmentedItem Value="Outline">Outline</SegmentedItem>
+                <SegmentedItem Value="Ghost">Ghost</SegmentedItem>
+                <SegmentedItem Value="Link">Link</SegmentedItem>
+            </Segmented>
+            <Button Variant="_btnPreviewVariant">
+                Button — @_previewVariant
+            </Button>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Size — interactive preview" Code="@_interactiveSizeCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a size to see it applied live.</Lumeo.Text>
+            <Segmented @bind-Value="_previewSize">
+                <SegmentedItem Value="Sm">Sm</SegmentedItem>
+                <SegmentedItem Value="Default">Default</SegmentedItem>
+                <SegmentedItem Value="Lg">Lg</SegmentedItem>
+                <SegmentedItem Value="Icon">Icon</SegmentedItem>
+            </Segmented>
+            @if (_previewSize == "Icon")
+            {
+                <Button Size="Button.ButtonSize.Icon">
+                    <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
+                </Button>
+            }
+            else
+            {
+                <Button Size="_btnPreviewSize">
+                    Button — @_previewSize
+                </Button>
+            }
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12">
@@ -192,6 +233,10 @@
                         <tr><td class="p-3 font-mono text-xs text-primary">FullWidth</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Stretches the button to fill its container's width.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">LeftIcon</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Slot rendered before the button label.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">RightIcon</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Slot rendered after the button label.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Type</td><td class="p-3 font-mono text-xs text-muted-foreground">ButtonType</td><td class="p-3 font-mono text-xs text-muted-foreground">Button</td><td class="p-3 text-muted-foreground">HTML button type attribute. Values: Button, Submit, Reset. Defaults to Button to prevent accidental form submission.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">StopPropagation</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">When true, stops the click event from bubbling up to parent elements.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">PreventDefault</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">When true, prevents the default browser action on click (e.g. link navigation).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ChildContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Content rendered inside the button.</td></tr>
                     </tbody>
                 </table>
             </Stack>
@@ -288,6 +333,40 @@
 <Button PressEffect=""Button.ButtonPressEffect.Scale"">Scale</Button>
 <Button PressEffect=""Button.ButtonPressEffect.Brightness"" Variant=""Button.ButtonVariant.Secondary"">Brightness</Button>
 <Button PressEffect=""Button.ButtonPressEffect.Ripple"">Ripple</Button>";
+
+    private string _previewVariant = "Default";
+    private string _previewSize = "Default";
+
+    private Button.ButtonVariant _btnPreviewVariant =>
+        Enum.TryParse<Button.ButtonVariant>(_previewVariant, out var v) ? v : Button.ButtonVariant.Default;
+    private Button.ButtonSize _btnPreviewSize =>
+        Enum.TryParse<Button.ButtonSize>(_previewSize, out var s) ? s : Button.ButtonSize.Default;
+
+    private string _interactiveVariantCode = @"<Segmented @bind-Value=""_variant"">
+    <SegmentedItem Value=""Default"">Default</SegmentedItem>
+    <SegmentedItem Value=""Secondary"">Secondary</SegmentedItem>
+    <SegmentedItem Value=""Destructive"">Destructive</SegmentedItem>
+    <SegmentedItem Value=""Outline"">Outline</SegmentedItem>
+    <SegmentedItem Value=""Ghost"">Ghost</SegmentedItem>
+    <SegmentedItem Value=""Link"">Link</SegmentedItem>
+</Segmented>
+<Button Variant=""@Enum.Parse<Button.ButtonVariant>(_variant)"">Button — @_variant</Button>
+
+@code {
+    private string _variant = ""Default"";
+}";
+
+    private string _interactiveSizeCode = @"<Segmented @bind-Value=""_size"">
+    <SegmentedItem Value=""Sm"">Sm</SegmentedItem>
+    <SegmentedItem Value=""Default"">Default</SegmentedItem>
+    <SegmentedItem Value=""Lg"">Lg</SegmentedItem>
+    <SegmentedItem Value=""Icon"">Icon</SegmentedItem>
+</Segmented>
+<Button Size=""@Enum.Parse<Button.ButtonSize>(_size)"">Button — @_size</Button>
+
+@code {
+    private string _size = ""Default"";
+}";
 
     private string _isLoadingCode = @"<Button IsLoading=""@_btnLoading"" OnClick=""@HandleLoadingClick"">Submit</Button>
 <Button IsLoading=""@_btnLoading"" LoadingText=""Saving..."" Variant=""Button.ButtonVariant.Outline"" OnClick=""@HandleLoadingClick"">Save</Button>

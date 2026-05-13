@@ -69,6 +69,20 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Type (interactive)" Code="@_typeInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Switch chart type to compare Line, Area, and Bars.</Lumeo.Text>
+            <Segmented @bind-Value="_sparkType">
+                <SegmentedItem Value="Line">Line</SegmentedItem>
+                <SegmentedItem Value="Area">Area</SegmentedItem>
+                <SegmentedItem Value="Bars">Bars</SegmentedItem>
+            </Segmented>
+            <div class="w-64">
+                <Sparkline Values="_seriesA" Type="@_sparkTypeEnum" Height="48" ShowLast="@(_sparkType == "Line")" />
+            </div>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Color variants" Code="@_colorCode">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div class="rounded-lg border border-border/40 p-4">
@@ -129,6 +143,9 @@
 </div>
 
 @code {
+    private string _sparkType = "Line";
+    private Sparkline.SparkType _sparkTypeEnum =>
+        Enum.TryParse<Sparkline.SparkType>(_sparkType, out var v) ? v : Sparkline.SparkType.Line;
     private readonly double[] _seriesA = { 12, 18, 9, 22, 28, 19, 34, 30, 42, 38, 46, 52 };
     private readonly double[] _up = { 4, 7, 5, 9, 12, 11, 16, 14, 18, 22, 25, 30 };
     private readonly double[] _down = { 30, 26, 28, 22, 24, 19, 16, 18, 13, 11, 9, 6 };
@@ -157,4 +174,13 @@
     private const string _colorCode = @"<Sparkline Values=""up"" Color=""var(--color-success)"" Type=""Sparkline.SparkType.Area"" />
 <Sparkline Values=""down"" Color=""var(--color-destructive)"" Type=""Sparkline.SparkType.Area"" />
 <Sparkline Values=""flat"" />";
+
+    private const string _typeInteractiveCode = @"<Segmented @bind-Value=""_type"">
+    <SegmentedItem Value=""@Sparkline.SparkType.Line"">Line</SegmentedItem>
+    <SegmentedItem Value=""@Sparkline.SparkType.Area"">Area</SegmentedItem>
+    <SegmentedItem Value=""@Sparkline.SparkType.Bars"">Bars</SegmentedItem>
+</Segmented>
+<Sparkline Values=""data"" Type=""@_type"" Height=""48"" />
+
+@code { private Sparkline.SparkType _type = Sparkline.SparkType.Line; }";
 }

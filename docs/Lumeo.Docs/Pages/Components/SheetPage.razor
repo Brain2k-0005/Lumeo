@@ -142,6 +142,26 @@
         </Sheet>
     </ComponentDemo>
 
+    <ComponentDemo Title="Side — interactive" Code="@_sideInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a value to see it applied live.</Lumeo.Text>
+            <Segmented @bind-Value="_sheetSideSel" Options="_sheetSideOptions" />
+            <div>
+                <Sheet @bind-Open="_sideInteractiveOpen">
+                    <SheetTrigger>
+                        <Button Variant="Button.ButtonVariant.Outline">Open Sheet (@_sheetSideSel)</Button>
+                    </SheetTrigger>
+                    <SheetContent Side="@_activeSheetSide">
+                        <SheetHeader>
+                            <SheetTitle>@_sheetSideSel Sheet</SheetTitle>
+                            <SheetDescription>This sheet slides in from the @_sheetSideSel.ToLower().</SheetDescription>
+                        </SheetHeader>
+                    </SheetContent>
+                </Sheet>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Navigation Sheet" Code="@_navCode">
         <Sheet @bind-Open="_isNavOpen">
             <SheetTrigger>
@@ -303,8 +323,44 @@
     private bool _isLeftOpen;
     private bool _isNavOpen;
     private bool _preventSheetOpen;
+    private bool _sideInteractiveOpen;
     private Dictionary<SheetContent.SheetSize, bool> _sheetSizeOpen = Enum.GetValues<SheetContent.SheetSize>()
         .ToDictionary(s => s, _ => false);
+
+    // Interactive: Side
+    private string _sheetSideSel = "Right";
+    private SheetContent.SheetSide _activeSheetSide => Enum.Parse<SheetContent.SheetSide>(_sheetSideSel);
+    private List<Segmented.SegmentedOption> _sheetSideOptions = new()
+    {
+        new() { Label = "Top", Value = "Top" },
+        new() { Label = "Right", Value = "Right" },
+        new() { Label = "Bottom", Value = "Bottom" },
+        new() { Label = "Left", Value = "Left" },
+    };
+    private string _sideInteractiveCode = @"<Segmented @bind-Value=""_sheetSideSel"" Options=""_sheetSideOptions"" />
+<Sheet @bind-Open=""_open"">
+    <SheetTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Sheet (@_sheetSideSel)</Button>
+    </SheetTrigger>
+    <SheetContent Side=""@_activeSheetSide"">
+        <SheetHeader>
+            <SheetTitle>@_sheetSideSel Sheet</SheetTitle>
+            <SheetDescription>This sheet slides in from the @_sheetSideSel.ToLower().</SheetDescription>
+        </SheetHeader>
+    </SheetContent>
+</Sheet>
+
+@code {
+    private string _sheetSideSel = ""Right"";
+    private SheetContent.SheetSide _activeSheetSide => Enum.Parse<SheetContent.SheetSide>(_sheetSideSel);
+    private List<Segmented.SegmentedOption> _sheetSideOptions = new()
+    {
+        new() { Label = ""Top"", Value = ""Top"" },
+        new() { Label = ""Right"", Value = ""Right"" },
+        new() { Label = ""Bottom"", Value = ""Bottom"" },
+        new() { Label = ""Left"", Value = ""Left"" },
+    };
+}";
 
     private string _sizesCode = @"@foreach (var size in Enum.GetValues<SheetContent.SheetSize>())
 {

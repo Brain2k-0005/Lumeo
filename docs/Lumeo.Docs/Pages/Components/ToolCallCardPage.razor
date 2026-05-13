@@ -33,6 +33,27 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Status (interactive)" Code="@_statusInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Switch status to see the icon, color, and available sections change.</Lumeo.Text>
+            <Segmented @bind-Value="_tcStatus">
+                <SegmentedItem Value="Pending">Pending</SegmentedItem>
+                <SegmentedItem Value="Running">Running</SegmentedItem>
+                <SegmentedItem Value="Success">Success</SegmentedItem>
+                <SegmentedItem Value="Error">Error</SegmentedItem>
+            </Segmented>
+            <Stack Class="max-w-lg">
+                <ToolCallCard ToolName="run_query"
+                              Status="@_tcStatusEnum"
+                              Input='{"sql": "SELECT * FROM users LIMIT 10"}'
+                              Output="@(_tcStatus == "Success" ? "10 rows returned" : null)"
+                              ErrorMessage="@(_tcStatus == "Error" ? "Query timeout after 30s" : null)"
+                              DurationMs="@(_tcStatus == "Success" || _tcStatus == "Error" ? (long?)342 : null)"
+                              DefaultOpen="@(_tcStatus == "Success" || _tcStatus == "Error")" />
+            </Stack>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Multiple Tool Calls" Code="@_multipleCode">
         <Stack Gap="2" Class="max-w-lg">
             <ToolCallCard ToolName="list_files" Status="ToolCallCard.ToolCallStatus.Success"
@@ -127,6 +148,23 @@
 </div>
 
 @code {
+    private string _tcStatus = "Pending";
+    private ToolCallCard.ToolCallStatus _tcStatusEnum =>
+        Enum.TryParse<ToolCallCard.ToolCallStatus>(_tcStatus, out var v) ? v : ToolCallCard.ToolCallStatus.Pending;
+
+    private string _statusInteractiveCode = @"<Segmented @bind-Value=""_status"">
+    <SegmentedItem Value=""@ToolCallCard.ToolCallStatus.Pending"">Pending</SegmentedItem>
+    <SegmentedItem Value=""@ToolCallCard.ToolCallStatus.Running"">Running</SegmentedItem>
+    <SegmentedItem Value=""@ToolCallCard.ToolCallStatus.Success"">Success</SegmentedItem>
+    <SegmentedItem Value=""@ToolCallCard.ToolCallStatus.Error"">Error</SegmentedItem>
+</Segmented>
+<ToolCallCard ToolName=""run_query"" Status=""@_status""
+              Input=""{&quot;sql&quot;: &quot;SELECT * FROM users&quot;}""
+              Output=""@(_status == Success ? ""10 rows"" : null)""
+              ErrorMessage=""@(_status == Error ? ""Timeout"" : null)"" />
+
+@code { private ToolCallCard.ToolCallStatus _status = ToolCallCard.ToolCallStatus.Pending; }";
+
     private string _statusCode = @"<ToolCallCard ToolName=""search_web"" Status=""ToolCallCard.ToolCallStatus.Pending""
               Input=""{&quot;query&quot;: &quot;latest Blazor news&quot;}"" />
 

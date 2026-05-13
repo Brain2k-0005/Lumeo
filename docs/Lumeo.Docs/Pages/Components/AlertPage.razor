@@ -152,6 +152,48 @@
             </Stack>
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Variant — interactive" Code="@_interactiveVariantCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="4">
+                <Lumeo.Text Size="sm" Color="muted">Pick a variant to see it applied live.</Lumeo.Text>
+                <Flex Wrap="true" Gap="2">
+                    @foreach (var v in _variantOptions)
+                    {
+                        var variant = v;
+                        <Button Size="Button.ButtonSize.Sm"
+                                Variant="@(_selectedVariant == variant ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                OnClick="@(() => _selectedVariant = variant)">@variant</Button>
+                    }
+                </Flex>
+                <Alert Variant="@ParseVariant(_selectedVariant)">
+                    <Lumeo.Text Weight="medium">@_selectedVariant alert</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Class="mt-1">This is a @_selectedVariant.ToLower() message.</Lumeo.Text>
+                </Alert>
+            </Stack>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Size — interactive" Code="@_interactiveSizeCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="4">
+                <Lumeo.Text Size="sm" Color="muted">Pick a size to see it applied live.</Lumeo.Text>
+                <Flex Gap="2">
+                    @foreach (var s in new[] { "Small", "Medium", "Large" })
+                    {
+                        var size = s;
+                        <Button Size="Button.ButtonSize.Sm"
+                                Variant="@(_selectedSize == size ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                OnClick="@(() => _selectedSize = size)">@size</Button>
+                    }
+                </Flex>
+                <Alert Size="@ParseSize(_selectedSize)" Variant="Alert.AlertVariant.Info">
+                    <Lumeo.Text Weight="medium">@_selectedSize size</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Class="mt-1">This alert uses the @_selectedSize.ToLower() size.</Lumeo.Text>
+                </Alert>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12">
@@ -214,6 +256,8 @@
                         <tr><td class="p-3 font-mono text-xs text-primary">ShowIcon</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">Whether to render the leading icon for the variant.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">IconContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Custom icon slot that overrides the default variant icon.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">AutoDismissMs</td><td class="p-3 font-mono text-xs text-muted-foreground">int?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">When set, the alert dismisses itself after this many milliseconds.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Size</td><td class="p-3 font-mono text-xs text-muted-foreground">AlertSize</td><td class="p-3 font-mono text-xs text-muted-foreground">Medium</td><td class="p-3 text-muted-foreground">Controls padding and text size. Values: Small, Medium, Large.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ChildContent</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Custom content rendered inside the alert body.</td></tr>
                     </tbody>
                 </table>
             </Stack>
@@ -231,6 +275,38 @@
 </div>
 
 @code {
+    private string[] _variantOptions = ["Default", "Destructive", "Success", "Warning", "Info"];
+    private string _selectedVariant = "Default";
+    private string _selectedSize = "Medium";
+
+    private Alert.AlertVariant ParseVariant(string v) => v switch
+    {
+        "Destructive" => Alert.AlertVariant.Destructive,
+        "Success"     => Alert.AlertVariant.Success,
+        "Warning"     => Alert.AlertVariant.Warning,
+        "Info"        => Alert.AlertVariant.Info,
+        _             => Alert.AlertVariant.Default,
+    };
+
+    private Alert.AlertSize ParseSize(string s) => s switch
+    {
+        "Small" => Alert.AlertSize.Small,
+        "Large" => Alert.AlertSize.Large,
+        _       => Alert.AlertSize.Medium,
+    };
+
+    private string _interactiveVariantCode = @"@* Pick a variant to see it applied live *@
+<Alert Variant=""Alert.AlertVariant.Success"">
+    <Lumeo.Text Weight=""medium"">Success alert</Lumeo.Text>
+    <Lumeo.Text Size=""sm"" Class=""mt-1"">This is a success message.</Lumeo.Text>
+</Alert>";
+
+    private string _interactiveSizeCode = @"@* Pick a size to see it applied live *@
+<Alert Size=""Alert.AlertSize.Small"" Variant=""Alert.AlertVariant.Info"">
+    <Lumeo.Text Weight=""medium"">Small size</Lumeo.Text>
+    <Lumeo.Text Size=""sm"" Class=""mt-1"">This alert uses the small size.</Lumeo.Text>
+</Alert>";
+
     private string _defaultCode = @"<Alert>
     <Heading Level=""5"" Size=""sm"" Weight=""medium"" Class=""mb-1 leading-none tracking-tight"">Heads up!</Heading>
     <Lumeo.Text Size=""sm"" Leading=""relaxed"">You can add components to your app using the CLI.</Lumeo.Text>

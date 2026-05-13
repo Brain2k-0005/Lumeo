@@ -55,6 +55,33 @@
         </Flex>
     </ComponentDemo>
 
+    <ComponentDemo Title="Error Correction Level (interactive)" Code="@_ecInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Higher correction means a denser QR code but greater fault tolerance.</Lumeo.Text>
+            <Segmented @bind-Value="_qrEcLevel">
+                <SegmentedItem Value="Low">Low</SegmentedItem>
+                <SegmentedItem Value="Medium">Medium</SegmentedItem>
+                <SegmentedItem Value="Quartile">Quartile</SegmentedItem>
+                <SegmentedItem Value="High">High</SegmentedItem>
+            </Segmented>
+            <Flex Align="center" Gap="6">
+                <QRCode Value="https://lumeo.nativ.sh/" Size="160" ErrorCorrectionLevel="@_qrEcLevelEnum" />
+                <Stack Gap="1">
+                    <Lumeo.Text Size="sm" Weight="medium">@_qrEcLevel</Lumeo.Text>
+                    <Lumeo.Text Size="xs" Color="muted">
+                        @(_qrEcLevel switch {
+                            "Low" => "Recovers ~7% of data",
+                            "Medium" => "Recovers ~15% of data",
+                            "Quartile" => "Recovers ~25% of data",
+                            "High" => "Recovers ~30% of data",
+                            _ => ""
+                        })
+                    </Lumeo.Text>
+                </Stack>
+            </Flex>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Custom Colors" Code="@_colorsCode">
         <Flex Class="gap-6 flex-wrap items-start">
             <Stack Gap="2" Class="items-center">
@@ -171,6 +198,9 @@
 
 @code {
     private string _qrValue = "";
+    private string _qrEcLevel = "Medium";
+    private QRCode.QRErrorLevel _qrEcLevelEnum =>
+        Enum.TryParse<QRCode.QRErrorLevel>(_qrEcLevel, out var v) ? v : QRCode.QRErrorLevel.Medium;
 
     private string _basicCode = @"<QRCode Value=""https://lumeo.nativ.sh/"" Size=""200"" />";
     private string _dynamicCode = @"<Input @bind-Value=""_url"" Placeholder=""Enter URL..."" />
@@ -183,4 +213,14 @@
     private string _sizesCode = @"<QRCode Value=""..."" Size=""80"" />
 <QRCode Value=""..."" Size=""120"" />
 <QRCode Value=""..."" Size=""180"" />";
+
+    private string _ecInteractiveCode = @"<Segmented @bind-Value=""_level"">
+    <SegmentedItem Value=""@QRCode.QRErrorLevel.Low"">Low</SegmentedItem>
+    <SegmentedItem Value=""@QRCode.QRErrorLevel.Medium"">Medium</SegmentedItem>
+    <SegmentedItem Value=""@QRCode.QRErrorLevel.Quartile"">Quartile</SegmentedItem>
+    <SegmentedItem Value=""@QRCode.QRErrorLevel.High"">High</SegmentedItem>
+</Segmented>
+<QRCode Value=""https://lumeo.nativ.sh/"" Size=""160"" ErrorCorrectionLevel=""@_level"" />
+
+@code { private QRCode.QRErrorLevel _level = QRCode.QRErrorLevel.Medium; }";
 }
