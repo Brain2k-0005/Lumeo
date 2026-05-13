@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @if (Label is not null && !InsideFormField && Variant != FileUploadVariant.Button && Variant != FileUploadVariant.Avatar)
@@ -307,6 +308,7 @@ else
     private Dictionary<string, string> _thumbnailUrls = new();
     private readonly Dictionary<string, CancellationTokenSource> _cancellations = new();
     private SemaphoreSlim? _concurrencySemaphore;
+    private int _currentBatchId;
 
     // Kept for back-compat so existing code that reads _selectedFiles-equivalent still compiles.
     // Exposed as a convenience projection.
@@ -473,8 +475,14 @@ else
     {
         _concurrencySemaphore ??= new SemaphoreSlim(MaxConcurrentUploads, MaxConcurrentUploads);
 
+        // Capture this batch's id so a superseding batch can prevent stale callbacks.
+        var batchId = ++_currentBatchId;
+
         var tasks = items.Select(item => UploadOneAsync(item)).ToList();
         await Task.WhenAll(tasks);
+
+        // If a newer batch has started, don't fire the callback with stale results.
+        if (batchId != _currentBatchId) return;
 
         // Check if all items are now in a terminal state
         if (_uploadItems.All(i => i.Status is FileUploadStatus.Succeeded or FileUploadStatus.Failed or FileUploadStatus.Cancelled))
@@ -541,7 +549,7 @@ else
             finally
             {
                 _cancellations.Remove(item.Id);
-                cts.Dispose();
+                try { cts.Dispose(); } catch (ObjectDisposedException) { }
             }
         }
         finally
@@ -549,6 +557,20 @@ else
             _concurrencySemaphore!.Release();
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    // ── Dispose ──────────────────────────────────────────────────────────────
+    public async ValueTask DisposeAsync()
+    {
+        // Cancel + dispose all in-flight upload tokens. Without this, every upload
+        // that was running when the component unmounted leaks its CancellationTokenSource.
+        foreach (var cts in _cancellations.Values.ToList())
+        {
+            try { cts.Cancel(); } catch (ObjectDisposedException) { }
+            cts.Dispose();
+        }
+        _cancellations.Clear();
+        await Task.CompletedTask;
     }
 
     // ── Per-file row renderer ────────────────────────────────────────────────

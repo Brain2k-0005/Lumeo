@@ -6,6 +6,8 @@
      aria-selected="@IsSelected.ToString().ToLowerInvariant()"
      aria-disabled="@Item.IsDisabled.ToString().ToLowerInvariant()"
      tabindex="@TabIndex"
+     @onfocus="HandleFocus"
+     @onblur="HandleBlur"
      @onkeydown="HandleKeyDown"
      @onkeydown:stopPropagation="true">
 
@@ -100,7 +102,13 @@
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnExpandChanged { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnSelectionChanged { get; set; }
 
-    private string TabIndex => Level == 0 ? "0" : "-1";
+    // Roving tabindex: any node that currently holds DOM focus gets tabindex=0 so
+    // the browser can return focus to it. Level-0 nodes are also in the tab sequence
+    // initially (before any node has been focused) so the tree is reachable via Tab.
+    // Child nodes that have never been focused stay at -1 — they are only reachable
+    // via keyboard arrow-key navigation, matching the WAI-ARIA tree pattern.
+    private bool _isFocused;
+    private string TabIndex => (_isFocused || Level == 0) ? "0" : "-1";
     private string ExpandLabel => Item.IsExpanded ? "Collapse" : "Expand";
 
     private bool HasLoadedChildren => Item.Children is { Count: > 0 };
@@ -141,6 +149,16 @@
         Item.IsDisabled
             ? "h-4 w-4 text-muted-foreground opacity-50 shrink-0"
             : "h-4 w-4 text-muted-foreground shrink-0";
+
+    private void HandleFocus()
+    {
+        _isFocused = true;
+    }
+
+    private void HandleBlur()
+    {
+        _isFocused = false;
+    }
 
     private async Task ToggleExpand()
     {

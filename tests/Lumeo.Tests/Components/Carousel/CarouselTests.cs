@@ -177,11 +177,14 @@ public class CarouselTests : IAsyncLifetime
     [Fact]
     public void Horizontal_Slide_Has_Pl4_Class()
     {
+        // rc.43: horizontal CarouselItem now uses `ps-4` (Tailwind logical
+        // property) instead of `pl-4` so padding flips correctly in RTL.
+        // ps-4 resolves to padding-left in LTR — same visual result.
         var cut = RenderCarousel(orientation: L.Carousel.CarouselOrientation.Horizontal);
 
         var slides = cut.FindAll("[role='group']");
         Assert.NotEmpty(slides);
-        Assert.Contains("pl-4", slides[0].GetAttribute("class") ?? "");
+        Assert.Contains("ps-4", slides[0].GetAttribute("class") ?? "");
     }
 
     [Fact]

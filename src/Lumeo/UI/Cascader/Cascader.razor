@@ -234,8 +234,16 @@
 
     private async Task SetOpen(bool value)
     {
+        var wasOpen = _isOpen;
         _isOpen = value;
         if (!value) _searchText = "";
+
+        // On close: return focus to the trigger button immediately (it is in the DOM).
+        if (wasOpen && !value)
+        {
+            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+        }
+        // On open: focus happens in OnAfterRenderAsync once the panel DOM is ready.
     }
 
     private async Task Clear()
@@ -270,6 +278,10 @@
                 await InvokeAsync(StateHasChanged);
             });
             _registered = true;
+
+            // Focus the first option in the first panel so keyboard users can
+            // immediately navigate without an extra Tab press.
+            try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
         }
         else if (!_isOpen && _registered)
         {

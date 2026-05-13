@@ -118,7 +118,7 @@ function safeInvoke(dotNetRef, name, ...args) {
 // handled by TipTap's Suggestion plugin via the renderer's onKeyDown hook.
 // ---------------------------------------------------------------------------
 
-function createSuggestionRenderer(label) {
+function createSuggestionRenderer(label, instanceId) {
     let root = null;
     let items = [];
     let selectedIndex = 0;
@@ -133,6 +133,11 @@ function createSuggestionRenderer(label) {
         root.className = 'lumeo-rte-suggestion';
         root.setAttribute('role', 'listbox');
         root.setAttribute('aria-label', label || 'Suggestions');
+        // rc.43: tag with instance id so destroy() can find orphaned popups
+        if (instanceId) root.dataset.rteId = instanceId;
+        // rc.43 audit note: these use CSS variable *references* (var(--color-*)), not
+        // getComputedStyle()-baked values, so the browser re-resolves them on every paint.
+        // Theme changes are reflected live — no lumeo:theme-changed listener needed here.
         root.style.cssText = [
             'position:fixed', 'z-index:9999',
             'min-width:200px', 'max-width:340px', 'max-height:280px',
@@ -344,6 +349,7 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
     root.className = 'lumeo-rte-bubble';
     root.setAttribute('role', 'toolbar');
     root.setAttribute('aria-label', 'Format selection');
+    // rc.43 audit note: CSS variable references are live (re-resolved on every paint) — theme-aware by design.
     root.style.cssText = [
         'position:fixed', 'z-index:9998', 'display:none',
         'gap:0.125rem', 'padding:0.25rem',
@@ -436,6 +442,7 @@ function createDragHandle(editor) {
     handle.setAttribute('aria-label', 'Drag block');
     handle.setAttribute('contenteditable', 'false');
     handle.draggable = true;
+    // rc.43 audit note: CSS variable references are live (re-resolved on every paint) — theme-aware by design.
     handle.style.cssText = [
         'position:absolute', 'display:none', 'width:1.25rem', 'height:1.25rem',
         'align-items:center', 'justify-content:center', 'cursor:grab',
@@ -722,7 +729,7 @@ function buildSuggestionExtension(libs, char, dotNetRef, instanceIdRef, label, g
                                 .run();
                         }
                     },
-                    render: () => createSuggestionRenderer(label),
+                    render: () => createSuggestionRenderer(label, instanceIdRef.current),
                 }),
             ];
         },
@@ -797,7 +804,12 @@ export const rte = {
             });
         }
 
-        const libs = await loadTiptap();
+        let libs;
+        try {
+            libs = await loadTiptap();
+        } catch (loadErr) {
+            throw new Error(`[Lumeo RTE] TipTap bundle failed to load: ${loadErr && loadErr.message ? loadErr.message : loadErr}`);
+        }
 
         const id = makeId();
         const idRef = { current: id };
@@ -894,32 +906,37 @@ export const rte = {
         const pasteRule = smartPasteRule();
 
         // Define the editor.
-        const editor = new libs.Editor({
-            element: el,
-            extensions: ext,
-            content: opts.initialHtml || opts.content || '',
-            editable: opts.editable !== false && !(opts.disabled || opts.readOnly),
-            editorProps: {
-                handlePaste: pasteRule.handlePaste,
-                attributes: {
-                    class: 'lumeo-rte-prose prose prose-sm max-w-none p-4 focus:outline-none',
-                    spellcheck: 'true',
+        let editor;
+        try {
+            editor = new libs.Editor({
+                element: el,
+                extensions: ext,
+                content: opts.initialHtml || opts.content || '',
+                editable: opts.editable !== false && !(opts.disabled || opts.readOnly),
+                editorProps: {
+                    handlePaste: pasteRule.handlePaste,
+                    attributes: {
+                        class: 'lumeo-rte-prose prose prose-sm max-w-none p-4 focus:outline-none',
+                        spellcheck: 'true',
+                    },
                 },
-            },
-            onUpdate: ({ editor: ed }) => {
-                const html = ed.getHTML();
-                if (typeof opts.maxLength === 'number' && opts.maxLength > 0) {
-                    if (ed.storage && ed.getText().length > opts.maxLength) {
-                        // Soft cap — emit the overflow but consumers can trim.
+                onUpdate: ({ editor: ed }) => {
+                    const html = ed.getHTML();
+                    if (typeof opts.maxLength === 'number' && opts.maxLength > 0) {
+                        if (ed.storage && ed.getText().length > opts.maxLength) {
+                            // Soft cap — emit the overflow but consumers can trim.
+                        }
                     }
-                }
-                safeInvoke(dotNetRef, 'OnContentUpdate', html);
-                safeInvoke(dotNetRef, 'OnUpdate', html);
-            },
-            onSelectionUpdate: () => {
-                safeInvoke(dotNetRef, 'OnSelectionUpdate');
-            },
-        });
+                    safeInvoke(dotNetRef, 'OnContentUpdate', html);
+                    safeInvoke(dotNetRef, 'OnUpdate', html);
+                },
+                onSelectionUpdate: () => {
+                    safeInvoke(dotNetRef, 'OnSelectionUpdate');
+                },
+            });
+        } catch (editorErr) {
+            throw new Error(`[Lumeo RTE] Editor construction failed: ${editorErr && editorErr.message ? editorErr.message : editorErr}`);
+        }
 
         // ---- Image drop/paste handler ----
         // Named handler tracked on the per-instance entry so destroy() can
@@ -1156,6 +1173,8 @@ export const rte = {
         try { entry.bubble && entry.bubble.destroy(); } catch (_) {}
         try { entry.drag && entry.drag.destroy(); } catch (_) {}
         try { entry.editor.destroy(); } catch (_) {}
+        // rc.43: remove any orphan suggestion-renderer popups still attached to body
+        document.querySelectorAll(`.lumeo-rte-suggestion[data-rte-id="${id}"]`).forEach(el => el.remove());
         instances.delete(id);
     },
 

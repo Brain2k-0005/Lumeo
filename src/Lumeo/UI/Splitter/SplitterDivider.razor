@@ -10,6 +10,8 @@
      @onpointermove="OnPointerMove"
      @onpointerup="OnPointerUp"
      @onpointercancel="OnPointerUp"
+     @onkeydown="OnKeyDown"
+     @onkeydown:preventDefault="true"
      @attributes="AdditionalAttributes">
 </div>
 
@@ -67,6 +69,29 @@
         if (!_dragging) return;
         _dragging = false;
         await Interop.ReleasePointerCaptureOnElement(_dividerId, _pointerId);
+    }
+
+    // Keyboard resize: arrow keys move the divider by a fixed 10px step,
+    // matching the same Context.ResizeNeighbors path used by pointer drag.
+    // @onkeydown:preventDefault="true" on the element stops page scroll.
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (Context is null) return;
+        const double step = 10.0;
+
+        var delta = (IsHorizontal, e.Key) switch
+        {
+            (true, "ArrowLeft")  => -step,
+            (true, "ArrowRight") =>  step,
+            (false, "ArrowUp")   => -step,
+            (false, "ArrowDown") =>  step,
+            _ => 0.0
+        };
+
+        if (delta != 0.0)
+        {
+            await Context.ResizeNeighbors(_token, delta);
+        }
     }
 
     public void Dispose()

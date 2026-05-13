@@ -104,6 +104,7 @@
     private readonly string _contentId = $"treeselect-content-{Guid.NewGuid():N}";
     private bool _isOpen;
     private bool _registered;
+    private bool _disposed;
     private string _searchText = "";
     private readonly HashSet<string> _expandedNodes = new();
 
@@ -220,12 +221,15 @@
         _searchText = "";
         StateHasChanged();
         await Task.Yield();
+        if (_disposed) return;
         await Interop.PositionFixed(_contentId, _wrapperId, "start", true, "bottom");
+        if (_disposed) return;
         await Interop.RegisterClickOutside(_contentId, _wrapperId, async () =>
         {
             await CloseDropdown();
             await InvokeAsync(StateHasChanged);
         });
+        if (_disposed) return;
         _registered = true;
     }
 
@@ -321,6 +325,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         if (_registered)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }

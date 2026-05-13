@@ -22,6 +22,7 @@
               name="@(Name ?? FormField?.Name)"
               aria-required="@(Required ? "true" : "false")"
               aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+              @ref="_textareaRef"
               @oninput="HandleInput"
               @onkeydown="HandleKeyDown"
               @onfocus="HandleFocus"
@@ -94,6 +95,7 @@
 
     private readonly string _textareaId = $"mention-{Guid.NewGuid():N}";
     private readonly string _dropdownId = $"mention-dd-{Guid.NewGuid():N}";
+    private ElementReference _textareaRef;
     private bool _showDropdown;
     private string _searchTerm = "";
     private int _triggerStartIndex = -1;
@@ -101,6 +103,7 @@
     private double _caretTop;
     private double _caretLeft;
     private bool _hasFocus;
+    private CancellationTokenSource? _blurDelayCts;
 
     private string TextareaCssClass => $"flex min-h-[60px] w-full rounded-md border {(EffectiveInvalid ? "border-destructive focus-visible:ring-destructive/20" : "border-border/60 focus-visible:ring-ring")} bg-transparent px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
     private string DropdownCssClass => "z-50 min-w-[200px] max-h-[200px] overflow-auto rounded-md border border-border/60 bg-popover p-1 shadow-lg animate-fade-in";
@@ -179,6 +182,8 @@
                 break;
             case "Escape":
                 _showDropdown = false;
+                // Return focus to the textarea so screen readers announce the correct context.
+                try { await _textareaRef.FocusAsync(); } catch { }
                 break;
         }
     }
@@ -205,22 +210,33 @@
     private void HandleFocus()
     {
         _hasFocus = true;
+        // Cancel any pending blur-hide so re-focusing within the 150 ms window
+        // does not close the dropdown.
+        _blurDelayCts?.Cancel();
     }
 
     private async Task HandleBlur()
     {
         _hasFocus = false;
+        // Cancel any previous blur delay and start a fresh one.
+        _blurDelayCts?.Cancel();
+        _blurDelayCts?.Dispose();
+        _blurDelayCts = new CancellationTokenSource();
+        var token = _blurDelayCts.Token;
         // Small delay to allow click on dropdown item
-        await Task.Delay(150);
-        if (!_hasFocus)
-        {
-            _showDropdown = false;
-        }
+        try { await Task.Delay(150, token); }
+        catch (TaskCanceledException) { return; }
+        if (_hasFocus) return; // re-focused during the wait
+        _showDropdown = false;
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()
     {
-        // No JS registrations to clean up
+        _blurDelayCts?.Cancel();
+        _blurDelayCts?.Dispose();
+        _blurDelayCts = null;
+        await Task.CompletedTask;
     }
 
     public record MentionOption(string Label, string Value, string? Avatar = null, string? Description = null);

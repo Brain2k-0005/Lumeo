@@ -1,8 +1,10 @@
 @namespace Lumeo
 
-<div class="@CssClass" aria-expanded="@Context.IsOpen" @oncontextmenu="HandleContextMenu" @oncontextmenu:preventDefault @attributes="AdditionalAttributes">
+<div id="@_triggerId" class="@CssClass" aria-expanded="@Context.IsOpen" @oncontextmenu="HandleContextMenu" @oncontextmenu:preventDefault @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
+
+@inject ComponentInteropService Interop
 
 @code {
     [CascadingParameter] public ContextMenu.ContextMenuContext Context { get; set; } = default!;
@@ -10,11 +12,27 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _triggerId = $"ctx-trigger-{Guid.NewGuid():N}";
+
     private string CssClass => $"inline-flex {Class}".Trim();
 
     private async Task HandleContextMenu(MouseEventArgs e)
     {
         await Context.SetPosition.InvokeAsync((e.ClientX, e.ClientY));
         await Context.SetOpen.InvokeAsync(true);
+    }
+
+    // Keyboard activation: Shift+F10 or the dedicated Menu key opens the context
+    // menu positioned at the bottom-left corner of the trigger element.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "ContextMenu" || (e.ShiftKey && e.Key == "F10"))
+        {
+            var rect = await Interop.GetElementRect(_triggerId);
+            var x = rect?.X ?? 0;
+            var y = rect is not null ? rect.Y + rect.Height : 0;
+            await Context.SetPosition.InvokeAsync((x, y));
+            await Context.SetOpen.InvokeAsync(true);
+        }
     }
 }
