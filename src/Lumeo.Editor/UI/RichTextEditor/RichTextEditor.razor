@@ -3,6 +3,13 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @implements IAsyncDisposable
 
+@if (_initError is not null)
+{
+    <div class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Editor failed to initialize: @_initError</div>
+}
+else
+{
+
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium text-foreground mb-1.5">
@@ -63,6 +70,8 @@
         </DialogFooter>
     </DialogContent>
 </Dialog>
+
+} @* end @if (_initError is not null) else *@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -126,6 +135,7 @@
     /// Set this when you want server-side conversion (better fidelity for complex docs).</summary>
     [Parameter] public Func<WordImportPayload, ValueTask<string>>? OnWordImportRequested { get; set; }
 
+    [Parameter] public EventCallback<string> OnInitError { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -148,6 +158,7 @@
     private bool _lastReadOnly;
     private Services.Interop.RichTextActiveState? _active;
     private bool _initialized;
+    private string? _initError;
 
     // Link dialog state (replaces the native browser prompt for the toolbar
     // and bubble menu's Link button).
@@ -247,7 +258,19 @@
                 maxWordImportBytes = MaxWordImportBytes,
             };
 
-            _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
+            try
+            {
+                _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
+            }
+            catch (JSException ex)
+            {
+                _initError = ex.Message;
+                Console.Error.WriteLine($"[Lumeo RichTextEditor] Init failed: {ex.Message}");
+                if (OnInitError.HasDelegate)
+                    await OnInitError.InvokeAsync(ex.Message);
+                StateHasChanged();
+                return;
+            }
             _initialized = !string.IsNullOrEmpty(_instanceId);
             if (_initialized)
             {

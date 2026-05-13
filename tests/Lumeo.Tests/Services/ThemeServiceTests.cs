@@ -214,10 +214,17 @@ public class ThemeServiceTests
         Assert.True(_service.IsDark);
     }
 
+    // rc.43: ToggleModeAsync was changed from a binary JS-driven flip to a
+    // pure C# three-way cycle System → Dark → Light → System, so System mode
+    // is no longer permanently lost on first toggle. The tests below assert
+    // the new cycle contract: starting CurrentMode is set explicitly before
+    // each call, and the result is the next step in the cycle.
+
     [Fact]
-    public async Task ToggleModeAsync_When_Dark_Sets_Mode_To_Dark()
+    public async Task ToggleModeAsync_From_System_Goes_To_Dark()
     {
-        _js.SetResult("themeManager.isDark", true);
+        _js.SetResult("themeManager.isDark", false);
+        await _service.SetModeAsync(ThemeMode.System);
 
         await _service.ToggleModeAsync();
 
@@ -225,13 +232,25 @@ public class ThemeServiceTests
     }
 
     [Fact]
-    public async Task ToggleModeAsync_When_Light_Sets_Mode_To_Light()
+    public async Task ToggleModeAsync_From_Dark_Goes_To_Light()
     {
-        _js.SetResult("themeManager.isDark", false);
+        _js.SetResult("themeManager.isDark", true);
+        await _service.SetModeAsync(ThemeMode.Dark);
 
         await _service.ToggleModeAsync();
 
         Assert.Equal(ThemeMode.Light, _service.CurrentMode);
+    }
+
+    [Fact]
+    public async Task ToggleModeAsync_From_Light_Goes_To_System()
+    {
+        _js.SetResult("themeManager.isDark", false);
+        await _service.SetModeAsync(ThemeMode.Light);
+
+        await _service.ToggleModeAsync();
+
+        Assert.Equal(ThemeMode.System, _service.CurrentMode);
     }
 
     [Fact]

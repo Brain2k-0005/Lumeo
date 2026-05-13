@@ -430,13 +430,21 @@ input[type="range"]::-moz-range-thumb {
     hsl(360, 100%, 50%)
   );
 }
+/* Bug C — SV indicator circle: border-white is always correct (contrasts against the colored canvas),
+   but the outer ring shadow adapts to the theme via color-mix so it's visible in both light and dark. */
+.lumeo-cp-sv-indicator {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 35%, transparent);
+}
+
+/* Bug D — Slider thumbs: was hardcoded #fff / rgba(0,0,0,0.15) which is invisible in dark mode.
+   Now uses theme variables: background matches the page background, border uses theme border. */
 .lumeo-cp-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 16px;
   height: 16px;
-  background: #fff;
-  border: 2px solid rgba(0,0,0,0.15);
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
   border-radius: 9999px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   cursor: pointer;
@@ -448,28 +456,31 @@ input[type="range"]::-moz-range-thumb {
 .lumeo-cp-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: #fff;
-  border: 2px solid rgba(0,0,0,0.15);
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
   border-radius: 9999px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   cursor: pointer;
 }
 
-/* Alpha slider: checkerboard beneath a color→transparent gradient */
+/* Alpha slider: checkerboard beneath a color→transparent gradient.
+   Bug E — checkerboard was rgba(0,0,0,0.08) which is invisible in dark mode.
+   Now uses color-mix against --color-muted so the contrast tiles are always visible. */
 .lumeo-cp-slider-alpha {
   background-image:
     linear-gradient(to right, transparent, var(--lumeo-cp-color, #000)),
-    linear-gradient(45deg, rgba(0,0,0,0.08) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.08) 75%),
-    linear-gradient(45deg, rgba(0,0,0,0.08) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.08) 75%);
+    linear-gradient(45deg, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 75%),
+    linear-gradient(45deg, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 75%);
   background-size: 100% 100%, 8px 8px, 8px 8px;
   background-position: 0 0, 0 0, 4px 4px;
 }
 
-/* Color preview chip — checkerboard shows through partial opacity */
+/* Color preview chip — checkerboard shows through partial opacity.
+   Bug E — same fix as alpha slider: uses theme-aware color-mix instead of hardcoded rgba(0,0,0,0.08). */
 .lumeo-cp-chip {
   background-image:
-    linear-gradient(45deg, rgba(0,0,0,0.08) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.08) 75%),
-    linear-gradient(45deg, rgba(0,0,0,0.08) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.08) 75%);
+    linear-gradient(45deg, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 75%),
+    linear-gradient(45deg, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--color-muted) 60%, var(--color-background)) 75%);
   background-size: 8px 8px;
   background-position: 0 0, 4px 4px;
 }

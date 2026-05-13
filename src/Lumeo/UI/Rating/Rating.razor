@@ -12,7 +12,7 @@
     </label>
 }
 
-<div class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" tabindex="0" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -23,6 +23,7 @@
         {
             <button type="button"
                     class="@GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
+                    tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
@@ -35,6 +36,7 @@
         {
             <button type="button"
                     class="@SizeClasses @StarInteractClasses relative"
+                    tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
@@ -103,6 +105,15 @@
     private bool InsideFormField => FormField is not null;
 
     private int _hoverValue;
+
+    // Roving tabindex: only the selected star (or star 1 when nothing selected) is
+    // in the tab sequence. Arrow-key navigation on the radiogroup shifts both focus
+    // and value, so there is never more than one tabstop inside the widget.
+    private string GetStarTabIndex(int starIndex)
+    {
+        var activeIndex = Value > 0 ? (int)Math.Ceiling(Value) : 1;
+        return starIndex == activeIndex ? "0" : "-1";
+    }
 
     private string CssClass => $"inline-flex items-center gap-0.5 {Class}".Trim();
 

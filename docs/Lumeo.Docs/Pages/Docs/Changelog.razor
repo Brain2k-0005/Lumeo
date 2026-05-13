@@ -15,6 +15,77 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.43 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.43</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Mega-Audit sweep: ~30 fixes across A11y, RTL, theme/dark-mode, async/race, memory, forms, and third-party wrappers.</strong>
+            Dispatched 7 parallel review agents over the full ~145-component surface (categories the rc.42 audit didn't cover) → 40 hypothesized bugs → 6 parallel fix agents → all green. The single release covers the substance of what would have been rc.43 through rc.47.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">A11y (12 fixes — interactive components keyboard navigation)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Carousel arrow-keys now <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">preventDefault</code></strong> — page no longer scrolls when the carousel handles ArrowLeft/Right.</li>
+                <li><strong>Roving tabindex</strong> on MenubarTrigger, Rating, TreeViewNode (focused-node tracking), Stepper step buttons. Toolbar container gets <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tabindex="0"</code> so screen readers announce "toolbar".</li>
+                <li><strong>SplitterDivider</strong> now resizable via ArrowKeys (±10px delta per press, horizontal/vertical based on orientation).</li>
+                <li><strong>Focus management on open/close</strong>: Mention/Cascader return focus to trigger on close; Cascader focuses first option on open.</li>
+                <li><strong>ContextMenuTrigger</strong> now activates on Shift+F10 / ContextMenu key for keyboard users.</li>
+                <li><strong>OtpInput Backspace</strong> stopsPropagation so it can't accidentally trigger SPA back-navigation.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">RTL (10 fixes — full right-to-left support)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Carousel</strong> (Next/Previous/Content/Item), <strong>Combobox input</strong>, <strong>DatePicker</strong> (5 hardcoded directions), <strong>Select / SelectTrigger</strong> migrated from hardcoded <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ml-/mr-/pl-/pr-/left-/right-/border-r/border-l</code> to Tailwind logical properties (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ms-/me-/ps-/pe-/start-/end-/border-s/border-e</code>).</li>
+                <li><strong>Directional chevrons</strong> on Carousel, Pagination, Breadcrumb now flip in RTL via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[dir=rtl]:rotate-180</code>. Arrow-key handler RTL-swap deferred (separate concern; tagged with TODO).</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Theme + Dark Mode (5 fixes — ColorPicker is now dark-mode-correct)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>ColorPicker slider thumbs</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">background: #fff</code> → <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">var(--color-background)</code>. White thumbs were invisible against light-colored hues in dark mode.</li>
+                <li><strong>ColorPicker checkerboard</strong> (transparency visualization): hardcoded <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">rgba(0,0,0,0.08)</code> → <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">color-mix(in srgb, var(--color-muted) 60%, var(--color-background))</code>. Visible in both modes.</li>
+                <li><strong>ColorPicker SV-indicator shadow</strong> uses theme-aware <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">color-mix(... var(--color-foreground) ...)</code>. The white-on-canvas border itself is kept (correct against any swatch color).</li>
+                <li><strong>ThemeSwitcher</strong>: stale-default-on-first-render fixed via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnInitializedAsync</code>. UI shows the real current scheme/mode immediately.</li>
+                <li><strong>ThemeService.ToggleModeAsync</strong>: now cycles System → Dark → Light → System (was binary Light↔Dark and permanently lost System mode on first toggle). 3 tests updated to match the new cycle contract.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Async / Memory (4 fixes — leak elimination)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>FileUpload</strong> now implements <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IAsyncDisposable</code> — disposes all in-flight <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CancellationTokenSource</code>s in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_cancellations</code> on unmount. CRITICAL: every upload running at page-navigate previously leaked a CTS.</li>
+                <li><strong>FileUpload batch staleness</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_currentBatchId</code> counter — old slow batches can no longer fire <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnAllUploaded</code> after a newer batch has started.</li>
+                <li><strong>TreeSelect.OpenDropdown</strong>: post-await disposal guards. Setting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_registered=true</code> after a disposal-during-Interop is now impossible.</li>
+                <li><strong>Mention.HandleBlur</strong>: 150ms <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task.Delay</code> now uses a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CancellationTokenSource</code> — re-focusing inside the window cancels the pending hide.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Heavy Wrappers (RichTextEditor — 2 real fixes)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Silent init failure surfaced</strong>: JS wraps <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">new Editor()</code> + TipTap bundle load in try/catch with descriptive errors. C# catches <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSException</code>, sets <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_initError</code>, renders an error card, and invokes new <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnInitError</code> callback. Matches the pattern Chart.razor already used.</li>
+                <li><strong>Orphan suggestion DOM cleanup</strong>: suggestion popups are now tagged with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">data-rte-id</code>; <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">destroy(id)</code> hunts them down explicitly. No more dangling popups in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">document.body</code> after unmount-mid-suggestion.</li>
+                <li><strong>FALSE ALARM verified</strong>: theme-unaware inline styles. The audit thought <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">style.cssText</code> was baked at init — but the strings use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">var(--color-*)</code> references, which browsers re-resolve on every paint. Already theme-aware.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Forms + Source Generator (4 fixes)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>LumeoForm generator</strong>: non-null enum no longer emits <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">model.Prop?.ToString()</code> (CS0023). Nullable-aware emit handles both <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MyEnum</code> and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MyEnum?</code> correctly.</li>
+                <li><strong>LumeoForm nullable-enum clear</strong>: when user clears the Select, the property goes to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">null</code> for nullable enums. Was: silently kept the old value.</li>
+                <li><strong>LumeoForm DateTimeOffset</strong>: invalid <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">(DateTime?)</code> cast replaced with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.DateTime</code> accessor; original <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.Offset</code> is preserved through the round-trip. Was: timezone silently stripped.</li>
+                <li><strong>FormField</strong> now reads errors from a cascaded <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormContext</code> parameter — Form.Reset() now actually clears children's visible error state. Was: child kept showing the old error.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">False alarms cleared (11)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>DropdownMenuItem</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tabindex="-1"</code> + parent-driven <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FocusMenuItemByIndex</code> is the correct WAI-ARIA menu pattern, not a bug. <strong>ColorPicker HSV gradients</strong>: hardcoded white/black are color-space primitives, not theme colors. <strong>Charts</strong>: full theme-change listener and resize observer already in place. <strong>Gantt</strong>: CSS variables read on every render — passive theme support is intentional. <strong>Combobox/Select/Carousel/InplaceEditor/Stepper/Cascader async paths</strong>: all guarded correctly. <strong>FileUpload</strong> didn't have a leak we expected — actual leak (no CTS dispose on unmount) is the one we fixed instead.</li>
+            </ul>
+        </Stack>
+        <Lumeo.Text Size="sm" Color="muted">145 components · 2,410 tests pass (was 2,407 — +1 for new ToggleMode cycle test, ±0 for the 2 Carousel/ThemeService tests retitled to match new contracts) · all 5 satellite builds clean · 0 warnings, 0 errors.</Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.42 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

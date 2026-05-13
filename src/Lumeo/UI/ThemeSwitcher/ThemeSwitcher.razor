@@ -51,19 +51,34 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string _currentScheme = "orange";
+    // Bug F — these are overwritten in OnInitializedAsync; the field initializers are intentionally
+    // neutral placeholders. OnInitializedAsync reads the real values from ThemeService before the
+    // first render, so the UI is correct from the very first paint (no stale-default flash).
+    private string _currentScheme = "zinc";
     private ThemeMode _currentMode = ThemeMode.System;
 
     private string CssClass => $"space-y-4 {Class}".Trim();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read scheme and mode synchronously from ThemeService before first render.
+        // ThemeService.CurrentScheme / CurrentMode are populated during DI startup
+        // or by a prior InitializeAsync call; reading them here avoids a stale first paint.
+        _currentScheme = Theme.CurrentScheme;
+        _currentMode = Theme.CurrentMode;
+        Theme.OnThemeChanged += OnThemeChanged;
+        await base.OnInitializedAsync();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // JS interop must run after render; re-sync in case the JS-side state
+            // differs from the server-side defaults (e.g. persisted user preference).
             await Theme.InitializeAsync();
             _currentScheme = Theme.CurrentScheme;
             _currentMode = Theme.CurrentMode;
-            Theme.OnThemeChanged += OnThemeChanged;
             StateHasChanged();
         }
     }

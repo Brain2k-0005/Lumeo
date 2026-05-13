@@ -427,13 +427,41 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     private static void EmitDatePicker(StringBuilder sb, FieldModel f, Func<int> next)
     {
         sb.Append("                    __field.OpenComponent<global::Lumeo.DatePicker>(").Append(next()).AppendLine(");");
+        var isNullableDt = f.PropertyTypeFq.EndsWith("?");
         var underlying = f.PropertyTypeFq.TrimEnd('?');
         if (underlying == "global::System.DateTime" || underlying == "global::System.DateTimeOffset")
         {
-            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"DateTimeValue\", (global::System.DateTime?)model.").Append(f.PropertyName).AppendLine(");");
-            sb.Append("                    __field.AddAttribute(").Append(next())
-              .Append(", \"DateTimeValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<global::System.DateTime?>(model, __v => model.")
-              .Append(f.PropertyName).Append(" = (").Append(f.PropertyTypeFq).AppendLine(")(__v ?? default)));");
+            var isDto = underlying == "global::System.DateTimeOffset";
+            if (isDto)
+            {
+                // Bug C fix: DateTimeOffset cannot be cast directly to DateTime? — use .DateTime accessor.
+                // For nullable: model.Prop?.DateTime; for non-nullable: model.Prop.DateTime
+                var dtAccess = isNullableDt
+                    ? $"model.{f.PropertyName}?.DateTime"
+                    : $"model.{f.PropertyName}.DateTime";
+                sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"DateTimeValue\", (global::System.DateTime?)").Append(dtAccess).AppendLine(");");
+                // ValueChanged: reconstruct DateTimeOffset preserving the original offset.
+                sb.Append("                    __field.AddAttribute(").Append(next())
+                  .Append(", \"DateTimeValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<global::System.DateTime?>(model, __v => {");
+                sb.AppendLine(" if (__v.HasValue) {");
+                if (isNullableDt)
+                    sb.Append("                        var __origOffset = model.").Append(f.PropertyName).AppendLine("?.Offset ?? global::System.TimeSpan.Zero;");
+                else
+                    sb.Append("                        var __origOffset = model.").Append(f.PropertyName).AppendLine(".Offset;");
+                sb.Append("                        model.").Append(f.PropertyName).AppendLine(" = new global::System.DateTimeOffset(__v.Value, __origOffset);");
+                sb.Append("                    } else { ");
+                if (isNullableDt)
+                    sb.Append("model.").Append(f.PropertyName).Append(" = null; ");
+                // else non-nullable DateTimeOffset: ignore null (keep previous value)
+                sb.AppendLine("} }));");
+            }
+            else
+            {
+                sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"DateTimeValue\", (global::System.DateTime?)model.").Append(f.PropertyName).AppendLine(");");
+                sb.Append("                    __field.AddAttribute(").Append(next())
+                  .Append(", \"DateTimeValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<global::System.DateTime?>(model, __v => model.")
+                  .Append(f.PropertyName).Append(" = (").Append(f.PropertyTypeFq).AppendLine(")(__v ?? default)));");
+            }
         }
         else // DateOnly
         {
@@ -448,12 +476,26 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     // Lumeo.Select is non-generic and operates on string. For enums we convert Enum <-> string via ToString()/Enum.Parse.
     private static void EmitEnumSelect(StringBuilder sb, FieldModel f, Func<int> next)
     {
-        var typeArg = f.PropertyTypeFq;
+        // PropertyTypeFq may be "global::My.Ns.MyEnum?" for nullable enums — strip the trailing ? for Enum.Parse.
+        var isNullable = f.PropertyTypeFq.EndsWith("?");
+        var typeArg = isNullable ? f.PropertyTypeFq.TrimEnd('?') : f.PropertyTypeFq;
         sb.Append("                    __field.OpenComponent<global::Lumeo.Select>(").Append(next()).AppendLine(");");
-        sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", model.").Append(f.PropertyName).AppendLine(".ToString());");
+        // Bug A fix (rc.43): null-safe ToString for nullable enums only. Non-nullable
+        // enums are value types and don't support `?.` (CS0023). Without this gate,
+        // generated code fails to compile for every non-nullable enum field.
+        if (isNullable)
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", model.").Append(f.PropertyName).AppendLine("?.ToString() ?? \"\");");
+        else
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", model.").Append(f.PropertyName).AppendLine(".ToString());");
+        // Bug B fix: when the value is cleared (empty string) and the enum is nullable, set the property to null.
         sb.Append("                    __field.AddAttribute(").Append(next())
-          .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<string?>(model, __v => { if (!string.IsNullOrEmpty(__v)) model.")
-          .Append(f.PropertyName).Append(" = (").Append(typeArg).Append(")global::System.Enum.Parse(typeof(").Append(typeArg).AppendLine("), __v!); }));");
+          .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<string?>(model, __v => { if (string.IsNullOrEmpty(__v)) { ");
+        if (isNullable)
+            sb.Append("model.").Append(f.PropertyName).Append(" = null; }");
+        else
+            sb.Append("}"); // non-nullable: ignore clear (no-op)
+        sb.Append(" else { model.").Append(f.PropertyName).Append(" = (").Append(typeArg)
+          .Append(")global::System.Enum.Parse(typeof(").Append(typeArg).AppendLine("), __v!); } }));");
 
         sb.Append("                    __field.AddAttribute(").Append(next())
           .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__sel) =>");
