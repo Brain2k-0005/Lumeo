@@ -48,6 +48,11 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "Макс",
         ["DataGrid.Items"] = "элементов",
         ["DataGrid.ItemsCount"] = "{0} элементов",
+        // Russian plural forms: 1, 21, 31… → "элемент"; 2-4, 22-24… → "элемента"; rest → "элементов".
+        ["DataGrid.ItemsCount.One"] = "{0} элемент",
+        ["DataGrid.ItemsCount.Few"] = "{0} элемента",
+        ["DataGrid.ItemsCount.Many"] = "{0} элементов",
+        ["DataGrid.ItemsCount.Other"] = "{0} элементов",
         ["DataGrid.CopySelected"] = "Копировать ({0})",
         ["DataGrid.ApplyLayout"] = "Применить макет",
         ["DataGrid.NoSavedLayouts"] = "Нет сохранённых макетов.",
@@ -305,5 +310,37 @@ internal static partial class LumeoDefaultStrings
         ["Editor.SlashDivider"] = "Разделитель",
         ["Editor.SlashDividerSub"] = "Горизонтальная линия",
         ["Editor.ToolbarAriaLabel"] = "Форматирование текста",
+
+        // Stepper
+        ["Stepper.Back"] = "Назад",
+        ["Stepper.Next"] = "Далее",
+        ["Stepper.Finish"] = "Готово",
+        ["Stepper.Optional"] = "Необязательно",
+        ["Stepper.Skip"] = "Пропустить",
+
+        // Window
+        ["Window.Close"] = "Закрыть",
+        ["Window.Minimize"] = "Свернуть",
+        ["Window.Maximize"] = "Развернуть",
+        ["Window.Restore"] = "Восстановить",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "Уменьшить",
+        ["NumberInput.Increase"] = "Увеличить",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "Очистить дату",
+
+        // Slider
+        ["Slider.End"] = "конец",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "Эта папка пуста",
+        ["FileManager.EmptyState"] = "Здесь нет файлов или папок.",
+        ["FileManager.MoreActions"] = "Другие действия",
+        ["FileManager.MoreActionsForName"] = "Другие действия для {0}",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "Файл «{0}» превышает максимальный размер {1}.",
     };
 }

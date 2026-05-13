@@ -8,6 +8,27 @@ let fcLoaded = false;
 let fcLoadPromise = null;
 let fcModules = null;
 
+// Auto-repaint all active calendars when the app theme changes.
+// theme.js fires this event after any theme mutation (dark/light toggle, palette swap,
+// radius change, etc.) so FullCalendar's CSS-var-driven overrides are re-resolved.
+// Deferred with queueMicrotask so DOM class / CSS-var updates are already
+// committed before FullCalendar re-reads them via calendar.render().
+if (typeof document !== 'undefined' && !window.__lumeoSchedulerThemeListener) {
+    document.addEventListener('lumeo:theme-changed', () => {
+        if (instances.size === 0) return;
+        queueMicrotask(() => {
+            try { refreshAllCalendars(); } catch (_) { /* ignore */ }
+        });
+    });
+    window.__lumeoSchedulerThemeListener = true;
+}
+
+function refreshAllCalendars() {
+    for (const [, inst] of instances) {
+        try { inst.calendar.render(); } catch (_) { /* ignore stale instances */ }
+    }
+}
+
 const FC_CORE = 'https://esm.sh/@fullcalendar/core@6';
 const FC_DAYGRID = 'https://esm.sh/@fullcalendar/daygrid@6';
 const FC_TIMEGRID = 'https://esm.sh/@fullcalendar/timegrid@6';
@@ -30,22 +51,27 @@ async function loadFullCalendar() {
     fcLoadPromise = (async () => {
         // Inject Lumeo theme overrides before any Calendar instance is created.
         injectLumeoSchedulerOverrides();
-        const [core, dayGrid, timeGrid, listPlugin, interaction] = await Promise.all([
-            import(/* @vite-ignore */ FC_CORE),
-            import(/* @vite-ignore */ FC_DAYGRID),
-            import(/* @vite-ignore */ FC_TIMEGRID),
-            import(/* @vite-ignore */ FC_LIST),
-            import(/* @vite-ignore */ FC_INTERACTION),
-        ]);
-        fcModules = {
-            Calendar: core.Calendar,
-            dayGridPlugin: dayGrid.default,
-            timeGridPlugin: timeGrid.default,
-            listPlugin: listPlugin.default,
-            interactionPlugin: interaction.default,
-        };
-        fcLoaded = true;
-        return fcModules;
+        try {
+            const [core, dayGrid, timeGrid, listPlugin, interaction] = await Promise.all([
+                import(/* @vite-ignore */ FC_CORE),
+                import(/* @vite-ignore */ FC_DAYGRID),
+                import(/* @vite-ignore */ FC_TIMEGRID),
+                import(/* @vite-ignore */ FC_LIST),
+                import(/* @vite-ignore */ FC_INTERACTION),
+            ]);
+            fcModules = {
+                Calendar: core.Calendar,
+                dayGridPlugin: dayGrid.default,
+                timeGridPlugin: timeGrid.default,
+                listPlugin: listPlugin.default,
+                interactionPlugin: interaction.default,
+            };
+            fcLoaded = true;
+            return fcModules;
+        } catch (e) {
+            fcLoadPromise = null; // allow retry on next init call
+            throw new Error('[Lumeo Scheduler] FullCalendar bundle failed to load: ' + e.message);
+        }
     })();
 
     return fcLoadPromise;
@@ -180,7 +206,12 @@ export const scheduler = {
         if (opts.slotMaxTime) calOpts.slotMaxTime = opts.slotMaxTime;
         if (opts.slotDuration) calOpts.slotDuration = opts.slotDuration;
 
-        const calendar = new Calendar(el, calOpts);
+        let calendar;
+        try {
+            calendar = new Calendar(el, calOpts);
+        } catch (e) {
+            throw new Error('[Lumeo Scheduler] Calendar initialization failed: ' + e.message);
+        }
 
         calendar.render();
 

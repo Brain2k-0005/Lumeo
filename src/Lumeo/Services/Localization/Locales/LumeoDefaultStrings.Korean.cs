@@ -48,6 +48,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "최대",
         ["DataGrid.Items"] = "개",
         ["DataGrid.ItemsCount"] = "{0}개 항목",
+        ["DataGrid.ItemsCount.One"] = "{0}개 항목",
+        ["DataGrid.ItemsCount.Other"] = "{0}개 항목",
         ["DataGrid.CopySelected"] = "복사 ({0})",
         ["DataGrid.ApplyLayout"] = "레이아웃 적용",
         ["DataGrid.NoSavedLayouts"] = "저장된 레이아웃이 없습니다.",
@@ -305,5 +307,37 @@ internal static partial class LumeoDefaultStrings
         ["Editor.SlashDivider"] = "구분선",
         ["Editor.SlashDividerSub"] = "수평선",
         ["Editor.ToolbarAriaLabel"] = "텍스트 서식",
+
+        // Stepper
+        ["Stepper.Back"] = "이전",
+        ["Stepper.Next"] = "다음",
+        ["Stepper.Finish"] = "완료",
+        ["Stepper.Optional"] = "선택 사항",
+        ["Stepper.Skip"] = "건너뛰기",
+
+        // Window
+        ["Window.Close"] = "닫기",
+        ["Window.Minimize"] = "최소화",
+        ["Window.Maximize"] = "최대화",
+        ["Window.Restore"] = "이전 크기로 복원",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "감소",
+        ["NumberInput.Increase"] = "증가",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "날짜 지우기",
+
+        // Slider
+        ["Slider.End"] = "끝",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "이 폴더는 비어 있습니다",
+        ["FileManager.EmptyState"] = "파일이나 폴더가 없습니다.",
+        ["FileManager.MoreActions"] = "추가 작업",
+        ["FileManager.MoreActionsForName"] = "{0}의 추가 작업",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "파일 \"{0}\"이(가) 최대 크기 {1}을(를) 초과합니다.",
     };
 }

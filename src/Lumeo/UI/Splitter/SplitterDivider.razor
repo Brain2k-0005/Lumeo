@@ -16,6 +16,7 @@
 </div>
 
 @inject ComponentInteropService Interop
+@inject ThemeService Theme
 
 @code {
     [CascadingParameter] public Splitter.SplitterContext Context { get; set; } = default!;
@@ -74,17 +75,20 @@
     // Keyboard resize: arrow keys move the divider by a fixed 10px step,
     // matching the same Context.ResizeNeighbors path used by pointer drag.
     // @onkeydown:preventDefault="true" on the element stops page scroll.
+    // In RTL, ArrowLeft/Right are swapped for horizontal splitters so the key
+    // that points toward the visual "start" always shrinks the leading panel.
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (Context is null) return;
         const double step = 10.0;
 
+        var isRtl = IsHorizontal && Theme.CurrentDirection == LayoutDirection.Rtl;
         var delta = (IsHorizontal, e.Key) switch
         {
-            (true, "ArrowLeft")  => -step,
-            (true, "ArrowRight") =>  step,
-            (false, "ArrowUp")   => -step,
-            (false, "ArrowDown") =>  step,
+            (true,  "ArrowLeft")  => isRtl ?  step : -step,
+            (true,  "ArrowRight") => isRtl ? -step :  step,
+            (false, "ArrowUp")    => -step,
+            (false, "ArrowDown")  =>  step,
             _ => 0.0
         };
 

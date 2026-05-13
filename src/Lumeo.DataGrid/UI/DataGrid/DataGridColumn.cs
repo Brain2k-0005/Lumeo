@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo;
@@ -56,21 +59,83 @@ public class DataGridColumn<TItem>
     /// </summary>
     public RenderFragment<DataGridFilterTemplateContext>? FilterTemplate { get; set; }
 
-    private System.Reflection.PropertyInfo? _cachedProperty;
-    private string? _cachedPropertyField;
+    // Per-column cache of compiled getters, keyed by field name. A compiled
+    // Func<TItem, object?> is ~10x faster than PropertyInfo.GetValue and the
+    // delta matters: GetValue runs once per cell per render.
+    //
+    // Behavior preservation vs. the previous reflection-based path:
+    //   * Unknown field on TItem → PropertyInfo.GetProperty(...) returned null and
+    //     GetValue returned null. The compiled path mirrors this by caching a
+    //     null delegate and returning null.
+    //   * Nested paths (e.g. "Address.City") are supported with null-safe
+    //     traversal: any null intermediate yields null instead of throwing
+    //     NullReferenceException — the previous code would have thrown on
+    //     nested paths since GetProperty doesn't traverse dots; this is a
+    //     net behavior gain and does not regress any existing flat path.
+    private readonly ConcurrentDictionary<string, Func<TItem, object?>?> _gettersByField = new(StringComparer.Ordinal);
 
     public object? GetValue(TItem item)
     {
         if (FieldSelector is not null) return FieldSelector(item);
         if (Field is null || item is null) return null;
 
-        if (_cachedProperty is null || _cachedPropertyField != Field)
+        var getter = _gettersByField.GetOrAdd(Field, static f => BuildGetter(f));
+        return getter?.Invoke(item);
+    }
+
+    private static Func<TItem, object?>? BuildGetter(string fieldPath)
+    {
+        var param = Expression.Parameter(typeof(TItem), "x");
+        Expression current = param;
+        var currentType = typeof(TItem);
+
+        // Walk dotted segments, chaining .Property accesses. Track each segment
+        // so we can guard against null intermediates with Expression.Condition.
+        var segments = fieldPath.Split('.');
+        var nullChecks = new List<Expression>();
+
+        foreach (var segment in segments)
         {
-            _cachedProperty = typeof(TItem).GetProperty(Field);
-            _cachedPropertyField = Field;
+            var prop = currentType.GetProperty(segment, BindingFlags.Public | BindingFlags.Instance);
+            if (prop is null)
+            {
+                // Unknown property at any depth → match reflection's null return.
+                return null;
+            }
+
+            // For reference-typed intermediates, add a null-check on the value
+            // BEFORE we descend into it. Value-typed intermediates can't be null
+            // (Nullable<T> is handled via .Value but is uncommon for these paths;
+            // we leave that to ordinary access — matches old single-level behavior).
+            if (!current.Type.IsValueType && !ReferenceEquals(current, param))
+            {
+                nullChecks.Add(Expression.Equal(current, Expression.Constant(null, current.Type)));
+            }
+
+            current = Expression.Property(current, prop);
+            currentType = prop.PropertyType;
         }
 
-        return _cachedProperty?.GetValue(item);
+        // Box the final value to object so the delegate returns object?.
+        Expression body = currentType.IsValueType
+            ? Expression.Convert(current, typeof(object))
+            : current;
+
+        // If we accumulated null-guards, fold them into a single short-circuit:
+        // (intermediate1 == null || intermediate2 == null || ...) ? null : body
+        if (nullChecks.Count > 0)
+        {
+            Expression anyNull = nullChecks[0];
+            for (var i = 1; i < nullChecks.Count; i++)
+                anyNull = Expression.OrElse(anyNull, nullChecks[i]);
+
+            body = Expression.Condition(
+                anyNull,
+                Expression.Constant(null, typeof(object)),
+                body);
+        }
+
+        return Expression.Lambda<Func<TItem, object?>>(body, param).Compile();
     }
 
     /// <summary>

@@ -48,6 +48,13 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "الأعلى",
         ["DataGrid.Items"] = "عنصر",
         ["DataGrid.ItemsCount"] = "{0} عنصر",
+        // Arabic plural forms (CLDR collapsed): one (1) → "عنصر"; few (2 or 3-10) → "عنصرين"/"عناصر";
+        // many (11-99) → "عنصرًا"; rest/zero collapse to many. PluralKey() in LumeoLocalizer
+        // collapses CLDR zero/two into many/few so consumers only fill these four sub-keys.
+        ["DataGrid.ItemsCount.One"] = "عنصر واحد",
+        ["DataGrid.ItemsCount.Few"] = "{0} عناصر",
+        ["DataGrid.ItemsCount.Many"] = "{0} عنصرًا",
+        ["DataGrid.ItemsCount.Other"] = "{0} عنصر",
         ["DataGrid.CopySelected"] = "نسخ ({0})",
         ["DataGrid.ApplyLayout"] = "تطبيق التخطيط",
         ["DataGrid.NoSavedLayouts"] = "لا توجد تخطيطات محفوظة بعد.",
@@ -305,5 +312,37 @@ internal static partial class LumeoDefaultStrings
         ["Editor.SlashDivider"] = "فاصل",
         ["Editor.SlashDividerSub"] = "خط أفقي",
         ["Editor.ToolbarAriaLabel"] = "تنسيق النص",
+
+        // Stepper
+        ["Stepper.Back"] = "السابق",
+        ["Stepper.Next"] = "التالي",
+        ["Stepper.Finish"] = "إنهاء",
+        ["Stepper.Optional"] = "اختياري",
+        ["Stepper.Skip"] = "تخطٍ",
+
+        // Window
+        ["Window.Close"] = "إغلاق",
+        ["Window.Minimize"] = "تصغير",
+        ["Window.Maximize"] = "تكبير",
+        ["Window.Restore"] = "استعادة",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "إنقاص",
+        ["NumberInput.Increase"] = "زيادة",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "مسح التاريخ",
+
+        // Slider
+        ["Slider.End"] = "النهاية",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "هذا المجلد فارغ",
+        ["FileManager.EmptyState"] = "لا توجد ملفات أو مجلدات هنا.",
+        ["FileManager.MoreActions"] = "إجراءات أخرى",
+        ["FileManager.MoreActionsForName"] = "إجراءات أخرى لـ {0}",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "الملف «{0}» يتجاوز الحجم الأقصى {1}.",
     };
 }

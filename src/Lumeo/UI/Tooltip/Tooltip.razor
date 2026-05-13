@@ -1,11 +1,16 @@
 @namespace Lumeo
-@implements IDisposable
+@implements IAsyncDisposable
+@inject Lumeo.Services.ComponentInteropService Interop
 
 @{
     var context = new TooltipContext(_isOpen);
 }
 
-<div class="relative inline-flex" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
+<div id="@_wrapperId" class="relative inline-flex"
+     @onmouseenter="HandleMouseEnter"
+     @onmouseleave="HandleMouseLeave"
+     @onclick="HandleTap"
+     @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -17,22 +22,30 @@
     [Parameter] public int HideDelay { get; set; } = 0;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private bool _isOpen;
+    private readonly string _wrapperId = $"tooltip-wrapper-{Guid.NewGuid():N}";
+    private bool _hovered;
+    // rc.44 — on touch devices a tap "pins" the tooltip open until the next
+    // tap elsewhere (registerClickOutside also now listens for touchstart, so
+    // dismissal works equally on mobile).
+    private bool _pinned;
+    private bool _clickOutsideRegistered;
     private readonly DelayedDispatch _dispatch = new();
+
+    private bool _isOpen => _hovered || _pinned;
 
     private void HandleMouseEnter()
     {
         _dispatch.Cancel();
         if (ShowDelay <= 0)
         {
-            _isOpen = true;
+            _hovered = true;
             StateHasChanged();
         }
         else
         {
             _dispatch.Schedule(ShowDelay, () => InvokeAsync(() =>
             {
-                _isOpen = true;
+                _hovered = true;
                 StateHasChanged();
                 return Task.CompletedTask;
             }));
@@ -44,21 +57,55 @@
         _dispatch.Cancel();
         if (HideDelay <= 0)
         {
-            _isOpen = false;
+            _hovered = false;
             StateHasChanged();
         }
         else
         {
             _dispatch.Schedule(HideDelay, () => InvokeAsync(() =>
             {
-                _isOpen = false;
+                _hovered = false;
                 StateHasChanged();
                 return Task.CompletedTask;
             }));
         }
     }
 
-    public void Dispose() => _dispatch.Dispose();
+    // Tap toggles the pinned state. The first tap on a touch device fires
+    // both `mouseenter` (browser-emulated) and `click` — that's fine: pin
+    // simply sticks open. A second tap on the trigger unpins.
+    private async Task HandleTap()
+    {
+        _pinned = !_pinned;
+        if (_pinned && !_clickOutsideRegistered)
+        {
+            await Interop.RegisterClickOutside(_wrapperId, null, OnClickOutside);
+            _clickOutsideRegistered = true;
+        }
+        StateHasChanged();
+    }
+
+    private Task OnClickOutside()
+    {
+        if (_pinned)
+        {
+            _pinned = false;
+            _hovered = false;
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dispatch.Dispose();
+        if (_clickOutsideRegistered)
+        {
+            try { await Interop.UnregisterClickOutside(_wrapperId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _clickOutsideRegistered = false;
+        }
+    }
 
     public record TooltipContext(bool IsOpen);
 }

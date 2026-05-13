@@ -24,7 +24,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_registered)
+        if (!firstRender) return;
+        if (_registered) return;
+        try
         {
             await Interop.RegisterAffix(_elementId, OffsetTop, OffsetBottom, Target, async (isFixed) =>
             {
@@ -37,6 +39,8 @@
             });
             _registered = true;
         }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 
     public async ValueTask DisposeAsync()

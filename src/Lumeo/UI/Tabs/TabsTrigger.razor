@@ -31,6 +31,7 @@
 </button>
 
 @inject ComponentInteropService Interop
+@inject ThemeService Theme
 
 @code {
     [CascadingParameter] public Tabs.TabsContext Context { get; set; } = default!;
@@ -96,19 +97,26 @@
         if (Disabled) return;
 
         var isHorizontal = Context.Orientation == Tabs.TabsOrientation.Horizontal;
+        var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
         var keys = Context.TabIds.Keys.ToList();
         var idx = keys.IndexOf(Value);
 
-        string? nextValue = e.Key switch
+        // In RTL, ArrowLeft/Right are swapped for horizontal tabs so they follow visual flow.
+        var (hBack, hForward) = (isHorizontal && isRtl) ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
+
+        string? nextValue = null;
+        if (isHorizontal)
         {
-            "ArrowRight" when isHorizontal  => FindNextEnabledTab(keys, idx, 1),
-            "ArrowLeft"  when isHorizontal  => FindNextEnabledTab(keys, idx, -1),
-            "ArrowDown"  when !isHorizontal => FindNextEnabledTab(keys, idx, 1),
-            "ArrowUp"    when !isHorizontal => FindNextEnabledTab(keys, idx, -1),
-            "Home" => keys.Count > 0 ? keys[0] : null,
-            "End"  => keys.Count > 0 ? keys[^1] : null,
-            _ => null
-        };
+            if (e.Key == hForward) nextValue = FindNextEnabledTab(keys, idx, 1);
+            else if (e.Key == hBack) nextValue = FindNextEnabledTab(keys, idx, -1);
+        }
+        else
+        {
+            if (e.Key == "ArrowDown") nextValue = FindNextEnabledTab(keys, idx, 1);
+            else if (e.Key == "ArrowUp") nextValue = FindNextEnabledTab(keys, idx, -1);
+        }
+        if (e.Key == "Home") nextValue = keys.Count > 0 ? keys[0] : null;
+        else if (e.Key == "End") nextValue = keys.Count > 0 ? keys[^1] : null;
 
         _preventKey = e.Key is "ArrowRight" or "ArrowLeft" or "ArrowDown" or "ArrowUp" or "Home" or "End";
 

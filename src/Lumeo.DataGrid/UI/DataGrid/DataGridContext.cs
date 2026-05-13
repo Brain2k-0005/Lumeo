@@ -6,6 +6,14 @@ namespace Lumeo;
 
 public record DataGridContext<TItem>(
     IReadOnlyList<DataGridColumn<TItem>> Columns,
+    /// <summary>
+    /// Pre-filtered view of <see cref="Columns"/> containing only columns with
+    /// <c>Visible == true</c>. Cached at the grid level (one list per render),
+    /// so descendants (Row, Cell, Header, Footer, Body) can iterate without
+    /// running <c>Columns.Where(c =&gt; c.Visible)</c> per render. At 1k rows ×
+    /// 10 cols, this saves the per-render allocation/iteration of the filter.
+    /// </summary>
+    IReadOnlyList<DataGridColumn<TItem>> VisibleColumns,
     IReadOnlyList<TItem> DisplayedItems,
     IReadOnlyList<TItem> SelectedItems,
     List<SortDescriptor> Sorts,

@@ -39,6 +39,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler);
     ValueTask UnregisterSvDrag(string elementId);
 
+    // Viewport
+    ValueTask<ViewportSize> GetViewportSize();
+
     // Floating Position
     ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
     ValueTask UnpositionFixed(string contentId);
@@ -53,6 +56,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler);
     ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler);
     ValueTask UnregisterDrawerSwipe(string elementId);
+
+    // Sortable Touch (HTML5 Drag API doesn't fire on touch — separate touch path)
+    ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler);
+    ValueTask UnregisterSortableTouch(string containerId);
 
     // Carousel Swipe
     ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler);

@@ -31,7 +31,7 @@
             }
             @if (Clearable && Value.HasValue)
             {
-                <button type="button" class="ml-auto pl-1 hover:text-foreground" aria-label="Clear date" @onclick="HandleClear" @onclick:stopPropagation="true">
+                <button type="button" class="ml-auto pl-1 hover:text-foreground" aria-label="@L["DateTimePicker.ClearDate"]" @onclick="HandleClear" @onclick:stopPropagation="true">
                     <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
                 </button>
             }
@@ -43,7 +43,8 @@
                 <Calendar Value="@_dateValue" ValueChanged="HandleDateChanged"
                   MinDate="@(MinDate.HasValue ? (DateOnly?)DateOnly.FromDateTime(MinDate.Value) : null)"
                   MaxDate="@(MaxDate.HasValue ? (DateOnly?)DateOnly.FromDateTime(MaxDate.Value) : null)"
-                  IsDateDisabled="@IsDateDisabled" />
+                  IsDateDisabled="@IsDateDisabled"
+                  FirstDayOfWeek="@FirstDayOfWeek" />
             </div>
             <div class="border-l border-border/40">
                 <div class="p-3 pb-1">
@@ -101,16 +102,18 @@
                         <div class="flex flex-col py-1">
                             @{
                                 var isAm = !_timeValue.HasValue || _timeValue.Value.Hours < 12;
+                                var amLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.AMDesignator) ? "AM" : EffectiveCulture.DateTimeFormat.AMDesignator;
+                                var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                             }
                             <button type="button"
                                     class="@(isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
                                     @onclick="() => SelectAmPm(true)">
-                                AM
+                                @amLabel
                             </button>
                             <button type="button"
                                     class="@(!isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
                                     @onclick="() => SelectAmPm(false)">
-                                PM
+                                @pmLabel
                             </button>
                         </div>
                     }
@@ -173,6 +176,12 @@
     [Parameter] public DateTime? MinDate { get; set; }
     [Parameter] public DateTime? MaxDate { get; set; }
     [Parameter] public Func<DateTime, bool>? IsDateDisabled { get; set; }
+    /// <summary>
+    /// Override the locale-derived first day of week shown by the embedded calendar.
+    /// Forwarded to the inner <see cref="Calendar"/>; leave null to fall back to
+    /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/>.
+    /// </summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
