@@ -43,9 +43,15 @@
                 <div id="@_svId"
                      class="lumeo-cp-sv relative w-full rounded-md overflow-hidden cursor-crosshair touch-none select-none"
                      style="@SvBackgroundStyle">
+                    @* Bug A — NOT a theme bug: rgba(255,255,255) white→transparent and rgba(0,0,0) black→transparent
+                       are HSV color-space primitives (saturation and value axes). They are mathematically defined
+                       constants for the SV canvas and must not use CSS theme variables. *@
                     <div class="absolute inset-0" style="background: linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0))"></div>
                     <div class="absolute inset-0" style="background: linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0))"></div>
-                    <div class="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)] pointer-events-none"
+                    @* Bug C — border-white is intentional (always-white circle contrasts against the colored SV canvas).
+                       The outer shadow uses lumeo-cp-sv-indicator (CSS class) so it adapts to the page theme
+                       via color-mix instead of being hardcoded rgba(0,0,0,0.35). *@
+                    <div class="lumeo-cp-sv-indicator absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white pointer-events-none"
                          style="@SvIndicatorStyle"></div>
                 </div>
 
@@ -201,6 +207,9 @@
     private static string GetSwatchClass() =>
         "h-6 w-6 rounded-sm border border-border/40 cursor-pointer hover:scale-110 transition-transform flex items-center justify-center focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring";
 
+    // Bug B — NOT a theme bug: text-black / text-white here is contrast-against-the-swatch-color, not against the
+    // page background. The luminance check picks whichever extreme (black or white) is most readable on top of the
+    // specific preset swatch. This is correct regardless of the page's light/dark theme.
     private static string CheckIconClass(string color) =>
         $"h-3 w-3 {(IsLight(color) ? "text-black" : "text-white")} drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]";
 

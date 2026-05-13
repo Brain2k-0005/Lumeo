@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new FormFieldContext(Name, Error);
+    var context = new FormFieldContext(Name, EffectiveError);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -19,13 +19,13 @@
                 </Label>
             }
             @ChildContent
-            @if (HelpText is not null && Error is null)
+            @if (HelpText is not null && EffectiveError is null)
             {
                 <p class="text-xs text-muted-foreground">@HelpText</p>
             }
-            @if (Error is not null)
+            @if (EffectiveError is not null)
             {
-                <p class="text-xs text-destructive">@Error</p>
+                <p class="text-xs text-destructive">@EffectiveError</p>
             }
         }
         else
@@ -43,13 +43,13 @@
                 }
                 <div>
                     @ChildContent
-                    @if (HelpText is not null && Error is null)
+                    @if (HelpText is not null && EffectiveError is null)
                     {
                         <p class="text-xs text-muted-foreground mt-1">@HelpText</p>
                     }
-                    @if (Error is not null)
+                    @if (EffectiveError is not null)
                     {
-                        <p class="text-xs text-destructive mt-1">@Error</p>
+                        <p class="text-xs text-destructive mt-1">@EffectiveError</p>
                     }
                 </div>
             </div>
@@ -68,6 +68,15 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Bug D fix: receive the parent Form's context so Reset() clears cascade to child fields.
+    [CascadingParameter] private FormContext? ParentFormContext { get; set; }
+
+    // Use live errors from FormContext when available; fall back to the manually-set Error param.
+    private string? EffectiveError =>
+        ParentFormContext is { } pc && !string.IsNullOrEmpty(Name)
+            ? pc.GetFieldErrors(Name).FirstOrDefault() ?? Error
+            : Error;
 
     private string CssClass => Orientation == FormFieldOrientation.Vertical
         ? $"space-y-2 {Class}".Trim()

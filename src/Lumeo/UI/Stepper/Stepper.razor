@@ -18,6 +18,11 @@
     </CascadingValue>
 
     @* Header: step indicators *@
+    @{
+        // Resize refs array after ChildContent (hidden) has registered all steps.
+        if (_stepButtonRefs.Length != _steps.Count)
+            _stepButtonRefs = new ElementReference[_steps.Count];
+    }
     <div role="tablist"
          aria-orientation="@(Orientation == StepperOrientation.Vertical ? "vertical" : "horizontal")"
          class="@HeaderCssClass">
@@ -35,7 +40,9 @@
                     aria-disabled="@(CanClickStep(idx) ? null : "true")"
                     tabindex="@(isActive ? 0 : -1)"
                     class="@GetStepIndicatorClass(idx, isActive, isCompleted, isError)"
-                    @onclick="() => HandleStepClick(idx)">
+                    @ref="_stepButtonRefs[idx]"
+                    @onclick="() => HandleStepClick(idx)"
+                    @onkeydown="(e) => HandleStepKeyDown(e, idx)">
                 @if (step.IconContent is not null && !isCompleted && !isError)
                 {
                     @step.IconContent
@@ -166,6 +173,10 @@
     internal int _stepIndex;
     internal int _stepCount;
 
+    // ElementReferences for each step indicator button — sized in OnParametersSet
+    // so @ref bindings in the render loop always find a valid slot.
+    private ElementReference[] _stepButtonRefs = Array.Empty<ElementReference>();
+
     internal void RegisterStep(StepperStep.StepRegistration step)
     {
         // Steps register themselves during the hidden render pass
@@ -181,6 +192,10 @@
         // Reset index so re-render re-registers
         _stepIndex = 0;
         _stepCount = _steps.Count;
+
+        // Ensure the refs array is always large enough for the current step count.
+        if (_stepButtonRefs.Length != _steps.Count)
+            _stepButtonRefs = new ElementReference[_steps.Count];
     }
 
     private bool CanAdvance()
@@ -202,6 +217,23 @@
     {
         if (!CanClickStep(idx)) return;
         await SetActiveStep(idx);
+    }
+
+    // Arrow-key navigation between step indicator buttons (WAI-ARIA tab-list pattern).
+    // ArrowLeft/Up: move focus to previous button. ArrowRight/Down: next button.
+    // Focus only — does not change ActiveStep (use Enter/Space for activation).
+    private async Task HandleStepKeyDown(KeyboardEventArgs e, int idx)
+    {
+        int target = e.Key switch
+        {
+            "ArrowLeft" or "ArrowUp"   => idx - 1,
+            "ArrowRight" or "ArrowDown" => idx + 1,
+            _ => -1
+        };
+
+        if (target < 0 || target >= _stepButtonRefs.Length) return;
+
+        await _stepButtonRefs[target].FocusAsync();
     }
 
     private async Task GoNext()

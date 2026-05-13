@@ -68,10 +68,16 @@ public sealed class ThemeService : IThemeService
 
     public async Task ToggleModeAsync()
     {
-        await _jsRuntime.InvokeVoidAsync("themeManager.toggle");
-        IsDark = await _jsRuntime.InvokeAsync<bool>("themeManager.isDark");
-        CurrentMode = IsDark ? ThemeMode.Dark : ThemeMode.Light;
-        OnThemeChanged?.Invoke();
+        // Bug G — the old toggle called themeManager.toggle() (a JS boolean flip) and mapped the result
+        // back to Dark|Light only, permanently losing System mode. The fix cycles System→Dark→Light→System
+        // in C# so the caller never escapes the three-way cycle, and calls SetModeAsync to keep JS in sync.
+        var next = CurrentMode switch
+        {
+            ThemeMode.System => ThemeMode.Dark,
+            ThemeMode.Dark   => ThemeMode.Light,
+            _                => ThemeMode.System,
+        };
+        await SetModeAsync(next);
     }
 
     public async Task SetDirectionAsync(LayoutDirection direction)
