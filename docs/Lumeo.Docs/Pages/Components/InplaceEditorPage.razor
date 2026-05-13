@@ -47,6 +47,31 @@
     <ComponentDemo Title="Disabled" Code="@_disabledCode">
         <InplaceEditor Value="This value is locked" Disabled="true" Class="max-w-sm" />
     </ComponentDemo>
+
+    <ComponentDemo Title="EditMode — interactive preview" Code="@_editModeInteractiveCode">
+        <Stack Gap="4" Class="max-w-sm">
+            <Lumeo.Text Size="sm" Color="muted">Switch EditMode to see how the edit control changes when you click to edit.</Lumeo.Text>
+            <Segmented @bind-Value="_previewEditMode">
+                <SegmentedItem Value="Text">Text</SegmentedItem>
+                <SegmentedItem Value="Textarea">Textarea</SegmentedItem>
+                <SegmentedItem Value="Select">Select</SegmentedItem>
+            </Segmented>
+            @if (_previewEditMode == "Select")
+            {
+                <InplaceEditor @bind-Value="_previewEditorValue"
+                               EditMode="InplaceEditor.InplaceEditMode.Select"
+                               SelectOptions="@_previewSelectOptions"
+                               Placeholder="Click to select a value..." />
+            }
+            else
+            {
+                <InplaceEditor @bind-Value="_previewEditorValue"
+                               EditMode="_inplaceEditModeEnum"
+                               Placeholder="@($"Click to edit ({_previewEditMode} mode)...")" />
+            }
+            <Lumeo.Text Size="sm" Color="muted">Value: @_previewEditorValue</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -138,6 +163,13 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
                             <td class="p-3 text-muted-foreground">Two-way binding callback; fires when the value is saved.</td>
                         </tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Required</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Marks the field as required for form validation.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Invalid</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Applies a destructive ring to indicate a validation error.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ErrorText</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Error message shown below when Invalid is true (standalone, not inside FormField).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">HelperText</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Help text shown below when there is no error (standalone, not inside FormField).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Label</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Inline label rendered above the editor (standalone, not inside FormField).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Name</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">HTML name attribute for form identification.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">FormField</td><td class="p-3 font-mono text-xs text-muted-foreground">FormFieldContext?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Cascaded context from a parent FormField; drives validation state automatically.</td></tr>
 </tbody>
                 </table>
             </Stack>
@@ -183,4 +215,26 @@
 }";
 
     private string _disabledCode = @"<InplaceEditor Value=""This value is locked"" Disabled=""true"" />";
+
+    private string _previewEditMode = "Text";
+    private string? _previewEditorValue = "Sample value";
+    private List<string> _previewSelectOptions = new() { "Active", "Inactive", "Pending", "Archived" };
+    private InplaceEditor.InplaceEditMode _inplaceEditModeEnum =>
+        Enum.TryParse<InplaceEditor.InplaceEditMode>(_previewEditMode, out var m) ? m : InplaceEditor.InplaceEditMode.Text;
+
+    private string _editModeInteractiveCode = @"<Segmented @bind-Value=""_mode"">
+    <SegmentedItem Value=""Text"">Text</SegmentedItem>
+    <SegmentedItem Value=""Textarea"">Textarea</SegmentedItem>
+    <SegmentedItem Value=""Select"">Select</SegmentedItem>
+</Segmented>
+<InplaceEditor @bind-Value=""_value""
+               EditMode=""@Enum.Parse<InplaceEditor.InplaceEditMode>(_mode)""
+               SelectOptions=""@(_mode == """"Select"""" ? _options : null)""
+               Placeholder=""Click to edit..."" />
+
+@code {
+    private string _mode = ""Text"";
+    private string? _value = ""Sample value"";
+    private List<string> _options = new() { ""Active"", ""Inactive"", ""Pending"" };
+}";
 }

@@ -61,6 +61,38 @@
     <ComponentDemo Title="Promise Toast" Code="@_promiseCode">
         <Button OnClick="@ShowPromise">Save Changes</Button>
     </ComponentDemo>
+
+    <ComponentDemo Title="Variant — interactive" Code="@_variantInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a variant then show a toast to see it applied live.</Lumeo.Text>
+            <Flex Wrap="true" Gap="2">
+                @foreach (var v in new[] { ToastVariant.Default, ToastVariant.Success, ToastVariant.Destructive, ToastVariant.Warning, ToastVariant.Info })
+                {
+                    var variant = v;
+                    <Button Size="Button.ButtonSize.Sm"
+                            Variant="@(_toastVariant == variant ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                            OnClick="@(() => _toastVariant = variant)">@variant</Button>
+                }
+            </Flex>
+            <Button OnClick="ShowVariantToast">Show @_toastVariant toast</Button>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Position — interactive" Code="@_positionInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Pick a position then click Show to see where the toast appears.</Lumeo.Text>
+            <Flex Wrap="true" Gap="2">
+                @foreach (var p in Enum.GetValues<ToastPosition>())
+                {
+                    var pos = p;
+                    <Button Size="Button.ButtonSize.Sm"
+                            Variant="@(_toastPosition == pos ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                            OnClick="@(() => _toastPosition = pos)">@pos</Button>
+                }
+            </Flex>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowPositionToast">Show at @_toastPosition</Button>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <ToastProvider />
@@ -258,6 +290,42 @@
 @inject ToastService ToastService
 
 @code {
+    private ToastVariant _toastVariant = ToastVariant.Default;
+    private ToastPosition _toastPosition = ToastPosition.BottomRight;
+
+    private void ShowVariantToast()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = $"{_toastVariant} Toast",
+            Description = $"This is a {_toastVariant.ToString().ToLower()} toast message.",
+            Variant = _toastVariant,
+        });
+    }
+
+    private void ShowPositionToast()
+    {
+        ToastService.Show(new ToastOptions
+        {
+            Title = "Position demo",
+            Description = $"Appearing at {_toastPosition}.",
+            Position = _toastPosition,
+        });
+    }
+
+    private string _variantInteractiveCode = @"@inject ToastService ToastService
+
+<Button OnClick=""@(() => ToastService.Show(new ToastOptions { Title = ""Info"", Variant = ToastVariant.Info }))"">
+    Show Info Toast
+</Button>";
+
+    private string _positionInteractiveCode = @"@inject ToastService ToastService
+
+<Button OnClick=""@(() => ToastService.Show(new ToastOptions {
+    Title = ""Top-right"",
+    Position = ToastPosition.TopRight
+}))"">Show at TopRight</Button>";
+
     private void ShowDefault()
     {
         ToastService.Show("Scheduled", "Your event has been created.");

@@ -41,6 +41,34 @@
             <ReasoningDisplay Text="@_reasoningText" DefaultOpen="true" Summary="Chain of thought" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Variant (interactive)" Code="@_variantInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Switch variant to compare Default, Compact, and Detailed layouts.</Lumeo.Text>
+            <Segmented @bind-Value="_rdVariant">
+                <SegmentedItem Value="Default">Default</SegmentedItem>
+                <SegmentedItem Value="Compact">Compact</SegmentedItem>
+                <SegmentedItem Value="Detailed">Detailed</SegmentedItem>
+            </Segmented>
+            <Container MaxWidth="lg" Center="false">
+                <ReasoningDisplay Text="@_reasoningText" Variant="@_rdVariantEnum" DurationMs="2800" DefaultOpen="true" />
+            </Container>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Size (interactive)" Code="@_sizeInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Switch size to compare Small, Medium, and Large text scaling.</Lumeo.Text>
+            <Segmented @bind-Value="_rdSize">
+                <SegmentedItem Value="Small">Small</SegmentedItem>
+                <SegmentedItem Value="Medium">Medium</SegmentedItem>
+                <SegmentedItem Value="Large">Large</SegmentedItem>
+            </Segmented>
+            <Container MaxWidth="lg" Center="false">
+                <ReasoningDisplay Text="@_reasoningText" Size="@_rdSizeEnum" DefaultOpen="true" />
+            </Container>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -92,6 +120,18 @@
                             <td class="p-3 text-muted-foreground">If true, the reasoning block is expanded on initial render.</td>
                         </tr>
                         <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Size</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ReasoningSize</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Medium</td>
+                            <td class="p-3 text-muted-foreground">Text size scaling. Values: Small, Medium, Large.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Variant</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">ReasoningVariant</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
+                            <td class="p-3 text-muted-foreground">Visual layout style. Default = full block, Compact = condensed height, Detailed = expanded with extra meta. Values: Default, Compact, Detailed.</td>
+                        </tr>
+                        <tr>
                             <td class="p-3 font-mono text-xs text-primary">Class</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
@@ -113,6 +153,13 @@
 </div>
 
 @code {
+    private string _rdVariant = "Default";
+    private ReasoningDisplay.ReasoningVariant _rdVariantEnum =>
+        Enum.TryParse<ReasoningDisplay.ReasoningVariant>(_rdVariant, out var v) ? v : ReasoningDisplay.ReasoningVariant.Default;
+    private string _rdSize = "Medium";
+    private ReasoningDisplay.ReasoningSize _rdSizeEnum =>
+        Enum.TryParse<ReasoningDisplay.ReasoningSize>(_rdSize, out var v) ? v : ReasoningDisplay.ReasoningSize.Medium;
+
     private const string _reasoningText =
         "First, I need to consider the user's question carefully. " +
         "The problem involves finding the optimal path through a weighted graph. " +
@@ -159,4 +206,22 @@
 }";
 
     private string _openCode = @"<ReasoningDisplay Text=""@_reasoningText"" DefaultOpen=""true"" Summary=""Chain of thought"" />";
+
+    private string _variantInteractiveCode = @"<Segmented @bind-Value=""_variant"">
+    <SegmentedItem Value=""@ReasoningDisplay.ReasoningVariant.Default"">Default</SegmentedItem>
+    <SegmentedItem Value=""@ReasoningDisplay.ReasoningVariant.Compact"">Compact</SegmentedItem>
+    <SegmentedItem Value=""@ReasoningDisplay.ReasoningVariant.Detailed"">Detailed</SegmentedItem>
+</Segmented>
+<ReasoningDisplay Text=""@_text"" Variant=""@_variant"" DurationMs=""2800"" DefaultOpen=""true"" />
+
+@code { private ReasoningDisplay.ReasoningVariant _variant = ReasoningDisplay.ReasoningVariant.Default; }";
+
+    private string _sizeInteractiveCode = @"<Segmented @bind-Value=""_size"">
+    <SegmentedItem Value=""@ReasoningDisplay.ReasoningSize.Small"">Small</SegmentedItem>
+    <SegmentedItem Value=""@ReasoningDisplay.ReasoningSize.Medium"">Medium</SegmentedItem>
+    <SegmentedItem Value=""@ReasoningDisplay.ReasoningSize.Large"">Large</SegmentedItem>
+</Segmented>
+<ReasoningDisplay Text=""@_text"" Size=""@_size"" DefaultOpen=""true"" />
+
+@code { private ReasoningDisplay.ReasoningSize _size = ReasoningDisplay.ReasoningSize.Medium; }";
 }

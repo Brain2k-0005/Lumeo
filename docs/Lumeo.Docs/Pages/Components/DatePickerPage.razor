@@ -119,6 +119,35 @@
             <DatePicker @bind-Value="_weekDate" ShowWeekNumbers="true" Placeholder="Pick a date (with week numbers)" />
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Mode — interactive preview" Code="@_modeInteractiveCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Switch Mode to see how the picker surface changes between Single, Range, Month, and Year.</Lumeo.Text>
+            <Segmented @bind-Value="_previewMode">
+                <SegmentedItem Value="Single">Single</SegmentedItem>
+                <SegmentedItem Value="Range">Range</SegmentedItem>
+                <SegmentedItem Value="Month">Month</SegmentedItem>
+                <SegmentedItem Value="Year">Year</SegmentedItem>
+            </Segmented>
+            <Container MaxWidth="sm" Center="false" Padding="">
+                <DatePicker @bind-Value="_modePreviewDate"
+                            @bind-RangeStart="_modePreviewStart"
+                            @bind-RangeEnd="_modePreviewEnd"
+                            Mode="_datePickerModeEnum"
+                            Placeholder="@($"Mode = {_previewMode}")" />
+                @if (_previewMode == "Range" && _modePreviewStart.HasValue)
+                {
+                    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">
+                        @_modePreviewStart.Value.ToString("MMM d") — @(_modePreviewEnd?.ToString("MMM d, yyyy") ?? "...")
+                    </Lumeo.Text>
+                }
+                else if (_modePreviewDate.HasValue)
+                {
+                    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">Selected: @_modePreviewDate.Value.ToString("MMMM d, yyyy")</Lumeo.Text>
+                }
+            </Container>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12">
@@ -185,6 +214,18 @@
                 <TableRow><TableCell Class="font-mono text-xs">FirstDayOfWeek</TableCell><TableCell Class="font-mono text-xs">DayOfWeek?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the first day of the week. When null, falls back to the current culture's setting.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">IsDateDisabled</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateOnly, bool&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Predicate called for each calendar day; return true to disable that date.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DateClass</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateOnly, string?&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Function that returns extra CSS classes for a given day cell.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DateTooltip</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateOnly, string?&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Function that returns a tooltip string for a given day cell.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DateBadge</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateOnly, string?&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Function that returns a badge label (1–2 chars) to overlay on a given day cell.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Open</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Programmatically controls whether the calendar popover is open. Use with @@bind-Open.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OpenChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;bool&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the popover open state changes.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Required</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Marks the field as required for form validation.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Invalid</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Applies a destructive ring to indicate a validation error.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ErrorText</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Error message shown below the field when Invalid is true (standalone).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HelperText</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Help text shown below the field when there is no error (standalone).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Inline label rendered above the picker (standalone).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML name attribute for form identification.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -307,4 +348,30 @@
     private string _inlineCode = @"<DatePicker @bind-Value=""_date"" Inline=""true"" />";
 
     private string _weekNumbersCode = @"<DatePicker @bind-Value=""_date"" ShowWeekNumbers=""true"" Placeholder=""Pick a date (with week numbers)"" />";
+
+    private string _previewMode = "Single";
+    private DateOnly? _modePreviewDate;
+    private DateOnly? _modePreviewStart;
+    private DateOnly? _modePreviewEnd;
+    private DatePicker.DatePickerMode _datePickerModeEnum =>
+        Enum.TryParse<DatePicker.DatePickerMode>(_previewMode, out var m) ? m : DatePicker.DatePickerMode.Single;
+
+    private string _modeInteractiveCode = @"<Segmented @bind-Value=""_mode"">
+    <SegmentedItem Value=""Single"">Single</SegmentedItem>
+    <SegmentedItem Value=""Range"">Range</SegmentedItem>
+    <SegmentedItem Value=""Month"">Month</SegmentedItem>
+    <SegmentedItem Value=""Year"">Year</SegmentedItem>
+</Segmented>
+<DatePicker @bind-Value=""_date""
+            @bind-RangeStart=""_rangeStart""
+            @bind-RangeEnd=""_rangeEnd""
+            Mode=""@Enum.Parse<DatePicker.DatePickerMode>(_mode)""
+            Placeholder=""@($""Mode = {_mode}"")"" />
+
+@code {
+    private string _mode = ""Single"";
+    private DateOnly? _date;
+    private DateOnly? _rangeStart;
+    private DateOnly? _rangeEnd;
+}";
 }
