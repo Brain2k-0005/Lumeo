@@ -1,11 +1,13 @@
 @namespace Lumeo
-@implements IDisposable
+@implements IAsyncDisposable
+@inject Lumeo.Services.ComponentInteropService Interop
 
 @{
     var context = new HoverCardContext(
-        Open,
+        Open || _pinned,
         EventCallback.Factory.Create(this, RequestOpen),
         EventCallback.Factory.Create(this, RequestClose),
+        EventCallback.Factory.Create(this, TogglePin),
         _wrapperId);
 }
 
@@ -32,6 +34,11 @@
 
     private readonly string _wrapperId = $"hovercard-{Guid.NewGuid():N}";
     private readonly DelayedDispatch _dispatch = new();
+    // rc.44 — tap-pin path for touch devices. The trigger's @onclick toggles
+    // _pinned; click-outside auto-unpins via the global mousedown/touchstart
+    // listener in components.js.
+    private bool _pinned;
+    private bool _clickOutsideRegistered;
 
     private void RequestOpen()
     {
@@ -47,6 +54,8 @@
 
     private void RequestClose()
     {
+        // If the card is pinned (touch), hover-leave must NOT close it.
+        if (_pinned) return;
         _dispatch.Cancel();
         if (!Open) return;
         _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
@@ -57,7 +66,56 @@
         }));
     }
 
-    public void Dispose() => _dispatch.Dispose();
+    private async Task TogglePin()
+    {
+        _pinned = !_pinned;
+        if (_pinned)
+        {
+            // Stop any in-flight close-delay so the tap reliably keeps it open.
+            _dispatch.Cancel();
+            if (!_clickOutsideRegistered)
+            {
+                await Interop.RegisterClickOutside(_wrapperId, null, OnClickOutside);
+                _clickOutsideRegistered = true;
+            }
+        }
+        else
+        {
+            // Optional auto-collapse on unpin if the user wasn't hovering.
+            if (Open)
+            {
+                Open = false;
+                await OpenChanged.InvokeAsync(false);
+            }
+        }
+        StateHasChanged();
+    }
 
-    public record HoverCardContext(bool IsOpen, EventCallback RequestOpen, EventCallback RequestClose, string WrapperId);
+    private Task OnClickOutside()
+    {
+        if (_pinned)
+        {
+            _pinned = false;
+            if (Open)
+            {
+                Open = false;
+                _ = OpenChanged.InvokeAsync(false);
+            }
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dispatch.Dispose();
+        if (_clickOutsideRegistered)
+        {
+            try { await Interop.UnregisterClickOutside(_wrapperId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _clickOutsideRegistered = false;
+        }
+    }
+
+    public record HoverCardContext(bool IsOpen, EventCallback RequestOpen, EventCallback RequestClose, EventCallback RequestTogglePin, string WrapperId);
 }

@@ -70,7 +70,7 @@
     {
         @if (IsEditing)
         {
-            @foreach (var column in Context.Columns.Where(c => c.Visible))
+            @foreach (var column in Context.VisibleColumns)
             {
                 <td @key="column.Id" role="gridcell" class="px-3 py-2 text-sm">
                     @if (column.EditTemplate is not null)
@@ -116,7 +116,7 @@
         {
             var colIdx = 0;
             var leadingCols = LeadingColumnCount;
-            @foreach (var column in Context.Columns.Where(c => c.Visible))
+            @foreach (var column in Context.VisibleColumns)
             {
                 var ci = colIdx;
                 <DataGridCell @key="column.Id" TItem="TItem" Item="Item" Column="column"
@@ -189,7 +189,7 @@
     {
         get
         {
-            var count = Context?.Columns.Count(c => c.Visible) ?? 0;
+            var count = Context?.VisibleColumns.Count ?? 0;
             if (Context?.SelectionMode != DataGridSelectionMode.None) count++;
             if (HasDetailTemplate) count++;
             if (Context?.RowReorderable == true) count++;
@@ -198,12 +198,22 @@
         }
     }
 
+    // Memoization: at 1k rows × N renders, allocating the joined class string
+    // every access is measurable. We hash the inputs that influence the result
+    // into a value tuple and return the cached string when the key matches.
+    // Under-caching is safe (we recompute, same as before); over-caching would
+    // be a regression — every input that mutates the output participates in the key.
+    private (object Key, string Css)? _cssCache;
+
     private string CssClass
     {
         get
         {
             var custom = Context?.RowClass?.Invoke(Item);
-            return string.Join(" ", new[]
+            var key = (RowIndex, IsSelected, IsEditing, custom, Class);
+            if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
+
+            var css = string.Join(" ", new[]
             {
                 "border-b border-border/40 transition-colors hover:bg-muted/50",
                 IsSelected ? "bg-primary/5" : null,
@@ -211,6 +221,8 @@
                 custom,
                 Class
             }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            _cssCache = (key, css);
+            return css;
         }
     }
 

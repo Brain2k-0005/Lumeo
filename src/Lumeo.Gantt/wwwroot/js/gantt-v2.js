@@ -788,37 +788,41 @@ export const gantt = {
         const host = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
         if (!host) throw new Error('Gantt: root element missing');
 
-        // Width handling moved to CSS via the Razor's clip wrapper
-        // (style="contain: layout size; overflow: hidden") which prevents
-        // the SVG's intrinsic 5814px width from cascading up through flex
-        // ancestors. No JS measurement needed.
+        try {
+            // Width handling moved to CSS via the Razor's clip wrapper
+            // (style="contain: layout size; overflow: hidden") which prevents
+            // the SVG's intrinsic 5814px width from cascading up through flex
+            // ancestors. No JS measurement needed.
 
-        const id = `gantt-${nextId++}`;
-        const inst = {
-            id,
-            host,
-            dotNetRef,
-            tasks: normalizeTasks(options.tasks),
-            viewMode: options.viewMode || 'Day',
-            readonly: !!options.readonly,
-            todayHighlight: options.todayHighlight !== false,
-            barHeight: options.barHeight || null,
-            columnWidth: options.columnWidth || null,
-        };
-        instances.set(id, inst);
+            const id = `gantt-${nextId++}`;
+            const inst = {
+                id,
+                host,
+                dotNetRef,
+                tasks: normalizeTasks(options.tasks),
+                viewMode: options.viewMode || 'Day',
+                readonly: !!options.readonly,
+                todayHighlight: options.todayHighlight !== false,
+                barHeight: options.barHeight || null,
+                columnWidth: options.columnWidth || null,
+            };
+            instances.set(id, inst);
 
-        render(inst);
+            render(inst);
 
-        // Width is now handled by CSS — no resize listener needed.
+            // Width is now handled by CSS — no resize listener needed.
 
-        // No ResizeObserver here on purpose: the SVG has a fixed width (the
-        // total of all date columns) and a fixed height (header + rows). The
-        // host element resizes around it without affecting the chart's own
-        // coordinate space, so we don't need to re-render on every layout
-        // wobble. Re-rendering would also wipe host.scrollLeft and reset the
-        // user's pan position.
+            // No ResizeObserver here on purpose: the SVG has a fixed width (the
+            // total of all date columns) and a fixed height (header + rows). The
+            // host element resizes around it without affecting the chart's own
+            // coordinate space, so we don't need to re-render on every layout
+            // wobble. Re-rendering would also wipe host.scrollLeft and reset the
+            // user's pan position.
 
-        return id;
+            return id;
+        } catch (err) {
+            throw new Error(`Gantt init error: ${err instanceof Error ? err.message : String(err)}`);
+        }
     },
 
     refresh(id, options) {

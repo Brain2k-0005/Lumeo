@@ -72,7 +72,13 @@ else
         if (!Context.TabIds.TryGetValue(active, out var ids)) return;
         if (_lastMeasuredValue == active && _indicatorReady) return;
 
-        var measurement = await Interop.TabsMeasure(ids.TabId);
+        ComponentInteropService.TabMeasurement? measurement;
+        try
+        {
+            measurement = await Interop.TabsMeasure(ids.TabId);
+        }
+        catch (JSDisconnectedException) { return; }
+        catch (InvalidOperationException) { return; } // thrown during prerender when JS is unavailable
         if (measurement is null) return;
 
         var changed = Math.Abs(measurement.X - _indicatorX) > 0.5

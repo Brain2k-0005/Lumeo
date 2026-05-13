@@ -3,6 +3,14 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@if (_initError is not null)
+{
+    <div class="@($"flex items-center justify-center text-sm text-destructive border border-destructive/30 rounded-md bg-destructive/5 {Class}".Trim())" style="height: @Height;" @attributes="AdditionalAttributes">
+        <span>@_initError</span>
+    </div>
+}
+else
+{
 <div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 {Class}".Trim())" @attributes="AdditionalAttributes">
     @* Lumeo-styled toolbar above the FullCalendar canvas.
        FullCalendar's built-in header is hidden in JS (headerToolbar: false). *@
@@ -49,6 +57,7 @@
 
     <div @ref="_hostRef" style="height: @Height;"></div>
 </div>
+}
 
 @code {
     // ── Core parameters ──────────────────────────────────────────────────
@@ -117,6 +126,14 @@
     /// </summary>
     [Parameter] public Func<SchedulerEvent, string>? EventColor { get; set; }
 
+    // ── Error handling ───────────────────────────────────────────────────
+    /// <summary>
+    /// Raised when JS initialization fails (e.g. CDN down, FullCalendar threw).
+    /// The argument is the error message. When raised the component renders an
+    /// error card instead of the calendar.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnInitError { get; set; }
+
     // ── Standard pass-through ────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -125,6 +142,7 @@
     private DotNetObjectReference<Scheduler>? _selfRef;
     private string? _instanceId;
     private bool _initialized;
+    private string? _initError;
     private int _lastEventsHash;
     private SchedulerView _currentView;
     private string _currentViewValue => _currentView.ToString();
@@ -199,7 +217,11 @@
         }
         catch (Microsoft.JSInterop.JSException ex)
         {
+            _initError = ex.Message;
             Console.Error.WriteLine($"[Lumeo Scheduler] Init failed: {ex.Message}");
+            if (OnInitError.HasDelegate)
+                await OnInitError.InvokeAsync(ex.Message);
+            StateHasChanged();
         }
     }
 

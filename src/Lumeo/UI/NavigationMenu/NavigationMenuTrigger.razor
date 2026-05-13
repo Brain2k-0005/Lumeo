@@ -4,7 +4,7 @@
         type="button"
         class="@CssClass"
         @onclick="HandleClick"
-        @onmouseenter="HandleMouseEnter"
+        @onpointerenter="HandlePointerEnter"
         @attributes="AdditionalAttributes">
     @ChildContent
     <Blazicon Svg="Lucide.ChevronDown" class="@ChevronClasses" />
@@ -35,8 +35,13 @@
         }
     }
 
-    private async Task HandleMouseEnter()
+    // rc.44 — only auto-open for mouse pointers. On touch devices the browser
+    // emulates pointerenter on tap; combined with the parent's hover-leave on
+    // finger-lift, this would briefly flash the submenu before closing it.
+    // Touch users open via @onclick.
+    private async Task HandlePointerEnter(PointerEventArgs e)
     {
+        if (e.PointerType != "mouse") return;
         await Context.SetActiveItemId.InvokeAsync(ItemContext.ItemId);
     }
 }

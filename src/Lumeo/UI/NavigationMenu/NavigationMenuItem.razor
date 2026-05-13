@@ -6,7 +6,10 @@
 }
 
 <CascadingValue Value="itemContext" IsFixed="true">
-    <li class="@CssClass" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
+    <li class="@CssClass"
+        @onpointerenter="HandlePointerEnter"
+        @onpointerleave="HandlePointerLeave"
+        @attributes="AdditionalAttributes">
         @ChildContent
     </li>
 </CascadingValue>
@@ -24,13 +27,20 @@
 
     private string CssClass => $"relative {Class}".Trim();
 
-    private void HandleMouseEnter()
+    // rc.44 — Approach B: pointer events with PointerType filter. On touch
+    // devices the browser emulates `mouseenter` on tap and `mouseleave` when
+    // the finger lifts — closing the submenu before the user can interact
+    // with it. Only fire hover behavior for mouse pointers; touch users rely
+    // on the explicit @onclick toggle in NavigationMenuTrigger.
+    private void HandlePointerEnter(PointerEventArgs e)
     {
+        if (e.PointerType != "mouse") return;
         _dispatch.Cancel();
     }
 
-    private void HandleMouseLeave()
+    private void HandlePointerLeave(PointerEventArgs e)
     {
+        if (e.PointerType != "mouse") return;
         if (Context.ActiveItemId == _itemId)
         {
             _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>

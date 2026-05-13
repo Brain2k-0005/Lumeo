@@ -101,21 +101,47 @@
 
     private string CssClass => $"fixed z-50 overflow-hidden rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in {Class}".Trim();
 
-    /// <summary>Items filtered by the current search text (data-bound mode only).</summary>
-    private List<object> FilteredItems
-    {
-        get
-        {
-            if (Context.Items is null) return [];
-            if (string.IsNullOrEmpty(Context.SearchText))
-                return Context.Items.ToList();
+    // Items filtered by the current search text (data-bound mode only).
+    //
+    // Previously a computed property: at 10k items it ran the Where+ToList for
+    // every access, and the markup above accesses it 3+ times per render
+    // (Virtualize Items, foreach, Count checks). Now we memoize: recompute
+    // only when the Items reference changes OR the search text changes.
+    // Invalidation happens in OnParametersSet — any external state mutation
+    // that flows through a parameter pass (which is the only way Combobox
+    // updates its descendants) gets picked up.
+    // Keep the concrete type List<object> — the markup uses .Count and passes
+    // this list to <Virtualize Items=...> which wants an ICollection<T>.
+    private List<object> _filteredItems = new();
+    private IEnumerable<object>? _lastItems;
+    private string? _lastSearchText;
 
-            return Context.Items.Where(item =>
-            {
-                var text = Context.ItemText?.Invoke(item) ?? Context.ItemValue(item);
-                return text.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
-            }).ToList();
+    private List<object> FilteredItems => _filteredItems;
+
+    protected override void OnParametersSet()
+    {
+        var items = Context?.Items;
+        var search = Context?.SearchText;
+
+        if (!ReferenceEquals(items, _lastItems) || !string.Equals(search, _lastSearchText, StringComparison.Ordinal))
+        {
+            _lastItems = items;
+            _lastSearchText = search;
+            _filteredItems = ComputeFiltered(items, search);
         }
+    }
+
+    private List<object> ComputeFiltered(IEnumerable<object>? items, string? searchText)
+    {
+        if (items is null) return new();
+        if (string.IsNullOrEmpty(searchText))
+            return items.ToList();
+
+        return items.Where(item =>
+        {
+            var text = Context.ItemText?.Invoke(item) ?? Context.ItemValue(item);
+            return text.Contains(searchText, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
     }
 
     private RenderFragment RenderBoundItem(object item) => builder =>

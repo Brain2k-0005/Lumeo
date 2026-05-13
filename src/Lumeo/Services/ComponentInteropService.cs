@@ -19,6 +19,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private readonly ScrollInterop _scroll = new();
     private readonly UtilityInterop _utility = new();
     private readonly RichTextInterop _richText = new();
+    private readonly SortableInterop _sortable = new();
 
     public ComponentInteropService(IJSRuntime jsRuntime)
     {
@@ -157,6 +158,14 @@ public sealed class ComponentInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // --- Viewport Size ---
+
+    public async ValueTask<ViewportSize> GetViewportSize()
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<ViewportSize>("getViewportSize");
+    }
+
     // --- Floating Position ---
 
     public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
@@ -229,6 +238,28 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     [JSInvokable]
     public async Task OnSwipeDismiss(string elementId) => await _swipe.OnSwipeDismiss(elementId);
+
+    // --- Sortable Touch (rc.44 mobile fix) ---
+
+    public async ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        await _sortable.RegisterSortableTouch(module, GetSelfRef(), containerId, handler);
+    }
+
+    public async ValueTask UnregisterSortableTouch(string containerId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _sortable.UnregisterSortableTouch(module, containerId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnSortableTouchDrop(string containerId, int source, int target)
+        => await _sortable.OnSortableTouchDrop(containerId, source, target);
 
     // --- Carousel Swipe ---
 
@@ -885,6 +916,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         _resize.Clear();
         _scroll.Clear();
         _utility.Clear();
+        _sortable.Clear();
 
         await _richText.DisposeAsync();
 

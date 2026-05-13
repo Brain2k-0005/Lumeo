@@ -15,6 +15,77 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.0.0-rc.44 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.0.0-rc.44</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Mega-Sprint A+B+C consolidated: ~35 fixes across 8 categories, one release.</strong>
+            6 parallel fix agents handled the previously deferred items (A: Window/RTL/Scheduler/Gantt; B: LumeoForm + Visual Diff). 5 parallel audit agents covered the previously un-audited dimensions (C: localization, performance, Blazor Server, mobile/touch, API consistency). 4 parallel fix agents addressed the HIGH-priority C findings. API renames were intentionally deferred to a v2.1 breaking-change release.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">A — Carry-overs from rc.43</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Window drag-clamp (viewport-aware)</strong>: new <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Interop.GetViewportSize()</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ClampPosition()</code> keeps the title bar inside the viewport on all four edges (MinVisible=50px, TitleBarHeight=40px). Consumer-set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InitialX=9999</code> is now clamped on first render.</li>
+                <li><strong>RTL ArrowKey-swap</strong>: Carousel, Stepper, Tabs, Splitter now respect <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ThemeService.CurrentDirection == LayoutDirection.Rtl</code> and swap ArrowLeft↔ArrowRight for horizontal navigation.</li>
+                <li><strong>Scheduler</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo:theme-changed</code> listener re-renders active calendars; <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnInitError</code> callback surfaces FullCalendar bundle-load + Calendar-constructor failures.</li>
+                <li><strong>Gantt</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnInitError</code> callback added (matches Chart/Scheduler pattern).</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">B — LumeoForm generator design + Visual Diff</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>LMF001</strong>: read-only / init-only properties now emit a Roslyn diagnostic explaining they're excluded.</li>
+                <li><strong>LMF002</strong>: unsupported types (collections, custom refs) emit a diagnostic suggesting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[LumeoFormIgnore]</code> or TagInput override.</li>
+                <li>New <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[LumeoFormIgnore]</code> attribute + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[NotMapped]</code> recognition suppress diagnostics on properties that should be excluded silently.</li>
+                <li><strong>Visual Diff</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">HomePageVisualTests</code> now uses ImageSharp perceptual compare (0.5% tolerance, Manhattan RGBA &gt; 30). CI skip removed — test runs everywhere.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">C-Audit Findings + Fixes</Heading>
+            <Heading Level="4" Size="sm" Class="font-medium mt-2">Localization (7 HIGH)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Delta</strong> stops hardcoding <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvariantCulture</code> — German users now see <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">+12,5 %</code>. KPI cards across all dashboards inherit.</li>
+                <li><strong>DateRangePicker.Format</strong> default <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"MMM dd, yyyy"</code> → null, resolves to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CurrentCulture.ShortDatePattern</code>.</li>
+                <li><strong>TimePicker.Use24Hour</strong> bool → bool? → null derives from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CurrentCulture.ShortTimePattern</code>. Hardcoded "AM"/"PM" → <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AMDesignator/PMDesignator</code>.</li>
+                <li><strong>DataGrid plurals</strong> (RU/PL/AR-aware): new <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">LumeoPlurals.PluralKey(count, baseKey, culture)</code> helper — returns <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.One/.Few/.Many/.Other</code> based on language rules. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataGrid.ItemsCount</code> uses it. EN/DE/PL/RU/AR translations supplied.</li>
+                <li><strong>Stepper.* and Window.*</strong> translations added to all 13 non-English locale dicts — half the strings were silently falling back to English.</li>
+                <li><strong>DateTimePicker</strong> now forwards <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FirstDayOfWeek</code> to inner Calendar.</li>
+                <li><strong>Hardcoded English aria-labels</strong> in NumberInput, Input, Window, Slider, FileManager, FileUpload, DateTimePicker routed through <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ILumeoLocalizer</code>. Keys added to all 14 locales.</li>
+            </ul>
+
+            <Heading Level="4" Size="sm" Class="font-medium mt-2">Performance (5 HIGH)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>DataGridColumn.GetValue</strong> now uses compiled <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Expression&lt;Func&lt;TItem,object?&gt;&gt;</code> getters cached per field. ~10× faster than the old <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PropertyInfo.GetValue</code>. Supports nested paths (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Address.City</code>) with null-safe chain.</li>
+                <li><strong>DataGridRow + DataGridCell CssClass memoization</strong>: tuple-keyed cache. 1k rows × 10 cols = 10k+ string allocations per render → ~1 per row+cell on state change.</li>
+                <li><strong>Context.VisibleColumns</strong> exposed on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DataGridContext&lt;TItem&gt;</code> — eliminates per-row <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Columns.Where(c =&gt; c.Visible)</code> LINQ.</li>
+                <li><strong>ComboboxContent.FilteredItems</strong>: property → memoized backing field invalidated on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Items</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SearchText</code> change. 10k-item dropdowns no longer re-filter 3× per render.</li>
+                <li><strong>PivotGrid</strong> skip-rebuild gate (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_lastItemsRef</code> + dims hash) — eliminates full tree-rebuild on unrelated parent re-renders.</li>
+            </ul>
+
+            <Heading Level="4" Size="sm" Class="font-medium mt-2">Blazor Server + Touch + Disposal</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>9 components</strong> wrapped their first-render JS interop in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">try/catch (JSDisconnectedException, ObjectDisposedException)</code>: Affix, BackToTop, Carousel, Scrollspy, ResizableHandle, OtpInput, ConsentBanner, PromptInput, AgentMessageList.</li>
+                <li><strong>TabsList</strong> prerender measurement guarded against <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvalidOperationException</code> (Blazor prerender).</li>
+                <li><strong>Keyboard shortcut Map</strong> cleared on <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerKeyboardShortcuts</code> entry — no more stale entries leaking across Blazor Server circuit reconnects.</li>
+                <li><strong>P0 mobile fix: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerClickOutside</code> now binds <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">touchstart</code></strong> (with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">{ passive: true }</code> + 600ms synthetic-mousedown dedupe). Tap-outside now closes every Dropdown, Combobox, Select, Popover, ColorPicker, ContextMenu, DatePicker, TimePicker on mobile.</li>
+                <li><strong>SortableList touch reorder</strong>: new <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerSortableTouch</code> JS helper with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">elementFromPoint</code> drop detection. Mouse path unchanged (still uses HTML5 Drag API).</li>
+                <li><strong>Tooltip + HoverCard tap-to-pin</strong>: tap toggles pinned state; click-outside unpins via the now-touch-aware <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerClickOutside</code>.</li>
+                <li><strong>NavigationMenu + MegaMenu</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onmouseenter/leave</code> → <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@onpointerenter/leave</code> with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">e.PointerType == "mouse"</code> guard. Submenus no longer close on touch liftoff before the user can tap a sub-item.</li>
+            </ul>
+
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Deferred to v2.1 (breaking-change release)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>API consistency renames: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Stepper.ActiveStep → CurrentStep</code>, Multi-value collection type unification (HashSet/List/IEnumerable), <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Values → SelectedValues</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SidebarProvider.IsCollapsed → Collapsed</code>, Size enum harmonization. These are breaking and need consumer migration.</li>
+            </ul>
+        </Stack>
+        <Lumeo.Text Size="sm" Color="muted">145 components · 2,410 tests pass · all 8 packages + tests + docs build clean (0 warnings, 0 errors).</Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.0.0-rc.43 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

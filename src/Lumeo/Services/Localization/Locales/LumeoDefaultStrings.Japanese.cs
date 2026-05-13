@@ -48,6 +48,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "最大",
         ["DataGrid.Items"] = "件",
         ["DataGrid.ItemsCount"] = "{0} 件",
+        ["DataGrid.ItemsCount.One"] = "{0} 件",
+        ["DataGrid.ItemsCount.Other"] = "{0} 件",
         ["DataGrid.CopySelected"] = "コピー ({0})",
         ["DataGrid.ApplyLayout"] = "レイアウトを適用",
         ["DataGrid.NoSavedLayouts"] = "保存されたレイアウトはありません。",
@@ -226,5 +228,37 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "前のスライド",
         ["Carousel.NextSlide"] = "次のスライド",
         ["Carousel.SlideXofY"] = "{1} 枚中 {0} 枚目",
+
+        // Stepper
+        ["Stepper.Back"] = "戻る",
+        ["Stepper.Next"] = "次へ",
+        ["Stepper.Finish"] = "完了",
+        ["Stepper.Optional"] = "任意",
+        ["Stepper.Skip"] = "スキップ",
+
+        // Window
+        ["Window.Close"] = "閉じる",
+        ["Window.Minimize"] = "最小化",
+        ["Window.Maximize"] = "最大化",
+        ["Window.Restore"] = "元のサイズに戻す",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "減らす",
+        ["NumberInput.Increase"] = "増やす",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "日付をクリア",
+
+        // Slider
+        ["Slider.End"] = "終了",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "このフォルダーは空です",
+        ["FileManager.EmptyState"] = "ファイルやフォルダーはありません。",
+        ["FileManager.MoreActions"] = "その他の操作",
+        ["FileManager.MoreActionsForName"] = "{0} のその他の操作",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "ファイル「{0}」は最大サイズ {1} を超えています。",
     };
 }

@@ -48,6 +48,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "Máx",
         ["DataGrid.Items"] = "elementos",
         ["DataGrid.ItemsCount"] = "{0} elementos",
+        ["DataGrid.ItemsCount.One"] = "{0} elemento",
+        ["DataGrid.ItemsCount.Other"] = "{0} elementos",
         ["DataGrid.CopySelected"] = "Copiar ({0})",
         ["DataGrid.ApplyLayout"] = "Aplicar diseño",
         ["DataGrid.NoSavedLayouts"] = "Aún no hay diseños guardados.",
@@ -226,5 +228,37 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Diapositiva anterior",
         ["Carousel.NextSlide"] = "Siguiente diapositiva",
         ["Carousel.SlideXofY"] = "Diapositiva {0} de {1}",
+
+        // Stepper
+        ["Stepper.Back"] = "Atrás",
+        ["Stepper.Next"] = "Siguiente",
+        ["Stepper.Finish"] = "Finalizar",
+        ["Stepper.Optional"] = "Opcional",
+        ["Stepper.Skip"] = "Omitir",
+
+        // Window
+        ["Window.Close"] = "Cerrar",
+        ["Window.Minimize"] = "Minimizar",
+        ["Window.Maximize"] = "Maximizar",
+        ["Window.Restore"] = "Restaurar",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "Disminuir",
+        ["NumberInput.Increase"] = "Aumentar",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "Borrar fecha",
+
+        // Slider
+        ["Slider.End"] = "final",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "Esta carpeta está vacía",
+        ["FileManager.EmptyState"] = "No hay archivos ni carpetas aquí.",
+        ["FileManager.MoreActions"] = "Más acciones",
+        ["FileManager.MoreActionsForName"] = "Más acciones para {0}",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "El archivo «{0}» supera el tamaño máximo de {1}.",
     };
 }

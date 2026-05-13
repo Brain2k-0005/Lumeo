@@ -3,40 +3,49 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 min-w-0 w-full {Class}".Trim())" @attributes="AdditionalAttributes" style="min-width: 0; width: 100%;">
-    @* Lumeo-styled toolbar above the Frappe Gantt canvas. We suppress
-       Quarter Day / Half Day from the control bar to keep the common case
-       simple — power users can still pass them through the `ViewMode` param. *@
-    <div class="flex flex-wrap items-center justify-between gap-2">
-        <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
-                     Variant="ToggleGroup.ToggleGroupVariant.Outline"
-                     Size="ToggleGroup.ToggleGroupSize.Sm"
-                     Value="@_toolbarViewValue"
-                     ValueChanged="OnViewModeChangedAsync">
-            <ToggleGroupItem Value="Day">@L["Gantt.Day"]</ToggleGroupItem>
-            <ToggleGroupItem Value="Week">@L["Gantt.Week"]</ToggleGroupItem>
-            <ToggleGroupItem Value="Month">@L["Gantt.Month"]</ToggleGroupItem>
-            <ToggleGroupItem Value="Year">@L["Gantt.Year"]</ToggleGroupItem>
-        </ToggleGroup>
-        @if (TrailingContent is not null)
-        {
-            <div class="flex items-center gap-2">
-                @TrailingContent
-            </div>
-        }
+@if (_initError is not null)
+{
+    <div class="@($"flex items-center justify-center text-sm text-destructive border border-destructive/30 rounded-md bg-destructive/5 {Class}".Trim())" @attributes="AdditionalAttributes">
+        <span>@_initError</span>
     </div>
+}
+else
+{
+    <div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 min-w-0 w-full {Class}".Trim())" @attributes="AdditionalAttributes" style="min-width: 0; width: 100%;">
+        @* Lumeo-styled toolbar above the Frappe Gantt canvas. We suppress
+           Quarter Day / Half Day from the control bar to keep the common case
+           simple — power users can still pass them through the `ViewMode` param. *@
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
+                         Variant="ToggleGroup.ToggleGroupVariant.Outline"
+                         Size="ToggleGroup.ToggleGroupSize.Sm"
+                         Value="@_toolbarViewValue"
+                         ValueChanged="OnViewModeChangedAsync">
+                <ToggleGroupItem Value="Day">@L["Gantt.Day"]</ToggleGroupItem>
+                <ToggleGroupItem Value="Week">@L["Gantt.Week"]</ToggleGroupItem>
+                <ToggleGroupItem Value="Month">@L["Gantt.Month"]</ToggleGroupItem>
+                <ToggleGroupItem Value="Year">@L["Gantt.Year"]</ToggleGroupItem>
+            </ToggleGroup>
+            @if (TrailingContent is not null)
+            {
+                <div class="flex items-center gap-2">
+                    @TrailingContent
+                </div>
+            }
+        </div>
 
-    @* Grid wrapper with minmax(0, 1fr) — well-known trick to defeat the
-       min-content cascade without touching containment. The 1fr column
-       has min size 0, so the SVG inside cannot push the wrapper wider
-       than its parent.
-       Height: use max-height (cap) instead of fixed height so the chart
-       shrinks to fit its content (header + N tasks * row height) and
-       only scrolls vertically when the task list exceeds @Height. *@
-    <div style="display: grid; grid-template-columns: minmax(0, 1fr); width: 100%;">
-        <div @ref="_hostRef" class="lumeo-gantt-host" style="overflow-x: auto; overflow-y: auto; max-height: @Height; min-width: 0;"></div>
+        @* Grid wrapper with minmax(0, 1fr) — well-known trick to defeat the
+           min-content cascade without touching containment. The 1fr column
+           has min size 0, so the SVG inside cannot push the wrapper wider
+           than its parent.
+           Height: use max-height (cap) instead of fixed height so the chart
+           shrinks to fit its content (header + N tasks * row height) and
+           only scrolls vertically when the task list exceeds @Height. *@
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr); width: 100%;">
+            <div @ref="_hostRef" class="lumeo-gantt-host" style="overflow-x: auto; overflow-y: auto; max-height: @Height; min-width: 0;"></div>
+        </div>
     </div>
-</div>
+}
 
 @code {
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
@@ -65,10 +74,12 @@
     /// </summary>
     [Parameter] public Func<GanttTask, string>? GroupBy { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
+    [Parameter] public EventCallback<string> OnInitError { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private ElementReference _hostRef;
+    private string? _initError;
     private DotNetObjectReference<Gantt>? _selfRef;
     private string? _instanceId;
     private bool _initialized;
@@ -157,7 +168,11 @@
         }
         catch (Microsoft.JSInterop.JSException ex)
         {
+            _initError = $"Gantt initialization failed: {ex.Message}";
             Console.Error.WriteLine($"[Lumeo Gantt] Init failed: {ex.Message}");
+            if (OnInitError.HasDelegate)
+                await OnInitError.InvokeAsync(ex.Message);
+            StateHasChanged();
         }
     }
 

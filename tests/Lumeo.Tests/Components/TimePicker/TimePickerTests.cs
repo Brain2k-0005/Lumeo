@@ -39,9 +39,14 @@ public class TimePickerTests : IAsyncLifetime
     [Fact]
     public void Shows_formatted_time_when_value_set()
     {
+        // rc.44: TimePicker default is now culture-aware (Use24Hour is bool?,
+        // null → derived from CurrentCulture.ShortTimePattern). Force 24h so
+        // this test is locale-independent — it only verifies the value renders,
+        // not the locale-resolution logic.
         var time = new TimeSpan(14, 30, 0);
-        var cut = _ctx.Render<L.TimePicker>(p => p.Add(c => c.Value, time));
-        // 24-hour format by default: "14:30"
+        var cut = _ctx.Render<L.TimePicker>(p => p
+            .Add(c => c.Value, time)
+            .Add(c => c.Use24Hour, true));
         Assert.Contains("14:30", cut.Markup);
     }
 

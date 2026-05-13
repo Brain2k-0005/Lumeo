@@ -48,6 +48,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "Max",
         ["DataGrid.Items"] = "items",
         ["DataGrid.ItemsCount"] = "{0} items",
+        ["DataGrid.ItemsCount.One"] = "{0} item",
+        ["DataGrid.ItemsCount.Other"] = "{0} items",
         ["DataGrid.CopySelected"] = "Kopiëren ({0})",
         ["DataGrid.ApplyLayout"] = "Lay-out toepassen",
         ["DataGrid.NoSavedLayouts"] = "Nog geen opgeslagen lay-outs.",
@@ -226,5 +228,37 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Vorige dia",
         ["Carousel.NextSlide"] = "Volgende dia",
         ["Carousel.SlideXofY"] = "Dia {0} van {1}",
+
+        // Stepper
+        ["Stepper.Back"] = "Terug",
+        ["Stepper.Next"] = "Volgende",
+        ["Stepper.Finish"] = "Voltooien",
+        ["Stepper.Optional"] = "Optioneel",
+        ["Stepper.Skip"] = "Overslaan",
+
+        // Window
+        ["Window.Close"] = "Sluiten",
+        ["Window.Minimize"] = "Minimaliseren",
+        ["Window.Maximize"] = "Maximaliseren",
+        ["Window.Restore"] = "Herstellen",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "Verlagen",
+        ["NumberInput.Increase"] = "Verhogen",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "Datum wissen",
+
+        // Slider
+        ["Slider.End"] = "einde",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "Deze map is leeg",
+        ["FileManager.EmptyState"] = "Geen bestanden of mappen hier.",
+        ["FileManager.MoreActions"] = "Meer acties",
+        ["FileManager.MoreActionsForName"] = "Meer acties voor {0}",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "Bestand \"{0}\" overschrijdt de maximale grootte van {1}.",
     };
 }
