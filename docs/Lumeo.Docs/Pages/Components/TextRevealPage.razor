@@ -39,6 +39,27 @@
         </div>
     </ComponentDemo>
 
+    <ComponentDemo Title="Threshold (interactive)" Description="Drag the slider to change how far into view the text must scroll before the reveal begins. A higher value means more of the element must be visible." Code="@_thresholdCode">
+        <Stack Gap="4">
+            <Lumeo.Text Size="sm" Color="muted">Threshold = @((_textRevealThreshold / 100.0).ToString("F2")) — scroll the text into view to trigger the reveal. Use the Replay button after changing the threshold.</Lumeo.Text>
+            <Slider @bind-Value="_textRevealThreshold" Min="0" Max="100" Step="5" ShowTooltip="true"
+                    FormatTooltip="@(v => $"{(int)v}%")" />
+            <div style="height: 220px; overflow-y: scroll; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem;">
+                <div style="height: 180px;" />
+                <div @key="@($"threshold-{_textRevealThresholdKey}")">
+                    <TextReveal Text="This sentence reveals only when the right fraction of it enters the viewport."
+                                Threshold="@(_textRevealThreshold / 100.0)"
+                                Class="text-xl font-semibold" />
+                </div>
+                <div style="height: 80px;" />
+            </div>
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                    OnClick="@(() => _textRevealThresholdKey++)">
+                <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5 mr-1.5" /> Replay
+            </Button>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Stagger Speed (interactive)">
         <Stack Gap="4">
             <Lumeo.Text Size="sm" Color="muted">Adjust the stagger interval (ms between words). Scroll down to see the reveal — or reload the demo.</Lumeo.Text>
@@ -116,6 +137,20 @@
 </div>
 
 @code {
+    private double _textRevealThreshold = 30;
+    private int _textRevealThresholdKey = 0;
+
+    private string _thresholdCode = @"<Slider @bind-Value=""_threshold"" Min=""0"" Max=""100"" Step=""5"" ShowTooltip=""true""
+        FormatTooltip=""@(v => $""{(int)v}%"")"" />
+<div style=""height:220px;overflow-y:scroll"">
+    <div style=""height:180px"" />
+    <TextReveal Text=""This sentence reveals at the chosen threshold.""
+                Threshold=""@(_threshold / 100.0)""
+                Class=""text-xl font-semibold"" />
+</div>
+
+@code { private double _threshold = 30; }";
+
     private double _revealStagger = 80;
     private int _revealKey = 0;
 

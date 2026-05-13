@@ -44,6 +44,34 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Size" Description="Control the size of pagination items via a custom class." Code="@_sizeCode">
+        <Stack Gap="3">
+            <Flex Align="center" Gap="3" Wrap="true">
+                <Lumeo.Text Size="sm" Weight="medium">Size:</Lumeo.Text>
+                <Segmented @bind-Value="_paginationSize">
+                    <SegmentedItem Value="sm">Sm</SegmentedItem>
+                    <SegmentedItem Value="md">Md</SegmentedItem>
+                    <SegmentedItem Value="lg">Lg</SegmentedItem>
+                </Segmented>
+            </Flex>
+            <Pagination>
+                <PaginationContent>
+                    <PaginationPrevious OnClick="@(() => GoToPage4(_sizePage - 1))" Disabled="@(_sizePage <= 1)" />
+                    @for (int i = 1; i <= 5; i++)
+                    {
+                        var pageNum = i;
+                        <PaginationItem IsActive="@(pageNum == _sizePage)"
+                                        OnClick="@(() => GoToPage4(pageNum))"
+                                        Class="@(_paginationSize switch { "sm" => "h-7 w-7 text-xs", "lg" => "h-11 w-11 text-base", _ => "" })">
+                            @pageNum
+                        </PaginationItem>
+                    }
+                    <PaginationNext OnClick="@(() => GoToPage4(_sizePage + 1))" Disabled="@(_sizePage >= 5)" />
+                </PaginationContent>
+            </Pagination>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="With Ellipsis" Code="@_ellipsisCode">
         <Pagination>
             <PaginationContent>
@@ -215,6 +243,42 @@
         if (page >= 1 && page <= _compactTotal)
             _compactPage = page;
     }
+
+    private string _paginationSize = "md";
+    private int _sizePage = 1;
+
+    private void GoToPage4(int page)
+    {
+        if (page >= 1 && page <= 5)
+            _sizePage = page;
+    }
+
+    private string _sizeCode = @"<Segmented @bind-Value=""_paginationSize"">
+    <SegmentedItem Value=""sm"">Sm</SegmentedItem>
+    <SegmentedItem Value=""md"">Md</SegmentedItem>
+    <SegmentedItem Value=""lg"">Lg</SegmentedItem>
+</Segmented>
+
+<Pagination>
+    <PaginationContent>
+        <PaginationPrevious OnClick=""@(() => GoToPage(_currentPage - 1))"" Disabled=""@(_currentPage <= 1)"" />
+        @for (int i = 1; i <= 5; i++)
+        {
+            var page = i;
+            <PaginationItem IsActive=""@(page == _currentPage)""
+                            OnClick=""@(() => GoToPage(page))""
+                            Class=""@(_paginationSize switch { \""sm\"" => \""h-7 w-7 text-xs\"", \""lg\"" => \""h-11 w-11 text-base\"", _ => \""\""  })"">
+                @page
+            </PaginationItem>
+        }
+        <PaginationNext OnClick=""@(() => GoToPage(_currentPage + 1))"" Disabled=""@(_currentPage >= 5)"" />
+    </PaginationContent>
+</Pagination>
+
+@code {
+    private string _paginationSize = ""md"";
+    private int _currentPage = 1;
+}";
 
     private string _defaultCode = @"<Pagination>
     <PaginationContent>

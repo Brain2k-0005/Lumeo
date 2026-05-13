@@ -52,6 +52,21 @@
         </TreeView>
     </ComponentDemo>
 
+    <ComponentDemo Title="OnItemClick — interactive" Description="Click any node to see its label reported below the tree." Code="@_codeOnItemClick">
+        <Stack Gap="2" Class="max-w-sm">
+            <TreeView TItem="string" Items="_basicItems"
+                      OnItemClick="@(EventCallback.Factory.Create<TreeView<string>.TreeViewItem<string>>(this, HandleTreeItemClick))" />
+            @if (_treeLastClickedLabel is not null)
+            {
+                <Lumeo.Text Size="sm" Color="muted">Last clicked: <strong>@_treeLastClickedLabel</strong></Lumeo.Text>
+            }
+            else
+            {
+                <Lumeo.Text Size="sm" Color="muted">Click a node above.</Lumeo.Text>
+            }
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Expand All / Collapse All" Code="@_codeExpandAll">
         <Stack Gap="2" Class="max-w-sm">
             <Flex Gap="2">
@@ -158,6 +173,21 @@
 @code {
     private TreeView<string>? _treeRef;
     private List<string> _selectedValues = new();
+    private string? _treeLastClickedLabel;
+
+    private void HandleTreeItemClick(TreeView<string>.TreeViewItem<string> item)
+    {
+        _treeLastClickedLabel = item.Text;
+    }
+
+    private string _codeOnItemClick = @"<TreeView TItem=""string"" Items=""_items""
+          OnItemClick=""@(item => _lastClicked = item.Text)"" />
+@if (_lastClicked is not null)
+{
+    <Lumeo.Text Size=""sm"" Color=""muted"">Last clicked: <strong>@_lastClicked</strong></Lumeo.Text>
+}
+
+@code { private string? _lastClicked; }";
 
     private List<TreeView<string>.TreeViewItem<string>> _basicItems = new()
     {

@@ -22,6 +22,24 @@
     <ComponentDemo Title="Custom Trigger" Code="@_triggerCode">
         <Mention @bind-Value="_text2" Options="@_channels" Trigger="@('#')" Placeholder="Type # to reference a channel..." Class="max-w-md" />
     </ComponentDemo>
+
+    <ComponentDemo Title="Trigger Character" Description="Switch the trigger character to see different completion lists." Code="@_triggerSwitchCode">
+        <Stack Gap="3">
+            <Flex Align="center" Gap="3" Wrap="true">
+                <Lumeo.Text Size="sm" Weight="medium">Trigger:</Lumeo.Text>
+                <Segmented @bind-Value="_mentionTriggerStr">
+                    <SegmentedItem Value="@_atTrigger">@_atTrigger</SegmentedItem>
+                    <SegmentedItem Value="#">#</SegmentedItem>
+                    <SegmentedItem Value="/">/</SegmentedItem>
+                </Segmented>
+            </Flex>
+            <Mention @bind-Value="_text3"
+                     Options="@GetOptionsForTrigger(_mentionTriggerStr)"
+                     Trigger="@(_mentionTriggerStr[0])"
+                     Placeholder="@($"Type {_mentionTriggerStr} to trigger suggestions...")"
+                     Class="max-w-md" />
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -166,6 +184,41 @@
         new("design", "design"),
         new("random", "random"),
     };
+
+    private string? _text3;
+    private string _mentionTriggerStr = "@";
+    private const string _atTrigger = "@";
+
+    private List<Mention.MentionOption> _commands = new()
+    {
+        new("help", "help", Description: "Show help"),
+        new("search", "search", Description: "Search content"),
+        new("settings", "settings", Description: "Open settings"),
+        new("logout", "logout", Description: "Sign out"),
+    };
+
+    private List<Mention.MentionOption> GetOptionsForTrigger(string trigger) => trigger switch
+    {
+        "#" => _channels,
+        "/" => _commands,
+        _ => _people,
+    };
+
+    private string _triggerSwitchCode = @"<Segmented @bind-Value=""_mentionTriggerStr"">
+    <SegmentedItem Value=""@"">@@</SegmentedItem>
+    <SegmentedItem Value=""#"">#</SegmentedItem>
+    <SegmentedItem Value=""/""> /</SegmentedItem>
+</Segmented>
+
+<Mention @bind-Value=""_text""
+         Options=""@GetOptionsForTrigger(_mentionTriggerStr)""
+         Trigger=""@(_mentionTriggerStr[0])""
+         Placeholder=""@($\""Type {_mentionTriggerStr} to trigger suggestions...\"")"" />
+
+@code {
+    private string _mentionTriggerStr = ""@"";
+    private string? _text;
+}";
 
     private string _basicCode = @"<Mention @bind-Value=""_text"" Options=""@_people"" Placeholder=""Type @@ to mention..."" />";
     private string _triggerCode = @"<Mention @bind-Value=""_text"" Options=""@_channels"" Trigger='#' />";
