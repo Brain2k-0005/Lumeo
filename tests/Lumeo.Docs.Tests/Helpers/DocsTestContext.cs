@@ -46,6 +46,9 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
 
+    // Viewport
+    public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(new ViewportSize(1920, 1080));
+
     // Floating Position
     public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
@@ -60,6 +63,10 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterDrawerSwipe(string elementId) => ValueTask.CompletedTask;
+
+    // Sortable Touch
+    public ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler) => ValueTask.CompletedTask;
+    public ValueTask UnregisterSortableTouch(string containerId) => ValueTask.CompletedTask;
 
     // Carousel Swipe
     public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler) => ValueTask.CompletedTask;

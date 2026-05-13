@@ -79,21 +79,23 @@
             }
 
             @* AM/PM column *@
-            @if (!Use24Hour)
+            @if (!EffectiveUse24Hour)
             {
                 <div class="flex flex-col py-1">
                     @{
                         var isAm = !Value.HasValue || Value.Value.Hours < 12;
+                        var amLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.AMDesignator) ? "AM" : EffectiveCulture.DateTimeFormat.AMDesignator;
+                        var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                     }
                     <button type="button"
                             class="@(isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
                             @onclick="() => SelectAmPm(true)">
-                        AM
+                        @amLabel
                     </button>
                     <button type="button"
                             class="@(!isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50")"
                             @onclick="() => SelectAmPm(false)">
-                        PM
+                        @pmLabel
                     </button>
                 </div>
             }
@@ -130,11 +132,28 @@
 
     [Parameter] public TimeSpan? Value { get; set; }
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
-    [Parameter] public bool Use24Hour { get; set; } = true;
+    /// <summary>
+    /// When <c>true</c> renders a 24-hour clock; when <c>false</c> renders 12-hour with AM/PM.
+    /// When <c>null</c> (default) the picker derives the choice from
+    /// <see cref="EffectiveCulture"/>'s <c>ShortTimePattern</c> — <c>de-DE</c>, <c>fr-FR</c>
+    /// and similar see 24-hour; <c>en-US</c> sees 12-hour.
+    /// </summary>
+    [Parameter] public bool? Use24Hour { get; set; }
     [Parameter] public bool ShowSeconds { get; set; }
     [Parameter] public int MinuteStep { get; set; } = 1;
     [Parameter] public int SecondStep { get; set; } = 1;
     [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>
+    /// Overrides <see cref="System.Globalization.CultureInfo.CurrentCulture"/> for
+    /// 24h/12h detection and AM/PM designators. Leave null to honour ASP.NET request localization.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+    // Per CLDR/.NET conventions a lowercase "h" in the short-time pattern means 12-hour;
+    // uppercase "H" means 24-hour. We honour an explicit Use24Hour first, then derive.
+    private bool EffectiveUse24Hour => Use24Hour ?? !EffectiveCulture.DateTimeFormat.ShortTimePattern.Contains('h');
 
     private string EffectivePlaceholder => Placeholder ?? L["TimePicker.Placeholder"];
     [Parameter] public bool Disabled { get; set; }
@@ -147,7 +166,7 @@
 
     private string FormatTime(TimeSpan time)
     {
-        if (Use24Hour)
+        if (EffectiveUse24Hour)
         {
             return ShowSeconds
                 ? $"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}"
@@ -157,7 +176,10 @@
         {
             var hour12 = time.Hours % 12;
             if (hour12 == 0) hour12 = 12;
-            var ampm = time.Hours < 12 ? "AM" : "PM";
+            var dtf = EffectiveCulture.DateTimeFormat;
+            var ampm = time.Hours < 12
+                ? (string.IsNullOrEmpty(dtf.AMDesignator) ? "AM" : dtf.AMDesignator)
+                : (string.IsNullOrEmpty(dtf.PMDesignator) ? "PM" : dtf.PMDesignator);
             return ShowSeconds
                 ? $"{hour12:D2}:{time.Minutes:D2}:{time.Seconds:D2} {ampm}"
                 : $"{hour12:D2}:{time.Minutes:D2} {ampm}";
@@ -167,7 +189,7 @@
     private List<int> GetHours()
     {
         var hours = new List<int>();
-        if (Use24Hour)
+        if (EffectiveUse24Hour)
         {
             for (var i = 0; i < 24; i++) hours.Add(i);
         }
@@ -180,7 +202,7 @@
 
     private int GetDisplayHour(TimeSpan time)
     {
-        if (Use24Hour) return time.Hours;
+        if (EffectiveUse24Hour) return time.Hours;
         var h = time.Hours % 12;
         return h == 0 ? 12 : h;
     }
@@ -205,7 +227,7 @@
     {
         var current = Value ?? TimeSpan.Zero;
         int actualHour;
-        if (Use24Hour)
+        if (EffectiveUse24Hour)
         {
             actualHour = hour;
         }

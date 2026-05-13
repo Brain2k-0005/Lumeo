@@ -48,6 +48,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "Maks",
         ["DataGrid.Items"] = "öğe",
         ["DataGrid.ItemsCount"] = "{0} öğe",
+        ["DataGrid.ItemsCount.One"] = "{0} öğe",
+        ["DataGrid.ItemsCount.Other"] = "{0} öğe",
         ["DataGrid.CopySelected"] = "Kopyala ({0})",
         ["DataGrid.ApplyLayout"] = "Düzeni uygula",
         ["DataGrid.NoSavedLayouts"] = "Kayıtlı düzen yok.",
@@ -305,5 +307,37 @@ internal static partial class LumeoDefaultStrings
         ["Editor.SlashDivider"] = "Bölücü",
         ["Editor.SlashDividerSub"] = "Yatay çizgi",
         ["Editor.ToolbarAriaLabel"] = "Metin biçimlendirme",
+
+        // Stepper
+        ["Stepper.Back"] = "Geri",
+        ["Stepper.Next"] = "İleri",
+        ["Stepper.Finish"] = "Bitir",
+        ["Stepper.Optional"] = "İsteğe bağlı",
+        ["Stepper.Skip"] = "Atla",
+
+        // Window
+        ["Window.Close"] = "Kapat",
+        ["Window.Minimize"] = "Simge durumuna küçült",
+        ["Window.Maximize"] = "Ekranı kapla",
+        ["Window.Restore"] = "Geri yükle",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "Azalt",
+        ["NumberInput.Increase"] = "Artır",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "Tarihi temizle",
+
+        // Slider
+        ["Slider.End"] = "son",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "Bu klasör boş",
+        ["FileManager.EmptyState"] = "Burada dosya veya klasör yok.",
+        ["FileManager.MoreActions"] = "Diğer eylemler",
+        ["FileManager.MoreActionsForName"] = "{0} için diğer eylemler",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "\"{0}\" dosyası en fazla {1} sınırını aşıyor.",
     };
 }

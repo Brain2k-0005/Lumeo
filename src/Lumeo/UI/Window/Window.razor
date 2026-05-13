@@ -1,5 +1,7 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@inject ComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @if (Open && !_minimized && !_maximized)
 {
@@ -33,7 +35,7 @@
                     <button type="button"
                             class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                             @onclick="ToggleMinimize"
-                            aria-label="Minimize">
+                            aria-label="@L["Window.Minimize"]">
                         <Blazicon Svg="Lucide.Minus" class="h-3 w-3" />
                     </button>
                 }
@@ -42,7 +44,7 @@
                     <button type="button"
                             class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                             @onclick="ToggleMaximize"
-                            aria-label="Maximize">
+                            aria-label="@L["Window.Maximize"]">
                         <Blazicon Svg="Lucide.Square" class="h-3 w-3" />
                     </button>
                 }
@@ -51,7 +53,7 @@
                     <button type="button"
                             class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                             @onclick="Close"
-                            aria-label="Close">
+                            aria-label="@L["Window.Close"]">
                         <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                     </button>
                 }
@@ -97,7 +99,7 @@ else if (Open && _minimized)
         <button type="button"
                 class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                 @onclick="ToggleMinimize"
-                aria-label="Restore">
+                aria-label="@L["Window.Restore"]">
             <Blazicon Svg="Lucide.Square" class="h-3 w-3" />
         </button>
         @if (ShowClose)
@@ -105,7 +107,7 @@ else if (Open && _minimized)
             <button type="button"
                     class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                     @onclick="Close"
-                    aria-label="Close">
+                    aria-label="@L["Window.Close"]">
                 <Blazicon Svg="Lucide.X" class="h-3 w-3" />
             </button>
         }
@@ -128,14 +130,14 @@ else if (Open && _maximized)
                     <button type="button"
                             class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                             @onclick="ToggleMinimize"
-                            aria-label="Minimize">
+                            aria-label="@L["Window.Minimize"]">
                         <Blazicon Svg="Lucide.Minus" class="h-3 w-3" />
                     </button>
                 }
                 <button type="button"
                         class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                         @onclick="ToggleMaximize"
-                        aria-label="Restore">
+                        aria-label="@L["Window.Restore"]">
                     <Blazicon Svg="Lucide.Minimize2" class="h-3 w-3" />
                 </button>
                 @if (ShowClose)
@@ -143,7 +145,7 @@ else if (Open && _maximized)
                     <button type="button"
                             class="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                             @onclick="Close"
-                            aria-label="Close">
+                            aria-label="@L["Window.Close"]">
                         <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                     </button>
                 }
@@ -187,7 +189,7 @@ else if (Open && _maximized)
     private bool _minimized;
     private bool _maximized;
 
-    // Drag state (pointer-events-based, no JS required for basic drag)
+    // Drag state (pointer-events-based; viewport dimensions fetched via JS once per drag start)
     private bool _isDragging;
     private bool _isResizing;
     private double _posX;
@@ -200,6 +202,12 @@ else if (Open && _maximized)
     private double _dragStartPosY;
     private bool _initialized;
 
+    // Viewport bounds captured at drag-start (and on first render) so the clamp
+    // reflects the size at the moment the user grabbed the window rather than
+    // a potentially stale value from a previous drag or resize event.
+    private double _viewportWidth;
+    private double _viewportHeight;
+
     protected override void OnParametersSet()
     {
         if (!_initialized && Open)
@@ -210,6 +218,56 @@ else if (Open && _maximized)
             _height = ParsePx(Height);
             _initialized = true;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Open)
+        {
+            // Fetch viewport once on first render so a consumer-provided
+            // InitialX/InitialY that exceeds the viewport (e.g. 9999px) is
+            // clamped before the user ever touches the window.
+            await FetchAndClampToViewportAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task FetchAndClampToViewportAsync()
+    {
+        try
+        {
+            var vp = await Interop.GetViewportSize();
+            // bUnit's JS layer returns null for unhandled invocations; real
+            // browsers always return a populated ViewportSize. Guard so tests
+            // (and any future SSR/prerender path) don't NRE.
+            if (vp is null) return;
+            _viewportWidth = vp.Width;
+            _viewportHeight = vp.Height;
+            ClampPosition();
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (Microsoft.JSInterop.JSException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    // Keeps at least MIN_VISIBLE px of the window inside the viewport on all
+    // four edges.  The title bar (≈40px) is specifically kept inside the bottom
+    // edge so it never slides off and becomes unreachable.
+    private const double MinVisible = 50;
+    private const double TitleBarHeight = 40;
+
+    private void ClampPosition()
+    {
+        if (_viewportWidth <= 0 || _viewportHeight <= 0) return;
+
+        // Horizontal: allow the window to go almost completely off the left
+        // edge (so only MIN_VISIBLE of it remains visible on the right), but
+        // never let the right side go past the right viewport edge minus MIN_VISIBLE.
+        _posX = Math.Clamp(_posX, MinVisible - _width, _viewportWidth - MinVisible);
+
+        // Vertical: never let the title bar go above 0 or below the bottom
+        // of the viewport (so the close/restore buttons are always reachable).
+        _posY = Math.Clamp(_posY, 0, _viewportHeight - TitleBarHeight);
     }
 
     private static double ParsePx(string value)
@@ -236,7 +294,7 @@ else if (Open && _maximized)
     private string CssClass =>
         $"fixed z-40 flex flex-col bg-card border border-border/40 rounded-lg shadow-xl overflow-hidden {Class}".Trim();
 
-    private void HandleTitleBarPointerDown(PointerEventArgs e)
+    private async Task HandleTitleBarPointerDown(PointerEventArgs e)
     {
         if (!Draggable) return;
         _isDragging = true;
@@ -245,6 +303,9 @@ else if (Open && _maximized)
         _dragStartY = e.ClientY;
         _dragStartPosX = _posX;
         _dragStartPosY = _posY;
+        // Fetch current viewport size at drag-start so the clamp in HandlePointerMove
+        // always reflects the live viewport (handles viewport resize between drags).
+        await FetchAndClampToViewportAsync();
     }
 
     private void HandleResizePointerDown(PointerEventArgs e)
@@ -264,8 +325,13 @@ else if (Open && _maximized)
         {
             var dx = e.ClientX - _dragStartX;
             var dy = e.ClientY - _dragStartY;
-            _posX = Math.Max(0, _dragStartPosX + dx);
-            _posY = Math.Max(0, _dragStartPosY + dy);
+
+            // Clamp both lower AND upper bounds so the window stays recoverable:
+            //   X: allow almost-fully-left (right edge stays visible) but not past right edge.
+            //   Y: never above 0 (title bar stays in viewport top) and never below
+            //      (viewport height − title bar height) so the controls are always reachable.
+            _posX = Math.Clamp(_dragStartPosX + dx, MinVisible - _width, _viewportWidth - MinVisible);
+            _posY = Math.Clamp(_dragStartPosY + dy, 0, _viewportHeight - TitleBarHeight);
             StateHasChanged();
         }
         else if (_isResizing)

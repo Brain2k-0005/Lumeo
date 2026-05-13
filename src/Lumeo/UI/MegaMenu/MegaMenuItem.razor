@@ -25,8 +25,8 @@
     {
         <li role="none"
             class="@CssClass"
-            @onmouseenter="HandleMouseEnter"
-            @onmouseleave="HandleMouseLeave"
+            @onpointerenter="HandlePointerEnter"
+            @onpointerleave="HandlePointerLeave"
             @attributes="AdditionalAttributes">
             <button id="@_triggerId"
                     type="button"
@@ -75,8 +75,13 @@
 
     private string ChevronCssClass => string.Join(" ", new[] { "h-3 w-3 transition-transform duration-200", _isOpen ? "rotate-180" : null }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
-    private void HandleMouseEnter()
+    // rc.44 — Approach B: pointer events gated to mouse only. Touch devices
+    // open via @onclick on the inner trigger button, avoiding the
+    // tap-emulated-mouseenter / lift-emulated-mouseleave race that would
+    // close the submenu before the user could pick a sub-item.
+    private void HandlePointerEnter(PointerEventArgs e)
     {
+        if (e.PointerType != "mouse") return;
         _dispatch.Cancel();
 
         if (!_isOpen)
@@ -85,12 +90,13 @@
             {
                 await Context.SetActiveItemId.InvokeAsync(_itemId);
                 StateHasChanged();
-            }, "MegaMenuItem.HandleMouseEnter");
+            }, "MegaMenuItem.HandlePointerEnter");
         }
     }
 
-    private void HandleMouseLeave()
+    private void HandlePointerLeave(PointerEventArgs e)
     {
+        if (e.PointerType != "mouse") return;
         if (_isOpen)
         {
             _dispatch.Schedule(CloseDelay, () =>
@@ -102,7 +108,7 @@
                         await Context.SetActiveItemId.InvokeAsync(null);
                         StateHasChanged();
                     }
-                }, "MegaMenuItem.HandleMouseLeave");
+                }, "MegaMenuItem.HandlePointerLeave");
             });
         }
     }

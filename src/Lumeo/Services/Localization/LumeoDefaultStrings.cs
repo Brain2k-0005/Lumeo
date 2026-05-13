@@ -58,6 +58,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "Max",
         ["DataGrid.Items"] = "items",
         ["DataGrid.ItemsCount"] = "{0} items",
+        ["DataGrid.ItemsCount.One"] = "{0} item",
+        ["DataGrid.ItemsCount.Other"] = "{0} items",
         ["DataGrid.CopySelected"] = "Copy ({0})",
         ["DataGrid.ApplyLayout"] = "Apply layout",
         ["DataGrid.NoSavedLayouts"] = "No saved layouts yet.",
@@ -232,6 +234,7 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Next"] = "Next",
         ["Stepper.Finish"] = "Finish",
         ["Stepper.Optional"] = "Optional",
+        ["Stepper.Skip"] = "Skip",
 
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Close",
@@ -250,6 +253,25 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Previous slide",
         ["Carousel.NextSlide"] = "Next slide",
         ["Carousel.SlideXofY"] = "Slide {0} of {1}",
+
+        // ── NumberInput ─────────────────────────────────────────────
+        ["NumberInput.Decrease"] = "Decrease",
+        ["NumberInput.Increase"] = "Increase",
+
+        // ── DateTimePicker ──────────────────────────────────────────
+        ["DateTimePicker.ClearDate"] = "Clear date",
+
+        // ── Slider ──────────────────────────────────────────────────
+        ["Slider.End"] = "end",
+
+        // ── FileManager ─────────────────────────────────────────────
+        ["FileManager.EmptyTitle"] = "This folder is empty",
+        ["FileManager.EmptyState"] = "No files or folders here.",
+        ["FileManager.MoreActions"] = "More actions",
+        ["FileManager.MoreActionsForName"] = "More actions for {0}",
+
+        // ── FileUpload (parameterised) ──────────────────────────────
+        ["FileUpload.ExceedsMaxSize"] = "File \"{0}\" exceeds the maximum size of {1}.",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -298,6 +320,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "Max",
         ["DataGrid.Items"] = "Einträge",
         ["DataGrid.ItemsCount"] = "{0} Einträge",
+        ["DataGrid.ItemsCount.One"] = "{0} Eintrag",
+        ["DataGrid.ItemsCount.Other"] = "{0} Einträge",
         ["DataGrid.CopySelected"] = "Kopieren ({0})",
         ["DataGrid.ApplyLayout"] = "Layout anwenden",
         ["DataGrid.NoSavedLayouts"] = "Noch keine gespeicherten Layouts.",
@@ -478,6 +502,38 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Vorherige Folie",
         ["Carousel.NextSlide"] = "Nächste Folie",
         ["Carousel.SlideXofY"] = "Folie {0} von {1}",
+
+        // ── Stepper ─────────────────────────────────────────────────
+        ["Stepper.Back"] = "Zurück",
+        ["Stepper.Next"] = "Weiter",
+        ["Stepper.Finish"] = "Fertigstellen",
+        ["Stepper.Optional"] = "Optional",
+        ["Stepper.Skip"] = "Überspringen",
+
+        // ── Window ──────────────────────────────────────────────────
+        ["Window.Close"] = "Schließen",
+        ["Window.Minimize"] = "Minimieren",
+        ["Window.Maximize"] = "Maximieren",
+        ["Window.Restore"] = "Wiederherstellen",
+
+        // ── NumberInput ─────────────────────────────────────────────
+        ["NumberInput.Decrease"] = "Verringern",
+        ["NumberInput.Increase"] = "Erhöhen",
+
+        // ── DateTimePicker ──────────────────────────────────────────
+        ["DateTimePicker.ClearDate"] = "Datum löschen",
+
+        // ── Slider ──────────────────────────────────────────────────
+        ["Slider.End"] = "Ende",
+
+        // ── FileManager ─────────────────────────────────────────────
+        ["FileManager.EmptyTitle"] = "Dieser Ordner ist leer",
+        ["FileManager.EmptyState"] = "Keine Dateien oder Ordner vorhanden.",
+        ["FileManager.MoreActions"] = "Weitere Aktionen",
+        ["FileManager.MoreActionsForName"] = "Weitere Aktionen für {0}",
+
+        // ── FileUpload (parameterised) ──────────────────────────────
+        ["FileUpload.ExceedsMaxSize"] = "Datei „{0}“ überschreitet die maximale Größe von {1}.",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)

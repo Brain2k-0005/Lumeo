@@ -24,6 +24,49 @@ namespace Lumeo.SourceGenerators;
 public sealed class LumeoFormGenerator : IIncrementalGenerator
 {
     private const string AttributeFullName = "Lumeo.LumeoFormAttribute";
+    private const string IgnoreAttributeFullName = "Lumeo.LumeoFormIgnoreAttribute";
+    private const string NotMappedAttributeFullName = "System.ComponentModel.DataAnnotations.Schema.NotMappedAttribute";
+
+    // ---------------------------------------------------------------- diagnostics
+
+    /// <summary>
+    /// LMF001 — fired when a public property has no public setter (read-only or
+    /// init-only) and is therefore excluded from the generated <c>[LumeoForm]</c>.
+    /// Suppress with <c>[LumeoFormIgnore]</c> or <c>[NotMapped]</c>.
+    /// </summary>
+    private static readonly DiagnosticDescriptor LMF001_ReadOnlyProperty = new(
+        id: "LMF001",
+        title: "Read-only / init-only property cannot be form-bound",
+        messageFormat: "Property '{0}' has no public setter and is excluded from the generated [LumeoForm]. Make it a regular get/set property to include it.",
+        category: "Lumeo.Form",
+        DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// LMF002 — fired when a property's type has no default Lumeo input mapping
+    /// (e.g. collections, custom reference types). Suppress with
+    /// <c>[LumeoFormIgnore]</c> or <c>[NotMapped]</c>.
+    /// </summary>
+    private static readonly DiagnosticDescriptor LMF002_UnsupportedType = new(
+        id: "LMF002",
+        title: "Property type not supported by [LumeoForm]",
+        messageFormat: "Property '{0}' has type '{1}' which has no default Lumeo input mapping. Use [LumeoFormIgnore] to silence this, or implement a custom RenderFragment override.",
+        category: "Lumeo.Form",
+        DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// LMF002 variant — fired specifically when an <c>IEnumerable&lt;string&gt;</c>
+    /// (or assignable) property is encountered, suggesting <c>TagInput</c> as the
+    /// likely custom override.
+    /// </summary>
+    private static readonly DiagnosticDescriptor LMF002_UnsupportedTypeTagInputHint = new(
+        id: "LMF002",
+        title: "Property type not supported by [LumeoForm]",
+        messageFormat: "Property '{0}' has type '{1}' which has no default Lumeo input mapping. Consider using TagInput via custom field override, or apply [LumeoFormIgnore] to silence this.",
+        category: "Lumeo.Form",
+        DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -39,6 +82,9 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(targets, static (spc, model) =>
         {
+            foreach (var diag in model.Diagnostics)
+                spc.ReportDiagnostic(diag);
+
             var source = Emit(model);
             spc.AddSource($"{model.HintName}.g.cs", SourceText.From(source, Encoding.UTF8));
         });
@@ -57,6 +103,7 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         public string SubmitLabel { get; set; } = "Submit";
         public string? Title { get; set; }
         public List<FieldModel> Fields { get; set; } = new();
+        public List<Diagnostic> Diagnostics { get; set; } = new();
     }
 
     private sealed class FieldModel
@@ -66,6 +113,13 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         public string Label { get; set; } = "";
         public string? HelpText { get; set; }
         public bool Required { get; set; }
+        /// <summary>
+        /// True when <see cref="Required"/> was set by the implicit
+        /// non-nullable-value-type rule rather than by an explicit
+        /// <c>[Required]</c> attribute on the property. Used by the emitter to
+        /// drop a clarifying comment into the generated source (Fix E6).
+        /// </summary>
+        public bool RequiredFromValueTypeRule { get; set; }
         public InputKind Kind { get; set; }
         public List<EnumMember>? EnumMembers { get; set; }
     }
@@ -134,15 +188,102 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         foreach (var member in type.GetMembers().OfType<IPropertySymbol>())
         {
             if (member.DeclaredAccessibility != Accessibility.Public) continue;
-            if (member.IsStatic || member.IsIndexer || member.IsReadOnly) continue;
-            if (member.SetMethod is null || member.SetMethod.DeclaredAccessibility != Accessibility.Public) continue;
+            if (member.IsStatic || member.IsIndexer) continue;
+
+            // Properties explicitly opted out (or marked NotMapped for EF) are
+            // silently skipped — no diagnostic, no emit.
+            if (HasIgnoreAttribute(member)) continue;
+
+            // Read-only or init-only: no public setter at runtime.
+            // Fix E4 (LMF001): surface as Info-level diagnostic instead of silently skipping.
+            if (member.IsReadOnly
+                || member.SetMethod is null
+                || member.SetMethod.DeclaredAccessibility != Accessibility.Public
+                || member.SetMethod.IsInitOnly)
+            {
+                model.Diagnostics.Add(Diagnostic.Create(
+                    LMF001_ReadOnlyProperty,
+                    GetPropertyLocation(member),
+                    member.Name));
+                continue;
+            }
 
             var field = BuildField(member);
-            if (field.Kind == InputKind.Unsupported) continue;
+            if (field.Kind == InputKind.Unsupported)
+            {
+                // Fix E5 (LMF002): unsupported types are now surfaced as Info-level
+                // diagnostics instead of being silently dropped. IEnumerable<string>
+                // gets a TagInput-specific hint.
+                var descriptor = IsEnumerableOfString(member.Type)
+                    ? LMF002_UnsupportedTypeTagInputHint
+                    : LMF002_UnsupportedType;
+
+                model.Diagnostics.Add(Diagnostic.Create(
+                    descriptor,
+                    GetPropertyLocation(member),
+                    member.Name,
+                    member.Type.ToDisplayString()));
+                continue;
+            }
             model.Fields.Add(field);
         }
 
         return model;
+    }
+
+    /// <summary>
+    /// True when the property carries <c>[LumeoFormIgnore]</c> or EF's
+    /// <c>[NotMapped]</c> — both are treated as "skip silently".
+    /// </summary>
+    private static bool HasIgnoreAttribute(IPropertySymbol prop)
+    {
+        foreach (var ad in prop.GetAttributes())
+        {
+            var name = ad.AttributeClass?.ToDisplayString();
+            if (name == IgnoreAttributeFullName || name == NotMappedAttributeFullName)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns the property's declaration location so diagnostics squiggle the
+    /// property itself rather than the containing class.
+    /// </summary>
+    private static Location GetPropertyLocation(IPropertySymbol prop)
+        => prop.Locations.FirstOrDefault() ?? Location.None;
+
+    /// <summary>
+    /// Detects <c>IEnumerable&lt;string&gt;</c> and any type that implements it
+    /// (e.g. <c>List&lt;string&gt;</c>, <c>string[]</c>, <c>IReadOnlyList&lt;string&gt;</c>).
+    /// Used to upgrade LMF002 to the TagInput-suggesting variant.
+    /// </summary>
+    private static bool IsEnumerableOfString(ITypeSymbol type)
+    {
+        // string itself implements IEnumerable<char>, not <string> — and it's already
+        // handled by MapKind as InputKind.Text. Guard against it just in case.
+        if (type.SpecialType == SpecialType.System_String) return false;
+
+        // Array: string[]
+        if (type is IArrayTypeSymbol array && array.ElementType.SpecialType == SpecialType.System_String)
+            return true;
+
+        bool MatchesEnumerableOfString(INamedTypeSymbol named)
+        {
+            return named.IsGenericType
+                && named.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>"
+                && named.TypeArguments.Length == 1
+                && named.TypeArguments[0].SpecialType == SpecialType.System_String;
+        }
+
+        if (type is INamedTypeSymbol nt && MatchesEnumerableOfString(nt))
+            return true;
+
+        foreach (var iface in type.AllInterfaces)
+        {
+            if (MatchesEnumerableOfString(iface)) return true;
+        }
+        return false;
     }
 
     private static FieldModel BuildField(IPropertySymbol prop)
@@ -176,9 +317,14 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
             }
         }
 
-        // value-type, non-nullable → implicitly required
+        // value-type, non-nullable → implicitly required.
+        // Fix E6: track whether Required came from this rule so the emitter can
+        // drop a clarifying comment into the generated source.
         if (type.IsValueType && type.NullableAnnotation != NullableAnnotation.Annotated)
+        {
+            if (!f.Required) f.RequiredFromValueTypeRule = true;
             f.Required = true;
+        }
 
         // Pick input kind
         f.Kind = MapKind(type, prop);
@@ -345,6 +491,11 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         // <FormField Label="..." Required="..." HelpText="...">
         sb.Append("                __form.OpenComponent<global::Lumeo.FormField>(").Append(next()).AppendLine(");");
         sb.Append("                __form.AddAttribute(").Append(next()).Append(", \"Label\", ").Append(Str(f.Label)).AppendLine(");");
+        // Fix E6: when Required was inferred from the non-nullable-value-type rule
+        // (rather than an explicit [Required] attribute) emit a brief explanatory
+        // comment so reading the generated source isn't surprising.
+        if (f.Required && f.RequiredFromValueTypeRule)
+            sb.AppendLine("                // Required: non-nullable value type implies must-have-value");
         sb.Append("                __form.AddAttribute(").Append(next()).Append(", \"Required\", ").Append(f.Required ? "true" : "false").AppendLine(");");
         sb.Append("                __form.AddAttribute(").Append(next()).Append(", \"Name\", ").Append(Str(f.PropertyName)).AppendLine(");");
         if (!string.IsNullOrEmpty(f.HelpText))

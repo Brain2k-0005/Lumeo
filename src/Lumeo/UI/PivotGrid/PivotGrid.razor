@@ -219,6 +219,18 @@
 
     private readonly HashSet<string> _collapsed = new();
 
+    // Short-circuit guard for OnParametersSet: BuildColumnRoot + BuildNode +
+    // BuildCellLookup are O(N · fields) and rerunning them on every render
+    // (e.g. when a parent passes a freshly-projected IEnumerable that's
+    // logically the same data) is wasteful. We track the last-seen Items
+    // reference + a hash of the dimension references; if both match we skip
+    // the rebuild. Toggle-collapse paths still recompute _displayRows
+    // explicitly via FlattenRows — they don't depend on this gate.
+    private object? _lastItemsRef;
+    private int _lastDimsHash;
+    private bool _lastShowRowGrandTotal;
+    private bool _lastShowSubtotals;
+
     private string WrapperClass => $"rounded-lg border border-border/40 bg-card text-foreground overflow-hidden {Class}".Trim();
     private string HeaderCellClass => (Compact ? "px-2 py-1.5" : "px-3 py-2") + " text-xs font-medium text-foreground bg-muted/40 border border-border/40 whitespace-nowrap";
     private string DataCellClass => (Compact ? "px-2 py-1.5" : "px-3 py-2") + " border border-border/40 whitespace-nowrap";
@@ -234,6 +246,33 @@
 
     protected override void OnParametersSet()
     {
+        // Cheap short-circuit: if every input that drives the tree-build is
+        // reference-identical to last time, and the flags that influence
+        // ShowRowGrandTotal/ShowSubtotals (which feed into _columnRoot and
+        // _displayRows) match too, skip the rebuild entirely. The hash uses
+        // reference identity of the parameter values (RowFields/ColumnFields/
+        // Measures are typically Array.Empty or stable consumer-side lists),
+        // so we don't pay an O(N) equality check.
+        // Reference-identity hashes: cheap and stable even when consumers
+        // pass Array.Empty<T>() (same singleton). Null-safe wrapper avoids
+        // RuntimeHelpers.GetHashCode's ArgumentNullException.
+        static int IdHash(object? o) =>
+            o is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(o);
+        var dimsHash = HashCode.Combine(IdHash(RowFields), IdHash(ColumnFields), IdHash(Measures));
+
+        if (ReferenceEquals(Items, _lastItemsRef)
+            && dimsHash == _lastDimsHash
+            && ShowRowGrandTotal == _lastShowRowGrandTotal
+            && ShowSubtotals == _lastShowSubtotals)
+        {
+            return;
+        }
+
+        _lastItemsRef = Items;
+        _lastDimsHash = dimsHash;
+        _lastShowRowGrandTotal = ShowRowGrandTotal;
+        _lastShowSubtotals = ShowSubtotals;
+
         _allItems = (Items ?? Enumerable.Empty<TItem>()).ToList();
         _rowFields = RowFields ?? Array.Empty<PivotField<TItem>>();
         _columnFields = ColumnFields ?? Array.Empty<PivotField<TItem>>();

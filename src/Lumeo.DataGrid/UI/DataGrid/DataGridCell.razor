@@ -109,18 +109,28 @@
         await Context.OnCellKeyDown(RowIndex, ColumnIndex, e);
     }
 
+    // Memoization mirror of DataGridRow.CssClass: 10k cells × N renders worth
+    // of string.Join allocations. The key carries every input that influences
+    // the result; we recompute only when something actually changes.
+    private (object Key, string Css)? _cssCache;
+
     private string CssClass
     {
         get
         {
             var cellClass = Column.CellClass?.Invoke(Item);
-            var pinClass = Column.Pin switch
+            var pin = Column.Pin;
+            var dirty = IsBatchDirty;
+            var key = (pin, dirty, Column.CssClass, cellClass, Class);
+            if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
+
+            var pinClass = pin switch
             {
                 PinDirection.Left => "sticky z-10 bg-inherit",
                 PinDirection.Right => "sticky z-10 bg-inherit",
                 _ => (string?)null
             };
-            return string.Join(" ", new[]
+            var css = string.Join(" ", new[]
             {
                 "px-3 py-2 text-sm",
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
@@ -128,11 +138,13 @@
                 // Batch-edit dirty marker: subtle left border accent + warning
                 // background tint. Uses the lumeo.css --color-warning token so
                 // it stays theme-aware in dark mode.
-                IsBatchDirty ? "border-l-2 border-warning bg-warning/10" : null,
+                dirty ? "border-l-2 border-warning bg-warning/10" : null,
                 Column.CssClass,
                 cellClass,
                 Class
             }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            _cssCache = (key, css);
+            return css;
         }
     }
 

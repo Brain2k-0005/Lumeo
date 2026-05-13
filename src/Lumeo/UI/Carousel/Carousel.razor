@@ -19,6 +19,7 @@
 </div>
 
 @inject ComponentInteropService Interop
+@inject ThemeService Theme
 
 @code {
     [Parameter] public CarouselOrientation Orientation { get; set; } = CarouselOrientation.Horizontal;
@@ -37,7 +38,8 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (!firstRender) return;
+        try
         {
             var orientationStr = Orientation == CarouselOrientation.Horizontal ? "horizontal" : "vertical";
             await Interop.RegisterCarouselSwipe(
@@ -47,6 +49,8 @@
                 OnScroll
             );
         }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private async Task OnSwipe(string direction)
@@ -109,8 +113,10 @@
         if (Disabled) return;
         if (Orientation == CarouselOrientation.Horizontal)
         {
-            if (e.Key == "ArrowLeft") await ScrollPrev();
-            else if (e.Key == "ArrowRight") await ScrollNext();
+            var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
+            var (back, forward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
+            if (e.Key == back) await ScrollPrev();
+            else if (e.Key == forward) await ScrollNext();
         }
         else
         {

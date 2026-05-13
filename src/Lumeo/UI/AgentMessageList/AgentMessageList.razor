@@ -22,11 +22,15 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && AutoScroll && !_observerRegistered)
+        if (!firstRender) return;
+        if (!AutoScroll || _observerRegistered) return;
+        try
         {
             _observerRegistered = true;
             await Interop.AiObserveAutoScroll(_listId);
         }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 
     public async ValueTask DisposeAsync()

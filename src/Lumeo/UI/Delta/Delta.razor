@@ -20,8 +20,17 @@
     [Parameter] public DeltaFormat Format { get; set; } = DeltaFormat.Percent;
     [Parameter] public DeltaDirection Positive { get; set; } = DeltaDirection.Good;
     [Parameter] public bool ShowArrow { get; set; } = true;
+    /// <summary>
+    /// Overrides <see cref="System.Globalization.CultureInfo.CurrentCulture"/> for
+    /// number formatting (decimal separator, group separator). Leave null to honour
+    /// ASP.NET request localization — a <c>de-DE</c> user sees <c>+12,5%</c> while
+    /// an <c>en-US</c> user sees <c>+12.5%</c>.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
 
     private bool IsUp => Value > 0;
     private bool IsDown => Value < 0;
@@ -30,13 +39,14 @@
     {
         get
         {
+            var culture = EffectiveCulture;
             var sign = Value > 0 ? "+" : "";
             var absFormat = Format switch
             {
                 DeltaFormat.Percent =>
-                    $"{sign}{Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}%",
+                    $"{sign}{Value.ToString("0.##", culture)}%",
                 _ =>
-                    $"{sign}{Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}"
+                    $"{sign}{Value.ToString("0.##", culture)}"
             };
             return absFormat;
         }

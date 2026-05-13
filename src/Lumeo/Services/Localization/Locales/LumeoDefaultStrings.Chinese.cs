@@ -48,6 +48,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.AggregateMax"] = "最大",
         ["DataGrid.Items"] = "项",
         ["DataGrid.ItemsCount"] = "{0} 项",
+        ["DataGrid.ItemsCount.One"] = "{0} 项",
+        ["DataGrid.ItemsCount.Other"] = "{0} 项",
         ["DataGrid.CopySelected"] = "复制 ({0})",
         ["DataGrid.ApplyLayout"] = "应用布局",
         ["DataGrid.NoSavedLayouts"] = "暂无已保存的布局。",
@@ -305,5 +307,37 @@ internal static partial class LumeoDefaultStrings
         ["Editor.SlashDivider"] = "分隔线",
         ["Editor.SlashDividerSub"] = "水平线",
         ["Editor.ToolbarAriaLabel"] = "文本格式",
+
+        // Stepper
+        ["Stepper.Back"] = "上一步",
+        ["Stepper.Next"] = "下一步",
+        ["Stepper.Finish"] = "完成",
+        ["Stepper.Optional"] = "可选",
+        ["Stepper.Skip"] = "跳过",
+
+        // Window
+        ["Window.Close"] = "关闭",
+        ["Window.Minimize"] = "最小化",
+        ["Window.Maximize"] = "最大化",
+        ["Window.Restore"] = "还原",
+
+        // NumberInput
+        ["NumberInput.Decrease"] = "减少",
+        ["NumberInput.Increase"] = "增加",
+
+        // DateTimePicker
+        ["DateTimePicker.ClearDate"] = "清除日期",
+
+        // Slider
+        ["Slider.End"] = "结束",
+
+        // FileManager
+        ["FileManager.EmptyTitle"] = "此文件夹为空",
+        ["FileManager.EmptyState"] = "这里没有文件或文件夹。",
+        ["FileManager.MoreActions"] = "更多操作",
+        ["FileManager.MoreActionsForName"] = "{0} 的更多操作",
+
+        // FileUpload (parameterised)
+        ["FileUpload.ExceedsMaxSize"] = "文件 \"{0}\" 超出最大大小 {1}。",
     };
 }

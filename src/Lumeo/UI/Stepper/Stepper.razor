@@ -154,6 +154,8 @@
     </div>
 </div>
 
+@inject ThemeService Theme
+
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public int ActiveStep { get; set; }
@@ -220,14 +222,18 @@
     }
 
     // Arrow-key navigation between step indicator buttons (WAI-ARIA tab-list pattern).
-    // ArrowLeft/Up: move focus to previous button. ArrowRight/Down: next button.
+    // ArrowUp: move focus to previous button. ArrowDown: next button.
+    // ArrowLeft/Right: previous/next in LTR; swapped in RTL so keys follow visual flow.
     // Focus only — does not change ActiveStep (use Enter/Space for activation).
     private async Task HandleStepKeyDown(KeyboardEventArgs e, int idx)
     {
+        var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
+        var (hBack, hForward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
+
         int target = e.Key switch
         {
-            "ArrowLeft" or "ArrowUp"   => idx - 1,
-            "ArrowRight" or "ArrowDown" => idx + 1,
+            _ when e.Key == hBack   || e.Key == "ArrowUp"   => idx - 1,
+            _ when e.Key == hForward || e.Key == "ArrowDown" => idx + 1,
             _ => -1
         };
 

@@ -1,14 +1,33 @@
 const clickOutsideHandlers = new Map();
 
-document.addEventListener('mousedown', (e) => {
+// rc.44 — Mobile fix: on touch devices, `mousedown` is only emulated AFTER the
+// touch sequence completes (and is often suppressed entirely on scrollable
+// pages), so dropdown/popover/select etc. wouldn't dismiss on tap-outside.
+// We listen to BOTH `mousedown` and `touchstart` and de-dupe via a tiny
+// suppression window: when touchstart fires we set a flag, the synthetic
+// mousedown that follows ~300ms later is ignored. `passive: true` on
+// touchstart keeps scroll performance intact.
+let _suppressNextMousedownUntil = 0;
+
+const _clickOutsideHandler = (e) => {
+    if (e.type === 'mousedown' && performance.now() < _suppressNextMousedownUntil) return;
+    if (e.type === 'touchstart') {
+        // Mark any mousedown in the next 600ms as a duplicate of this touch.
+        _suppressNextMousedownUntil = performance.now() + 600;
+    }
+    // For touchstart, `e.target` is the touched element directly — same as mousedown.
+    const target = e.target;
     for (const [id, { triggerElementId, dotnetRef }] of clickOutsideHandlers) {
         const el = document.getElementById(id);
         const trigger = triggerElementId ? document.getElementById(triggerElementId) : null;
-        if (el && !el.contains(e.target) && (!trigger || !trigger.contains(e.target))) {
+        if (el && !el.contains(target) && (!trigger || !trigger.contains(target))) {
             dotnetRef.invokeMethodAsync('OnClickOutside', id);
         }
     }
-});
+};
+
+document.addEventListener('mousedown', _clickOutsideHandler);
+document.addEventListener('touchstart', _clickOutsideHandler, { passive: true });
 
 export function registerClickOutside(elementId, triggerElementId, dotnetRef) {
     clickOutsideHandlers.set(elementId, { triggerElementId, dotnetRef });
@@ -421,6 +440,12 @@ export function unpositionFixed(contentId) {
     }
 }
 
+// --- Viewport Size ---
+
+export function getViewportSize() {
+    return { width: window.innerWidth, height: window.innerHeight };
+}
+
 // --- Element Rect ---
 
 export function getElementRect(elementId) {
@@ -663,6 +688,7 @@ let shortcutDotnetRef = null;
 const shortcuts = new Map();
 
 export function registerKeyboardShortcuts(dotnetRef) {
+    shortcuts.clear();  // rc.44: drop stale entries from prior circuit on reconnect
     shortcutDotnetRef = dotnetRef;
     if (!window.__lumeoKbdListener) {
         window.__lumeoKbdListener = (e) => {
@@ -1402,6 +1428,122 @@ export function onThisPageUnobserve(id) {
         obs.disconnect();
         onThisPageObservers.delete(id);
     }
+}
+
+// --- Sortable Touch (rc.44) ---
+//
+// HTML5 Drag-and-Drop events (dragstart/dragover/drop) DO NOT fire on touch
+// devices — confirmed across iOS Safari, Android Chrome, and mobile Firefox.
+// SortableList therefore needs a parallel touch-based path. We track the
+// finger via touchstart/touchmove/touchend, use document.elementFromPoint to
+// determine the drop target, and round-trip a single index pair back to
+// Blazor via the service's [JSInvokable] OnSortableTouchDrop callback,
+// which routes to the registered component handler.
+//
+// Mouse keeps using the existing HTML5 path — we only activate on touch
+// pointers (touchstart fires on every touch, never on mouse).
+
+const sortableTouchHandlers = new Map();
+
+export function registerSortableTouch(containerId, dotnetRef) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Clean up any prior registration on the same container.
+    const prev = sortableTouchHandlers.get(containerId);
+    if (prev) {
+        container.removeEventListener('touchstart', prev.onTouchStart);
+        container.removeEventListener('touchmove', prev.onTouchMove);
+        container.removeEventListener('touchend', prev.onTouchEnd);
+        container.removeEventListener('touchcancel', prev.onTouchEnd);
+    }
+
+    let sourceIndex = -1;
+    let lastTargetIndex = -1;
+    let draggingEl = null;
+    let lastHighlightEl = null;
+
+    const findItem = (target) => {
+        if (!target || typeof target.closest !== 'function') return null;
+        return target.closest('[data-sortable-item]');
+    };
+
+    const indexOf = (item) => {
+        if (!item) return -1;
+        const v = parseInt(item.dataset.sortableIndex, 10);
+        return Number.isFinite(v) ? v : -1;
+    };
+
+    const clearHighlight = () => {
+        if (lastHighlightEl) {
+            lastHighlightEl.removeAttribute('data-sortable-over');
+            lastHighlightEl = null;
+        }
+    };
+
+    const onTouchStart = (e) => {
+        if (e.touches.length !== 1) return;
+        const item = findItem(e.target);
+        if (!item || !container.contains(item)) return;
+        const idx = indexOf(item);
+        if (idx < 0) return;
+        sourceIndex = idx;
+        lastTargetIndex = idx;
+        draggingEl = item;
+        item.setAttribute('data-sortable-dragging', '');
+    };
+
+    const onTouchMove = (e) => {
+        if (sourceIndex < 0 || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        // Prevent the page scrolling while reordering — same UX as desktop.
+        // We must NOT use { passive: true } on touchmove for this to work.
+        if (e.cancelable) e.preventDefault();
+        const under = document.elementFromPoint(t.clientX, t.clientY);
+        const item = findItem(under);
+        if (!item || !container.contains(item)) return;
+        const idx = indexOf(item);
+        if (idx < 0 || idx === lastTargetIndex) return;
+        clearHighlight();
+        item.setAttribute('data-sortable-over', '');
+        lastHighlightEl = item;
+        lastTargetIndex = idx;
+    };
+
+    const onTouchEnd = () => {
+        const src = sourceIndex;
+        const tgt = lastTargetIndex;
+        // Reset state before the round-trip so a re-render finds a clean DOM.
+        if (draggingEl) draggingEl.removeAttribute('data-sortable-dragging');
+        clearHighlight();
+        sourceIndex = -1;
+        lastTargetIndex = -1;
+        draggingEl = null;
+        if (src >= 0 && tgt >= 0 && src !== tgt) {
+            dotnetRef.invokeMethodAsync('OnSortableTouchDrop', containerId, src, tgt)
+                .catch(() => {});
+        }
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd);
+    container.addEventListener('touchcancel', onTouchEnd);
+
+    sortableTouchHandlers.set(containerId, { onTouchStart, onTouchMove, onTouchEnd });
+}
+
+export function unregisterSortableTouch(containerId) {
+    const handlers = sortableTouchHandlers.get(containerId);
+    if (!handlers) return;
+    const container = document.getElementById(containerId);
+    if (container) {
+        container.removeEventListener('touchstart', handlers.onTouchStart);
+        container.removeEventListener('touchmove', handlers.onTouchMove);
+        container.removeEventListener('touchend', handlers.onTouchEnd);
+        container.removeEventListener('touchcancel', handlers.onTouchEnd);
+    }
+    sortableTouchHandlers.delete(containerId);
 }
 
 /* ===== AI primitives ===== */

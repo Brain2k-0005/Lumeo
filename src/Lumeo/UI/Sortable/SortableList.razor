@@ -1,10 +1,14 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
+@inject Lumeo.Services.ComponentInteropService Interop
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
+<div id="@_containerId" class="@CssClass" @attributes="AdditionalAttributes">
     @foreach (var (item, index) in _items.Select((x, i) => (x, i)))
     {
         <div @key="@(Key is not null ? Key(item) : (object?)item)" class="@GetItemClass(index)"
+             data-sortable-item
+             data-sortable-index="@index"
              draggable="@(!Disabled ? "true" : "false")"
              @ondragstart="() => OnDragStart(index)"
              @ondragover:preventDefault="true"
@@ -47,20 +51,63 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _containerId = $"sortable-{Guid.NewGuid():N}";
     private List<TItem> _items = [];
     private int _dragFromIndex = -1;
     private int _dragOverIndex = -1;
+    private bool _touchRegistered;
 
     protected override void OnParametersSet()
     {
         _items = Items.ToList();
     }
 
+    // rc.44: HTML5 Drag-and-Drop doesn't fire on touch devices, so we register
+    // a parallel touch path that round-trips source/target indices via the
+    // interop service. The handler converges with the desktop OnDrop logic.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !Disabled && !_touchRegistered)
+        {
+            await Interop.RegisterSortableTouch(_containerId, HandleTouchDrop);
+            _touchRegistered = true;
+        }
+    }
+
+    private async Task HandleTouchDrop(int source, int target)
+    {
+        if (Disabled) return;
+        await InvokeAsync(async () =>
+        {
+            if (source < 0 || target < 0 || source >= _items.Count || target >= _items.Count || source == target)
+                return;
+
+            var item = _items[source];
+            _items.RemoveAt(source);
+            _items.Insert(target, item);
+
+            _dragFromIndex = -1;
+            _dragOverIndex = -1;
+
+            StateHasChanged();
+            await ItemsChanged.InvokeAsync(_items.ToList());
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_touchRegistered)
+        {
+            await Interop.UnregisterSortableTouch(_containerId);
+            _touchRegistered = false;
+        }
+    }
+
     private string CssClass => $"flex flex-col gap-1 {Class}".Trim();
 
     private string GetItemClass(int index)
     {
-        var classes = "flex items-center rounded-md border border-border/40 bg-card px-3 py-2 transition-all";
+        var classes = "flex items-center rounded-md border border-border/40 bg-card px-3 py-2 transition-all touch-none select-none";
         if (index == _dragFromIndex)
             classes += " opacity-50";
         if (index == _dragOverIndex && index != _dragFromIndex)
