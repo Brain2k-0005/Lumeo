@@ -43,6 +43,11 @@ else if (Context.IsOpen)
     /// compete. <c>None</c> disables the animation entirely.</summary>
     [Parameter] public SheetAnimation Animation { get; set; } = SheetAnimation.Slide;
     [Parameter] public bool PreventClose { get; set; }
+    /// <summary>When true, the sheet can be dismissed by swiping in the
+    /// direction opposite to its Side (e.g. swipe-down on a Bottom sheet).
+    /// Default false to avoid conflicts with scrollable content. Wire to
+    /// true only when the sheet's content fits without scrolling.</summary>
+    [Parameter] public bool SwipeToClose { get; set; } = false;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -102,6 +107,18 @@ else if (Context.IsOpen)
     // Kept for backward-compat with tests / consumers that read SideClasses.
     private string SideClasses => $"{PositionClasses} {AnimationClass}".Trim();
 
+    // Swipe direction is the direction of the gesture that should dismiss the sheet:
+    // a Right-anchored sheet flies out to the right when the user swipes right, etc.
+    // Drawer uses the same convention — see DrawerContent.SwipeDirection.
+    private string SwipeDirection => Side switch
+    {
+        SheetSide.Top => "up",
+        SheetSide.Right => "right",
+        SheetSide.Bottom => "down",
+        SheetSide.Left => "left",
+        _ => "right"
+    };
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // When passthrough mode is active the host SheetContent owns scroll lock
@@ -120,6 +137,16 @@ else if (Context.IsOpen)
             if (Animation == SheetAnimation.Slide)
             {
                 await Interop.AttachOverlaySlideEnd(_contentId);
+            }
+            // Touch swipe-to-dismiss (WCAG 2.5.1 / mobile UX parity with Drawer).
+            // Reuses the Drawer JS helper as-is — it already handles all four
+            // directions and matches the Sheet's Side parameter 1:1.
+            // Gated on SwipeToClose (default false) because Sheets commonly
+            // contain scrollable content, and a downward scroll on a Bottom
+            // sheet would otherwise be misread as a dismiss gesture.
+            if (!PreventClose && SwipeToClose)
+            {
+                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, Close);
             }
             _wasOpen = true;
         }
@@ -147,6 +174,7 @@ else if (Context.IsOpen)
     {
         try
         {
+            await Interop.UnregisterDrawerSwipe(_contentId);
             await Interop.RemoveFocusTrap(_contentId);
             await Interop.UnlockScroll();
         }

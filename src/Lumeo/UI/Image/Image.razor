@@ -1,13 +1,14 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
-<div class="@ContainerClass" @attributes="AdditionalAttributes">
+<div class="@ContainerClass" @attributes="AdditionalAttributes" id="@(Zoomable ? _zoomContainerId : null)">
     @if (!_hasError)
     {
         <img src="@Src" alt="@Alt"
              width="@Width" height="@Height"
              loading="@(Lazy ? "lazy" : null)"
              class="@ImageClass"
+             style="@ZoomStyle"
              @onclick="HandleClick"
              @onerror="HandleError" />
     }
@@ -64,6 +65,13 @@
     [Parameter] public bool Lazy { get; set; }
     [Parameter] public string? Fallback { get; set; }
     [Parameter] public bool Preview { get; set; }
+    /// <summary>
+    /// When true, registers a two-finger pinch-zoom gesture on the image container
+    /// so touch users can zoom in/out on the image directly (independent of the
+    /// fullscreen <see cref="Preview"/> overlay). Sets <c>touch-action: none</c>
+    /// on the wrapper so the browser doesn't intercept the gesture for native page zoom.
+    /// </summary>
+    [Parameter] public bool Zoomable { get; set; } = false;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -71,6 +79,16 @@
     private bool _showPreview;
     private int _zoom = 100;
     private readonly string _previewId = $"image-preview-{Guid.NewGuid():N}";
+
+    // Pinch-zoom state (only used when Zoomable=true).
+    private readonly string _zoomContainerId = $"image-zoom-{Guid.NewGuid():N}";
+    private bool _pinchRegistered;
+    private double _zoomScale = 1.0;
+    private const double MinZoomScale = 0.5;
+    private const double MaxZoomScale = 5.0;
+    private string? ZoomStyle => Zoomable && Math.Abs(_zoomScale - 1.0) > 0.0001
+        ? $"transform: scale({_zoomScale.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}); transform-origin: center center;"
+        : null;
 
     private string ContainerClass => string.Join(" ", new[] { "relative inline-block overflow-hidden", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
     private string ImageClass => string.Join(" ", new[] { "object-cover", Preview ? "cursor-pointer" : null }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -124,11 +142,42 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Zoomable && !_pinchRegistered)
+        {
+            _pinchRegistered = true;
+            try
+            {
+                await Interop.RegisterPinchZoom(_zoomContainerId, HandlePinchZoom);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private Task HandlePinchZoom(double scaleDelta)
+    {
+        // Multiply incremental delta into the running zoom, then clamp.
+        var next = _zoomScale * scaleDelta;
+        if (next < MinZoomScale) next = MinZoomScale;
+        else if (next > MaxZoomScale) next = MaxZoomScale;
+        if (Math.Abs(next - _zoomScale) < 0.0001) return Task.CompletedTask;
+        _zoomScale = next;
+        // The pointermove callbacks fire at high frequency; StateHasChanged is
+        // cheap here because only the <img> inline style changes.
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_showPreview)
         {
             try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+        }
+        if (_pinchRegistered)
+        {
+            try { await Interop.UnregisterPinchZoom(_zoomContainerId); } catch (JSDisconnectedException) { }
         }
     }
 }

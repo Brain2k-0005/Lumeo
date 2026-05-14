@@ -158,6 +158,42 @@ public sealed class ComponentInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // --- Pinch Zoom (multi-touch gesture) ---
+    //
+    // Generic two-finger pinch detector. The JS helper calls back with a per-
+    // event scale delta (current distance / previous distance), and the C#
+    // consumer multiplies that into its own accumulated zoom. We keep a small
+    // per-element handler dictionary here so multiple registered components
+    // can share the singleton service without colliding.
+
+    private readonly Dictionary<string, Func<double, Task>> _pinchZoomHandlers = new();
+
+    public async ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        _pinchZoomHandlers[elementId] = handler;
+        await module.InvokeVoidAsync("registerPinchZoom", elementId, GetSelfRef(), "OnPinchZoom");
+    }
+
+    public async ValueTask UnregisterPinchZoom(string elementId)
+    {
+        _pinchZoomHandlers.Remove(elementId);
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterPinchZoom", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public Task OnPinchZoom(string elementId, double scaleDelta)
+    {
+        if (_pinchZoomHandlers.TryGetValue(elementId, out var handler))
+            return handler(scaleDelta);
+        return Task.CompletedTask;
+    }
+
     // --- Viewport Size ---
 
     public async ValueTask<ViewportSize> GetViewportSize()
@@ -489,6 +525,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("ripple.detach", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Haptic feedback ---
+
+    public async ValueTask Vibrate(int milliseconds)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("vibrate", milliseconds);
         }
         catch (JSDisconnectedException) { }
     }

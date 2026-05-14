@@ -39,6 +39,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler);
     ValueTask UnregisterSvDrag(string elementId);
 
+    // Pinch Zoom (two-finger gesture) — handler receives the scale delta per move event
+    ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler);
+    ValueTask UnregisterPinchZoom(string elementId);
+
     // Viewport
     ValueTask<ViewportSize> GetViewportSize();
 
@@ -115,6 +119,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Press feedback (ripple click effect on Button, Card, Chip, BottomNavItem, ToggleGroupItem)
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
+
+    // Haptic feedback — best-effort, no-op on browsers without Vibration API (iOS Safari).
+    ValueTask Vibrate(int milliseconds);
 
     // LocalStorage
     ValueTask SaveToLocalStorage(string key, string value);
