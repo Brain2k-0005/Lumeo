@@ -1,6 +1,17 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
-<div id="@_triggerId" class="@CssClass" aria-expanded="@Context.IsOpen" @oncontextmenu="HandleContextMenu" @oncontextmenu:preventDefault @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div id="@_triggerId"
+     class="@CssClass"
+     style="@InlineStyle"
+     aria-expanded="@Context.IsOpen"
+     @oncontextmenu="HandleContextMenu" @oncontextmenu:preventDefault
+     @onkeydown="HandleKeyDown"
+     @ontouchstart="HandleTouchStart"
+     @ontouchmove="HandleTouchMove"
+     @ontouchend="HandleTouchEnd"
+     @ontouchcancel="HandleTouchEnd"
+     @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -12,7 +23,29 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>
+    /// Duration in milliseconds a touch must remain on the trigger (without
+    /// significant movement) before the context menu opens. Default: 500ms.
+    /// </summary>
+    [Parameter] public int LongPressMs { get; set; } = 500;
+
+    /// <summary>
+    /// Pixel threshold for touch movement that cancels the long-press timer.
+    /// Above this, the user is interpreted as scrolling, not long-pressing.
+    /// </summary>
+    [Parameter] public double MoveTolerancePx { get; set; } = 10.0;
+
     private readonly string _triggerId = $"ctx-trigger-{Guid.NewGuid():N}";
+
+    private CancellationTokenSource? _longPressCts;
+    private double _touchStartX;
+    private double _touchStartY;
+
+    // touch-action: manipulation keeps native scroll working but disables
+    // double-tap-to-zoom. -webkit-touch-callout: none + user-select: none
+    // suppresses iOS Safari's default long-press callout (share/select sheet)
+    // so our 500ms timer is the only thing that fires.
+    private string InlineStyle => "touch-action: manipulation; -webkit-touch-callout: none; user-select: none;";
 
     private string CssClass => $"inline-flex {Class}".Trim();
 
@@ -34,5 +67,74 @@
             await Context.SetPosition.InvokeAsync((x, y));
             await Context.SetOpen.InvokeAsync(true);
         }
+    }
+
+    // --- Long-press touch path (iOS Safari fix) ---
+    //
+    // iOS Safari does not reliably fire `contextmenu` for non-text content on
+    // long-press, so we run a parallel touch timer. On touchstart we record the
+    // initial position and start a 500ms delay. If the user moves more than
+    // MoveTolerancePx pixels (= scrolling) or lifts the finger (= tap) before
+    // the timer elapses, we cancel. When the timer fires uncancelled, we open
+    // the menu at the touch coordinates and emit a short haptic pulse.
+
+    private async Task HandleTouchStart(TouchEventArgs e)
+    {
+        if (e.Touches.Length == 0) return;
+
+        var touch = e.Touches[0];
+        _touchStartX = touch.ClientX;
+        _touchStartY = touch.ClientY;
+
+        CancelLongPress();
+        _longPressCts = new CancellationTokenSource();
+        var token = _longPressCts.Token;
+        var x = touch.ClientX;
+        var y = touch.ClientY;
+
+        try
+        {
+            await Task.Delay(LongPressMs, token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested) return;
+
+        // Long-press fired. Open at the original touch position and pulse haptics.
+        await Context.SetPosition.InvokeAsync((x, y));
+        await Context.SetOpen.InvokeAsync(true);
+        await Interop.Vibrate(50);
+    }
+
+    private void HandleTouchMove(TouchEventArgs e)
+    {
+        if (_longPressCts is null || e.Touches.Length == 0) return;
+
+        var touch = e.Touches[0];
+        var dx = touch.ClientX - _touchStartX;
+        var dy = touch.ClientY - _touchStartY;
+        if ((dx * dx + dy * dy) > (MoveTolerancePx * MoveTolerancePx))
+        {
+            CancelLongPress();
+        }
+    }
+
+    private void HandleTouchEnd(TouchEventArgs e) => CancelLongPress();
+
+    private void CancelLongPress()
+    {
+        if (_longPressCts is null) return;
+        try { _longPressCts.Cancel(); } catch (ObjectDisposedException) { }
+        _longPressCts.Dispose();
+        _longPressCts = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        CancelLongPress();
+        return ValueTask.CompletedTask;
     }
 }

@@ -123,6 +123,9 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RippleAttachAsync(ElementReference element) => ValueTask.CompletedTask;
     public ValueTask RippleDetachAsync(ElementReference element) => ValueTask.CompletedTask;
 
+    // Haptic feedback
+    public ValueTask Vibrate(int milliseconds) => ValueTask.CompletedTask;
+
     // LocalStorage
     public ValueTask SaveToLocalStorage(string key, string value) => ValueTask.CompletedTask;
     public ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);

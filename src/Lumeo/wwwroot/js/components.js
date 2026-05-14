@@ -480,6 +480,117 @@ export function releasePointerCaptureOnElement(elementId, pointerId) {
     } catch (_) { /* noop */ }
 }
 
+// --- Pinch Zoom (multi-touch via Pointer Events) ---
+//
+// Generic two-finger pinch-zoom detector. Pointer Events express multi-touch
+// as multiple simultaneous PointerEvents with different `pointerId`s, so we
+// track active pointers in a Map keyed by id. When exactly two pointers are
+// down, we compute the Euclidean distance between them on every move and
+// emit `scaleDelta = currentDistance / lastDistance` to .NET — a value
+// slightly above or below 1.0 that the caller can multiply into its own
+// accumulated zoom level.
+//
+// `touch-action: none` on the target is required: without it the browser
+// claims the gesture for native page zoom/scroll before our move handlers
+// see anything (this is the inverse of the intuitive `touch-action: pinch-
+// zoom`, which would let the browser handle pinch ITSELF — the opposite of
+// what we want here).
+//
+// `setPointerCapture` on pointerdown is what lets a finger drift outside the
+// element's bounds without breaking the gesture: subsequent events for that
+// pointerId stay routed to the capturing element until release.
+
+const pinchZoomHandlers = new Map();
+
+export function registerPinchZoom(elementId, dotnetRef, methodName) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    // Clean up any previous registration on the same element.
+    const prev = pinchZoomHandlers.get(elementId);
+    if (prev) {
+        el.removeEventListener('pointerdown', prev.onDown);
+        el.removeEventListener('pointermove', prev.onMove);
+        el.removeEventListener('pointerup', prev.onUp);
+        el.removeEventListener('pointercancel', prev.onUp);
+    }
+
+    const pointers = new Map(); // pointerId -> { x, y }
+    let lastDistance = null;
+    const method = methodName || 'OnPinchZoom';
+
+    const distance = () => {
+        const pts = [...pointers.values()];
+        if (pts.length !== 2) return null;
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const onDown = (e) => {
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { el.setPointerCapture(e.pointerId); } catch (_) { /* noop */ }
+        if (pointers.size === 2) {
+            lastDistance = distance();
+        } else if (pointers.size > 2) {
+            // Multi-touch beyond 2 fingers — invalidate baseline so we don't
+            // resume pinch math against a stale 2-pointer distance.
+            lastDistance = null;
+        }
+    };
+
+    const onMove = (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size !== 2) return;
+        const d = distance();
+        if (lastDistance && d) {
+            const scaleDelta = d / lastDistance;
+            dotnetRef.invokeMethodAsync(method, elementId, scaleDelta).catch(() => {});
+            lastDistance = d;
+        }
+    };
+
+    const onUp = (e) => {
+        pointers.delete(e.pointerId);
+        try {
+            if (el.hasPointerCapture && el.hasPointerCapture(e.pointerId)) {
+                el.releasePointerCapture(e.pointerId);
+            }
+        } catch (_) { /* noop */ }
+        if (pointers.size === 2) {
+            // 3→2 transition: re-baseline against the current 2-pointer
+            // distance so resumed pinch doesn't jump from a stale baseline.
+            lastDistance = distance();
+        } else if (pointers.size < 2) {
+            lastDistance = null;
+        }
+    };
+
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+    // Stop the browser from intercepting the pinch (native zoom) or pan.
+    el.style.touchAction = 'none';
+
+    pinchZoomHandlers.set(elementId, { onDown, onMove, onUp });
+}
+
+export function unregisterPinchZoom(elementId) {
+    const h = pinchZoomHandlers.get(elementId);
+    if (!h) return;
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.removeEventListener('pointerdown', h.onDown);
+        el.removeEventListener('pointermove', h.onMove);
+        el.removeEventListener('pointerup', h.onUp);
+        el.removeEventListener('pointercancel', h.onUp);
+        el.style.touchAction = '';
+    }
+    pinchZoomHandlers.delete(elementId);
+}
+
 // --- Drawer Swipe ---
 
 const drawerHandlers = new Map();
@@ -1037,19 +1148,33 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         return cells;
     };
 
-    const onMouseDown = (e) => {
+    let activePointerId = null;
+
+    // Migrated mouse* → pointer* (rc.43 mobile audit). Pointer events are a
+    // superset that handles mouse, touch, and pen with a single API. We bind
+    // pointermove/pointerup on the HANDLE itself (not document) because
+    // setPointerCapture redirects subsequent pointer events for that pointerId
+    // to the capturing element — drag stays alive even when the finger/cursor
+    // strays outside the column header.
+    const onPointerDown = (e) => {
+        // Ignore non-primary mouse buttons; touch/pen always fall through.
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         isDragging = true;
+        activePointerId = e.pointerId;
         startX = e.clientX;
         startWidth = th.getBoundingClientRect().width;
         currentWidth = startWidth;
         colBodyCells = gatherBodyCells();
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+        try { handle.setPointerCapture(e.pointerId); } catch (_) { }
+        // preventDefault on pointerdown stops touch from initiating a page
+        // scroll/zoom gesture before the move begins.
         e.preventDefault();
         e.stopPropagation();
     };
-    const onMouseMove = (e) => {
-        if (!isDragging) return;
+    const onPointerMove = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
         const delta = e.clientX - startX;
         let w = startWidth + delta;
         if (w < min) w = min;
@@ -1057,27 +1182,45 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         if (w === currentWidth) return;
         currentWidth = w;
         applyWidth(w);
+        // Block scroll on touch devices while actively dragging.
+        if (e.cancelable) e.preventDefault();
     };
-    const onMouseUp = () => {
-        if (!isDragging) return;
+    const onPointerUp = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
         isDragging = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
+        activePointerId = null;
         dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth);
     };
-    handle.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    columnResizeHandlers.set(handleId, { onMouseDown, onMouseMove, onMouseUp });
+    const onPointerCancel = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
+        isDragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
+        activePointerId = null;
+        // No commit on cancel — the user aborted (e.g. system gesture took over).
+    };
+    handle.addEventListener('pointerdown', onPointerDown);
+    // passive: false so preventDefault works inside pointermove on touch.
+    handle.addEventListener('pointermove', onPointerMove, { passive: false });
+    handle.addEventListener('pointerup', onPointerUp);
+    handle.addEventListener('pointercancel', onPointerCancel);
+    columnResizeHandlers.set(handleId, { handle, onPointerDown, onPointerMove, onPointerUp, onPointerCancel });
 }
 
 export function unregisterColumnResize(handleId) {
     const h = columnResizeHandlers.get(handleId);
     if (h) {
-        const el = document.getElementById(handleId);
-        if (el) el.removeEventListener('mousedown', h.onMouseDown);
-        document.removeEventListener('mousemove', h.onMouseMove);
-        document.removeEventListener('mouseup', h.onMouseUp);
+        const el = h.handle || document.getElementById(handleId);
+        if (el) {
+            el.removeEventListener('pointerdown', h.onPointerDown);
+            el.removeEventListener('pointermove', h.onPointerMove);
+            el.removeEventListener('pointerup', h.onPointerUp);
+            el.removeEventListener('pointercancel', h.onPointerCancel);
+        }
         columnResizeHandlers.delete(handleId);
     }
 }
@@ -1653,3 +1796,13 @@ function detachRipple(el) {
 }
 
 export const ripple = { attach: attachRipple, detach: detachRipple };
+
+// Haptic feedback. No-op on browsers that don't expose Vibration API
+// (e.g. iOS Safari) or when user has disabled motion. Safe to call without guards.
+export function vibrate(ms) {
+    try {
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            navigator.vibrate(ms);
+        }
+    } catch { /* swallow — best-effort haptic */ }
+}

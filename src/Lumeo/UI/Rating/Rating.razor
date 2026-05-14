@@ -12,7 +12,7 @@
     </label>
 }
 
-<div class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -27,6 +27,8 @@
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
+                    @onpointerdown="(e) => HandlePointerDown(starIndex, e)"
+                    @onpointerenter="() => HandlePointerEnter(starIndex)"
                     @onmouseover="() => HandleHover(starIndex)"
                     @onmouseout="HandleMouseLeave">
                 @IconContent
@@ -40,6 +42,8 @@
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
+                    @onpointerdown="(e) => HandlePointerDown(starIndex, e)"
+                    @onpointerenter="() => HandlePointerEnter(starIndex)"
                     @onmouseover="() => HandleHover(starIndex)"
                     @onmouseout="HandleMouseLeave">
                 @* Always render the stars inside the same inline-grid wrapper — using the wrapper for half-stars
@@ -106,6 +110,13 @@
 
     private int _hoverValue;
 
+    // Touch/pointer drag state. Lets users tap-and-drag across stars (iOS-style)
+    // to scrub the value continuously. _suppressNextClick avoids double-handling
+    // when the synthetic click follows a pointerdown that already set the value.
+    private bool _isDragging;
+    private bool _suppressNextClick;
+    private bool _dragMovedAcrossStars;
+
     // Roving tabindex: only the selected star (or star 1 when nothing selected) is
     // in the tab sequence. Arrow-key navigation on the radiogroup shifts both focus
     // and value, so there is never more than one tabstop inside the widget.
@@ -136,6 +147,15 @@
     {
         if (ReadOnly) return;
 
+        // When a pointerdown already committed the value (touch/pen, or any drag),
+        // skip the synthetic click that follows to avoid double-handling. For
+        // AllowHalf this is critical: the click would otherwise toggle to N-0.5.
+        if (_suppressNextClick)
+        {
+            _suppressNextClick = false;
+            return;
+        }
+
         var newValue = (double)index;
         if (AllowHalf && Value == index)
         {
@@ -144,6 +164,69 @@
 
         Value = newValue;
         await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task HandlePointerDown(int index, PointerEventArgs e)
+    {
+        if (ReadOnly) return;
+
+        // Only handle touch/pen here. For mouse we let @onclick continue to drive
+        // value changes so the existing AllowHalf toggle behaviour (click again
+        // for half-star) keeps working on desktop. Without this guard,
+        // pointerdown commits Value=N then the synthetic click sees Value==N
+        // and toggles to N-0.5 — double-fire with wrong final value.
+        if (e.PointerType == "mouse") return;
+
+        _isDragging = true;
+        _dragMovedAcrossStars = false;
+
+        // Commit initial value on touch so the first contact shows feedback
+        // immediately, matching native iOS scrubber behaviour.
+        if (Value != index)
+        {
+            Value = index;
+            await ValueChanged.InvokeAsync(Value);
+        }
+    }
+
+    private async Task HandlePointerEnter(int index)
+    {
+        if (ReadOnly || !_isDragging) return;
+
+        // Pointer crossed into a different star while dragging — scrub value.
+        _dragMovedAcrossStars = true;
+        if (Value != index)
+        {
+            Value = index;
+            await ValueChanged.InvokeAsync(Value);
+        }
+    }
+
+    private void HandlePointerUp()
+    {
+        if (!_isDragging) return;
+
+        // If the user actually dragged, suppress the trailing click so we don't
+        // re-toggle the value. A pure tap (no movement) still falls through to
+        // HandleClick which honours the AllowHalf half-star toggle.
+        if (_dragMovedAcrossStars)
+        {
+            _suppressNextClick = true;
+        }
+
+        _isDragging = false;
+        _dragMovedAcrossStars = false;
+    }
+
+    private void HandlePointerLeaveContainer()
+    {
+        // Finger slid out of the radiogroup entirely — end the drag so a later
+        // pointerup outside the widget doesn't leave us stuck in dragging state.
+        if (_isDragging)
+        {
+            _isDragging = false;
+            _dragMovedAcrossStars = false;
+        }
     }
 
     private void HandleHover(int index)
