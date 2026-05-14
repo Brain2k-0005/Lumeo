@@ -100,7 +100,9 @@
                 <BlurFade DelayMs="@assetDelay" ForceHidden="true">
                     <Card Class="p-4">
                         <Flex Align="start" Gap="3">
-                            <Lumeo.Text As="span" Class="text-lg leading-none mt-0.5 shrink-0">@asset.Icon</Lumeo.Text>
+                            <Flex Align="center" Justify="center" Class="h-9 w-9 shrink-0 rounded-md bg-accent/40 text-primary">
+                                <DynamicIcon Name="@asset.IconName" Class="h-5 w-5" />
+                            </Flex>
                             <Stack Gap="1" Class="flex-1 min-w-0">
                                 <Flex Align="center" Justify="between" Gap="2">
                                     <Lumeo.Text As="span" Weight="semibold" Size="sm" Color="foreground">@asset.Title</Lumeo.Text>
@@ -236,7 +238,9 @@
                 <BlurFade DelayMs="80" ForceHidden="true">
                     <Stack Gap="3">
                         <Flex Align="center" Gap="2">
-                            <Lumeo.Text As="span" Class="text-xl leading-none">📊</Lumeo.Text>
+                            <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
+                                <DynamicIcon Name="BarChart3" Class="h-4 w-4" />
+                            </Flex>
                             <Chip Class="font-mono text-xs">120 KB</Chip>
                         </Flex>
                         <Heading Level="3" Class="text-base font-semibold">Charts</Heading>
@@ -253,7 +257,9 @@
                 <BlurFade DelayMs="160" ForceHidden="true">
                     <Stack Gap="3">
                         <Flex Align="center" Gap="2">
-                            <Lumeo.Text As="span" Class="text-xl leading-none">📋</Lumeo.Text>
+                            <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
+                                <DynamicIcon Name="Table2" Class="h-4 w-4" />
+                            </Flex>
                             <Chip Class="font-mono text-xs">100 KB</Chip>
                         </Flex>
                         <Heading Level="3" Class="text-base font-semibold">DataGrid</Heading>
@@ -270,7 +276,9 @@
                 <BlurFade DelayMs="240" ForceHidden="true">
                     <Stack Gap="3">
                         <Flex Align="center" Gap="2">
-                            <Lumeo.Text As="span" Class="text-xl leading-none">✏️</Lumeo.Text>
+                            <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
+                                <DynamicIcon Name="PenLine" Class="h-4 w-4" />
+                            </Flex>
                             <Chip Class="font-mono text-xs">26 KB</Chip>
                         </Flex>
                         <Heading Level="3" Class="text-base font-semibold">Rich Text Editor</Heading>
@@ -404,7 +412,9 @@
                 <BlurFade DelayMs="@hrDelay" ForceHidden="true">
                     <Card Class="p-5 hover:border-primary/40 transition-colors">
                         <Flex Align="start" Gap="4">
-                            <Lumeo.Text As="span" Class="text-2xl leading-none shrink-0">@fact.Icon</Lumeo.Text>
+                            <Flex Align="center" Justify="center" Class="h-10 w-10 shrink-0 rounded-md bg-accent/40 text-primary">
+                                <DynamicIcon Name="@fact.IconName" Class="h-5 w-5" />
+                            </Flex>
                             <Stack Gap="2" Class="flex-1 min-w-0">
                                 <Heading Level="3" Class="text-base font-semibold">@fact.Title</Heading>
                                 <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">@fact.Body</Lumeo.Text>
@@ -473,33 +483,33 @@
 
 @code {
     private record PackageRow(string Name, string SizeLabel, int Percent, bool IsCore, string Note = "");
-    private record NupkgAsset(string Icon, string Title, string Size, string Description);
+    private record NupkgAsset(string IconName, string Title, string Size, string Description);
     private record ComparisonRow(string Name, string Size, string Note, bool IsUs = false);
-    private record HotReloadFact(string Icon, string Title, string Body, string? OthersDo = null);
+    private record HotReloadFact(string IconName, string Title, string Body, string? OthersDo = null);
 
     private readonly List<HotReloadFact> _hotReloadFacts =
     [
-        new("🎨", "No Blazor CSS isolation",
+        new("Palette", "No Blazor CSS isolation",
             "Lumeo styles every component via Tailwind utility classes composed directly in markup. Tailwind v4 watch mode regenerates the single utility bundle in under 100 ms; the browser swaps it without losing state.",
             "Libraries that rely on Blazor's per-component .razor.css isolation generate a new scoped-class hash on every change, force the SDK to re-emit the static-web-assets manifest, and often invalidate browser caches mid-session."),
 
-        new("🌗", "Theme is CSS variables — not a C# object",
+        new("Moon", "Theme is CSS variables — not a C# object",
             "Switching themes in Lumeo means swapping --color-primary, --color-background, etc. in lumeo.css. No C# rebuild needed. dotnet watch picks up the CSS change and the browser re-paints with the new tokens.",
             "MudThemeProvider passes a C# MudTheme record via CascadingValue. Editing colors requires recompiling C#, which triggers a delta-rebuild and re-render of every consuming component — Hot Reload often falls back to full restart."),
 
-        new("⚡", "No source generators in the runtime hot path",
+        new("Zap", "No source generators in the runtime hot path",
             "Lumeo.SourceGenerators only emits code for the opt-in [LumeoForm] attribute. Normal component edits never re-run a generator, so the dotnet watch inner loop is just Roslyn incremental compile + DOM patch.",
             "Libraries that wrap every component in a base-class source generator (or AOT-style codegen) re-run the generator on every keystroke — multi-second incremental builds, and Hot Reload often gives up entirely."),
 
-        new("🪞", "No reflection in the render path",
+        new("Aperture", "No reflection in the render path",
             "DataGridColumn<T>.GetValue is a compiled Expression<Func<TItem,object?>> cached per field (rc.44). Component parameters are strongly typed records. Hot Reload can swap method bodies without invalidating any cached type-handle metadata.",
             "Reflection-heavy libs (PropertyInfo.GetValue, Activator.CreateInstance in render) cache Type instances that don't refresh on Hot Reload — you get \"works after restart\" bugs because old reflection caches are still alive."),
 
-        new("🧩", "CascadingValue composition, not inheritance",
+        new("Puzzle", "CascadingValue composition, not inheritance",
             "Compound components like Select / SelectTrigger / SelectContent share state via a record passed through CascadingValue. Each Razor file is independent and Hot Reload swaps it in isolation.",
             "Libs with deep inheritance (MyButton : MudFormComponent<T,U> : MudComponentBase) force the runtime to rebuild the whole class table when a base changes. Hot Reload prints \"unable to apply edits\" and you lose state."),
 
-        new("🏷️", "Razor SDK + Tailwind watch — one CSS bundle",
+        new("Wind", "Razor SDK + Tailwind watch — one CSS bundle",
             "lumeo.css + lumeo-utilities.css are two files generated by Tailwind from your source. dotnet watch + npm run watch:css run in parallel; CSS swaps don't go through Blazor at all. No virtual-DOM diff for visual-only changes.",
             "CSS-in-JS libs (or libs shipping a JS theme runtime) need to re-execute JS to recompute styles on every component touch — slower, and sometimes blocked by Blazor's circuit lifecycle."),
     ];
@@ -517,16 +527,16 @@
 
     private readonly List<NupkgAsset> _nupkgAssets =
     [
-        new("📦", "Lumeo.dll",
+        new("Package", "Lumeo.dll",
             "400 KB brotli",
             "1.9 MB raw IL → 400 KB after WASM linker trimming + brotli compression. This is the only file the browser downloads from the Lumeo package."),
-        new("🎨", "lumeo.css",
+        new("Palette", "lumeo.css",
             "49 KB",
             "Theme tokens, dark-mode variable swaps, and component-scoped styles. Generated by Tailwind v4 at build time — no CSS-in-JS, no runtime style injection."),
-        new("⚡", "components.js",
+        new("Zap", "components.js",
             "57 KB",
             "Focus traps, scroll lock, element measurement, and third-party canvas wrappers. JS is reserved for what Blazor genuinely cannot do in pure Razor."),
-        new("📜", "Build props + symbols",
+        new("FileCode2", "Build props + symbols",
             "~50 KB",
             "MSBuild .props integration (auto-imports lumeo.css + components.js), PDB symbols for debugging. Never reaches the browser."),
     ];
