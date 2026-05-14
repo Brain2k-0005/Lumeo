@@ -1,0 +1,190 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@*
+    SwipeActions — iOS Mail.app pattern. A horizontal "card" whose foreground
+    slides on touch to reveal background action buttons on either side.
+
+    Layout: three stacked layers inside a relatively-positioned root.
+      1. Leading actions  — absolute, pinned to left edge, visible while
+                            foreground slides right (deltaX > 0).
+      2. Trailing actions — absolute, pinned to right edge, visible while
+                            foreground slides left  (deltaX < 0).
+      3. Foreground       — the consumer's ChildContent. Slides on pointer
+                            events, can lock open at +/- OpenWidth.
+
+    v1 simplification: the open distance is a constant (OpenWidth = 160px)
+    rather than measuring the actions container width. Two 80px-wide buttons
+    is the canonical iOS pattern. A v2 could read the rendered LeadingActions
+    / TrailingActions width via getElementDimension and clamp dynamically.
+
+    Clicking anywhere on the foreground while open closes the panel. Pointer
+    events still arrive at action buttons because they sit BEHIND the
+    foreground only while closed; once open, the foreground is translated
+    aside and the actions become hit-testable normally.
+*@
+
+<div id="@_elementId"
+     class="@CssClass"
+     @attributes="AdditionalAttributes">
+
+    @if (LeadingActions is not null)
+    {
+        <div class="absolute inset-y-0 left-0 flex items-stretch"
+             style="@($"width: {OpenWidthPx}px;")">
+            @LeadingActions
+        </div>
+    }
+
+    @if (TrailingActions is not null)
+    {
+        <div class="absolute inset-y-0 right-0 flex items-stretch justify-end"
+             style="@($"width: {OpenWidthPx}px;")">
+            @TrailingActions
+        </div>
+    }
+
+    <div class="relative z-10 bg-background"
+         style="@ForegroundStyle"
+         @onpointerdown="HandlePointerDown"
+         @onpointermove="HandlePointerMove"
+         @onpointerup="HandlePointerUp"
+         @onpointercancel="HandlePointerUp"
+         @onclick="HandleForegroundClick">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? LeadingActions { get; set; }
+    [Parameter] public RenderFragment? TrailingActions { get; set; }
+    [Parameter] public double ActivationThresholdPx { get; set; } = 80;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"swa-{Guid.NewGuid():N}";
+
+    // v1: fixed open width — room for two 80px square action buttons.
+    private const double OpenWidthPx = 160d;
+
+    private long? _activePointerId;
+    private double _startX;
+    private double _startY;
+    private double _currentOffset;     // current translateX of the foreground (px)
+    private double _lockedOffset;      // 0 when closed, +OpenWidth (left open) or -OpenWidth (right open)
+    private bool _dragging;
+    // Track whether the gesture so far looks horizontal; if the user is
+    // clearly scrolling vertically we abandon the swipe so we don't fight
+    // the page's normal vertical scroll.
+    private bool _gestureLocked;
+
+    private string CssClass =>
+        $"relative w-full overflow-hidden touch-pan-y select-none bg-background {Class}".Trim();
+
+    private string ForegroundStyle
+    {
+        get
+        {
+            var transition = _dragging
+                ? "transition: none;"
+                : "transition: transform 200ms ease-out;";
+            var offset = _currentOffset.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            return $"transform: translateX({offset}px); {transition} will-change: transform;";
+        }
+    }
+
+    private void HandlePointerDown(PointerEventArgs e)
+    {
+        if (_activePointerId.HasValue) return;
+        _activePointerId = e.PointerId;
+        _startX = e.ClientX;
+        _startY = e.ClientY;
+        _dragging = true;
+        _gestureLocked = false;
+        // Begin from whatever side is locked open (if any) — allows the
+        // user to "push" a locked panel back toward closed.
+        _currentOffset = _lockedOffset;
+    }
+
+    private void HandlePointerMove(PointerEventArgs e)
+    {
+        if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;
+
+        var dx = e.ClientX - _startX;
+        var dy = e.ClientY - _startY;
+
+        // Direction lock: once the gesture commits to horizontal/vertical
+        // we stick with it. If vertical, bail out entirely so the surrounding
+        // list can scroll naturally.
+        if (!_gestureLocked)
+        {
+            if (Math.Abs(dx) < 6 && Math.Abs(dy) < 6) return; // dead zone
+            if (Math.Abs(dy) > Math.Abs(dx))
+            {
+                // Vertical — release control entirely.
+                _activePointerId = null;
+                _dragging = false;
+                return;
+            }
+            _gestureLocked = true;
+        }
+
+        var target = _lockedOffset + dx;
+        // Clamp to the side that actually has actions; the other side stays at 0.
+        var maxLeft = LeadingActions is not null ? OpenWidthPx : 0;
+        var maxRight = TrailingActions is not null ? -OpenWidthPx : 0;
+        if (target > maxLeft) target = maxLeft;
+        if (target < maxRight) target = maxRight;
+
+        _currentOffset = target;
+        StateHasChanged();
+    }
+
+    private void HandlePointerUp(PointerEventArgs e)
+    {
+        if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;
+
+        _activePointerId = null;
+        _dragging = false;
+
+        // Settle: if |offset| >= threshold, lock to that side's full open
+        // position; otherwise spring back to 0.
+        if (_currentOffset >= ActivationThresholdPx && LeadingActions is not null)
+        {
+            _lockedOffset = OpenWidthPx;
+            _currentOffset = OpenWidthPx;
+        }
+        else if (_currentOffset <= -ActivationThresholdPx && TrailingActions is not null)
+        {
+            _lockedOffset = -OpenWidthPx;
+            _currentOffset = -OpenWidthPx;
+        }
+        else
+        {
+            _lockedOffset = 0;
+            _currentOffset = 0;
+        }
+
+        StateHasChanged();
+    }
+
+    private void HandleForegroundClick()
+    {
+        // Tapping the foreground while open closes it. While closed this is
+        // a no-op so consumers' own click handlers inside ChildContent still
+        // work (clicks bubble down to children before this runs).
+        if (_lockedOffset != 0)
+        {
+            _lockedOffset = 0;
+            _currentOffset = 0;
+            StateHasChanged();
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        // No JS registrations today; placeholder for v2 cleanup symmetry.
+        return ValueTask.CompletedTask;
+    }
+}

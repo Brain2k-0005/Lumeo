@@ -1,0 +1,192 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+@*
+    PullToRefresh — iOS/Android-style pull-down-to-refresh primitive.
+
+    The wrapper IS the scroll container: it sets `overflow-y: auto` on the
+    root <div>, which lets us read scrollTop directly via JS interop. We only
+    "engage" the pull gesture when the container is at scrollTop == 0; once
+    engaged, we apply a rubber-band translateY (capped at MaxPullPx) and
+    fade in a Lucide.RefreshCw spinner above the content. On release:
+    - delta >= ThresholdPx -> invoke OnRefresh, hold the spinner visible
+      until the handler completes, then animate back to 0.
+    - delta <  ThresholdPx -> animate back to 0 without firing.
+
+    v1 simplification: requires the wrapper itself to be the scroll container
+    (overflow-y: auto baked into the root class). v2 could traverse to the
+    first scrollable ancestor.
+*@
+
+<div id="@_elementId"
+     class="@CssClass"
+     style="@ContainerStyle"
+     @ref="_ref"
+     @onpointerdown="HandlePointerDown"
+     @onpointermove="HandlePointerMove"
+     @onpointerup="HandlePointerUp"
+     @onpointercancel="HandlePointerUp"
+     @attributes="AdditionalAttributes">
+    <div class="pointer-events-none absolute inset-x-0 top-0 flex justify-center"
+         style="@SpinnerStyle">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-background text-foreground shadow-md ring-1 ring-border">
+            <Blazicon Svg="Lucide.RefreshCw" class="@SpinnerIconClass" />
+        </div>
+    </div>
+    <div style="@ContentStyle">
+        @ChildContent
+    </div>
+</div>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public double ThresholdPx { get; set; } = 80;
+    [Parameter] public double MaxPullPx { get; set; } = 120;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _elementId = $"ptr-{Guid.NewGuid():N}";
+    private ElementReference _ref;
+
+    private long? _activePointerId;
+    private double _startY;
+    private double _currentDelta;
+    private bool _engaged;
+    private bool _refreshing;
+    // While `_refreshing` we lock the spinner at the threshold position so
+    // the user sees a stable indicator until OnRefresh completes.
+    private double LockedOffset => _refreshing ? ThresholdPx : 0;
+
+    private string CssClass =>
+        $"relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background text-foreground {Class}".Trim();
+
+    // Transitions:
+    // - During an active drag we set transform without a transition so it
+    //   tracks the finger 1:1.
+    // - On release (and during the refresh lock) we apply a short ease
+    //   transition so the rubber-band snap feels natural.
+    private string TransitionStyle => _activePointerId.HasValue
+        ? "transition: none;"
+        : "transition: transform 200ms ease-out;";
+
+    private double VisualOffset
+    {
+        get
+        {
+            if (_refreshing) return LockedOffset;
+            if (!_engaged) return 0;
+            // Rubber-band: halve the delta and clamp to MaxPullPx.
+            var raw = Math.Max(0, _currentDelta) * 0.5;
+            return Math.Min(raw, MaxPullPx);
+        }
+    }
+
+    private string ContentStyle =>
+        $"transform: translateY({VisualOffset.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}px); {TransitionStyle} will-change: transform;";
+
+    private string SpinnerStyle
+    {
+        get
+        {
+            var off = VisualOffset;
+            // Fade opacity proportional to threshold progress; cap at 1.
+            var progress = ThresholdPx > 0 ? Math.Min(1.0, off / ThresholdPx) : 0;
+            // Position the spinner just above the content, slid in alongside.
+            var translate = off - 40; // -40 to start just above the top edge
+            return $"transform: translateY({translate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}px); " +
+                   $"opacity: {progress.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}; " +
+                   $"{TransitionStyle} will-change: transform, opacity;";
+        }
+    }
+
+    private string SpinnerIconClass => (_refreshing ? "h-5 w-5 animate-spin" : "h-5 w-5").Trim();
+
+    private string ContainerStyle => "touch-action: pan-y;";
+
+    private async Task HandlePointerDown(PointerEventArgs e)
+    {
+        // Only single-finger touch / mouse left button engages the gesture.
+        if (_refreshing) return;
+        if (_activePointerId.HasValue) return;
+
+        // Gate on scrollTop == 0; if the container is scrolled, let the native
+        // scroll handle the pointer instead of engaging the pull.
+        double scrollTop = 0;
+        try { scrollTop = await Interop.GetScrollTop(_elementId); }
+        catch (JSDisconnectedException) { return; }
+        if (scrollTop > 0) return;
+
+        _activePointerId = e.PointerId;
+        _startY = e.ClientY;
+        _currentDelta = 0;
+        _engaged = false;
+    }
+
+    private void HandlePointerMove(PointerEventArgs e)
+    {
+        if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;
+        if (_refreshing) return;
+
+        var delta = e.ClientY - _startY;
+        if (delta <= 0)
+        {
+            // Released the pull (or moving upward) — disengage but keep
+            // pointer captured so a subsequent downward move can re-engage.
+            _currentDelta = 0;
+            if (_engaged)
+            {
+                _engaged = false;
+                StateHasChanged();
+            }
+            return;
+        }
+
+        _engaged = true;
+        _currentDelta = delta;
+        StateHasChanged();
+    }
+
+    private async Task HandlePointerUp(PointerEventArgs e)
+    {
+        if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;
+
+        var wasEngaged = _engaged;
+        var finalDelta = _currentDelta;
+
+        _activePointerId = null;
+        _engaged = false;
+        _currentDelta = 0;
+
+        // Effective pulled distance is the visual offset (post-rubber-band).
+        var pulled = Math.Min(Math.Max(0, finalDelta) * 0.5, MaxPullPx);
+
+        if (wasEngaged && pulled >= ThresholdPx && !_refreshing)
+        {
+            _refreshing = true;
+            StateHasChanged();
+            try
+            {
+                await OnRefresh.InvokeAsync();
+            }
+            finally
+            {
+                _refreshing = false;
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            StateHasChanged();
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        // No JS-side registrations to tear down today; method present so we can
+        // attach cleanup safely if a future v2 adds native touch listeners.
+        return ValueTask.CompletedTask;
+    }
+}

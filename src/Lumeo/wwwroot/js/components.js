@@ -462,6 +462,30 @@ export function getElementDimension(elementId, dimension) {
     return dimension === 'width' ? rect.width : rect.height;
 }
 
+// --- Scroll position lookup (used by PullToRefresh to gate pointer-down) ---
+// Returns the element's own scrollTop. Consumers that want the window's
+// document scroll can pass the special id "__window__".
+export function getScrollTop(elementId) {
+    if (elementId === '__window__') {
+        return window.scrollY || document.documentElement.scrollTop || 0;
+    }
+    const el = document.getElementById(elementId);
+    if (!el) return 0;
+    return el.scrollTop || 0;
+}
+
+// --- Wheel picker helpers (DateWheelPicker / TimeWheelPicker) ---
+// Accept a live ElementReference (no id round-trip) — Blazor passes the element
+// directly. We just read scrollTop / write it back. The picker handles the rest.
+export function wheelScrollTop(element) {
+    return element ? (element.scrollTop || 0) : 0;
+}
+
+export function wheelScrollTo(element, top) {
+    if (!element) return;
+    element.scrollTop = top;
+}
+
 // --- Pointer Capture (used by Splitter dividers) ---
 
 export function setPointerCaptureOnElement(elementId, pointerId) {

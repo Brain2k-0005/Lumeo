@@ -11,7 +11,70 @@
     </label>
 }
 
-@if (Inline)
+@if (Variant == DatePickerVariant.Wheel)
+{
+    @* iOS-style 3-column wheel picker. v1 limitations:
+       - Only honours single-date Mode (Range/Month/Year fall back to a day/month/year wheel).
+       - No Presets sidebar.
+       - ShowTimePicker is supported via a stacked TimeWheelPicker below the date wheel.
+    *@
+    @if (Inline)
+    {
+        <div>
+            <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture" />
+            @if (ShowTimePicker)
+            {
+                <div class="border-t border-border/40 p-3">
+                    <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <Popover @bind-Open="_isOpen">
+            <PopoverTrigger>
+                <button type="button"
+                        name="@Name"
+                        aria-required="@Required.ToString().ToLower()"
+                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                        class="@CssClass"
+                        disabled="@Disabled"
+                        @attributes="AdditionalAttributes">
+                    <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
+                    @if (TriggerContent != null)
+                    {
+                        @TriggerContent
+                    }
+                    else if (Value.HasValue)
+                    {
+                        <span>@Value.Value.ToString(EffectiveFormat, EffectiveCulture)</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground">@EffectivePlaceholder</span>
+                    }
+                    @if (Clearable && HasValue)
+                    {
+                        <button type="button" class="ms-auto ps-1 hover:text-foreground" aria-label="@L["Common.Clear"]" @onclick="HandleClear" @onclick:stopPropagation="true">
+                            <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                        </button>
+                    }
+                </button>
+            </PopoverTrigger>
+            <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-[260px] p-3">
+                <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture" />
+                @if (ShowTimePicker)
+                {
+                    <div class="border-t border-border/40 mt-3 pt-3">
+                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                    </div>
+                }
+            </PopoverContent>
+        </Popover>
+    }
+}
+else if (Inline)
 {
         @if (Mode == DatePickerMode.Month)
         {
@@ -238,6 +301,17 @@ else
 
 @code {
     public enum DatePickerMode { Single, Range, Month, Year }
+
+    /// <summary>
+    /// Visual style of the picker.
+    /// <see cref="DatePickerVariant.Calendar"/> renders the existing month-grid Calendar (default).
+    /// <see cref="DatePickerVariant.Wheel"/> renders three iOS-style snap-scrolling
+    /// columns (day / month / year) — designed for mobile / touch UIs.
+    /// </summary>
+    public enum DatePickerVariant { Calendar, Wheel }
+
+    /// <summary>Picker visual style. Defaults to <see cref="DatePickerVariant.Calendar"/>.</summary>
+    [Parameter] public DatePickerVariant Variant { get; set; } = DatePickerVariant.Calendar;
 
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
