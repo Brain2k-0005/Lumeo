@@ -3,6 +3,15 @@
 ## Rule #1: Never commit with a Co-Author
 Do NOT add `Co-Authored-By` lines in commit messages.
 
+## Rule #2: Tags = real library releases only
+A new tag + GitHub release MUST mean a real change in NuGet package content
+(component code, source generator, JS interop, CSS bundle). **Docs-only
+changes do NOT get a new tag** — they go to `master` with a `docs(...)` or
+`feat(docs)` commit prefix; Cloudflare Pages deploys the docs site from
+`master` automatically. Tagging docs-only changes produces orphaned NuGet
+versions that are functionally identical to the previous release and cannot
+be unpublished. If unsure: ask before tagging.
+
 ## Agent Teams
 When tasks involve multiple independent components (frontend, backend, tests),
 always use Agent Teams with TeamCreate instead of working sequentially.
