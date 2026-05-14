@@ -230,6 +230,40 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _floatingPosition.GetElementDimension(module, elementId, dimension);
     }
 
+    // --- ScrollTop lookup (used by PullToRefresh to gate pointer-down on scrollTop==0) ---
+
+    public async ValueTask<double> GetScrollTop(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<double>("getScrollTop", elementId);
+        }
+        catch (JSDisconnectedException) { return 0; }
+    }
+
+    // --- Wheel Pickers (DateWheelPicker / TimeWheelPicker) ---
+
+    public async ValueTask<double> WheelScrollTop(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<double>("wheelScrollTop", element);
+        }
+        catch (JSDisconnectedException) { return 0; }
+    }
+
+    public async ValueTask WheelScrollTo(Microsoft.AspNetCore.Components.ElementReference element, double top)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("wheelScrollTo", element, top);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Pointer Capture (used by Splitter dividers) ---
 
     public async ValueTask SetPointerCaptureOnElement(string elementId, long pointerId)

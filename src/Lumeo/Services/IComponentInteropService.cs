@@ -51,6 +51,13 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask UnpositionFixed(string contentId);
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);
+    ValueTask<double> GetScrollTop(string elementId);
+
+    // Wheel pickers (DateWheelPicker / TimeWheelPicker) — read/write scrollTop on
+    // an ElementReference. Used to detect the centre-aligned snap target and to
+    // initially scroll each column to the active value on first render.
+    ValueTask<double> WheelScrollTop(Microsoft.AspNetCore.Components.ElementReference element);
+    ValueTask WheelScrollTo(Microsoft.AspNetCore.Components.ElementReference element, double top);
 
     // Pointer Capture (used by Splitter dividers)
     ValueTask SetPointerCaptureOnElement(string elementId, long pointerId);

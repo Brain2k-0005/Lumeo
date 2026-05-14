@@ -1,0 +1,255 @@
+@namespace Lumeo
+@using System.Globalization
+@implements IDisposable
+
+<div class="@RootCssClass" @attributes="AdditionalAttributes" style="@RootStyle">
+    @* Center selection indicator *@
+    <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none"></div>
+
+    @* Hours column *@
+    <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
+         @onscroll="OnHourScroll"
+         @ref="_hourCol">
+        <div class="h-[60px]"></div>
+        @foreach (var h in _hours)
+        {
+            var hour = h;
+            <div class="h-10 flex items-center justify-center snap-center text-base select-none @(hour == _hour ? "text-primary font-semibold" : "text-muted-foreground")">
+                @hour.ToString("D2")
+            </div>
+        }
+        <div class="h-[60px]"></div>
+    </div>
+
+    @* Minutes column *@
+    <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
+         @onscroll="OnMinuteScroll"
+         @ref="_minuteCol">
+        <div class="h-[60px]"></div>
+        @foreach (var m in _minutes)
+        {
+            var minute = m;
+            <div class="h-10 flex items-center justify-center snap-center text-base select-none @(minute == _minute ? "text-primary font-semibold" : "text-muted-foreground")">
+                @minute.ToString("D2")
+            </div>
+        }
+        <div class="h-[60px]"></div>
+    </div>
+
+    @* AM/PM column (12-hour only) *@
+    @if (!EffectiveUse24Hour)
+    {
+        <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
+             @onscroll="OnPeriodScroll"
+             @ref="_periodCol">
+            <div class="h-[60px]"></div>
+            @for (var p = 0; p < 2; p++)
+            {
+                var period = p;
+                var label = period == 0 ? _amLabel : _pmLabel;
+                <div class="h-10 flex items-center justify-center snap-center text-base select-none @(period == _periodIndex ? "text-primary font-semibold" : "text-muted-foreground")">
+                    @label
+                </div>
+            }
+            <div class="h-[60px]"></div>
+        </div>
+    }
+</div>
+
+@inject Lumeo.Services.IComponentInteropService Interop
+
+@code {
+    // --- Public API ----------------------------------------------------------
+    [Parameter] public TimeSpan? Value { get; set; }
+    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
+    /// <summary>
+    /// When <c>true</c> renders a 24-hour clock; when <c>false</c> renders 12-hour with AM/PM.
+    /// When <c>null</c> (default), derived from <see cref="CultureInfo.DateTimeFormat.ShortTimePattern"/>.
+    /// </summary>
+    [Parameter] public bool? Use24Hour { get; set; }
+    [Parameter] public int MinuteStep { get; set; } = 1;
+    [Parameter] public CultureInfo? Culture { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // --- Layout constants ----------------------------------------------------
+    private const int ItemHeight = 40;
+    private const int Height = 160;
+
+    // --- Element refs --------------------------------------------------------
+    private ElementReference _hourCol;
+    private ElementReference _minuteCol;
+    private ElementReference _periodCol;
+
+    // --- Selection state -----------------------------------------------------
+    private int _hour = 0;           // display hour (0-23 or 1-12)
+    private int _minute = 0;
+    private int _periodIndex = 0;    // 0=AM, 1=PM (only relevant when !Use24Hour)
+    private List<int> _hours = new();
+    private List<int> _minutes = new();
+    private string _amLabel = "AM";
+    private string _pmLabel = "PM";
+
+    private System.Threading.Timer? _hourTimer;
+    private System.Threading.Timer? _minuteTimer;
+    private System.Threading.Timer? _periodTimer;
+    private int _pendingHour;
+    private int _pendingMinute;
+    private int _pendingPeriod;
+    private bool _initialised;
+
+    private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
+    // Mirror TimePicker's derivation: lowercase "h" in ShortTimePattern = 12-hour.
+    private bool EffectiveUse24Hour => Use24Hour ?? !EffectiveCulture.DateTimeFormat.ShortTimePattern.Contains('h');
+
+    private string RootCssClass => $"flex gap-2 relative {Class}".Trim();
+    private string RootStyle => $"height: {Height}px;";
+
+    protected override void OnParametersSet()
+    {
+        var dtf = EffectiveCulture.DateTimeFormat;
+        _amLabel = string.IsNullOrEmpty(dtf.AMDesignator) ? "AM" : dtf.AMDesignator;
+        _pmLabel = string.IsNullOrEmpty(dtf.PMDesignator) ? "PM" : dtf.PMDesignator;
+
+        _hours = EffectiveUse24Hour
+            ? Enumerable.Range(0, 24).ToList()
+            : Enumerable.Range(1, 12).ToList();
+
+        var step = Math.Max(1, MinuteStep);
+        _minutes = new List<int>();
+        for (var i = 0; i < 60; i += step) _minutes.Add(i);
+
+        var seed = Value ?? TimeSpan.Zero;
+        if (EffectiveUse24Hour)
+        {
+            _hour = seed.Hours;
+        }
+        else
+        {
+            var h12 = seed.Hours % 12;
+            _hour = h12 == 0 ? 12 : h12;
+            _periodIndex = seed.Hours >= 12 ? 1 : 0;
+        }
+        // Snap the seeded minute to the closest step.
+        _minute = SnapMinute(seed.Minutes);
+    }
+
+    private int SnapMinute(int minute)
+    {
+        if (_minutes.Count == 0) return 0;
+        var nearest = _minutes[0];
+        var bestDiff = Math.Abs(minute - nearest);
+        foreach (var m in _minutes)
+        {
+            var d = Math.Abs(minute - m);
+            if (d < bestDiff) { bestDiff = d; nearest = m; }
+        }
+        return nearest;
+    }
+
+    // --- Scroll handlers -----------------------------------------------------
+    private async Task OnHourScroll()
+    {
+        if (!_initialised) return;
+        var idx = await GetIndexAsync(_hourCol);
+        if (idx < 0 || idx >= _hours.Count) return;
+        _pendingHour = _hours[idx];
+        ResetTimer(ref _hourTimer, CommitHour);
+    }
+
+    private async Task OnMinuteScroll()
+    {
+        if (!_initialised) return;
+        var idx = await GetIndexAsync(_minuteCol);
+        if (idx < 0 || idx >= _minutes.Count) return;
+        _pendingMinute = _minutes[idx];
+        ResetTimer(ref _minuteTimer, CommitMinute);
+    }
+
+    private async Task OnPeriodScroll()
+    {
+        if (!_initialised) return;
+        var idx = await GetIndexAsync(_periodCol);
+        if (idx < 0 || idx > 1) return;
+        _pendingPeriod = idx;
+        ResetTimer(ref _periodTimer, CommitPeriod);
+    }
+
+    private async Task<int> GetIndexAsync(ElementReference el)
+    {
+        var scrollTop = await Interop.WheelScrollTop(el);
+        return (int)Math.Round(scrollTop / ItemHeight);
+    }
+
+    private void ResetTimer(ref System.Threading.Timer? timer, Action commit)
+    {
+        timer?.Dispose();
+        timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);
+    }
+
+    private async void CommitHour()
+    {
+        if (_pendingHour == _hour) return;
+        _hour = _pendingHour;
+        await RaiseChange();
+        StateHasChanged();
+    }
+
+    private async void CommitMinute()
+    {
+        if (_pendingMinute == _minute) return;
+        _minute = _pendingMinute;
+        await RaiseChange();
+        StateHasChanged();
+    }
+
+    private async void CommitPeriod()
+    {
+        if (_pendingPeriod == _periodIndex) return;
+        _periodIndex = _pendingPeriod;
+        await RaiseChange();
+        StateHasChanged();
+    }
+
+    private async Task RaiseChange()
+    {
+        int hour24;
+        if (EffectiveUse24Hour)
+        {
+            hour24 = _hour;
+        }
+        else
+        {
+            var h = _hour % 12;
+            hour24 = _periodIndex == 1 ? h + 12 : h;
+        }
+        var t = new TimeSpan(hour24, _minute, 0);
+        await ValueChanged.InvokeAsync(t);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var hourIdx = _hours.IndexOf(_hour);
+            if (hourIdx >= 0) await Interop.WheelScrollTo(_hourCol, hourIdx * ItemHeight);
+
+            var minuteIdx = _minutes.IndexOf(_minute);
+            if (minuteIdx >= 0) await Interop.WheelScrollTo(_minuteCol, minuteIdx * ItemHeight);
+
+            if (!EffectiveUse24Hour)
+            {
+                await Interop.WheelScrollTo(_periodCol, _periodIndex * ItemHeight);
+            }
+
+            _ = Task.Delay(150).ContinueWith(_ => InvokeAsync(() => { _initialised = true; }));
+        }
+    }
+
+    public void Dispose()
+    {
+        _hourTimer?.Dispose();
+        _minuteTimer?.Dispose();
+        _periodTimer?.Dispose();
+    }
+}
