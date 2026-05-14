@@ -11,6 +11,16 @@
     </label>
 }
 
+@if (Variant == TimePickerVariant.Wheel)
+{
+    @* iOS-style wheel picker — hours + minutes (+ AM/PM if 12-hour).
+       Seconds are not supported in the wheel variant. *@
+    <TimeWheelPicker Value="@Value" ValueChanged="HandleWheelChanged"
+                     Use24Hour="@Use24Hour" MinuteStep="@MinuteStep"
+                     Culture="@Culture" Class="@Class" />
+}
+else
+{
 <Popover @bind-Open="_isOpen">
     <PopoverTrigger>
         <button type="button"
@@ -102,6 +112,7 @@
         </div>
     </PopoverContent>
 </Popover>
+}
 
 @if (!InsideFormField)
 {
@@ -118,6 +129,16 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    /// <summary>
+    /// Visual style of the picker. <see cref="TimePickerVariant.List"/> renders the
+    /// existing scrollable hour/minute columns inside a popover (default).
+    /// <see cref="TimePickerVariant.Wheel"/> renders inline iOS-style snap-scrolling
+    /// columns. The Wheel variant doesn't show seconds.
+    /// </summary>
+    public enum TimePickerVariant { List, Wheel }
+
+    [Parameter] public TimePickerVariant Variant { get; set; } = TimePickerVariant.List;
+
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     [Parameter] public bool Required { get; set; }
@@ -254,6 +275,12 @@
     {
         var current = Value ?? TimeSpan.Zero;
         var newValue = new TimeSpan(current.Hours, current.Minutes, second);
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private async Task HandleWheelChanged(TimeSpan? newValue)
+    {
         Value = newValue;
         await ValueChanged.InvokeAsync(newValue);
     }

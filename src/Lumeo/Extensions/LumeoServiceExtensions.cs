@@ -45,6 +45,7 @@ public static class LumeoServiceExtensions
         services.AddScoped<IKeyboardShortcutService>(sp => sp.GetRequiredService<KeyboardShortcutService>());
         services.AddScoped<IDataGridExportService, Lumeo.Services.DataGridExportService>();
         services.AddScoped<ConsentService>();
+        services.AddScoped<HapticsService>();
 
         services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
         {

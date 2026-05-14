@@ -1,0 +1,70 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@CssClass"
+     style="position: relative; overflow: hidden; --ripple-opacity: @Opacity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture); --ripple-duration: @(DurationMs)ms"
+     @onpointerdown="OnPointerDown"
+     @attributes="AdditionalAttributes">
+    @ChildContent
+    @foreach (var ripple in _ripples)
+    {
+        <span @key="@ripple.Id"
+              class="lumeo-touch-ripple-span"
+              style="left: @(ripple.X.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))px; top: @(ripple.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))px; color: @Color;">
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string Color { get; set; } = "currentColor";
+    [Parameter] public double Opacity { get; set; } = 0.25;
+    [Parameter] public int DurationMs { get; set; } = 500;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"lumeo-touch-ripple {Class}".Trim();
+
+    private record RippleEntry(Guid Id, double X, double Y);
+
+    private readonly List<RippleEntry> _ripples = new();
+    private readonly List<CancellationTokenSource> _pendingCts = new();
+
+    private async Task OnPointerDown(PointerEventArgs e)
+    {
+        var ripple = new RippleEntry(Guid.NewGuid(), e.OffsetX, e.OffsetY);
+        _ripples.Add(ripple);
+        StateHasChanged();
+
+        var cts = new CancellationTokenSource();
+        _pendingCts.Add(cts);
+
+        try
+        {
+            await Task.Delay(DurationMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            _pendingCts.Remove(cts);
+            cts.Dispose();
+        }
+
+        _ripples.Remove(ripple);
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var cts in _pendingCts.ToList())
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _pendingCts.Clear();
+        await ValueTask.CompletedTask;
+    }
+}

@@ -1,0 +1,241 @@
+@namespace Lumeo
+@using System.Globalization
+@implements IDisposable
+
+<div class="@RootCssClass" @attributes="AdditionalAttributes" style="@RootStyle">
+    @* Center selection indicator (overlays all columns) *@
+    <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none"></div>
+
+    @* Day column *@
+    <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
+         @onscroll="OnDayScroll"
+         @ref="_dayCol">
+        <div class="h-[60px]"></div>
+        @for (var d = 1; d <= _daysInMonth; d++)
+        {
+            var day = d;
+            <div class="h-10 flex items-center justify-center snap-center text-base select-none @(day == _day ? "text-primary font-semibold" : "text-muted-foreground")">
+                @day
+            </div>
+        }
+        <div class="h-[60px]"></div>
+    </div>
+
+    @* Month column *@
+    <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
+         @onscroll="OnMonthScroll"
+         @ref="_monthCol">
+        <div class="h-[60px]"></div>
+        @for (var m = 1; m <= 12; m++)
+        {
+            var month = m;
+            var name = MonthLabel(month);
+            <div class="h-10 flex items-center justify-center snap-center text-base select-none px-1 truncate @(month == _month ? "text-primary font-semibold" : "text-muted-foreground")">
+                @name
+            </div>
+        }
+        <div class="h-[60px]"></div>
+    </div>
+
+    @* Year column *@
+    <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
+         @onscroll="OnYearScroll"
+         @ref="_yearCol">
+        <div class="h-[60px]"></div>
+        @foreach (var yr in _years)
+        {
+            var year = yr;
+            <div class="h-10 flex items-center justify-center snap-center text-base select-none @(year == _year ? "text-primary font-semibold" : "text-muted-foreground")">
+                @year
+            </div>
+        }
+        <div class="h-[60px]"></div>
+    </div>
+</div>
+
+@inject Lumeo.Services.IComponentInteropService Interop
+
+@code {
+    // --- Public API ----------------------------------------------------------
+    [Parameter] public DateOnly? Value { get; set; }
+    [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+    [Parameter] public DateOnly? Min { get; set; }
+    [Parameter] public DateOnly? Max { get; set; }
+    [Parameter] public CultureInfo? Culture { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // --- Layout constants (must match markup) --------------------------------
+    private const int ItemHeight = 40;   // h-10
+    private const int Height = 160;      // overall column height
+
+    // --- Element refs --------------------------------------------------------
+    private ElementReference _dayCol;
+    private ElementReference _monthCol;
+    private ElementReference _yearCol;
+
+    // --- Selection state -----------------------------------------------------
+    private int _day = 1;
+    private int _month = 1;
+    private int _year = DateTime.Today.Year;
+    private int _daysInMonth = 31;
+    private List<int> _years = new();
+
+    // Debounce timer state — one per column so a scroll on one column doesn't
+    // cancel pending settle on another.
+    private System.Threading.Timer? _dayTimer;
+    private System.Threading.Timer? _monthTimer;
+    private System.Threading.Timer? _yearTimer;
+    private int _pendingDay;
+    private int _pendingMonth;
+    private int _pendingYear;
+    private bool _initialised;
+
+    private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
+
+    private string RootCssClass => $"flex gap-2 relative {Class}".Trim();
+    private string RootStyle => $"height: {Height}px;";
+
+    protected override void OnParametersSet()
+    {
+        var seed = Value ?? DateOnly.FromDateTime(DateTime.Today);
+        _day = seed.Day;
+        _month = seed.Month;
+        _year = seed.Year;
+
+        var minYear = Min?.Year ?? DateTime.Today.Year - 50;
+        var maxYear = Max?.Year ?? DateTime.Today.Year + 50;
+        if (maxYear < minYear) maxYear = minYear;
+
+        _years = Enumerable.Range(minYear, maxYear - minYear + 1).ToList();
+        _daysInMonth = DateTime.DaysInMonth(_year, _month);
+        if (_day > _daysInMonth) _day = _daysInMonth;
+    }
+
+    private string MonthLabel(int month)
+    {
+        var names = EffectiveCulture.DateTimeFormat.AbbreviatedMonthNames;
+        if (month - 1 < names.Length && !string.IsNullOrWhiteSpace(names[month - 1]))
+        {
+            return names[month - 1];
+        }
+        return month.ToString("D2");
+    }
+
+    // --- Scroll handlers -----------------------------------------------------
+    private async Task OnDayScroll()
+    {
+        if (!_initialised) return; // ignore the programmatic OnAfterRender scroll
+        var idx = await GetIndexAsync(_dayCol);
+        if (idx < 0) return;
+        var day = Math.Clamp(idx + 1, 1, _daysInMonth);
+        _pendingDay = day;
+        ResetTimer(ref _dayTimer, CommitDay);
+    }
+
+    private async Task OnMonthScroll()
+    {
+        if (!_initialised) return;
+        var idx = await GetIndexAsync(_monthCol);
+        if (idx < 0) return;
+        var month = Math.Clamp(idx + 1, 1, 12);
+        _pendingMonth = month;
+        ResetTimer(ref _monthTimer, CommitMonth);
+    }
+
+    private async Task OnYearScroll()
+    {
+        if (!_initialised) return;
+        var idx = await GetIndexAsync(_yearCol);
+        if (idx < 0 || idx >= _years.Count) return;
+        _pendingYear = _years[idx];
+        ResetTimer(ref _yearTimer, CommitYear);
+    }
+
+    private async Task<int> GetIndexAsync(ElementReference el)
+    {
+        var scrollTop = await Interop.WheelScrollTop(el);
+        // Each item is `ItemHeight` tall; the first item sits 60px below the top
+        // (top spacer). When item 0 is centered in the 160px viewport,
+        // scrollTop = (60 + ItemHeight/2) - 160/2 = 60 + 20 - 80 = 0. So
+        // index = round(scrollTop / ItemHeight).
+        return (int)Math.Round(scrollTop / ItemHeight);
+    }
+
+    private void ResetTimer(ref System.Threading.Timer? timer, Action commit)
+    {
+        timer?.Dispose();
+        timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);
+    }
+
+    private async void CommitDay()
+    {
+        if (_pendingDay == _day) return;
+        _day = _pendingDay;
+        await RaiseChange();
+        StateHasChanged();
+    }
+
+    private async void CommitMonth()
+    {
+        if (_pendingMonth == _month) return;
+        _month = _pendingMonth;
+        _daysInMonth = DateTime.DaysInMonth(_year, _month);
+        if (_day > _daysInMonth) _day = _daysInMonth;
+        await RaiseChange();
+        StateHasChanged();
+    }
+
+    private async void CommitYear()
+    {
+        if (_pendingYear == _year) return;
+        _year = _pendingYear;
+        _daysInMonth = DateTime.DaysInMonth(_year, _month);
+        if (_day > _daysInMonth) _day = _daysInMonth;
+        await RaiseChange();
+        StateHasChanged();
+    }
+
+    private async Task RaiseChange()
+    {
+        try
+        {
+            var d = new DateOnly(_year, _month, _day);
+            if (Min.HasValue && d < Min.Value) d = Min.Value;
+            if (Max.HasValue && d > Max.Value) d = Max.Value;
+            _year = d.Year; _month = d.Month; _day = d.Day;
+            await ValueChanged.InvokeAsync(d);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Defensive — DateOnly ctor guards against invalid combos. We already
+            // re-clamp days on month/year change, so this branch is unreachable
+            // under normal flow.
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Interop.WheelScrollTo(_dayCol, (_day - 1) * ItemHeight);
+            await Interop.WheelScrollTo(_monthCol, (_month - 1) * ItemHeight);
+            var yearIdx = _years.IndexOf(_year);
+            if (yearIdx >= 0)
+            {
+                await Interop.WheelScrollTo(_yearCol, yearIdx * ItemHeight);
+            }
+            // Defer enabling scroll handlers until after the programmatic
+            // scrollTo writes have settled — otherwise the first @onscroll
+            // would interpret the seed scroll as a user gesture.
+            _ = Task.Delay(150).ContinueWith(_ => InvokeAsync(() => { _initialised = true; }));
+        }
+    }
+
+    public void Dispose()
+    {
+        _dayTimer?.Dispose();
+        _monthTimer?.Dispose();
+        _yearTimer?.Dispose();
+    }
+}
