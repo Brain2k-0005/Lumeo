@@ -30,13 +30,20 @@ export const motion = {
         const prev = motionTickers.get(elementId);
         if (prev) cancelAnimationFrame(prev);
 
-        const start = performance.now();
+        // start is set on the FIRST step() callback rather than at schedule time.
+        // When a tab loads in the background, RAF is paused, so the original
+        // `start = performance.now()` would either freeze the ticker at "0" forever
+        // or — when the tab becomes visible — jump straight to the end value because
+        // (now - start) already exceeds duration. Deferring start guarantees the
+        // animation runs for `dur` ms regardless of when RAF first fires.
+        let start = -1;
         const delta = to - from;
         const dur = Math.max(1, durationMs | 0);
         const dec = Math.max(0, decimals | 0);
         const sep = separator !== undefined ? separator : ',';
 
         const step = (now) => {
+            if (start < 0) start = now;
             const t = Math.min(1, (now - start) / dur);
             // easeOutCubic — snappy, settles nicely
             const eased = 1 - Math.pow(1 - t, 3);
