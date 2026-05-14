@@ -126,6 +126,15 @@ internal sealed class NoopInteropService : IComponentInteropService
     // Haptic feedback
     public ValueTask Vibrate(int milliseconds) => ValueTask.CompletedTask;
 
+    // Pinch zoom (rc.49)
+    public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;
+    public ValueTask UnregisterPinchZoom(string elementId) => ValueTask.CompletedTask;
+
+    // Scroll utilities (rc.49 — wheel pickers, getScrollTop)
+    public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
+    public ValueTask<double> WheelScrollTop(ElementReference element) => ValueTask.FromResult(0.0);
+    public ValueTask WheelScrollTo(ElementReference element, double top) => ValueTask.CompletedTask;
+
     // LocalStorage
     public ValueTask SaveToLocalStorage(string key, string value) => ValueTask.CompletedTask;
     public ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);
