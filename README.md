@@ -8,6 +8,7 @@
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Live Demo](https://img.shields.io/badge/demo-lumeo.nativ.sh-black?logo=cloudflare)](https://lumeo.nativ.sh)
+[![Agent Skill on skills.sh](https://img.shields.io/badge/skills.sh-lumeo-000?logo=vercel&logoColor=white)](https://skills.sh/Brain2k-0005/Lumeo/lumeo)
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
