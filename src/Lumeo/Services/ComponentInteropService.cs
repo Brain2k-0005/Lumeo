@@ -345,6 +345,68 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _swipe.UnregisterCarouselSwipe(module, elementId);
     }
 
+    // --- Horizontal Swipe (Calendar month navigation) ---
+
+    public async ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterHorizontalSwipe(module, GetSelfRef(), elementId, handler);
+    }
+
+    public async ValueTask UnregisterHorizontalSwipe(string elementId)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.UnregisterHorizontalSwipe(module, elementId);
+    }
+
+    [JSInvokable]
+    public async Task OnCalendarSwipe(string elementId, string direction)
+        => await _swipe.OnCalendarSwipe(elementId, direction);
+
+    // --- Gallery Swipe (ImageGallery fullscreen prev/next, rc.52) ---
+
+    public async ValueTask RegisterGallerySwipe(string elementId, Func<string, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterGallerySwipe(module, GetSelfRef(), elementId, handler);
+    }
+
+    public async ValueTask UnregisterGallerySwipe(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _swipe.UnregisterGallerySwipe(module, elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnGallerySwipe(string elementId, string direction)
+        => await _swipe.OnGallerySwipe(elementId, direction);
+
+    // --- Tab Swipe ---
+
+    public async ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterTabSwipe(module, GetSelfRef(), elementId, wrap, handler);
+    }
+
+    public async ValueTask UnregisterTabSwipe(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _swipe.UnregisterTabSwipe(module, elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnTabSwipe(string elementId, string direction)
+        => await _swipe.OnTabSwipe(elementId, direction);
+
     public async ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth")
     {
         var module = await GetModuleAsync();

@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, NavigateBySwipe);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -44,6 +44,19 @@
     /// </summary>
     [Parameter] public TabsRenderMode RenderMode { get; set; } = TabsRenderMode.Active;
 
+    /// <summary>
+    /// When true, a horizontal pointer drag (&gt;50 px horizontal, &lt;30 px
+    /// vertical) on any <see cref="TabsContent"/> panel switches to the
+    /// next or previous tab. Default is <c>false</c> (opt-in).
+    /// </summary>
+    [Parameter] public bool SwipeEnabled { get; set; }
+
+    /// <summary>
+    /// When true, swiping past the last tab wraps around to the first (and
+    /// vice-versa). Default is <c>false</c> (no wrap-around at boundaries).
+    /// </summary>
+    [Parameter] public bool SwipeWrap { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -51,6 +64,8 @@
     private readonly Dictionary<string, (string TabId, string PanelId)> _tabIds = new();
     // Set of tab values that have ever been the active tab — drives Lazy mode.
     private readonly HashSet<string> _activatedValues = new();
+    // Ordered list of registered TabsContent values — used for swipe navigation.
+    private readonly List<string> _contentOrder = new();
 
     private string CssClass => Orientation == TabsOrientation.Vertical
         ? $"flex flex-row {Class}".Trim()
@@ -61,6 +76,42 @@
         // Track activations so Lazy mode knows which panels to keep mounted.
         if (!string.IsNullOrEmpty(ActiveValue))
             _activatedValues.Add(ActiveValue);
+    }
+
+    internal void RegisterContent(string value)
+    {
+        if (!_contentOrder.Contains(value))
+            _contentOrder.Add(value);
+    }
+
+    internal async Task NavigateBySwipe(string direction)
+    {
+        if (_contentOrder.Count == 0) return;
+        var idx = _contentOrder.IndexOf(ActiveValue);
+        if (idx < 0) return;
+
+        int next;
+        if (direction == "next")
+        {
+            next = idx + 1;
+            if (next >= _contentOrder.Count)
+            {
+                if (!SwipeWrap) return;
+                next = 0;
+            }
+        }
+        else // "prev"
+        {
+            next = idx - 1;
+            if (next < 0)
+            {
+                if (!SwipeWrap) return;
+                next = _contentOrder.Count - 1;
+            }
+        }
+
+        await SetValue(_contentOrder[next]);
+        StateHasChanged();
     }
 
     private async Task SetValue(string value)
@@ -79,10 +130,14 @@
         Dictionary<string, (string TabId, string PanelId)> TabIds,
         bool AnimatedIndicator,
         TabsRenderMode RenderMode,
-        HashSet<string> ActivatedValues)
+        HashSet<string> ActivatedValues,
+        bool SwipeEnabled,
+        bool SwipeWrap,
+        Action<string> RegisterContent,
+        Func<string, Task> SwipeNavigate)
     {
         public TabsContext(string ActiveValue, EventCallback<string> SetValue, TabsOrientation Orientation = TabsOrientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
-            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false, TabsRenderMode.Active, new HashSet<string>()) { }
+            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => Task.CompletedTask) { }
     }
 
     public enum TabsOrientation { Horizontal, Vertical }

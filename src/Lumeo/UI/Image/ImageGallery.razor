@@ -50,6 +50,7 @@
         <img src="@Images[_currentIndex].Src" alt="@Images[_currentIndex].Alt"
              class="max-h-[85vh] max-w-[90vw] object-contain transition-transform"
              style="transform: scale(@(_zoom / 100.0))"
+             id="@_previewImageId"
              @onclick:stopPropagation="true" />
     </div>
 }
@@ -60,6 +61,11 @@
     [Parameter] public List<ImageItem>? Images { get; set; }
     [Parameter] public int Columns { get; set; } = 3;
     [Parameter] public string? Gap { get; set; }
+    /// <summary>
+    /// When true (default), enables horizontal swipe (prev/next image) and
+    /// pinch-to-zoom gestures on the fullscreen preview overlay on touch devices.
+    /// </summary>
+    [Parameter] public bool GesturesEnabled { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -67,6 +73,14 @@
     private int _currentIndex;
     private int _zoom = 100;
     private readonly string _previewId = $"gallery-preview-{Guid.NewGuid():N}";
+    private readonly string _previewImageId = $"gallery-img-{Guid.NewGuid():N}";
+
+    // Gesture state
+    private bool _pinchRegistered;
+    private bool _swipeRegistered;
+
+    private const int MinZoom = 25;
+    private const int MaxZoom = 300;
 
     private string CssClass
     {
@@ -98,6 +112,9 @@
     private async Task ClosePreview()
     {
         _showPreview = false;
+        await UnregisterGesturesAsync();
+        _pinchRegistered = false;
+        _swipeRegistered = false;
         try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
     }
 
@@ -117,12 +134,12 @@
 
     private void ZoomIn()
     {
-        if (_zoom < 300) _zoom += 25;
+        if (_zoom < MaxZoom) _zoom += 25;
     }
 
     private void ZoomOut()
     {
-        if (_zoom > 25) _zoom -= 25;
+        if (_zoom > MinZoom) _zoom -= 25;
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -138,10 +155,75 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_showPreview && GesturesEnabled)
+        {
+            // Register pinch zoom on the preview image element.
+            if (!_pinchRegistered)
+            {
+                _pinchRegistered = true;
+                try
+                {
+                    await Interop.RegisterPinchZoom(_previewImageId, HandlePinchZoom);
+                }
+                catch (JSDisconnectedException) { }
+            }
+
+            // Register horizontal swipe on the preview overlay (for prev/next).
+            if (!_swipeRegistered && Images is { Count: > 1 })
+            {
+                _swipeRegistered = true;
+                try
+                {
+                    await Interop.RegisterGallerySwipe(_previewId, HandleGallerySwipe);
+                }
+                catch (JSDisconnectedException) { }
+            }
+        }
+    }
+
+    private Task HandlePinchZoom(double scaleDelta)
+    {
+        // scaleDelta is a multiplicative factor (currentDistance / previousDistance).
+        // Multiply into current zoom percentage and clamp to [MinZoom, MaxZoom].
+        var next = (int)Math.Round(_zoom * scaleDelta);
+        if (next < MinZoom) next = MinZoom;
+        else if (next > MaxZoom) next = MaxZoom;
+        if (next == _zoom) return Task.CompletedTask;
+        _zoom = next;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task HandleGallerySwipe(string direction)
+    {
+        if (Images is null || Images.Count <= 1) return Task.CompletedTask;
+        if (direction == "next")
+            NextImage();
+        else
+            PrevImage();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task UnregisterGesturesAsync()
+    {
+        if (_pinchRegistered)
+        {
+            try { await Interop.UnregisterPinchZoom(_previewImageId); } catch (JSDisconnectedException) { }
+        }
+        if (_swipeRegistered)
+        {
+            try { await Interop.UnregisterGallerySwipe(_previewId); } catch (JSDisconnectedException) { }
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_showPreview)
         {
+            await UnregisterGesturesAsync();
             try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
         }
     }

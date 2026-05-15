@@ -68,6 +68,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler);
     ValueTask UnregisterDrawerSwipe(string elementId);
 
+    // Tab Swipe — horizontal swipe switches between TabsContent panels
+    ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler);
+    ValueTask UnregisterTabSwipe(string elementId);
+
     // Sortable Touch (HTML5 Drag API doesn't fire on touch — separate touch path)
     ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler);
     ValueTask UnregisterSortableTouch(string containerId);
@@ -76,6 +80,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler);
     ValueTask UnregisterCarouselSwipe(string elementId);
     ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth");
+
+    // Horizontal Swipe (Calendar month navigation)
+    ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler);
+    ValueTask UnregisterHorizontalSwipe(string elementId);
+
+    // Gallery Swipe (ImageGallery fullscreen prev/next, rc.52)
+    ValueTask RegisterGallerySwipe(string elementId, Func<string, Task> handler);
+    ValueTask UnregisterGallerySwipe(string elementId);
 
     // Resizable Handle
     ValueTask RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler);
