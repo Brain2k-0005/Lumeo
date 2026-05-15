@@ -10,17 +10,23 @@
     [Parameter] public ToastPosition Position { get; set; } = ToastPosition.BottomRight;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // On screens < sm (640px), every position collapses to a centered bottom strip with 16px side gutters
+    // so toasts can't get cut off or have their content (title + description + close button + action) squeezed
+    // to unreadable widths. From sm: up, the developer-chosen position takes effect.
+    // The mobile base is bottom-anchored because that's where one-thumb reach lives on a phone.
     private string PositionClasses => Position switch
     {
-        ToastPosition.TopLeft => "fixed top-4 left-4",
-        ToastPosition.TopCenter => "fixed top-4 left-1/2 -translate-x-1/2",
-        ToastPosition.TopRight => "fixed top-4 right-4",
-        ToastPosition.BottomLeft => "fixed bottom-4 left-4",
-        ToastPosition.BottomCenter => "fixed bottom-4 left-1/2 -translate-x-1/2",
-        _ => "fixed bottom-4 right-4",
+        ToastPosition.TopLeft     => "fixed inset-x-4 bottom-4 sm:bottom-auto sm:right-auto sm:inset-x-auto sm:top-4 sm:left-4",
+        ToastPosition.TopCenter   => "fixed inset-x-4 bottom-4 sm:bottom-auto sm:inset-x-auto sm:top-4 sm:left-1/2 sm:-translate-x-1/2",
+        ToastPosition.TopRight    => "fixed inset-x-4 bottom-4 sm:bottom-auto sm:inset-x-auto sm:top-4 sm:right-4",
+        ToastPosition.BottomLeft  => "fixed inset-x-4 bottom-4 sm:inset-x-auto sm:left-4",
+        ToastPosition.BottomCenter => "fixed inset-x-4 bottom-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2",
+        _ /* BottomRight */       => "fixed inset-x-4 bottom-4 sm:inset-x-auto sm:right-4",
     };
 
-    private string CssClass => $"{PositionClasses} z-[100] flex max-h-screen w-full max-w-[420px] flex-col gap-2 {Class}".Trim();
+    // Mobile: full available width (constrained by inset-x-4 = 16px gutters each side).
+    // Desktop: capped at 420px so toasts don't stretch absurdly on wide monitors.
+    private string CssClass => $"{PositionClasses} z-[100] flex max-h-screen w-auto sm:w-full sm:max-w-[420px] flex-col gap-2 {Class}".Trim();
 
     public enum ToastPosition { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
 }
