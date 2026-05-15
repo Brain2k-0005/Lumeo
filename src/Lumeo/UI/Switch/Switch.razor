@@ -81,6 +81,15 @@
     /// </summary>
     [Parameter] public bool Animated { get; set; }
 
+    /// <summary>
+    /// When true, triggers a short haptic vibration via <c>navigator.vibrate()</c>
+    /// each time the switch is toggled. Silently no-ops on browsers without the
+    /// Vibration API (e.g. iOS Safari). Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool HapticFeedback { get; set; }
+
+    [Inject] private HapticsService Haptics { get; set; } = default!;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -136,6 +145,7 @@
         {
             Checked = !Checked;
             await CheckedChanged.InvokeAsync(Checked);
+            if (HapticFeedback) await Haptics.Light();
         }
     }
 

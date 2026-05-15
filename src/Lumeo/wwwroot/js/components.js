@@ -762,6 +762,169 @@ export function carouselScrollTo(elementId, index, behavior) {
     }
 }
 
+// --- Horizontal Swipe (Calendar month navigation) ---
+// threshold: 50px horizontal, < 40px vertical (so vertical scroll still works)
+
+const horizontalSwipeHandlers = new Map();
+
+export function registerHorizontalSwipe(elementId, dotnetRef) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    // Allow vertical page scroll while detecting horizontal swipes.
+    el.style.touchAction = 'pan-y';
+
+    let startX = 0, startY = 0;
+
+    const onTouchStart = (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    };
+
+    const onTouchEnd = (e) => {
+        const deltaX = e.changedTouches[0].clientX - startX;
+        const deltaY = e.changedTouches[0].clientY - startY;
+        if (Math.abs(deltaY) >= 40) return; // too much vertical — ignore
+        if (Math.abs(deltaX) < 50) return;  // below horizontal threshold — ignore
+        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchend', onTouchEnd);
+
+    horizontalSwipeHandlers.set(elementId, { onTouchStart, onTouchEnd });
+}
+
+export function unregisterHorizontalSwipe(elementId) {
+    const handlers = horizontalSwipeHandlers.get(elementId);
+    if (!handlers) return;
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.removeEventListener('touchstart', handlers.onTouchStart);
+        el.removeEventListener('touchend', handlers.onTouchEnd);
+        el.style.touchAction = '';
+    }
+    horizontalSwipeHandlers.delete(elementId);
+}
+
+// --- Gallery Swipe (ImageGallery fullscreen prev/next) ---
+// threshold: 60px horizontal, < 40px vertical (so vertical scroll still works).
+// Calls back with 'next' or 'prev' via the configurable methodName.
+
+const gallerySwipeHandlers = new Map();
+
+export function registerGallerySwipe(elementId, dotnetRef) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    // Clean up any previous registration on the same element.
+    const prev = gallerySwipeHandlers.get(elementId);
+    if (prev) {
+        el.removeEventListener('touchstart', prev.onTouchStart);
+        el.removeEventListener('touchend', prev.onTouchEnd);
+    }
+
+    // Allow vertical page scroll while detecting horizontal swipes.
+    el.style.touchAction = 'pan-y';
+
+    let startX = 0, startY = 0;
+
+    const onTouchStart = (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    };
+
+    const onTouchEnd = (e) => {
+        const deltaX = e.changedTouches[0].clientX - startX;
+        const deltaY = e.changedTouches[0].clientY - startY;
+        if (Math.abs(deltaY) >= 40) return; // too much vertical — ignore
+        if (Math.abs(deltaX) < 60) return;  // below horizontal threshold — ignore
+        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchend', onTouchEnd);
+
+    gallerySwipeHandlers.set(elementId, { onTouchStart, onTouchEnd });
+}
+
+export function unregisterGallerySwipe(elementId) {
+    const handlers = gallerySwipeHandlers.get(elementId);
+    if (!handlers) return;
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.removeEventListener('touchstart', handlers.onTouchStart);
+        el.removeEventListener('touchend', handlers.onTouchEnd);
+        el.style.touchAction = '';
+    }
+    gallerySwipeHandlers.delete(elementId);
+}
+
+// --- Tab Swipe ---
+// Horizontal pointer drag (> 50 px horizontal, < 30 px vertical) on a TabsContent
+// panel triggers next/prev tab navigation. Uses pointer events + setPointerCapture
+// so it works on both touch and mouse without stealing vertical scroll.
+
+const tabSwipeHandlers = new Map();
+
+export function registerTabSwipe(elementId, wrap, dotnetRef) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    // Allow vertical scroll; we only care about horizontal swipes.
+    el.style.touchAction = 'pan-y';
+
+    let startX = 0, startY = 0, pointerId = null;
+    let tracking = false;
+
+    const onPointerDown = (e) => {
+        // Ignore swipes that start on interactive children.
+        if (e.target.closest('button, input, textarea, select, [contenteditable]')) return;
+        startX = e.clientX;
+        startY = e.clientY;
+        pointerId = e.pointerId;
+        tracking = true;
+        try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    };
+
+    const onPointerUp = (e) => {
+        if (!tracking || e.pointerId !== pointerId) return;
+        tracking = false;
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+
+        const deltaX = e.clientX - startX;
+        const deltaY = e.clientY - startY;
+        if (Math.abs(deltaY) >= 30) return;  // too much vertical drift — ignore
+        if (Math.abs(deltaX) < 50) return;   // below horizontal threshold — ignore
+
+        const direction = deltaX < 0 ? 'next' : 'prev';
+        dotnetRef.invokeMethodAsync('OnTabSwipe', elementId, direction);
+    };
+
+    const onPointerCancel = (e) => {
+        if (e.pointerId === pointerId) tracking = false;
+    };
+
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerCancel);
+
+    tabSwipeHandlers.set(elementId, { onPointerDown, onPointerUp, onPointerCancel });
+}
+
+export function unregisterTabSwipe(elementId) {
+    const handlers = tabSwipeHandlers.get(elementId);
+    if (!handlers) return;
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.removeEventListener('pointerdown', handlers.onPointerDown);
+        el.removeEventListener('pointerup', handlers.onPointerUp);
+        el.removeEventListener('pointercancel', handlers.onPointerCancel);
+        el.style.touchAction = '';
+    }
+    tabSwipeHandlers.delete(elementId);
+}
+
 // --- Resizable Handle ---
 
 const resizeHandlers = new Map();

@@ -1,5 +1,7 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
+@implements IAsyncDisposable
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @if (NumberOfMonths == 1)
@@ -53,6 +55,13 @@
     /// so de-DE / fr-FR / etc. start on Monday automatically, en-US on
     /// Sunday. Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+    /// <summary>When <c>true</c> (default), users can swipe left/right on the
+    /// day grid to navigate to the next or previous month on touch devices.
+    /// Vertical page scroll is unaffected (<c>touch-action: pan-y</c>).
+    /// Set to <c>false</c> to disable swipe navigation.</summary>
+    [Parameter] public bool SwipeEnabled { get; set; } = true;
+
+    private readonly string _elementId = $"cal-grid-{Guid.NewGuid():N}";
 
     private DayOfWeek EffectiveFirstDayOfWeek =>
         FirstDayOfWeek ?? System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
@@ -69,6 +78,34 @@
     {
         _currentView = InitialView;
         DisplayDate = (IsRange ? RangeStart : Value) ?? DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && SwipeEnabled && NumberOfMonths == 1)
+        {
+            await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync);
+        }
+    }
+
+    private Task OnSwipeAsync(string direction)
+    {
+        if (_currentView != CalendarView.Days) return Task.CompletedTask;
+        if (direction == "next" && !IsNextMonthDisabled)
+            NextMonth();
+        else if (direction == "prev" && !IsPrevMonthDisabled)
+            PreviousMonth();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (SwipeEnabled && NumberOfMonths == 1)
+        {
+            try { await Interop.UnregisterHorizontalSwipe(_elementId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
     }
 
     private bool IsPrevMonthDisabled =>
@@ -282,26 +319,26 @@
             {
                 if (_currentView == CalendarView.Years)
                 {
-                    <button type="button" aria-label="@L["Calendar.PrevYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousDecade">
+                    <button type="button" aria-label="@L["Calendar.PrevYear"]" class="inline-flex items-center justify-center rounded-md h-11 w-11 sm:h-7 sm:w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousDecade">
                         <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
                     </button>
                 }
                 else if (_currentView == CalendarView.Months)
                 {
-                    <button type="button" aria-label="@L["Calendar.PrevYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousYear">
+                    <button type="button" aria-label="@L["Calendar.PrevYear"]" class="inline-flex items-center justify-center rounded-md h-11 w-11 sm:h-7 sm:w-7 hover:bg-accent hover:text-accent-foreground" @onclick="PreviousYear">
                         <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
                     </button>
                 }
                 else
                 {
-                    <button type="button" aria-label="@L["Calendar.PrevMonth"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30" disabled="@IsPrevMonthDisabled" @onclick="PreviousMonth">
+                    <button type="button" aria-label="@L["Calendar.PrevMonth"]" class="inline-flex items-center justify-center rounded-md h-11 w-11 sm:h-7 sm:w-7 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30" disabled="@IsPrevMonthDisabled" @onclick="PreviousMonth">
                         <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
                     </button>
                 }
             }
             else
             {
-                <div class="w-7"></div>
+                <div class="w-11 sm:w-7"></div>
             }
 
             @if (_currentView == CalendarView.Years)
@@ -330,26 +367,26 @@
             {
                 if (_currentView == CalendarView.Years)
                 {
-                    <button type="button" aria-label="@L["Calendar.NextYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextDecade">
+                    <button type="button" aria-label="@L["Calendar.NextYear"]" class="inline-flex items-center justify-center rounded-md h-11 w-11 sm:h-7 sm:w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextDecade">
                         <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
                     </button>
                 }
                 else if (_currentView == CalendarView.Months)
                 {
-                    <button type="button" aria-label="@L["Calendar.NextYear"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextYear">
+                    <button type="button" aria-label="@L["Calendar.NextYear"]" class="inline-flex items-center justify-center rounded-md h-11 w-11 sm:h-7 sm:w-7 hover:bg-accent hover:text-accent-foreground" @onclick="NextYear">
                         <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
                     </button>
                 }
                 else
                 {
-                    <button type="button" aria-label="@L["Calendar.NextMonth"]" class="inline-flex items-center justify-center rounded-md h-7 w-7 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30" disabled="@IsNextMonthDisabled" @onclick="NextMonth">
+                    <button type="button" aria-label="@L["Calendar.NextMonth"]" class="inline-flex items-center justify-center rounded-md h-11 w-11 sm:h-7 sm:w-7 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30" disabled="@IsNextMonthDisabled" @onclick="NextMonth">
                         <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
                     </button>
                 }
             }
             else
             {
-                <div class="w-7"></div>
+                <div class="w-11 sm:w-7"></div>
             }
         </div>
 
@@ -392,7 +429,8 @@
         else
         {
             var gridCols = ShowWeekNumbers ? "grid-cols-8" : "grid-cols-7";
-            <div class="grid @gridCols gap-0 text-center">
+            var gridId = (SwipeEnabled && NumberOfMonths == 1) ? _elementId : null;
+            <div id="@gridId" class="grid @gridCols gap-0 text-center">
                 @if (ShowWeekNumbers)
                 {
                     <div class="text-xs font-medium text-muted-foreground py-1">#</div>
