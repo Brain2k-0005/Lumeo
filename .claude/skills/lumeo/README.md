@@ -18,46 +18,28 @@ skills/lumeo/
 
 ## Install
 
-### Recommended — via the `skills` CLI (Vercel Labs)
-
-Works with Claude Code, Cursor, Codex, Gemini CLI, OpenCode, Antigravity, and 50+ other AI agents:
+### Claude Code (or any agent that reads `~/.claude/skills/`)
 
 ```bash
-npx skills add github.com/Brain2k-0005/Lumeo/skills/lumeo
-```
-
-Installs into `<your-project>/.agents/skills/lumeo/` with symlinks for every supported agent. Once installed the skill auto-activates whenever you mention Lumeo or one of its components. Discoverable at [skills.sh](https://skills.sh).
-
-### Manual install (per-agent fallback)
-
-If you don't want the `skills` CLI:
-
-```bash
-# Claude Code — global
+# from a clone of the Lumeo repo:
 mkdir -p ~/.claude/skills
 cp -r skills/lumeo ~/.claude/skills/lumeo
-
-# Or per-project
-cp -r skills/lumeo <your-project>/.claude/skills/lumeo
 ```
+Or per-project: copy into `<your-project>/.claude/skills/lumeo`.
 
-### Connect the MCP server
-
-The skill drives `@lumeo-ui/mcp-server` for live API lookups. Add to your `.mcp.json`:
-
+Then also connect the MCP server (`.mcp.json` or your client's MCP config):
 ```jsonc
 { "mcpServers": { "lumeo": { "command": "npx", "args": ["-y", "@lumeo-ui/mcp-server"] } } }
 ```
 
-Without the MCP the skill falls back to [`references/catalog.md`](references/catalog.md) — usable but no per-parameter API.
+### Skill registries (skills.sh, etc.)
+
+The skill is a self-contained directory — publish `skills/lumeo/` to any agent-skill registry as-is. If you're installing from a registry, follow that registry's `install` command (it just drops the directory into your skills path); the MCP-server step above is still recommended for the live API.
 
 ## Keeping it fresh
 
-`references/catalog.md` is auto-generated from the MCP's `components-api.json`. A GitHub Actions workflow ([`.github/workflows/sync-skill-catalog.yml`](../../.github/workflows/sync-skill-catalog.yml)) regenerates and commits it whenever the API JSON changes, so the offline reference stays in lockstep with the live MCP.
-
-To regenerate manually:
+`references/catalog.md` is generated from the MCP's `components-api.json`. After a Lumeo release, regenerate:
 ```bash
 node skills/lumeo/gen-catalog.mjs
 ```
-
 `SKILL.md`, `conventions.md` and `mcp.md` are hand-maintained — update them when conventions or MCP tools change.
