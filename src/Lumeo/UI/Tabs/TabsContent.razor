@@ -1,4 +1,6 @@
 @namespace Lumeo
+@inject Lumeo.Services.IComponentInteropService Interop
+@implements IAsyncDisposable
 
 @if (ShouldRender_)
 {
@@ -31,6 +33,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsActive => Context.ActiveValue == Value;
+    private bool _swipeRegistered;
 
     // Decide whether this panel's <div> exists in the DOM at all.
     //   Active mode  → only when this tab is the active one
@@ -53,5 +56,41 @@
     private string PanelId => Context.TabIds.TryGetValue(Value, out var ids) ? ids.PanelId : $"tabpanel-{Value}";
     private string TabId => Context.TabIds.TryGetValue(Value, out var ids) ? ids.TabId : $"tab-{Value}";
 
-    private string CssClass => $"mt-2 focus-visible:outline-none {Class}".Trim();
+    private string CssClass => Context.SwipeEnabled
+        ? $"mt-2 focus-visible:outline-none touch-pan-y {Class}".Trim()
+        : $"mt-2 focus-visible:outline-none {Class}".Trim();
+
+    protected override void OnInitialized()
+    {
+        // Register this panel's value in the parent's ordered list.
+        Context.RegisterContent(Value);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !Context.SwipeEnabled) return;
+        if (_swipeRegistered) return;
+        _swipeRegistered = true;
+        try
+        {
+            await Interop.RegisterTabSwipe(PanelId, Context.SwipeWrap, async direction =>
+            {
+                // Navigate via the parent Tabs component's method through the context callback.
+                // The context carries a delegate that resolves to Tabs.NavigateBySwipe.
+                await Context.SwipeNavigate(direction);
+            });
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // JS unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_swipeRegistered) return;
+        try
+        {
+            await Interop.UnregisterTabSwipe(PanelId);
+        }
+        catch (JSDisconnectedException) { }
+    }
 }

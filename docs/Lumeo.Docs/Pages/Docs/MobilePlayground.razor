@@ -1,0 +1,380 @@
+@page "/docs/mobile"
+@namespace Lumeo.Docs.Pages.Docs
+@using Lumeo.Services
+@inject HapticsService Haptics
+
+<PageTitle>Mobile Playground — Lumeo</PageTitle>
+
+<Container MaxWidth="5xl" Padding="0" Center="false">
+<Stack Gap="12">
+
+    <!-- Hero -->
+    <section>
+        <Stack Gap="4" Class="py-8 text-center items-center">
+            <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Mobile</Badge>
+            <Heading Level="1" Class="text-3xl sm:text-4xl font-bold tracking-tight">
+                Mobile Playground
+            </Heading>
+            <Lumeo.Text Size="base" Color="muted" Class="max-w-2xl leading-relaxed">
+                Test every Lumeo gesture, hit target, and haptic primitive in one place. Open DevTools → Device Toolbar (Ctrl+Shift+M) and pick a phone preset, or just try the gestures with mouse-drag — the same pointer events drive both.
+            </Lumeo.Text>
+        </Stack>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ============================================================
+         Section 1 — Swipe gestures
+         ============================================================ -->
+    <section>
+        <Stack Gap="2" Class="mb-6">
+            <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Swipe gestures</Heading>
+            <Lumeo.Text Size="sm" Color="muted">All sheets, drawers and tabs respond to pointer drags — touch, mouse and pen unified.</Lumeo.Text>
+        </Stack>
+
+        <Grid Columns="1" GapY="6" Class="md:grid-cols-2">
+            <!-- Sheet 4 sides -->
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Sheet — all 4 sides</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs">SwipeToClose</Badge>
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted">Swipe direction matches the <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">Side</code> param.</Lumeo.Text>
+                    <Flex Gap="2" Wrap="true">
+                        <Sheet @bind-Open="_sheetTopOpen">
+                            <SheetTrigger><Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Top</Button></SheetTrigger>
+                            <SheetContent Side="SheetContent.SheetSide.Top" SwipeToClose="true">
+                                <SheetHeader><SheetTitle>Swipe up to close</SheetTitle></SheetHeader>
+                            </SheetContent>
+                        </Sheet>
+                        <Sheet @bind-Open="_sheetRightOpen">
+                            <SheetTrigger><Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Right</Button></SheetTrigger>
+                            <SheetContent Side="SheetContent.SheetSide.Right" SwipeToClose="true">
+                                <SheetHeader><SheetTitle>Swipe right to close</SheetTitle></SheetHeader>
+                            </SheetContent>
+                        </Sheet>
+                        <Sheet @bind-Open="_sheetBottomOpen">
+                            <SheetTrigger><Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Bottom</Button></SheetTrigger>
+                            <SheetContent Side="SheetContent.SheetSide.Bottom" SwipeToClose="true">
+                                <SheetHeader><SheetTitle>Swipe down to close</SheetTitle></SheetHeader>
+                            </SheetContent>
+                        </Sheet>
+                        <Sheet @bind-Open="_sheetLeftOpen">
+                            <SheetTrigger><Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Left</Button></SheetTrigger>
+                            <SheetContent Side="SheetContent.SheetSide.Left" SwipeToClose="true">
+                                <SheetHeader><SheetTitle>Swipe left to close</SheetTitle></SheetHeader>
+                            </SheetContent>
+                        </Sheet>
+                    </Flex>
+                </Stack>
+            </Card>
+
+            <!-- Drawer -->
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Drawer — swipe down</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs">Default on</Badge>
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted">Drawer is the swipe-first primitive — gesture always on.</Lumeo.Text>
+                    <Drawer @bind-Open="_drawerOpen">
+                        <DrawerTrigger><Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">Open Drawer</Button></DrawerTrigger>
+                        <DrawerContent>
+                            <DrawerHeader>
+                                <DrawerTitle>Bottom Drawer</DrawerTitle>
+                                <DrawerDescription>Drag the grab-handle down or anywhere on the drawer.</DrawerDescription>
+                            </DrawerHeader>
+                        </DrawerContent>
+                    </Drawer>
+                </Stack>
+            </Card>
+
+            <!-- Carousel -->
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Carousel — horizontal swipe</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs">Built-in</Badge>
+                    </Flex>
+                    <Carousel Class="w-full">
+                        <CarouselContent>
+                            @for (int i = 1; i <= 5; i++)
+                            {
+                                var n = i;
+                                <CarouselItem>
+                                    <div class="aspect-video bg-muted rounded-md flex items-center justify-center">
+                                        <Lumeo.Text Size="2xl" Weight="bold" Color="muted">Slide @n</Lumeo.Text>
+                                    </div>
+                                </CarouselItem>
+                            }
+                        </CarouselContent>
+                        <CarouselPrevious />
+                        <CarouselNext />
+                    </Carousel>
+                </Stack>
+            </Card>
+
+            <!-- Pull to Refresh -->
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Pull to Refresh</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">rc.50</Badge>
+                    </Flex>
+                    <PullToRefresh OnRefresh="HandleRefresh">
+                        <div class="h-32 rounded-md bg-muted/40 border border-dashed border-border/60 flex items-center justify-center">
+                            <Lumeo.Text Size="sm" Color="muted">Pulled @_refreshCount times — drag down</Lumeo.Text>
+                        </div>
+                    </PullToRefresh>
+                </Stack>
+            </Card>
+
+            <!-- Swipe Actions -->
+            <Card Class="p-5 md:col-span-2">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Swipe Actions — iOS Mail.app pattern</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">rc.50</Badge>
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted">Drag a row left or right to reveal leading/trailing actions.</Lumeo.Text>
+                    <Stack Gap="2">
+                        @foreach (var item in _swipeRows)
+                        {
+                            <SwipeActions>
+                                <LeadingActions>
+                                    <Button Variant="Button.ButtonVariant.Default" Class="h-full">Archive</Button>
+                                </LeadingActions>
+                                <TrailingActions>
+                                    <Button Variant="Button.ButtonVariant.Destructive" Class="h-full" OnClick="@(() => RemoveRow(item))">Delete</Button>
+                                </TrailingActions>
+                                <ChildContent>
+                                    <Flex Align="center" Class="bg-card border border-border/40 rounded-md px-4 py-3">
+                                        <Stack Gap="0">
+                                            <Lumeo.Text Size="sm" Weight="medium">@item.Title</Lumeo.Text>
+                                            <Lumeo.Text Size="xs" Color="muted">@item.Subtitle</Lumeo.Text>
+                                        </Stack>
+                                    </Flex>
+                                </ChildContent>
+                            </SwipeActions>
+                        }
+                    </Stack>
+                </Stack>
+            </Card>
+        </Grid>
+    </section>
+
+    <!-- ============================================================
+         Section 2 — Haptic feedback
+         ============================================================ -->
+    <section>
+        <Stack Gap="2" Class="mb-6">
+            <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Haptic feedback</Heading>
+            <Lumeo.Text Size="sm" Color="muted">Tap a button below — on a supported device (most Android, some iOS) you'll feel a vibration. No-op on desktop and unsupported devices.</Lumeo.Text>
+        </Stack>
+
+        <Card Class="p-5">
+            <Stack Gap="4">
+                <Grid Columns="2" Gap="3" Class="md:grid-cols-3 lg:grid-cols-6">
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='@(() => TriggerHaptic("light"))'>Light</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='@(() => TriggerHaptic("medium"))'>Medium</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='@(() => TriggerHaptic("heavy"))'>Heavy</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='@(() => TriggerHaptic("success"))'>Success</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='@(() => TriggerHaptic("error"))'>Error</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick='@(() => TriggerHaptic("custom"))'>Custom 120ms</Button>
+                </Grid>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Last triggered: <code class="font-mono text-foreground">@_lastHaptic</code>
+                </Lumeo.Text>
+            </Stack>
+        </Card>
+    </section>
+
+    <!-- ============================================================
+         Section 3 — Hit targets & touch input
+         ============================================================ -->
+    <section>
+        <Stack Gap="2" Class="mb-6">
+            <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Hit targets &amp; touch input</Heading>
+            <Lumeo.Text Size="sm" Color="muted">All interactive elements meet WCAG 2.5.5 (44×44 CSS px on mobile) — try tapping them on a phone preset.</Lumeo.Text>
+        </Stack>
+
+        <Card Class="p-5">
+            <Stack Gap="6">
+                <Stack Gap="2">
+                    <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wider">Chips with dismiss</Lumeo.Text>
+                    <Flex Gap="2" Wrap="true">
+                        @foreach (var tag in _chips)
+                        {
+                            <Chip OnRemove="@(() => _chips.Remove(tag))">@tag</Chip>
+                        }
+                    </Flex>
+                </Stack>
+
+                <Stack Gap="2">
+                    <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wider">Pagination — 44px on touch, 36px desktop</Lumeo.Text>
+                    <Pagination Total="50" PageSize="10" @bind-Current="_page" />
+                </Stack>
+
+                <Stack Gap="2">
+                    <Lumeo.Text Size="xs" Color="muted" Class="uppercase tracking-wider">Toast — 44px close on mobile</Lumeo.Text>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="ShowToast">Show toast</Button>
+                </Stack>
+            </Stack>
+        </Card>
+    </section>
+
+    <!-- ============================================================
+         Section 4 — Long-press & wheel pickers
+         ============================================================ -->
+    <section>
+        <Stack Gap="2" Class="mb-6">
+            <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Long-press &amp; wheel pickers</Heading>
+        </Stack>
+
+        <Grid Columns="1" GapY="6" Class="md:grid-cols-2">
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Context menu — long-press</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">500ms</Badge>
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted">Press and hold on the area below (touch) or right-click (desktop).</Lumeo.Text>
+                    <ContextMenu>
+                        <ContextMenuTrigger>
+                            <div class="h-24 rounded-md border-2 border-dashed border-border/60 flex items-center justify-center select-none">
+                                <Lumeo.Text Size="sm" Color="muted">Long-press here</Lumeo.Text>
+                            </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                            <ContextMenuItem>Copy</ContextMenuItem>
+                            <ContextMenuItem>Paste</ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem>Delete</ContextMenuItem>
+                        </ContextMenuContent>
+                    </ContextMenu>
+                </Stack>
+            </Card>
+
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Flex Align="center" Justify="between">
+                        <Heading Level="3" Class="text-base font-medium">Wheel pickers (iOS-style)</Heading>
+                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-xs">rc.50</Badge>
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted">Scroll the columns up/down — touch native, mouse-wheel works too.</Lumeo.Text>
+                    <Stack Gap="3">
+                        <DatePicker @bind-Value="_wheelDate" Variant="DatePicker.DatePickerVariant.Wheel" />
+                        <TimePicker @bind-Value="_wheelTime" Variant="TimePicker.TimePickerVariant.Wheel" />
+                    </Stack>
+                </Stack>
+            </Card>
+        </Grid>
+    </section>
+
+    <!-- ============================================================
+         Section 5 — Safe area & touch ripple
+         ============================================================ -->
+    <section>
+        <Stack Gap="2" Class="mb-6">
+            <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Safe area &amp; touch ripple</Heading>
+        </Stack>
+
+        <Grid Columns="1" GapY="6" Class="md:grid-cols-2">
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Heading Level="3" Class="text-base font-medium">Touch Ripple</Heading>
+                    <Lumeo.Text Size="sm" Color="muted">Material-style tap feedback. Try tapping the buttons below.</Lumeo.Text>
+                    <Flex Gap="3" Wrap="true">
+                        <TouchRipple><Button Variant="Button.ButtonVariant.Outline" Class="h-11">Default ripple</Button></TouchRipple>
+                        <TouchRipple Color="rgb(239 68 68)" Opacity="0.35"><Button Variant="Button.ButtonVariant.Outline" Class="h-11">Red ripple</Button></TouchRipple>
+                        <TouchRipple Color="rgb(34 197 94)" DurationMs="800"><Button Variant="Button.ButtonVariant.Outline" Class="h-11">Slow green</Button></TouchRipple>
+                    </Flex>
+                </Stack>
+            </Card>
+
+            <Card Class="p-5">
+                <Stack Gap="3">
+                    <Heading Level="3" Class="text-base font-medium">Safe Area</Heading>
+                    <Lumeo.Text Size="sm" Color="muted">
+                        Wraps content with <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">env(safe-area-inset-*)</code> padding. Visible effect only on iPhone notch / Android nav-bar.
+                    </Lumeo.Text>
+                    <SafeArea Top="true" Bottom="true">
+                        <div class="bg-muted/40 rounded-md p-3 text-center">
+                            <Lumeo.Text Size="xs" Color="muted">Content inside SafeArea</Lumeo.Text>
+                        </div>
+                    </SafeArea>
+                </Stack>
+            </Card>
+        </Grid>
+    </section>
+
+    <!-- Footer -->
+    <Separator Class="opacity-30 mt-8" />
+    <section class="pb-12 text-center">
+        <Lumeo.Text Size="sm" Color="muted">
+            Want the API details? See the dedicated pages —
+            <a href="/components/pull-to-refresh" class="text-primary hover:underline">PullToRefresh</a>,
+            <a href="/components/swipe-actions" class="text-primary hover:underline">SwipeActions</a>,
+            <a href="/components/touch-ripple" class="text-primary hover:underline">TouchRipple</a>,
+            <a href="/components/safe-area" class="text-primary hover:underline">SafeArea</a>,
+            <a href="/components/sheet" class="text-primary hover:underline">Sheet</a>,
+            <a href="/components/drawer" class="text-primary hover:underline">Drawer</a>.
+        </Lumeo.Text>
+    </section>
+
+</Stack>
+</Container>
+
+@code {
+    private bool _sheetTopOpen, _sheetRightOpen, _sheetBottomOpen, _sheetLeftOpen;
+    private bool _drawerOpen;
+    private int _refreshCount;
+    private int _page = 1;
+    private string _lastHaptic = "—";
+    private DateOnly? _wheelDate = DateOnly.FromDateTime(DateTime.Today);
+    private TimeSpan? _wheelTime = new TimeSpan(9, 30, 0);
+
+    private List<string> _chips = new() { "design", "engineering", "product", "marketing", "research" };
+
+    private record SwipeRow(int Id, string Title, string Subtitle);
+    private List<SwipeRow> _swipeRows = new()
+    {
+        new(1, "Maria Müller", "Re: Quarterly review draft"),
+        new(2, "Daniel Kim", "Designs ready for handoff"),
+        new(3, "Anna Schmidt", "Friday standup notes"),
+    };
+
+    [Inject] private ToastService Toast { get; set; } = default!;
+
+    private async Task HandleRefresh()
+    {
+        await Task.Delay(800);
+        _refreshCount++;
+    }
+
+    private async Task TriggerHaptic(string kind)
+    {
+        switch (kind)
+        {
+            case "light":   await Haptics.Light();   _lastHaptic = "Light (10ms)";   break;
+            case "medium":  await Haptics.Medium();  _lastHaptic = "Medium (25ms)";  break;
+            case "heavy":   await Haptics.Heavy();   _lastHaptic = "Heavy (50ms)";   break;
+            case "success": await Haptics.Success(); _lastHaptic = "Success (15ms)"; break;
+            case "error":   await Haptics.Error();   _lastHaptic = "Error (75ms)";   break;
+            case "custom":  await Haptics.Vibrate(120); _lastHaptic = "Vibrate 120ms"; break;
+        }
+    }
+
+    private void RemoveRow(SwipeRow row) => _swipeRows.Remove(row);
+
+    private void ShowToast()
+    {
+        Toast.Show(new ToastOptions
+        {
+            Title = "Saved",
+            Description = "Your changes have been saved.",
+            Variant = ToastVariant.Success,
+        });
+    }
+}

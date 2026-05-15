@@ -36,6 +36,7 @@ public static class TestContextExtensions
         ctx.Services.AddScoped<KeyboardShortcutService>();
         ctx.Services.AddScoped<IKeyboardShortcutService>(sp => sp.GetRequiredService<KeyboardShortcutService>());
         ctx.Services.AddScoped<IDataGridExportService, Lumeo.Services.DataGridExportService>();
+        ctx.Services.AddScoped<HapticsService>();
 
         // Localization — apply defaults so components can resolve strings in tests
         ctx.Services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
