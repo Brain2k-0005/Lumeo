@@ -4,10 +4,14 @@
 
 <PageHeader Title="TouchRipple" Description="A Material Design-style radial ripple that emanates from the exact pointer-down position to give tactile feedback on any tappable element." />
 
+<Alert Variant="Alert.AlertVariant.Default" Class="mt-6"
+      Title="TouchRipple vs Button's built-in ripple"
+      Description="Button already animates a click ripple via its built-in press-feedback system — don't double-wrap a Button. TouchRipple is a low-level wrapper for any clickable element that doesn't already ripple: a Card, Avatar, a custom div, a list row, or an icon. The canonical use case is a tappable list row — see the demo below." />
+
 <div class="mt-10 space-y-3">
     <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
     <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
-        <li>Buttons, cards, or list rows that need clear visual confirmation of a touch or click</li>
+        <li>Cards, list rows, or custom divs that need touch feedback but aren't Buttons</li>
         <li>Mobile-first interfaces where the default browser tap highlight looks inconsistent</li>
         <li>Interactive tiles, gallery items, and menu entries that want a polished feel</li>
         <li>Replacing CSS <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">:active</code> states with a more expressive animation</li>
@@ -56,6 +60,34 @@
                 </Stack>
             </Card>
         </TouchRipple>
+    </ComponentDemo>
+
+    <ComponentDemo Title="List row (canonical mobile pattern)" Description="The most common TouchRipple use case: a tappable list row that isn't a Button. Each row is a custom div, so it gets no built-in ripple — TouchRipple adds it." Code="@_listRowCode">
+        <Card Class="w-full max-w-sm divide-y divide-border/40 overflow-hidden">
+            @foreach (var item in _listItems)
+            {
+                var captured = item;
+                <TouchRipple Class="block w-full cursor-pointer" @key="captured">
+                    <div class="flex items-center gap-3 px-4 py-3" @onclick="@(() => _selectedItem = captured)">
+                        <div class="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <Blazicon Svg="Lucide.User" class="h-4 w-4 text-primary" />
+                        </div>
+                        <Stack Gap="0.5" Class="flex-1 min-w-0">
+                            <Lumeo.Text Size="sm" Class="font-medium truncate">@captured</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">Tap to select</Lumeo.Text>
+                        </Stack>
+                        @if (_selectedItem == captured)
+                        {
+                            <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary shrink-0" />
+                        }
+                    </div>
+                </TouchRipple>
+            }
+        </Card>
+        @if (_selectedItem is not null)
+        {
+            <Lumeo.Text Size="sm" Color="muted" Class="mt-3">Selected: @_selectedItem</Lumeo.Text>
+        }
     </ComponentDemo>
 </Stack>
 
@@ -123,6 +155,9 @@
 </div>
 
 @code {
+    private string[] _listItems = ["Alice Johnson", "Bob Martinez", "Carol Williams"];
+    private string? _selectedItem;
+
     private string _basicCode = @"<TouchRipple Class=""inline-block rounded-md"">
     <Button>Tap me</Button>
 </TouchRipple>";
@@ -151,4 +186,24 @@
         <Text Size=""sm"" Color=""muted"">Tap anywhere to see the ripple.</Text>
     </Card>
 </TouchRipple>";
+
+    private string _listRowCode = @"<Card Class=""divide-y divide-border/40 overflow-hidden"">
+    @foreach (var item in _listItems)
+    {
+        var captured = item;
+        <TouchRipple Class=""block w-full cursor-pointer"" @key=""captured"">
+            <div class=""flex items-center gap-3 px-4 py-3"" @onclick=""@(() => _selectedItem = captured)"">
+                <div class=""h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0"">
+                    <Blazicon Svg=""Lucide.User"" class=""h-4 w-4 text-primary"" />
+                </div>
+                <Text Size=""sm"" Class=""font-medium truncate"">@captured</Text>
+            </div>
+        </TouchRipple>
+    }
+</Card>
+
+@code {
+    private string[] _listItems = [""Alice Johnson"", ""Bob Martinez"", ""Carol Williams""];
+    private string? _selectedItem;
+}";
 }

@@ -33,7 +33,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsActive => Context.ActiveValue == Value;
-    private bool _swipeRegistered;
+    private bool _swipeAttached;
 
     // Decide whether this panel's <div> exists in the DOM at all.
     //   Active mode  → only when this tab is the active one
@@ -68,25 +68,39 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || !Context.SwipeEnabled) return;
-        if (_swipeRegistered) return;
-        _swipeRegistered = true;
-        try
+        if (!Context.SwipeEnabled) return;
+
+        // Re-attach whenever this panel transitions from inactive → active.
+        // In Active render mode the <div> is removed from the DOM when the tab
+        // becomes inactive, so every time it reappears it is a fresh element
+        // with no JS listeners — we must re-register each time.
+        var shouldAttach = IsActive;
+        if (shouldAttach && !_swipeAttached)
         {
-            await Interop.RegisterTabSwipe(PanelId, Context.SwipeWrap, async direction =>
+            _swipeAttached = true;
+            try
             {
-                // Navigate via the parent Tabs component's method through the context callback.
-                // The context carries a delegate that resolves to Tabs.NavigateBySwipe.
-                await Context.SwipeNavigate(direction);
-            });
+                await Interop.RegisterTabSwipe(PanelId, Context.SwipeWrap, async direction =>
+                {
+                    // Navigate via the parent Tabs component's method through the context callback.
+                    // The context carries a delegate that resolves to Tabs.NavigateBySwipe.
+                    await Context.SwipeNavigate(direction);
+                });
+            }
+            catch (JSDisconnectedException) { _swipeAttached = false; }
+            catch (InvalidOperationException) { _swipeAttached = false; } // JS unavailable during prerender
         }
-        catch (JSDisconnectedException) { }
-        catch (InvalidOperationException) { } // JS unavailable during prerender
+        else if (!shouldAttach && _swipeAttached)
+        {
+            _swipeAttached = false;
+            try { await Interop.UnregisterTabSwipe(PanelId); }
+            catch (JSDisconnectedException) { }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (!_swipeRegistered) return;
+        if (!_swipeAttached) return;
         try
         {
             await Interop.UnregisterTabSwipe(PanelId);

@@ -6,16 +6,29 @@ namespace Lumeo.Tests.Helpers;
 
 /// <summary>
 /// A test-only IComponentInteropService implementation where every method is a
-/// no-op except Vibrate(), which records each call so tests can assert it.
-/// Used by haptic-feedback tests to verify HapticsService.Light() invocation
-/// without going through the real JS interop layer.
+/// no-op except Vibrate(), RegisterTabSwipe(), and RegisterHorizontalSwipe(),
+/// which record each call so tests can assert lifecycle behaviour.
 /// </summary>
 public sealed class TrackingInteropService : IComponentInteropService
 {
     private readonly List<int> _vibrateArgs = new();
+    private readonly List<string> _tabSwipeRegistrations = new();
+    private readonly List<string> _tabSwipeUnregistrations = new();
+    private readonly List<string> _horizontalSwipeRegistrations = new();
+    private readonly List<string> _horizontalSwipeUnregistrations = new();
 
     public int VibrateCallCount => _vibrateArgs.Count;
     public IReadOnlyList<int> VibrateArgs => _vibrateArgs;
+
+    // Tab swipe tracking
+    public int RegisterTabSwipeCallCount => _tabSwipeRegistrations.Count;
+    public IReadOnlyList<string> RegisterTabSwipeElementIds => _tabSwipeRegistrations;
+    public int UnregisterTabSwipeCallCount => _tabSwipeUnregistrations.Count;
+
+    // Calendar horizontal swipe tracking
+    public int RegisterHorizontalSwipeCallCount => _horizontalSwipeRegistrations.Count;
+    public IReadOnlyList<string> RegisterHorizontalSwipeElementIds => _horizontalSwipeRegistrations;
+    public int UnregisterHorizontalSwipeCallCount => _horizontalSwipeUnregistrations.Count;
 
     public ValueTask Vibrate(int milliseconds)
     {
@@ -53,15 +66,31 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterDrawerSwipe(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterTabSwipe(string elementId) => ValueTask.CompletedTask;
+    public ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler)
+    {
+        _tabSwipeRegistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterTabSwipe(string elementId)
+    {
+        _tabSwipeUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSortableTouch(string containerId) => ValueTask.CompletedTask;
-    public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler) => ValueTask.CompletedTask;
+    public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterCarouselSwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth") => ValueTask.CompletedTask;
-    public ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterHorizontalSwipe(string elementId) => ValueTask.CompletedTask;
+    public ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler)
+    {
+        _horizontalSwipeRegistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterHorizontalSwipe(string elementId)
+    {
+        _horizontalSwipeUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterGallerySwipe(string elementId, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterGallerySwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler) => ValueTask.CompletedTask;

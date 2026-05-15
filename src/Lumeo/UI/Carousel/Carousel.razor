@@ -46,7 +46,7 @@
                 _contentId,
                 orientationStr,
                 OnSwipe,
-                OnScroll
+                OnScrollPosition
             );
         }
         catch (JSDisconnectedException) { }
@@ -61,12 +61,16 @@
             await ScrollNext();
     }
 
-    private Task OnScroll(double scrollPos, double maxScroll)
+    private Task OnScrollPosition(double scrollPos, double maxScroll, int nearestIndex)
     {
         var prevP = _canScrollPrev;
         var prevN = _canScrollNext;
         _canScrollPrev = scrollPos > 0;
         _canScrollNext = scrollPos < maxScroll - 1;
+        // Sync _currentIndex from the scroll position so button navigation
+        // (ScrollNext/ScrollPrev) stays accurate after touch-swipe.
+        if (nearestIndex >= 0)
+            _currentIndex = nearestIndex;
         if (prevP != _canScrollPrev || prevN != _canScrollNext)
             StateHasChanged();
         return Task.CompletedTask;

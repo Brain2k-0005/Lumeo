@@ -77,7 +77,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask UnregisterSortableTouch(string containerId);
 
     // Carousel Swipe
-    ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler);
+    ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler);
     ValueTask UnregisterCarouselSwipe(string elementId);
     ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth");
 

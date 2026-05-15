@@ -69,7 +69,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask UnregisterSortableTouch(string containerId) => ValueTask.CompletedTask;
 
     // Carousel Swipe
-    public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler) => ValueTask.CompletedTask;
+    public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterCarouselSwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth") => ValueTask.CompletedTask;
 

@@ -6,7 +6,7 @@ internal sealed class SwipeInterop
 {
     private readonly Dictionary<string, Func<Task>> _drawerSwipeHandlers = new();
     private readonly Dictionary<string, Func<string, Task>> _carouselSwipeHandlers = new();
-    private readonly Dictionary<string, Func<double, double, Task>> _carouselScrollHandlers = new();
+    private readonly Dictionary<string, Func<double, double, int, Task>> _carouselScrollHandlers = new();
     private readonly Dictionary<string, Func<string, Task>> _toastSwipeHandlers = new();
     private readonly Dictionary<string, Func<string, Task>> _horizontalSwipeHandlers = new();
     private readonly Dictionary<string, Func<string, Task>> _gallerySwipeHandlers = new();
@@ -57,7 +57,7 @@ internal sealed class SwipeInterop
         string elementId,
         string orientation,
         Func<string, Task> swipeHandler,
-        Func<double, double, Task> scrollHandler)
+        Func<double, double, int, Task> scrollHandler)
     {
         _carouselSwipeHandlers[elementId] = swipeHandler;
         _carouselScrollHandlers[elementId] = scrollHandler;
@@ -88,11 +88,11 @@ internal sealed class SwipeInterop
         }
     }
 
-    public async Task OnScrollPosition(string elementId, double scrollPos, double maxScroll)
+    public async Task OnScrollPosition(string elementId, double scrollPos, double maxScroll, int nearestIndex = -1)
     {
         if (_carouselScrollHandlers.TryGetValue(elementId, out var handler))
         {
-            await handler(scrollPos, maxScroll);
+            await handler(scrollPos, maxScroll, nearestIndex);
         }
     }
 

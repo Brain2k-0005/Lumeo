@@ -146,10 +146,10 @@ public class InteropAdapterTests
         var adapter = new SwipeInterop();
         var field = typeof(SwipeInterop)
             .GetField("_carouselScrollHandlers", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        var dict = (Dictionary<string, Func<double, double, Task>>)field.GetValue(adapter)!;
+        var dict = (Dictionary<string, Func<double, double, int, Task>>)field.GetValue(adapter)!;
 
         double pos = -1, max = -1;
-        dict["c1"] = (p, m) => { pos = p; max = m; return Task.CompletedTask; };
+        dict["c1"] = (p, m, _) => { pos = p; max = m; return Task.CompletedTask; };
 
         await adapter.OnScrollPosition("c1", 50.0, 200.0);
 
@@ -209,12 +209,12 @@ public class InteropAdapterTests
 
         var drawerDict = (Dictionary<string, Func<Task>>)drawerField.GetValue(adapter)!;
         var carouselDict = (Dictionary<string, Func<string, Task>>)carouselField.GetValue(adapter)!;
-        var scrollDict = (Dictionary<string, Func<double, double, Task>>)scrollField.GetValue(adapter)!;
+        var scrollDict = (Dictionary<string, Func<double, double, int, Task>>)scrollField.GetValue(adapter)!;
         var toastDict = (Dictionary<string, Func<string, Task>>)toastField.GetValue(adapter)!;
 
         drawerDict["d"] = () => Task.CompletedTask;
         carouselDict["c"] = _ => Task.CompletedTask;
-        scrollDict["s"] = (_, _) => Task.CompletedTask;
+        scrollDict["s"] = (_, _, _) => Task.CompletedTask;
         toastDict["t"] = _ => Task.CompletedTask;
 
         adapter.Clear();
