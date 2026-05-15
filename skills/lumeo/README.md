@@ -1,6 +1,8 @@
 # Lumeo Agent Skill
 
-A [Claude Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) that teaches an AI coding agent (Claude Code, Cursor, Copilot CLI, …) how to write correct Lumeo Razor: how to look components up via the `@lumeo-ui/mcp-server` MCP, and the non-negotiable conventions (theme tokens, no `dark:` prefixes, `Blazicon` icons, `ComponentInteropService`, sub-component nesting, portal `<body>` classes, …).
+[![Agent Skill on skills.sh](https://img.shields.io/badge/skills.sh-lumeo-000?logo=vercel&logoColor=white)](https://skills.sh/Brain2k-0005/Lumeo/lumeo)
+
+A portable [agent skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) that teaches an AI coding agent (Claude Code, Cursor, Codex, Gemini CLI, OpenCode, Antigravity, Copilot CLI, …) how to write correct Lumeo Razor: how to look components up via the `@lumeo-ui/mcp-server` MCP, and the non-negotiable conventions (theme tokens, no `dark:` prefixes, `Blazicon` icons, `ComponentInteropService`, sub-component nesting, portal `<body>` classes, …).
 
 It pairs with the MCP server but degrades gracefully — [`references/catalog.md`](references/catalog.md) is a full offline component list for when the MCP isn't connected.
 
