@@ -2,7 +2,7 @@
 
 **130+ accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-145 components · 2,400+ tests · 14 locales · MIT · .NET 10
+145 components · 2,475+ tests · 14 locales · mobile-first · MIT · .NET 10
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -11,10 +11,11 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **v2.0 is in release-candidate phase (latest: `2.0.0-rc.38`).** The API is stable; we're gathering field feedback before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
+> **v2.0 is in release-candidate phase (latest: `2.0.0-rc.54`).** The API is stable; we're gathering field feedback before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
 
 ## What's new in 2.0
 
+- **Mobile sprint (rc.49–rc.54)** — touch gestures on Sheet/Drawer/Tabs/Calendar/ImageGallery (`SwipeEnabled`, `SwipeToClose`, `GesturesEnabled`), pinch-zoom on Image, long-press on ContextMenu (with `Vibrate()` haptic), 44×44 px hit targets per WCAG 2.5.5, iOS-style `Variant="Wheel"` DatePicker/TimePicker, `HapticsService` with `Light/Medium/Heavy/Success/Error`, new primitives `PullToRefresh` / `SwipeActions` / `SafeArea` / `TouchRipple`, opt-in `HapticFeedback` on Switch/Checkbox, mobile-collapsing Toast viewport. Try it all on `/docs/mobile`.
 - **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`. SignalR-native token streaming, sticky auto-scroll, collapsible chain-of-thought.
 - **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`. Opt-in `Animated` props on Steps, Timeline, Progress, Tabs, Switch, Checkbox, Badge, BottomNav.
 - **Scheduler + Gantt + RichTextEditor** — FullCalendar v6, Frappe Gantt, and TipTap v2 wrappers. Lazy-loaded JS so you pay only for what you use.
@@ -45,7 +46,8 @@
 - **DataGrid** — sort, filter, inline edit, column pin, row group, drag-to-reorder, fullscreen, layout JSON, Excel/PDF/CSV export
 - **Form validation** — DataAnnotations + custom validators with styled error states
 - **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
-- **2,400+ bUnit tests** — CI-enforced on every PR
+- **Mobile-first** — touch gestures (swipe, pinch, long-press, pull-to-refresh, swipe-actions), 44×44 px hit targets per WCAG 2.5.5, iOS-style wheel pickers, haptic feedback service, safe-area helpers — try it at `/docs/mobile`
+- **2,475+ bUnit tests** — CI-enforced on every PR
 
 ## Component Categories
 
@@ -85,14 +87,14 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="2.0.0-rc.38" />
+  <PackageReference Include="Lumeo"            Version="2.0.0-rc.54" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.38" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.38" />
-  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.38" />
-  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.38" />
-  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.38" />
-  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.38" />
+  <PackageReference Include="Lumeo.Charts"    Version="2.0.0-rc.54" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="2.0.0-rc.54" />
+  <PackageReference Include="Lumeo.Editor"    Version="2.0.0-rc.54" />
+  <PackageReference Include="Lumeo.Scheduler" Version="2.0.0-rc.54" />
+  <PackageReference Include="Lumeo.Gantt"     Version="2.0.0-rc.54" />
+  <PackageReference Include="Lumeo.Motion"    Version="2.0.0-rc.54" />
 </ItemGroup>
 ```
 
@@ -134,7 +136,15 @@ npm install -g @lumeo-ui/mcp-server
 
 ### Lumeo Agent Skill — `skills/lumeo/`
 
-A [Claude Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) that teaches an AI agent the Lumeo conventions and how to drive the MCP server. Copy `skills/lumeo/` into `~/.claude/skills/` (or your project's `.claude/skills/`), or install it from an agent-skill registry. See [`skills/lumeo/README.md`](skills/lumeo/README.md).
+A portable [agent skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) that teaches Claude Code, Cursor, Codex, Gemini CLI, OpenCode and 50+ other AI agents the Lumeo conventions and how to drive the `lumeo-mcp` server.
+
+```bash
+npx skills add github.com/Brain2k-0005/Lumeo/skills/lumeo
+```
+
+Installs to `.agents/skills/lumeo/` in your current project with symlinks for every supported agent. Use the Vercel-Labs [`skills` CLI](https://github.com/vercel-labs/skills) — discoverable at [skills.sh](https://skills.sh). The skill auto-activates whenever you mention a Lumeo component.
+
+Other install methods (manual copy, per-project, global) are documented in [`skills/lumeo/README.md`](skills/lumeo/README.md).
 
 ## Setup
 
