@@ -71,6 +71,7 @@
     private DateOnly DisplayDate { get; set; }
     private DateOnly? _hoverDate;
     private CalendarView _currentView = CalendarView.Days;
+    private bool _swipeAttached;
 
     private string CssClass => $"p-3 {Class}".Trim();
 
@@ -82,9 +83,25 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && SwipeEnabled && NumberOfMonths == 1)
+        if (!SwipeEnabled || NumberOfMonths != 1) return;
+
+        // Attach swipe only in Days view — the day grid element only exists in
+        // that view. When the user switches to Months/Years and back, the grid
+        // div is recreated so we must re-register on each Days → hidden → Days
+        // transition rather than once on first render.
+        var shouldAttach = _currentView == CalendarView.Days;
+        if (shouldAttach && !_swipeAttached)
         {
-            await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync);
+            _swipeAttached = true;
+            try { await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync); }
+            catch (JSDisconnectedException) { _swipeAttached = false; }
+            catch (InvalidOperationException) { _swipeAttached = false; } // JS unavailable during prerender
+        }
+        else if (!shouldAttach && _swipeAttached)
+        {
+            _swipeAttached = false;
+            try { await Interop.UnregisterHorizontalSwipe(_elementId); }
+            catch (JSDisconnectedException) { }
         }
     }
 
@@ -101,11 +118,9 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (SwipeEnabled && NumberOfMonths == 1)
-        {
-            try { await Interop.UnregisterHorizontalSwipe(_elementId); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-        }
+        if (!_swipeAttached) return;
+        try { await Interop.UnregisterHorizontalSwipe(_elementId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
     private bool IsPrevMonthDisabled =>
