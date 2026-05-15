@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 145 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 131 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -26,7 +26,6 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 
 - **Avatar** — Circular user image with initials fallback and status indicator. _(sub-components: AvatarFallback, AvatarGroup, AvatarImage)_
 - **Badge** — Small label for counts, statuses, or category tags.
-- **Barcode** — Inline SVG Code 128B barcode renderer (scannable).
 - **Calendar** — Date picker calendar grid with single, range, and multi-select modes.
 - **Card** — Flexible container with header, content, and footer slots. _(sub-components: CardContent, CardFooter, CardHeader)_
 - **Chart** **[Charts]** — Declarative chart wrapper over ECharts — 30+ types supported. _(sub-components: AreaChart, BarChart, BoxPlotChart, CalendarHeatmapChart, CandlestickChart, ChartSkeleton, DonutChart, EffectScatterChart, FunnelChart, GaugeChart, GeoMapChart, GraphChart, HeatmapChart, LineChart, LiquidFillChart, MixedChart, NightingaleChart, ParallelChart, PictorialBarChart, PieChart, PolarBarChart, RadarChart, RadialChart, SankeyChart, ScatterChart, SunburstChart, ThemeRiverChart, TreeChart, TreemapChart, WaterfallChart, WordCloudChart)_
@@ -34,14 +33,11 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **DataGrid** **[DataGrid]** — Enterprise grid: sort, filter, inline edit, group, pin, virtualize, export. _(sub-components: DataGridBody, DataGridCell, DataGridColumnDef, DataGridColumnFilter, DataGridColumnVisibility, DataGridDetailRow, DataGridFooter, DataGridGroupRow, DataGridHeader, DataGridHeaderCell, DataGridPagination, DataGridRow, DataGridToolbar, DataGridToolbarColumns, DataGridToolbarCopySelected, DataGridToolbarExport, DataGridToolbarFullscreen, DataGridToolbarLayouts, ToolbarContent)_
 - **DataTable** **[DataGrid]** — Table with sorting, pagination, and row selection built in. _(sub-components: DataTableSortableHeader)_
 - **Descriptions** — Key-value pair list for read-only entity details. _(sub-components: DescriptionsItem)_
-- **FileManager** — Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.
 - **Filter** **[DataGrid]** — Composable faceted filter builder with chips. _(sub-components: FilterPill)_
 - **Gantt** **[Gantt]** — Gantt component.
-- **Gauge** — Single-value gauge with radial, arc, and linear variants and threshold colour bands.
 - **Image** — Image with lazy-loading, loading skeleton, and error fallback. _(sub-components: ImageGallery)_
 - **ImageCompare** — Before/after slider comparison for two images.
 - **List** — Ordered/unordered list with Lumeo typographic styling. _(sub-components: ListItem)_
-- **PivotGrid** — Cross-tab / pivot table that summarizes flat data into rows x columns x aggregated measures.
 - **QRCode** — Renders a QR code SVG for a string payload.
 - **Scheduler** **[Scheduler]** — Calendar/agenda scheduler wrapping FullCalendar.
 - **Sparkline** — Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.
@@ -64,7 +60,6 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **EmptyState** — Illustrated placeholder for empty lists with call-to-action.
 - **Progress** — Linear progress bar with determinate + indeterminate modes. _(sub-components: CircularProgress, StepsProgress)_
 - **Result** — Full-page success/error/info status screen with actions.
-- **RingProgress** — Circular determinate progress ring with optional centre label or custom content.
 - **Skeleton** — Pulsing placeholder block for loading states. _(sub-components: SkeletonCard, SkeletonCircle, SkeletonText)_
 - **Spinner** — Indeterminate loading spinner with size variants.
 - **Toast** — Notification toast — renders from ToastService queue. _(sub-components: ToastAction, ToastClose, ToastDescription, ToastProvider, ToastTitle, ToastViewport)_
@@ -87,11 +82,10 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **NumberInput** — Numeric input with stepper buttons and locale formatting.
 - **OtpInput** — One-time password input, auto-advances between boxes.
 - **PasswordInput** — Password field with show/hide toggle and strength meter.
-- **QueryBuilder** — Visual AND/OR predicate-tree builder; serializes to JSON or a LINQ predicate. _(sub-components: QueryBuilderGroup)_
 - **RadioGroup** — Grouped radio buttons with horizontal or vertical layout. _(sub-components: RadioGroupCard, RadioGroupItem)_
 - **Rating** — Star rating input with half-star support.
 - **RichTextEditor** **[Editor]** — WYSIWYG editor wrapping TipTap with Lumeo styling. _(sub-components: AiActionMenu, BubbleMenu, EditorToolbar, TriggerDropdown)_
-- **Segmented** — Pill-shaped tab-like single-select control. _(sub-components: SegmentedItem)_
+- **Segmented** — Pill-shaped tab-like single-select control.
 - **Select** — Native-feeling styled dropdown with search and groups. _(sub-components: SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger)_
 - **Slider** — Range slider with single and dual thumb modes.
 - **Switch** — Toggle switch for boolean settings.
@@ -132,7 +126,6 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 
 - **Accordion** — Vertically stacked collapsible sections that expand to reveal content. _(sub-components: AccordionContent, AccordionItem, AccordionTrigger)_
 - **Affix** — Pins an element to the viewport edge as the user scrolls.
-- **AppBar** — Top application bar with start, center, and end slots; sticky and elevated variants.
 - **BackToTop** — Floating button that scrolls the page back to the top.
 - **BottomNav** — Mobile-first bottom navigation bar with icon items. _(sub-components: BottomNavFab, BottomNavItem)_
 - **Breadcrumb** — Hierarchical page path with separator characters. _(sub-components: BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator)_
@@ -146,9 +139,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Sidebar** — Collapsible app sidebar with groups, menu, and trigger. _(sub-components: SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarSeparator, SidebarTrigger)_
 - **SpeedDial** — Floating action button that fans out sub-actions.
 - **Splitter** — Resizable split pane for horizontal/vertical layouts. _(sub-components: SplitterDivider, SplitterPane)_
-- **Stepper** — Stateful multi-step wizard with navigation, validation gating, and header indicators. _(sub-components: StepperStep)_
 - **Tabs** — Tabbed content with keyboard nav and animated active indicator. _(sub-components: TabsContent, TabsList, TabsTrigger)_
-- **Toolbar** — Horizontal toolbar container with separator, spacer, and group sub-components. _(sub-components: ToolbarGroup, ToolbarSeparator, ToolbarSpacer)_
 
 ## Overlay
 
@@ -165,25 +156,20 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Sheet** — Slide-in side panel from left/right/top/bottom. _(sub-components: SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger)_
 - **Tooltip** — Hover/focus tooltip with arrow and configurable placement. _(sub-components: TooltipContent, TooltipTrigger)_
 - **Tour** — Multi-step spotlight onboarding tour.
-- **Window** — Non-modal draggable and resizable floating panel with minimize and maximize support.
 
 ## Typography
 
 - **Code** — Inline or block monospace code snippet with optional copy button.
 - **Heading** — Semantic h1-h6 heading with Lumeo typographic scale.
-- **Highlighter** — Wraps occurrences of one or more search terms in the text with highlight marks.
 - **Link** — Styled anchor with underline + color variants.
 - **Text** — Paragraph text with size, color, weight props.
 
 ## Utility
 
-- **ButtonGroup** — Button Group component.
 - **ConsentBanner** — Consent Banner component.
-- **DropdownButton** — Dropdown Button component.
 - **Icon** — Icon wrapper — renders Lucide icons via Blazicons.
 - **Kbd** — Keyboard shortcut glyph — renders <kbd> with styling.
 - **Label** — Form label that links to a control via for/id.
-- **SplitButton** — Split Button component.
 - **ThemeSwitcher** — Color-scheme picker that writes to ThemeService.
 - **ThemeToggle** — Dark/light mode toggle button.
 
