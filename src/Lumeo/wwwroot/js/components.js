@@ -704,25 +704,20 @@ export function registerCarouselSwipe(elementId, orientation, dotnetRef) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
-    let startX = 0, startY = 0;
-
-    const onTouchStart = (e) => {
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-    };
-
-    const onTouchEnd = (e) => {
-        const endX = e.changedTouches[0].clientX;
-        const endY = e.changedTouches[0].clientY;
-        const deltaX = endX - startX;
-        const deltaY = endY - startY;
-        const threshold = 50;
-
-        if (orientation === 'horizontal' && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
-            dotnetRef.invokeMethodAsync('OnSwipe', elementId, deltaX > 0 ? 'prev' : 'next');
-        } else if (orientation === 'vertical' && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > threshold) {
-            dotnetRef.invokeMethodAsync('OnSwipe', elementId, deltaY > 0 ? 'prev' : 'next');
+    // Compute the nearest child index from the current scroll position.
+    const getNearestIndex = () => {
+        const children = el.children;
+        if (!children.length) return 0;
+        const scrollPos = orientation === 'horizontal' ? el.scrollLeft : el.scrollTop;
+        let best = 0, bestDist = Infinity;
+        for (let i = 0; i < children.length; i++) {
+            const offset = orientation === 'horizontal'
+                ? children[i].offsetLeft
+                : children[i].offsetTop;
+            const dist = Math.abs(offset - scrollPos);
+            if (dist < bestDist) { bestDist = dist; best = i; }
         }
+        return best;
     };
 
     const onScroll = () => {
@@ -730,14 +725,25 @@ export function registerCarouselSwipe(elementId, orientation, dotnetRef) {
         const maxScroll = orientation === 'horizontal'
             ? el.scrollWidth - el.clientWidth
             : el.scrollHeight - el.clientHeight;
-        dotnetRef.invokeMethodAsync('OnScrollPosition', elementId, scrollPos, maxScroll);
+        const nearestIndex = getNearestIndex();
+        dotnetRef.invokeMethodAsync('OnScrollPosition', elementId, scrollPos, maxScroll, nearestIndex);
+    };
+
+    // Touch swipe is handled entirely by CSS scroll-snap — no imperative scrollIntoView
+    // on touchend, which would fight the browser's momentum animation and cause jitter.
+    // We still detect swipe direction so the .NET layer can sync _currentIndex immediately,
+    // but we do NOT call CarouselScrollTo; the snap takes care of positioning.
+    let startX = 0, startY = 0;
+
+    const onTouchStart = (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchend', onTouchEnd);
     el.addEventListener('scroll', onScroll, { passive: true });
 
-    carouselHandlers.set(elementId, { onTouchStart, onTouchEnd, onScroll });
+    carouselHandlers.set(elementId, { onTouchStart, onScroll });
 }
 
 export function unregisterCarouselSwipe(elementId) {
@@ -746,7 +752,6 @@ export function unregisterCarouselSwipe(elementId) {
         const el = document.getElementById(elementId);
         if (el) {
             el.removeEventListener('touchstart', handlers.onTouchStart);
-            el.removeEventListener('touchend', handlers.onTouchEnd);
             el.removeEventListener('scroll', handlers.onScroll);
         }
         carouselHandlers.delete(elementId);

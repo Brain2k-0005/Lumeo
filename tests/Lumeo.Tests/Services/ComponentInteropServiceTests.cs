@@ -210,7 +210,7 @@ public class ComponentInteropServiceTests : IAsyncLifetime
                 "carousel-1",
                 "horizontal",
                 _ => Task.CompletedTask,
-                (_, _) => Task.CompletedTask).AsTask());
+                (_, _, _) => Task.CompletedTask).AsTask());
 
         Assert.Null(exception);
     }
@@ -222,7 +222,7 @@ public class ComponentInteropServiceTests : IAsyncLifetime
             "carousel-2",
             "horizontal",
             _ => Task.CompletedTask,
-            (_, _) => Task.CompletedTask);
+            (_, _, _) => Task.CompletedTask);
 
         var exception = await Record.ExceptionAsync(() =>
             _service.UnregisterCarouselSwipe("carousel-2").AsTask());
@@ -238,12 +238,12 @@ public class ComponentInteropServiceTests : IAsyncLifetime
             "c1",
             "horizontal",
             dir => { directions.Add(dir); return Task.CompletedTask; },
-            (_, _) => Task.CompletedTask);
+            (_, _, _) => Task.CompletedTask);
         await _service.RegisterCarouselSwipe(
             "c2",
             "horizontal",
             dir => Task.CompletedTask,
-            (_, _) => Task.CompletedTask);
+            (_, _, _) => Task.CompletedTask);
 
         await _service.OnSwipe("c1", "left");
 
@@ -261,12 +261,12 @@ public class ComponentInteropServiceTests : IAsyncLifetime
             "c2",
             "horizontal",
             _ => Task.CompletedTask,
-            (pos, max) => { receivedPos = pos; receivedMax = max; return Task.CompletedTask; });
+            (pos, max, _) => { receivedPos = pos; receivedMax = max; return Task.CompletedTask; });
         await _service.RegisterCarouselSwipe(
             "c3",
             "horizontal",
             _ => Task.CompletedTask,
-            (_, _) => Task.CompletedTask);
+            (_, _, _) => Task.CompletedTask);
 
         await _service.OnScrollPosition("c2", 100.0, 500.0);
 

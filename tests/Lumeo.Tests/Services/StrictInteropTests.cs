@@ -264,7 +264,7 @@ public class StrictInteropTests : IAsyncLifetime
     public async Task RegisterCarouselSwipe_Invokes_JS_With_ElementId_And_Orientation()
     {
         await _service.RegisterCarouselSwipe("carousel-1", "horizontal",
-            _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
+            _ => Task.CompletedTask, (_, _, _) => Task.CompletedTask);
 
         var invocation = _module.VerifyInvoke("registerCarouselSwipe");
         Assert.Equal("carousel-1", invocation.Arguments[0]);
@@ -275,7 +275,7 @@ public class StrictInteropTests : IAsyncLifetime
     public async Task UnregisterCarouselSwipe_Invokes_JS_With_ElementId()
     {
         await _service.RegisterCarouselSwipe("carousel-1", "horizontal",
-            _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
+            _ => Task.CompletedTask, (_, _, _) => Task.CompletedTask);
         await _service.UnregisterCarouselSwipe("carousel-1");
 
         var invocation = _module.VerifyInvoke("unregisterCarouselSwipe");
@@ -582,7 +582,7 @@ public class StrictInteropTests : IAsyncLifetime
         _module.SetupVoid("registerCarouselSwipe");
         _module.SetupVoid("unregisterCarouselSwipe");
 
-        await _service.RegisterCarouselSwipe("carousel-1", "horizontal", _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
+        await _service.RegisterCarouselSwipe("carousel-1", "horizontal", _ => Task.CompletedTask, (_, _, _) => Task.CompletedTask);
         await _service.UnregisterCarouselSwipe("carousel-1");
 
         _module.VerifyInvoke("unregisterCarouselSwipe", calledTimes: 1);

@@ -108,7 +108,9 @@
 
     private async Task HandlePointerDown(PointerEventArgs e)
     {
-        // Only single-finger touch / mouse left button engages the gesture.
+        // Accept all pointer types (touch, mouse, pen) so Chrome DevTools mobile
+        // emulation works — DevTools emulation dispatches pointer events with
+        // pointerType "mouse" even when simulating a touch device.
         if (_refreshing) return;
         if (_activePointerId.HasValue) return;
 
@@ -123,6 +125,12 @@
         _startY = e.ClientY;
         _currentDelta = 0;
         _engaged = false;
+
+        // Capture the pointer so pointermove continues to fire even when the
+        // pointer leaves the element boundary. This is the key fix for Chrome
+        // DevTools mobile emulation where without capture the move events stop.
+        try { await Interop.SetPointerCaptureOnElement(_elementId, e.PointerId); }
+        catch (JSDisconnectedException) { return; }
     }
 
     private void HandlePointerMove(PointerEventArgs e)
@@ -159,6 +167,11 @@
         _activePointerId = null;
         _engaged = false;
         _currentDelta = 0;
+
+        // Release the pointer capture acquired in HandlePointerDown.
+        try { await Interop.ReleasePointerCaptureOnElement(_elementId, e.PointerId); }
+        catch (JSDisconnectedException) { /* already gone */ }
+        catch { /* ignore if capture was already released by the browser */ }
 
         // Effective pulled distance is the visual offset (post-rubber-band).
         var pulled = Math.Min(Math.Max(0, finalDelta) * 0.5, MaxPullPx);

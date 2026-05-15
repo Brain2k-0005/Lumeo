@@ -333,7 +333,7 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Carousel Swipe ---
 
-    public async ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler)
+    public async ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler)
     {
         var module = await GetModuleAsync();
         await _swipe.RegisterCarouselSwipe(module, GetSelfRef(), elementId, orientation, swipeHandler, scrollHandler);
@@ -417,8 +417,8 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async Task OnSwipe(string elementId, string direction) => await _swipe.OnSwipe(elementId, direction);
 
     [JSInvokable]
-    public async Task OnScrollPosition(string elementId, double scrollPos, double maxScroll)
-        => await _swipe.OnScrollPosition(elementId, scrollPos, maxScroll);
+    public async Task OnScrollPosition(string elementId, double scrollPos, double maxScroll, int nearestIndex = -1)
+        => await _swipe.OnScrollPosition(elementId, scrollPos, maxScroll, nearestIndex);
 
     // --- Resizable Handle ---
 
