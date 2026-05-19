@@ -1,0 +1,144 @@
+{
+  "name": "TouchRipple",
+  "category": "Utility",
+  "subcategory": null,
+  "description": "Touch Ripple component.",
+  "thumbnail": "/preview-cards/touch-ripple.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/TouchRipple/TouchRipple.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-foreground"
+  ],
+  "api": {
+    "name": "TouchRipple",
+    "category": "Utility",
+    "subcategory": null,
+    "description": "Touch Ripple component.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/TouchRipple/TouchRipple.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Color",
+        "type": "string",
+        "default": "\"currentColor\"",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Opacity",
+        "type": "double",
+        "default": "0.25",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "DurationMs",
+        "type": "int",
+        "default": "500",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [],
+    "enums": [],
+    "records": [
+      {
+        "name": "RippleEntry",
+        "signature": "RippleEntry(Guid Id, double X, double Y)",
+        "description": null
+      }
+    ],
+    "cssVars": [
+      "--color-foreground"
+    ],
+    "examples": [
+      {
+        "title": "Basic Ripple on a Button",
+        "code": "<TouchRipple Class=\"inline-block rounded-md\">\n    <Button>Tap me</Button>\n</TouchRipple>"
+      },
+      {
+        "title": "Custom Color",
+        "code": "<TouchRipple Color=\"#3b82f6\" Class=\"inline-block rounded-md\">\n    <Button Variant=\"ButtonVariant.Secondary\">Blue ripple</Button>\n</TouchRipple>\n\n<TouchRipple Color=\"#ef4444\" Class=\"inline-block rounded-md\">\n    <Button Variant=\"ButtonVariant.Secondary\">Red ripple</Button>\n</TouchRipple>"
+      },
+      {
+        "title": "Custom Opacity and Duration",
+        "code": "<!-- High opacity, fast -->\n<TouchRipple Opacity=\"0.5\" DurationMs=\"300\" Class=\"inline-block rounded-md\">\n    <Button Variant=\"ButtonVariant.Outline\">Fast (300 ms)</Button>\n</TouchRipple>\n\n<!-- Low opacity, slow -->\n<TouchRipple Opacity=\"0.1\" DurationMs=\"900\" Class=\"inline-block rounded-md\">\n    <Button Variant=\"ButtonVariant.Outline\">Slow (900 ms)</Button>\n</TouchRipple>"
+      },
+      {
+        "title": "Ripple on a Card",
+        "code": "<TouchRipple Class=\"block rounded-xl w-full max-w-sm cursor-pointer\">\n    <Card Class=\"p-5\">\n        <Text Class=\"font-medium\">Interactive card</Text>\n        <Text Size=\"sm\" Color=\"muted\">Tap anywhere to see the ripple.</Text>\n    </Card>\n</TouchRipple>"
+      }
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "touch-ripple",
+  "docsUrl": "https://lumeo.nativ.sh/components/touch-ripple",
+  "sourceUrl": [
+    {
+      "file": "UI/TouchRipple/TouchRipple.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/TouchRipple/TouchRipple.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/TouchRipple/TouchRipple.razor",
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n\n<div class=\"@CssClass\"\n     style=\"position: relative; overflow: hidden; --ripple-opacity: @Opacity.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture); --ripple-duration: @(DurationMs)ms\"\n     @onpointerdown=\"OnPointerDown\"\n     @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    @foreach (var ripple in _ripples)\n    {\n        <span @key=\"@ripple.Id\"\n              class=\"lumeo-touch-ripple-span\"\n              style=\"left: @(ripple.X.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture))px; top: @(ripple.Y.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture))px; color: @Color;\">\n        </span>\n    }\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string Color { get; set; } = \"currentColor\";\n    [Parameter] public double Opacity { get; set; } = 0.25;\n    [Parameter] public int DurationMs { get; set; } = 500;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => $\"lumeo-touch-ripple {Class}\".Trim();\n\n    private record RippleEntry(Guid Id, double X, double Y);\n\n    private readonly List<RippleEntry> _ripples = new();\n    private readonly List<CancellationTokenSource> _pendingCts = new();\n\n    private async Task OnPointerDown(PointerEventArgs e)\n    {\n        var ripple = new RippleEntry(Guid.NewGuid(), e.OffsetX, e.OffsetY);\n        _ripples.Add(ripple);\n        StateHasChanged();\n\n        var cts = new CancellationTokenSource();\n        _pendingCts.Add(cts);\n\n        try\n        {\n            await Task.Delay(DurationMs, cts.Token);\n        }\n        catch (TaskCanceledException)\n        {\n            return;\n        }\n        finally\n        {\n            _pendingCts.Remove(cts);\n            cts.Dispose();\n        }\n\n        _ripples.Remove(ripple);\n        StateHasChanged();\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        foreach (var cts in _pendingCts.ToList())\n        {\n            cts.Cancel();\n            cts.Dispose();\n        }\n        _pendingCts.Clear();\n        await ValueTask.CompletedTask;\n    }\n}\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "TouchRipple",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [],
+  "mdSummary": "# TouchRipple\n\nTouch Ripple component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/touch-ripple\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TouchRipple | ChildContent | `RenderFragment?` | `` |  |\n| TouchRipple | Color | `string` | `\"currentColor\"` |  |\n| TouchRipple | Opacity | `double` | `0.25` |  |\n| TouchRipple | DurationMs | `int` | `500` |  |\n| TouchRipple | Class | `string?` | `` |  |\n| TouchRipple | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (TouchRipple) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<TouchRipple />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/TouchRipple/TouchRipple.razor`\n"
+}

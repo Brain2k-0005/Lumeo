@@ -10,6 +10,11 @@ using Lumeo.RegistryGen;
 var repoRoot = FindRepoRoot(Environment.CurrentDirectory)
                ?? throw new InvalidOperationException("Could not locate Lumeo repo root (no Lumeo.slnx found).");
 
+// Single source of truth: the lockstep <Version> in Directory.Build.props.
+// Hardcoding it here is how registry.json/components-api.json drifted to a
+// stale rc.NN label across releases — read it instead so they can't.
+var lumeoVersion = ReadLockstepVersion(repoRoot);
+
 // Scan core + every satellite package's UI directory. The 2.0-rc.15 split
 // moved Chart/DataGrid/RichTextEditor/Scheduler/Gantt out of src/Lumeo/UI/
 // into their own satellite folders — without including those, the
@@ -610,7 +615,7 @@ foreach (var dir in componentDirs)
 var root = new Dictionary<string, object>
 {
     ["$schema"] = "https://lumeo.nativ.sh/registry-schema.json",
-    ["version"] = "2.0.0",
+    ["version"] = lumeoVersion,
     ["generated"] = DateTime.UtcNow.ToString("O"),
     ["components"] = components,
 };
@@ -656,7 +661,7 @@ try
         uiRoots: uiRoots,
         metaResolver: MetaFor,
         logger: Console.Error,
-        version: "2.0.0-rc.38",
+        version: lumeoVersion,
         repoRoot: repoRoot);
 }
 catch (Exception ex)
@@ -751,6 +756,16 @@ static string? FindRepoRoot(string start)
         dir = dir.Parent;
     }
     return null;
+}
+
+static string ReadLockstepVersion(string repoRoot)
+{
+    var propsPath = Path.Combine(repoRoot, "Directory.Build.props");
+    var text = File.ReadAllText(propsPath);
+    var m = Regex.Match(text, @"<Version>\s*([^<\s]+)\s*</Version>");
+    if (!m.Success)
+        throw new InvalidOperationException($"No <Version> element found in {propsPath}");
+    return m.Groups[1].Value;
 }
 
 static string ToKebabCase(string s)

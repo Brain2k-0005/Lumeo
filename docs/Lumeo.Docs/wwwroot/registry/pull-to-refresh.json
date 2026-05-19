@@ -1,0 +1,147 @@
+{
+  "name": "PullToRefresh",
+  "category": "Utility",
+  "subcategory": null,
+  "description": "Pull To Refresh component.",
+  "thumbnail": "/preview-cards/pull-to-refresh.png",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo",
+  "files": [
+    "UI/PullToRefresh/PullToRefresh.razor"
+  ],
+  "dependencies": [],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
+  "cssVars": [
+    "--color-background",
+    "--color-foreground",
+    "--radius"
+  ],
+  "api": {
+    "name": "PullToRefresh",
+    "category": "Utility",
+    "subcategory": null,
+    "description": "Pull To Refresh component.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/PullToRefresh/PullToRefresh.razor"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OnRefresh",
+        "type": "EventCallback",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ThresholdPx",
+        "type": "double",
+        "default": "80",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MaxPullPx",
+        "type": "double",
+        "default": "120",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [
+      {
+        "name": "OnRefresh",
+        "type": "EventCallback",
+        "description": null
+      }
+    ],
+    "enums": [],
+    "records": [],
+    "cssVars": [
+      "--color-background",
+      "--color-foreground",
+      "--radius"
+    ],
+    "examples": [
+      {
+        "title": "Basic Pull to Refresh",
+        "code": "<div class=\"h-64 rounded-lg border border-border/40 overflow-hidden\">\n    <PullToRefresh OnRefresh=\"HandleRefresh\">\n        <Stack Gap=\"3\" Class=\"p-4\">\n            <Text Size=\"sm\" Color=\"muted\">Pull down to refresh · Count: @_refreshCount</Text>\n            <div class=\"rounded-md border border-border/40 bg-muted/20 px-4 py-3 text-sm\">Item 1</div>\n            <div class=\"rounded-md border border-border/40 bg-muted/20 px-4 py-3 text-sm\">Item 2</div>\n        </Stack>\n    </PullToRefresh>\n</div>\n\n@code {\n    private int _refreshCount;\n\n    private async Task HandleRefresh()\n    {\n        await Task.Delay(1000);\n        _refreshCount++;\n    }\n}"
+      },
+      {
+        "title": "Custom Threshold and Max Pull",
+        "code": "<PullToRefresh OnRefresh=\"HandleRefresh\" ThresholdPx=\"50\" MaxPullPx=\"80\">\n    <Stack Gap=\"3\" Class=\"p-4\">\n        <Text Size=\"sm\" Color=\"muted\">Triggers after only 50 px of pull</Text>\n        <div class=\"rounded-md border border-border/40 bg-muted/20 px-4 py-3 text-sm\">Row 1</div>\n        <div class=\"rounded-md border border-border/40 bg-muted/20 px-4 py-3 text-sm\">Row 2</div>\n    </Stack>\n</PullToRefresh>"
+      }
+    ],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "pull-to-refresh",
+  "docsUrl": "https://lumeo.nativ.sh/components/pull-to-refresh",
+  "sourceUrl": [
+    {
+      "file": "UI/PullToRefresh/PullToRefresh.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/PullToRefresh/PullToRefresh.razor"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/PullToRefresh/PullToRefresh.razor",
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n\n@*\n    PullToRefresh — iOS/Android-style pull-down-to-refresh primitive.\n\n    The wrapper IS the scroll container: it sets `overflow-y: auto` on the\n    root <div>, which lets us read scrollTop directly via JS interop. We only\n    \"engage\" the pull gesture when the container is at scrollTop == 0; once\n    engaged, we apply a rubber-band translateY (capped at MaxPullPx) and\n    fade in a Lucide.RefreshCw spinner above the content. On release:\n    - delta >= ThresholdPx -> invoke OnRefresh, hold the spinner visible\n      until the handler completes, then animate back to 0.\n    - delta <  ThresholdPx -> animate back to 0 without firing.\n\n    v1 simplification: requires the wrapper itself to be the scroll container\n    (overflow-y: auto baked into the root class). v2 could traverse to the\n    first scrollable ancestor.\n*@\n\n<div id=\"@_elementId\"\n     class=\"@CssClass\"\n     style=\"@ContainerStyle\"\n     @ref=\"_ref\"\n     @onpointerdown=\"HandlePointerDown\"\n     @onpointermove=\"HandlePointerMove\"\n     @onpointerup=\"HandlePointerUp\"\n     @onpointercancel=\"HandlePointerUp\"\n     @attributes=\"AdditionalAttributes\">\n    <div class=\"pointer-events-none absolute inset-x-0 top-0 flex justify-center\"\n         style=\"@SpinnerStyle\">\n        <div class=\"flex h-10 w-10 items-center justify-center rounded-full bg-background text-foreground shadow-md ring-1 ring-border\">\n            <Blazicon Svg=\"Lucide.RefreshCw\" class=\"@SpinnerIconClass\" />\n        </div>\n    </div>\n    <div style=\"@ContentStyle\">\n        @ChildContent\n    </div>\n</div>\n\n@inject ComponentInteropService Interop\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public EventCallback OnRefresh { get; set; }\n    [Parameter] public double ThresholdPx { get; set; } = 80;\n    [Parameter] public double MaxPullPx { get; set; } = 120;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"ptr-{Guid.NewGuid():N}\";\n    private ElementReference _ref;\n\n    private long? _activePointerId;\n    private double _startY;\n    private double _currentDelta;\n    private bool _engaged;\n    private bool _refreshing;\n    // While `_refreshing` we lock the spinner at the threshold position so\n    // the user sees a stable indicator until OnRefresh completes.\n    private double LockedOffset => _refreshing ? ThresholdPx : 0;\n\n    private string CssClass =>\n        $\"relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background text-foreground {Class}\".Trim();\n\n    // Transitions:\n    // - During an active drag we set transform without a transition so it\n    //   tracks the finger 1:1.\n    // - On release (and during the refresh lock) we apply a short ease\n    //   transition so the rubber-band snap feels natural.\n    private string TransitionStyle => _activePointerId.HasValue\n        ? \"transition: none;\"\n        : \"transition: transform 200ms ease-out;\";\n\n    private double VisualOffset\n    {\n        get\n        {\n            if (_refreshing) return LockedOffset;\n            if (!_engaged) return 0;\n            // Rubber-band: halve the delta and clamp to MaxPullPx.\n            var raw = Math.Max(0, _currentDelta) * 0.5;\n            return Math.Min(raw, MaxPullPx);\n        }\n    }\n\n    private string ContentStyle =>\n        $\"transform: translateY({VisualOffset.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture)}px); {TransitionStyle} will-change: transform;\";\n\n    private string SpinnerStyle\n    {\n        get\n        {\n            var off = VisualOffset;\n            // Fade opacity proportional to threshold progress; cap at 1.\n            var progress = ThresholdPx > 0 ? Math.Min(1.0, off / ThresholdPx) : 0;\n            // Position the spinner just above the content, slid in alongside.\n            var translate = off - 40; // -40 to start just above the top edge\n            return $\"transform: translateY({translate.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture)}px); \" +\n                   $\"opacity: {progress.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture)}; \" +\n                   $\"{TransitionStyle} will-change: transform, opacity;\";\n        }\n    }\n\n    private string SpinnerIconClass => (_refreshing ? \"h-5 w-5 animate-spin\" : \"h-5 w-5\").Trim();\n\n    private string ContainerStyle => \"touch-action: pan-y;\";\n\n    private async Task HandlePointerDown(PointerEventArgs e)\n    {\n        // Accept all pointer types (touch, mouse, pen) so Chrome DevTools mobile\n        // emulation works — DevTools emulation dispatches pointer events with\n        // pointerType \"mouse\" even when simulating a touch device.\n        if (_refreshing) return;\n        if (_activePointerId.HasValue) return;\n\n        // Gate on scrollTop == 0; if the container is scrolled, let the native\n        // scroll handle the pointer instead of engaging the pull.\n        double scrollTop = 0;\n        try { scrollTop = await Interop.GetScrollTop(_elementId); }\n        catch (JSDisconnectedException) { return; }\n        if (scrollTop > 0) return;\n\n        _activePointerId = e.PointerId;\n        _startY = e.ClientY;\n        _currentDelta = 0;\n        _engaged = false;\n\n        // Capture the pointer so pointermove continues to fire even when the\n        // pointer leaves the element boundary. This is the key fix for Chrome\n        // DevTools mobile emulation where without capture the move events stop.\n        try { await Interop.SetPointerCaptureOnElement(_elementId, e.PointerId); }\n        catch (JSDisconnectedException) { return; }\n    }\n\n    private void HandlePointerMove(PointerEventArgs e)\n    {\n        if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;\n        if (_refreshing) return;\n\n        var delta = e.ClientY - _startY;\n        if (delta <= 0)\n        {\n            // Released the pull (or moving upward) — disengage but keep\n            // pointer captured so a subsequent downward move can re-engage.\n            _currentDelta = 0;\n            if (_engaged)\n            {\n                _engaged = false;\n                StateHasChanged();\n            }\n            return;\n        }\n\n        _engaged = true;\n        _currentDelta = delta;\n        StateHasChanged();\n    }\n\n    private async Task HandlePointerUp(PointerEventArgs e)\n    {\n        if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;\n\n        var wasEngaged = _engaged;\n        var finalDelta = _currentDelta;\n\n        _activePointerId = null;\n        _engaged = false;\n        _currentDelta = 0;\n\n        // Release the pointer capture acquired in HandlePointerDown.\n        try { await Interop.ReleasePointerCaptureOnElement(_elementId, e.PointerId); }\n        catch (JSDisconnectedException) { /* already gone */ }\n        catch { /* ignore if capture was already released by the browser */ }\n\n        // Effective pulled distance is the visual offset (post-rubber-band).\n        var pulled = Math.Min(Math.Max(0, finalDelta) * 0.5, MaxPullPx);\n\n        if (wasEngaged && pulled >= ThresholdPx && !_refreshing)\n        {\n            _refreshing = true;\n            StateHasChanged();\n            try\n            {\n                await OnRefresh.InvokeAsync();\n            }\n            finally\n            {\n                _refreshing = false;\n                StateHasChanged();\n            }\n        }\n        else\n        {\n            StateHasChanged();\n        }\n    }\n\n    public ValueTask DisposeAsync()\n    {\n        // No JS-side registrations to tear down today; method present so we can\n        // attach cleanup safely if a future v2 adds native touch listeners.\n        return ValueTask.CompletedTask;\n    }\n}\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "ChildContent",
+      "owner": "PullToRefresh",
+      "type": "RenderFragment?",
+      "description": null
+    }
+  ],
+  "serviceDependencies": [
+    {
+      "service": "ComponentInteropService",
+      "namespace": ""
+    }
+  ],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [],
+  "mdSummary": "# PullToRefresh\n\nPull To Refresh component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/pull-to-refresh\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| PullToRefresh | ChildContent | `RenderFragment?` | `` |  |\n| PullToRefresh | OnRefresh | `EventCallback` | `` |  |\n| PullToRefresh | ThresholdPx | `double` | `80` |  |\n| PullToRefresh | MaxPullPx | `double` | `120` |  |\n| PullToRefresh | Class | `string?` | `` |  |\n| PullToRefresh | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (PullToRefresh) — RenderFragment slot\n\n## Events\n- `OnRefresh` (`EventCallback`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<PullToRefresh />\n```\n\n## CSS variables\n`--color-background`, `--color-foreground`, `--radius`\n\n## Files\n- `UI/PullToRefresh/PullToRefresh.razor`\n"
+}
