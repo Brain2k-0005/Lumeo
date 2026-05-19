@@ -7,7 +7,8 @@
   "hasDocsPage": true,
   "nugetPackage": "Lumeo",
   "files": [
-    "UI/TimePicker/TimePicker.razor"
+    "UI/TimePicker/TimePicker.razor",
+    "UI/TimePicker/TimeWheelPicker.razor"
   ],
   "dependencies": [
     "popover"
@@ -33,12 +34,21 @@
     "description": "Time-of-day picker with 12h/24h formats.",
     "nugetPackage": "Lumeo",
     "files": [
-      "UI/TimePicker/TimePicker.razor"
+      "UI/TimePicker/TimePicker.razor",
+      "UI/TimePicker/TimeWheelPicker.razor"
     ],
     "namespace": "Lumeo",
     "inheritsFrom": null,
     "implements": [],
     "parameters": [
+      {
+        "name": "Variant",
+        "type": "TimePickerVariant",
+        "default": "TimePickerVariant.List",
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
       {
         "name": "FormField",
         "type": "FormField.FormFieldContext?",
@@ -113,9 +123,9 @@
       },
       {
         "name": "Use24Hour",
-        "type": "bool",
-        "default": "true",
-        "description": null,
+        "type": "bool?",
+        "default": null,
+        "description": "When true renders a 24-hour clock; when false renders 12-hour with AM/PM. When null (default) the picker derives the choice from EffectiveCulture's ShortTimePattern — de-DE, fr-FR and similar see 24-hour; en-US sees 12-hour.",
         "isCascading": false,
         "captureUnmatched": false
       },
@@ -152,6 +162,14 @@
         "captureUnmatched": false
       },
       {
+        "name": "Culture",
+        "type": "System.Globalization.CultureInfo?",
+        "default": null,
+        "description": "Overrides CurrentCulture for 24h/12h detection and AM/PM designators. Leave null to honour ASP.NET request localization.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
         "name": "Disabled",
         "type": "bool",
         "default": null,
@@ -183,7 +201,16 @@
         "description": null
       }
     ],
-    "enums": [],
+    "enums": [
+      {
+        "name": "TimePickerVariant",
+        "values": [
+          "List",
+          "Wheel"
+        ],
+        "description": "Visual style of the picker. List renders the existing scrollable hour/minute columns inside a popover (default). Wheel renders inline iOS-style snap-scrolling columns. The Wheel variant doesn't show seconds."
+      }
+    ],
     "records": [],
     "cssVars": [
       "--color-accent",
@@ -214,7 +241,86 @@
         "code": "<TimePicker @bind-Value=\"_time\" MinuteStep=\"15\" />"
       }
     ],
-    "subComponents": {},
+    "subComponents": {
+      "TimeWheelPicker": {
+        "componentName": "TimeWheelPicker",
+        "fileName": "TimeWheelPicker.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [
+          "IDisposable"
+        ],
+        "parameters": [
+          {
+            "name": "Value",
+            "type": "TimeSpan?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "ValueChanged",
+            "type": "EventCallback<TimeSpan?>",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Use24Hour",
+            "type": "bool?",
+            "default": null,
+            "description": "When true renders a 24-hour clock; when false renders 12-hour with AM/PM. When null (default), derived from ShortTimePattern.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "MinuteStep",
+            "type": "int",
+            "default": "1",
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Culture",
+            "type": "CultureInfo?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": true
+          }
+        ],
+        "events": [
+          {
+            "name": "ValueChanged",
+            "type": "EventCallback<TimeSpan?>",
+            "description": null
+          }
+        ],
+        "enums": [],
+        "records": [],
+        "parseFailed": false,
+        "parseError": null
+      }
+    },
     "parseFailed": false,
     "parseError": null
   },
@@ -225,12 +331,20 @@
     {
       "file": "UI/TimePicker/TimePicker.razor",
       "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/TimePicker/TimePicker.razor"
+    },
+    {
+      "file": "UI/TimePicker/TimeWheelPicker.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/TimePicker/TimeWheelPicker.razor"
     }
   ],
   "source": [
     {
       "path": "UI/TimePicker/TimePicker.razor",
-      "content": "@namespace Lumeo\n\n@if (Label is not null && !InsideFormField)\n{\n    <label class=\"text-sm font-medium leading-none\">\n        @Label\n        @if (Required)\n        {\n            <span class=\"text-destructive ml-0.5\">*</span>\n        }\n    </label>\n}\n\n<Popover @bind-Open=\"_isOpen\">\n    <PopoverTrigger>\n        <button type=\"button\"\n                name=\"@Name\"\n                aria-required=\"@Required.ToString().ToLower()\"\n                aria-invalid=\"@EffectiveInvalid.ToString().ToLower()\"\n                class=\"@CssClass\"\n                disabled=\"@Disabled\"\n                @attributes=\"AdditionalAttributes\">\n            <Blazicon Svg=\"Lucide.Clock\" class=\"mr-2 h-4 w-4 shrink-0\" />\n            @if (Value.HasValue)\n            {\n                <span>@FormatTime(Value.Value)</span>\n            }\n            else\n            {\n                <span class=\"text-muted-foreground\">@EffectivePlaceholder</span>\n            }\n        </button>\n    </PopoverTrigger>\n    <PopoverContent Align=\"PopoverContent.PopoverAlign.Start\" Class=\"w-auto p-0\">\n        <div class=\"flex divide-x divide-border/40\">\n            @* Hours column *@\n            <div class=\"flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin\">\n                @foreach (var hour in GetHours())\n                {\n                    var h = hour;\n                    var isSelected = Value.HasValue && GetDisplayHour(Value.Value) == h;\n                    <button type=\"button\"\n                            class=\"@(isSelected ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectHour(h)\">\n                        @h.ToString(\"D2\")\n                    </button>\n                }\n            </div>\n\n            @* Minutes column *@\n            <div class=\"flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin\">\n                @foreach (var minute in GetMinutes())\n                {\n                    var m = minute;\n                    var isSelected = Value.HasValue && Value.Value.Minutes == m;\n                    <button type=\"button\"\n                            class=\"@(isSelected ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectMinute(m)\">\n                        @m.ToString(\"D2\")\n                    </button>\n                }\n            </div>\n\n            @* Seconds column *@\n            @if (ShowSeconds)\n            {\n                <div class=\"flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin\">\n                    @foreach (var second in GetSeconds())\n                    {\n                        var s = second;\n                        var isSelected = Value.HasValue && Value.Value.Seconds == s;\n                        <button type=\"button\"\n                                class=\"@(isSelected ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                                @onclick=\"() => SelectSecond(s)\">\n                            @s.ToString(\"D2\")\n                        </button>\n                    }\n                </div>\n            }\n\n            @* AM/PM column *@\n            @if (!Use24Hour)\n            {\n                <div class=\"flex flex-col py-1\">\n                    @{\n                        var isAm = !Value.HasValue || Value.Value.Hours < 12;\n                    }\n                    <button type=\"button\"\n                            class=\"@(isAm ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectAmPm(true)\">\n                        AM\n                    </button>\n                    <button type=\"button\"\n                            class=\"@(!isAm ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectAmPm(false)\">\n                        PM\n                    </button>\n                </div>\n            }\n        </div>\n    </PopoverContent>\n</Popover>\n\n@if (!InsideFormField)\n{\n    @if (EffectiveInvalid && ErrorText is not null)\n    {\n        <p class=\"text-xs text-destructive\">@ErrorText</p>\n    }\n    else if (HelperText is not null)\n    {\n        <p class=\"text-xs text-muted-foreground\">@HelperText</p>\n    }\n}\n\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@code {\n    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }\n\n    [Parameter] public bool Required { get; set; }\n    [Parameter] public bool Invalid { get; set; }\n    [Parameter] public string? ErrorText { get; set; }\n    [Parameter] public string? HelperText { get; set; }\n    [Parameter] public string? Label { get; set; }\n    [Parameter] public string? Name { get; set; }\n\n    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;\n    private bool InsideFormField => FormField is not null;\n\n    [Parameter] public TimeSpan? Value { get; set; }\n    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }\n    [Parameter] public bool Use24Hour { get; set; } = true;\n    [Parameter] public bool ShowSeconds { get; set; }\n    [Parameter] public int MinuteStep { get; set; } = 1;\n    [Parameter] public int SecondStep { get; set; } = 1;\n    [Parameter] public string? Placeholder { get; set; }\n\n    private string EffectivePlaceholder => Placeholder ?? L[\"TimePicker.Placeholder\"];\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isOpen;\n\n    private string CssClass => $\"flex h-9 items-center rounded-md border {(EffectiveInvalid ? \"border-destructive ring-1 ring-destructive/20\" : \"border-input\")} bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}\".Trim();\n\n    private string FormatTime(TimeSpan time)\n    {\n        if (Use24Hour)\n        {\n            return ShowSeconds\n                ? $\"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}\"\n                : $\"{time.Hours:D2}:{time.Minutes:D2}\";\n        }\n        else\n        {\n            var hour12 = time.Hours % 12;\n            if (hour12 == 0) hour12 = 12;\n            var ampm = time.Hours < 12 ? \"AM\" : \"PM\";\n            return ShowSeconds\n                ? $\"{hour12:D2}:{time.Minutes:D2}:{time.Seconds:D2} {ampm}\"\n                : $\"{hour12:D2}:{time.Minutes:D2} {ampm}\";\n        }\n    }\n\n    private List<int> GetHours()\n    {\n        var hours = new List<int>();\n        if (Use24Hour)\n        {\n            for (var i = 0; i < 24; i++) hours.Add(i);\n        }\n        else\n        {\n            for (var i = 1; i <= 12; i++) hours.Add(i);\n        }\n        return hours;\n    }\n\n    private int GetDisplayHour(TimeSpan time)\n    {\n        if (Use24Hour) return time.Hours;\n        var h = time.Hours % 12;\n        return h == 0 ? 12 : h;\n    }\n\n    private List<int> GetMinutes()\n    {\n        var minutes = new List<int>();\n        var step = Math.Max(1, MinuteStep);\n        for (var i = 0; i < 60; i += step) minutes.Add(i);\n        return minutes;\n    }\n\n    private List<int> GetSeconds()\n    {\n        var seconds = new List<int>();\n        var step = Math.Max(1, SecondStep);\n        for (var i = 0; i < 60; i += step) seconds.Add(i);\n        return seconds;\n    }\n\n    private async Task SelectHour(int hour)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        int actualHour;\n        if (Use24Hour)\n        {\n            actualHour = hour;\n        }\n        else\n        {\n            var isPm = current.Hours >= 12;\n            actualHour = hour % 12;\n            if (isPm) actualHour += 12;\n        }\n        var newValue = new TimeSpan(actualHour, current.Minutes, current.Seconds);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task SelectMinute(int minute)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        var newValue = new TimeSpan(current.Hours, minute, current.Seconds);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task SelectSecond(int second)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        var newValue = new TimeSpan(current.Hours, current.Minutes, second);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task SelectAmPm(bool isAm)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        var hour = current.Hours % 12;\n        if (!isAm) hour += 12;\n        var newValue = new TimeSpan(hour, current.Minutes, current.Seconds);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n@if (Label is not null && !InsideFormField)\n{\n    <label class=\"text-sm font-medium leading-none\">\n        @Label\n        @if (Required)\n        {\n            <span class=\"text-destructive ml-0.5\">*</span>\n        }\n    </label>\n}\n\n@if (Variant == TimePickerVariant.Wheel)\n{\n    @* iOS-style wheel picker — hours + minutes (+ AM/PM if 12-hour).\n       Seconds are not supported in the wheel variant. *@\n    <TimeWheelPicker Value=\"@Value\" ValueChanged=\"HandleWheelChanged\"\n                     Use24Hour=\"@Use24Hour\" MinuteStep=\"@MinuteStep\"\n                     Culture=\"@Culture\" Class=\"@Class\" />\n}\nelse\n{\n<Popover @bind-Open=\"_isOpen\">\n    <PopoverTrigger>\n        <button type=\"button\"\n                name=\"@Name\"\n                aria-required=\"@Required.ToString().ToLower()\"\n                aria-invalid=\"@EffectiveInvalid.ToString().ToLower()\"\n                class=\"@CssClass\"\n                disabled=\"@Disabled\"\n                @attributes=\"AdditionalAttributes\">\n            <Blazicon Svg=\"Lucide.Clock\" class=\"mr-2 h-4 w-4 shrink-0\" />\n            @if (Value.HasValue)\n            {\n                <span>@FormatTime(Value.Value)</span>\n            }\n            else\n            {\n                <span class=\"text-muted-foreground\">@EffectivePlaceholder</span>\n            }\n        </button>\n    </PopoverTrigger>\n    <PopoverContent Align=\"PopoverContent.PopoverAlign.Start\" Class=\"w-auto p-0\">\n        <div class=\"flex divide-x divide-border/40\">\n            @* Hours column *@\n            <div class=\"flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin\">\n                @foreach (var hour in GetHours())\n                {\n                    var h = hour;\n                    var isSelected = Value.HasValue && GetDisplayHour(Value.Value) == h;\n                    <button type=\"button\"\n                            class=\"@(isSelected ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectHour(h)\">\n                        @h.ToString(\"D2\")\n                    </button>\n                }\n            </div>\n\n            @* Minutes column *@\n            <div class=\"flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin\">\n                @foreach (var minute in GetMinutes())\n                {\n                    var m = minute;\n                    var isSelected = Value.HasValue && Value.Value.Minutes == m;\n                    <button type=\"button\"\n                            class=\"@(isSelected ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectMinute(m)\">\n                        @m.ToString(\"D2\")\n                    </button>\n                }\n            </div>\n\n            @* Seconds column *@\n            @if (ShowSeconds)\n            {\n                <div class=\"flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin\">\n                    @foreach (var second in GetSeconds())\n                    {\n                        var s = second;\n                        var isSelected = Value.HasValue && Value.Value.Seconds == s;\n                        <button type=\"button\"\n                                class=\"@(isSelected ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                                @onclick=\"() => SelectSecond(s)\">\n                            @s.ToString(\"D2\")\n                        </button>\n                    }\n                </div>\n            }\n\n            @* AM/PM column *@\n            @if (!EffectiveUse24Hour)\n            {\n                <div class=\"flex flex-col py-1\">\n                    @{\n                        var isAm = !Value.HasValue || Value.Value.Hours < 12;\n                        var amLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.AMDesignator) ? \"AM\" : EffectiveCulture.DateTimeFormat.AMDesignator;\n                        var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? \"PM\" : EffectiveCulture.DateTimeFormat.PMDesignator;\n                    }\n                    <button type=\"button\"\n                            class=\"@(isAm ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectAmPm(true)\">\n                        @amLabel\n                    </button>\n                    <button type=\"button\"\n                            class=\"@(!isAm ? \"px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground\" : \"px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50\")\"\n                            @onclick=\"() => SelectAmPm(false)\">\n                        @pmLabel\n                    </button>\n                </div>\n            }\n        </div>\n    </PopoverContent>\n</Popover>\n}\n\n@if (!InsideFormField)\n{\n    @if (EffectiveInvalid && ErrorText is not null)\n    {\n        <p class=\"text-xs text-destructive\">@ErrorText</p>\n    }\n    else if (HelperText is not null)\n    {\n        <p class=\"text-xs text-muted-foreground\">@HelperText</p>\n    }\n}\n\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@code {\n    /// <summary>\n    /// Visual style of the picker. <see cref=\"TimePickerVariant.List\"/> renders the\n    /// existing scrollable hour/minute columns inside a popover (default).\n    /// <see cref=\"TimePickerVariant.Wheel\"/> renders inline iOS-style snap-scrolling\n    /// columns. The Wheel variant doesn't show seconds.\n    /// </summary>\n    public enum TimePickerVariant { List, Wheel }\n\n    [Parameter] public TimePickerVariant Variant { get; set; } = TimePickerVariant.List;\n\n    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }\n\n    [Parameter] public bool Required { get; set; }\n    [Parameter] public bool Invalid { get; set; }\n    [Parameter] public string? ErrorText { get; set; }\n    [Parameter] public string? HelperText { get; set; }\n    [Parameter] public string? Label { get; set; }\n    [Parameter] public string? Name { get; set; }\n\n    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;\n    private bool InsideFormField => FormField is not null;\n\n    [Parameter] public TimeSpan? Value { get; set; }\n    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }\n    /// <summary>\n    /// When <c>true</c> renders a 24-hour clock; when <c>false</c> renders 12-hour with AM/PM.\n    /// When <c>null</c> (default) the picker derives the choice from\n    /// <see cref=\"EffectiveCulture\"/>'s <c>ShortTimePattern</c> — <c>de-DE</c>, <c>fr-FR</c>\n    /// and similar see 24-hour; <c>en-US</c> sees 12-hour.\n    /// </summary>\n    [Parameter] public bool? Use24Hour { get; set; }\n    [Parameter] public bool ShowSeconds { get; set; }\n    [Parameter] public int MinuteStep { get; set; } = 1;\n    [Parameter] public int SecondStep { get; set; } = 1;\n    [Parameter] public string? Placeholder { get; set; }\n\n    /// <summary>\n    /// Overrides <see cref=\"System.Globalization.CultureInfo.CurrentCulture\"/> for\n    /// 24h/12h detection and AM/PM designators. Leave null to honour ASP.NET request localization.\n    /// </summary>\n    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }\n\n    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;\n    // Per CLDR/.NET conventions a lowercase \"h\" in the short-time pattern means 12-hour;\n    // uppercase \"H\" means 24-hour. We honour an explicit Use24Hour first, then derive.\n    private bool EffectiveUse24Hour => Use24Hour ?? !EffectiveCulture.DateTimeFormat.ShortTimePattern.Contains('h');\n\n    private string EffectivePlaceholder => Placeholder ?? L[\"TimePicker.Placeholder\"];\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isOpen;\n\n    private string CssClass => $\"flex h-9 items-center rounded-md border {(EffectiveInvalid ? \"border-destructive ring-1 ring-destructive/20\" : \"border-input\")} bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}\".Trim();\n\n    private string FormatTime(TimeSpan time)\n    {\n        if (EffectiveUse24Hour)\n        {\n            return ShowSeconds\n                ? $\"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}\"\n                : $\"{time.Hours:D2}:{time.Minutes:D2}\";\n        }\n        else\n        {\n            var hour12 = time.Hours % 12;\n            if (hour12 == 0) hour12 = 12;\n            var dtf = EffectiveCulture.DateTimeFormat;\n            var ampm = time.Hours < 12\n                ? (string.IsNullOrEmpty(dtf.AMDesignator) ? \"AM\" : dtf.AMDesignator)\n                : (string.IsNullOrEmpty(dtf.PMDesignator) ? \"PM\" : dtf.PMDesignator);\n            return ShowSeconds\n                ? $\"{hour12:D2}:{time.Minutes:D2}:{time.Seconds:D2} {ampm}\"\n                : $\"{hour12:D2}:{time.Minutes:D2} {ampm}\";\n        }\n    }\n\n    private List<int> GetHours()\n    {\n        var hours = new List<int>();\n        if (EffectiveUse24Hour)\n        {\n            for (var i = 0; i < 24; i++) hours.Add(i);\n        }\n        else\n        {\n            for (var i = 1; i <= 12; i++) hours.Add(i);\n        }\n        return hours;\n    }\n\n    private int GetDisplayHour(TimeSpan time)\n    {\n        if (EffectiveUse24Hour) return time.Hours;\n        var h = time.Hours % 12;\n        return h == 0 ? 12 : h;\n    }\n\n    private List<int> GetMinutes()\n    {\n        var minutes = new List<int>();\n        var step = Math.Max(1, MinuteStep);\n        for (var i = 0; i < 60; i += step) minutes.Add(i);\n        return minutes;\n    }\n\n    private List<int> GetSeconds()\n    {\n        var seconds = new List<int>();\n        var step = Math.Max(1, SecondStep);\n        for (var i = 0; i < 60; i += step) seconds.Add(i);\n        return seconds;\n    }\n\n    private async Task SelectHour(int hour)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        int actualHour;\n        if (EffectiveUse24Hour)\n        {\n            actualHour = hour;\n        }\n        else\n        {\n            var isPm = current.Hours >= 12;\n            actualHour = hour % 12;\n            if (isPm) actualHour += 12;\n        }\n        var newValue = new TimeSpan(actualHour, current.Minutes, current.Seconds);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task SelectMinute(int minute)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        var newValue = new TimeSpan(current.Hours, minute, current.Seconds);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task SelectSecond(int second)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        var newValue = new TimeSpan(current.Hours, current.Minutes, second);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task HandleWheelChanged(TimeSpan? newValue)\n    {\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n\n    private async Task SelectAmPm(bool isAm)\n    {\n        var current = Value ?? TimeSpan.Zero;\n        var hour = current.Hours % 12;\n        if (!isAm) hour += 12;\n        var newValue = new TimeSpan(hour, current.Minutes, current.Seconds);\n        Value = newValue;\n        await ValueChanged.InvokeAsync(newValue);\n    }\n}\n"
+    },
+    {
+      "path": "UI/TimePicker/TimeWheelPicker.razor",
+      "content": "@namespace Lumeo\n@using System.Globalization\n@implements IDisposable\n\n<div class=\"@RootCssClass\" @attributes=\"AdditionalAttributes\" style=\"@RootStyle\">\n    @* Center selection indicator *@\n    <div class=\"absolute left-0 right-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none\"></div>\n\n    @* Hours column *@\n    <div class=\"flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full\"\n         @onscroll=\"OnHourScroll\"\n         @ref=\"_hourCol\">\n        <div class=\"h-[60px]\"></div>\n        @foreach (var h in _hours)\n        {\n            var hour = h;\n            <div class=\"h-10 flex items-center justify-center snap-center text-base select-none @(hour == _hour ? \"text-primary font-semibold\" : \"text-muted-foreground\")\">\n                @hour.ToString(\"D2\")\n            </div>\n        }\n        <div class=\"h-[60px]\"></div>\n    </div>\n\n    @* Minutes column *@\n    <div class=\"flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full\"\n         @onscroll=\"OnMinuteScroll\"\n         @ref=\"_minuteCol\">\n        <div class=\"h-[60px]\"></div>\n        @foreach (var m in _minutes)\n        {\n            var minute = m;\n            <div class=\"h-10 flex items-center justify-center snap-center text-base select-none @(minute == _minute ? \"text-primary font-semibold\" : \"text-muted-foreground\")\">\n                @minute.ToString(\"D2\")\n            </div>\n        }\n        <div class=\"h-[60px]\"></div>\n    </div>\n\n    @* AM/PM column (12-hour only) *@\n    @if (!EffectiveUse24Hour)\n    {\n        <div class=\"flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full\"\n             @onscroll=\"OnPeriodScroll\"\n             @ref=\"_periodCol\">\n            <div class=\"h-[60px]\"></div>\n            @for (var p = 0; p < 2; p++)\n            {\n                var period = p;\n                var label = period == 0 ? _amLabel : _pmLabel;\n                <div class=\"h-10 flex items-center justify-center snap-center text-base select-none @(period == _periodIndex ? \"text-primary font-semibold\" : \"text-muted-foreground\")\">\n                    @label\n                </div>\n            }\n            <div class=\"h-[60px]\"></div>\n        </div>\n    }\n</div>\n\n@inject Lumeo.Services.IComponentInteropService Interop\n\n@code {\n    // --- Public API ----------------------------------------------------------\n    [Parameter] public TimeSpan? Value { get; set; }\n    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }\n    /// <summary>\n    /// When <c>true</c> renders a 24-hour clock; when <c>false</c> renders 12-hour with AM/PM.\n    /// When <c>null</c> (default), derived from <see cref=\"CultureInfo.DateTimeFormat.ShortTimePattern\"/>.\n    /// </summary>\n    [Parameter] public bool? Use24Hour { get; set; }\n    [Parameter] public int MinuteStep { get; set; } = 1;\n    [Parameter] public CultureInfo? Culture { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // --- Layout constants ----------------------------------------------------\n    private const int ItemHeight = 40;\n    private const int Height = 160;\n\n    // --- Element refs --------------------------------------------------------\n    private ElementReference _hourCol;\n    private ElementReference _minuteCol;\n    private ElementReference _periodCol;\n\n    // --- Selection state -----------------------------------------------------\n    private int _hour = 0;           // display hour (0-23 or 1-12)\n    private int _minute = 0;\n    private int _periodIndex = 0;    // 0=AM, 1=PM (only relevant when !Use24Hour)\n    private List<int> _hours = new();\n    private List<int> _minutes = new();\n    private string _amLabel = \"AM\";\n    private string _pmLabel = \"PM\";\n\n    private System.Threading.Timer? _hourTimer;\n    private System.Threading.Timer? _minuteTimer;\n    private System.Threading.Timer? _periodTimer;\n    private int _pendingHour;\n    private int _pendingMinute;\n    private int _pendingPeriod;\n    private bool _initialised;\n\n    private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;\n    // Mirror TimePicker's derivation: lowercase \"h\" in ShortTimePattern = 12-hour.\n    private bool EffectiveUse24Hour => Use24Hour ?? !EffectiveCulture.DateTimeFormat.ShortTimePattern.Contains('h');\n\n    private string RootCssClass => $\"flex gap-2 relative {Class}\".Trim();\n    private string RootStyle => $\"height: {Height}px;\";\n\n    protected override void OnParametersSet()\n    {\n        var dtf = EffectiveCulture.DateTimeFormat;\n        _amLabel = string.IsNullOrEmpty(dtf.AMDesignator) ? \"AM\" : dtf.AMDesignator;\n        _pmLabel = string.IsNullOrEmpty(dtf.PMDesignator) ? \"PM\" : dtf.PMDesignator;\n\n        _hours = EffectiveUse24Hour\n            ? Enumerable.Range(0, 24).ToList()\n            : Enumerable.Range(1, 12).ToList();\n\n        var step = Math.Max(1, MinuteStep);\n        _minutes = new List<int>();\n        for (var i = 0; i < 60; i += step) _minutes.Add(i);\n\n        var seed = Value ?? TimeSpan.Zero;\n        if (EffectiveUse24Hour)\n        {\n            _hour = seed.Hours;\n        }\n        else\n        {\n            var h12 = seed.Hours % 12;\n            _hour = h12 == 0 ? 12 : h12;\n            _periodIndex = seed.Hours >= 12 ? 1 : 0;\n        }\n        // Snap the seeded minute to the closest step.\n        _minute = SnapMinute(seed.Minutes);\n    }\n\n    private int SnapMinute(int minute)\n    {\n        if (_minutes.Count == 0) return 0;\n        var nearest = _minutes[0];\n        var bestDiff = Math.Abs(minute - nearest);\n        foreach (var m in _minutes)\n        {\n            var d = Math.Abs(minute - m);\n            if (d < bestDiff) { bestDiff = d; nearest = m; }\n        }\n        return nearest;\n    }\n\n    // --- Scroll handlers -----------------------------------------------------\n    private async Task OnHourScroll()\n    {\n        if (!_initialised) return;\n        var idx = await GetIndexAsync(_hourCol);\n        if (idx < 0 || idx >= _hours.Count) return;\n        _pendingHour = _hours[idx];\n        ResetTimer(ref _hourTimer, CommitHour);\n    }\n\n    private async Task OnMinuteScroll()\n    {\n        if (!_initialised) return;\n        var idx = await GetIndexAsync(_minuteCol);\n        if (idx < 0 || idx >= _minutes.Count) return;\n        _pendingMinute = _minutes[idx];\n        ResetTimer(ref _minuteTimer, CommitMinute);\n    }\n\n    private async Task OnPeriodScroll()\n    {\n        if (!_initialised) return;\n        var idx = await GetIndexAsync(_periodCol);\n        if (idx < 0 || idx > 1) return;\n        _pendingPeriod = idx;\n        ResetTimer(ref _periodTimer, CommitPeriod);\n    }\n\n    private async Task<int> GetIndexAsync(ElementReference el)\n    {\n        var scrollTop = await Interop.WheelScrollTop(el);\n        return (int)Math.Round(scrollTop / ItemHeight);\n    }\n\n    private void ResetTimer(ref System.Threading.Timer? timer, Action commit)\n    {\n        timer?.Dispose();\n        timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);\n    }\n\n    private async void CommitHour()\n    {\n        if (_pendingHour == _hour) return;\n        _hour = _pendingHour;\n        await RaiseChange();\n        StateHasChanged();\n    }\n\n    private async void CommitMinute()\n    {\n        if (_pendingMinute == _minute) return;\n        _minute = _pendingMinute;\n        await RaiseChange();\n        StateHasChanged();\n    }\n\n    private async void CommitPeriod()\n    {\n        if (_pendingPeriod == _periodIndex) return;\n        _periodIndex = _pendingPeriod;\n        await RaiseChange();\n        StateHasChanged();\n    }\n\n    private async Task RaiseChange()\n    {\n        int hour24;\n        if (EffectiveUse24Hour)\n        {\n            hour24 = _hour;\n        }\n        else\n        {\n            var h = _hour % 12;\n            hour24 = _periodIndex == 1 ? h + 12 : h;\n        }\n        var t = new TimeSpan(hour24, _minute, 0);\n        await ValueChanged.InvokeAsync(t);\n    }\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender)\n        {\n            var hourIdx = _hours.IndexOf(_hour);\n            if (hourIdx >= 0) await Interop.WheelScrollTo(_hourCol, hourIdx * ItemHeight);\n\n            var minuteIdx = _minutes.IndexOf(_minute);\n            if (minuteIdx >= 0) await Interop.WheelScrollTo(_minuteCol, minuteIdx * ItemHeight);\n\n            if (!EffectiveUse24Hour)\n            {\n                await Interop.WheelScrollTo(_periodCol, _periodIndex * ItemHeight);\n            }\n\n            _ = Task.Delay(150).ContinueWith(_ => InvokeAsync(() => { _initialised = true; }));\n        }\n    }\n\n    public void Dispose()\n    {\n        _hourTimer?.Dispose();\n        _minuteTimer?.Dispose();\n        _periodTimer?.Dispose();\n    }\n}\n"
     }
   ],
   "slots": [],
@@ -238,6 +352,10 @@
     {
       "service": "ILumeoLocalizer",
       "namespace": "Lumeo.Services.Localization"
+    },
+    {
+      "service": "IComponentInteropService",
+      "namespace": "Lumeo.Services"
     }
   ],
   "cascadingDependencies": [
@@ -249,6 +367,10 @@
   ],
   "relatedComponents": [
     {
+      "name": "TimeWheelPicker",
+      "reason": "sub-component"
+    },
+    {
       "name": "Popover",
       "reason": "used internally"
     }
@@ -257,5 +379,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/TimePicker/TimePickerTests.cs"
   ],
-  "mdSummary": "# TimePicker\r\n\r\nTime-of-day picker with 12h/24h formats.\r\n\r\n**Package:** `Lumeo` · **Category:** Forms/Specialized\r\n**Docs:** https://lumeo.nativ.sh/components/time-picker\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| TimePicker | FormField | `FormField.FormFieldContext?` | `` |  |\r\n| TimePicker | Required | `bool` | `` |  |\r\n| TimePicker | Invalid | `bool` | `` |  |\r\n| TimePicker | ErrorText | `string?` | `` |  |\r\n| TimePicker | HelperText | `string?` | `` |  |\r\n| TimePicker | Label | `string?` | `` |  |\r\n| TimePicker | Name | `string?` | `` |  |\r\n| TimePicker | Value | `TimeSpan?` | `` |  |\r\n| TimePicker | ValueChanged | `EventCallback<TimeSpan?>` | `` |  |\r\n| TimePicker | Use24Hour | `bool` | `true` |  |\r\n| TimePicker | ShowSeconds | `bool` | `` |  |\r\n| TimePicker | MinuteStep | `int` | `1` |  |\r\n| TimePicker | SecondStep | `int` | `1` |  |\r\n| TimePicker | Placeholder | `string?` | `` |  |\r\n| TimePicker | Disabled | `bool` | `` |  |\r\n| TimePicker | Class | `string?` | `` |  |\r\n| TimePicker | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- `ValueChanged` (`EventCallback<TimeSpan?>`)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- `FormField` (`FormField.FormFieldContext?`)\r\n\r\n## Services it injects\r\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<TimePicker />\r\n```\r\n\r\n## CSS variables\r\n`--color-accent`, `--color-accent-foreground`, `--color-destructive`, `--color-input`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--color-primary-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/TimePicker/TimePicker.razor`\r\n"
+  "mdSummary": "# TimePicker\n\nTime-of-day picker with 12h/24h formats.\n\n**Package:** `Lumeo` · **Category:** Forms/Specialized\n**Docs:** https://lumeo.nativ.sh/components/time-picker\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TimePicker | Variant | `TimePickerVariant` | `TimePickerVariant.List` |  |\n| TimePicker | FormField | `FormField.FormFieldContext?` | `` |  |\n| TimePicker | Required | `bool` | `` |  |\n| TimePicker | Invalid | `bool` | `` |  |\n| TimePicker | ErrorText | `string?` | `` |  |\n| TimePicker | HelperText | `string?` | `` |  |\n| TimePicker | Label | `string?` | `` |  |\n| TimePicker | Name | `string?` | `` |  |\n| TimePicker | Value | `TimeSpan?` | `` |  |\n| TimePicker | ValueChanged | `EventCallback<TimeSpan?>` | `` |  |\n| TimePicker | Use24Hour | `bool?` | `` | When true renders a 24-hour clock; when false renders 12-hour with AM/PM. When null (default) the picker derives the choice from EffectiveCulture's ShortTimePattern — de-DE, fr-FR and similar see 24-hour; en-US sees 12-hour. |\n| TimePicker | ShowSeconds | `bool` | `` |  |\n| TimePicker | MinuteStep | `int` | `1` |  |\n| TimePicker | SecondStep | `int` | `1` |  |\n| TimePicker | Placeholder | `string?` | `` |  |\n| TimePicker | Culture | `System.Globalization.CultureInfo?` | `` | Overrides CurrentCulture for 24h/12h detection and AM/PM designators. Leave null to honour ASP.NET request localization. |\n| TimePicker | Disabled | `bool` | `` |  |\n| TimePicker | Class | `string?` | `` |  |\n| TimePicker | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TimeWheelPicker | Value | `TimeSpan?` | `` |  |\n| TimeWheelPicker | ValueChanged | `EventCallback<TimeSpan?>` | `` |  |\n| TimeWheelPicker | Use24Hour | `bool?` | `` | When true renders a 24-hour clock; when false renders 12-hour with AM/PM. When null (default), derived from ShortTimePattern. |\n| TimeWheelPicker | MinuteStep | `int` | `1` |  |\n| TimeWheelPicker | Culture | `CultureInfo?` | `` |  |\n| TimeWheelPicker | Class | `string?` | `` |  |\n| TimeWheelPicker | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- `ValueChanged` (`EventCallback<TimeSpan?>`)\n\n## Sub-components\n- `TimeWheelPicker`\n\n## Cascading values it expects\n- `FormField` (`FormField.FormFieldContext?`)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n- `IComponentInteropService` (Lumeo.Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<TimePicker />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-destructive`, `--color-input`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--color-primary-foreground`, `--radius`\n\n## Files\n- `UI/TimePicker/TimePicker.razor`\n- `UI/TimePicker/TimeWheelPicker.razor`\n"
 }
