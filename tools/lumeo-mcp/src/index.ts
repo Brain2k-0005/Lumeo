@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Lumeo MCP Server v2.0.0
+ * Lumeo MCP Server v2.0.1
  *
- * Source-of-truth schema for ALL 131 Lumeo components, generated at build time
+ * Source-of-truth schema for ALL Lumeo components, generated at build time
  * by `tools/Lumeo.RegistryGen` from the actual Razor source via Roslyn. Every
  * component now ships full parameter / enum / event / sub-component metadata —
  * no thin/rich split, no manual catalog drift.
@@ -364,7 +364,7 @@ function validateMarkup(markup: string): { ok: boolean; issues: ValidationIssue[
 const server = new Server(
   {
     name: "lumeo-mcp",
-    version: "2.0.0",
+    version: "2.0.1",
   },
   {
     capabilities: {
