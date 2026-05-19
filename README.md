@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **v2.0 is in release-candidate phase (latest: `2.0.0-rc.54`).** The API is stable; we're gathering field feedback before tagging `2.0.0` final. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
+> **Lumeo 2.0 is stable.** Install `Lumeo` 2.0.x from NuGet. The release-candidate series (`2.0.0-rc.1` … `2.0.0-rc.54`) is superseded — pin to `2.0.0` or later. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 1.x.
 
 ## What's new in 2.0
 

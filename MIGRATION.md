@@ -141,6 +141,16 @@ Options: `Smart` (default, show all + auto-rotate), `ShowAll` (show all, never r
 
 New `ShowSearch`, `ShowColumnChooser`, `ShowExport` booleans on `DataGrid` default to `true`. Behaviour is unchanged from v1 — listed here so you know the knobs exist if you want to hide them.
 
+### 6. `IComponentInteropService.RegisterCarouselSwipe` signature (only affects custom interop implementations)
+
+During the mobile sprint the Carousel scroll-sync callback gained the current snapped item index so `_currentIndex` stays correct after a native touch swipe (previously a touch flick could desync the dot indicator).
+
+**Before**: `RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, Task> scrollHandler)`
+
+**After (2.0)**: the `scrollHandler` is `Func<double, double, int, Task>` — the third argument is the nearest snapped child index.
+
+**Impact**: **none for normal consumers.** This only matters if you implemented `IComponentInteropService` yourself (e.g. a custom JS-interop layer or a test double). The built-in `ComponentInteropService` and `Carousel` are already updated. If you have a custom implementation, add the `int` parameter to your `scrollHandler` delegate.
+
 ## New companion packages
 
 Lumeo 2.0 ships with three optional companion packages. You can ignore them if you only consume `Lumeo` as a NuGet package — none of them is required for the core library.
