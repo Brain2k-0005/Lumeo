@@ -98,8 +98,8 @@ public static class RazorParameterScanner
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        var codeBlock = ExtractLastCodeBlock(text);
-        if (codeBlock is null)
+        var codeBlocks = ExtractCodeBlocks(text);
+        if (codeBlocks.Count == 0)
         {
             // No @code block — markup-only razor (e.g. layouts). Not an error.
             return new RazorFileSchema(
@@ -116,97 +116,110 @@ public static class RazorParameterScanner
                 ParseError: null);
         }
 
-        // Wrap in a fake class so Roslyn can parse it as a normal compilation unit.
-        // We use `unsafe partial class` to swallow any `unsafe` modifier inside; `partial`
-        // permits any member visibility/duplicates we may inadvertently introduce.
-        var wrapped = $"using System; using System.Collections.Generic; using System.Threading.Tasks; using Microsoft.AspNetCore.Components; using Microsoft.AspNetCore.Components.Web;\npublic partial class _DocWrapper {{\n{codeBlock}\n}}";
-
-        SyntaxTree tree;
-        try
-        {
-            tree = CSharpSyntaxTree.ParseText(wrapped);
-        }
-        catch (Exception ex)
-        {
-            return Failed(razorPath, componentName, ns, inherits, implementsList,
-                $"roslyn parse threw: {ex.Message}");
-        }
-
-        var root = tree.GetRoot();
-
-        // Surface only "real" errors — many syntactic warnings are fine. We still allow
-        // best-effort extraction even with errors, but flag ParseFailed if the wrapper
-        // itself didn't end up with at least one class declaration.
-        var classDecl = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
-        if (classDecl is null)
-        {
-            return Failed(razorPath, componentName, ns, inherits, implementsList,
-                "no class declaration recovered from @code block");
-        }
-
         var parameters = new List<ParameterInfo>();
         var events = new List<EventInfo>();
+        var enums = new List<EnumInfo>();
+        var records = new List<RecordInfo>();
+        var seenParams = new HashSet<string>(StringComparer.Ordinal);
+        var seenEvents = new HashSet<string>(StringComparer.Ordinal);
+        var seenEnums = new HashSet<string>(StringComparer.Ordinal);
+        var seenRecords = new HashSet<string>(StringComparer.Ordinal);
+        var anyClassRecovered = false;
 
-        foreach (var prop in classDecl.DescendantNodes().OfType<PropertyDeclarationSyntax>())
+        // Parse each @code block on its own. A component may split members
+        // across blocks (FileManager keeps [Parameter]s in the first block,
+        // helper types in the last), and a block holding a markup-bearing
+        // RenderFragment (Checkbox's first block) is not valid standalone C#.
+        // Concatenating blocks corrupts the latter; parsing independently and
+        // merging lets each block contribute whatever it validly yields.
+        foreach (var codeBlock in codeBlocks)
         {
-            var attrs = prop.AttributeLists.SelectMany(al => al.Attributes).ToArray();
-            var paramAttr = attrs.FirstOrDefault(a => IsAttr(a, "Parameter"));
-            var cascadingAttr = attrs.FirstOrDefault(a => IsAttr(a, "CascadingParameter"));
-            if (paramAttr is null && cascadingAttr is null) continue;
+            // Wrap in a fake class so Roslyn can parse it as a normal compilation unit.
+            // `partial` permits any member visibility/duplicates we may inadvertently introduce.
+            var wrapped = $"using System; using System.Collections.Generic; using System.Threading.Tasks; using Microsoft.AspNetCore.Components; using Microsoft.AspNetCore.Components.Web;\npublic partial class _DocWrapper {{\n{codeBlock}\n}}";
 
-            var name = prop.Identifier.Text;
-            var type = prop.Type.ToString();
-            var defaultValue = prop.Initializer?.Value.ToString();
-            var description = ExtractXmlSummary(prop.GetLeadingTrivia());
-
-            // Detect [Parameter(CaptureUnmatchedValues = true)]
-            var captureUnmatched = false;
-            if (paramAttr?.ArgumentList is { } al)
+            SyntaxTree tree;
+            try
             {
-                foreach (var arg in al.Arguments)
+                tree = CSharpSyntaxTree.ParseText(wrapped);
+            }
+            catch
+            {
+                // A markup-bearing block Roslyn can't tokenize — other blocks may still carry params.
+                continue;
+            }
+
+            var classDecl = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+            if (classDecl is null) continue;
+            anyClassRecovered = true;
+
+            foreach (var prop in classDecl.DescendantNodes().OfType<PropertyDeclarationSyntax>())
+            {
+                var attrs = prop.AttributeLists.SelectMany(al => al.Attributes).ToArray();
+                var paramAttr = attrs.FirstOrDefault(a => IsAttr(a, "Parameter"));
+                var cascadingAttr = attrs.FirstOrDefault(a => IsAttr(a, "CascadingParameter"));
+                if (paramAttr is null && cascadingAttr is null) continue;
+
+                var name = prop.Identifier.Text;
+                if (!seenParams.Add(name)) continue;
+                var type = prop.Type.ToString();
+                var defaultValue = prop.Initializer?.Value.ToString();
+                var description = ExtractXmlSummary(prop.GetLeadingTrivia());
+
+                // Detect [Parameter(CaptureUnmatchedValues = true)]
+                var captureUnmatched = false;
+                if (paramAttr?.ArgumentList is { } al)
                 {
-                    if (arg.NameEquals?.Name.Identifier.Text == "CaptureUnmatchedValues"
-                        && arg.Expression.ToString().Equals("true", StringComparison.OrdinalIgnoreCase))
+                    foreach (var arg in al.Arguments)
                     {
-                        captureUnmatched = true;
+                        if (arg.NameEquals?.Name.Identifier.Text == "CaptureUnmatchedValues"
+                            && arg.Expression.ToString().Equals("true", StringComparison.OrdinalIgnoreCase))
+                        {
+                            captureUnmatched = true;
+                        }
                     }
+                }
+
+                parameters.Add(new ParameterInfo(
+                    Name: name,
+                    Type: type,
+                    Default: defaultValue,
+                    Description: description,
+                    IsCascading: cascadingAttr is not null,
+                    CaptureUnmatched: captureUnmatched));
+
+                // EventCallback<T> or EventCallback → also surface as event for convenience
+                if (type.StartsWith("EventCallback", StringComparison.Ordinal) && seenEvents.Add(name))
+                {
+                    events.Add(new EventInfo(name, type, description));
                 }
             }
 
-            var info = new ParameterInfo(
-                Name: name,
-                Type: type,
-                Default: defaultValue,
-                Description: description,
-                IsCascading: cascadingAttr is not null,
-                CaptureUnmatched: captureUnmatched);
-            parameters.Add(info);
-
-            // EventCallback<T> or EventCallback → also surface as event for convenience
-            if (type.StartsWith("EventCallback", StringComparison.Ordinal))
+            // Enums
+            foreach (var en in classDecl.DescendantNodes().OfType<EnumDeclarationSyntax>())
             {
-                events.Add(new EventInfo(name, type, description));
+                if (!seenEnums.Add(en.Identifier.Text)) continue;
+                var values = en.Members.Select(m => m.Identifier.Text).ToArray();
+                var desc = ExtractXmlSummary(en.GetLeadingTrivia());
+                enums.Add(new EnumInfo(en.Identifier.Text, values, desc));
+            }
+
+            // Records (positional or block-bodied)
+            foreach (var rec in classDecl.DescendantNodes().OfType<RecordDeclarationSyntax>())
+            {
+                if (!seenRecords.Add(rec.Identifier.Text)) continue;
+                // Build a one-line signature: "DialogContext(string TitleId, string DescriptionId, bool IsOpen)"
+                var sig = rec.Identifier.Text;
+                if (rec.ParameterList is not null) sig += rec.ParameterList.ToString();
+                var desc = ExtractXmlSummary(rec.GetLeadingTrivia());
+                records.Add(new RecordInfo(rec.Identifier.Text, sig, desc));
             }
         }
 
-        // Enums
-        var enums = new List<EnumInfo>();
-        foreach (var en in classDecl.DescendantNodes().OfType<EnumDeclarationSyntax>())
+        if (!anyClassRecovered)
         {
-            var values = en.Members.Select(m => m.Identifier.Text).ToArray();
-            var desc = ExtractXmlSummary(en.GetLeadingTrivia());
-            enums.Add(new EnumInfo(en.Identifier.Text, values, desc));
-        }
-
-        // Records (positional or block-bodied)
-        var records = new List<RecordInfo>();
-        foreach (var rec in classDecl.DescendantNodes().OfType<RecordDeclarationSyntax>())
-        {
-            // Build a one-line signature: "DialogContext(string TitleId, string DescriptionId, bool IsOpen)"
-            var sig = rec.Identifier.Text;
-            if (rec.ParameterList is not null) sig += rec.ParameterList.ToString();
-            var desc = ExtractXmlSummary(rec.GetLeadingTrivia());
-            records.Add(new RecordInfo(rec.Identifier.Text, sig, desc));
+            return Failed(razorPath, componentName, ns, inherits, implementsList,
+                "no class declaration recovered from any @code block");
         }
 
         return new RazorFileSchema(
@@ -280,17 +293,30 @@ public static class RazorParameterScanner
     }
 
     /// <summary>
-    /// Find the LAST `@code { ... }` block and return the text strictly between
-    /// its outer braces. Brace-matching honors strings, chars, and // / /* comments.
-    /// Returns null if no @code block exists.
+    /// Return the body of EVERY `@code { ... }` block in the file, in source
+    /// order. Each is parsed independently by the caller — taking only the
+    /// last block silently dropped all 14 of FileManager's parameters, while
+    /// concatenating blocks corrupted components whose earlier block holds a
+    /// markup-bearing RenderFragment (e.g. Checkbox).
     /// </summary>
-    private static string? ExtractLastCodeBlock(string text)
+    private static List<string> ExtractCodeBlocks(string text)
     {
-        // Find the last @code { occurrence
-        var matches = CodeBlockRegex.Matches(text);
-        if (matches.Count == 0) return null;
-        var last = matches[matches.Count - 1];
-        var openBraceIdx = last.Index + last.Length - 1; // position of '{'
+        var blocks = new List<string>();
+        foreach (Match m in CodeBlockRegex.Matches(text))
+        {
+            var body = ExtractBraceBody(text, m.Index + m.Length - 1);
+            if (body is not null) blocks.Add(body);
+        }
+        return blocks;
+    }
+
+    /// <summary>
+    /// Return the text strictly between the brace at <paramref name="openBraceIdx"/>
+    /// and its matching close. Brace-matching honors strings, chars, and
+    /// // / /* comments. Returns null if unbalanced.
+    /// </summary>
+    private static string? ExtractBraceBody(string text, int openBraceIdx)
+    {
         // Walk forward from openBraceIdx + 1 until matching close
         int depth = 1;
         int i = openBraceIdx + 1;
