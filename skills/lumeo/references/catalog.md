@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 145 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 149 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -76,7 +76,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Checkbox** — Binary input with indeterminate state and accessible label.
 - **ColorPicker** — Hue + saturation/value picker with hex input.
 - **Combobox** — Searchable select with filtering, custom values, and grouping. _(sub-components: ComboboxContent, ComboboxCreate, ComboboxEmpty, ComboboxInput, ComboboxItem)_
-- **DatePicker** — Calendar popover for picking a single date or range. _(sub-components: DateRangePicker)_
+- **DatePicker** — Calendar popover for picking a single date or range. _(sub-components: DateRangePicker, DateWheelPicker)_
 - **DateTimePicker** — Combined date + time picker with timezone awareness.
 - **FileUpload** — Drag-and-drop file dropzone with progress and validation.
 - **Form** — EditForm wrapper with styled validation, field groups, and submit state. _(sub-components: FormDescription, FormField, FormItem, FormLabel, FormMessage)_
@@ -97,7 +97,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Switch** — Toggle switch for boolean settings.
 - **TagInput** — Input that turns entries into removable tag chips.
 - **Textarea** — Multiline text input with auto-resize option.
-- **TimePicker** — Time-of-day picker with 12h/24h formats.
+- **TimePicker** — Time-of-day picker with 12h/24h formats. _(sub-components: TimeWheelPicker)_
 - **Toggle** — Two-state button with pressed/unpressed styling.
 - **ToggleGroup** — Group of toggles with single or multiple selection. _(sub-components: ToggleGroupItem)_
 - **TreeSelect** — Select input with a hierarchical tree dropdown.
@@ -183,9 +183,13 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Icon** — Icon wrapper — renders Lucide icons via Blazicons.
 - **Kbd** — Keyboard shortcut glyph — renders <kbd> with styling.
 - **Label** — Form label that links to a control via for/id.
+- **PullToRefresh** — Pull To Refresh component.
+- **SafeArea** — Safe Area component.
 - **SplitButton** — Split Button component.
+- **SwipeActions** — Swipe Actions component.
 - **ThemeSwitcher** — Color-scheme picker that writes to ThemeService.
 - **ThemeToggle** — Dark/light mode toggle button.
+- **TouchRipple** — Touch Ripple component.
 
 ## Full-page patterns / blocks
 
