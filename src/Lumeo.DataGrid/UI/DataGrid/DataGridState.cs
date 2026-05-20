@@ -159,6 +159,13 @@ public class DataGridLayout
     public List<FilterDescriptor>? Filters { get; set; }
     public int? PageSize { get; set; }
     public string? GlobalSearch { get; set; }
+    /// <summary>
+    /// Ordered list of fields the group-panel was grouping by when the
+    /// snapshot was taken. Restored verbatim into the grid's runtime
+    /// grouping state so the chip-strip survives a reload. Null/empty
+    /// means no grouping was active.
+    /// </summary>
+    public List<string>? GroupByFields { get; set; }
 }
 
 public class ColumnLayout
@@ -224,7 +231,8 @@ public record DataGridLayoutSnapshot(
     string? GlobalSearch,
     int CurrentPage,
     int PageSize,
-    string? GroupBy
+    string? GroupBy,
+    List<string>? GroupByFields = null
 );
 
 /// <summary>

@@ -35,8 +35,8 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
     private static List<DataGridColumn<Row>> Cols() => new()
     {
         new() { Field = "Id", Title = "ID", Sortable = true },
-        new() { Field = "Name", Title = "Name", Sortable = true, Filterable = true },
-        new() { Field = "Email", Title = "Email" },
+        new() { Field = "Name", Title = "Name", Sortable = true, Filterable = true, Groupable = true },
+        new() { Field = "Email", Title = "Email", Groupable = true },
     };
 
     // -------------------------------------------------------------------------
@@ -60,7 +60,7 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
             });
         Assert.NotNull(snap);
-        Assert.Equal(1, snap!.Version);
+        Assert.Equal(2, snap!.Version);
         Assert.Equal(3, snap.Columns.Count);
         Assert.Equal(7, snap.PageSize);
         Assert.Contains(snap.Columns, c => c.Field == "Id" && c.Order == 0);
@@ -183,6 +183,115 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         {
             Assert.Equal("false", th.GetAttribute("draggable"));
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Group-panel runtime field persistence (v2 schema)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void ExportLayout_Includes_GroupByFields_When_Group_Panel_Active()
+    {
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, Cols())
+            .Add(g => g.ShowGroupPanel, true)
+            .Add(g => g.GroupByFields, new[] { "Name" }));
+
+        var json = cut.Instance.ExportLayout();
+        var snap = JsonSerializer.Deserialize<DataGridLayoutSnapshot>(json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            });
+
+        Assert.NotNull(snap);
+        Assert.NotNull(snap!.GroupByFields);
+        Assert.Contains("Name", snap.GroupByFields!);
+    }
+
+    [Fact]
+    public async Task ApplyLayoutJsonAsync_Restores_Multi_Level_GroupByFields()
+    {
+        // Grid A: pre-seeded with two grouping levels, in order.
+        var cutA = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, Cols())
+            .Add(g => g.ShowGroupPanel, true)
+            .Add(g => g.GroupByFields, new[] { "Name", "Email" }));
+
+        var exported = cutA.Instance.ExportLayout();
+
+        // Grid B: fresh, no GroupByFields parameter. Apply the JSON.
+        var cutB = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, Cols())
+            .Add(g => g.ShowGroupPanel, true));
+
+        await cutB.InvokeAsync(async () => await cutB.Instance.ApplyLayoutJsonAsync(exported));
+
+        var layout = cutB.Instance.GetCurrentLayout();
+        Assert.NotNull(layout.GroupByFields);
+        Assert.Equal(new[] { "Name", "Email" }, layout.GroupByFields!);
+
+        // Panel chips render — markup should contain both field names.
+        var panel = cutB.Find("[data-slot=\"datagrid-group-panel\"]");
+        Assert.Contains("Name", panel.TextContent);
+        Assert.Contains("Email", panel.TextContent);
+    }
+
+    [Fact]
+    public async Task ApplyLayoutJsonAsync_Backcompat_v1_GroupBy_Falls_Back_To_Single_Level()
+    {
+        // Hand-craft a v1 payload: GroupBy populated, GroupByFields null.
+        var v1Snap = new DataGridLayoutSnapshot(
+            Version: 1,
+            Columns: new List<DataGridColumnLayout>
+            {
+                new("Id", 0, true, null, PinDirection.None),
+                new("Name", 1, true, null, PinDirection.None),
+                new("Email", 2, true, null, PinDirection.None),
+            },
+            Sorts: new(),
+            Filters: new(),
+            GlobalSearch: null,
+            CurrentPage: 1,
+            PageSize: 10,
+            GroupBy: "Name",
+            GroupByFields: null);
+
+        var json = JsonSerializer.Serialize(v1Snap, new JsonSerializerOptions
+        {
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        });
+
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, Cols())
+            .Add(g => g.ShowGroupPanel, true));
+
+        await cut.InvokeAsync(async () => await cut.Instance.ApplyLayoutJsonAsync(json));
+
+        var layout = cut.Instance.GetCurrentLayout();
+        Assert.NotNull(layout.GroupByFields);
+        Assert.Equal(new[] { "Name" }, layout.GroupByFields!);
+    }
+
+    [Fact]
+    public void SnapshotCurrentLayout_Captures_Runtime_GroupFields_From_Panel()
+    {
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, Cols())
+            .Add(g => g.ShowGroupPanel, true));
+
+        // Drive the group panel <select> to add "Name" as a grouping level.
+        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
+        select.Change("Name");
+
+        var layout = cut.Instance.GetCurrentLayout();
+        Assert.NotNull(layout.GroupByFields);
+        Assert.Contains("Name", layout.GroupByFields!);
     }
 
     [Fact]
