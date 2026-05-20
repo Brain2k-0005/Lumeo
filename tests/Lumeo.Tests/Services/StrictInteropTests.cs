@@ -1,3 +1,4 @@
+using System.Reflection;
 using Bunit;
 using Xunit;
 using Lumeo.Services;
@@ -28,7 +29,15 @@ public class StrictInteropTests : IAsyncLifetime
     {
         // Module interop requires loose mode — strict verification is done via VerifyInvoke
         _ctx.JSInterop.Mode = JSRuntimeMode.Loose;
-        _module = _ctx.JSInterop.SetupModule("./_content/Lumeo/js/components.js");
+        // 2.1.4: ComponentInteropService now appends ?v=<assembly-version> to the
+        // module import URL as a browser-cache-buster. Mirror the lib's URL builder
+        // so the test's SetupModule handle matches what the service actually imports.
+        var v = typeof(ComponentInteropService).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        _module = _ctx.JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={v}");
         _module.Mode = JSRuntimeMode.Loose;
 
         _ctx.Services.AddScoped<ComponentInteropService>();
