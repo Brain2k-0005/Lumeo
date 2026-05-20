@@ -1,5 +1,6 @@
 @namespace Lumeo
 @typeparam TItem
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div class="@WrapperClass" @attributes="AdditionalAttributes">
     @if (_isEmpty)
@@ -97,7 +98,7 @@
                                     @if (row.Kind == DisplayRowKind.GroupHeader && Collapsible)
                                     {
                                         <button type="button" aria-expanded="@((!row.Collapsed).ToString().ToLowerInvariant())"
-                                                class="inline-flex items-center gap-1 hover:text-primary transition-colors"
+                                                class="inline-flex items-center gap-1 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
                                                 @onclick="() => ToggleCollapse(row.Node)">
                                             <Blazicon Svg="@(row.Collapsed ? Lucide.ChevronRight : Lucide.ChevronDown)" class="w-3.5 h-3.5 shrink-0" />
                                             <span>@row.Label</span>
@@ -145,7 +146,7 @@
                     @if (ShowColumnGrandTotal)
                     {
                         <tr role="row" class="bg-muted/50 font-semibold border-t border-border/40">
-                            <td role="rowheader" colspan="@_rowFields.Count" class="@DataCellClass">@GrandTotalLabel</td>
+                            <td role="rowheader" colspan="@_rowFields.Count" class="@DataCellClass">@EffectiveGrandTotalLabel</td>
                             @if (_hasColumnField)
                             {
                                 @foreach (var col in _columnLeaves)
@@ -185,7 +186,8 @@
     [Parameter] public bool ShowSubtotals { get; set; } = true;
     [Parameter] public bool Collapsible { get; set; } = true;
     [Parameter] public bool Compact { get; set; }
-    [Parameter] public string GrandTotalLabel { get; set; } = "Grand Total";
+    [Parameter] public string? GrandTotalLabel { get; set; }
+    private string EffectiveGrandTotalLabel => GrandTotalLabel ?? L["PivotGrid.GrandTotal"];
 
     [Parameter] public RenderFragment? EmptyContent { get; set; }
 
@@ -323,7 +325,7 @@
         if (ShowRowGrandTotal && _hasColumnField)
         {
             var gt = new PivotColumnNode(
-                label: GrandTotalLabel,
+                label: EffectiveGrandTotalLabel,
                 key: "__grand_total__",
                 pathKey: "__GT__",
                 level: 0,
