@@ -72,6 +72,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.ExpandFullscreen"] = "Expand to fullscreen",
         ["DataGrid.ExitFullscreen"] = "Exit fullscreen",
         ["DataGrid.AddGroupLevel"] = "+ Add group level",
+        ["DataGrid.RemoveGrouping"] = "Remove grouping",
+        ["DataGrid.ClearAllGrouping"] = "Clear all grouping",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
@@ -166,6 +168,7 @@ internal static partial class LumeoDefaultStrings
         ["Command.Placeholder"] = "Type a command or search…",
         ["Command.NoResults"] = "No results found",
         ["Select.Placeholder"] = "Select an option",
+        ["Select.ClearSelection"] = "Clear selection",
 
         // ── Calendar / DatePicker ───────────────────────────────────
         ["Calendar.Today"] = "Today",
@@ -213,6 +216,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.ShowLess"] = "Show less",
         ["Common.MoreOptions"] = "More options",
         ["Common.DragHandle"] = "Drag handle",
+        ["Common.Actions"] = "Actions",
+        ["Common.BackToTop"] = "Back to top",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Available",
@@ -310,6 +315,21 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.Field"] = "Field",
         ["QueryBuilder.Operator"] = "Operator",
 
+        // ── PickList ────────────────────────────────────────────────
+        ["PickList.MoveAll"] = "Move all",
+        ["PickList.MoveSelected"] = "Move selected",
+        ["PickList.MoveBackSelected"] = "Move back selected",
+        ["PickList.MoveBackAll"] = "Move back all",
+
+        // ── Navigation ──────────────────────────────────────────────
+        ["Navigation.Toggle"] = "Toggle navigation",
+
+        // ── Sidebar ─────────────────────────────────────────────────
+        ["Sidebar.Toggle"] = "Toggle sidebar",
+
+        // ── Editor ──────────────────────────────────────────────────
+        ["Editor.Suggestions"] = "Suggestions",
+
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "File \"{0}\" exceeds the maximum size of {1}.",
     };
@@ -374,6 +394,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.ExpandFullscreen"] = "Vollbild öffnen",
         ["DataGrid.AddGroupLevel"] = "+ Gruppe hinzufügen",
         ["DataGrid.ExitFullscreen"] = "Vollbild schließen",
+        ["DataGrid.RemoveGrouping"] = "Gruppierung entfernen",
+        ["DataGrid.ClearAllGrouping"] = "Alle Gruppierungen entfernen",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
@@ -468,6 +490,7 @@ internal static partial class LumeoDefaultStrings
         ["Command.Placeholder"] = "Befehl eingeben oder suchen…",
         ["Command.NoResults"] = "Keine Ergebnisse",
         ["Select.Placeholder"] = "Bitte auswählen",
+        ["Select.ClearSelection"] = "Auswahl leeren",
 
         // ── Calendar / DatePicker ───────────────────────────────────
         ["Calendar.Today"] = "Heute",
@@ -515,6 +538,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.ShowLess"] = "Weniger anzeigen",
         ["Common.MoreOptions"] = "Weitere Optionen",
         ["Common.DragHandle"] = "Ziehgriff",
+        ["Common.Actions"] = "Aktionen",
+        ["Common.BackToTop"] = "Nach oben",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Verfügbar",
@@ -611,6 +636,21 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.RemoveRule"] = "Regel entfernen",
         ["QueryBuilder.Field"] = "Feld",
         ["QueryBuilder.Operator"] = "Operator",
+
+        // ── PickList ────────────────────────────────────────────────
+        ["PickList.MoveAll"] = "Alle verschieben",
+        ["PickList.MoveSelected"] = "Auswahl verschieben",
+        ["PickList.MoveBackSelected"] = "Auswahl zurück verschieben",
+        ["PickList.MoveBackAll"] = "Alle zurück verschieben",
+
+        // ── Navigation ──────────────────────────────────────────────
+        ["Navigation.Toggle"] = "Navigation ein-/ausblenden",
+
+        // ── Sidebar ─────────────────────────────────────────────────
+        ["Sidebar.Toggle"] = "Seitenleiste ein-/ausblenden",
+
+        // ── Editor ──────────────────────────────────────────────────
+        ["Editor.Suggestions"] = "Vorschläge",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "Datei „{0}“ überschreitet die maximale Größe von {1}.",
