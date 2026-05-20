@@ -274,4 +274,79 @@ public class DataGridFilterExtensibilityTests : IAsyncLifetime
         Assert.Contains("overflow-hidden", cls);
         Assert.Contains("rounded-lg", cls);
     }
+
+    // ---------------------------------------------------------------------------
+    // Filter popover positioning: must NOT contribute to grid scroll-width (2.1.2)
+    //
+    // Bug: the filter popover wrapper was <div class="absolute top-full left-0">
+    // anchored to its <th> (which is position:relative). On the rightmost column,
+    // the popover's content extended past the th's right edge → the overflow:auto
+    // scroll container interpreted the absolute descendant's overflow as
+    // scrollWidth → a phantom horizontal scrollbar appeared every time the user
+    // opened a filter on the right side of the grid.
+    //
+    // Fix: render the popover with position:fixed (inline style) and pin to the
+    // trigger via JS-computed getBoundingClientRect coords (Interop.PositionFixed,
+    // same mechanism PopoverContent uses). The fixed-positioned descendant does
+    // not contribute to its ancestor's scrollWidth, so the bug can't recur.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void Filter_Popover_Uses_Fixed_Positioning_Not_Absolute()
+    {
+        var cut = _ctx.Render<DataGrid<TestItem>>(p => p
+            .Add(x => x.Items, Data())
+            .AddChildContent<DataGridColumnDef<TestItem>>(c => c
+                .Add(x => x.Field, "Name")
+                .Add(x => x.Filterable, true)));
+
+        // Click the filter trigger button on the only data column to open the popover.
+        var filterBtn = cut.Find("th[data-slot='datagrid-header-cell'] button:has(svg)");
+        // The first matching button is the sort toggle; the filter button comes after
+        // when Filterable=true. We want the one that is NOT the sort button — the
+        // sort toggle disables itself when Sortable is false but is still present
+        // here (Sortable defaults to false on this column). Find the filter button
+        // by its visible-on-hover icon class signature.
+        var filterTriggers = cut.FindAll("th[data-slot='datagrid-header-cell'] button");
+        var trigger = filterTriggers.FirstOrDefault(b =>
+            (b.GetAttribute("class") ?? "").Contains("hover:bg-muted/60"));
+        Assert.NotNull(trigger);
+        trigger!.Click();
+
+        // The popover container must now exist with inline position:fixed.
+        // Querying by id is brittle (GUID), so we sweep all descendants and
+        // assert the inline style contains "position: fixed".
+        var fixedDivs = cut.FindAll("div").Where(d =>
+            (d.GetAttribute("style") ?? "").Contains("position: fixed")
+            && d.QuerySelector("[data-slot='datagrid-filter-custom']") is null
+            && d.QuerySelector("input, button, label") is not null).ToList();
+
+        Assert.NotEmpty(fixedDivs);
+
+        // Hard regression guard: the old "absolute top-full left-0" wrapper
+        // must NOT be present on any element containing the filter content.
+        var absWrappers = cut.FindAll("div.absolute.top-full.left-0").ToList();
+        Assert.Empty(absWrappers);
+    }
+
+    [Fact]
+    public void Filter_Trigger_Button_Has_Stable_Id_For_Positioning_Anchor()
+    {
+        // The JS positioner reads the trigger via document.getElementById, so
+        // the trigger button MUST carry a stable id whenever the column is
+        // Filterable — irrespective of whether the popover is currently open.
+        var cut = _ctx.Render<DataGrid<TestItem>>(p => p
+            .Add(x => x.Items, Data())
+            .AddChildContent<DataGridColumnDef<TestItem>>(c => c
+                .Add(x => x.Field, "Name")
+                .Add(x => x.Filterable, true)));
+
+        var triggers = cut.FindAll("th[data-slot='datagrid-header-cell'] button");
+        var filterTrigger = triggers.FirstOrDefault(b =>
+            (b.GetAttribute("class") ?? "").Contains("hover:bg-muted/60"));
+        Assert.NotNull(filterTrigger);
+        var id = filterTrigger!.GetAttribute("id");
+        Assert.False(string.IsNullOrWhiteSpace(id), "filter trigger must have an id");
+        Assert.StartsWith("dg-filter-trigger-", id);
+    }
 }

@@ -54,6 +54,7 @@
         @if (Column.Filterable)
         {
             <button type="button"
+                    id="@_filterTriggerId"
                     class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted/60 @(HasActiveFilter ? "text-primary" : "text-muted-foreground opacity-0 group-hover/th:opacity-100")"
                     @onclick="ToggleFilter"
                     @onclick:stopPropagation="true">
@@ -64,7 +65,15 @@
 
     @if (IsFilterOpen && Column.Filterable)
     {
-        <div class="absolute top-full left-0 z-50 mt-1">
+        @* Rendered with position:fixed and pinned to the trigger via
+           Interop.PositionFixed (JS reads the trigger's getBoundingClientRect
+           on open + on scroll/resize). Was previously position:absolute relative
+           to the <th> which extended the grid's overflow:auto scrollWidth on the
+           rightmost columns and made a phantom horizontal scrollbar appear when
+           opening the filter. Floating-UI-style positioning sidesteps that
+           entirely: the popover lives in the same DOM subtree but its layout
+           box doesn't touch the scroll container. *@
+        <div id="@_filterContentId" style="position: fixed; z-index: 50;">
             <DataGridColumnFilter TItem="TItem"
                                   Column="Column"
                                   FilterOptions="Column.FilterOptions"
@@ -156,6 +165,15 @@
     private bool _isDragOver;
     private string? _dropSide; // "left" or "right" — where the drop indicator is rendered
 
+    // Filter popover positioning (2.1.2): the filter content is rendered with
+    // position:fixed and pinned to the trigger via JS-computed coords from
+    // getBoundingClientRect, matching the pattern in PopoverContent. Stable IDs
+    // are needed so the JS positioner can find both elements and so click-outside
+    // can exclude the trigger from its dismiss target list.
+    private readonly string _filterTriggerId = $"dg-filter-trigger-{Guid.NewGuid():N}";
+    private readonly string _filterContentId = $"dg-filter-content-{Guid.NewGuid():N}";
+    private bool _filterPositionRegistered;
+
     /// <summary>
     /// Drag-reorder is only active when both the grid-level <c>Reorderable</c>
     /// flag and the per-column <c>Reorderable</c> flag are true.
@@ -229,6 +247,42 @@
     private async Task ToggleFilter()
     {
         await OnFilterToggle.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Column.Filterable) return;
+
+        if (IsFilterOpen && !_filterPositionRegistered)
+        {
+            // Pin the filter content (position:fixed) to the trigger button's
+            // viewport rect. The "start" align + "bottom" side mirror the
+            // previous absolute top-full left-0 layout. JS handles flip if the
+            // popover would overflow the viewport (e.g. last row on a tall
+            // grid) and follows the trigger on scroll/resize.
+            await Interop.PositionFixed(_filterContentId, _filterTriggerId, align: "start", matchWidth: false, side: "bottom");
+            // Click-outside dismiss — explicitly exclude the trigger so the
+            // toggle button doesn't immediately close-then-reopen on click.
+            // Closing routes through OnFilterToggle (the same callback the
+            // button uses) so parent state stays consistent.
+            await Interop.RegisterClickOutside(_filterContentId, _filterTriggerId, async () =>
+            {
+                await OnFilterToggle.InvokeAsync();
+                await InvokeAsync(StateHasChanged);
+            });
+            _filterPositionRegistered = true;
+        }
+        else if (!IsFilterOpen && _filterPositionRegistered)
+        {
+            await CleanupFilterPosition();
+        }
+    }
+
+    private async Task CleanupFilterPosition()
+    {
+        try { await Interop.UnpositionFixed(_filterContentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterClickOutside(_filterContentId); } catch (JSDisconnectedException) { }
+        _filterPositionRegistered = false;
     }
 
     private async Task HandleFilterApply(FilterDescriptor? descriptor)
@@ -342,6 +396,10 @@
                 await Interop.UnregisterColumnResize(_resizeHandleId);
             }
             catch (JSDisconnectedException) { }
+        }
+        if (_filterPositionRegistered)
+        {
+            await CleanupFilterPosition();
         }
     }
 }
