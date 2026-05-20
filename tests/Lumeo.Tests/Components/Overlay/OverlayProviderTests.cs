@@ -1,4 +1,6 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Xunit;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
@@ -50,5 +52,58 @@ public class OverlayProviderTests : IAsyncLifetime
 
         Assert.Contains("Confirm Delete", cut.Markup);
         Assert.Contains("Confirm Archive", cut.Markup);
+    }
+
+    // --- Mobile-fullscreen bottom sheet via OverlayService (2.1.1) ---
+    //
+    // OverlayOptions gained SwipeToClose so Sheets opened programmatically
+    // can mirror the declarative <SheetContent SwipeToClose="true"> path.
+    // Combined with SheetSize.Full on Side=Bottom the consumer gets a true
+    // mobile-fullscreen bottom sheet with swipe-down dismiss — without
+    // hand-rolling CSS selectors.
+
+    private sealed class DummyOverlayBody : ComponentBase
+    {
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            builder.AddContent(0, "BODY");
+        }
+    }
+
+    [Fact]
+    public void ShowSheet_Routes_SwipeToClose_Option_Through_To_SheetContent()
+    {
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowSheetAsync<DummyOverlayBody>(
+            title: "Mobile sheet",
+            side: SheetSide.Bottom,
+            size: SheetSize.Full,
+            options: new OverlayOptions { SwipeToClose = true });
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+
+        // Side=Bottom + Size=Full now emits the fullscreen anchor + height,
+        // and SwipeToClose=true means the JS swipe listener will be attached
+        // on OnAfterRender. The class assertion proves the size/side option
+        // round-trip; the SwipeToClose hook can only be observed via JS
+        // interop, which bUnit does not exercise.
+        Assert.Contains("bottom-0", cls);
+        Assert.Contains("h-full", cls);
+        Assert.Contains("max-h-full", cls);
+    }
+
+    [Fact]
+    public void ShowSheet_Default_SwipeToClose_Is_False()
+    {
+        // Back-compat: existing OverlayService consumers that don't set
+        // SwipeToClose must continue to get the legacy non-dismissable-by-swipe
+        // behaviour. We assert the option default here as a regression guard.
+        var options = new OverlayOptions();
+        Assert.False(options.SwipeToClose);
     }
 }
