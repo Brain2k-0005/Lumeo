@@ -127,7 +127,12 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"w-64 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md {Class}".Trim();
+    // overflow-hidden is required so descendant hover/selected backgrounds
+    // (e.g. inside a custom FilterTemplate) get clipped by the rounded-lg
+    // corners — CSS border-radius alone only rounds the box itself, not its
+    // children. min-w-64 (was w-64) lets a wider FilterTemplate grow the
+    // popover instead of horizontally overflowing past the rounded edge.
+    private string CssClass => $"min-w-64 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md overflow-hidden {Class}".Trim();
 
     private FilterOperator _selectedOperator = FilterOperator.Contains;
     private string? _filterValue;

@@ -199,4 +199,79 @@ public class DataGridFilterExtensibilityTests : IAsyncLifetime
 
         Assert.Null(captured);
     }
+
+    // ---------------------------------------------------------------------------
+    // Filter popover wrapper: rounded corners must clip descendants (2.1.1)
+    //
+    // Bug: a custom FilterTemplate with hover:bg-accent rows painted hover
+    // backgrounds past the rounded-lg corners of the filter popover, because
+    // the wrapper div had rounded-lg but no overflow-hidden. CSS border-radius
+    // only rounds the box itself, not its children.
+    //
+    // Fix: DataGridColumnFilter's CssClass now includes overflow-hidden, and
+    // w-64 became min-w-64 so a wider custom template grows the popover
+    // instead of overflowing past the rounded edge.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void ColumnFilter_Root_Has_OverflowHidden_And_MinWidth_For_Rounded_Clipping()
+    {
+        var column = new DataGridColumn<TestItem>
+        {
+            Field = "Name",
+            Title = "Name",
+            Filterable = true,
+            FilterType = DataGridFilterType.Text
+        };
+
+        var cut = _ctx.Render<DataGridColumnFilter<TestItem>>(p => p
+            .Add(x => x.Column, column));
+
+        // The component's root div is the first child of the bUnit render
+        // root and carries the popover styling.
+        var root = cut.Nodes[0] as AngleSharp.Dom.IElement;
+        Assert.NotNull(root);
+        var cls = root!.GetAttribute("class") ?? "";
+
+        Assert.Contains("overflow-hidden", cls);
+        Assert.Contains("min-w-64", cls);
+        Assert.Contains("rounded-lg", cls);
+        // Back-compat guard: the fixed w-64 must NOT be present, otherwise
+        // a wider custom FilterTemplate would overflow past the rounded edge
+        // again.
+        Assert.DoesNotContain(" w-64 ", $" {cls} ");
+    }
+
+    [Fact]
+    public void ColumnFilter_With_Custom_Template_Still_Has_OverflowHidden()
+    {
+        // Even when FilterTemplate is set (custom-template branch), the
+        // outer wrapper must still clip descendants. The custom-template
+        // branch and the default branch share the same root div.
+        RenderFragment<DataGridFilterTemplateContext> customTemplate = ctx => b =>
+        {
+            b.OpenElement(0, "label");
+            b.AddAttribute(1, "class", "hover:bg-accent");
+            b.AddContent(2, "row");
+            b.CloseElement();
+        };
+
+        var column = new DataGridColumn<TestItem>
+        {
+            Field = "Name",
+            Title = "Name",
+            Filterable = true,
+            FilterTemplate = customTemplate
+        };
+
+        var cut = _ctx.Render<DataGridColumnFilter<TestItem>>(p => p
+            .Add(x => x.Column, column));
+
+        var root = cut.Nodes[0] as AngleSharp.Dom.IElement;
+        Assert.NotNull(root);
+        var cls = root!.GetAttribute("class") ?? "";
+
+        Assert.Contains("overflow-hidden", cls);
+        Assert.Contains("rounded-lg", cls);
+    }
 }
