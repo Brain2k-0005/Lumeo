@@ -189,6 +189,48 @@
 
     private int GetDecadeStart(int year) => year / 10 * 10;
 
+    // Wrapper-div classes that render the connecting range bar BEHIND the
+    // day button (2.1.4). Previously each in-range day's button had its own
+    // rounded-md bg-accent rectangle, producing a pearl-necklace look with
+    // visual gaps between days. The wrapper carries the bar background and
+    // edge rounding so adjacent in-range cells touch seamlessly.
+    //
+    // Returns empty string for non-Range mode or days outside the range so
+    // the wrapper has no styling and the button keeps its original look.
+    //
+    // Edge cases:
+    // - First column on a row (col == 0) gets rounded-l-md so the bar starts
+    //   with a rounded cap when the range wraps to a new row.
+    // - Last column on a row (col == 6) gets rounded-r-md likewise.
+    // - The range-start and range-end days get rounded-l-md / rounded-r-md
+    //   so the bar terminates with a soft cap behind the primary circle.
+    // - Hover during in-flight selection (RangeStart set, RangeEnd null,
+    //   _hoverDate carries the preview) extends the bar dynamically.
+    private string RangeBarClasses(DateOnly day, DateOnly monthDate, int col)
+    {
+        if (!IsRange) return "";
+
+        var effectiveEnd = RangeEnd ?? (RangeStart.HasValue && _hoverDate.HasValue ? _hoverDate : null);
+        var rangeFrom = RangeStart;
+        var rangeTo = effectiveEnd;
+        if (rangeFrom.HasValue && rangeTo.HasValue && rangeTo < rangeFrom)
+        {
+            (rangeFrom, rangeTo) = (rangeTo, rangeFrom);
+        }
+        if (!rangeFrom.HasValue || !rangeTo.HasValue) return "";
+        if (day < rangeFrom.Value || day > rangeTo.Value) return "";
+
+        var isStart = day == rangeFrom.Value;
+        var isEnd = day == rangeTo.Value;
+
+        // flex layout keeps the button (h-8 w-8) centered horizontally so the
+        // surrounding bar extends to the cell edges on either side.
+        var parts = new List<string> { "flex items-center justify-center bg-accent" };
+        if (isStart || col == 0) parts.Add("rounded-l-md");
+        if (isEnd || col == 6) parts.Add("rounded-r-md");
+        return string.Join(" ", parts);
+    }
+
     private string DayClasses(DateOnly day, DateOnly monthDate)
     {
         var isCurrentMonth = day.Month == monthDate.Month;
@@ -469,13 +511,15 @@
                         var dt = d.ToDateTime(TimeOnly.MinValue);
                         var tooltip = DateTooltip?.Invoke(dt);
                         var badge = DateBadge?.Invoke(dt);
-                        <button type="button" class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip" @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)">
-                            @d.Day
-                            @if (badge is not null)
-                            {
-                                <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
-                            }
-                        </button>
+                        <div class="@RangeBarClasses(d, monthDate, col)">
+                            <button type="button" class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip" @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)">
+                                @d.Day
+                                @if (badge is not null)
+                                {
+                                    <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
+                                }
+                            </button>
+                        </div>
                     }
                 }
             </div>
