@@ -1,4 +1,5 @@
 using Lumeo.Services;
+using Lumeo.Services.Interop;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Xunit;
@@ -216,7 +217,7 @@ public class ResponsiveServiceTests
         public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);
         public ValueTask RichTextSetContentAsync(string id, string? html) => ValueTask.CompletedTask;
         public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args) => ValueTask.CompletedTask;
-        public ValueTask<Interop.RichTextActiveState?> RichTextGetActiveAsync(string id) => ValueTask.FromResult<Interop.RichTextActiveState?>(null);
+        public ValueTask<RichTextActiveState?> RichTextGetActiveAsync(string id) => ValueTask.FromResult<RichTextActiveState?>(null);
         public ValueTask RichTextSetDisabledAsync(string id, bool disabled) => ValueTask.CompletedTask;
         public ValueTask RichTextDestroyAsync(string id) => ValueTask.CompletedTask;
         public ValueTask<string?> RichTextPromptLinkAsync(string? initial) => ValueTask.FromResult<string?>(null);
