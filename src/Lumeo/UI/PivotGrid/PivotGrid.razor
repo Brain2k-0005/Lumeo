@@ -1,5 +1,6 @@
 @namespace Lumeo
 @typeparam TItem
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div class="@WrapperClass" @attributes="AdditionalAttributes">
     @if (_isEmpty)
@@ -145,7 +146,7 @@
                     @if (ShowColumnGrandTotal)
                     {
                         <tr role="row" class="bg-muted/50 font-semibold border-t border-border/40">
-                            <td role="rowheader" colspan="@_rowFields.Count" class="@DataCellClass">@GrandTotalLabel</td>
+                            <td role="rowheader" colspan="@_rowFields.Count" class="@DataCellClass">@EffectiveGrandTotalLabel</td>
                             @if (_hasColumnField)
                             {
                                 @foreach (var col in _columnLeaves)
@@ -185,7 +186,8 @@
     [Parameter] public bool ShowSubtotals { get; set; } = true;
     [Parameter] public bool Collapsible { get; set; } = true;
     [Parameter] public bool Compact { get; set; }
-    [Parameter] public string GrandTotalLabel { get; set; } = "Grand Total";
+    [Parameter] public string? GrandTotalLabel { get; set; }
+    private string EffectiveGrandTotalLabel => GrandTotalLabel ?? L["PivotGrid.GrandTotal"];
 
     [Parameter] public RenderFragment? EmptyContent { get; set; }
 
@@ -323,7 +325,7 @@
         if (ShowRowGrandTotal && _hasColumnField)
         {
             var gt = new PivotColumnNode(
-                label: GrandTotalLabel,
+                label: EffectiveGrandTotalLabel,
                 key: "__grand_total__",
                 pathKey: "__GT__",
                 level: 0,

@@ -332,6 +332,38 @@ internal static partial class LumeoDefaultStrings
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "File \"{0}\" exceeds the maximum size of {1}.",
+
+        // ── Scheduler ───────────────────────────────────────────────
+        ["Scheduler.Previous"] = "Previous",
+        ["Scheduler.Next"] = "Next",
+        ["Scheduler.ResourceLegend"] = "Resource legend",
+
+        // ── Theme ───────────────────────────────────────────────────
+        ["Theme.Light"] = "Light",
+        ["Theme.Dark"] = "Dark",
+        ["Theme.System"] = "System",
+        ["Theme.Toggle"] = "Toggle theme",
+
+        // ── Tabs ────────────────────────────────────────────────────
+        ["Tabs.CloseTab"] = "Close tab",
+
+        // ── Chip ────────────────────────────────────────────────────
+        ["Chip.Remove"] = "Remove",
+
+        // ── Alert ───────────────────────────────────────────────────
+        ["Alert.Dismiss"] = "Dismiss",
+
+        // ── ImageCompare ────────────────────────────────────────────
+        ["ImageCompare.Slider"] = "Image compare slider",
+
+        // ── PromptInput ─────────────────────────────────────────────
+        ["PromptInput.Send"] = "Send",
+
+        // ── Editor (RichTextEditor) ─────────────────────────────────
+        ["Editor.StartWriting"] = "Start writing…",
+
+        // ── PivotGrid ───────────────────────────────────────────────
+        ["PivotGrid.GrandTotal"] = "Grand Total",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -654,6 +686,38 @@ internal static partial class LumeoDefaultStrings
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "Datei „{0}“ überschreitet die maximale Größe von {1}.",
+
+        // ── Scheduler ───────────────────────────────────────────────
+        ["Scheduler.Previous"] = "Zurück",
+        ["Scheduler.Next"] = "Weiter",
+        ["Scheduler.ResourceLegend"] = "Ressourcen-Legende",
+
+        // ── Theme ───────────────────────────────────────────────────
+        ["Theme.Light"] = "Hell",
+        ["Theme.Dark"] = "Dunkel",
+        ["Theme.System"] = "System",
+        ["Theme.Toggle"] = "Theme umschalten",
+
+        // ── Tabs ────────────────────────────────────────────────────
+        ["Tabs.CloseTab"] = "Tab schließen",
+
+        // ── Chip ────────────────────────────────────────────────────
+        ["Chip.Remove"] = "Entfernen",
+
+        // ── Alert ───────────────────────────────────────────────────
+        ["Alert.Dismiss"] = "Ausblenden",
+
+        // ── ImageCompare ────────────────────────────────────────────
+        ["ImageCompare.Slider"] = "Bildvergleichs-Schieberegler",
+
+        // ── PromptInput ─────────────────────────────────────────────
+        ["PromptInput.Send"] = "Senden",
+
+        // ── Editor (RichTextEditor) ─────────────────────────────────
+        ["Editor.StartWriting"] = "Schreiben beginnen…",
+
+        // ── PivotGrid ───────────────────────────────────────────────
+        ["PivotGrid.GrandTotal"] = "Gesamtsumme",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)
