@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
@@ -17,8 +18,16 @@ public sealed class KeyboardShortcutService : IKeyboardShortcutService
 
     private async Task<IJSObjectReference> GetModuleAsync()
     {
+        // ?v=<assembly-version> cache-buster — see ComponentInteropService.GetModuleAsync
+        // for the rationale (library JS under _content/Lumeo/ is served WITHOUT
+        // a content-hash, so old browser caches survive across releases).
+        var v = typeof(KeyboardShortcutService).Assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(KeyboardShortcutService).Assembly.GetName().Version?.ToString()
+            ?? "0";
         _module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo/js/components.js");
+            "import", $"./_content/Lumeo/js/components.js?v={v}");
         return _module;
     }
 

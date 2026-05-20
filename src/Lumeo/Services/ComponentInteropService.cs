@@ -1,3 +1,4 @@
+using System.Reflection;
 using Lumeo.Services.Interop;
 using Microsoft.JSInterop;
 
@@ -29,9 +30,25 @@ public sealed class ComponentInteropService : IComponentInteropService
     private async Task<IJSObjectReference> GetModuleAsync()
     {
         _module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo/js/components.js");
+            "import", $"./_content/Lumeo/js/components.js?v={_jsModuleVersion}");
         return _module;
     }
+
+    // Cache-buster query string appended to the components.js import URL so a
+    // version bump invalidates stale browser caches automatically. Static
+    // assets under _content/<Lib>/ are served WITHOUT content-hashes (unlike
+    // the Blazor framework JS), so without this query string a user who hit
+    // an older version would get the cached file and any new exports (e.g.
+    // registerViewportListener added in 2.1.3) would resolve to "not a
+    // function" at runtime. Derived once from the assembly's
+    // AssemblyInformationalVersion (driven by Directory.Build.props
+    // <Version>), so it tracks every release without manual maintenance.
+    private static readonly string _jsModuleVersion =
+        typeof(ComponentInteropService).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+        ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
+        ?? "0";
 
     // --- Motion module (Lumeo.Motion satellite) ---
     // Loaded lazily on first use; apps that don't install Lumeo.Motion never pay
@@ -849,7 +866,19 @@ public sealed class ComponentInteropService : IComponentInteropService
     // directly in the component, satisfying the "no direct IJSRuntime in components" rule.
 
     public async ValueTask<IJSObjectReference> ImportModuleAsync(string moduleUrl)
-        => await _jsRuntime.InvokeAsync<IJSObjectReference>("import", moduleUrl);
+        => await _jsRuntime.InvokeAsync<IJSObjectReference>("import", AppendVersion(moduleUrl));
+
+    // Appends ?v=<assembly-version> to library JS module URLs that live under
+    // _content/Lumeo*/ so a version bump invalidates the browser cache. See
+    // GetModuleAsync for the full rationale. URLs that already carry a query
+    // string are passed through untouched so consumers can override (e.g. for
+    // local debugging) without us clobbering their fragment.
+    private static string AppendVersion(string url)
+    {
+        if (string.IsNullOrEmpty(url) || url.Contains('?')) return url;
+        if (!url.StartsWith("./_content/Lumeo", StringComparison.Ordinal)) return url;
+        return $"{url}?v={_jsModuleVersion}";
+    }
 
     // --- Scheduler (FullCalendar wrapper) ---
     // Scheduler ships its own JS module (scheduler.js) loaded lazily on first

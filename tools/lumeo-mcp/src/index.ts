@@ -364,7 +364,7 @@ function validateMarkup(markup: string): { ok: boolean; issues: ValidationIssue[
 const server = new Server(
   {
     name: "lumeo-mcp",
-    version: "2.1.3",
+    version: "2.1.4",
   },
   {
     capabilities: {

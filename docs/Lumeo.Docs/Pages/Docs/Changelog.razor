@@ -15,6 +15,35 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.1.4 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.1.4</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>JS module import URL gets a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">?v=&lt;version&gt;</code> cache-buster.</strong>
+            Library JS under <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_content/Lumeo/js/components.js</code> is served WITHOUT a content-hash (unlike the Blazor framework files), so an already-loaded browser tab kept its 2.1.2 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">components.js</code> after upgrading the lib to 2.1.3 — and new C# code calling new exports like <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerViewportListener</code> threw <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSException: 'registerViewportListener' is not a function</code> at runtime. Fixed by appending <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">?v=&lt;assembly-version&gt;</code> to library module imports.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ComponentInteropService.GetModuleAsync</code></strong> + <strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ImportModuleAsync</code></strong> now append <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">?v={assembly-version}</code> to all <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_content/Lumeo*/</code> module URLs. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">KeyboardShortcutService.GetModuleAsync</code> updated symmetrically.</li>
+                <li><strong>Upgrades from this release forward</strong> are immune to the stale-cache class of failure when new JS exports are added in the lib (e.g. the v2.1.3 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerViewportListener</code> failure). v2.1.3 users hitting that error today need a hard refresh (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Ctrl/Cmd+Shift+R</code>); from v2.1.4 the cache-buster handles it automatically.</li>
+            </ul>
+            <Heading Level="3" Size="sm" Class="font-semibold mt-2">Notes</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li>Version derived once from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AssemblyInformationalVersionAttribute</code> (which <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Directory.Build.props &lt;Version&gt;</code> drives), so it tracks every release without manual maintenance.</li>
+                <li>URLs that already contain a query string pass through untouched — consumer overrides (e.g. local debugging with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">?nocache=1</code>) are preserved.</li>
+                <li>Non-library URLs are passed through unchanged, so consumer JS modules loaded via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ImportModuleAsync</code> aren't affected.</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.1.3 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
