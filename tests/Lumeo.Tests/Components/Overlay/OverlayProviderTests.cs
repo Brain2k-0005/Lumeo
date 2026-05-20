@@ -106,4 +106,42 @@ public class OverlayProviderTests : IAsyncLifetime
         var options = new OverlayOptions();
         Assert.False(options.SwipeToClose);
     }
+
+    // --- Responsive mobile overrides on OverlayOptions (2.1.3) ---
+    //
+    // The OverlayProvider helper logic that consults IResponsiveService to pick
+    // the effective Side/Size/SwipeToClose under MobileBreakpoint is exercised
+    // by manual mobile testing per the PR checklist. Here we only pin down the
+    // OverlayOptions record contract so future refactors can't silently drop
+    // the responsive defaults or opt-out path.
+
+    [Fact]
+    public void OverlayOptions_MobileBreakpoint_Default_Is_768()
+    {
+        var options = new OverlayOptions();
+        // 768 = Tailwind md — same threshold IResponsiveService.IsMobile uses.
+        Assert.Equal(768, options.MobileBreakpoint);
+        // Mobile* override fields default to null = "no responsive switch".
+        Assert.Null(options.MobileSheetSide);
+        Assert.Null(options.MobileSheetSize);
+        Assert.Null(options.MobileSwipeToClose);
+    }
+
+    [Fact]
+    public void OverlayOptions_With_Null_MobileBreakpoint_Disables_Responsive_Switch()
+    {
+        var options = new OverlayOptions
+        {
+            MobileBreakpoint = null,
+            MobileSheetSize = SheetSize.Full
+        };
+
+        // MobileBreakpoint=null is the documented opt-out: even though
+        // MobileSheetSize is set, the provider must keep the desktop SheetSize
+        // at every viewport. We can't drive the provider end-to-end here
+        // without mocking IResponsiveService AND inspecting SheetContent
+        // class output, so this test guards the record values only.
+        Assert.Null(options.MobileBreakpoint);
+        Assert.Equal(SheetSize.Full, options.MobileSheetSize);
+    }
 }

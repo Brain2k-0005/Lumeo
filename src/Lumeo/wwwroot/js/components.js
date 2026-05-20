@@ -624,50 +624,123 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef) {
     if (!el) return;
 
     const isHorizontal = direction === 'left' || direction === 'right';
-    let startPos = 0;
+    // Axis configuration: which signed direction along the active axis dismisses the sheet.
+    const dismissSign = (direction === 'down' || direction === 'right') ? +1 : -1;
+
+    // 2.1.3 UX tuning (was: element followed the finger from pixel 1 with no
+    // axis lock and no rubber-banding — felt wackelig under micro-finger
+    // movement and accidentally engaged on diagonal scroll attempts):
+    //
+    // 1. ACTIVATION_THRESHOLD — finger must travel this many pixels on the
+    //    active axis before the sheet starts to follow. Kills micro-jitter
+    //    from settling fingers and edge-of-screen rubber-banding pixels.
+    //    Aligned with iOS's gesture lock-in (~10px). Once activated, the
+    //    visual translate is measured FROM the threshold so the sheet eases
+    //    in smoothly instead of jumping 10px on activation.
+    //
+    // 2. Direction lock — at activation we lock the gesture to whichever
+    //    axis (horizontal vs vertical) the finger moved most along. If the
+    //    locked axis doesn't match the configured swipe direction, the
+    //    gesture is ignored (the sheet stays put, the inner content can
+    //    scroll normally). Prevents diagonal-swipe dismisses when the user
+    //    just wanted to scroll content inside a bottom sheet.
+    //
+    // 3. Rubber-band — past RUBBER_BAND_START the translation compresses
+    //    (effectiveDelta * RUBBER_BAND_FACTOR) so the sheet doesn't fly
+    //    far off-screen if the user keeps dragging.
+    const ACTIVATION_THRESHOLD = 10;
+    const DISMISS_THRESHOLD = 100;
+    const RUBBER_BAND_START = 150;
+    const RUBBER_BAND_FACTOR = 0.5;
+
+    let startX = 0, startY = 0;
     let currentPos = 0;
     let isDragging = false;
+    let active = false;       // gesture passed activation threshold
+    let aborted = false;      // axis-lock determined this gesture is for the wrong axis
 
     const onTouchStart = (e) => {
-        startPos = isHorizontal ? e.touches[0].clientX : e.touches[0].clientY;
-        currentPos = startPos;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        currentPos = isHorizontal ? startX : startY;
         isDragging = true;
+        active = false;
+        aborted = false;
         el.style.transition = 'none';
     };
 
     const onTouchMove = (e) => {
-        if (!isDragging) return;
-        currentPos = isHorizontal ? e.touches[0].clientX : e.touches[0].clientY;
-        const delta = currentPos - startPos;
+        if (!isDragging || aborted) return;
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+        const dx = x - startX;
+        const dy = y - startY;
+        currentPos = isHorizontal ? x : y;
 
-        let shouldTranslate = false;
-        if (direction === 'down') shouldTranslate = delta > 0;
-        else if (direction === 'up') shouldTranslate = delta < 0;
-        else if (direction === 'right') shouldTranslate = delta > 0;
-        else if (direction === 'left') shouldTranslate = delta < 0;
-
-        if (shouldTranslate) {
-            if (isHorizontal) {
-                el.style.transform = `translateX(${delta}px)`;
-            } else {
-                el.style.transform = `translateY(${delta}px)`;
+        if (!active) {
+            // Wait for the finger to travel far enough to commit to a gesture,
+            // then lock the gesture to the dominant axis. If the dominant axis
+            // isn't ours, abort — don't touch the transform, let the inner
+            // content scroll.
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+            if (absDx < ACTIVATION_THRESHOLD && absDy < ACTIVATION_THRESHOLD) return;
+            const dominantHorizontal = absDx > absDy;
+            if (dominantHorizontal !== isHorizontal) {
+                aborted = true;
+                return;
             }
+            active = true;
+        }
+
+        // Measure travel along our axis, subtract the threshold so the visual
+        // translate starts at 0 right after activation (no 10px jump).
+        const axisDelta = isHorizontal ? dx : dy;
+        const sign = Math.sign(axisDelta);
+        if (sign !== dismissSign) {
+            // Wrong direction on the right axis (e.g. swiping up on a bottom
+            // sheet whose dismiss is "down") — snap back to 0, don't drag the
+            // sheet against the dismiss direction.
+            el.style.transform = '';
+            return;
+        }
+        let effective = axisDelta - sign * ACTIVATION_THRESHOLD;
+
+        // Rubber-band past the threshold so the sheet doesn't fly far off
+        // when the user keeps pulling.
+        const absEffective = Math.abs(effective);
+        if (absEffective > RUBBER_BAND_START) {
+            const excess = absEffective - RUBBER_BAND_START;
+            effective = sign * (RUBBER_BAND_START + excess * RUBBER_BAND_FACTOR);
+        }
+
+        if (isHorizontal) {
+            el.style.transform = `translateX(${effective}px)`;
+        } else {
+            el.style.transform = `translateY(${effective}px)`;
         }
     };
 
     const onTouchEnd = () => {
         if (!isDragging) return;
+        const wasActive = active;
+        const wasAborted = aborted;
         isDragging = false;
+        active = false;
+        aborted = false;
         el.style.transition = '';
-        const delta = currentPos - startPos;
-        const absDelta = Math.abs(delta);
-
-        let shouldDismiss = false;
-        if (direction === 'down') shouldDismiss = delta > 100;
-        else if (direction === 'up') shouldDismiss = delta < -100;
-        else if (direction === 'right') shouldDismiss = delta > 100;
-        else if (direction === 'left') shouldDismiss = delta < -100;
-
+        if (wasAborted || !wasActive) {
+            // Either the gesture was locked to the wrong axis or never even
+            // crossed the activation threshold — leave the sheet where it
+            // started, do nothing.
+            el.style.transform = '';
+            return;
+        }
+        const delta = currentPos - (isHorizontal ? startX : startY);
+        // Dismiss threshold is measured on raw axis delta (intent), not the
+        // rubber-banded visual translate, so the gesture feels predictable
+        // regardless of how far the rubber-band let the sheet travel.
+        const shouldDismiss = Math.sign(delta) === dismissSign && Math.abs(delta) > DISMISS_THRESHOLD;
         if (shouldDismiss) {
             dotnetRef.invokeMethodAsync('OnSwipeDismiss', elementId);
         } else {
@@ -1997,4 +2070,60 @@ export function vibrate(ms) {
             navigator.vibrate(ms);
         }
     } catch { /* swallow — best-effort haptic */ }
+}
+
+// --- Viewport / responsive listener (2.1.3) ---
+//
+// Backs ResponsiveService. A single resize listener per circuit pings the
+// .NET side with debounced viewport dimensions so Blazor components can
+// react to breakpoint changes without each one registering its own listener.
+//
+// Debounce is 100ms — long enough to coalesce continuous drags of the
+// browser-corner resize, short enough to feel reactive on orientation
+// changes. The initial size is returned synchronously from
+// registerViewportListener so consumers don't have to wait for the first
+// resize before reading Width/Height.
+
+let viewportDotnetRef = null;
+let viewportResizeHandler = null;
+let viewportDebounceTimer = 0;
+
+export function registerViewportListener(dotnetRef) {
+    // Idempotent: a second call replaces the dotnet ref (e.g. circuit restart)
+    // and re-attaches the listener. Without this guard a circuit reconnect
+    // would leave the old ref orphaned and the listener wired to a disposed
+    // .NET handle.
+    if (viewportResizeHandler) {
+        window.removeEventListener('resize', viewportResizeHandler);
+        viewportResizeHandler = null;
+    }
+    viewportDotnetRef = dotnetRef;
+
+    viewportResizeHandler = () => {
+        clearTimeout(viewportDebounceTimer);
+        viewportDebounceTimer = setTimeout(() => {
+            if (!viewportDotnetRef) return;
+            try {
+                viewportDotnetRef.invokeMethodAsync(
+                    'OnViewportChange',
+                    window.innerWidth,
+                    window.innerHeight
+                );
+            } catch { /* circuit may have been torn down — swallow */ }
+        }, 100);
+    };
+
+    window.addEventListener('resize', viewportResizeHandler, { passive: true });
+    // Return the initial snapshot synchronously so the service can populate
+    // Width/Height without a round-trip event.
+    return { width: window.innerWidth, height: window.innerHeight };
+}
+
+export function unregisterViewportListener() {
+    if (viewportResizeHandler) {
+        window.removeEventListener('resize', viewportResizeHandler);
+        viewportResizeHandler = null;
+    }
+    clearTimeout(viewportDebounceTimer);
+    viewportDotnetRef = null;
 }
