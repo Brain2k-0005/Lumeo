@@ -26,7 +26,7 @@
 
         case OverlayType.Sheet:
             <Sheet @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <SheetContent Side="@MapSheetSide(overlay.Options.SheetSide)" Size="@MapSheetSize(overlay.Options.SheetSize)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@overlay.Options.SwipeToClose" Class="@overlay.Options.Class">
+                <SheetContent Side="@EffectiveSheetSide(overlay.Options)" Size="@EffectiveSheetSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@EffectiveSwipeToClose(overlay.Options)" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
                         <SheetHeader>
@@ -88,6 +88,7 @@
 }
 
 @inject OverlayService OverlayService
+@inject IResponsiveService Responsive
 
 @code {
     private readonly List<OverlayInstance> _overlays = new();
@@ -97,7 +98,63 @@
     {
         OverlayService.OnShow += HandleShow;
         OverlayService.OnClose += HandleClose;
+        // 2.1.3 — react to viewport changes so overlays with responsive
+        // Mobile* overrides swap their effective Side/Size/SwipeToClose when
+        // the user rotates a tablet or resizes the window. Cheap StateHasChanged
+        // re-render that flips through EffectiveSheet* per overlay.
+        Responsive.ViewportChanged += HandleViewportChanged;
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Pull the initial viewport size + attach the JS resize listener
+            // once, lazily. Subsequent overlays read straight from the cached
+            // breakpoint.
+            await Responsive.EnsureInitialisedAsync();
+        }
+    }
+
+    private void HandleViewportChanged(ViewportInfo _)
+    {
+        // Only re-render if any open overlay actually has responsive Mobile*
+        // overrides — common case (no responsive options on any sheet) costs
+        // zero render churn.
+        if (_overlays.Any(o => HasMobileOverrides(o.Options)))
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static bool HasMobileOverrides(OverlayOptions opts) =>
+        opts.MobileBreakpoint is not null
+        && (opts.MobileSheetSide is not null
+            || opts.MobileSheetSize is not null
+            || opts.MobileSwipeToClose is not null);
+
+    // Effective Side/Size/SwipeToClose helpers — picked at each render so a
+    // viewport crossing flips them automatically via HandleViewportChanged.
+    private bool IsMobile(OverlayOptions opts)
+    {
+        if (opts.MobileBreakpoint is not int bp) return false;
+        return Responsive.Width > 0 && Responsive.Width < bp;
+    }
+
+    private SheetContent.SheetSide EffectiveSheetSide(OverlayOptions opts)
+    {
+        var side = IsMobile(opts) && opts.MobileSheetSide is { } ms ? ms : opts.SheetSide;
+        return MapSheetSide(side);
+    }
+
+    private SheetContent.SheetSize EffectiveSheetSize(OverlayOptions opts)
+    {
+        var size = IsMobile(opts) && opts.MobileSheetSize is { } ms ? ms : opts.SheetSize;
+        return MapSheetSize(size);
+    }
+
+    private bool EffectiveSwipeToClose(OverlayOptions opts) =>
+        IsMobile(opts) && opts.MobileSwipeToClose is bool m ? m : opts.SwipeToClose;
 
     private void HandleShow(OverlayInstance instance)
     {
@@ -187,6 +244,7 @@
     {
         OverlayService.OnShow -= HandleShow;
         OverlayService.OnClose -= HandleClose;
+        Responsive.ViewportChanged -= HandleViewportChanged;
 
         foreach (var overlay in _overlays)
         {
