@@ -115,13 +115,17 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         // 4 columns total, only 2 are Groupable.
         var cut = RenderGrid(showGroupPanel: true);
 
-        // The add-level select is rendered even when no groups are active.
-        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
-        Assert.NotNull(select);
+        // 2.2.0: the add-level UI is now a DropdownMenu trigger instead of a
+        // native <select>. Click the trigger to open the menu, then count
+        // the rendered menu items.
+        var trigger = cut.Find("[data-slot=\"datagrid-group-add-trigger\"]");
+        Assert.NotNull(trigger);
+        trigger.Click();
 
-        var options = select.QuerySelectorAll("option");
-        // 1 placeholder ("+ Add group level") + 2 groupable columns = 3 options.
-        Assert.Equal(3, options.Length);
+        var items = cut.FindAll("[role=\"menu\"] [role=\"menuitem\"]");
+        // Only the 2 groupable columns (no placeholder option anymore — the
+        // trigger itself displays "+ Add group level").
+        Assert.Equal(2, items.Count);
     }
 
     // ===========================================================================
@@ -133,9 +137,9 @@ public class DataGridGroupPanelTests : IAsyncLifetime
     {
         var cut = RenderGrid(showGroupPanel: true);
 
-        // Drive via the <select> change event — purely behavioural.
-        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
-        select.Change("Department");
+        // 2.2.0: open the add-level DropdownMenu, then click the Department item.
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Department\"]").Click();
 
         // A chip for "Department" should appear in the panel.
         var panel = cut.Find("[data-slot=\"datagrid-group-panel\"]");
@@ -154,18 +158,16 @@ public class DataGridGroupPanelTests : IAsyncLifetime
     {
         var cut = RenderGrid(showGroupPanel: true);
 
-        // "Name" is not Groupable — trying to add it via the select (which only
-        // lists groupable columns) is not possible through the UI. We verify the
-        // guard by confirming "Name" never appears as a chip even if the value
-        // were somehow submitted. The select only exposes groupable options, so
-        // the panel must remain in its no-chip state.
-        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
+        // 2.2.0: "Name" is not Groupable. The DropdownMenu only exposes
+        // groupable columns, so it can't surface "Name" to the user. We
+        // verify the guard by opening the menu and confirming neither Name
+        // nor Id appear as menu items.
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
 
-        // The select's options should NOT include the non-groupable "Name" field.
-        var options = select.QuerySelectorAll("option");
-        var optionValues = options.Select(o => o.GetAttribute("value")).ToList();
-        Assert.DoesNotContain("Name", optionValues);
-        Assert.DoesNotContain("Id",   optionValues);
+        var items = cut.FindAll("[role=\"menu\"] [role=\"menuitem\"]");
+        var itemFields = items.Select(i => i.GetAttribute("data-group-add-field")).ToList();
+        Assert.DoesNotContain("Name", itemFields);
+        Assert.DoesNotContain("Id",   itemFields);
 
         // Placeholder hint still shown — no spurious chip added.
         Assert.Contains("Drag a Groupable column header here", cut.Markup);
@@ -244,9 +246,14 @@ public class DataGridGroupPanelTests : IAsyncLifetime
     {
         var cut = RenderGrid(showGroupPanel: true);
 
+        // 2.2.0: with DropdownMenu replacing the native <select>, the
+        // "value stuck after clear" bug from rc.41 can't recur structurally
+        // (the menu has no persistent value). We keep this test as a
+        // behavioural guard: add → clear → add must still work end-to-end.
+
         // Step 1: Add Department.
-        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
-        select.Change("Department");
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Department\"]").Click();
         Assert.Contains("Department", cut.Find("[data-slot=\"datagrid-group-panel\"]").TextContent);
 
         // Step 2: Clear all.
@@ -255,10 +262,8 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         Assert.Contains("Drag a Groupable column header here", cut.Markup);
 
         // Step 3: Add Department again — must succeed.
-        // After the clear, the <select> is a new DOM element (different @key) so
-        // its native value is "" and the change event fires correctly.
-        var selectAfterClear = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
-        selectAfterClear.Change("Department");
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Department\"]").Click();
 
         // The chip must appear — grouping is active again.
         var panelAfterReadd = cut.Find("[data-slot=\"datagrid-group-panel\"]");

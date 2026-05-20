@@ -29,7 +29,9 @@ public class ChartSkeletonTests : IAsyncLifetime
         var root = cut.Find("div.lumeo-chart-skeleton");
 
         Assert.Equal("status", root.GetAttribute("role"));
-        Assert.Equal("Loading chart", root.GetAttribute("aria-label"));
+        // 2.2.0: aria-label is routed through L["Chart.Loading"] which
+        // resolves to "Loading…" in the default English locale.
+        Assert.Equal("Loading…", root.GetAttribute("aria-label"));
         Assert.Equal("polite", root.GetAttribute("aria-live"));
     }
 
