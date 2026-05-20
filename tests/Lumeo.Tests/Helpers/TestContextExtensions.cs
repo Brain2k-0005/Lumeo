@@ -37,6 +37,12 @@ public static class TestContextExtensions
         ctx.Services.AddScoped<IKeyboardShortcutService>(sp => sp.GetRequiredService<KeyboardShortcutService>());
         ctx.Services.AddScoped<IDataGridExportService, Lumeo.Services.DataGridExportService>();
         ctx.Services.AddScoped<HapticsService>();
+        // 2.1.3 — OverlayProvider now injects IResponsiveService for the responsive
+        // mobile overrides on OverlayOptions. The interop is loose-mode so the
+        // service's interop calls return defaults; the service itself is a no-op
+        // until OnViewportChange is invoked from tests.
+        ctx.Services.AddScoped<ResponsiveService>();
+        ctx.Services.AddScoped<IResponsiveService>(sp => sp.GetRequiredService<ResponsiveService>());
 
         // Localization — apply defaults so components can resolve strings in tests
         ctx.Services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
