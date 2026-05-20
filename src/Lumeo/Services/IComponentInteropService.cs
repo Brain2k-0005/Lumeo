@@ -49,8 +49,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Viewport listener — backs IResponsiveService (2.1.3). The returned
     // ViewportSize is the initial snapshot; subsequent changes are pushed
     // back to the registered ResponsiveService via [JSInvokable]
-    // OnViewportChange.
-    ValueTask<ViewportSize> RegisterViewportListener(Microsoft.JSInterop.DotNetObjectReference<ResponsiveService> dotnetRef);
+    // OnViewportChange. Returns null when no JS module is available (e.g.
+    // bUnit loose-mode in tests) — callers must handle the null and keep
+    // their default zero-state.
+    ValueTask<ViewportSize?> RegisterViewportListener(Microsoft.JSInterop.DotNetObjectReference<ResponsiveService> dotnetRef);
     ValueTask UnregisterViewportListener();
 
     // Floating Position
