@@ -115,8 +115,8 @@ public class ResponsiveServiceTests
     // ------------------------------------------------------------------
     private sealed class NoOpInterop : IComponentInteropService
     {
-        public ValueTask<ViewportSize> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef)
-            => ValueTask.FromResult(new ViewportSize(0, 0));
+        public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef)
+            => ValueTask.FromResult<ViewportSize?>(new ViewportSize(0, 0));
         public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
         public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(new ViewportSize(0, 0));
 

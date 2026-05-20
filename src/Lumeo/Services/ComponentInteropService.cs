@@ -204,10 +204,10 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Viewport Listener (2.1.3 — backs IResponsiveService) ---
 
-    public async ValueTask<ViewportSize> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef)
+    public async ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef)
     {
         var module = await GetModuleAsync();
-        return await module.InvokeAsync<ViewportSize>("registerViewportListener", dotnetRef);
+        return await module.InvokeAsync<ViewportSize?>("registerViewportListener", dotnetRef);
     }
 
     public async ValueTask UnregisterViewportListener()

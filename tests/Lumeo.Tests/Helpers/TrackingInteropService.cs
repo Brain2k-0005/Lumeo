@@ -55,7 +55,7 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterPinchZoom(string elementId) => ValueTask.CompletedTask;
     public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(new ViewportSize(0, 0));
     // 2.1.3: viewport listener no-ops (IResponsiveService is exercised separately via NoOpInterop)
-    public ValueTask<ViewportSize> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult(new ViewportSize(0, 0));
+    public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult<ViewportSize?>(new ViewportSize(0, 0));
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
     public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;

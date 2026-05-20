@@ -49,7 +49,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     // Viewport
     public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(new ViewportSize(1920, 1080));
     // 2.1.3: viewport listener no-ops — docs tests never drive resize events.
-    public ValueTask<ViewportSize> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult(new ViewportSize(1920, 1080));
+    public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult<ViewportSize?>(new ViewportSize(1920, 1080));
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
 
     // Floating Position

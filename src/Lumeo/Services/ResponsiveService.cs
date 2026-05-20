@@ -41,8 +41,16 @@ public sealed class ResponsiveService : IResponsiveService
         _selfRef = DotNetObjectReference.Create(this);
         // The JS helper returns the initial size synchronously so callers don't
         // have to wait for a synthetic resize event before reading Width/Height.
+        // Defensive null check: bUnit's loose-mode JSInterop returns null for
+        // unmocked invokes that have a reference-type return (ViewportSize is a
+        // positional record = reference type). In that case we keep the
+        // service at its zero-defaults — consumers will read Width=0 until a
+        // real OnViewportChange call comes in from JS.
         var initial = await _interop.RegisterViewportListener(_selfRef);
-        ApplySize(initial.Width, initial.Height, fireEvent: true);
+        if (initial is not null)
+        {
+            ApplySize(initial.Width, initial.Height, fireEvent: true);
+        }
     }
 
     /// <summary>Invoked from JS on every (debounced) viewport resize.</summary>
