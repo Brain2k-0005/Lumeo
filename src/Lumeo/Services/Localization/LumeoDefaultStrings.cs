@@ -211,6 +211,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.Next"] = "Next",
         ["Common.ShowMore"] = "Show more",
         ["Common.ShowLess"] = "Show less",
+        ["Common.MoreOptions"] = "More options",
+        ["Common.DragHandle"] = "Drag handle",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Available",
@@ -224,6 +226,7 @@ internal static partial class LumeoDefaultStrings
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Select…",
+        ["Cascader.ClearSelection"] = "Clear selection",
 
         // ── Rating / OTP ────────────────────────────────────────────
         ["Rating.Rate"] = "Rate",
@@ -288,6 +291,24 @@ internal static partial class LumeoDefaultStrings
 
         // ── BottomNav ───────────────────────────────────────────────
         ["BottomNav.Label"] = "Bottom navigation",
+        ["BottomNav.PrimaryAction"] = "Primary action",
+
+        // ── Badge ───────────────────────────────────────────────────
+        ["Badge.Remove"] = "Remove",
+
+        // ── Dock ────────────────────────────────────────────────────
+        ["Dock.ApplicationDock"] = "Application Dock",
+
+        // ── QueryBuilder ────────────────────────────────────────────
+        ["QueryBuilder.QueryGroup"] = "Query group",
+        ["QueryBuilder.NestedQueryGroup"] = "Nested query group",
+        ["QueryBuilder.Combinator"] = "Combinator",
+        ["QueryBuilder.AddRule"] = "Add rule",
+        ["QueryBuilder.AddGroup"] = "Add group",
+        ["QueryBuilder.RemoveGroup"] = "Remove group",
+        ["QueryBuilder.RemoveRule"] = "Remove rule",
+        ["QueryBuilder.Field"] = "Field",
+        ["QueryBuilder.Operator"] = "Operator",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "File \"{0}\" exceeds the maximum size of {1}.",
@@ -492,6 +513,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.Next"] = "Weiter",
         ["Common.ShowMore"] = "Mehr anzeigen",
         ["Common.ShowLess"] = "Weniger anzeigen",
+        ["Common.MoreOptions"] = "Weitere Optionen",
+        ["Common.DragHandle"] = "Ziehgriff",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Verfügbar",
@@ -505,6 +528,7 @@ internal static partial class LumeoDefaultStrings
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Auswählen…",
+        ["Cascader.ClearSelection"] = "Auswahl löschen",
 
         // ── Rating / OTP ────────────────────────────────────────────
         ["Rating.Rate"] = "Bewerten",
@@ -569,6 +593,24 @@ internal static partial class LumeoDefaultStrings
 
         // ── BottomNav ───────────────────────────────────────────────
         ["BottomNav.Label"] = "Untere Navigation",
+        ["BottomNav.PrimaryAction"] = "Primäre Aktion",
+
+        // ── Badge ───────────────────────────────────────────────────
+        ["Badge.Remove"] = "Entfernen",
+
+        // ── Dock ────────────────────────────────────────────────────
+        ["Dock.ApplicationDock"] = "Anwendungs-Dock",
+
+        // ── QueryBuilder ────────────────────────────────────────────
+        ["QueryBuilder.QueryGroup"] = "Abfragegruppe",
+        ["QueryBuilder.NestedQueryGroup"] = "Verschachtelte Abfragegruppe",
+        ["QueryBuilder.Combinator"] = "Verknüpfung",
+        ["QueryBuilder.AddRule"] = "Regel hinzufügen",
+        ["QueryBuilder.AddGroup"] = "Gruppe hinzufügen",
+        ["QueryBuilder.RemoveGroup"] = "Gruppe entfernen",
+        ["QueryBuilder.RemoveRule"] = "Regel entfernen",
+        ["QueryBuilder.Field"] = "Feld",
+        ["QueryBuilder.Operator"] = "Operator",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "Datei „{0}“ überschreitet die maximale Größe von {1}.",

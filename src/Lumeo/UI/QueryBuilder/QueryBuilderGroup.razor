@@ -1,13 +1,14 @@
 @namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @{
     var isRoot = Depth == 0;
     var canNest = Depth < Ctx.MaxDepth;
 }
 
-<div class="@GroupClass" role="group" aria-label="@(isRoot ? "Query group" : "Nested query group")">
+<div class="@GroupClass" role="group" aria-label="@L[isRoot ? "QueryBuilder.QueryGroup" : "QueryBuilder.NestedQueryGroup"]">
     <div class="flex flex-wrap items-center gap-2">
-        <div class="inline-flex items-center rounded-md bg-muted p-0.5" role="radiogroup" aria-label="Combinator">
+        <div class="inline-flex items-center rounded-md bg-muted p-0.5" role="radiogroup" aria-label="@L["QueryBuilder.Combinator"]">
             <button type="button"
                     role="radio"
                     aria-checked="@((Group.Combinator == QueryCombinator.And).ToString().ToLowerInvariant())"
@@ -25,13 +26,13 @@
         </div>
 
         <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
-                OnClick="AddRule" aria-label="Add rule">
+                OnClick="AddRule" aria-label="@L["QueryBuilder.AddRule"]">
             <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
             <span>Rule</span>
         </Button>
 
         <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
-                OnClick="AddGroup" Disabled="@(!canNest)" aria-label="Add group">
+                OnClick="AddGroup" Disabled="@(!canNest)" aria-label="@L["QueryBuilder.AddGroup"]">
             <Blazicon Svg="Lucide.FolderPlus" class="h-3.5 w-3.5" />
             <span>Group</span>
         </Button>
@@ -42,7 +43,7 @@
         {
             <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
                     OnClick="RemoveSelf" Class="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    aria-label="Remove group">
+                    aria-label="@L["QueryBuilder.RemoveGroup"]">
                 <Blazicon Svg="Lucide.X" class="h-4 w-4" />
             </Button>
         }
@@ -61,7 +62,7 @@
                 {
                     <div class="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-card p-2">
                         @* Field picker *@
-                        <select class="@SelectClass" value="@rule.Field" @onchange="@(e => OnFieldChanged(rule, e.Value?.ToString()))" aria-label="Field">
+                        <select class="@SelectClass" value="@rule.Field" @onchange="@(e => OnFieldChanged(rule, e.Value?.ToString()))" aria-label="@L["QueryBuilder.Field"]">
                             @if (string.IsNullOrEmpty(rule.Field))
                             {
                                 <option value="" disabled selected>Select field…</option>
@@ -78,7 +79,7 @@
                         @if (field is not null)
                         {
                             @* Operator picker *@
-                            <select class="@SelectClass" value="@rule.Operator" @onchange="@(e => OnOperatorChanged(rule, e.Value?.ToString()))" aria-label="Operator">
+                            <select class="@SelectClass" value="@rule.Operator" @onchange="@(e => OnOperatorChanged(rule, e.Value?.ToString()))" aria-label="@L["QueryBuilder.Operator"]">
                                 @foreach (var op in field.EffectiveOperators)
                                 {
                                     <option value="@op" selected="@(op == rule.Operator)">@QueryBuilderOperators.LabelFor(op)</option>
@@ -107,7 +108,7 @@
                         {
                             <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
                                     OnClick="@(() => RemoveNode(rule))" Class="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                    aria-label="Remove rule">
+                                    aria-label="@L["QueryBuilder.RemoveRule"]">
                                 <Blazicon Svg="Lucide.X" class="h-4 w-4" />
                             </Button>
                         }
