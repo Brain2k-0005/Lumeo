@@ -285,9 +285,10 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
             .Add(g => g.Columns, Cols())
             .Add(g => g.ShowGroupPanel, true));
 
-        // Drive the group panel <select> to add "Name" as a grouping level.
-        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
-        select.Change("Name");
+        // 2.2.0: the group-panel add-level UI is a DropdownMenu now (was a
+        // native <select>). Open the trigger and click the Name menu item.
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Name\"]").Click();
 
         var layout = cut.Instance.GetCurrentLayout();
         Assert.NotNull(layout.GroupByFields);

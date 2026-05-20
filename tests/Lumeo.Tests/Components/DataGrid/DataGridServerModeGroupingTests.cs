@@ -110,9 +110,9 @@ public class DataGridServerModeGroupingTests : IAsyncLifetime
         // No grouping yet → no group rows.
         Assert.Empty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));
 
-        // Add Department via the panel <select>.
-        var select = cut.Find("[data-slot=\"datagrid-group-panel\"] select");
-        select.Change("Department");
+        // 2.2.0: add Department via the panel DropdownMenu (was <select>).
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Department\"]").Click();
 
         // Group rows must now appear (without re-fetching from the server).
         var groupRows = cut.FindAll("[data-slot=\"datagrid-group-row\"]");
@@ -128,10 +128,13 @@ public class DataGridServerModeGroupingTests : IAsyncLifetime
     {
         var cut = RenderServer(showGroupPanel: true);
 
-        // Add Department, then Status — second add must promote to multi-level
-        // (it would silently no-op on the old code path).
-        cut.Find("[data-slot=\"datagrid-group-panel\"] select").Change("Department");
-        cut.Find("[data-slot=\"datagrid-group-panel\"] select").Change("Status");
+        // 2.2.0: Add Department, then Status via the DropdownMenu — second
+        // add must promote to multi-level (was silently no-op on the old
+        // ServerMode short-circuit path that v2.1.0 already fixed).
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Department\"]").Click();
+        cut.Find("[data-slot=\"datagrid-group-add-trigger\"]").Click();
+        cut.Find("[role=\"menu\"] [data-group-add-field=\"Status\"]").Click();
 
         var groupRows = cut.FindAll("[data-slot=\"datagrid-group-row\"]");
         Assert.Equal(7, groupRows.Count);
