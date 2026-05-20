@@ -117,8 +117,10 @@ public class FileManagerTests : IAsyncLifetime
             .Add(x => x.Root, tree)
             .Add(x => x.CurrentPath, "docs"));
 
-        // The breadcrumb nav should contain the folder name
-        var breadcrumb = cut.Find("nav[aria-label='file manager path']");
+        // 2.2.0: nav aria-label is routed through L["FileManager.Path"]
+        // which resolves to "File manager path" (capitalised) in the
+        // default English locale.
+        var breadcrumb = cut.Find("nav[aria-label='File manager path']");
         Assert.Contains("Documents", breadcrumb.TextContent);
     }
 

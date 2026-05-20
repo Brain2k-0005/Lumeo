@@ -101,7 +101,7 @@
                 <Blazicon Svg="Lucide.CircleAlert" class="h-4 w-4 shrink-0 text-destructive" />
                 <span class="flex-1 text-destructive-text">@L["DataGrid.ErrorLoadingData", _serverService.Error ?? ""]</span>
                 <button type="button"
-                        class="text-xs text-destructive underline hover:no-underline"
+                        class="text-xs text-destructive underline hover:no-underline focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
                         @onclick="@(async () => { _serverService!.ClearError(); await RequestServerData(); })">
                     @L["DataGrid.Retry"]
                 </button>
@@ -168,13 +168,13 @@
                 <div class="ml-auto flex items-center gap-2">
                     <button type="button"
                             data-slot="datagrid-batch-save"
-                            class="inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                            class="inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                             @onclick="SaveBatchAsync">
                         @BatchSaveAllText
                     </button>
                     <button type="button"
                             data-slot="datagrid-batch-discard"
-                            class="inline-flex h-7 items-center rounded-md border border-border/60 bg-background px-3 text-xs font-medium hover:bg-muted"
+                            class="inline-flex h-7 items-center rounded-md border border-border/60 bg-background px-3 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                             @onclick="DiscardBatch">
                         @BatchDiscardText
                     </button>
@@ -211,8 +211,8 @@
                             <Blazicon Svg="Lucide.Group" class="h-3 w-3 text-muted-foreground" />
                             <span>@label</span>
                             <button type="button"
-                                    class="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-muted text-muted-foreground"
-                                    title="Remove grouping"
+                                    class="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-muted text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                                    title="@L["DataGrid.RemoveGrouping"]"
                                     @onclick="@(() => RemoveGroupField(field))">
                                 <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                             </button>
@@ -233,8 +233,8 @@
                     @* Clear-all button: lives next to the chips so it's discoverable
                        and matches the per-chip X visual. rc.41 polish. *@
                     <button type="button"
-                            class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                            title="Clear all grouping"
+                            class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                            title="@L["DataGrid.ClearAllGrouping"]"
                             @onclick="ClearGroupFields">
                         <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                         Clear
@@ -242,22 +242,33 @@
                 }
                 @if (addableCols.Count > 0)
                 {
-                    @* @key on the select forces a fresh DOM element every time the
-                       group-fields count changes — fixes the rc.39 bug where the
-                       <select>'s native DOM value stuck on the last-picked option
-                       and the placeholder option ("+ Add group level") wouldn't
-                       re-appear, making the dropdown feel broken after the second
-                       add. (rc.41) *@
-                    <select @key="@($"group-add-{_runtimeGroupFields.Count}")"
-                            class="ml-auto h-6 rounded border border-border/60 bg-card px-1 text-xs text-muted-foreground"
-                            value=""
-                            @onchange="@(e => { var v = e.Value?.ToString(); if (!string.IsNullOrEmpty(v)) AddGroupField(v!); })">
-                        <option value="">+ Add group level</option>
-                        @foreach (var c in addableCols)
-                        {
-                            <option value="@c.Field">@(c.Title ?? c.Field)</option>
-                        }
-                    </select>
+                    @* 2.2.0 — was a native <select> with @key-on-count to work
+                       around the browser's value-sticking, but the browser
+                       chrome (white-on-blue on Windows, OS-default everywhere)
+                       broke the theme entirely. DropdownMenu is the right
+                       pattern here anyway: this is an "execute an action"
+                       picker, not a "bind a value" picker, so it shouldn't
+                       maintain a selected state in the first place. *@
+                    <DropdownMenu>
+                        <DropdownMenuTrigger>
+                            <button type="button"
+                                    data-slot="datagrid-group-add-trigger"
+                                    class="ml-auto inline-flex items-center gap-1 h-6 rounded border border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors">
+                                <span>@L["DataGrid.AddGroupLevel"]</span>
+                                <Blazicon Svg="Lucide.ChevronDown" class="h-3 w-3" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            @foreach (var c in addableCols)
+                            {
+                                var field = c.Field!;
+                                <DropdownMenuItem AdditionalAttributes="@(new Dictionary<string, object> { ["data-group-add-field"] = field })"
+                                                  OnClick="@(() => { AddGroupField(field); return Task.CompletedTask; })">
+                                    @(c.Title ?? c.Field)
+                                </DropdownMenuItem>
+                            }
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 }
             </div>
         }
@@ -300,7 +311,7 @@
                      class="flex items-center border-t border-border/40 bg-muted/20 px-3 py-1.5">
                     <button type="button"
                             data-slot="datagrid-add-row-button"
-                            class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                            class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                             @onclick="AddBatchRow">
                         <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
                         <span>@BatchAddRowText</span>

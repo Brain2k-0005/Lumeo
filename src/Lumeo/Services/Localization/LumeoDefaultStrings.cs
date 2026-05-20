@@ -71,6 +71,9 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.ErrorLoadingData"] = "Failed to load data: {0}",
         ["DataGrid.ExpandFullscreen"] = "Expand to fullscreen",
         ["DataGrid.ExitFullscreen"] = "Exit fullscreen",
+        ["DataGrid.AddGroupLevel"] = "+ Add group level",
+        ["DataGrid.RemoveGrouping"] = "Remove grouping",
+        ["DataGrid.ClearAllGrouping"] = "Clear all grouping",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
@@ -165,6 +168,7 @@ internal static partial class LumeoDefaultStrings
         ["Command.Placeholder"] = "Type a command or search…",
         ["Command.NoResults"] = "No results found",
         ["Select.Placeholder"] = "Select an option",
+        ["Select.ClearSelection"] = "Clear selection",
 
         // ── Calendar / DatePicker ───────────────────────────────────
         ["Calendar.Today"] = "Today",
@@ -210,6 +214,10 @@ internal static partial class LumeoDefaultStrings
         ["Common.Next"] = "Next",
         ["Common.ShowMore"] = "Show more",
         ["Common.ShowLess"] = "Show less",
+        ["Common.MoreOptions"] = "More options",
+        ["Common.DragHandle"] = "Drag handle",
+        ["Common.Actions"] = "Actions",
+        ["Common.BackToTop"] = "Back to top",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Available",
@@ -223,6 +231,7 @@ internal static partial class LumeoDefaultStrings
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Select…",
+        ["Cascader.ClearSelection"] = "Clear selection",
 
         // ── Rating / OTP ────────────────────────────────────────────
         ["Rating.Rate"] = "Rate",
@@ -269,9 +278,92 @@ internal static partial class LumeoDefaultStrings
         ["FileManager.EmptyState"] = "No files or folders here.",
         ["FileManager.MoreActions"] = "More actions",
         ["FileManager.MoreActionsForName"] = "More actions for {0}",
+        ["FileManager.NavigateUp"] = "Navigate up",
+        ["FileManager.UpOneLevel"] = "Up one level",
+        ["FileManager.Path"] = "File manager path",
+        ["FileManager.Root"] = "Root",
+        ["FileManager.NewFolder"] = "New folder",
+        ["FileManager.DeleteSelected"] = "Delete selected",
+        ["FileManager.ListView"] = "List view",
+        ["FileManager.GridView"] = "Grid view",
+        ["FileManager.SwitchListView"] = "Switch to list view",
+        ["FileManager.SwitchGridView"] = "Switch to grid view",
+        ["FileManager.FolderTree"] = "Folder tree",
+        ["FileManager.FileActions"] = "File actions",
+
+        // ── Chart ───────────────────────────────────────────────────
+        ["Chart.Loading"] = "Loading…",
+
+        // ── BottomNav ───────────────────────────────────────────────
+        ["BottomNav.Label"] = "Bottom navigation",
+        ["BottomNav.PrimaryAction"] = "Primary action",
+
+        // ── Badge ───────────────────────────────────────────────────
+        ["Badge.Remove"] = "Remove",
+
+        // ── Dock ────────────────────────────────────────────────────
+        ["Dock.ApplicationDock"] = "Application Dock",
+
+        // ── QueryBuilder ────────────────────────────────────────────
+        ["QueryBuilder.QueryGroup"] = "Query group",
+        ["QueryBuilder.NestedQueryGroup"] = "Nested query group",
+        ["QueryBuilder.Combinator"] = "Combinator",
+        ["QueryBuilder.AddRule"] = "Add rule",
+        ["QueryBuilder.AddGroup"] = "Add group",
+        ["QueryBuilder.RemoveGroup"] = "Remove group",
+        ["QueryBuilder.RemoveRule"] = "Remove rule",
+        ["QueryBuilder.Field"] = "Field",
+        ["QueryBuilder.Operator"] = "Operator",
+
+        // ── PickList ────────────────────────────────────────────────
+        ["PickList.MoveAll"] = "Move all",
+        ["PickList.MoveSelected"] = "Move selected",
+        ["PickList.MoveBackSelected"] = "Move back selected",
+        ["PickList.MoveBackAll"] = "Move back all",
+
+        // ── Navigation ──────────────────────────────────────────────
+        ["Navigation.Toggle"] = "Toggle navigation",
+
+        // ── Sidebar ─────────────────────────────────────────────────
+        ["Sidebar.Toggle"] = "Toggle sidebar",
+
+        // ── Editor ──────────────────────────────────────────────────
+        ["Editor.Suggestions"] = "Suggestions",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "File \"{0}\" exceeds the maximum size of {1}.",
+
+        // ── Scheduler ───────────────────────────────────────────────
+        ["Scheduler.Previous"] = "Previous",
+        ["Scheduler.Next"] = "Next",
+        ["Scheduler.ResourceLegend"] = "Resource legend",
+
+        // ── Theme ───────────────────────────────────────────────────
+        ["Theme.Light"] = "Light",
+        ["Theme.Dark"] = "Dark",
+        ["Theme.System"] = "System",
+        ["Theme.Toggle"] = "Toggle theme",
+
+        // ── Tabs ────────────────────────────────────────────────────
+        ["Tabs.CloseTab"] = "Close tab",
+
+        // ── Chip ────────────────────────────────────────────────────
+        ["Chip.Remove"] = "Remove",
+
+        // ── Alert ───────────────────────────────────────────────────
+        ["Alert.Dismiss"] = "Dismiss",
+
+        // ── ImageCompare ────────────────────────────────────────────
+        ["ImageCompare.Slider"] = "Image compare slider",
+
+        // ── PromptInput ─────────────────────────────────────────────
+        ["PromptInput.Send"] = "Send",
+
+        // ── Editor (RichTextEditor) ─────────────────────────────────
+        ["Editor.StartWriting"] = "Start writing…",
+
+        // ── PivotGrid ───────────────────────────────────────────────
+        ["PivotGrid.GrandTotal"] = "Grand Total",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -332,7 +424,10 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.Retry"] = "Erneut versuchen",
         ["DataGrid.ErrorLoadingData"] = "Fehler beim Laden: {0}",
         ["DataGrid.ExpandFullscreen"] = "Vollbild öffnen",
+        ["DataGrid.AddGroupLevel"] = "+ Gruppe hinzufügen",
         ["DataGrid.ExitFullscreen"] = "Vollbild schließen",
+        ["DataGrid.RemoveGrouping"] = "Gruppierung entfernen",
+        ["DataGrid.ClearAllGrouping"] = "Alle Gruppierungen entfernen",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
@@ -427,6 +522,7 @@ internal static partial class LumeoDefaultStrings
         ["Command.Placeholder"] = "Befehl eingeben oder suchen…",
         ["Command.NoResults"] = "Keine Ergebnisse",
         ["Select.Placeholder"] = "Bitte auswählen",
+        ["Select.ClearSelection"] = "Auswahl leeren",
 
         // ── Calendar / DatePicker ───────────────────────────────────
         ["Calendar.Today"] = "Heute",
@@ -472,6 +568,10 @@ internal static partial class LumeoDefaultStrings
         ["Common.Next"] = "Weiter",
         ["Common.ShowMore"] = "Mehr anzeigen",
         ["Common.ShowLess"] = "Weniger anzeigen",
+        ["Common.MoreOptions"] = "Weitere Optionen",
+        ["Common.DragHandle"] = "Ziehgriff",
+        ["Common.Actions"] = "Aktionen",
+        ["Common.BackToTop"] = "Nach oben",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Verfügbar",
@@ -485,6 +585,7 @@ internal static partial class LumeoDefaultStrings
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Auswählen…",
+        ["Cascader.ClearSelection"] = "Auswahl löschen",
 
         // ── Rating / OTP ────────────────────────────────────────────
         ["Rating.Rate"] = "Bewerten",
@@ -531,9 +632,92 @@ internal static partial class LumeoDefaultStrings
         ["FileManager.EmptyState"] = "Keine Dateien oder Ordner vorhanden.",
         ["FileManager.MoreActions"] = "Weitere Aktionen",
         ["FileManager.MoreActionsForName"] = "Weitere Aktionen für {0}",
+        ["FileManager.NavigateUp"] = "Nach oben navigieren",
+        ["FileManager.UpOneLevel"] = "Eine Ebene nach oben",
+        ["FileManager.Path"] = "Dateimanager-Pfad",
+        ["FileManager.Root"] = "Stamm",
+        ["FileManager.NewFolder"] = "Neuer Ordner",
+        ["FileManager.DeleteSelected"] = "Auswahl löschen",
+        ["FileManager.ListView"] = "Listenansicht",
+        ["FileManager.GridView"] = "Rasteransicht",
+        ["FileManager.SwitchListView"] = "Zur Listenansicht wechseln",
+        ["FileManager.SwitchGridView"] = "Zur Rasteransicht wechseln",
+        ["FileManager.FolderTree"] = "Ordnerbaum",
+        ["FileManager.FileActions"] = "Dateiaktionen",
+
+        // ── Chart ───────────────────────────────────────────────────
+        ["Chart.Loading"] = "Wird geladen…",
+
+        // ── BottomNav ───────────────────────────────────────────────
+        ["BottomNav.Label"] = "Untere Navigation",
+        ["BottomNav.PrimaryAction"] = "Primäre Aktion",
+
+        // ── Badge ───────────────────────────────────────────────────
+        ["Badge.Remove"] = "Entfernen",
+
+        // ── Dock ────────────────────────────────────────────────────
+        ["Dock.ApplicationDock"] = "Anwendungs-Dock",
+
+        // ── QueryBuilder ────────────────────────────────────────────
+        ["QueryBuilder.QueryGroup"] = "Abfragegruppe",
+        ["QueryBuilder.NestedQueryGroup"] = "Verschachtelte Abfragegruppe",
+        ["QueryBuilder.Combinator"] = "Verknüpfung",
+        ["QueryBuilder.AddRule"] = "Regel hinzufügen",
+        ["QueryBuilder.AddGroup"] = "Gruppe hinzufügen",
+        ["QueryBuilder.RemoveGroup"] = "Gruppe entfernen",
+        ["QueryBuilder.RemoveRule"] = "Regel entfernen",
+        ["QueryBuilder.Field"] = "Feld",
+        ["QueryBuilder.Operator"] = "Operator",
+
+        // ── PickList ────────────────────────────────────────────────
+        ["PickList.MoveAll"] = "Alle verschieben",
+        ["PickList.MoveSelected"] = "Auswahl verschieben",
+        ["PickList.MoveBackSelected"] = "Auswahl zurück verschieben",
+        ["PickList.MoveBackAll"] = "Alle zurück verschieben",
+
+        // ── Navigation ──────────────────────────────────────────────
+        ["Navigation.Toggle"] = "Navigation ein-/ausblenden",
+
+        // ── Sidebar ─────────────────────────────────────────────────
+        ["Sidebar.Toggle"] = "Seitenleiste ein-/ausblenden",
+
+        // ── Editor ──────────────────────────────────────────────────
+        ["Editor.Suggestions"] = "Vorschläge",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "Datei „{0}“ überschreitet die maximale Größe von {1}.",
+
+        // ── Scheduler ───────────────────────────────────────────────
+        ["Scheduler.Previous"] = "Zurück",
+        ["Scheduler.Next"] = "Weiter",
+        ["Scheduler.ResourceLegend"] = "Ressourcen-Legende",
+
+        // ── Theme ───────────────────────────────────────────────────
+        ["Theme.Light"] = "Hell",
+        ["Theme.Dark"] = "Dunkel",
+        ["Theme.System"] = "System",
+        ["Theme.Toggle"] = "Theme umschalten",
+
+        // ── Tabs ────────────────────────────────────────────────────
+        ["Tabs.CloseTab"] = "Tab schließen",
+
+        // ── Chip ────────────────────────────────────────────────────
+        ["Chip.Remove"] = "Entfernen",
+
+        // ── Alert ───────────────────────────────────────────────────
+        ["Alert.Dismiss"] = "Ausblenden",
+
+        // ── ImageCompare ────────────────────────────────────────────
+        ["ImageCompare.Slider"] = "Bildvergleichs-Schieberegler",
+
+        // ── PromptInput ─────────────────────────────────────────────
+        ["PromptInput.Send"] = "Senden",
+
+        // ── Editor (RichTextEditor) ─────────────────────────────────
+        ["Editor.StartWriting"] = "Schreiben beginnen…",
+
+        // ── PivotGrid ───────────────────────────────────────────────
+        ["PivotGrid.GrandTotal"] = "Gesamtsumme",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)
