@@ -390,4 +390,84 @@ public class SheetTests : IAsyncLifetime
         var backdropCount = System.Text.RegularExpressions.Regex.Matches(markup, "bg-black\\\\?\\/80").Count;
         Assert.Equal(1, backdropCount);
     }
+
+    // --- Size=Full on Top/Bottom emits fullscreen height classes (2.1.1) ---
+    //
+    // Previously SheetSize.Full only applied to Left/Right (sm:max-w-full).
+    // For Top/Bottom it was a silent no-op, so the mobile-fullscreen
+    // bottom-sheet pattern required a manual Class override. Now Full
+    // emits inset-y-0 + h-full + max-h-full alongside the existing
+    // bottom-0 / top-0 anchor so the sheet covers the entire viewport.
+
+    private IRenderedComponent<IComponent> RenderSheetWithSize(
+        L.SheetContent.SheetSide side,
+        L.SheetContent.SheetSize size)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Sheet>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SheetContent>(0);
+                b.AddAttribute(1, "Side", side);
+                b.AddAttribute(2, "Size", size);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(inner =>
+                {
+                    inner.AddContent(0, "Body");
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void SheetContent_Bottom_Size_Full_Emits_FullScreen_Height_Classes()
+    {
+        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Bottom, L.SheetContent.SheetSize.Full);
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+
+        Assert.Contains("bottom-0", cls);
+        Assert.Contains("h-full", cls);
+        Assert.Contains("max-h-full", cls);
+    }
+
+    [Fact]
+    public void SheetContent_Top_Size_Full_Emits_FullScreen_Height_Classes()
+    {
+        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Top, L.SheetContent.SheetSize.Full);
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+
+        Assert.Contains("top-0", cls);
+        Assert.Contains("h-full", cls);
+        Assert.Contains("max-h-full", cls);
+    }
+
+    [Fact]
+    public void SheetContent_Bottom_Size_Default_Does_Not_Force_Height()
+    {
+        // Default size on Top/Bottom must remain content-height (legacy
+        // behaviour). Only Full / Sm / Lg / Xl introduce height caps.
+        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Bottom, L.SheetContent.SheetSize.Default);
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+
+        Assert.DoesNotContain("h-full", cls);
+        Assert.DoesNotContain("max-h-", cls);
+    }
+
+    [Fact]
+    public void SheetContent_Right_Size_Full_Still_Uses_Width_Class()
+    {
+        // Back-compat: Full on Left/Right must keep sm:max-w-full
+        // and must NOT pick up the Top/Bottom inset-y-0/h-full branch.
+        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Right, L.SheetContent.SheetSize.Full);
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+
+        Assert.Contains("sm:max-w-full", cls);
+    }
 }

@@ -124,6 +124,14 @@ public sealed record OverlayOptions
     public bool PreventClose { get; init; }
     public SheetSide SheetSide { get; init; } = SheetSide.Right;
     public SheetSize SheetSize { get; init; } = SheetSize.Default;
+    /// <summary>
+    /// When true, a Sheet opened via <see cref="OverlayService.ShowSheetAsync{T}"/>
+    /// can be dismissed by swiping in the direction opposite to its
+    /// <see cref="SheetSide"/> (e.g. swipe-down on a Bottom sheet). Ignored for
+    /// non-Sheet overlay types. Drawers already enable swipe by default.
+    /// Default false to preserve the existing programmatic-open behaviour.
+    /// </summary>
+    public bool SwipeToClose { get; init; }
 }
 
 public sealed record AlertDialogOptions

@@ -72,12 +72,24 @@ else if (Context.IsOpen)
             SheetSize.Full => "sm:max-w-full",
             _ => "sm:max-w-sm"
         }
-        : "";
+        // Top/Bottom: width is always full (inset-x-0). Size controls
+        // the height — Full takes the entire viewport (mobile-fullscreen
+        // pattern), the other sizes cap at a fraction of the viewport
+        // height. Default keeps the legacy content-driven height so
+        // existing layouts are unchanged.
+        : Size switch
+        {
+            SheetSize.Sm => "max-h-[40vh] h-auto",
+            SheetSize.Lg => "max-h-[70vh] h-auto",
+            SheetSize.Xl => "max-h-[85vh] h-auto",
+            SheetSize.Full => "inset-y-0 h-full max-h-full",
+            _ => ""
+        };
 
     private string PositionClasses => Side switch
     {
-        SheetSide.Top => "inset-x-0 top-0",
-        SheetSide.Bottom => "inset-x-0 bottom-0",
+        SheetSide.Top => $"inset-x-0 top-0 {SizeClass}",
+        SheetSide.Bottom => $"inset-x-0 bottom-0 {SizeClass}",
         SheetSide.Left => $"inset-y-0 left-0 h-full w-3/4 {SizeClass}",
         SheetSide.Right => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}",
         _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}"
