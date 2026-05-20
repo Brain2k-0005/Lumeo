@@ -1,3 +1,4 @@
+using System.Reflection;
 using Lumeo.Services.Interop;
 using Microsoft.JSInterop;
 
@@ -44,7 +45,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     // <Version>), so it tracks every release without manual maintenance.
     private static readonly string _jsModuleVersion =
         typeof(ComponentInteropService).Assembly
-            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion
         ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
         ?? "0";
