@@ -140,11 +140,28 @@ jobs:
           version=$(grep -oP '<Version>\K[^<]+' Directory.Build.props | head -1 | tr -d '[:space:]')
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+
+      # 2.2.0: regenerate components-api.json + registry.json against the
+      # current source tree BEFORE building the npm package. Without this,
+      # the npm publish ships whatever was last committed by hand — which
+      # repeatedly drifts behind the lib release surface (the rc.38-shipped-
+      # under-2.0.0 bug was the cause of v2.0.1). Lumeo.RegistryGen reads
+      # the lockstep version from Directory.Build.props and writes:
+      #   - tools/lumeo-mcp/src/components-api.json (LLM-facing API surface)
+      #   - src/Lumeo/registry/registry.json (lightweight component map;
+      #     prebuild script then copies it to tools/lumeo-mcp/src/registry.json)
+      - name: Regenerate MCP registry against current source
+        run: dotnet run --project tools/Lumeo.RegistryGen
 
       - name: Install deps
         working-directory: tools/lumeo-mcp
