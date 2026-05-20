@@ -2505,7 +2505,10 @@
             Sorts = _sorts.Count > 0 ? new List<SortDescriptor>(_sorts) : null,
             Filters = _filters.Count > 0 ? new List<FilterDescriptor>(_filters) : null,
             PageSize = PageSize,
-            GlobalSearch = _globalSearch
+            GlobalSearch = _globalSearch,
+            GroupByFields = _runtimeGroupFields.Count > 0
+                ? new List<string>(_runtimeGroupFields)
+                : null
         };
     }
 
@@ -2552,6 +2555,26 @@
 
         // Restore global search
         _globalSearch = layout.GlobalSearch;
+
+        // Restore group-panel runtime fields (chip-strip). Only consider fields
+        // that exist as a Groupable column on the current grid — silently drop
+        // any that no longer match so a stale snapshot doesn't crash the grid.
+        if (layout.GroupByFields is { Count: > 0 })
+        {
+            _runtimeGroupFields = layout.GroupByFields
+                .Where(f => EffectiveColumns.Any(c => c.Field == f))
+                .Distinct()
+                .ToList();
+        }
+        else
+        {
+            _runtimeGroupFields = new List<string>();
+        }
+        _expandedGroupPaths.Clear();
+        _knownGroupPaths.Clear();
+        _expandedGroups.Clear();
+        _knownGroupKeys.Clear();
+        _lastGroupBy = null;
 
         _currentPage = 1;
 
@@ -2685,8 +2708,11 @@
     /// <summary>
     /// Snapshot schema version — bump when <see cref="DataGridLayoutSnapshot"/>
     /// changes in a breaking way.
+    /// v2 (2.1.1): added <c>GroupByFields</c> for multi-level group-panel
+    /// persistence. v1 payloads still load — the new field is nullable and
+    /// the legacy single-level <c>GroupBy</c> is honoured as a fallback.
     /// </summary>
-    private const int LayoutSnapshotVersion = 1;
+    private const int LayoutSnapshotVersion = 2;
 
     /// <summary>
     /// Cached, shared JsonSerializerOptions used for every ExportLayout / ApplyLayoutJsonAsync
@@ -2750,7 +2776,12 @@
             GlobalSearch: _globalSearch,
             CurrentPage: _currentPage,
             PageSize: PageSize,
-            GroupBy: GroupBy
+            // Preserve the static parameter for back-compat readers; new
+            // consumers should rely on GroupByFields for multi-level state.
+            GroupBy: _runtimeGroupFields.Count > 0 ? _runtimeGroupFields[0] : GroupBy,
+            GroupByFields: _runtimeGroupFields.Count > 0
+                ? new List<string>(_runtimeGroupFields)
+                : null
         );
     }
 
@@ -2794,6 +2825,24 @@
         _globalSearch = snapshot.GlobalSearch;
         if (snapshot.PageSize > 0) PageSize = snapshot.PageSize;
         _currentPage = snapshot.CurrentPage > 0 ? snapshot.CurrentPage : 1;
+
+        // Restore group-panel runtime fields. v2 payloads carry the full
+        // ordered list in GroupByFields; v1 payloads only have GroupBy
+        // (single level) — fall back to that for back-compat.
+        var groupFields = snapshot.GroupByFields is { Count: > 0 }
+            ? snapshot.GroupByFields
+            : (!string.IsNullOrEmpty(snapshot.GroupBy)
+                ? new List<string> { snapshot.GroupBy! }
+                : new List<string>());
+        _runtimeGroupFields = groupFields
+            .Where(f => EffectiveColumns.Any(c => c.Field == f))
+            .Distinct()
+            .ToList();
+        _expandedGroupPaths.Clear();
+        _knownGroupPaths.Clear();
+        _expandedGroups.Clear();
+        _knownGroupKeys.Clear();
+        _lastGroupBy = null;
 
         if (ServerMode)
             await RequestServerData();
