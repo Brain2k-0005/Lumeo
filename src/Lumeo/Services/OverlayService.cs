@@ -132,6 +132,37 @@ public sealed record OverlayOptions
     /// Default false to preserve the existing programmatic-open behaviour.
     /// </summary>
     public bool SwipeToClose { get; init; }
+
+    // --- Responsive mobile overrides (2.1.3) -------------------------------
+    // When the viewport width is below MobileBreakpoint, the Mobile* fields
+    // take precedence over the desktop SheetSide/SheetSize/SwipeToClose. The
+    // OverlayProvider reads these via IResponsiveService and re-renders the
+    // SheetContent reactively when the viewport crosses the breakpoint
+    // (e.g. user rotates a tablet). All four fields are nullable — null means
+    // "no responsive switch, just use the desktop value at every size".
+
+    /// <summary>Viewport width threshold (CSS pixels) below which the
+    /// <c>Mobile*</c> overrides apply. Default 768 (Tailwind <c>md</c>).
+    /// Set to null to disable responsive switching even if the
+    /// <c>Mobile*</c> fields are populated.</summary>
+    public int? MobileBreakpoint { get; init; } = 768;
+
+    /// <summary>Sheet side to use when the viewport is below
+    /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSide"/> at all
+    /// sizes. Typical pattern: <c>SheetSide.Right</c> on desktop,
+    /// <c>SheetSide.Bottom</c> on mobile.</summary>
+    public SheetSide? MobileSheetSide { get; init; }
+
+    /// <summary>Sheet size to use when the viewport is below
+    /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSize"/> at all
+    /// sizes. Typical pattern: <c>SheetSize.Default</c> on desktop,
+    /// <c>SheetSize.Full</c> on mobile.</summary>
+    public SheetSize? MobileSheetSize { get; init; }
+
+    /// <summary>SwipeToClose override below <see cref="MobileBreakpoint"/>.
+    /// Null = use <see cref="SwipeToClose"/> at all sizes. Typical pattern:
+    /// off on desktop, on for mobile bottom-sheet pull-down.</summary>
+    public bool? MobileSwipeToClose { get; init; }
 }
 
 public sealed record AlertDialogOptions

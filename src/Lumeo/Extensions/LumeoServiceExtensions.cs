@@ -46,6 +46,11 @@ public static class LumeoServiceExtensions
         services.AddScoped<IDataGridExportService, Lumeo.Services.DataGridExportService>();
         services.AddScoped<ConsentService>();
         services.AddScoped<HapticsService>();
+        // 2.1.3 — reactive viewport / breakpoint service used by Overlay
+        // responsive mobile overrides and by anyone who wants to switch
+        // markup based on the current Tailwind breakpoint.
+        services.AddScoped<ResponsiveService>();
+        services.AddScoped<IResponsiveService>(sp => sp.GetRequiredService<ResponsiveService>());
 
         services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
         {
