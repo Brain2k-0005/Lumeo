@@ -568,6 +568,15 @@
         </DataGrid>
     </ComponentDemo>
 
+    <Alert Variant="Alert.AlertVariant.Info" Title="Grouping in ServerMode" Class="my-4">
+        <strong><code>GroupBy</code>, <code>GroupByFields</code>, and the runtime group panel
+        (<code>ShowGroupPanel="true"</code>) all work in <code>ServerMode</code> — including
+        drag-to-group, add-level dropdown, per-chip remove, and clear-all.</strong> Grouping is
+        applied client-side to whatever rows the server returned for the current page. For grouping
+        across the whole dataset, either set <code>ShowPagination="false"</code> (server returns all
+        rows) or have the server pre-aggregate groups itself.
+    </Alert>
+
     <ComponentDemo Title="Server-Side Mode" Description="For large datasets, use ServerMode to handle sorting, filtering, and pagination on the server. Sorting, filtering, search, and pagination all trigger OnServerRequest. Loading state and request cancellation are managed automatically." Code="@_serverModeCode">
         <DataGrid TItem="Employee" Items="@_serverItems"
                   ServerMode="true"
@@ -827,7 +836,7 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">SelectedItemsChanged</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;IReadOnlyList&lt;TItem&gt;&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when selection changes.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnServerRequest</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;DataGridServerRequest&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Server-side data request callback with sorts, filters, page info.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnError</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;Exception&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when a server request throws an exception.</td></tr>
-                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupBy</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Field name to group rows by (works in both client and server mode).</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupBy</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Single-level group field. Works in both client and <code>ServerMode</code>; use <code>GroupByFields</code> for multi-level.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Expandable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Adds an expand icon to the toolbar for toggling fullscreen mode.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">IsExpanded</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Two-way bindable fullscreen state. Set from code to programmatically expand/collapse.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">IsExpandedChanged</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;bool&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires whenever the fullscreen state toggles.</td></tr>
@@ -1075,12 +1084,21 @@
         footer, computed over each group). A single-element list (or the legacy <code>GroupBy</code>
         string) keeps the classic single-level grouping.
     </p>
+    <p class="text-muted-foreground text-sm mt-2">
+        <strong>Works in <code>ServerMode</code> too.</strong> Both single-level <code>GroupBy</code>
+        and multi-level <code>GroupByFields</code> are applied client-side to whatever rows the server
+        returned, and the runtime panel handlers (drag-to-add, add-level dropdown, per-chip remove,
+        clear-all) trigger an in-place regroup without an extra server round-trip. Grouping operates
+        over the <em>current page</em> only — for cross-page grouping, either disable pagination
+        (<code>ShowPagination="false"</code>) so the server delivers all rows in one response, or have
+        the server pre-aggregate groups itself.
+    </p>
     <div class="overflow-x-auto rounded-lg border border-border/40">
         <table class="w-full text-sm">
             <thead class="bg-muted/40"><tr><th class="px-4 py-2 text-left font-medium">Parameter</th><th class="px-4 py-2 text-left font-medium">Type</th><th class="px-4 py-2 text-left font-medium">Description</th></tr></thead>
             <tbody class="divide-y divide-border/40">
                 <tr><td class="px-4 py-2 font-mono text-xs text-primary">ShowGroupPanel</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-muted-foreground">Shows the grouping chip strip + add-level dropdown. Default <code>false</code>.</td></tr>
-                <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupByFields</td><td class="px-4 py-2 font-mono text-xs">IReadOnlyList&lt;string&gt;?</td><td class="px-4 py-2 text-muted-foreground">Ordered column fields for multi-level grouping; takes precedence over <code>GroupBy</code>.</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupByFields</td><td class="px-4 py-2 font-mono text-xs">IReadOnlyList&lt;string&gt;?</td><td class="px-4 py-2 text-muted-foreground">Ordered column fields for multi-level grouping; takes precedence over <code>GroupBy</code>. Works in both client and <code>ServerMode</code> (grouping runs over the rows the server returned for the current page).</td></tr>
                 <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupPanelText</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-muted-foreground">Placeholder hint shown in the panel when nothing is grouped.</td></tr>
                 <tr><td class="px-4 py-2 font-mono text-xs text-primary">Column.Groupable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-muted-foreground">Gates whether a column can be added to the group panel.</td></tr>
             </tbody>

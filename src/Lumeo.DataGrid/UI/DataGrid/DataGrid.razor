@@ -1131,55 +1131,7 @@
         if (ServerMode)
         {
             _displayedItems = Items?.ToList() ?? new List<TItem>();
-
-            // Apply client-side grouping on server-returned items when GroupBy is set
-            if (!string.IsNullOrEmpty(GroupBy) && _displayedItems.Count > 0)
-            {
-                var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == GroupBy);
-                if (groupCol is not null)
-                {
-                    var serverGroupByChanged = GroupBy != _lastGroupBy;
-                    _lastGroupBy = GroupBy;
-
-                    _groupedSections = _displayedItems
-                        .GroupBy(item => groupCol.GetFormattedValue(item))
-                        .OrderBy(g => g.Key)
-                        .Select(g => new DataGridGroupSection<TItem>(g.Key, g.ToList(), g.Count()))
-                        .ToList();
-
-                    var serverDefaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
-                    _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
-
-                    if (serverGroupByChanged || serverDefaultChanged)
-                    {
-                        _expandedGroups.Clear();
-                        _knownGroupKeys.Clear();
-                        foreach (var section in _groupedSections)
-                        {
-                            _knownGroupKeys.Add(section.Key);
-                            if (GroupsExpandedByDefault)
-                                _expandedGroups.Add(section.Key);
-                        }
-                    }
-                    else
-                    {
-                        var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
-                        _expandedGroups.IntersectWith(validKeys);
-                        _knownGroupKeys.IntersectWith(validKeys);
-                        foreach (var section in _groupedSections)
-                        {
-                            if (_knownGroupKeys.Contains(section.Key)) continue;
-                            _knownGroupKeys.Add(section.Key);
-                            if (GroupsExpandedByDefault)
-                                _expandedGroups.Add(section.Key);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                _lastGroupBy = null;
-            }
+            RegroupServerItems();
         }
         else
         {
@@ -1313,6 +1265,34 @@
         if (ServerMode)
         {
             await RequestServerData();
+        }
+    }
+
+    // Applies grouping to the server-returned page in ServerMode. The server has
+    // already done sort/filter/page, so we treat _displayedItems as the buffer
+    // and delegate to the same grouping routines client-mode uses — which keeps
+    // multi-level, expand-state preservation, and aggregates symmetrical across
+    // modes. Caveat: grouping is per-page; cross-page grouping requires the API
+    // to deliver all rows (no pagination) or pre-aggregated groups.
+    private void RegroupServerItems()
+    {
+        _processedItems = _displayedItems;
+        var fields = EffectiveGroupFields;
+        if (fields.Count == 1 && _displayedItems.Count > 0)
+        {
+            _groupedTree.Clear();
+            ProcessSingleLevelGrouping(fields[0]);
+        }
+        else if (fields.Count > 1 && _displayedItems.Count > 0)
+        {
+            _groupedSections.Clear();
+            ProcessMultiLevelGrouping(fields);
+        }
+        else
+        {
+            _lastGroupBy = null;
+            _groupedSections.Clear();
+            _groupedTree.Clear();
         }
     }
 
@@ -1516,7 +1496,8 @@
         _expandedGroups.Clear();
         _knownGroupKeys.Clear();
         _currentPage = 1;
-        if (!ServerMode) ProcessClientData();
+        if (ServerMode) RegroupServerItems();
+        else ProcessClientData();
         StateHasChanged();
     }
 
@@ -1528,7 +1509,8 @@
         _expandedGroups.Clear();
         _knownGroupKeys.Clear();
         _currentPage = 1;
-        if (!ServerMode) ProcessClientData();
+        if (ServerMode) RegroupServerItems();
+        else ProcessClientData();
         StateHasChanged();
     }
 
@@ -1544,7 +1526,8 @@
         _expandedGroups.Clear();
         _knownGroupKeys.Clear();
         _currentPage = 1;
-        if (!ServerMode) ProcessClientData();
+        if (ServerMode) RegroupServerItems();
+        else ProcessClientData();
         StateHasChanged();
     }
 
