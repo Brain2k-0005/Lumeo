@@ -249,26 +249,32 @@
                        pattern here anyway: this is an "execute an action"
                        picker, not a "bind a value" picker, so it shouldn't
                        maintain a selected state in the first place. *@
-                    <DropdownMenu>
-                        <DropdownMenuTrigger>
-                            <button type="button"
-                                    data-slot="datagrid-group-add-trigger"
-                                    class="ml-auto inline-flex items-center gap-1 h-6 rounded border border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors">
-                                <span>@L["DataGrid.AddGroupLevel"]</span>
-                                <Blazicon Svg="Lucide.ChevronDown" class="h-3 w-3" />
-                            </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                            @foreach (var c in addableCols)
-                            {
-                                var field = c.Field!;
-                                <DropdownMenuItem AdditionalAttributes="@(new Dictionary<string, object> { ["data-group-add-field"] = field })"
-                                                  OnClick="@(() => { AddGroupField(field); return Task.CompletedTask; })">
-                                    @(c.Title ?? c.Field)
-                                </DropdownMenuItem>
-                            }
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                    @* The DropdownMenu component itself renders a relative-inline-block
+                       wrapper div as its root, so ml-auto on the inner trigger button has
+                       no effect on the flex parent. Wrap the whole component in a div that
+                       takes the ml-auto so the picker sits hard-right on the panel. *@
+                    <div class="ml-auto">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger>
+                                <button type="button"
+                                        data-slot="datagrid-group-add-trigger"
+                                        class="inline-flex items-center gap-1 h-6 rounded border border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors">
+                                    <span>@L["DataGrid.AddGroupLevel"]</span>
+                                    <Blazicon Svg="Lucide.ChevronDown" class="h-3 w-3" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                @foreach (var c in addableCols)
+                                {
+                                    var field = c.Field!;
+                                    <DropdownMenuItem AdditionalAttributes="@(new Dictionary<string, object> { ["data-group-add-field"] = field })"
+                                                      OnClick="@(() => { AddGroupField(field); return Task.CompletedTask; })">
+                                        @(c.Title ?? c.Field)
+                                    </DropdownMenuItem>
+                                }
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 }
             </div>
         }
@@ -1509,6 +1515,10 @@
         _currentPage = 1;
         if (ServerMode) RegroupServerItems();
         else ProcessClientData();
+        // Mirror Sort/Filter behaviour — persist the grouping change so a
+        // reload restores it. Without this the snapshot serialization built
+        // in v2.1.1 had nothing to act on for runtime-panel additions.
+        ScheduleAutoSave();
         StateHasChanged();
     }
 
@@ -1522,6 +1532,7 @@
         _currentPage = 1;
         if (ServerMode) RegroupServerItems();
         else ProcessClientData();
+        ScheduleAutoSave();
         StateHasChanged();
     }
 
@@ -1539,6 +1550,7 @@
         _currentPage = 1;
         if (ServerMode) RegroupServerItems();
         else ProcessClientData();
+        ScheduleAutoSave();
         StateHasChanged();
     }
 
