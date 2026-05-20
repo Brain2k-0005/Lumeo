@@ -270,6 +270,24 @@ internal static partial class LumeoDefaultStrings
         ["FileManager.EmptyState"] = "No files or folders here.",
         ["FileManager.MoreActions"] = "More actions",
         ["FileManager.MoreActionsForName"] = "More actions for {0}",
+        ["FileManager.NavigateUp"] = "Navigate up",
+        ["FileManager.UpOneLevel"] = "Up one level",
+        ["FileManager.Path"] = "File manager path",
+        ["FileManager.Root"] = "Root",
+        ["FileManager.NewFolder"] = "New folder",
+        ["FileManager.DeleteSelected"] = "Delete selected",
+        ["FileManager.ListView"] = "List view",
+        ["FileManager.GridView"] = "Grid view",
+        ["FileManager.SwitchListView"] = "Switch to list view",
+        ["FileManager.SwitchGridView"] = "Switch to grid view",
+        ["FileManager.FolderTree"] = "Folder tree",
+        ["FileManager.FileActions"] = "File actions",
+
+        // ── Chart ───────────────────────────────────────────────────
+        ["Chart.Loading"] = "Loading…",
+
+        // ── BottomNav ───────────────────────────────────────────────
+        ["BottomNav.Label"] = "Bottom navigation",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "File \"{0}\" exceeds the maximum size of {1}.",
@@ -533,6 +551,24 @@ internal static partial class LumeoDefaultStrings
         ["FileManager.EmptyState"] = "Keine Dateien oder Ordner vorhanden.",
         ["FileManager.MoreActions"] = "Weitere Aktionen",
         ["FileManager.MoreActionsForName"] = "Weitere Aktionen für {0}",
+        ["FileManager.NavigateUp"] = "Nach oben navigieren",
+        ["FileManager.UpOneLevel"] = "Eine Ebene nach oben",
+        ["FileManager.Path"] = "Dateimanager-Pfad",
+        ["FileManager.Root"] = "Stamm",
+        ["FileManager.NewFolder"] = "Neuer Ordner",
+        ["FileManager.DeleteSelected"] = "Auswahl löschen",
+        ["FileManager.ListView"] = "Listenansicht",
+        ["FileManager.GridView"] = "Rasteransicht",
+        ["FileManager.SwitchListView"] = "Zur Listenansicht wechseln",
+        ["FileManager.SwitchGridView"] = "Zur Rasteransicht wechseln",
+        ["FileManager.FolderTree"] = "Ordnerbaum",
+        ["FileManager.FileActions"] = "Dateiaktionen",
+
+        // ── Chart ───────────────────────────────────────────────────
+        ["Chart.Loading"] = "Wird geladen…",
+
+        // ── BottomNav ───────────────────────────────────────────────
+        ["BottomNav.Label"] = "Untere Navigation",
 
         // ── FileUpload (parameterised) ──────────────────────────────
         ["FileUpload.ExceedsMaxSize"] = "Datei „{0}“ überschreitet die maximale Größe von {1}.",
