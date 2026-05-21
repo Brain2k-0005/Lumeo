@@ -1,0 +1,87 @@
+@namespace Lumeo
+
+@{
+    var subContext = new DropdownMenuSubContext(
+        _open,
+        EventCallback.Factory.Create<bool>(this, SetOpen),
+        _wrapperId,
+        _triggerId,
+        _contentId,
+        EventCallback.Factory.Create(this, CloseTree),
+        ScheduleClose,
+        CancelClose);
+}
+
+<CascadingValue Value="subContext" IsFixed="false">
+    <div id="@_wrapperId" class="relative" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [CascadingParameter] public DropdownMenu.DropdownMenuContext? RootContext { get; set; }
+    [CascadingParameter] public DropdownMenuSubContext? ParentSubContext { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _open;
+    private readonly string _wrapperId = $"dropdown-sub-{Guid.NewGuid():N}";
+    internal readonly string _triggerId = $"dropdown-sub-trigger-{Guid.NewGuid():N}";
+    internal readonly string _contentId = $"dropdown-sub-content-{Guid.NewGuid():N}";
+
+    private CancellationTokenSource? _closeCts;
+
+    private async Task SetOpen(bool value)
+    {
+        if (_open == value) return;
+        _open = value;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseTree()
+    {
+        await SetOpen(false);
+        if (ParentSubContext is not null)
+        {
+            await ParentSubContext.CloseTree.InvokeAsync();
+        }
+        else if (RootContext is not null)
+        {
+            await RootContext.SetOpen.InvokeAsync(false);
+        }
+    }
+
+    private void CancelClose()
+    {
+        try { _closeCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _closeCts?.Dispose();
+        _closeCts = null;
+    }
+
+    private void ScheduleClose()
+    {
+        CancelClose();
+        _closeCts = new CancellationTokenSource();
+        var token = _closeCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(200, token);
+            }
+            catch (TaskCanceledException) { return; }
+            if (token.IsCancellationRequested) return;
+            await InvokeAsync(async () => await SetOpen(false));
+        });
+    }
+
+    public record DropdownMenuSubContext(
+        bool IsOpen,
+        EventCallback<bool> SetOpen,
+        string WrapperId,
+        string TriggerId,
+        string ContentId,
+        EventCallback CloseTree,
+        Action ScheduleClose,
+        Action CancelClose);
+}
