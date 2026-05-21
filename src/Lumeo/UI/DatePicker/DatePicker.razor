@@ -432,7 +432,14 @@ else
         }
         if (OpenChanged.HasDelegate)
         {
-            _ = OpenChanged.InvokeAsync(value);
+            // 2.2.3: was `_ = OpenChanged.InvokeAsync(value)` (fire-and-forget).
+            // Wrap in InvokeAsync + try/catch so an exception in the consumer's
+            // handler doesn't crash the circuit through an unobserved task.
+            _ = InvokeAsync(async () =>
+            {
+                try { await OpenChanged.InvokeAsync(value); }
+                catch { /* consumer-handler failure must not crash the popover */ }
+            });
         }
     }
 

@@ -181,13 +181,17 @@
         return (int)Math.Round(scrollTop / ItemHeight);
     }
 
-    private void ResetTimer(ref System.Threading.Timer? timer, Action commit)
+    // 2.2.3: ResetTimer's commit param is now Func<Task> so the Commit*
+    // methods can be async Task instead of async void. See DateWheelPicker
+    // for the full rationale — async void escapes exceptions to the
+    // thread-pool finalizer where they crash the circuit.
+    private void ResetTimer(ref System.Threading.Timer? timer, Func<Task> commit)
     {
         timer?.Dispose();
         timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);
     }
 
-    private async void CommitHour()
+    private async Task CommitHour()
     {
         if (_pendingHour == _hour) return;
         _hour = _pendingHour;
@@ -195,7 +199,7 @@
         StateHasChanged();
     }
 
-    private async void CommitMinute()
+    private async Task CommitMinute()
     {
         if (_pendingMinute == _minute) return;
         _minute = _pendingMinute;
@@ -203,7 +207,7 @@
         StateHasChanged();
     }
 
-    private async void CommitPeriod()
+    private async Task CommitPeriod()
     {
         if (_pendingPeriod == _periodIndex) return;
         _periodIndex = _pendingPeriod;
@@ -242,7 +246,18 @@
                 await Interop.WheelScrollTo(_periodCol, _periodIndex * ItemHeight);
             }
 
-            _ = Task.Delay(150).ContinueWith(_ => InvokeAsync(() => { _initialised = true; }));
+            // 2.2.3: was Task.Delay().ContinueWith(...) — see DateWheelPicker
+            // for the rationale. Moves the continuation onto the Blazor sync
+            // context so exceptions are observed, not lost on the thread pool.
+            _ = InvokeAsync(async () =>
+            {
+                try
+                {
+                    await Task.Delay(150);
+                    _initialised = true;
+                }
+                catch (JSDisconnectedException) { /* circuit teardown — fine */ }
+            });
         }
     }
 
