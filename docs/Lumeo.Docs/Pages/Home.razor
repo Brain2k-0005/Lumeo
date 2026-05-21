@@ -1,5 +1,7 @@
 @page "/"
+@using Lumeo.Services
 @implements IDisposable
+@inject ToastService ToastService
 
 <PageTitle>Lumeo — The Blazor component library you'd actually want to ship</PageTitle>
 
@@ -25,6 +27,34 @@
                     The Blazor library<br />
                     you'd actually want to <Lumeo.Text As="span" Class="text-primary">ship</Lumeo.Text>.
                 </Heading>
+
+                <!-- Hero stats strip — 4 NumberTickers staggered via DurationMs so each
+                     finishes at a slightly different moment. Pure visual density. -->
+                <Flex Align="center" Justify="center" Wrap="true" Gap="0" Class="text-sm">
+                    <Flex Align="center" Gap="2" Class="px-3">
+                        <DynamicIcon Name="Blocks" Class="h-3.5 w-3.5 text-primary" />
+                        <span class="font-semibold text-foreground tabular-nums"><NumberTicker Value="149" DurationMs="1400" /></span>
+                        <Lumeo.Text As="span" Size="xs" Color="muted">components</Lumeo.Text>
+                    </Flex>
+                    <span class="h-1 w-1 rounded-full bg-border" aria-hidden="true"></span>
+                    <Flex Align="center" Gap="2" Class="px-3">
+                        <DynamicIcon Name="TestTube" Class="h-3.5 w-3.5 text-primary" />
+                        <span class="font-semibold text-foreground tabular-nums"><NumberTicker Value="2194" DurationMs="2000" /></span>
+                        <Lumeo.Text As="span" Size="xs" Color="muted">tests</Lumeo.Text>
+                    </Flex>
+                    <span class="h-1 w-1 rounded-full bg-border" aria-hidden="true"></span>
+                    <Flex Align="center" Gap="2" Class="px-3">
+                        <DynamicIcon Name="Palette" Class="h-3.5 w-3.5 text-primary" />
+                        <span class="font-semibold text-foreground tabular-nums"><NumberTicker Value="8" DurationMs="1600" /></span>
+                        <Lumeo.Text As="span" Size="xs" Color="muted">themes</Lumeo.Text>
+                    </Flex>
+                    <span class="h-1 w-1 rounded-full bg-border" aria-hidden="true"></span>
+                    <Flex Align="center" Gap="2" Class="px-3">
+                        <DynamicIcon Name="Languages" Class="h-3.5 w-3.5 text-primary" />
+                        <span class="font-semibold text-foreground tabular-nums"><NumberTicker Value="14" DurationMs="1800" /></span>
+                        <Lumeo.Text As="span" Size="xs" Color="muted">locales</Lumeo.Text>
+                    </Flex>
+                </Flex>
 
                 <!-- Subtitle. "~400 KB core" links to /docs/bundle-facts for the full
                      animated breakdown — keeps the hero short while detail stays one click away. -->
@@ -113,6 +143,9 @@
                                     <Flex Align="center" Gap="2">
                                         <span class="h-2 w-2 rounded-full @(row.IsCore ? "bg-primary" : "bg-primary/50")"></span>
                                         <Lumeo.Text As="span" Weight="@(row.IsCore ? "semibold" : "medium")" Color="foreground">@row.Name</Lumeo.Text>
+                                        <span class="hidden sm:inline-block w-16 opacity-70" aria-hidden="true">
+                                            <Sparkline Values="row.Spark" Height="14" ShowArea="true" StrokeWidth="1" AriaLabel="@($"{row.Name} downloads trend")" />
+                                        </span>
                                         <Lumeo.Text As="span" Size="xs" Color="muted">@row.Components</Lumeo.Text>
                                     </Flex>
                                     <Lumeo.Text As="span" Size="xs" Class="@(row.IsCore ? "font-mono text-primary font-semibold" : "font-mono text-muted-foreground")">@row.Size</Lumeo.Text>
@@ -373,9 +406,11 @@
                 </div>
             </BentoTile>
 
-            <!-- BarChart — wide tile (stacked, multi-series for visual punch) -->
+            <!-- BarChart — wide tile (stacked, multi-series for visual punch). Auto-reshuffles
+                 every 5.5s by mutating each series's Values in-place + StateHasChanged so the
+                 chart re-animates. Hover pauses the cycle so visitors can read a stable frame. -->
             <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
+                <div class="flex h-full flex-col" @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
                     <div class="flex-1 p-4 bg-muted/10 min-h-[260px]">
                         <BarChart Categories="_chartCategories" Series="_chartSeries" Stacked="true" Height="240px" />
                     </div>
@@ -586,44 +621,73 @@
                 </div>
             </BentoTile>
 
-            <!-- DatePicker + Dialog -->
+            <!-- Auto-cycling Tabs — sliding indicator, advances every 3s. Pause-on-hover so
+                 visitors who want to read a specific panel aren't fighting the timer. -->
             <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
-                    <Stack Gap="3" Class="flex-1 items-center justify-center p-5 min-h-[160px] bg-muted/10">
-                        <div class="w-full max-w-[240px]">
-                            <DatePicker @bind-Value="_selectedDate" Placeholder="Pick a date" />
-                        </div>
-                        <Dialog @bind-Open="_showDialog">
-                            <DialogTrigger>
-                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                                    <DynamicIcon Name="MousePointerClick" Class="h-4 w-4" />
-                                    Open dialog
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Welcome to Lumeo</DialogTitle>
-                                    <DialogDescription>
-                                        Fully accessible, keyboard-navigable, and rendered by the real Lumeo Dialog.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <DialogFooter>
-                                    <DialogClose>
-                                        <Button Variant="Button.ButtonVariant.Outline">Cancel</Button>
-                                    </DialogClose>
-                                    <DialogClose>
-                                        <Button>Got it</Button>
-                                    </DialogClose>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                <div class="flex h-full flex-col" @onmouseenter="@(() => _tabsHovered = true)" @onmouseleave="@(() => _tabsHovered = false)">
+                    <Stack Gap="3" Class="flex-1 justify-center p-5 min-h-[160px] bg-muted/10">
+                        <Tabs @bind-ActiveValue="_tabsActive" AnimatedIndicator="true">
+                            <TabsList>
+                                <TabsTrigger Value="overview">Overview</TabsTrigger>
+                                <TabsTrigger Value="activity">Activity</TabsTrigger>
+                                <TabsTrigger Value="reports">Reports</TabsTrigger>
+                                <TabsTrigger Value="settings">Settings</TabsTrigger>
+                            </TabsList>
+                            <TabsContent Value="overview">
+                                <Stack Gap="2" Class="p-4">
+                                    <Lumeo.Text Size="sm" Weight="semibold">Today at a glance</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">14 active workflows, 3 deploys, all CI green.</Lumeo.Text>
+                                </Stack>
+                            </TabsContent>
+                            <TabsContent Value="activity">
+                                <Stack Gap="2" Class="p-4">
+                                    <Lumeo.Text Size="sm" Weight="semibold">Recent activity</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">Ava merged #482 · Jonas opened #491 · 2.4k events this week.</Lumeo.Text>
+                                </Stack>
+                            </TabsContent>
+                            <TabsContent Value="reports">
+                                <Stack Gap="2" Class="p-4">
+                                    <Lumeo.Text Size="sm" Weight="semibold">Reports</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">Weekly digest · Bundle-size delta · Auth funnel · 4 scheduled.</Lumeo.Text>
+                                </Stack>
+                            </TabsContent>
+                            <TabsContent Value="settings">
+                                <Stack Gap="2" Class="p-4">
+                                    <Lumeo.Text Size="sm" Weight="semibold">Settings</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">Workspace · Members · Integrations · Billing.</Lumeo.Text>
+                                </Stack>
+                            </TabsContent>
+                        </Tabs>
                     </Stack>
                     <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
                         <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="Calendar" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">DatePicker &amp; Dialog</Lumeo.Text>
+                            <DynamicIcon Name="LayoutTemplate" Class="h-4 w-4 text-primary" />
+                            <Lumeo.Text Size="xs" Weight="semibold">Tabs · sliding indicator</Lumeo.Text>
                         </Flex>
-                        <Lumeo.Link Href="components/date-picker" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
+                        <Lumeo.Link Href="components/tabs" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
+                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
+                        </Lumeo.Link>
+                    </Flex>
+                </div>
+            </BentoTile>
+
+            <!-- Auto-advancing Steps tile — wraps 0→3→0 every 2.5s. Pause-on-hover. -->
+            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
+                <div class="flex h-full flex-col" @onmouseenter="@(() => _stepsHovered = true)" @onmouseleave="@(() => _stepsHovered = false)">
+                    <Stack Gap="3" Class="flex-1 justify-center p-6 min-h-[160px] bg-muted/10">
+                        <Steps CurrentStep="_stepIndex" Animated="true" Class="w-full">
+                            <StepsItem Title="Plan" Description="Scope the work" />
+                            <StepsItem Title="Build" Description="Ship the code" />
+                            <StepsItem Title="Test" Description="2,194 specs" />
+                            <StepsItem Title="Ship" Description="Brotli to prod" />
+                        </Steps>
+                    </Stack>
+                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
+                        <Flex Align="center" Gap="2">
+                            <DynamicIcon Name="Layers" Class="h-4 w-4 text-primary" />
+                            <Lumeo.Text Size="xs" Weight="semibold">Steps · animated progression</Lumeo.Text>
+                        </Flex>
+                        <Lumeo.Link Href="components/steps" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
                             Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
                         </Lumeo.Link>
                     </Flex>
@@ -969,8 +1033,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     private bool _togglePressed;
     private bool _checkOn = true;
     private bool _installCopied;
-    private bool _showDialog;
-    private DateOnly? _selectedDate = DateOnly.FromDateTime(DateTime.Today);
     private double? _seats = 5;
     private string _plan = "pro";
 
@@ -998,21 +1060,39 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 
     private record FeatureItem(string Icon, string Title, string Body);
     private record UseCaseItem(string Icon, string Title, string Body, string[] Components);
-    private record SizeRow(string Name, string Components, string Size, double Percent, bool IsCore);
+    private record SizeRow(string Name, string Components, string Size, double Percent, bool IsCore, double[] Spark);
     private record Employee(string Name, string Department, string Role, double Salary);
     // Per-package breakdown (verified 2026-05-13, brotli-compressed assembly bytes from rc.38).
     // Brotli is what a Blazor WASM browser actually downloads — matches what Bundlephobia and
     // the .NET framework loader report. Bars normalize against Lumeo core (~400 KB → 100%).
+    // Spark = synthetic 30-point "downloads-over-time" curve to make the row feel alive —
+    // each package has a roughly-monotonic-rising shape with package-specific noise.
     private readonly SizeRow[] _sizeRows =
     {
-        new("Lumeo",           "85 components", "~400 KB", 100.0, true),
-        new("Lumeo.Charts",    "30 components", "120 KB",   30.0, false),
-        new("Lumeo.DataGrid",  "5 components",  "100 KB",   25.0, false),
-        new("Lumeo.Editor",    "2 components",  "26 KB",     6.5, false),
-        new("Lumeo.Motion",    "10 components", "18 KB",     4.5, false),
-        new("Lumeo.Scheduler", "1 component",   "16 KB",     4.0, false),
-        new("Lumeo.Gantt",     "1 component",   "12 KB",     3.0, false),
+        new("Lumeo",           "85 components", "~400 KB", 100.0, true,  Spark(  240,    9, 0.92)),
+        new("Lumeo.Charts",    "30 components", "120 KB",   30.0, false, Spark(   90,    5, 0.85)),
+        new("Lumeo.DataGrid",  "5 components",  "100 KB",   25.0, false, Spark(   75,    4, 0.80)),
+        new("Lumeo.Editor",    "2 components",  "26 KB",     6.5, false, Spark(   34,    2, 0.78)),
+        new("Lumeo.Motion",    "10 components", "18 KB",     4.5, false, Spark(   48,    3, 0.90)),
+        new("Lumeo.Scheduler", "1 component",   "16 KB",     4.0, false, Spark(   22,    2, 0.72)),
+        new("Lumeo.Gantt",     "1 component",   "12 KB",     3.0, false, Spark(   18,  1.5, 0.70)),
     };
+
+    // Synthetic sparkline generator — 30 points rising roughly linearly with seeded noise so
+    // the curves look like real download counts (jittery but trending up) and are stable
+    // across renders. Salt picks a deterministic noise pattern per row.
+    private static double[] Spark(double start, double slope, double salt)
+    {
+        var pts = new double[30];
+        for (int i = 0; i < pts.Length; i++)
+        {
+            // Pseudo-random ±20% wobble keyed off (i, salt) so each row has its own shape.
+            var phase = Math.Sin(i * 0.7 + salt * 11) * 0.12;
+            var bump  = Math.Cos(i * 0.31 + salt * 17) * 0.08;
+            pts[i] = Math.Max(0, start + slope * i + (start + slope * i) * (phase + bump));
+        }
+        return pts;
+    }
 
     private record MarqueePill(string Icon, string Label);
 
@@ -1144,28 +1224,141 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         StateHasChanged();
     }
 
-    // Auto-cycling DropdownMenu submenu showcase — opens for ~2.5s, closes for ~2s,
-    // repeats. Pauses while the user hovers the tile so manual interaction wins.
+    // ------------------------------------------------------------------------------------
+    // Living-demo timers — all kept in a single list so Dispose() can blanket-clean them up.
+    // Each timer:
+    //   * guards on its tile-local hovered bool so user interaction wins
+    //   * mutates state inside InvokeAsync + StateHasChanged for thread-safety
+    // ------------------------------------------------------------------------------------
+    private readonly List<System.Threading.Timer> _timers = new();
+
+    // DropdownMenu submenu showcase — opens ~2.5s, closes ~2s, repeats.
     private bool _dropdownAutoOpen;
     private bool _dropdownHovered;
     private System.Threading.Timer? _dropdownTimer;
 
+    // Auto-cycling Tabs — advances through 4 values every 3s.
+    private string _tabsActive = "overview";
+    private bool _tabsHovered;
+    private static readonly string[] _tabsValues = { "overview", "activity", "reports", "settings" };
+
+    // Auto-advancing Steps — wraps 0→3→0 every 2.5s.
+    private int _stepIndex;
+    private bool _stepsHovered;
+
+    // BarChart auto-shuffle — picks a new snapshot every 5.5s.
+    private bool _chartHovered;
+    private int _chartSnapshot;
+    // 4 plausible snapshots — each rotates the leading product line so visual flow shifts.
+    private static readonly List<double>[][] _chartSnapshots =
+    {
+        new[]
+        {
+            new List<double> { 28400, 31200, 36800, 42100, 48700, 55300 },
+            new List<double> {  8700, 10400, 13100, 15800, 19200, 22700 },
+            new List<double> {  4100,  6800,  9200, 11400, 14600, 18100 },
+        },
+        new[]
+        {
+            new List<double> { 32100, 29800, 41200, 38400, 52600, 47900 },
+            new List<double> { 12400, 15600, 11800, 18900, 14700, 21300 },
+            new List<double> {  6200,  8900,  5400, 12100,  9800, 15600 },
+        },
+        new[]
+        {
+            new List<double> { 41200, 47800, 38400, 55600, 49100, 62300 },
+            new List<double> { 18400, 14200, 22600, 17800, 26400, 21900 },
+            new List<double> {  9100, 14600, 10800, 17400, 13200, 19800 },
+        },
+        new[]
+        {
+            new List<double> { 24800, 35400, 31200, 44600, 39800, 51400 },
+            new List<double> { 10200, 16800, 13400, 21700, 18200, 24600 },
+            new List<double> {  5400, 11200,  8600, 14800, 12400, 17900 },
+        },
+    };
+
+    // Toast bank — cycled every 11s. Realistic dev-experience copy so the demo feels
+    // like a working app, not a test harness.
+    private int _toastIndex;
+    private static readonly (string Title, string? Desc, ToastVariant Variant)[] _toastBank =
+    {
+        ("Build succeeded",   "2.4s · 0 warnings",                ToastVariant.Default),
+        ("Saved to draft",    "Auto-saved 12 seconds ago",        ToastVariant.Success),
+        ("Cloudflare deploy", "ready · pages.dev",                ToastVariant.Info),
+        ("Approaching quota", "87% used · upgrade or prune",      ToastVariant.Warning),
+    };
+
     protected override void OnInitialized()
     {
-        // First tick after 1.5s so the page settles, then alternate open/closed.
+        // 1. DropdownMenu submenu — variable cadence (open 2.5s / closed 2s).
         _dropdownTimer = new System.Threading.Timer(_ =>
         {
-            if (_dropdownHovered) return; // user is interacting — don't fight them
+            if (_dropdownHovered) return;
             _dropdownAutoOpen = !_dropdownAutoOpen;
-            var nextDelay = _dropdownAutoOpen ? 2500 : 2000;
-            _dropdownTimer?.Change(nextDelay, System.Threading.Timeout.Infinite);
+            _dropdownTimer?.Change(_dropdownAutoOpen ? 2500 : 2000, System.Threading.Timeout.Infinite);
             InvokeAsync(StateHasChanged);
         }, null, 1500, System.Threading.Timeout.Infinite);
+        _timers.Add(_dropdownTimer);
+
+        // 2. Tabs — fixed 3s rotation.
+        _timers.Add(new System.Threading.Timer(_ =>
+        {
+            if (_tabsHovered) return;
+            var nextIx = (Array.IndexOf(_tabsValues, _tabsActive) + 1) % _tabsValues.Length;
+            _tabsActive = _tabsValues[nextIx];
+            InvokeAsync(StateHasChanged);
+        }, null, 3000, 3000));
+
+        // 3. Steps — 2.5s rotation, wraps 0→3→0.
+        _timers.Add(new System.Threading.Timer(_ =>
+        {
+            if (_stepsHovered) return;
+            _stepIndex = (_stepIndex + 1) % 4;
+            InvokeAsync(StateHasChanged);
+        }, null, 2500, 2500));
+
+        // 4. BarChart — 5.5s reshuffle. Mutate Values in-place so the chart re-animates
+        // smoothly rather than rebuilding the component.
+        _timers.Add(new System.Threading.Timer(_ =>
+        {
+            if (_chartHovered) return;
+            _chartSnapshot = (_chartSnapshot + 1) % _chartSnapshots.Length;
+            var snap = _chartSnapshots[_chartSnapshot];
+            InvokeAsync(() =>
+            {
+                for (int i = 0; i < _chartSeries.Count && i < snap.Length; i++)
+                {
+                    _chartSeries[i].Values = new List<double>(snap[i]);
+                }
+                StateHasChanged();
+            });
+        }, null, 5500, 5500));
+
+        // 5. Toasts — fire every 11s with short Duration so they come and go cleanly.
+        // No hover guard: toasts already render bottom-right via the global viewport,
+        // they're not bound to a specific tile.
+        _timers.Add(new System.Threading.Timer(_ =>
+        {
+            var t = _toastBank[_toastIndex];
+            _toastIndex = (_toastIndex + 1) % _toastBank.Length;
+            InvokeAsync(() =>
+            {
+                ToastService.Show(new ToastOptions
+                {
+                    Title = t.Title,
+                    Description = t.Desc,
+                    Variant = t.Variant,
+                    Duration = 4500,
+                });
+            });
+        }, null, 6000, 11000));
     }
 
     public void Dispose()
     {
-        _dropdownTimer?.Dispose();
+        foreach (var t in _timers) t.Dispose();
+        _timers.Clear();
         _dropdownTimer = null;
     }
 }
