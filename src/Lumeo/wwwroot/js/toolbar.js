@@ -54,7 +54,11 @@ export function observeToolbarOverflow(elementId, dotnetRef, callbackName) {
 
         if (fitting !== state.lastFitting) {
             state.lastFitting = fitting;
-            dotnetRef.invokeMethodAsync(callbackName, fitting, total).catch(() => {});
+            // 3.0: invoked via ComponentInteropService which routes by elementId,
+            // so pass the elementId as the first arg. The legacy (pre-3.0) call
+            // path passed only (fitting, total) — the service now sits between
+            // JS and the component and dispatches via _toolbarOverflowHandlers.
+            dotnetRef.invokeMethodAsync(callbackName, elementId, fitting, total).catch(() => {});
         }
     };
 
