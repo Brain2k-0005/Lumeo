@@ -59,7 +59,13 @@
         {
             if (Validator is not null)
             {
-                _context.Errors = Validator.Validate(Model);
+                // Merge sync validation results with any async errors already in the context
+                // so per-field async validators (e.g. "username taken") survive a sync re-validate.
+                var syncErrors = Validator.Validate(Model);
+                foreach (var kvp in syncErrors)
+                {
+                    _context.Errors[kvp.Key] = kvp.Value;
+                }
             }
 
             if (_context.IsValid)
