@@ -1,3 +1,199 @@
+# Migrating to Lumeo 3.0
+
+## Overview
+
+Lumeo 3.0 is a **quality release with one breaking change**: per-component size, side, alignment, and orientation enums collapse into four unified public enums under the root `Lumeo` namespace. Everything else — including dozens of new features — is additive.
+
+- **Breaking**: 39 per-component enums (e.g. `Button.ButtonSize`, `Popover.PopoverSide`, `Tabs.TabsOrientation`) replaced by `Lumeo.Size` / `Lumeo.Side` / `Lumeo.Align` / `Lumeo.Orientation`. See "Enum unification" below — most projects can migrate with a single project-wide find/replace.
+- **New features (additive)**: `OnBeforeClose` dismiss intercept on overlays; nested overlay z-index stacking; DatePicker keyboard input; DateTimePicker time-zone support; `Form.ResetValues()`; async per-field validators with pending state; menu submenus (`DropdownMenuSub` / `ContextMenuSub` / `MenubarSub`); `TabsList` drag-to-reorder; Toast pause-on-hover; Tooltip collision-flip; ARIA live error announcements across form controls.
+- **Internal**: components now inject `IComponentInteropService` (the interface) instead of the concrete class — drop-in for consumers, mockable for tests. Toolbar now goes through the same interop layer.
+
+The Lumeo 2.0 migration guide remains below for projects upgrading directly from 1.x.
+
+## Enum unification (the only breaking change)
+
+Lumeo 3.0 deletes 39 per-component enums and routes every size / side / align / orientation parameter through four shared enums:
+
+| New enum            | Values                                | Replaces                                                                                                                                                                                                                                                                                                                       |
+|---------------------|---------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Lumeo.Size`        | `Xs, Sm, Md, Lg, Xl, Xxl`             | `AlertSize`, `AvatarSize`, `ChipSize`, `FileUploadSize`, `IconSize`, `InputSize`, `KbdSize`, `ListSize`, `RatingSize`, `ReasoningSize`, `ResultSize`, `SparkCardSize`, `SpinnerSize`, `StatisticSize`, `SwitchSize`, `ToggleSize`, `ToggleGroupSize`                                                                              |
+| `Lumeo.Side`        | `Top, Right, Bottom, Left`            | `DrawerSide`, `DropdownMenuSide`, `HoverCardSide`, `PopoverSide`, `SheetSide`, `SidebarSide`, `TooltipSide`, `TourPlacement`                                                                                                                                                                                                    |
+| `Lumeo.Align`       | `Start, Center, End`                  | `DropdownMenuAlign`, `HoverCardAlign`, `PopoverAlign`                                                                                                                                                                                                                                                                          |
+| `Lumeo.Orientation` | `Horizontal, Vertical`                | `ButtonGroupOrientation`, `CarouselOrientation`, `FormFieldOrientation`, `ImageCompareOrientation`, `MegaMenuOrientation`, `ResizableDirection`, `SeparatorOrientation`, `SplitterOrientation`, `StackDirection`, `StepperOrientation`, `StepsOrientation`, `TabsOrientation`, `TimelineOrientation`                            |
+
+### Recipe
+
+`@using Lumeo` is already in the root `_Imports.razor` so the new enums resolve unqualified inside `.razor` files. For `.cs` files, add `using Lumeo;` if not already there.
+
+Then a per-component find/replace across your project:
+
+```text
+ButtonSize.Sm         →  Size.Sm
+AvatarSize.Md         →  Size.Md
+PopoverSide.Bottom    →  Side.Bottom
+PopoverAlign.Start    →  Align.Start
+TabsOrientation.Vertical → Orientation.Vertical
+```
+
+…and so on for every enum in the table above. The value names (`Sm`, `Md`, `Lg`, `Bottom`, `Start`, `Vertical`, …) line up across the rename — only the type prefix changes.
+
+### Intentional exceptions (NOT unified)
+
+Some enums stayed component-specific because their value set doesn't fit the union:
+
+- `Button.ButtonSize` — keeps an `Icon` value for icon-only buttons.
+- `DialogContent.DialogSize` and `SheetContent.SheetSize` — keep a `Full` value for fullscreen variants.
+- `ToastPosition`, `SpeedDialPosition`, `SpeedDialDirection`, `LayoutDirection`, `StepsDirection`, `KpiDeltaDirection`, `DeltaDirection` — domain-specific layout enums.
+- Every `*Variant` enum (`ButtonVariant`, `BadgeVariant`, `AlertVariant`, etc.) — variants are inherently per-component.
+
+### Why this is the only break
+
+Blazor `[Parameter]` types are statically typed. The only way to make the consolidation backward-compatible without doubling the API surface is to ship duplicate parameters (`Size` + `UnifiedSize`), which is its own usability problem. We took the one-shot rename instead. A find/replace on the 39 enum names listed above is a < 5-minute migration for most projects.
+
+## New features (no migration needed)
+
+These are additive — your existing code keeps working, and you opt in to the new capabilities only where you want them.
+
+### Overlay dismiss intercept (`OnBeforeClose`)
+
+`Dialog`, `Sheet`, `Drawer`, and `AlertDialog` now expose an `OnBeforeClose` `EventCallback<DismissEventArgs>` that fires for every dismiss path (Escape, click-outside, swipe, close button, AlertDialog Cancel/Action). Set `args.Cancel = true` to veto the dismiss — typical pattern for "unsaved changes" guards.
+
+```razor
+<Dialog @bind-Open="_open" OnBeforeClose="ConfirmDiscard">
+    <DialogContent>…</DialogContent>
+</Dialog>
+
+@code {
+    private Task ConfirmDiscard(DismissEventArgs e)
+    {
+        if (e.Reason is "escape" or "outside" && _hasUnsavedChanges)
+        {
+            e.Cancel = true;
+        }
+        return Task.CompletedTask;
+    }
+}
+```
+
+`e.Reason` is one of: `escape`, `outside`, `swipe`, `close`, `action`, `cancel`.
+
+### Nested overlay z-index stacking
+
+A Dialog opened from inside another Dialog (or a Sheet from a Dialog, etc.) now layers correctly above its parent — the `OverlayService` allocates a monotonic z-index per open instance instead of every overlay sharing `z-50`. No code change required.
+
+### DatePicker keyboard input
+
+`DatePicker` accepts typed input by default. Type a date in the configured `Format` and confirm with Enter or blur — invalid input reverts to the last value.
+
+```razor
+<DatePicker @bind-Value="_date"
+            Format="MM/dd/yyyy"
+            AllowKeyboardInput="true"
+            OnParseError="msg => _error = msg" />
+```
+
+Set `AllowKeyboardInput="false"` to restore the old calendar-only behaviour.
+
+### DateTimePicker time zone
+
+```razor
+<DateTimePicker @bind-OffsetValue="_when"
+                TimeZone="@TimeZoneInfo.FindSystemTimeZoneById(\"Europe/Berlin\")"
+                ShowTimeZoneLabel="true" />
+```
+
+The bound `DateTimeOffset` carries the zone's matching offset (DST-aware); the picker UI shows a "(UTC+1)" label next to the value.
+
+### Form: `ResetValues()` and async validators
+
+`Form.ResetValues()` (new) restores the model to its initial snapshot (taken on `OnInitializedAsync`). The existing `Reset()` (clears errors only) is unchanged. `ResetValues()` requires the model to be JSON-round-trippable.
+
+`FormField` gained per-field async validation:
+
+```razor
+<FormField For="@(() => Model.Username)"
+           AsyncValidator="@CheckUsernameTaken"
+           AsyncValidationDebounceMs="300">
+    <Input @bind-Value="Model.Username" />
+</FormField>
+
+@code {
+    async Task<string?> CheckUsernameTaken(object? value)
+    {
+        var username = value as string;
+        if (string.IsNullOrEmpty(username)) return null;
+        var taken = await _api.IsUsernameTakenAsync(username);
+        return taken ? "Username already taken" : null;
+    }
+}
+```
+
+A spinner appears next to the label while validation is pending. `FormContext.IsAnyFieldValidating` lets you disable the submit button while any field is checking.
+
+### Menu submenus
+
+`DropdownMenu`, `ContextMenu`, and `Menubar` gained `*Sub` / `*SubTrigger` / `*SubContent` triplets:
+
+```razor
+<DropdownMenu>
+    <DropdownMenuTrigger>…</DropdownMenuTrigger>
+    <DropdownMenuContent>
+        <DropdownMenuItem>Profile</DropdownMenuItem>
+        <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Settings</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+                <DropdownMenuItem>Account</DropdownMenuItem>
+                <DropdownMenuItem>Billing</DropdownMenuItem>
+            </DropdownMenuSubContent>
+        </DropdownMenuSub>
+    </DropdownMenuContent>
+</DropdownMenu>
+```
+
+Hover or ArrowRight opens the submenu; ArrowLeft / cursor-leave closes it; Escape closes the whole tree. Auto-flips to the left edge when the right edge would clip. Nesting works recursively.
+
+### TabsList drag-to-reorder (opt-in)
+
+```razor
+<TabsList Reorderable="true" OnReorder="HandleReorder">
+    @foreach (var tab in _tabs)
+    {
+        <TabsTrigger Value="@tab.Id">@tab.Title</TabsTrigger>
+    }
+</TabsList>
+
+@code {
+    void HandleReorder(TabsReorderEventArgs e)
+    {
+        var item = _tabs[e.FromIndex];
+        _tabs.RemoveAt(e.FromIndex);
+        _tabs.Insert(e.ToIndex, item);
+    }
+}
+```
+
+The library doesn't mutate the collection — your handler does, and the next render reflects the new order. Works with touch (via the existing sortable JS interop) and keyboard.
+
+### Toast pause-on-hover
+
+Toasts pause their auto-dismiss timer while the cursor is over them or any element inside has focus. Mouse-leave / focus-out resumes the remaining time. Variant-aware ARIA: `Destructive` toasts get `role="alert"` + `aria-live="assertive"`, others get `role="status"` + `aria-live="polite"`.
+
+### Tooltip collision flip
+
+`TooltipContent` now uses fixed-position with viewport collision detection (same engine as Popover). Tooltips near a viewport edge auto-flip to the opposite side instead of clipping.
+
+### ARIA live error regions
+
+Error `<p>` elements on `FormField`, `FormMessage`, `Input`, `Textarea`, `Select`, `NumberInput`, `PasswordInput`, `Checkbox`, `Slider`, and `Switch` now carry `role="alert"` + `aria-live="polite"`, so screen readers announce validation errors when they appear. Helper text is untouched.
+
+## Internal changes (no consumer impact)
+
+- All components now inject `IComponentInteropService` (the interface) instead of the concrete `ComponentInteropService`. Drop-in for normal consumers; lets test projects substitute a mock.
+- `Toolbar` no longer holds its own `IJSRuntime` — it routes through the shared interop service like every other component.
+- Internal `Lumeo.Internal.LumeoIds`, `Lumeo.Internal.Cx`, and `Lumeo.Internal.DebouncedValue<T>` helpers consolidate the ID-generation, class-composition, and debounce patterns scattered across components. Not part of the public API.
+
+---
+
 # Migrating to Lumeo 2.0
 
 ## Overview
