@@ -273,6 +273,52 @@
     </ComponentDemo>
 </Stack>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="intercepting-close" Level="2" Class="scroll-mt-20">Intercepting close</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnBeforeClose</code> lets you guard
+        any close attempt — Escape, backdrop click, or the close button. The handler receives a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DismissEventArgs</code> with a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Reason</code> string
+        (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"escape"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"outside"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"close"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"action"</code>, or
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"cancel"</code>). Set
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">e.Cancel = true</code> to keep
+        the sheet open.
+    </Lumeo.Text>
+
+    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Sheet @@bind-Open="_open" OnBeforeClose="GuardClose"&gt;
+    &lt;SheetContent Side="Lumeo.Side.Right"&gt;
+        &lt;SheetHeader&gt;
+            &lt;SheetTitle&gt;Edit settings&lt;/SheetTitle&gt;
+        &lt;/SheetHeader&gt;
+        &lt;Input @@bind-Value="_value" @@oninput="() =&gt; _dirty = true" /&gt;
+    &lt;/SheetContent&gt;
+&lt;/Sheet&gt;
+
+@@code {
+    bool _open;
+    bool _dirty;
+    string? _value;
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Allow the explicit close button through; block stray Escape / outside clicks.
+        if (e.Reason is "escape" or "outside" &amp;&amp; _dirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+}</Stack>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        <strong>Nested stacking.</strong> A Sheet opened on top of a Dialog (or another Sheet / Drawer / AlertDialog)
+        now stacks correctly — each overlay picks the next z-index slot, and Escape only closes the top-most one.
+        No configuration required.
+    </Lumeo.Text>
+</div>
+
 <div class="mt-12">
     <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
     <div class="overflow-x-auto mt-4">
