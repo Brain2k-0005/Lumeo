@@ -15,6 +15,32 @@
 
     <Separator Class="my-4" />
 
+    <!-- v2.2.3 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v2.2.3</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <strong>Reliability fixes — four Blazor sync-context / async-void / fire-and-forget gotchas that could surface as silent failures or circuit crashes under specific timing conditions.</strong>
+            Each fix is small and localised; the pattern is consistent across all four sites: move callback work back onto the Blazor sync context (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync</code>) so exceptions are observable, and return / await tasks instead of fire-and-forget.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FileUpload</code></strong>: auto-upload no longer dispatched via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task.Run</code> (which hopped to the thread pool and forced every inner <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">StateHasChanged</code> to marshal back through <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync</code>). Replaced with a direct <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync(async () => …)</code> + try/catch that surfaces systemic upload failures on each pending item's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Status</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ErrorMessage</code>.</li>
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DateWheelPicker</code> + <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TimeWheelPicker</code></strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CommitDay</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CommitMonth</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CommitYear</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CommitHour</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CommitMinute</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">CommitPeriod</code> were <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">async void</code>. Any exception thrown after the first await escaped to the thread-pool finalizer and crashed the circuit. Converted to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">async Task</code>; <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ResetTimer</code>'s commit parameter is now <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Func&lt;Task&gt;</code> so <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync</code> can observe completion.</li>
+                <li><strong>Wheel-picker init delay</strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Task.Delay(150).ContinueWith(_ =&gt; InvokeAsync(...))</code> ran the continuation on the thread pool and silently swallowed any exception (including the typical <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> during circuit teardown). Replaced with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync(async () =&gt; { await Task.Delay(150); … })</code> + explicit <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JSDisconnectedException</code> catch.</li>
+                <li><strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DatePicker.SetIsOpen</code></strong> + <strong><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">HoverCard.OnClickOutside</code></strong>: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_ = OpenChanged.InvokeAsync(value)</code> fire-and-forget — a faulting consumer handler vanished into the void. Now wrapped in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">InvokeAsync</code> + try/catch (DatePicker) or returned via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">await</code> (HoverCard, whose caller is async-aware).</li>
+            </ul>
+        </Stack>
+        <Lumeo.Text Size="sm" Color="muted">No new tests — these are runtime-conditions that no existing test exercises; the fixes are mechanical pattern replacements. The library audit that surfaced them is at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">/tmp/lumeo-quality-audit.md</code> (Critical tier).</Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v2.2.2 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

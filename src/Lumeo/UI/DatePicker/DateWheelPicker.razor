@@ -162,13 +162,19 @@
         return (int)Math.Round(scrollTop / ItemHeight);
     }
 
-    private void ResetTimer(ref System.Threading.Timer? timer, Action commit)
+    // 2.2.3: ResetTimer's commit param is now Func<Task> so the Commit*
+    // methods can be async Task instead of async void. async void escapes
+    // exceptions to the thread-pool finalizer where they crash the circuit;
+    // returning Task lets InvokeAsync observe (and swallow if the circuit
+    // is already torn down — JSDisconnectedException is normal during
+    // teardown).
+    private void ResetTimer(ref System.Threading.Timer? timer, Func<Task> commit)
     {
         timer?.Dispose();
         timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);
     }
 
-    private async void CommitDay()
+    private async Task CommitDay()
     {
         if (_pendingDay == _day) return;
         _day = _pendingDay;
@@ -176,7 +182,7 @@
         StateHasChanged();
     }
 
-    private async void CommitMonth()
+    private async Task CommitMonth()
     {
         if (_pendingMonth == _month) return;
         _month = _pendingMonth;
@@ -186,7 +192,7 @@
         StateHasChanged();
     }
 
-    private async void CommitYear()
+    private async Task CommitYear()
     {
         if (_pendingYear == _year) return;
         _year = _pendingYear;
@@ -228,7 +234,20 @@
             // Defer enabling scroll handlers until after the programmatic
             // scrollTo writes have settled — otherwise the first @onscroll
             // would interpret the seed scroll as a user gesture.
-            _ = Task.Delay(150).ContinueWith(_ => InvokeAsync(() => { _initialised = true; }));
+            // 2.2.3: was Task.Delay().ContinueWith(...) which runs the
+            // continuation on the thread pool and swallows any exception
+            // unobserved. InvokeAsync(async () => { delay; flip flag; })
+            // keeps the work on the Blazor sync context and surfaces
+            // failures through the normal renderer error path.
+            _ = InvokeAsync(async () =>
+            {
+                try
+                {
+                    await Task.Delay(150);
+                    _initialised = true;
+                }
+                catch (JSDisconnectedException) { /* circuit teardown — fine */ }
+            });
         }
     }
 

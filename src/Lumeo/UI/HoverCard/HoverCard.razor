@@ -91,7 +91,11 @@
         StateHasChanged();
     }
 
-    private Task OnClickOutside()
+    // 2.2.3: switched from `_ = OpenChanged.InvokeAsync(false)` fire-and-forget
+    // to an awaited invocation so consumer-handler failures aren't swallowed
+    // on an unobserved task. Click-outside dispatch is async-aware, so the
+    // method returning Task is fine.
+    private async Task OnClickOutside()
     {
         if (_pinned)
         {
@@ -99,11 +103,10 @@
             if (Open)
             {
                 Open = false;
-                _ = OpenChanged.InvokeAsync(false);
+                await OpenChanged.InvokeAsync(false);
             }
             StateHasChanged();
         }
-        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
