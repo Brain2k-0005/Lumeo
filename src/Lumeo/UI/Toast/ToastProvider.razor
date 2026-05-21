@@ -27,7 +27,13 @@
     <ToastViewport Position="@pos" @key="@pos">
         @foreach (var toast in _toasts.Where(t => ResolvePosition(t.Options.Position) == pos))
         {
-            <Toast Variant="@toast.Options.Variant" Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)" @key="@toast.Id">
+            <Toast Variant="@toast.Options.Variant"
+                   Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)"
+                   OnMouseEnter="@(() => PauseTimer(toast.Id))"
+                   OnMouseLeave="@(() => ResumeTimer(toast.Id))"
+                   OnFocusIn="@(() => PauseTimer(toast.Id))"
+                   OnFocusOut="@(() => ResumeTimer(toast.Id))"
+                   @key="@toast.Id">
                 @if (toast.Options.CustomContent is not null)
                 {
                     @toast.Options.CustomContent
@@ -62,6 +68,15 @@
     private readonly List<ToastItem> _toasts = new();
     private readonly Dictionary<string, CancellationTokenSource> _timers = new();
     private readonly Dictionary<string, CancellationTokenSource> _exitTimers = new();
+    // Per-toast timer bookkeeping for pause-on-hover/focus:
+    //   _timerStart    = wall-clock time the current Task.Delay started
+    //   _timerRemaining = ms left at the moment the timer was last (re)started
+    //   _paused        = true while the user is hovering / focused inside
+    // On pause we cancel the running delay and subtract elapsed from remaining.
+    // On resume we start a fresh delay with the leftover. Matches Radix Toast / sonner.
+    private readonly Dictionary<string, DateTime> _timerStart = new();
+    private readonly Dictionary<string, int> _timerRemaining = new();
+    private readonly HashSet<string> _paused = new();
 
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
     [Parameter] public int DefaultDuration { get; set; } = 5000;
@@ -97,9 +112,7 @@
         var duration = message.Options.Duration ?? DefaultDuration;
         if (duration > 0)
         {
-            var cts = new CancellationTokenSource();
-            _timers[message.Id] = cts;
-            SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(message.Id, duration, cts.Token), "ToastProvider.DismissAfterDelay");
+            StartTimer(message.Id, duration);
         }
     }
 
@@ -140,12 +153,52 @@
         var duration = options.Duration ?? DefaultDuration;
         if (duration > 0)
         {
-            var cts = new CancellationTokenSource();
-            _timers[toastId] = cts;
-            SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(toastId, duration, cts.Token), "ToastProvider.DismissAfterDelay");
+            StartTimer(toastId, duration);
         }
 
         StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private void StartTimer(string id, int duration)
+    {
+        var cts = new CancellationTokenSource();
+        _timers[id] = cts;
+        _timerStart[id] = DateTime.UtcNow;
+        _timerRemaining[id] = duration;
+        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(id, duration, cts.Token), "ToastProvider.DismissAfterDelay");
+    }
+
+    private void PauseTimer(string id)
+    {
+        // Don't double-pause (focusin can fire after mouseenter on the same toast).
+        if (_paused.Contains(id)) return;
+        if (!_timers.TryGetValue(id, out var cts)) return;
+        if (!_timerStart.TryGetValue(id, out var start)) return;
+        if (!_timerRemaining.TryGetValue(id, out var remaining)) return;
+
+        var elapsed = (int)(DateTime.UtcNow - start).TotalMilliseconds;
+        var left = Math.Max(0, remaining - elapsed);
+
+        cts.Cancel();
+        cts.Dispose();
+        _timers.Remove(id);
+        _timerRemaining[id] = left;
+        _paused.Add(id);
+    }
+
+    private void ResumeTimer(string id)
+    {
+        if (!_paused.Contains(id)) return;
+        _paused.Remove(id);
+        if (!_timerRemaining.TryGetValue(id, out var remaining)) return;
+        if (remaining <= 0)
+        {
+            // Already elapsed while paused — dismiss now.
+            SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => RemoveItemAsync(id), "ToastProvider.ResumeImmediateDismiss");
+            return;
+        }
+        StartTimer(id, remaining);
     }
 
     private async Task DismissAfterDelayAsync(string id, int duration, CancellationToken token)
@@ -159,7 +212,7 @@
         }
         catch (TaskCanceledException)
         {
-            // Timer was cancelled — toast was manually dismissed or updated
+            // Timer was cancelled — toast was manually dismissed, updated, or paused.
         }
     }
 
@@ -238,6 +291,9 @@
             exitCts.Dispose();
             _exitTimers.Remove(id);
         }
+        _timerStart.Remove(id);
+        _timerRemaining.Remove(id);
+        _paused.Remove(id);
     }
 
     public async ValueTask DisposeAsync()
@@ -259,6 +315,9 @@
             cts.Dispose();
         }
         _exitTimers.Clear();
+        _timerStart.Clear();
+        _timerRemaining.Clear();
+        _paused.Clear();
 
         await Task.CompletedTask;
     }
