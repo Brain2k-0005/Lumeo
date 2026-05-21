@@ -1,0 +1,81 @@
+@namespace Lumeo
+
+<button id="@SubContext.TriggerId"
+        type="button"
+        role="menuitem"
+        tabindex="-1"
+        class="@CssClass"
+        data-state="@(SubContext.IsOpen ? "open" : "closed")"
+        aria-haspopup="menu"
+        aria-expanded="@SubContext.IsOpen.ToString().ToLower()"
+        aria-controls="@SubContext.ContentId"
+        disabled="@Disabled"
+        @onclick="HandleClick"
+        @onmouseenter="HandleMouseEnter"
+        @onmouseleave="HandleMouseLeave"
+        @onkeydown="HandleKeyDown"
+        @attributes="AdditionalAttributes">
+    @ChildContent
+    <Blazicon Svg="Lucide.ChevronRight" class="ml-auto h-4 w-4" />
+</button>
+
+@inject ComponentInteropService Interop
+
+@code {
+    [CascadingParameter] public DropdownMenuSub.DropdownMenuSubContext SubContext { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 min-h-11 sm:min-h-0 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed {Class}".Trim();
+
+    private async Task HandleClick()
+    {
+        if (Disabled) return;
+        SubContext.CancelClose();
+        await SubContext.SetOpen.InvokeAsync(!SubContext.IsOpen);
+    }
+
+    private async Task HandleMouseEnter()
+    {
+        if (Disabled) return;
+        SubContext.CancelClose();
+        if (!SubContext.IsOpen)
+        {
+            await SubContext.SetOpen.InvokeAsync(true);
+        }
+    }
+
+    private void HandleMouseLeave()
+    {
+        if (!SubContext.IsOpen) return;
+        SubContext.ScheduleClose();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+            case "Enter":
+            case " ":
+                SubContext.CancelClose();
+                if (!SubContext.IsOpen)
+                {
+                    await SubContext.SetOpen.InvokeAsync(true);
+                }
+                // Defer focus until SubContent renders.
+                _ = InvokeAsync(async () =>
+                {
+                    await Task.Delay(20);
+                    try
+                    {
+                        await Interop.FocusMenuItemByIndex(SubContext.ContentId, 0);
+                    }
+                    catch (JSDisconnectedException) { }
+                });
+                break;
+        }
+    }
+}
