@@ -13,13 +13,13 @@
 }
 else if (Context.IsOpen)
 {
-    <div class="fixed inset-0 z-50">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div class="fixed inset-0" style="z-index:@BackdropZ">
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
             @if (!PreventClose)
             {
-                <button class="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none" @onclick="Close">
+                <button class="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none" @onclick="HandleCloseButton">
                     <Blazicon Svg="Lucide.X" class="h-4 w-4" />
                     <span class="sr-only">@L["Dialog.Close"]</span>
                 </button>
@@ -49,10 +49,17 @@ else if (Context.IsOpen)
     /// true only when the sheet's content fits without scrolling.</summary>
     [Parameter] public bool SwipeToClose { get; set; } = false;
     [Parameter] public string? Class { get; set; }
+    /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
+    /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
+    /// supplies an incrementing value per nested overlay.</summary>
+    [Parameter] public int ZIndex { get; set; } = OverlayService.BaseZIndex;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"sheet-{Guid.NewGuid():N}";
     private bool _wasOpen;
+
+    private int BackdropZ => ZIndex;
+    private int ContentZ => ZIndex + 1;
 
     // Slide-animation transform trap is fixed via JS interop:
     // Interop.AttachOverlaySlideEnd registers a native animationend listener
@@ -61,7 +68,7 @@ else if (Context.IsOpen)
     // don't trigger us), then sets inline `transform: none`. Inline style
     // beats the keyframe fill-mode forwarding — guarantees no containing
     // block trap for popovers (Select / DatePicker / Combobox).
-    private string CssClass => $"fixed z-50 flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
+    private string CssClass => $"fixed flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
     private string SizeClass => Side is SheetSide.Left or SheetSide.Right
         ? Size switch
@@ -158,7 +165,7 @@ else if (Context.IsOpen)
             // sheet would otherwise be misread as a dismiss gesture.
             if (!PreventClose && SwipeToClose)
             {
-                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, Close);
+                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe);
             }
             _wasOpen = true;
         }
@@ -170,17 +177,18 @@ else if (Context.IsOpen)
     }
 
 
-    private async Task Close() => await Context.SetOpen.InvokeAsync(false);
+    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
 
-    private async Task HandleBackdropClick()
-    {
-        if (!PreventClose) await Close();
-    }
+    private Task HandleCloseButton() => Dismiss("close");
+
+    private Task HandleSwipe() => Dismiss("swipe");
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape" && !PreventClose) await Close();
+        if (e.Key == "Escape" && !PreventClose) await Dismiss("escape");
     }
+
+    private Task Dismiss(string reason) => Context.TryDismiss(reason);
 
     private async Task Cleanup()
     {
