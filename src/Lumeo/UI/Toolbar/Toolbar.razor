@@ -1,5 +1,5 @@
 @namespace Lumeo
-@inject IJSRuntime JS
+@inject IComponentInteropService Interop
 @implements IAsyncDisposable
 
 @if (!Overflow)
@@ -18,7 +18,6 @@ else
          aria-orientation="horizontal"
          class="@CssClassOverflow"
          id="@_toolbarId"
-         @ref="_toolbarRef"
          @attributes="AdditionalAttributes">
         <CascadingValue Value="_overflowCtx" IsFixed="false">
             @ChildContent
@@ -35,7 +34,7 @@ else
                             <Blazicon Svg="Lucide.Ellipsis" class="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent Align="DropdownMenuContent.DropdownMenuAlign.End">
+                    <DropdownMenuContent Align="Lumeo.Align.End">
                         <CascadingValue Value="_dropdownCtx" IsFixed="false">
                             @ChildContent
                         </CascadingValue>
@@ -80,16 +79,13 @@ else
     // ── State ─────────────────────────────────────────────────────────────────
 
     private bool _overflowOpen;
-    private ElementReference _toolbarRef;
     // rc.42: per-instance DOM id so the JS observer can `document.getElementById`
     // the toolbar without needing the ElementReference internal-id dance. Unique
     // per component instance so multiple Toolbars on a page don't share state.
-    private readonly string _toolbarId = $"lumeo-toolbar-{Guid.NewGuid():N}";
+    private readonly string _toolbarId = LumeoIds.New("lumeo-toolbar");
 
     // Auto-measurement (VisibleCount == -1 + Overflow == true)
-    private IJSObjectReference? _toolbarModule;
     private bool _isObservingOverflow;
-    private DotNetObjectReference<Toolbar>? _selfRef;
     private int _autoVisibleCount = -1; // -1 = not yet measured
 
     private ToolbarOverflowContext _overflowCtx = new(ToolbarRenderSlot.Visible, -1, 0);
@@ -116,18 +112,11 @@ else
 
         try
         {
-            _toolbarModule ??= await JS.InvokeAsync<IJSObjectReference>(
-                "import", "./_content/Lumeo/js/toolbar.js");
-
-            _selfRef ??= DotNetObjectReference.Create(this);
-
-            // rc.42: pass the DOM id (string) instead of the ElementReference —
-            // observeToolbarOverflow does document.getElementById(elementId).
-            // Previously this passed `_toolbarRef` which the JS module didn't
-            // know how to convert to a DOM Element, AND the function itself
-            // didn't exist — so the whole feature was a runtime no-op.
-            await _toolbarModule.InvokeVoidAsync(
-                "observeToolbarOverflow", _toolbarId, _selfRef, nameof(OnOverflowMeasured));
+            // 3.0: route through IComponentInteropService instead of a direct
+            // IJSRuntime import. The service owns the toolbar.js module load
+            // (cache-busted by assembly version) and dispatches measurement
+            // callbacks back to us via OnOverflowMeasured.
+            await Interop.RegisterToolbarOverflow(_toolbarId, OnOverflowMeasured);
             _isObservingOverflow = true;
         }
         catch (JSDisconnectedException) { }
@@ -135,11 +124,11 @@ else
     }
 
     /// <summary>
-    /// Called by JS <c>observeToolbarOverflow</c> each time the fitting count changes.
-    /// Only triggers a re-render when the measured value actually changes.
+    /// Invoked (via <see cref="IComponentInteropService"/>) each time the JS
+    /// ResizeObserver reports a new fitting count. Only triggers a re-render
+    /// when the measured value actually changes.
     /// </summary>
-    [JSInvokable]
-    public Task OnOverflowMeasured(int fittingCount, int totalCount)
+    private Task OnOverflowMeasured(int fittingCount, int totalCount)
     {
         if (fittingCount == _autoVisibleCount) return Task.CompletedTask; // no change — skip re-render
 
@@ -158,21 +147,13 @@ else
     {
         try
         {
-            if (_isObservingOverflow && _toolbarModule is not null)
+            if (_isObservingOverflow)
             {
-                // rc.42: dispose by elementId — see observe site above for why.
-                await _toolbarModule.InvokeVoidAsync("disposeToolbarOverflow", _toolbarId);
+                await Interop.UnregisterToolbarOverflow(_toolbarId);
             }
-
-            if (_toolbarModule is not null)
-                await _toolbarModule.DisposeAsync();
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
-        finally
-        {
-            _selfRef?.Dispose();
-        }
     }
 
     // ── CSS ──────────────────────────────────────────────────────────────────

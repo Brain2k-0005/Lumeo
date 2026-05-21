@@ -185,6 +185,9 @@ internal static partial class LumeoDefaultStrings
         ["DateRange.To"] = "To",
         ["DateTimePicker.Placeholder"] = "Select date and time",
         ["DateTimePicker.TimeLabel"] = "Time",
+        ["DateTimePicker.OpenCalendar"] = "Open calendar",
+        ["DatePicker.OpenCalendar"] = "Open calendar",
+        ["DatePicker.InvalidDate"] = "Invalid date",
         ["TimePicker.Placeholder"] = "Select time",
 
         // ── Tour ────────────────────────────────────────────────────
@@ -541,6 +544,9 @@ internal static partial class LumeoDefaultStrings
         ["DateRange.To"] = "Bis",
         ["DateTimePicker.Placeholder"] = "Datum und Uhrzeit wählen",
         ["DateTimePicker.TimeLabel"] = "Uhrzeit",
+        ["DateTimePicker.OpenCalendar"] = "Kalender öffnen",
+        ["DatePicker.OpenCalendar"] = "Kalender öffnen",
+        ["DatePicker.InvalidDate"] = "Ungültiges Datum",
         ["TimePicker.Placeholder"] = "Uhrzeit wählen",
 
         // ── Tour ────────────────────────────────────────────────────

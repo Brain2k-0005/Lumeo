@@ -111,7 +111,7 @@
     </ComponentDemo>
 
     <ComponentDemo Title="Vertical Tabs" Code="@_verticalCode">
-        <Tabs Orientation="Tabs.TabsOrientation.Vertical" @bind-ActiveValue="_verticalTab" Class="flex gap-4">
+        <Tabs Orientation="Lumeo.Orientation.Vertical" @bind-ActiveValue="_verticalTab" Class="flex gap-4">
             <TabsList>
                 <TabsTrigger Value="account">Account</TabsTrigger>
                 <TabsTrigger Value="security">Security</TabsTrigger>
@@ -229,7 +229,7 @@
         <Stack Gap="4">
             <Lumeo.Text Size="sm" Color="muted">Pick a value to see it applied live.</Lumeo.Text>
             <Segmented @bind-Value="_orientationSel" Options="_orientationOptions" />
-            <Tabs ActiveValue="one" Orientation="@_activeTabsOrientation" Class="@(_activeTabsOrientation == Tabs.TabsOrientation.Vertical ? "flex gap-4" : "")">
+            <Tabs ActiveValue="one" Orientation="@_activeOrientation" Class="@(_activeOrientation == Lumeo.Orientation.Vertical ? "flex gap-4" : "")">
                 <TabsList>
                     <TabsTrigger Value="one">Overview</TabsTrigger>
                     <TabsTrigger Value="two">Analytics</TabsTrigger>
@@ -287,6 +287,45 @@
     <strong>Mobile (rc.49).</strong> Tab triggers now have a minimum 44×44 px touch target area so they are easy to tap on mobile without accidentally activating an adjacent tab.
 </Alert>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="drag-to-reorder" Level="2" Class="scroll-mt-20">Drag to reorder</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TabsList.Reorderable="true"</code>
+        to let users drag tab triggers into a new order. The library handles the drag UX (pointer events, drag image,
+        drop indicator) but <strong>does not mutate the underlying collection</strong> — it raises
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnReorder</code> with a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TabsReorderEventArgs</code>
+        (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FromIndex</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToIndex</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MovedTabValue</code>) and expects
+        the consumer to update their own list. This keeps your model the single source of truth and means you can
+        persist the new order, reject the move, or animate it however you like.
+    </Lumeo.Text>
+
+    <ComponentDemo Title="Drag to reorder" Code="@_reorderCode">
+        <Tabs @bind-Value="_reorderActive">
+            <TabsList Reorderable="true" OnReorder="HandleReorder">
+                @foreach (var tab in _reorderTabs)
+                {
+                    <TabsTrigger Value="@tab.Id">@tab.Label</TabsTrigger>
+                }
+            </TabsList>
+            @foreach (var tab in _reorderTabs)
+            {
+                <TabsContent Value="@tab.Id">
+                    <Lumeo.Text Class="py-3">@tab.Body</Lumeo.Text>
+                </TabsContent>
+            }
+        </Tabs>
+    </ComponentDemo>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        If you skip the handler the tabs visually snap back to their original positions — there is no fallback
+        in-place mutation. Reordering is keyboard accessible: focus a trigger and use
+        <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>Left</Kbd>/<Kbd>Right</Kbd> (or Up/Down in vertical orientation).
+    </Lumeo.Text>
+</div>
+
 <div class="mt-12">
     <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
     <div class="overflow-x-auto mt-4">
@@ -341,9 +380,9 @@
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">Orientation</td>
-                            <td class="p-3 font-mono text-xs text-muted-foreground">TabsOrientation</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Lumeo.Orientation</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">Horizontal</td>
-                            <td class="p-3 text-muted-foreground">Layout direction of the tabs. Values: Tabs.TabsOrientation.Horizontal, Tabs.TabsOrientation.Vertical.</td>
+                            <td class="p-3 text-muted-foreground">Layout direction of the tabs. Values: Lumeo.Orientation.Horizontal, Lumeo.Orientation.Vertical.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">AnimatedIndicator</td>
@@ -476,6 +515,58 @@
     private string _rmTab = "form";
     private string _swipeTab = "alpha";
 
+    private record ReorderTabModel(string Id, string Label, string Body);
+    private string _reorderActive = "overview";
+    private List<ReorderTabModel> _reorderTabs = new()
+    {
+        new("overview", "Overview", "Welcome page."),
+        new("metrics",  "Metrics",  "Numbers and graphs."),
+        new("settings", "Settings", "Configuration."),
+    };
+
+    private Task HandleReorder(TabsReorderEventArgs e)
+    {
+        var moved = _reorderTabs[e.FromIndex];
+        _reorderTabs.RemoveAt(e.FromIndex);
+        _reorderTabs.Insert(e.ToIndex, moved);
+        return Task.CompletedTask;
+    }
+
+    private string _reorderCode = @"<Tabs @bind-Value=""_active"">
+    <TabsList Reorderable=""true"" OnReorder=""HandleReorder"">
+        @foreach (var tab in _tabs)
+        {
+            <TabsTrigger Value=""@tab.Id"">@tab.Label</TabsTrigger>
+        }
+    </TabsList>
+    @foreach (var tab in _tabs)
+    {
+        <TabsContent Value=""@tab.Id"">@tab.Body</TabsContent>
+    }
+</Tabs>
+
+@code {
+    record TabModel(string Id, string Label, string Body);
+
+    string _active = ""overview"";
+    List<TabModel> _tabs = new()
+    {
+        new(""overview"",  ""Overview"",  ""Welcome page.""),
+        new(""metrics"",   ""Metrics"",   ""Numbers and graphs.""),
+        new(""settings"",  ""Settings"",  ""Configuration.""),
+    };
+
+    Task HandleReorder(TabsReorderEventArgs e)
+    {
+        // The library has *not* changed anything yet — we own the collection.
+        var moved = _tabs[e.FromIndex];
+        _tabs.RemoveAt(e.FromIndex);
+        _tabs.Insert(e.ToIndex, moved);
+        // Optional: PersistAsync(_tabs.Select(t => t.Id));
+        return Task.CompletedTask;
+    }
+}";
+
     // Interactive: Variant
     private string _variantSel = "Default";
     private Tabs.TabsVariant _activeTabsVariant => Enum.Parse<Tabs.TabsVariant>(_variantSel);
@@ -488,7 +579,7 @@
 
     // Interactive: Orientation
     private string _orientationSel = "Horizontal";
-    private Tabs.TabsOrientation _activeTabsOrientation => Enum.Parse<Tabs.TabsOrientation>(_orientationSel);
+    private Lumeo.Orientation _activeOrientation => Enum.Parse<Lumeo.Orientation>(_orientationSel);
     private List<Segmented.SegmentedOption> _orientationOptions = new()
     {
         new() { Label = "Horizontal", Value = "Horizontal" },
@@ -529,8 +620,8 @@
 }";
 
     private string _orientationInteractiveCode = @"<Segmented @bind-Value=""_orientationSel"" Options=""_orientationOptions"" />
-<Tabs ActiveValue=""one"" Orientation=""@_activeTabsOrientation""
-      Class=""@(_activeTabsOrientation == Tabs.TabsOrientation.Vertical ? \""flex gap-4\"" : \""\"")\"">
+<Tabs ActiveValue=""one"" Orientation=""@_activeOrientation""
+      Class=""@(_activeOrientation == Lumeo.Orientation.Vertical ? \""flex gap-4\"" : \""\"")\"">
     <TabsList>
         <TabsTrigger Value=""one"">Overview</TabsTrigger>
         <TabsTrigger Value=""two"">Analytics</TabsTrigger>
@@ -545,7 +636,7 @@
 
 @code {
     private string _orientationSel = ""Horizontal"";
-    private Tabs.TabsOrientation _activeTabsOrientation => Enum.Parse<Tabs.TabsOrientation>(_orientationSel);
+    private Lumeo.Orientation _activeOrientation => Enum.Parse<Lumeo.Orientation>(_orientationSel);
     private List<Segmented.SegmentedOption> _orientationOptions = new()
     {
         new() { Label = ""Horizontal"", Value = ""Horizontal"" },
@@ -605,7 +696,7 @@
     </TabsList>
 </Tabs>";
 
-    private string _verticalCode = @"<Tabs Orientation=""Tabs.TabsOrientation.Vertical"" @bind-ActiveValue=""_verticalTab"" Class=""flex gap-4"">
+    private string _verticalCode = @"<Tabs Orientation=""Lumeo.Orientation.Vertical"" @bind-ActiveValue=""_verticalTab"" Class=""flex gap-4"">
     <TabsList>
         <TabsTrigger Value=""account"">Account</TabsTrigger>
         <TabsTrigger Value=""security"">Security</TabsTrigger>

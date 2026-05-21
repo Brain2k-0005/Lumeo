@@ -49,7 +49,7 @@ public class SpinnerTests : IAsyncLifetime
     public void Small_Size_Has_Correct_Classes()
     {
         var cut = _ctx.Render<L.Spinner>(p => p
-            .Add(s => s.Size, L.Spinner.SpinnerSize.Sm));
+            .Add(s => s.Size, L.Size.Sm));
 
         var cls = cut.Find("svg").GetAttribute("class");
         Assert.Contains("h-4", cls);
@@ -60,7 +60,7 @@ public class SpinnerTests : IAsyncLifetime
     public void Large_Size_Has_Correct_Classes()
     {
         var cut = _ctx.Render<L.Spinner>(p => p
-            .Add(s => s.Size, L.Spinner.SpinnerSize.Lg));
+            .Add(s => s.Size, L.Size.Lg));
 
         var cls = cut.Find("svg").GetAttribute("class");
         Assert.Contains("h-8", cls);
@@ -68,10 +68,10 @@ public class SpinnerTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Spinner.SpinnerSize.Sm, "h-4", "w-4")]
-    [InlineData(L.Spinner.SpinnerSize.Default, "h-6", "w-6")]
-    [InlineData(L.Spinner.SpinnerSize.Lg, "h-8", "w-8")]
-    public void Size_Variants_Have_Correct_Dimensions(L.Spinner.SpinnerSize size, string expectedH, string expectedW)
+    [InlineData(L.Size.Sm, "h-4", "w-4")]
+    [InlineData(L.Size.Md, "h-6", "w-6")]
+    [InlineData(L.Size.Lg, "h-8", "w-8")]
+    public void Size_Variants_Have_Correct_Dimensions(L.Size size, string expectedH, string expectedW)
     {
         var cut = _ctx.Render<L.Spinner>(p => p
             .Add(s => s.Size, size));

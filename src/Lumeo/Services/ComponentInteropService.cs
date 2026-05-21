@@ -9,6 +9,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private readonly IJSRuntime _jsRuntime;
     private IJSObjectReference? _module;
     private IJSObjectReference? _motionModule;
+    private IJSObjectReference? _toolbarModule;
     private DotNetObjectReference<ComponentInteropService>? _selfRef;
 
     // Adapters
@@ -1028,6 +1029,49 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Toolbar overflow observer ---
+    // Toolbar ships its own tiny JS module (toolbar.js) that wraps a
+    // ResizeObserver to measure how many child items fit before an overflow
+    // "..." trigger is needed. Loaded lazily so apps that never use the
+    // overflow feature don't pay the import cost. Cache-busted by assembly
+    // version like the main components.js (see GetModuleAsync for rationale).
+
+    private async Task<IJSObjectReference> GetToolbarModuleAsync()
+    {
+        _toolbarModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", $"./_content/Lumeo/js/toolbar.js?v={_jsModuleVersion}");
+        return _toolbarModule;
+    }
+
+    private readonly Dictionary<string, Func<int, int, Task>> _toolbarOverflowHandlers = new();
+
+    public async ValueTask RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler)
+    {
+        var module = await GetToolbarModuleAsync();
+        _toolbarOverflowHandlers[elementId] = handler;
+        await module.InvokeVoidAsync(
+            "observeToolbarOverflow", elementId, GetSelfRef(), nameof(OnToolbarOverflowMeasured));
+    }
+
+    public async ValueTask UnregisterToolbarOverflow(string elementId)
+    {
+        _toolbarOverflowHandlers.Remove(elementId);
+        try
+        {
+            if (_toolbarModule is null) return;
+            await _toolbarModule.InvokeVoidAsync("disposeToolbarOverflow", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public Task OnToolbarOverflowMeasured(string elementId, int fittingCount, int totalCount)
+    {
+        if (_toolbarOverflowHandlers.TryGetValue(elementId, out var handler))
+            return handler(fittingCount, totalCount);
+        return Task.CompletedTask;
+    }
+
     // --- Rich Text Editor (TipTap) ---
 
     public async ValueTask<string> RichTextInitAsync<T>(
@@ -1148,6 +1192,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _ganttModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_toolbarModule is not null)
+        {
+            try
+            {
+                await _toolbarModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

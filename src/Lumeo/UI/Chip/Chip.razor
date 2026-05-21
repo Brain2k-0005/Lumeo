@@ -30,7 +30,7 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public ChipVariant Variant { get; set; } = ChipVariant.Default;
     [Parameter] public string? Color { get; set; }
-    [Parameter] public ChipSize Size { get; set; } = ChipSize.Default;
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     [Parameter] public bool Closable { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public bool Clickable { get; set; }
@@ -59,12 +59,19 @@
         _ => null
     };
 
-    private string CssClass => string.Join(" ", new[] { "inline-flex items-center gap-1 font-medium transition-colors", SizeClass, VariantClass, Clickable && !Disabled ? "cursor-pointer hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" : null, Clickable && !Disabled ? PressEffectClass : null, Disabled ? "opacity-50 pointer-events-none cursor-not-allowed" : null, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string CssClass => Cx.Join(
+        "inline-flex items-center gap-1 font-medium transition-colors",
+        SizeClass,
+        VariantClass,
+        Cx.When(Clickable && !Disabled, "cursor-pointer hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"),
+        Clickable && !Disabled ? PressEffectClass : null,
+        Cx.When(Disabled, "opacity-50 pointer-events-none cursor-not-allowed"),
+        Class);
 
     private string SizeClass => Size switch
     {
-        ChipSize.Sm => "text-xs px-2 py-0.5 rounded-md",
-        ChipSize.Lg => "text-sm px-3 py-1 rounded-lg",
+        Lumeo.Size.Sm => "text-xs px-2 py-0.5 rounded-md",
+        Lumeo.Size.Lg => "text-sm px-3 py-1 rounded-lg",
         _ => "text-sm px-2.5 py-0.5 rounded-md"
     };
 
@@ -86,14 +93,14 @@
 
     private string AvatarSizeClass => Size switch
     {
-        ChipSize.Sm => "h-4 w-4",
-        ChipSize.Lg => "h-6 w-6",
+        Lumeo.Size.Sm => "h-4 w-4",
+        Lumeo.Size.Lg => "h-6 w-6",
         _ => "h-5 w-5"
     };
 
     private string CloseIconSize => Size switch
     {
-        ChipSize.Sm => "h-3 w-3",
+        Lumeo.Size.Sm => "h-3 w-3",
         _ => "h-3.5 w-3.5"
     };
 
@@ -122,5 +129,4 @@
     }
 
     public enum ChipVariant { Default, Outline, Solid }
-    public enum ChipSize { Sm, Default, Lg }
 }

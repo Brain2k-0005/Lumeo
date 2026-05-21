@@ -81,7 +81,7 @@
     </div>
 }
 
-@inject ComponentInteropService Interop
+@inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
@@ -102,8 +102,8 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _tooltipId = $"tour-tooltip-{Guid.NewGuid():N}";
-    private readonly string _maskId = $"tour-mask-{Guid.NewGuid():N}";
+    private readonly string _tooltipId = LumeoIds.New("tour-tooltip");
+    private readonly string _maskId = LumeoIds.New("tour-mask");
     private ElementRect? _targetRect;
     private TourStepConfig? _currentStepConfig;
     private bool _scrollLocked;
@@ -120,13 +120,13 @@
         get
         {
             if (_targetRect is null) return "left: 50%; top: 50%; transform: translate(-50%, -50%);";
-            var placement = _currentStepConfig?.Placement ?? TourPlacement.Bottom;
+            var placement = _currentStepConfig?.Placement ?? Lumeo.Side.Bottom;
             return placement switch
             {
-                TourPlacement.Top => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y - 12}px; transform: translateX(-50%) translateY(-100%);",
-                TourPlacement.Bottom => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y + _targetRect.Height + 12}px; transform: translateX(-50%);",
-                TourPlacement.Left => $"left: {_targetRect.X - 12}px; top: {_targetRect.Y + _targetRect.Height / 2}px; transform: translateX(-100%) translateY(-50%);",
-                TourPlacement.Right => $"left: {_targetRect.X + _targetRect.Width + 12}px; top: {_targetRect.Y + _targetRect.Height / 2}px; transform: translateY(-50%);",
+                Lumeo.Side.Top => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y - 12}px; transform: translateX(-50%) translateY(-100%);",
+                Lumeo.Side.Bottom => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y + _targetRect.Height + 12}px; transform: translateX(-50%);",
+                Lumeo.Side.Left => $"left: {_targetRect.X - 12}px; top: {_targetRect.Y + _targetRect.Height / 2}px; transform: translateX(-100%) translateY(-50%);",
+                Lumeo.Side.Right => $"left: {_targetRect.X + _targetRect.Width + 12}px; top: {_targetRect.Y + _targetRect.Height / 2}px; transform: translateY(-50%);",
                 _ => $"left: {_targetRect.X + _targetRect.Width / 2}px; top: {_targetRect.Y + _targetRect.Height + 12}px; transform: translateX(-50%);"
             };
         }
@@ -244,7 +244,6 @@
         }
     }
 
-    public record TourStepConfig(string? TargetSelector, string Title, string? Description = null, TourPlacement Placement = TourPlacement.Bottom);
+    public record TourStepConfig(string? TargetSelector, string Title, string? Description = null, Lumeo.Side Placement = Lumeo.Side.Bottom);
 
-    public enum TourPlacement { Top, Bottom, Left, Right }
 }

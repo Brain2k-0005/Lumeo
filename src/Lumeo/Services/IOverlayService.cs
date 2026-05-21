@@ -18,7 +18,7 @@ public interface IOverlayService
 
     Task<OverlayResult> ShowSheetAsync<TComponent>(
         string? title = null,
-        SheetSide side = SheetSide.Right,
+        Lumeo.Side side = Lumeo.Side.Right,
         SheetSize size = SheetSize.Default,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent;

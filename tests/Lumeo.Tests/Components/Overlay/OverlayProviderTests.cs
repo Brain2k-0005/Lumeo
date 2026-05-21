@@ -78,7 +78,7 @@ public class OverlayProviderTests : IAsyncLifetime
 
         _ = service.ShowSheetAsync<DummyOverlayBody>(
             title: "Mobile sheet",
-            side: SheetSide.Bottom,
+            side: Lumeo.Side.Bottom,
             size: SheetSize.Full,
             options: new OverlayOptions { SwipeToClose = true });
 

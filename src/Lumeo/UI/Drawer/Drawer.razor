@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DrawerContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId);
+    var context = new DrawerContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -13,14 +13,23 @@
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
 
+    /// <summary>
+    /// Fires before any user-initiated dismiss (Escape, backdrop click,
+    /// swipe gesture, or a <c>DrawerClose</c> trigger). Set
+    /// <see cref="DismissEventArgs.Cancel"/> to <c>true</c> to abort. The
+    /// <see cref="DismissEventArgs.Reason"/> tells you which path fired
+    /// (<c>"escape"</c>, <c>"outside"</c>, <c>"swipe"</c>, <c>"close"</c>).
+    /// </summary>
+    [Parameter] public EventCallback<DismissEventArgs> OnBeforeClose { get; set; }
+
     [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
     [Parameter] public bool IsOpen { get => Open; set => Open = value; }
 
     [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
     [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
 
-    private readonly string _titleId = $"drawer-title-{Guid.NewGuid():N}";
-    private readonly string _descriptionId = $"drawer-desc-{Guid.NewGuid():N}";
+    private readonly string _titleId = LumeoIds.New("drawer-title");
+    private readonly string _descriptionId = LumeoIds.New("drawer-desc");
 
     private async Task SetOpen(bool value)
     {
@@ -28,5 +37,17 @@
         await OpenChanged.InvokeAsync(value);
     }
 
-    public record DrawerContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId);
+    private async Task<bool> TryDismiss(string reason)
+    {
+        if (OnBeforeClose.HasDelegate)
+        {
+            var args = new DismissEventArgs { Reason = reason };
+            await OnBeforeClose.InvokeAsync(args);
+            if (args.Cancel) return false;
+        }
+        await SetOpen(false);
+        return true;
+    }
+
+    public record DrawerContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss);
 }

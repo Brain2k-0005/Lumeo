@@ -1,6 +1,6 @@
 @namespace Lumeo
 @implements IAsyncDisposable
-@inject Lumeo.Services.ComponentInteropService Interop
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @{
     var context = new HoverCardContext(
@@ -32,7 +32,7 @@
     [Parameter] public int CloseDelay { get; set; } = 300;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _wrapperId = $"hovercard-{Guid.NewGuid():N}";
+    private readonly string _wrapperId = LumeoIds.New("hovercard");
     private readonly DelayedDispatch _dispatch = new();
     // rc.44 — tap-pin path for touch devices. The trigger's @onclick toggles
     // _pinned; click-outside auto-unpins via the global mousedown/touchstart
@@ -91,7 +91,11 @@
         StateHasChanged();
     }
 
-    private Task OnClickOutside()
+    // 2.2.3: switched from `_ = OpenChanged.InvokeAsync(false)` fire-and-forget
+    // to an awaited invocation so consumer-handler failures aren't swallowed
+    // on an unobserved task. Click-outside dispatch is async-aware, so the
+    // method returning Task is fine.
+    private async Task OnClickOutside()
     {
         if (_pinned)
         {
@@ -99,11 +103,10 @@
             if (Open)
             {
                 Open = false;
-                _ = OpenChanged.InvokeAsync(false);
+                await OpenChanged.InvokeAsync(false);
             }
             StateHasChanged();
         }
-        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()

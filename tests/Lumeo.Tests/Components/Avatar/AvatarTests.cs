@@ -47,10 +47,10 @@ public class AvatarTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Avatar.AvatarSize.Sm, "h-8", "w-8")]
-    [InlineData(L.Avatar.AvatarSize.Default, "h-10", "w-10")]
-    [InlineData(L.Avatar.AvatarSize.Lg, "h-12", "w-12")]
-    public void Avatar_Renders_Correct_Size(L.Avatar.AvatarSize size, string expectedH, string expectedW)
+    [InlineData(L.Size.Sm, "h-8", "w-8")]
+    [InlineData(L.Size.Md, "h-10", "w-10")]
+    [InlineData(L.Size.Lg, "h-12", "w-12")]
+    public void Avatar_Renders_Correct_Size(L.Size size, string expectedH, string expectedW)
     {
         var cut = _ctx.Render<L.Avatar>(p => p
             .Add(a => a.Size, size));

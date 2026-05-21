@@ -214,7 +214,7 @@ public class SidebarTests : IAsyncLifetime
             builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
             {
                 b.OpenComponent<L.SidebarComponent>(0);
-                b.AddAttribute(1, "Side", L.SidebarComponent.SidebarSide.Right);
+                b.AddAttribute(1, "Side", L.Side.Right);
                 b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Right")));
                 b.CloseComponent();
             }));

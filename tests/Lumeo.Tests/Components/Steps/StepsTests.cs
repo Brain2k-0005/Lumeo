@@ -32,7 +32,7 @@ public class StepsTests : IAsyncLifetime
     public void Vertical_Orientation_Uses_FlexCol()
     {
         var cut = _ctx.Render<Lumeo.Steps>(p => p
-            .Add(s => s.Orientation, Lumeo.Steps.StepsOrientation.Vertical)
+            .Add(s => s.Orientation, Lumeo.Orientation.Vertical)
             .AddChildContent("Steps content"));
 
         var cls = cut.Find("div").GetAttribute("class");

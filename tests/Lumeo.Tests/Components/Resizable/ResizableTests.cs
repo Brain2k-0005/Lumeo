@@ -42,7 +42,7 @@ public class ResizableTests : IAsyncLifetime
     public void PanelGroup_Vertical_Direction_Sets_Attribute()
     {
         var cut = _ctx.Render<L.ResizablePanelGroup>(p => p
-            .Add(b => b.Direction, L.ResizablePanelGroup.ResizableDirection.Vertical)
+            .Add(b => b.Direction, L.Orientation.Vertical)
             .AddChildContent("content"));
 
         var div = cut.Find("div");
@@ -53,7 +53,7 @@ public class ResizableTests : IAsyncLifetime
     public void PanelGroup_Horizontal_Has_Flex_Class()
     {
         var cut = _ctx.Render<L.ResizablePanelGroup>(p => p
-            .Add(b => b.Direction, L.ResizablePanelGroup.ResizableDirection.Horizontal)
+            .Add(b => b.Direction, L.Orientation.Horizontal)
             .AddChildContent("content"));
 
         var div = cut.Find("div");
@@ -66,7 +66,7 @@ public class ResizableTests : IAsyncLifetime
     public void PanelGroup_Vertical_Has_FlexCol_Class()
     {
         var cut = _ctx.Render<L.ResizablePanelGroup>(p => p
-            .Add(b => b.Direction, L.ResizablePanelGroup.ResizableDirection.Vertical)
+            .Add(b => b.Direction, L.Orientation.Vertical)
             .AddChildContent("content"));
 
         var div = cut.Find("div");
@@ -110,13 +110,13 @@ public class ResizableTests : IAsyncLifetime
         Assert.Equal("panel-group", cut.Find("div").GetAttribute("data-testid"));
     }
 
-    // --- ResizableDirection enum ---
+    // --- Lumeo.Orientation enum ---
 
     [Fact]
-    public void ResizableDirection_Enum_Has_Horizontal_And_Vertical()
+    public void Orientation_Enum_Has_Horizontal_And_Vertical()
     {
-        var values = Enum.GetValues<L.ResizablePanelGroup.ResizableDirection>();
-        Assert.Contains(L.ResizablePanelGroup.ResizableDirection.Horizontal, values);
-        Assert.Contains(L.ResizablePanelGroup.ResizableDirection.Vertical, values);
+        var values = Enum.GetValues<L.Orientation>();
+        Assert.Contains(L.Orientation.Horizontal, values);
+        Assert.Contains(L.Orientation.Vertical, values);
     }
 }

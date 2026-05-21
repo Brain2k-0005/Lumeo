@@ -41,7 +41,7 @@ public class StackTests : IAsyncLifetime
     public void Horizontal_Direction_Uses_FlexRow()
     {
         var cut = _ctx.Render<Lumeo.Stack>(p => p
-            .Add(s => s.Direction, Lumeo.Stack.StackDirection.Horizontal)
+            .Add(s => s.Direction, Lumeo.Orientation.Horizontal)
             .AddChildContent("Content"));
 
         var cls = cut.Find("div").GetAttribute("class");
