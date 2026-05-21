@@ -619,13 +619,17 @@ export function unregisterPinchZoom(elementId) {
 
 const drawerHandlers = new Map();
 
-export function registerDrawerSwipe(elementId, direction, dotnetRef) {
+export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
     const isHorizontal = direction === 'left' || direction === 'right';
     // Axis configuration: which signed direction along the active axis dismisses the sheet.
     const dismissSign = (direction === 'down' || direction === 'right') ? +1 : -1;
+    // 3.0.1 — allow C# (LumeoGestureOptions) to override the previously
+    // hardcoded thresholds. Null/undefined keeps the historical defaults.
+    const activationOverride = options && options.activationPx;
+    const fireOverride = options && options.firePx;
 
     // 2.1.3 UX tuning (was: element followed the finger from pixel 1 with no
     // axis lock and no rubber-banding — felt wackelig under micro-finger
@@ -648,8 +652,8 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef) {
     // 3. Rubber-band — past RUBBER_BAND_START the translation compresses
     //    (effectiveDelta * RUBBER_BAND_FACTOR) so the sheet doesn't fly
     //    far off-screen if the user keeps dragging.
-    const ACTIVATION_THRESHOLD = 10;
-    const DISMISS_THRESHOLD = 100;
+    const ACTIVATION_THRESHOLD = (typeof activationOverride === 'number') ? activationOverride : 10;
+    const DISMISS_THRESHOLD = (typeof fireOverride === 'number') ? fireOverride : 100;
     const RUBBER_BAND_START = 150;
     const RUBBER_BAND_FACTOR = 0.5;
 
@@ -773,9 +777,15 @@ export function unregisterDrawerSwipe(elementId) {
 
 const carouselHandlers = new Map();
 
-export function registerCarouselSwipe(elementId, orientation, dotnetRef) {
+export function registerCarouselSwipe(elementId, orientation, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
+    // 3.0.1 — options exist for parity with the other swipe registrars and to
+    // support future Carousel-specific thresholds. The current Carousel
+    // implementation relies on CSS scroll-snap for momentum, so the values
+    // are accepted but not yet consumed; wiring them in won't be a breaking
+    // change for callsites that already pass the bag.
+    void options;
 
     // Compute the nearest child index from the current scroll position.
     const getNearestIndex = () => {
@@ -845,9 +855,13 @@ export function carouselScrollTo(elementId, index, behavior) {
 
 const horizontalSwipeHandlers = new Map();
 
-export function registerHorizontalSwipe(elementId, dotnetRef) {
+export function registerHorizontalSwipe(elementId, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
+
+    // 3.0.1 — read overrides from LumeoGestureOptions bag passed by C#.
+    const swipeThreshold = (options && typeof options.swipeThresholdPx === 'number') ? options.swipeThresholdPx : 50;
+    const verticalDeadZone = (options && typeof options.verticalDeadZonePx === 'number') ? options.verticalDeadZonePx : 40;
 
     // Allow vertical page scroll while detecting horizontal swipes.
     el.style.touchAction = 'pan-y';
@@ -862,8 +876,8 @@ export function registerHorizontalSwipe(elementId, dotnetRef) {
     const onTouchEnd = (e) => {
         const deltaX = e.changedTouches[0].clientX - startX;
         const deltaY = e.changedTouches[0].clientY - startY;
-        if (Math.abs(deltaY) >= 40) return; // too much vertical — ignore
-        if (Math.abs(deltaX) < 50) return;  // below horizontal threshold — ignore
+        if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
+        if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
         dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, deltaX < 0 ? 'next' : 'prev');
     };
 
@@ -891,9 +905,13 @@ export function unregisterHorizontalSwipe(elementId) {
 
 const gallerySwipeHandlers = new Map();
 
-export function registerGallerySwipe(elementId, dotnetRef) {
+export function registerGallerySwipe(elementId, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
+
+    // 3.0.1 — read overrides from LumeoGestureOptions bag passed by C#.
+    const swipeThreshold = (options && typeof options.swipeThresholdPx === 'number') ? options.swipeThresholdPx : 60;
+    const verticalDeadZone = (options && typeof options.verticalDeadZonePx === 'number') ? options.verticalDeadZonePx : 40;
 
     // Clean up any previous registration on the same element.
     const prev = gallerySwipeHandlers.get(elementId);
@@ -915,8 +933,8 @@ export function registerGallerySwipe(elementId, dotnetRef) {
     const onTouchEnd = (e) => {
         const deltaX = e.changedTouches[0].clientX - startX;
         const deltaY = e.changedTouches[0].clientY - startY;
-        if (Math.abs(deltaY) >= 40) return; // too much vertical — ignore
-        if (Math.abs(deltaX) < 60) return;  // below horizontal threshold — ignore
+        if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
+        if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
         dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, deltaX < 0 ? 'next' : 'prev');
     };
 
@@ -945,9 +963,16 @@ export function unregisterGallerySwipe(elementId) {
 
 const tabSwipeHandlers = new Map();
 
-export function registerTabSwipe(elementId, wrap, dotnetRef) {
+export function registerTabSwipe(elementId, wrap, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
+
+    // 3.0.1 — read overrides from LumeoGestureOptions bag passed by C#.
+    // The historical vertical drift cap was 30px; the global default in
+    // LumeoGestureOptions is 40px, so unless the consumer overrides we
+    // keep the historical 30px for Tab swipes to preserve feel.
+    const swipeThreshold = (options && typeof options.swipeThresholdPx === 'number') ? options.swipeThresholdPx : 50;
+    const verticalDeadZone = (options && typeof options.verticalDeadZonePx === 'number') ? options.verticalDeadZonePx : 30;
 
     // Allow vertical scroll; we only care about horizontal swipes.
     el.style.touchAction = 'pan-y';
@@ -972,8 +997,8 @@ export function registerTabSwipe(elementId, wrap, dotnetRef) {
 
         const deltaX = e.clientX - startX;
         const deltaY = e.clientY - startY;
-        if (Math.abs(deltaY) >= 30) return;  // too much vertical drift — ignore
-        if (Math.abs(deltaX) < 50) return;   // below horizontal threshold — ignore
+        if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical drift — ignore
+        if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
 
         const direction = deltaX < 0 ? 'next' : 'prev';
         dotnetRef.invokeMethodAsync('OnTabSwipe', elementId, direction);
