@@ -3,6 +3,15 @@
 @code {
     public CollapsibleTests() { this.AddLumeoServices(); }
 
+    // 3.0.1 — CollapsibleContent is now always mounted (grid-rows animation needs both states present).
+    // Visibility is communicated via aria-hidden on the wrapper.
+    private static bool ContentVisible(IRenderedFragment cut, string text)
+    {
+        var wrappers = cut.FindAll("[aria-hidden]");
+        var w = wrappers.FirstOrDefault(x => (x.TextContent ?? "").Contains(text));
+        return w?.GetAttribute("aria-hidden") == "false";
+    }
+
     [Fact]
     public void Renders_Root_Div()
     {
@@ -35,7 +44,7 @@
             <CollapsibleContent>Hidden Content</CollapsibleContent>
         </Collapsible>);
 
-        Assert.DoesNotContain("Hidden Content", cut.Markup);
+        Assert.False(ContentVisible(cut, "Hidden Content"));
     }
 
     [Fact]
@@ -78,7 +87,7 @@
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
         trigger.Click();
 
-        Assert.DoesNotContain("Content", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content"));
     }
 
     [Fact]
@@ -129,7 +138,7 @@
         trigger = cut.FindAll("div").First(d =>
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
         trigger.Click();
-        Assert.DoesNotContain("Content", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content"));
 
         trigger = cut.FindAll("div").First(d =>
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
