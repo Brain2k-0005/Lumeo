@@ -102,11 +102,23 @@
                 default:
                     break; // "none" — catalog and home get full-width, no sidebar
             }
-            <main class="flex-1 min-w-0">
-                <div class="container mx-auto px-4 sm:px-6 py-8 @(SidebarSection is "blocks" or "none" ? "" : "max-w-5xl")">
+            @if (IsPlaygroundRoute)
+            {
+                @* Playground pages own the entire canvas — no container padding,
+                   no max-width constraint, no extra scroll container. The page
+                   itself sizes to the viewport. *@
+                <main class="flex-1 min-w-0">
                     @Body
-                </div>
-            </main>
+                </main>
+            }
+            else
+            {
+                <main class="flex-1 min-w-0">
+                    <div class="container mx-auto px-4 sm:px-6 py-8 @(SidebarSection is "blocks" or "none" ? "" : "max-w-5xl")">
+                        @Body
+                    </div>
+                </main>
+            }
             @if (SidebarSection != "blocks" && SidebarSection != "none")
             {
                 <OnThisPage />
@@ -347,6 +359,8 @@
             return "docs"; // /themes and other misc pages default to docs sidebar
         }
     }
+
+    private bool IsPlaygroundRoute => CurrentPath.EndsWith("/playground", StringComparison.OrdinalIgnoreCase);
 
     private bool ShowDocsLayout
     {
