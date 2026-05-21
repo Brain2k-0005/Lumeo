@@ -287,6 +287,63 @@
     <strong>Mobile (rc.49).</strong> Tab triggers now have a minimum 44×44 px touch target area so they are easy to tap on mobile without accidentally activating an adjacent tab.
 </Alert>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="drag-to-reorder" Level="2" Class="scroll-mt-20">Drag to reorder</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TabsList.Reorderable="true"</code>
+        to let users drag tab triggers into a new order. The library handles the drag UX (pointer events, drag image,
+        drop indicator) but <strong>does not mutate the underlying collection</strong> — it raises
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnReorder</code> with a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TabsReorderEventArgs</code>
+        (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FromIndex</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToIndex</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MovedTabValue</code>) and expects
+        the consumer to update their own list. This keeps your model the single source of truth and means you can
+        persist the new order, reject the move, or animate it however you like.
+    </Lumeo.Text>
+
+    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Tabs @@bind-Value="_active"&gt;
+    &lt;TabsList Reorderable="true" OnReorder="HandleReorder"&gt;
+        @@foreach (var tab in _tabs)
+        {
+            &lt;TabsTrigger Value="@@tab.Id"&gt;@@tab.Label&lt;/TabsTrigger&gt;
+        }
+    &lt;/TabsList&gt;
+    @@foreach (var tab in _tabs)
+    {
+        &lt;TabsContent Value="@@tab.Id"&gt;@@tab.Body&lt;/TabsContent&gt;
+    }
+&lt;/Tabs&gt;
+
+@@code {
+    record TabModel(string Id, string Label, string Body);
+
+    string _active = "overview";
+    List&lt;TabModel&gt; _tabs = new()
+    {
+        new("overview",  "Overview",  "Welcome page."),
+        new("metrics",   "Metrics",   "Numbers and graphs."),
+        new("settings",  "Settings",  "Configuration."),
+    };
+
+    Task HandleReorder(TabsReorderEventArgs e)
+    {
+        // The library has *not* changed anything yet — we own the collection.
+        var moved = _tabs[e.FromIndex];
+        _tabs.RemoveAt(e.FromIndex);
+        _tabs.Insert(e.ToIndex, moved);
+        // Optional: PersistAsync(_tabs.Select(t =&gt; t.Id));
+        return Task.CompletedTask;
+    }
+}</Stack>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        If you skip the handler the tabs visually snap back to their original positions — there is no fallback
+        in-place mutation. Reordering is keyboard accessible: focus a trigger and use
+        <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>Left</Kbd>/<Kbd>Right</Kbd> (or Up/Down in vertical orientation).
+    </Lumeo.Text>
+</div>
+
 <div class="mt-12">
     <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
     <div class="overflow-x-auto mt-4">

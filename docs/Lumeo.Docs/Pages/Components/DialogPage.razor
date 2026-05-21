@@ -114,6 +114,57 @@
     <strong>Mobile (rc.49).</strong> The dialog close button is now a 44×44 px touch target on small screens, making it reliably tappable without accidentally dismissing or missing the button.
 </Alert>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="intercepting-close" Level="2" Class="scroll-mt-20">Intercepting close</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnBeforeClose</code> fires before the
+        dialog closes for any reason. Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">e.Cancel = true</code>
+        to keep it open — the typical use case is an unsaved-changes guard. The handler receives a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DismissEventArgs</code> with a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Reason</code> string — one of
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"escape"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"outside"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"close"</code> (the X button),
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"action"</code>, or
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"cancel"</code>. Branch on the
+        reason if you only want to intercept some paths (e.g. allow the explicit Cancel button but block stray Escape /
+        backdrop clicks).
+    </Lumeo.Text>
+
+    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Dialog @@bind-Open="_open" OnBeforeClose="GuardClose"&gt;
+    &lt;DialogContent&gt;
+        &lt;DialogHeader&gt;
+            &lt;DialogTitle&gt;Edit profile&lt;/DialogTitle&gt;
+        &lt;/DialogHeader&gt;
+        &lt;Input @@bind-Value="_name" @@oninput="() =&gt; _dirty = true" /&gt;
+        &lt;DialogFooter&gt;
+            &lt;Button OnClick="Save"&gt;Save&lt;/Button&gt;
+        &lt;/DialogFooter&gt;
+    &lt;/DialogContent&gt;
+&lt;/Dialog&gt;
+
+@@code {
+    bool _open;
+    bool _dirty;
+    string? _name;
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Block accidental dismissals while the form is dirty —
+        // explicit Save / Cancel buttons still close normally.
+        if (e.Reason is "escape" or "outside" &amp;&amp; _dirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+}</Stack>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        <strong>Nested dialogs.</strong> Stacking a Dialog on top of another Dialog (or AlertDialog, Sheet, Drawer) now
+        works automatically — each overlay claims the next z-index slot and Escape closes only the top-most overlay.
+        No API change; just open a second dialog from inside the first.
+    </Lumeo.Text>
+</div>
+
 <div class="mt-12">
     <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
     <div class="overflow-x-auto mt-4">

@@ -244,6 +244,53 @@ public class ContactModel
 
     <Separator Class="my-4" />
 
+    <!-- Async validation -->
+    <Stack Gap="6">
+        <Heading Level="2">Async validation</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            For checks that have to round-trip the server — username availability, coupon codes, domain DNS — the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormField</code> component
+            accepts an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AsyncValidator</code>:
+            a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Func&lt;string?, Task&lt;string?&gt;&gt;</code>
+            returning an error message (or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">null</code>
+            on success). It runs alongside the synchronous validator and exposes its in-flight state through
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsValidating</code> on the
+            field and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsAnyFieldValidating</code>
+            on the surrounding <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormContext</code>
+            — disable the submit button on the latter so users can't race a stale check.
+        </Lumeo.Text>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Configure the debounce with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AsyncValidationDebounceMs</code>
+            (default 300) and the trigger with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AsyncValidateOn</code>
+            (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnChange</code> or
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnBlur</code>).
+        </Lumeo.Text>
+
+        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;FormField Label="Username" Required="true"
+           AsyncValidator="@@CheckUsernameAvailable"
+           AsyncValidationDebounceMs="400"
+           AsyncValidateOn="AsyncValidationTrigger.OnChange"&gt;
+    &lt;Input @@bind-Value="_model.Username" /&gt;
+&lt;/FormField&gt;
+
+@@code {
+    async Task&lt;string?&gt; CheckUsernameAvailable(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return await UserApi.IsUsernameTaken(value)
+            ? "That username is taken."
+            : null;
+    }
+}</Stack>
+
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            See the <a href="/components/form-field#async-validators" class="text-primary hover:underline">FormField
+            "Async validators" section</a> for the full parameter list and a spinner / submit-disable example.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- FormContext -->
     <Stack Gap="6">
         <Heading Level="2">FormContext</Heading>

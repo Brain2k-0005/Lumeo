@@ -53,6 +53,79 @@
         </Container>
     </ComponentDemo>
 
+    <div class="mt-12 space-y-4">
+        <Heading Id="async-validators" Level="2" Class="scroll-mt-20">Async validators</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Some validation has to round-trip the server — checking whether a username is taken, whether a coupon code
+            is still valid, whether a domain resolves. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">FormField.AsyncValidator</code>
+            takes a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Func&lt;string?, Task&lt;string?&gt;&gt;</code>
+            that returns an error message (or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">null</code>
+            for success). It runs alongside the synchronous validator and reports its state through
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsValidating</code>.
+        </Lumeo.Text>
+
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>
+                <strong class="text-foreground">AsyncValidationDebounceMs</strong> (default 300) — wait this long after
+                the last change before firing. Lets fast typists finish before you hit the API.
+            </li>
+            <li>
+                <strong class="text-foreground">AsyncValidateOn</strong> —
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AsyncValidationTrigger.OnChange</code>
+                (default) re-runs on every change after the debounce expires;
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">AsyncValidationTrigger.OnBlur</code>
+                waits until the field loses focus.
+            </li>
+            <li>
+                <strong class="text-foreground">IsValidating</strong> +
+                <strong class="text-foreground">OnValidatingChanged</strong> — read this to show a spinner / "Checking…"
+                hint next to the input.
+            </li>
+            <li>
+                <strong class="text-foreground">FormContext.IsAnyFieldValidating</strong> — true while any field on the
+                form has a pending async check. Disable the submit button on this so the user can't race a stale
+                validation.
+            </li>
+        </ul>
+
+        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Form TModel="SignupModel" Model="@@_model" Validator="@@_validator"
+      OnValidSubmit="@@HandleSubmit"&gt;
+
+    &lt;FormField Label="Username"
+               Required="true"
+               AsyncValidator="@@CheckUsernameAvailable"
+               AsyncValidationDebounceMs="400"
+               AsyncValidateOn="AsyncValidationTrigger.OnChange"&gt;
+        &lt;Input @@bind-Value="_model.Username" /&gt;
+    &lt;/FormField&gt;
+
+    &lt;CascadingValue IsFixed="false" Value="_formContext"&gt;
+        &lt;Button type="submit" Disabled="@@(_formContext?.IsAnyFieldValidating == true)"&gt;
+            Sign up
+        &lt;/Button&gt;
+    &lt;/CascadingValue&gt;
+&lt;/Form&gt;
+
+@@code {
+    SignupModel _model = new();
+    DataAnnotationsFormValidator _validator = new();
+    FormContext? _formContext; // bound from the cascading context inside the form
+
+    async Task&lt;string?&gt; CheckUsernameAvailable(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null; // let sync validator complain
+        var taken = await UserApi.IsUsernameTaken(value);
+        return taken ? "That username is taken." : null;
+    }
+}</Stack>
+
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Pair this with an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@bind-IsValidating</code>
+            or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnValidatingChanged</code>
+            handler if you want to render a spinner next to the field while the request is in flight.
+        </Lumeo.Text>
+    </div>
+
     <!-- API Reference -->
     <Stack Gap="6" Class="mt-12">
         <Heading Level="2">API Reference</Heading>
