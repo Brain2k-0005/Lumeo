@@ -199,6 +199,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttChangeViewModeAsync(string id, string mode);
     Task GanttDestroyAsync(string id);
 
+    // Toolbar overflow observer — registers a ResizeObserver on the toolbar
+    // element and invokes the handler with (fittingCount, totalCount) whenever
+    // the number of items that fit before the "..." overflow trigger changes.
+    ValueTask RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler);
+    ValueTask UnregisterToolbarOverflow(string elementId);
+
     // Rich Text Editor (TipTap wrapper)
     ValueTask<string> RichTextInitAsync<T>(
         Microsoft.AspNetCore.Components.ElementReference elementRef,
