@@ -146,6 +146,41 @@ else
 {
     <Popover @bind-Open="_isOpen">
         <PopoverTrigger>
+            @if (AllowKeyboardInput && Mode != DatePickerMode.Range && TriggerContent == null)
+            {
+                <div class="@CssClass" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
+                    <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
+                    <input type="text"
+                           name="@Name"
+                           value="@_inputBuffer"
+                           placeholder="@EffectivePlaceholder"
+                           aria-required="@Required.ToString().ToLower()"
+                           aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                           disabled="@Disabled"
+                           readonly="@(!AllowKeyboardInput)"
+                           class="flex-1 bg-transparent outline-none border-0 p-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
+                           @oninput="HandleInputChanged"
+                           @onblur="HandleInputBlur"
+                           @onkeydown="HandleInputKeyDown"
+                           @onclick:stopPropagation="true" />
+                    <button type="button"
+                            class="ms-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded shrink-0"
+                            aria-label="@L["DatePicker.OpenCalendar"]"
+                            disabled="@Disabled"
+                            @onclick="ToggleOpen"
+                            @onclick:stopPropagation="true">
+                        <Blazicon Svg="Lucide.CalendarDays" class="h-4 w-4" />
+                    </button>
+                    @if (Clearable && HasValue)
+                    {
+                        <button type="button" class="ms-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded shrink-0" aria-label="@L["Common.Clear"]" @onclick="HandleClear" @onclick:stopPropagation="true">
+                            <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
             <button type="button"
                     name="@Name"
                     aria-required="@Required.ToString().ToLower()"
@@ -214,6 +249,7 @@ else
                     </button>
                 }
             </button>
+            }
         </PopoverTrigger>
         <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
             @if (Mode == DatePickerMode.Month)
@@ -384,6 +420,28 @@ else
     [Parameter] public int NumberOfMonths { get; set; } = 1;
 
     /// <summary>
+    /// When true (default), the trigger renders as a typeable <c>&lt;input&gt;</c>
+    /// in the configured <see cref="Format"/>. On blur / Enter the buffer is parsed
+    /// via <see cref="DateOnly.TryParseExact(string, string, IFormatProvider, System.Globalization.DateTimeStyles, out DateOnly)"/>
+    /// (with a fallback to <see cref="DateOnly.TryParse(string, IFormatProvider, System.Globalization.DateTimeStyles, out DateOnly)"/>).
+    /// On success the value commits via <see cref="ValueChanged"/>; on failure the
+    /// buffer reverts and <see cref="OnParseError"/> fires.
+    /// Set to <c>false</c> to keep the historic button-only trigger (input readonly).
+    /// Has no effect for <see cref="DatePickerMode.Range"/>, <see cref="DatePickerVariant.Wheel"/>,
+    /// <see cref="Inline"/>, or when a custom <see cref="TriggerContent"/> is supplied.
+    /// </summary>
+    [Parameter] public bool AllowKeyboardInput { get; set; } = true;
+
+    /// <summary>
+    /// Fires when keyboard input cannot be parsed against the active <see cref="Format"/>
+    /// (or culture short pattern). The argument is the offending raw buffer.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnParseError { get; set; }
+
+    private string _inputBuffer = string.Empty;
+    private DateOnly? _lastSyncedValue;
+
+    /// <summary>
     /// Optional controlled-mode override for the popover open state. When non-null,
     /// the consumer holds the source of truth — the picker no longer mutates its
     /// internal state and instead raises <see cref="OpenChanged"/>. Use this when
@@ -453,6 +511,124 @@ else
             _prevDateTimeValue = DateTimeValue;
             Value = DateTimeValue.HasValue ? DateOnly.FromDateTime(DateTimeValue.Value) : null;
         }
+
+        // Keep the typeable buffer in sync with Value whenever the parent
+        // pushes a new bound value (not while the user is typing — we only
+        // resync when the underlying value actually changed).
+        if (Value != _lastSyncedValue)
+        {
+            _lastSyncedValue = Value;
+            _inputBuffer = FormatBuffer(Value);
+        }
+    }
+
+    private string FormatBuffer(DateOnly? value)
+    {
+        if (!value.HasValue) return string.Empty;
+        if (Mode == DatePickerMode.Month) return value.Value.ToString("MMMM yyyy", EffectiveCulture);
+        if (Mode == DatePickerMode.Year) return value.Value.Year.ToString(EffectiveCulture);
+        return value.Value.ToString(EffectiveFormat, EffectiveCulture);
+    }
+
+    private void HandleInputChanged(ChangeEventArgs e)
+    {
+        _inputBuffer = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task HandleInputBlur(FocusEventArgs _)
+    {
+        await CommitBufferAsync();
+    }
+
+    private async Task HandleInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await CommitBufferAsync();
+            _isOpen = false;
+        }
+        else if (e.Key == "Escape")
+        {
+            _inputBuffer = FormatBuffer(Value);
+            _isOpen = false;
+        }
+    }
+
+    private async Task CommitBufferAsync()
+    {
+        var buffer = _inputBuffer?.Trim() ?? string.Empty;
+
+        if (buffer.Length == 0)
+        {
+            if (Value.HasValue)
+            {
+                Value = null;
+                _lastSyncedValue = null;
+                await ValueChanged.InvokeAsync(null);
+                await RaiseDateTimeValueChanged(null);
+            }
+            return;
+        }
+
+        if (TryParseBuffer(buffer, out var parsed))
+        {
+            if (parsed != Value)
+            {
+                Value = parsed;
+                _lastSyncedValue = parsed;
+                _inputBuffer = FormatBuffer(parsed);
+                await ValueChanged.InvokeAsync(parsed);
+                await RaiseDateTimeValueChanged(parsed);
+            }
+            else
+            {
+                // Normalise display even if value didn't change.
+                _inputBuffer = FormatBuffer(parsed);
+            }
+        }
+        else
+        {
+            // Revert to last good value and signal the error.
+            _inputBuffer = FormatBuffer(Value);
+            if (OnParseError.HasDelegate)
+            {
+                await OnParseError.InvokeAsync(buffer);
+            }
+        }
+    }
+
+    private bool TryParseBuffer(string buffer, out DateOnly result)
+    {
+        var culture = EffectiveCulture;
+        var styles = System.Globalization.DateTimeStyles.None;
+
+        if (Mode == DatePickerMode.Month)
+        {
+            if (DateTime.TryParseExact(buffer, new[] { "MMMM yyyy", "MMM yyyy", "yyyy-MM", "MM/yyyy" }, culture, styles, out var dt))
+            {
+                result = new DateOnly(dt.Year, dt.Month, 1);
+                return true;
+            }
+        }
+        else if (Mode == DatePickerMode.Year)
+        {
+            if (int.TryParse(buffer, System.Globalization.NumberStyles.Integer, culture, out var year) && year is >= 1 and <= 9999)
+            {
+                result = new DateOnly(year, 1, 1);
+                return true;
+            }
+        }
+
+        // Exact format first, then a lenient fallback.
+        if (DateOnly.TryParseExact(buffer, EffectiveFormat, culture, styles, out result)) return true;
+        if (DateOnly.TryParse(buffer, culture, styles, out result)) return true;
+        return false;
+    }
+
+    private void ToggleOpen()
+    {
+        if (Disabled) return;
+        _isOpen = !_isOpen;
     }
 
     private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == DatePickerMode.Range ? 2 : 1);
