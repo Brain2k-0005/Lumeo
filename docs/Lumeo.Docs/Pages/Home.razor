@@ -492,7 +492,7 @@
                 <div class="flex h-full flex-col">
                     <div class="flex-1 p-2 bg-muted/10 overflow-hidden">
                         <Kanban Class="!p-2 !gap-3">
-                            <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]"
+                            <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count" Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[200px]"
                                           OnDrop="@(_ => MoveDraggingCard(_kanbanTodo))">
                                 @foreach (var card in _kanbanTodo)
                                 {
@@ -503,7 +503,7 @@
                                     </div>
                                 }
                             </KanbanColumn>
-                            <KanbanColumn Title="In progress" Badge="@_kanbanDoing.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]"
+                            <KanbanColumn Title="In progress" Badge="@_kanbanDoing.Count" Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[200px]"
                                           OnDrop="@(_ => MoveDraggingCard(_kanbanDoing))">
                                 @foreach (var card in _kanbanDoing)
                                 {
@@ -514,7 +514,7 @@
                                     </div>
                                 }
                             </KanbanColumn>
-                            <KanbanColumn Title="Done" Badge="@_kanbanDone.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]"
+                            <KanbanColumn Title="Done" Badge="@_kanbanDone.Count" Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[200px]"
                                           OnDrop="@(_ => MoveDraggingCard(_kanbanDone))">
                                 @foreach (var card in _kanbanDone)
                                 {
@@ -1233,9 +1233,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     private readonly List<System.Threading.Timer> _timers = new();
 
     // DropdownMenu submenu showcase — opens ~2.5s, closes ~2s, repeats.
-    private bool _dropdownAutoOpen;
-    private bool _dropdownHovered;
-    private System.Threading.Timer? _dropdownTimer;
 
     // Auto-cycling Tabs — advances through 4 values every 3s.
     private string _tabsActive = "overview";
@@ -1291,15 +1288,9 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 
     protected override void OnInitialized()
     {
-        // 1. DropdownMenu submenu — variable cadence (open 2.5s / closed 2s).
-        _dropdownTimer = new System.Threading.Timer(_ =>
-        {
-            if (_dropdownHovered) return;
-            _dropdownAutoOpen = !_dropdownAutoOpen;
-            _dropdownTimer?.Change(_dropdownAutoOpen ? 2500 : 2000, System.Threading.Timeout.Infinite);
-            InvokeAsync(StateHasChanged);
-        }, null, 1500, System.Threading.Timeout.Infinite);
-        _timers.Add(_dropdownTimer);
+        // DropdownMenu auto-cycle removed — fixed-position menu rendered free of
+        // its trigger when opened programmatically without a user click. Visitors
+        // open it manually via hover/click, which fires the proper positioning.
 
         // 2. Tabs — fixed 3s rotation.
         _timers.Add(new System.Threading.Timer(_ =>
@@ -1359,7 +1350,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     {
         foreach (var t in _timers) t.Dispose();
         _timers.Clear();
-        _dropdownTimer = null;
     }
 }
 
