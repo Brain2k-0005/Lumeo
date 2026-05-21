@@ -27,6 +27,9 @@ public class DatePickerTests : IAsyncLifetime
         return _ctx.Render(builder =>
         {
             builder.OpenComponent<L.DatePicker>(0);
+            // 3.0 added keyboard input as the default trigger. These tests assert
+            // the legacy button trigger contract, so opt out at the test boundary.
+            builder.AddAttribute(0, "AllowKeyboardInput", false);
             if (value.HasValue)
                 builder.AddAttribute(1, "Value", value.Value);
             if (placeholder != null)
@@ -176,6 +179,7 @@ public class DatePickerTests : IAsyncLifetime
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.DatePicker>(0);
+            builder.AddAttribute(0, "AllowKeyboardInput", false);
             builder.AddAttribute(1, "Class", "my-picker-class");
             builder.CloseComponent();
         });
@@ -202,6 +206,7 @@ public class DatePickerTests : IAsyncLifetime
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.DatePicker>(0);
+            builder.AddAttribute(0, "AllowKeyboardInput", false);
             builder.AddAttribute(1, "Open", false);
             builder.AddAttribute(2, "OpenChanged",
                 EventCallback.Factory.Create<bool>(this, v => openStates.Add(v)));
