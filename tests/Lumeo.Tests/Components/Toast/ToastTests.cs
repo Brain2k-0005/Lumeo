@@ -27,7 +27,7 @@ public class ToastTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.Toast>();
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         Assert.NotNull(alert);
     }
 
@@ -37,7 +37,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.Toast>(p => p
             .Add(b => b.Variant, ToastVariant.Default));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         var cls = alert.GetAttribute("class") ?? "";
         Assert.Contains("bg-card", cls);
         Assert.Contains("text-foreground", cls);
@@ -49,7 +49,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.Toast>(p => p
             .Add(b => b.Variant, ToastVariant.Destructive));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         var cls = alert.GetAttribute("class") ?? "";
         Assert.Contains("border-destructive", cls);
         Assert.Contains("text-destructive-text", cls);
@@ -61,7 +61,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.Toast>(p => p
             .Add(b => b.Variant, ToastVariant.Success));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         var cls = alert.GetAttribute("class") ?? "";
         Assert.Contains("border-success", cls);
         Assert.Contains("text-success-text", cls);
@@ -73,7 +73,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.Toast>(p => p
             .Add(b => b.Variant, ToastVariant.Warning));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         var cls = alert.GetAttribute("class") ?? "";
         Assert.Contains("border-warning", cls);
         Assert.Contains("text-warning-text", cls);
@@ -85,7 +85,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.Toast>(p => p
             .Add(b => b.Variant, ToastVariant.Info));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         var cls = alert.GetAttribute("class") ?? "";
         Assert.Contains("border-info", cls);
         Assert.Contains("text-info-text", cls);
@@ -107,7 +107,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.Toast>(p => p
             .Add(b => b.Class, "my-toast"));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         Assert.Contains("my-toast", alert.GetAttribute("class") ?? "");
     }
 
@@ -116,7 +116,7 @@ public class ToastTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.Toast>();
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         var cls = alert.GetAttribute("class") ?? "";
         Assert.Contains("rounded-md", cls);
         Assert.Contains("shadow-lg", cls);
@@ -261,7 +261,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.ToastProvider>();
 
         // No toast alerts visible until a message is shown
-        var alerts = cut.FindAll("[role='alert']");
+        var alerts = cut.FindAll("[role='alert'],[role='status']");
         Assert.Empty(alerts);
     }
 
@@ -274,9 +274,9 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.ToastProvider>();
 
         toastService!.Show("Hello World");
-        cut.WaitForState(() => cut.FindAll("[role='alert']").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForState(() => cut.FindAll("[role='alert'],[role='status']").Count > 0, TimeSpan.FromSeconds(2));
 
-        Assert.NotEmpty(cut.FindAll("[role='alert']"));
+        Assert.NotEmpty(cut.FindAll("[role='alert'],[role='status']"));
         Assert.Contains("Hello World", cut.Markup);
     }
 
@@ -289,7 +289,7 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.ToastProvider>();
 
         toastService!.Show("Title", "My description");
-        cut.WaitForState(() => cut.FindAll("[role='alert']").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForState(() => cut.FindAll("[role='alert'],[role='status']").Count > 0, TimeSpan.FromSeconds(2));
 
         Assert.Contains("My description", cut.Markup);
     }
@@ -303,9 +303,9 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.ToastProvider>();
 
         toastService!.Show("Error!", variant: ToastVariant.Destructive);
-        cut.WaitForState(() => cut.FindAll("[role='alert']").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForState(() => cut.FindAll("[role='alert'],[role='status']").Count > 0, TimeSpan.FromSeconds(2));
 
-        var alert = cut.Find("[role='alert']");
+        var alert = cut.Find("[role='alert'],[role='status']");
         Assert.Contains("border-destructive", alert.GetAttribute("class") ?? "");
     }
 
@@ -318,13 +318,13 @@ public class ToastTests : IAsyncLifetime
         var cut = _ctx.Render<L.ToastProvider>();
 
         toastService!.Show("Dismiss me");
-        cut.WaitForState(() => cut.FindAll("[role='alert']").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForState(() => cut.FindAll("[role='alert'],[role='status']").Count > 0, TimeSpan.FromSeconds(2));
 
         // Click the close button
         cut.Find("button").Click();
-        cut.WaitForState(() => cut.FindAll("[role='alert']").Count == 0, TimeSpan.FromSeconds(2));
+        cut.WaitForState(() => cut.FindAll("[role='alert'],[role='status']").Count == 0, TimeSpan.FromSeconds(2));
 
-        Assert.Empty(cut.FindAll("[role='alert']"));
+        Assert.Empty(cut.FindAll("[role='alert'],[role='status']"));
     }
 
     [Fact]

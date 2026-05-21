@@ -18,43 +18,43 @@ public class TooltipTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    // Tooltip is CSS-only (group/group-hover). Content is always in the DOM but visually hidden.
+    // 3.0 — Tooltip switched from always-in-DOM + CSS group-hover to mounted-on-open
+    // via position: fixed + IComponentInteropService.PositionFixed for collision flip.
+    // TooltipContent renders nothing until the trigger opens the tooltip.
 
     private IRenderedComponent<IComponent> RenderTooltip(L.Side side = L.Side.Top)
     {
         return _ctx.Render(builder =>
         {
             builder.OpenComponent<L.Tooltip>(0);
-            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            builder.AddAttribute(1, "ShowDelay", 0);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
             {
                 b.OpenComponent<L.TooltipTrigger>(0);
                 b.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Hover me")));
                 b.CloseComponent();
 
-                b.OpenComponent<L.TooltipContent>(0);
-                b.AddAttribute(1, "Side", side);
-                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Tooltip text")));
+                b.OpenComponent<L.TooltipContent>(2);
+                b.AddAttribute(3, "Side", side);
+                b.AddAttribute(4, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Tooltip text")));
                 b.CloseComponent();
             }));
             builder.CloseComponent();
         });
     }
 
-    // --- Always rendered (CSS-only) ---
-
-    [Fact]
-    public void TooltipContent_Always_Rendered_In_DOM()
+    private static void OpenTooltip(IRenderedComponent<IComponent> cut)
     {
-        var cut = RenderTooltip();
-        // TooltipContent is always in the DOM with invisible class; visibility toggled via CSS group-hover
-        Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
+        cut.Find("div").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
     }
 
+    // --- Closed by default ---
+
     [Fact]
-    public void TooltipContent_Shows_Text()
+    public void TooltipContent_Not_Rendered_When_Closed()
     {
         var cut = RenderTooltip();
-        Assert.Contains("Tooltip text", cut.Markup);
+        Assert.Empty(cut.FindAll("[role='tooltip']"));
     }
 
     [Fact]
@@ -64,67 +64,57 @@ public class TooltipTests : IAsyncLifetime
         Assert.Contains("Hover me", cut.Markup);
     }
 
-    // --- CSS classes for visibility ---
+    // --- Opens on mouseenter ---
 
     [Fact]
-    public void TooltipContent_Has_Invisible_Class_By_Default()
+    public void Tooltip_Mounts_Content_On_MouseEnter()
     {
         var cut = RenderTooltip();
-        var tooltip = cut.Find("[role='tooltip']");
-        var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.Contains("invisible", cls);
+        OpenTooltip(cut);
+        Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
+        Assert.Contains("Tooltip text", cut.Markup);
     }
 
     [Fact]
-    public void TooltipContent_Has_Invisible_When_Closed()
+    public void TooltipContent_Has_Fixed_Position_When_Open()
     {
         var cut = RenderTooltip();
+        OpenTooltip(cut);
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
-        // Timer-based tooltip: starts invisible when not hovered
-        Assert.Contains("invisible", cls);
-        Assert.Contains("opacity-0", cls);
-    }
-
-    // --- Side variants ---
-
-    [Fact]
-    public void TooltipContent_Top_Side_Has_Bottom_Full_Class()
-    {
-        var cut = RenderTooltip(side: L.Side.Top);
-        var tooltip = cut.Find("[role='tooltip']");
-        var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.Contains("bottom-full", cls);
+        Assert.Contains("fixed", cls);
     }
 
     [Fact]
-    public void TooltipContent_Bottom_Side_Has_Top_Full_Class()
+    public void TooltipContent_Visible_When_Open()
     {
-        var cut = RenderTooltip(side: L.Side.Bottom);
+        var cut = RenderTooltip();
+        OpenTooltip(cut);
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.Contains("top-full", cls);
+        Assert.Contains("visible", cls);
+        Assert.Contains("opacity-100", cls);
+    }
+
+    // --- Wrapper / Trigger ---
+
+    [Fact]
+    public void Tooltip_Wrapper_Has_Relative_Inline_Flex_Class()
+    {
+        var cut = RenderTooltip();
+        var elements = cut.FindAll("[class]");
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("relative inline-flex"));
     }
 
     [Fact]
-    public void TooltipContent_Left_Side_Has_Right_Full_Class()
+    public void TooltipTrigger_Has_Inline_Flex_Class()
     {
-        var cut = RenderTooltip(side: L.Side.Left);
-        var tooltip = cut.Find("[role='tooltip']");
-        var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.Contains("right-full", cls);
+        var cut = RenderTooltip();
+        var elements = cut.FindAll("[class]");
+        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex"));
     }
 
-    [Fact]
-    public void TooltipContent_Right_Side_Has_Left_Full_Class()
-    {
-        var cut = RenderTooltip(side: L.Side.Right);
-        var tooltip = cut.Find("[role='tooltip']");
-        var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.Contains("left-full", cls);
-    }
-
-    // --- Custom class ---
+    // --- Custom class forwarded ---
 
     [Fact]
     public void Custom_Class_Forwarded_On_TooltipContent()
@@ -132,66 +122,24 @@ public class TooltipTests : IAsyncLifetime
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.Tooltip>(0);
-            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            builder.AddAttribute(1, "ShowDelay", 0);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.TooltipContent>(0);
-                b.AddAttribute(1, "Class", "my-tooltip-class");
-                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Text")));
+                b.OpenComponent<L.TooltipTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Hover me")));
+                b.CloseComponent();
+
+                b.OpenComponent<L.TooltipContent>(2);
+                b.AddAttribute(3, "Class", "my-tooltip-class");
+                b.AddAttribute(4, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Text")));
                 b.CloseComponent();
             }));
             builder.CloseComponent();
         });
 
+        cut.Find("div").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
         var tooltip = cut.Find("[role='tooltip']");
         Assert.Contains("my-tooltip-class", tooltip.GetAttribute("class"));
-    }
-
-    // --- Wrapper has group class ---
-
-    [Fact]
-    public void Tooltip_Wrapper_Has_Relative_Inline_Flex_Class()
-    {
-        var cut = RenderTooltip();
-        // Tooltip wraps in a div with class "relative inline-flex"
-        var elements = cut.FindAll("[class]");
-        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").Contains("relative inline-flex"));
-    }
-
-    // --- TooltipTrigger class ---
-
-    [Fact]
-    public void TooltipTrigger_Has_Inline_Flex_Class()
-    {
-        var cut = RenderTooltip();
-        var elements = cut.FindAll("[class]");
-        // TooltipTrigger renders a div with class "inline-flex"
-        Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex"));
-    }
-
-    // --- Mouse interaction ---
-
-    [Fact]
-    public void Tooltip_Shows_On_MouseEnter_With_Zero_Delay()
-    {
-        var cut = _ctx.Render<L.Tooltip>(p => p
-            .Add(x => x.ShowDelay, 0)
-            .Add(x => x.ChildContent, builder =>
-            {
-                builder.OpenComponent<L.TooltipTrigger>(0);
-                builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Hover me")));
-                builder.CloseComponent();
-                builder.OpenComponent<L.TooltipContent>(2);
-                builder.AddAttribute(3, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Tooltip text")));
-                builder.CloseComponent();
-            }));
-
-        cut.Find("div").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
-        // Verify tooltip content appears (visible class replaces invisible)
-        Assert.Contains("Tooltip text", cut.Markup);
-        var tooltip = cut.Find("[role='tooltip']");
-        var cls = tooltip.GetAttribute("class") ?? "";
-        Assert.DoesNotContain("invisible", cls);
-        Assert.Contains("visible", cls);
     }
 
     // --- AdditionalAttributes forwarded ---
@@ -202,19 +150,25 @@ public class TooltipTests : IAsyncLifetime
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.Tooltip>(0);
-            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            builder.AddAttribute(1, "ShowDelay", 0);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.TooltipContent>(0);
-                b.AddAttribute(1, "AdditionalAttributes", new Dictionary<string, object>
+                b.OpenComponent<L.TooltipTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Hover me")));
+                b.CloseComponent();
+
+                b.OpenComponent<L.TooltipContent>(2);
+                b.AddAttribute(3, "AdditionalAttributes", new Dictionary<string, object>
                 {
                     ["data-testid"] = "my-tooltip"
                 });
-                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Text")));
+                b.AddAttribute(4, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Text")));
                 b.CloseComponent();
             }));
             builder.CloseComponent();
         });
 
+        cut.Find("div").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
         var tooltip = cut.Find("[role='tooltip']");
         Assert.Equal("my-tooltip", tooltip.GetAttribute("data-testid"));
     }
