@@ -289,28 +289,27 @@
         the sheet open.
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Sheet @@bind-Open="_open" OnBeforeClose="GuardClose"&gt;
-    &lt;SheetContent Side="Lumeo.Side.Right"&gt;
-        &lt;SheetHeader&gt;
-            &lt;SheetTitle&gt;Edit settings&lt;/SheetTitle&gt;
-        &lt;/SheetHeader&gt;
-        &lt;Input @@bind-Value="_value" @@oninput="() =&gt; _dirty = true" /&gt;
-    &lt;/SheetContent&gt;
-&lt;/Sheet&gt;
-
-@@code {
-    bool _open;
-    bool _dirty;
-    string? _value;
-
-    Task GuardClose(DismissEventArgs e)
-    {
-        // Allow the explicit close button through; block stray Escape / outside clicks.
-        if (e.Reason is "escape" or "outside" &amp;&amp; _dirty)
-            e.Cancel = true;
-        return Task.CompletedTask;
-    }
-}</Stack>
+    <ComponentDemo Title="Intercepting close" Code="@_onBeforeCloseCode">
+        <Sheet @bind-Open="_guardOpen" OnBeforeClose="GuardSheetClose">
+            <SheetTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Edit settings</Button>
+            </SheetTrigger>
+            <SheetContent Side="Lumeo.Side.Right">
+                <SheetHeader>
+                    <SheetTitle>Edit settings</SheetTitle>
+                    <SheetDescription>Type something — Escape and the backdrop are blocked while dirty.</SheetDescription>
+                </SheetHeader>
+                <Stack Gap="3" Class="py-4">
+                    <Label>Display name</Label>
+                    <Input Value="@_guardValue" ValueChanged="@((string v) => { _guardValue = v; _guardDirty = true; })" />
+                </Stack>
+                <SheetFooter>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Discard</Button>
+                    <Button OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Save</Button>
+                </SheetFooter>
+            </SheetContent>
+        </Sheet>
+    </ComponentDemo>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         <strong>Nested stacking.</strong> A Sheet opened on top of a Dialog (or another Sheet / Drawer / AlertDialog)
@@ -474,6 +473,39 @@
     private bool _swipeLeftOpen;
     private Dictionary<SheetContent.SheetSize, bool> _sheetSizeOpen = Enum.GetValues<SheetContent.SheetSize>()
         .ToDictionary(s => s, _ => false);
+    private bool _guardOpen;
+    private bool _guardDirty;
+    private string? _guardValue;
+
+    private Task GuardSheetClose(Lumeo.DismissEventArgs e)
+    {
+        if (e.Reason is "escape" or "outside" && _guardDirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    private string _onBeforeCloseCode = @"<Sheet @bind-Open=""_open"" OnBeforeClose=""GuardClose"">
+    <SheetContent Side=""Lumeo.Side.Right"">
+        <SheetHeader>
+            <SheetTitle>Edit settings</SheetTitle>
+        </SheetHeader>
+        <Input @bind-Value=""_value"" @oninput=""() => _dirty = true"" />
+    </SheetContent>
+</Sheet>
+
+@code {
+    bool _open;
+    bool _dirty;
+    string? _value;
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Allow the explicit close button through; block stray Escape / outside clicks.
+        if (e.Reason is ""escape"" or ""outside"" && _dirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+}";
 
     // Interactive: Side
     private string _sheetSideSel = "Right";

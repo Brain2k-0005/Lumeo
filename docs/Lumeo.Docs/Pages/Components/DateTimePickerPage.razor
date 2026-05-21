@@ -52,14 +52,15 @@
         to display the zone abbreviation next to the input so users see which zone they're working in.
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;DateTimePicker @@bind-OffsetValue="_meeting"
-                TimeZone="@@_berlin"
-                ShowTimeZoneLabel="true" /&gt;
-
-@@code {
-    TimeZoneInfo _berlin = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
-    DateTimeOffset? _meeting;
-}</Stack>
+    <ComponentDemo Title="Time zone" Code="@_timeZoneCode">
+        <Stack Gap="2" Class="max-w-sm">
+            <DateTimePicker @bind-OffsetValue="_meeting" TimeZone="@_berlin" ShowTimeZoneLabel="true" />
+            @if (_meeting.HasValue)
+            {
+                <Lumeo.Text Size="sm" Color="muted">UTC: @_meeting.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'")</Lumeo.Text>
+            }
+        </Stack>
+    </ComponentDemo>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         The displayed wall-clock time is always in the picker's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TimeZone</code>,
@@ -227,6 +228,23 @@
     private DateTime? _dateTime1 = DateTime.Now;
     private DateTime? _dateTime2 = DateTime.Today.AddHours(10).AddMinutes(30);
     private DateTime? _dateTime3;
+    private TimeZoneInfo _berlin = ResolveBerlin();
+    private DateTimeOffset? _meeting;
+
+    private static TimeZoneInfo ResolveBerlin()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin"); }
+        catch { return TimeZoneInfo.Utc; }
+    }
+
+    private string _timeZoneCode = @"<DateTimePicker @bind-OffsetValue=""_meeting""
+                TimeZone=""@_berlin""
+                ShowTimeZoneLabel=""true"" />
+
+@code {
+    TimeZoneInfo _berlin = TimeZoneInfo.FindSystemTimeZoneById(""Europe/Berlin"");
+    DateTimeOffset? _meeting;
+}";
 
     private DateTime? _dateTime4;
     private DateTime _dtMinDate = DateTime.Today;

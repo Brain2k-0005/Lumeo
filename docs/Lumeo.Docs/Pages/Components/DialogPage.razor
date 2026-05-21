@@ -131,32 +131,27 @@
         backdrop clicks).
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Dialog @@bind-Open="_open" OnBeforeClose="GuardClose"&gt;
-    &lt;DialogContent&gt;
-        &lt;DialogHeader&gt;
-            &lt;DialogTitle&gt;Edit profile&lt;/DialogTitle&gt;
-        &lt;/DialogHeader&gt;
-        &lt;Input @@bind-Value="_name" @@oninput="() =&gt; _dirty = true" /&gt;
-        &lt;DialogFooter&gt;
-            &lt;Button OnClick="Save"&gt;Save&lt;/Button&gt;
-        &lt;/DialogFooter&gt;
-    &lt;/DialogContent&gt;
-&lt;/Dialog&gt;
-
-@@code {
-    bool _open;
-    bool _dirty;
-    string? _name;
-
-    Task GuardClose(DismissEventArgs e)
-    {
-        // Block accidental dismissals while the form is dirty —
-        // explicit Save / Cancel buttons still close normally.
-        if (e.Reason is "escape" or "outside" &amp;&amp; _dirty)
-            e.Cancel = true;
-        return Task.CompletedTask;
-    }
-}</Stack>
+    <ComponentDemo Title="Intercepting close" Code="@_onBeforeCloseCode">
+        <Dialog @bind-Open="_guardOpen" OnBeforeClose="GuardClose">
+            <DialogTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Edit profile</Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit profile</DialogTitle>
+                    <DialogDescription>Type something, then try Escape / backdrop — it won't close while dirty.</DialogDescription>
+                </DialogHeader>
+                <Stack Gap="3" Class="py-4">
+                    <Label>Name</Label>
+                    <Input Value="@_guardName" ValueChanged="@((string v) => { _guardName = v; _guardDirty = true; })" />
+                </Stack>
+                <DialogFooter>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Discard</Button>
+                    <Button OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Save</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    </ComponentDemo>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         <strong>Nested dialogs.</strong> Stacking a Dialog on top of another Dialog (or AlertDialog, Sheet, Drawer) now
@@ -413,6 +408,43 @@
     private bool _isSimpleOpen;
     private bool _isConfirmOpen;
     private bool _preventCloseOpen;
+    private bool _guardOpen;
+    private bool _guardDirty;
+    private string? _guardName;
+
+    private Task GuardClose(Lumeo.DismissEventArgs e)
+    {
+        if (e.Reason is "escape" or "outside" && _guardDirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    private string _onBeforeCloseCode = @"<Dialog @bind-Open=""_open"" OnBeforeClose=""GuardClose"">
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Edit profile</DialogTitle>
+        </DialogHeader>
+        <Input @bind-Value=""_name"" @oninput=""() => _dirty = true"" />
+        <DialogFooter>
+            <Button OnClick=""Save"">Save</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@code {
+    bool _open;
+    bool _dirty;
+    string? _name;
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Block accidental dismissals while the form is dirty —
+        // explicit Save / Cancel buttons still close normally.
+        if (e.Reason is ""escape"" or ""outside"" && _dirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+}";
 
     private string _preventCloseCode = @"<Dialog @bind-Open=""_preventCloseOpen"">
     <DialogTrigger>
