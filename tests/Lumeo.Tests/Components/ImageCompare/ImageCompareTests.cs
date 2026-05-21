@@ -61,7 +61,7 @@ public class ImageCompareTests : IAsyncLifetime
         var cut = _ctx.Render<L.ImageCompare>(p => p
             .Add(c => c.BeforeSrc, "/b.jpg")
             .Add(c => c.AfterSrc, "/a.jpg")
-            .Add(c => c.Orientation, L.ImageCompare.ImageCompareOrientation.Vertical));
+            .Add(c => c.Orientation, L.Orientation.Vertical));
         Assert.Contains("ns-resize", cut.Markup);
     }
 }

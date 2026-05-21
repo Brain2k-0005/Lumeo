@@ -20,7 +20,7 @@ public class TooltipTests : IAsyncLifetime
 
     // Tooltip is CSS-only (group/group-hover). Content is always in the DOM but visually hidden.
 
-    private IRenderedComponent<IComponent> RenderTooltip(L.TooltipContent.TooltipSide side = L.TooltipContent.TooltipSide.Top)
+    private IRenderedComponent<IComponent> RenderTooltip(L.Side side = L.Side.Top)
     {
         return _ctx.Render(builder =>
         {
@@ -91,7 +91,7 @@ public class TooltipTests : IAsyncLifetime
     [Fact]
     public void TooltipContent_Top_Side_Has_Bottom_Full_Class()
     {
-        var cut = RenderTooltip(side: L.TooltipContent.TooltipSide.Top);
+        var cut = RenderTooltip(side: L.Side.Top);
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
         Assert.Contains("bottom-full", cls);
@@ -100,7 +100,7 @@ public class TooltipTests : IAsyncLifetime
     [Fact]
     public void TooltipContent_Bottom_Side_Has_Top_Full_Class()
     {
-        var cut = RenderTooltip(side: L.TooltipContent.TooltipSide.Bottom);
+        var cut = RenderTooltip(side: L.Side.Bottom);
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
         Assert.Contains("top-full", cls);
@@ -109,7 +109,7 @@ public class TooltipTests : IAsyncLifetime
     [Fact]
     public void TooltipContent_Left_Side_Has_Right_Full_Class()
     {
-        var cut = RenderTooltip(side: L.TooltipContent.TooltipSide.Left);
+        var cut = RenderTooltip(side: L.Side.Left);
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
         Assert.Contains("right-full", cls);
@@ -118,7 +118,7 @@ public class TooltipTests : IAsyncLifetime
     [Fact]
     public void TooltipContent_Right_Side_Has_Left_Full_Class()
     {
-        var cut = RenderTooltip(side: L.TooltipContent.TooltipSide.Right);
+        var cut = RenderTooltip(side: L.Side.Right);
         var tooltip = cut.Find("[role='tooltip']");
         var cls = tooltip.GetAttribute("class") ?? "";
         Assert.Contains("left-full", cls);

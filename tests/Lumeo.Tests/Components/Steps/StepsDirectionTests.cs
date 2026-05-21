@@ -60,7 +60,7 @@ public class StepsDirectionTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.Steps>(p => p
             .Add(s => s.Animated, true)
-            .Add(s => s.Orientation, Lumeo.Steps.StepsOrientation.Vertical)
+            .Add(s => s.Orientation, Lumeo.Orientation.Vertical)
             .Add(s => s.CurrentStep, 2)
             .AddChildContent<Lumeo.StepsItem>(i => i.Add(x => x.Title, "A"))
             .AddChildContent<Lumeo.StepsItem>(i => i.Add(x => x.Title, "B"))

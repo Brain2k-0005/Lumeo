@@ -51,7 +51,7 @@ public class ButtonGroupTests : IAsyncLifetime
     public void Vertical_Orientation_Applies_Flex_Col()
     {
         var cut = _ctx.Render<Lumeo.ButtonGroup>(p => p
-            .Add(b => b.Orientation, Lumeo.ButtonGroup.ButtonGroupOrientation.Vertical)
+            .Add(b => b.Orientation, Lumeo.Orientation.Vertical)
             .AddChildContent("<button>A</button>"));
 
         var div = cut.Find("div");
@@ -62,7 +62,7 @@ public class ButtonGroupTests : IAsyncLifetime
     public void Horizontal_Applies_Child_Border_Collapse_Classes()
     {
         var cut = _ctx.Render<Lumeo.ButtonGroup>(p => p
-            .Add(b => b.Orientation, Lumeo.ButtonGroup.ButtonGroupOrientation.Horizontal)
+            .Add(b => b.Orientation, Lumeo.Orientation.Horizontal)
             .AddChildContent("<button>A</button>"));
 
         var div = cut.Find("div");

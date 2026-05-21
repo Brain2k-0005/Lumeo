@@ -78,7 +78,7 @@ public class StepperTests : IAsyncLifetime
     public void Orientation_Horizontal_Uses_FlexCol()
     {
         var cut = _ctx.Render<Lumeo.Stepper>(p => p
-            .Add(s => s.Orientation, Lumeo.Stepper.StepperOrientation.Horizontal)
+            .Add(s => s.Orientation, Lumeo.Orientation.Horizontal)
             .Add(s => s.ActiveStep, 0)
             .AddChildContent(b =>
             {

@@ -122,7 +122,7 @@ public class InputTests : IAsyncLifetime
     public void Size_Sm_Adds_H8_Class()
     {
         var cut = _ctx.Render<Lumeo.Input>(p => p
-            .Add(b => b.Size, Lumeo.Input.InputSize.Sm));
+            .Add(b => b.Size, Lumeo.Size.Sm));
 
         var cls = cut.Find("input").GetAttribute("class");
         Assert.Contains("h-8", cls);
@@ -132,7 +132,7 @@ public class InputTests : IAsyncLifetime
     public void Size_Lg_Adds_H11_Class()
     {
         var cut = _ctx.Render<Lumeo.Input>(p => p
-            .Add(b => b.Size, Lumeo.Input.InputSize.Lg));
+            .Add(b => b.Size, Lumeo.Size.Lg));
 
         var cls = cut.Find("input").GetAttribute("class");
         Assert.Contains("h-11", cls);

@@ -19,7 +19,7 @@ public class SplitterTests : IAsyncLifetime
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     private IRenderedComponent<IComponent> RenderSplitter(
-        L.Splitter.SplitterOrientation orientation = L.Splitter.SplitterOrientation.Horizontal,
+        L.Orientation orientation = L.Orientation.Horizontal,
         int paneCount = 2)
     {
         return _ctx.Render(builder =>
@@ -44,7 +44,7 @@ public class SplitterTests : IAsyncLifetime
     [Fact]
     public void Horizontal_Orientation_Has_Flex_Row_Class()
     {
-        var cut = RenderSplitter(L.Splitter.SplitterOrientation.Horizontal);
+        var cut = RenderSplitter(L.Orientation.Horizontal);
 
         var root = cut.Find("[data-splitter-orientation]");
         Assert.Contains("flex-row", root.GetAttribute("class"));
@@ -53,7 +53,7 @@ public class SplitterTests : IAsyncLifetime
     [Fact]
     public void Vertical_Orientation_Has_Flex_Col_Class()
     {
-        var cut = RenderSplitter(L.Splitter.SplitterOrientation.Vertical);
+        var cut = RenderSplitter(L.Orientation.Vertical);
 
         var root = cut.Find("[data-splitter-orientation]");
         Assert.Contains("flex-col", root.GetAttribute("class"));
@@ -62,7 +62,7 @@ public class SplitterTests : IAsyncLifetime
     [Fact]
     public void Root_Has_Orientation_Data_Attribute()
     {
-        var cut = RenderSplitter(L.Splitter.SplitterOrientation.Horizontal);
+        var cut = RenderSplitter(L.Orientation.Horizontal);
 
         Assert.Equal("horizontal", cut.Find("[data-splitter-orientation]").GetAttribute("data-splitter-orientation"));
     }
@@ -70,7 +70,7 @@ public class SplitterTests : IAsyncLifetime
     [Fact]
     public void Vertical_Orientation_Data_Attribute_Is_Vertical()
     {
-        var cut = RenderSplitter(L.Splitter.SplitterOrientation.Vertical);
+        var cut = RenderSplitter(L.Orientation.Vertical);
 
         Assert.Equal("vertical", cut.Find("[data-splitter-orientation]").GetAttribute("data-splitter-orientation"));
     }

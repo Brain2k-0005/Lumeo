@@ -66,7 +66,7 @@ public class KbdTests : IAsyncLifetime
     public void Small_Size_Has_Correct_Classes()
     {
         var cut = _ctx.Render<L.Kbd>(p => p
-            .Add(k => k.Size, L.Kbd.KbdSize.Sm)
+            .Add(k => k.Size, L.Size.Sm)
             .AddChildContent("K"));
 
         var cls = cut.Find("kbd").GetAttribute("class");
@@ -78,7 +78,7 @@ public class KbdTests : IAsyncLifetime
     public void Large_Size_Has_Correct_Classes()
     {
         var cut = _ctx.Render<L.Kbd>(p => p
-            .Add(k => k.Size, L.Kbd.KbdSize.Lg)
+            .Add(k => k.Size, L.Size.Lg)
             .AddChildContent("Esc"));
 
         var cls = cut.Find("kbd").GetAttribute("class");
@@ -88,10 +88,10 @@ public class KbdTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Kbd.KbdSize.Sm, "h-5", "px-1")]
-    [InlineData(L.Kbd.KbdSize.Default, "h-5", "px-1.5")]
-    [InlineData(L.Kbd.KbdSize.Lg, "h-6", "px-2")]
-    public void Size_Variants_Have_Correct_Classes(L.Kbd.KbdSize size, string expectedH, string expectedPx)
+    [InlineData(L.Size.Sm, "h-5", "px-1")]
+    [InlineData(L.Size.Md, "h-5", "px-1.5")]
+    [InlineData(L.Size.Lg, "h-6", "px-2")]
+    public void Size_Variants_Have_Correct_Classes(L.Size size, string expectedH, string expectedPx)
     {
         var cut = _ctx.Render<L.Kbd>(p => p
             .Add(k => k.Size, size)

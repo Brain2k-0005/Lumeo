@@ -35,7 +35,7 @@ else if (Context.IsOpen)
     [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
     [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public SheetSide Side { get; set; } = SheetSide.Right;
+    [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Right;
     [Parameter] public SheetSize Size { get; set; } = SheetSize.Default;
     /// <summary>How the sheet enters/leaves. <c>Slide</c> (default) animates
     /// from the configured <see cref="Side"/>. <c>Fade</c> uses a simple
@@ -70,7 +70,7 @@ else if (Context.IsOpen)
     // block trap for popovers (Select / DatePicker / Combobox).
     private string CssClass => $"fixed flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
-    private string SizeClass => Side is SheetSide.Left or SheetSide.Right
+    private string SizeClass => Side is Lumeo.Side.Left or Lumeo.Side.Right
         ? Size switch
         {
             SheetSize.Sm => "sm:max-w-xs",
@@ -95,10 +95,10 @@ else if (Context.IsOpen)
 
     private string PositionClasses => Side switch
     {
-        SheetSide.Top => $"inset-x-0 top-0 {SizeClass}",
-        SheetSide.Bottom => $"inset-x-0 bottom-0 {SizeClass}",
-        SheetSide.Left => $"inset-y-0 left-0 h-full w-3/4 {SizeClass}",
-        SheetSide.Right => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}",
+        Lumeo.Side.Top => $"inset-x-0 top-0 {SizeClass}",
+        Lumeo.Side.Bottom => $"inset-x-0 bottom-0 {SizeClass}",
+        Lumeo.Side.Left => $"inset-y-0 left-0 h-full w-3/4 {SizeClass}",
+        Lumeo.Side.Right => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}",
         _ => $"inset-y-0 right-0 h-full w-3/4 {SizeClass}"
     };
 
@@ -114,10 +114,10 @@ else if (Context.IsOpen)
         SheetAnimation.Fade => "animate-fade-in",
         SheetAnimation.Slide => Side switch
         {
-            SheetSide.Top => "animate-slide-in-from-top",
-            SheetSide.Bottom => "animate-slide-in-from-bottom",
-            SheetSide.Left => "animate-slide-in-from-left",
-            SheetSide.Right => "animate-slide-in-from-right",
+            Lumeo.Side.Top => "animate-slide-in-from-top",
+            Lumeo.Side.Bottom => "animate-slide-in-from-bottom",
+            Lumeo.Side.Left => "animate-slide-in-from-left",
+            Lumeo.Side.Right => "animate-slide-in-from-right",
             _ => "animate-slide-in-from-right"
         },
         _ => ""
@@ -131,10 +131,10 @@ else if (Context.IsOpen)
     // Drawer uses the same convention — see DrawerContent.SwipeDirection.
     private string SwipeDirection => Side switch
     {
-        SheetSide.Top => "up",
-        SheetSide.Right => "right",
-        SheetSide.Bottom => "down",
-        SheetSide.Left => "left",
+        Lumeo.Side.Top => "up",
+        Lumeo.Side.Right => "right",
+        Lumeo.Side.Bottom => "down",
+        Lumeo.Side.Left => "left",
         _ => "right"
     };
 
@@ -206,7 +206,9 @@ else if (Context.IsOpen)
         if (_wasOpen) await Cleanup();
     }
 
-    public enum SheetSide { Top, Right, Bottom, Left }
+    /// <summary>Sheet sizes. <c>Full</c> is layout-intent (entire viewport),
+    /// not a scale value, so this enum is intentionally NOT replaced by
+    /// <see cref="Lumeo.Size"/> in 3.0.</summary>
     public enum SheetSize { Sm, Default, Lg, Xl, Full }
     public enum SheetAnimation { Slide, Fade, None }
 }
