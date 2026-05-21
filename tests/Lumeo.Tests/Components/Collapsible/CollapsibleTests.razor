@@ -3,6 +3,15 @@
 @code {
     public CollapsibleTests() { this.AddLumeoServices(); }
 
+    // 3.0.1 — CollapsibleContent is now always mounted (grid-rows animation needs both states present).
+    // Visibility is communicated via aria-hidden on the wrapper.
+    private static bool ContentVisible(Bunit.IRenderedComponent<Microsoft.AspNetCore.Components.IComponent> cut, string text)
+    {
+        var wrappers = cut.FindAll("[aria-hidden]");
+        var w = wrappers.FirstOrDefault(x => (x.TextContent ?? "").Contains(text));
+        return w?.GetAttribute("aria-hidden") == "false";
+    }
+
     [Fact]
     public void Renders_Root_Div()
     {
@@ -35,7 +44,7 @@
             <CollapsibleContent>Hidden Content</CollapsibleContent>
         </Collapsible>);
 
-        Assert.DoesNotContain("Hidden Content", cut.Markup);
+        Assert.False(ContentVisible(cut, "Hidden Content"));
     }
 
     [Fact]
@@ -78,7 +87,7 @@
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
         trigger.Click();
 
-        Assert.DoesNotContain("Content", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content"));
     }
 
     [Fact]
@@ -129,7 +138,7 @@
         trigger = cut.FindAll("div").First(d =>
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
         trigger.Click();
-        Assert.DoesNotContain("Content", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content"));
 
         trigger = cut.FindAll("div").First(d =>
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
@@ -234,16 +243,15 @@
             <CollapsibleContent ForceMount="true">Force Mounted</CollapsibleContent>
         </Collapsible>);
 
-        // Content must be present in the DOM even when closed.
+        // 3.0.1 — content is always mounted regardless of ForceMount.
         Assert.Contains("Force Mounted", cut.Markup);
 
-        // The content wrapper (overflow-hidden) must carry the hidden attribute.
+        // Visibility is communicated via aria-hidden on the wrapper.
         var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
-            (d.GetAttribute("class") ?? "").Contains("overflow-hidden") &&
+            d.HasAttribute("aria-hidden") &&
             d.TextContent.Contains("Force Mounted"));
         Assert.NotNull(contentDiv);
-        // bUnit renders boolean hidden attr as "" (empty string), not null.
-        Assert.NotNull(contentDiv!.GetAttribute("hidden"));
+        Assert.Equal("true", contentDiv!.GetAttribute("aria-hidden"));
     }
 
     [Fact]
@@ -258,11 +266,11 @@
             (d.GetAttribute("class") ?? "").Contains("cursor-pointer"));
         trigger.Click();
 
-        // After opening, the hidden attribute must be absent.
+        // After opening, aria-hidden flips to "false".
         var contentDiv = cut.FindAll("div").FirstOrDefault(d =>
-            (d.GetAttribute("class") ?? "").Contains("overflow-hidden") &&
+            d.HasAttribute("aria-hidden") &&
             d.TextContent.Contains("Force Mounted"));
         Assert.NotNull(contentDiv);
-        Assert.Null(contentDiv!.GetAttribute("hidden"));
+        Assert.Equal("false", contentDiv!.GetAttribute("aria-hidden"));
     }
 }
