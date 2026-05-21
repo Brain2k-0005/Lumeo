@@ -1,0 +1,31 @@
+@*  Iterates every value of an enum and renders a user-provided template for each.
+    Use when a component has an enum parameter (Variant / Size / Color / Side)
+    and the doc page wants to demo all values exhaustively without hand-listing.  *@
+@typeparam TEnum where TEnum : struct, Enum
+
+<Stack Gap="@Gap" Class="@StackClass">
+    @if (Title is not null)
+    {
+        <Heading Level="3" Size="sm" Class="font-semibold tracking-tight">@Title</Heading>
+    }
+    <div class="@LayoutClass">
+        @foreach (var value in Enum.GetValues<TEnum>())
+        {
+            <div class="flex items-center gap-3">
+                <Lumeo.Text As="span" Size="xs" Color="muted" Class="font-mono min-w-[5rem]">@value.ToString()</Lumeo.Text>
+                @ChildContent?.Invoke(value)
+            </div>
+        }
+    </div>
+</Stack>
+
+@code {
+    [Parameter] public RenderFragment<TEnum>? ChildContent { get; set; }
+    [Parameter] public string Gap { get; set; } = "3";
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Wrap { get; set; } = true;
+    [Parameter] public string? StackClass { get; set; }
+    private string LayoutClass => Wrap
+        ? "flex flex-wrap items-center gap-3"
+        : "flex flex-col gap-2";
+}
