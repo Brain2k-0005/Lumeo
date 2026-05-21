@@ -19,9 +19,9 @@
 }
 else if (Context.IsOpen)
 {
-    <div class="fixed inset-0 z-50">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div class="fixed inset-0" style="z-index:@BackdropZ">
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
@@ -41,6 +41,10 @@ else if (Context.IsOpen)
     [Parameter] public DrawerAnimation Animation { get; set; } = DrawerAnimation.Slide;
     [Parameter] public bool PreventClose { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
+    /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
+    /// supplies an incrementing value per nested overlay.</summary>
+    [Parameter] public int ZIndex { get; set; } = OverlayService.BaseZIndex;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"drawer-{Guid.NewGuid():N}";
@@ -50,6 +54,9 @@ else if (Context.IsOpen)
     // that filters strictly on slide-in-from-* AND on event.target === this
     // element, then sets inline `transform: none`. See SheetContent for the
     // full rationale.
+
+    private int BackdropZ => ZIndex;
+    private int ContentZ => ZIndex + 1;
 
     private bool ShowDragHandle => Side is DrawerSide.Top or DrawerSide.Bottom;
 
@@ -78,7 +85,7 @@ else if (Context.IsOpen)
     };
 
     private string CssClass =>
-        $"fixed z-50 mt-24 flex h-auto flex-col bg-background shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
+        $"fixed mt-24 flex h-auto flex-col bg-background shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
     private string SwipeDirection => Side switch
     {
@@ -106,7 +113,7 @@ else if (Context.IsOpen)
             }
             if (!PreventClose)
             {
-                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, Close);
+                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe);
             }
             _wasOpen = true;
         }
@@ -117,18 +124,16 @@ else if (Context.IsOpen)
         }
     }
 
-    private async Task Close() => await Context.SetOpen.InvokeAsync(false);
+    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
 
-    private async Task HandleBackdropClick()
-    {
-        if (!PreventClose) await Close();
-    }
-
+    private Task HandleSwipe() => Dismiss("swipe");
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape" && !PreventClose) await Close();
+        if (e.Key == "Escape" && !PreventClose) await Dismiss("escape");
     }
+
+    private Task Dismiss(string reason) => Context.TryDismiss(reason);
 
     private async Task Cleanup()
     {

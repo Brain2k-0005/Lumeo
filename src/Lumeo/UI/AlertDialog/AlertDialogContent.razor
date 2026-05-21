@@ -1,11 +1,12 @@
 @namespace Lumeo
+@using Lumeo.Services
 @implements IAsyncDisposable
 
 @if (Context.IsOpen)
 {
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in"></div>
-        <div id="@_contentId" class="@CssClass" role="alertdialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div class="fixed inset-0 flex items-center justify-center" style="z-index:@BackdropZ">
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ"></div>
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="alertdialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
         </div>
     </div>
@@ -17,12 +18,19 @@
     [CascadingParameter] public AlertDialog.AlertDialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
+    /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
+    /// supplies an incrementing value per nested overlay.</summary>
+    [Parameter] public int ZIndex { get; set; } = OverlayService.BaseZIndex;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"alertdialog-{Guid.NewGuid():N}";
     private bool _wasOpen;
 
-    private string CssClass => $"relative z-50 grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg {Class}".Trim();
+    private int BackdropZ => ZIndex;
+    private int ContentZ => ZIndex + 1;
+
+    private string CssClass => $"relative grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg {Class}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -43,7 +51,7 @@
     {
         if (e.Key == "Escape")
         {
-            await Context.SetOpen.InvokeAsync(false);
+            await Context.TryDismiss("escape");
         }
     }
 

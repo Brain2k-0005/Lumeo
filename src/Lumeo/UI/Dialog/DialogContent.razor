@@ -10,11 +10,11 @@
 }
 else if (Context.IsOpen)
 {
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="fixed inset-0 flex items-center justify-center" style="z-index:@BackdropZ">
         <!-- Backdrop -->
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         <!-- Content -->
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @if (Scrollable)
             {
                 <div class="max-h-[85vh] overflow-y-auto">
@@ -27,7 +27,7 @@ else if (Context.IsOpen)
             }
             @if (!PreventClose)
             {
-                <button class="absolute right-2 top-2 sm:right-4 sm:top-4 inline-flex items-center justify-center rounded-sm h-11 w-11 sm:h-6 sm:w-6 opacity-70 transition-opacity hover:opacity-100 focus:outline-none" @onclick="Close">
+                <button class="absolute right-2 top-2 sm:right-4 sm:top-4 inline-flex items-center justify-center rounded-sm h-11 w-11 sm:h-6 sm:w-6 opacity-70 transition-opacity hover:opacity-100 focus:outline-none" @onclick="HandleCloseButton">
                     <Blazicon Svg="Lucide.X" class="h-4 w-4" />
                     <span class="sr-only">@L["Dialog.Close"]</span>
                 </button>
@@ -47,10 +47,20 @@ else if (Context.IsOpen)
     [Parameter] public DialogSize Size { get; set; } = DialogSize.Default;
     [Parameter] public bool Scrollable { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>
+    /// Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults to
+    /// <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
+    /// supplies an incrementing value per nested overlay so a Dialog opened
+    /// from inside another Dialog stacks above instead of colliding.
+    /// </summary>
+    [Parameter] public int ZIndex { get; set; } = OverlayService.BaseZIndex;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = $"dialog-{Guid.NewGuid():N}";
     private bool _wasOpen;
+
+    private int BackdropZ => ZIndex;
+    private int ContentZ => ZIndex + 1;
 
     private string SizeClass => Size switch
     {
@@ -62,7 +72,7 @@ else if (Context.IsOpen)
         _ => "max-w-lg"
     };
 
-    private string CssClass => $"relative z-50 grid w-full {SizeClass} gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg {Class}".Trim();
+    private string CssClass => $"relative grid w-full {SizeClass} gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg {Class}".Trim();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -82,20 +92,19 @@ else if (Context.IsOpen)
         }
     }
 
-    private async Task Close() => await Context.SetOpen.InvokeAsync(false);
+    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
 
-    private async Task HandleBackdropClick()
-    {
-        if (!PreventClose) await Close();
-    }
+    private Task HandleCloseButton() => Dismiss("close");
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Escape" && !PreventClose)
         {
-            await Close();
+            await Dismiss("escape");
         }
     }
+
+    private Task Dismiss(string reason) => Context.TryDismiss(reason);
 
     private async Task Cleanup()
     {

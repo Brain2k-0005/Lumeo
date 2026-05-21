@@ -4,6 +4,19 @@ namespace Lumeo.Services;
 
 public sealed class OverlayService : IOverlayService
 {
+    /// <summary>Base z-index assigned to the first overlay. Subsequent overlays
+    /// stack at <c>BaseZIndex + n * Step</c>. The backdrop sits at the assigned
+    /// value; the content sits one tier above (Z + 1) so a nested overlay's
+    /// backdrop always lands above the parent's content.</summary>
+    public const int BaseZIndex = 50;
+
+    /// <summary>Distance between consecutive overlay tiers. <c>Step</c> = 10
+    /// leaves room for backdrop (Z) + content (Z+1) without colliding with
+    /// the next overlay's backdrop.</summary>
+    public const int Step = 10;
+
+    private int _openCount;
+
     public event Action<OverlayInstance>? OnShow;
     public event Action<string, object?, bool>? OnClose;
 
@@ -45,6 +58,7 @@ public sealed class OverlayService : IOverlayService
             Type = OverlayType.AlertDialog,
             Title = alertOptions.Title,
             AlertOptions = alertOptions,
+            ZIndex = AllocateZIndex(),
             Tcs = tcs
         };
         OnShow?.Invoke(instance);
@@ -53,12 +67,29 @@ public sealed class OverlayService : IOverlayService
 
     public void Close(string overlayId, object? result = null)
     {
+        ReleaseZIndex();
         OnClose?.Invoke(overlayId, result, false);
     }
 
     public void Cancel(string overlayId)
     {
+        ReleaseZIndex();
         OnClose?.Invoke(overlayId, null, true);
+    }
+
+    private int AllocateZIndex()
+    {
+        // Monotonic counter — each new overlay sits Step tiers above the
+        // previous one. We release on Close/Cancel so a long-running app
+        // doesn't drift the value to infinity, but stacking remains
+        // strictly increasing for the lifetime of any single open chain.
+        _openCount++;
+        return BaseZIndex + _openCount * Step;
+    }
+
+    private void ReleaseZIndex()
+    {
+        if (_openCount > 0) _openCount--;
     }
 
     private Task<OverlayResult> ShowAsync(
@@ -78,6 +109,7 @@ public sealed class OverlayService : IOverlayService
             Title = title,
             Parameters = parameters,
             Options = options ?? new OverlayOptions(),
+            ZIndex = AllocateZIndex(),
             Tcs = tcs
         };
         OnShow?.Invoke(instance);
@@ -183,5 +215,10 @@ public sealed class OverlayInstance
     public OverlayParameters? Parameters { get; init; }
     public OverlayOptions Options { get; init; } = new();
     public AlertDialogOptions? AlertOptions { get; init; }
+    /// <summary>Backdrop z-index for this overlay. Content sits at
+    /// <c>ZIndex + 1</c> so a nested overlay's backdrop (allocated later
+    /// with a strictly larger value) lands above the parent's content.
+    /// Assigned by <see cref="OverlayService"/> at registration time.</summary>
+    public int ZIndex { get; init; } = OverlayService.BaseZIndex;
     internal TaskCompletionSource<OverlayResult> Tcs { get; init; } = default!;
 }

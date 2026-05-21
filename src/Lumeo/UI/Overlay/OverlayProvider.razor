@@ -8,7 +8,7 @@
     {
         case OverlayType.Dialog:
             <Dialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DialogContent PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                <DialogContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
                         <DialogHeader>
@@ -26,7 +26,7 @@
 
         case OverlayType.Sheet:
             <Sheet @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <SheetContent Side="@EffectiveSheetSide(overlay.Options)" Size="@EffectiveSheetSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@EffectiveSwipeToClose(overlay.Options)" Class="@overlay.Options.Class">
+                <SheetContent ZIndex="@overlay.ZIndex" Side="@EffectiveSheetSide(overlay.Options)" Size="@EffectiveSheetSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@EffectiveSwipeToClose(overlay.Options)" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
                         <SheetHeader>
@@ -44,7 +44,7 @@
 
         case OverlayType.Drawer:
             <Drawer @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DrawerContent PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                <DrawerContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
                     @if (overlay.Title is not null)
                     {
                         <DrawerHeader>
@@ -62,7 +62,7 @@
 
         case OverlayType.AlertDialog:
             <AlertDialog @key="overlay.Id" Open="true">
-                <AlertDialogContent>
+                <AlertDialogContent ZIndex="@overlay.ZIndex">
                     <AlertDialogHeader>
                         <AlertDialogTitle>@(overlay.AlertOptions?.Title ?? "Are you sure?")</AlertDialogTitle>
                         @if (overlay.AlertOptions?.Description is not null)
@@ -166,7 +166,7 @@
         _overlays.Add(instance);
         // Pre-cache the reference so the CascadingValue always receives the same
         // object reference for the lifetime of this overlay (prevents subtree re-renders).
-        _referenceCache[instance.Id] = new OverlayReference(instance.Id, instance.Parameters, OverlayService);
+        _referenceCache[instance.Id] = new OverlayReference(instance.Id, instance.Parameters, OverlayService, instance.ZIndex);
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -217,7 +217,7 @@
     {
         if (!_referenceCache.TryGetValue(overlay.Id, out var reference))
         {
-            reference = new OverlayReference(overlay.Id, overlay.Parameters, OverlayService);
+            reference = new OverlayReference(overlay.Id, overlay.Parameters, OverlayService, overlay.ZIndex);
             _referenceCache[overlay.Id] = reference;
         }
         return reference;
