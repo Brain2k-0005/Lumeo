@@ -1,0 +1,234 @@
+@page "/components/datagrid/playground"
+@namespace Lumeo.Docs.Pages.Components
+
+<PageTitle>DataGrid Playground — Lumeo</PageTitle>
+
+@*  Dedicated full-width playground. The DataGridPage hosts the canonical demos /
+    API reference; this page is a single living experiment surface.  *@
+
+<Container MaxWidth="full" Padding="6">
+    <Stack Gap="8">
+        <Stack Gap="2">
+            <Flex Align="center" Gap="3">
+                <Badge Variant="Badge.BadgeVariant.Outline">Playground</Badge>
+                <Lumeo.Link Href="/components/datagrid" Class="text-xs text-muted-foreground hover:text-foreground no-underline flex items-center gap-1">
+                    <DynamicIcon Name="ArrowLeft" Class="h-3 w-3" />
+                    Back to DataGrid docs
+                </Lumeo.Link>
+            </Flex>
+            <Heading Level="1" Class="text-3xl sm:text-4xl font-bold tracking-tight">DataGrid playground</Heading>
+            <Lumeo.Text Color="muted" Class="max-w-2xl">
+                Flip switches to see every feature in action. The DataGrid below re-renders live with your selections — no rebuild, no reload.
+            </Lumeo.Text>
+        </Stack>
+
+        <div class="grid grid-cols-12 gap-6">
+            <aside class="col-span-12 lg:col-span-3 xl:col-span-2 space-y-5 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto pr-2">
+                <Stack Gap="2">
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Toolbar</h3>
+                    <Switch @bind-Checked="_pgShowToolbar" Label="Show toolbar" />
+                    <Switch @bind-Checked="_pgShowSearch" Label="Search box" Disabled="!_pgShowToolbar" />
+                    <Switch @bind-Checked="_pgShowColumnChooser" Label="Column chooser" Disabled="!_pgShowToolbar" />
+                    <Switch @bind-Checked="_pgShowExport" Label="Export button" Disabled="!_pgShowToolbar" />
+                    <Switch @bind-Checked="_pgExpandable" Label="Expand to fullscreen" Disabled="!_pgShowToolbar" />
+                </Stack>
+
+                <Stack Gap="2">
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Columns</h3>
+                    <Switch @bind-Checked="_pgSortable" Label="Sortable columns" />
+                    <Switch @bind-Checked="_pgFilterable" Label="Filterable columns" />
+                    <Switch @bind-Checked="_pgReorderable" Label="Reorder columns (drag)" />
+                    <Switch @bind-Checked="_pgPinnable" Label="Pin columns" />
+                </Stack>
+
+                <Stack Gap="2">
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Grouping</h3>
+                    <Switch @bind-Checked="_pgShowGroupPanel" Label="Show group panel" />
+                    <Switch @bind-Checked="_pgGroupsExpanded" Label="Groups expanded by default" />
+                </Stack>
+
+                <Stack Gap="2">
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pagination</h3>
+                    <Switch @bind-Checked="_pgShowPagination" Label="Show pagination" />
+                    <NumberInput @bind-Value="_pgPageSizeNum" Min="3" Max="20" Step="1" Label="Page size" />
+                </Stack>
+
+                <Stack Gap="2">
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Display</h3>
+                    <Switch @bind-Checked="_pgStriped" Label="Striped rows" />
+                    <Switch @bind-Checked="_pgBordered" Label="Bordered" />
+                    <Switch @bind-Checked="_pgCompact" Label="Compact rows" />
+                    <Switch @bind-Checked="_pgHoverable" Label="Hover highlight" />
+                    <Switch @bind-Checked="_pgIsLoading" Label="Loading skeleton" />
+                </Stack>
+
+                <Stack Gap="2">
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Selection &amp; editing</h3>
+                    <Segmented @bind-Value="_pgSelectionMode" Block="true">
+                        <SegmentedItem Value="None">None</SegmentedItem>
+                        <SegmentedItem Value="Single">Single</SegmentedItem>
+                        <SegmentedItem Value="Multiple">Multiple</SegmentedItem>
+                    </Segmented>
+                    <Segmented @bind-Value="_pgEditMode" Block="true">
+                        <SegmentedItem Value="None">No edit</SegmentedItem>
+                        <SegmentedItem Value="Cell">Cell</SegmentedItem>
+                        <SegmentedItem Value="Row">Row</SegmentedItem>
+                    </Segmented>
+                </Stack>
+
+                <div class="pt-2 border-t border-border/40">
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-full" OnClick="ResetPlayground">
+                        <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5 mr-1.5" />
+                        Reset to defaults
+                    </Button>
+                </div>
+            </aside>
+
+            <div class="col-span-12 lg:col-span-9 xl:col-span-10">
+                <div class="rounded-xl border border-border/40 bg-card p-4">
+                    <DataGrid TItem="PlaygroundRow"
+                              Items="@(_pgIsLoading ? new List<PlaygroundRow>() : _pgRows)"
+                              ShowToolbar="_pgShowToolbar"
+                              ShowSearch="_pgShowSearch"
+                              ShowColumnChooser="_pgShowColumnChooser"
+                              ShowExport="_pgShowExport"
+                              Expandable="_pgExpandable"
+                              ShowPagination="_pgShowPagination"
+                              PageSize="_pgPageSize"
+                              Striped="_pgStriped"
+                              Bordered="_pgBordered"
+                              Compact="_pgCompact"
+                              Hoverable="_pgHoverable"
+                              IsLoading="_pgIsLoading"
+                              Reorderable="_pgReorderable"
+                              ShowGroupPanel="_pgShowGroupPanel"
+                              GroupsExpandedByDefault="_pgGroupsExpanded"
+                              SelectionMode="@_pgSelectionModeEnum"
+                              EditMode="@_pgEditModeEnum">
+                        <DataGridColumnDef TItem="PlaygroundRow" Title="Name" Field="Name"
+                                           Sortable="_pgSortable" Filterable="_pgFilterable"
+                                           Pinnable="_pgPinnable" Groupable="true" />
+                        <DataGridColumnDef TItem="PlaygroundRow" Title="Team" Field="Team"
+                                           Sortable="_pgSortable" Filterable="_pgFilterable"
+                                           Pinnable="_pgPinnable" Groupable="true" />
+                        <DataGridColumnDef TItem="PlaygroundRow" Title="Role" Field="Role"
+                                           Sortable="_pgSortable" Filterable="_pgFilterable"
+                                           Pinnable="_pgPinnable" Groupable="true" />
+                        <DataGridColumnDef TItem="PlaygroundRow" Title="Salary" Field="Salary" Format="C0"
+                                           Sortable="_pgSortable" Filterable="_pgFilterable"
+                                           FilterType="DataGridFilterType.Number"
+                                           Pinnable="_pgPinnable"
+                                           Aggregate="AggregateType.Average" />
+                        <DataGridColumnDef TItem="PlaygroundRow" Title="Status" Field="Status"
+                                           Sortable="_pgSortable" Filterable="_pgFilterable"
+                                           Pinnable="_pgPinnable" Groupable="true" />
+                        <DataGridColumnDef TItem="PlaygroundRow" Title="Joined" Field="Joined" Format="yyyy-MM-dd"
+                                           Sortable="_pgSortable" Filterable="_pgFilterable"
+                                           FilterType="DataGridFilterType.Date"
+                                           Pinnable="_pgPinnable" />
+                    </DataGrid>
+                </div>
+            </div>
+        </div>
+    </Stack>
+</Container>
+
+@code {
+    // ---- Live Playground state -----------------------------------------
+    // Toolbar
+    private bool _pgShowToolbar = true;
+    private bool _pgShowSearch = true;
+    private bool _pgShowColumnChooser = true;
+    private bool _pgShowExport = true;
+    private bool _pgExpandable = true;
+
+    // Columns
+    private bool _pgSortable = true;
+    private bool _pgFilterable = true;
+    private bool _pgReorderable = true;
+    private bool _pgPinnable = true;
+
+    // Grouping
+    private bool _pgShowGroupPanel = true;
+    private bool _pgGroupsExpanded = true;
+
+    // Pagination
+    private bool _pgShowPagination = true;
+    private double? _pgPageSizeNum = 8;
+    private int _pgPageSize => (int)Math.Clamp((int)(_pgPageSizeNum ?? 8), 3, 20);
+
+    // Display
+    private bool _pgStriped = true;
+    private bool _pgBordered;
+    private bool _pgCompact;
+    private bool _pgHoverable = true;
+    private bool _pgIsLoading;
+
+    // Selection & editing (enum bridges via Segmented string value)
+    private string _pgSelectionMode = "Multiple";
+    private string _pgEditMode = "None";
+
+    private DataGridSelectionMode _pgSelectionModeEnum => _pgSelectionMode switch
+    {
+        "Single" => DataGridSelectionMode.Single,
+        "Multiple" => DataGridSelectionMode.Multiple,
+        _ => DataGridSelectionMode.None,
+    };
+
+    private DataGridEditMode _pgEditModeEnum => _pgEditMode switch
+    {
+        "Cell" => DataGridEditMode.Cell,
+        "Row" => DataGridEditMode.Row,
+        _ => DataGridEditMode.None,
+    };
+
+    private void ResetPlayground()
+    {
+        _pgShowToolbar = true;
+        _pgShowSearch = true;
+        _pgShowColumnChooser = true;
+        _pgShowExport = true;
+        _pgExpandable = true;
+
+        _pgSortable = true;
+        _pgFilterable = true;
+        _pgReorderable = true;
+        _pgPinnable = true;
+
+        _pgShowGroupPanel = true;
+        _pgGroupsExpanded = true;
+
+        _pgShowPagination = true;
+        _pgPageSizeNum = 8;
+
+        _pgStriped = true;
+        _pgBordered = false;
+        _pgCompact = false;
+        _pgHoverable = true;
+        _pgIsLoading = false;
+
+        _pgSelectionMode = "Multiple";
+        _pgEditMode = "None";
+    }
+
+    private record PlaygroundRow(string Name, string Team, string Role, double Salary, string Status, DateTime Joined);
+
+    private List<PlaygroundRow> _pgRows = new()
+    {
+        new("Ada Lovelace",      "Platform",     "Staff Engineer",   182_000, "Active",   new DateTime(2019, 03, 12)),
+        new("Linus Torvalds",    "Platform",     "Principal",        225_000, "Active",   new DateTime(2015, 08, 01)),
+        new("Margaret Hamilton", "Platform",     "Engineering Lead", 198_000, "Active",   new DateTime(2018, 06, 21)),
+        new("Grace Hopper",      "Data",         "Director",         245_000, "Active",   new DateTime(2014, 02, 04)),
+        new("Alan Turing",       "Data",         "Senior Engineer",  165_000, "Active",   new DateTime(2020, 11, 30)),
+        new("Katherine Johnson", "Data",         "Analytics Lead",   172_000, "Active",   new DateTime(2017, 09, 14)),
+        new("Tim Berners-Lee",   "Design",       "Design Director",  210_000, "Active",   new DateTime(2016, 05, 22)),
+        new("Don Norman",        "Design",       "Principal UX",     188_000, "Active",   new DateTime(2018, 01, 17)),
+        new("Susan Kare",        "Design",       "Senior Designer",  148_000, "On Leave", new DateTime(2021, 04, 09)),
+        new("Dennis Ritchie",    "Infrastructure", "Distinguished",  260_000, "Active",   new DateTime(2013, 10, 30)),
+        new("Brian Kernighan",   "Infrastructure", "Principal",      215_000, "Active",   new DateTime(2014, 07, 18)),
+        new("Barbara Liskov",    "Infrastructure", "Senior Engineer",170_000, "Active",   new DateTime(2019, 12, 03)),
+        new("Donald Knuth",      "Research",     "Research Fellow",  235_000, "Active",   new DateTime(2012, 06, 11)),
+        new("Edsger Dijkstra",   "Research",     "Principal",        205_000, "Inactive", new DateTime(2015, 02, 28)),
+        new("John von Neumann",  "Research",     "Senior Researcher",178_000, "Active",   new DateTime(2017, 11, 25)),
+    };
+}
