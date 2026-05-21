@@ -75,10 +75,27 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Drawer Swipe
     ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler);
     ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler);
+    /// <summary>
+    /// 3.0.1 — extended overload that accepts swipe-to-close thresholds. Both
+    /// parameters are optional; passing <c>null</c> falls back to the JS
+    /// hardcoded defaults so existing callers keep working unchanged. Mirrors
+    /// the <see cref="LumeoGestureOptions"/> bag.
+    /// </summary>
+    /// <param name="activationPx">Pixels of finger travel before the sheet starts following.</param>
+    /// <param name="firePx">Pull-distance above which release triggers a dismiss.</param>
+    ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx) =>
+        RegisterDrawerSwipe(elementId, direction, handler);
     ValueTask UnregisterDrawerSwipe(string elementId);
 
     // Tab Swipe — horizontal swipe switches between TabsContent panels
     ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler);
+    /// <summary>
+    /// 3.0.1 — extended overload that accepts horizontal swipe and vertical
+    /// dead-zone thresholds. Passing <c>null</c> falls back to the JS
+    /// hardcoded defaults so existing callers keep working unchanged.
+    /// </summary>
+    ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx) =>
+        RegisterTabSwipe(elementId, wrap, handler);
     ValueTask UnregisterTabSwipe(string elementId);
 
     // Sortable Touch (HTML5 Drag API doesn't fire on touch — separate touch path)
@@ -87,15 +104,24 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Carousel Swipe
     ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler);
+    /// <summary>3.0.1 — overload with explicit swipe / vertical dead-zone thresholds (Carousel).</summary>
+    ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler, int? swipeThresholdPx, int? verticalDeadZonePx) =>
+        RegisterCarouselSwipe(elementId, orientation, swipeHandler, scrollHandler);
     ValueTask UnregisterCarouselSwipe(string elementId);
     ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth");
 
     // Horizontal Swipe (Calendar month navigation)
     ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler);
+    /// <summary>3.0.1 — overload with explicit swipe / vertical dead-zone thresholds (Calendar).</summary>
+    ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx) =>
+        RegisterHorizontalSwipe(elementId, handler);
     ValueTask UnregisterHorizontalSwipe(string elementId);
 
     // Gallery Swipe (ImageGallery fullscreen prev/next, rc.52)
     ValueTask RegisterGallerySwipe(string elementId, Func<string, Task> handler);
+    /// <summary>3.0.1 — overload with explicit swipe / vertical dead-zone thresholds (ImageGallery).</summary>
+    ValueTask RegisterGallerySwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx) =>
+        RegisterGallerySwipe(elementId, handler);
     ValueTask UnregisterGallerySwipe(string elementId);
 
     // Resizable Handle

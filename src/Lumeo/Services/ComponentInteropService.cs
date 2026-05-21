@@ -332,6 +332,13 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _swipe.RegisterDrawerSwipe(module, GetSelfRef(), elementId, handler);
     }
 
+    // 3.0.1 — threshold-aware overload, ultimately driven by LumeoGestureOptions.
+    public async ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterDrawerSwipe(module, GetSelfRef(), elementId, direction, handler, activationPx, firePx);
+    }
+
     public async ValueTask UnregisterDrawerSwipe(string elementId)
     {
         var module = await GetModuleAsync();
@@ -371,6 +378,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _swipe.RegisterCarouselSwipe(module, GetSelfRef(), elementId, orientation, swipeHandler, scrollHandler);
     }
 
+    public async ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler, int? swipeThresholdPx, int? verticalDeadZonePx)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterCarouselSwipe(module, GetSelfRef(), elementId, orientation, swipeHandler, scrollHandler, swipeThresholdPx, verticalDeadZonePx);
+    }
+
     public async ValueTask UnregisterCarouselSwipe(string elementId)
     {
         var module = await GetModuleAsync();
@@ -383,6 +396,12 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _swipe.RegisterHorizontalSwipe(module, GetSelfRef(), elementId, handler);
+    }
+
+    public async ValueTask RegisterHorizontalSwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterHorizontalSwipe(module, GetSelfRef(), elementId, handler, swipeThresholdPx, verticalDeadZonePx);
     }
 
     public async ValueTask UnregisterHorizontalSwipe(string elementId)
@@ -401,6 +420,12 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _swipe.RegisterGallerySwipe(module, GetSelfRef(), elementId, handler);
+    }
+
+    public async ValueTask RegisterGallerySwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterGallerySwipe(module, GetSelfRef(), elementId, handler, swipeThresholdPx, verticalDeadZonePx);
     }
 
     public async ValueTask UnregisterGallerySwipe(string elementId)
@@ -423,6 +448,12 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _swipe.RegisterTabSwipe(module, GetSelfRef(), elementId, wrap, handler);
+    }
+
+    public async ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterTabSwipe(module, GetSelfRef(), elementId, wrap, handler, swipeThresholdPx, verticalDeadZonePx);
     }
 
     public async ValueTask UnregisterTabSwipe(string elementId)

@@ -52,6 +52,13 @@ public static class LumeoServiceExtensions
         services.AddScoped<ResponsiveService>();
         services.AddScoped<IResponsiveService>(sp => sp.GetRequiredService<ResponsiveService>());
 
+        // 3.0.1 — register the options bag for global gesture thresholds (swipe
+        // distances on Tabs/Carousel/Calendar/Gallery and Drawer/Sheet
+        // swipe-to-close). Defaults match the previously-hardcoded JS values,
+        // so existing consumers see no behaviour change unless they call
+        // services.Configure<LumeoGestureOptions>(...).
+        services.AddOptions<LumeoGestureOptions>();
+
         services.AddSingleton<IOptions<LumeoLocalizationOptions>>(_ =>
         {
             var options = new LumeoLocalizationOptions();

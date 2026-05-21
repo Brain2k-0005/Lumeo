@@ -1,13 +1,12 @@
 @namespace Lumeo
 
-@if (ForceMount || IsOpen)
-{
-    <div class="@CssClass" hidden="@(IsOpen ? null : "hidden")" @attributes="AdditionalAttributes">
+<div class="grid transition-[grid-template-rows] duration-200 ease-out @(IsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0") @CssClass" @attributes="AdditionalAttributes" aria-hidden="@(!IsOpen)">
+    <div class="overflow-hidden min-h-0">
         <div class="pb-4 pt-0">
             @ChildContent
         </div>
     </div>
-}
+</div>
 
 @code {
     [CascadingParameter] public Accordion.AccordionContext Context { get; set; } = default!;
@@ -15,11 +14,10 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// When true, this panel is always rendered into the DOM (with the
-    /// <c>hidden</c> attribute when closed) instead of being unmounted.
-    /// Use when child state (form inputs, scroll position, expensive
-    /// component init) must survive closing the accordion item.
-    /// Default <c>false</c> preserves the original unmount behaviour.
+    /// Preserved for API compatibility only — Accordion content is now always
+    /// mounted to allow the grid-rows close animation to run on collapse, so
+    /// this flag is effectively a no-op. Children always live in the DOM
+    /// whether the panel is open or closed.
     /// </summary>
     [Parameter] public bool ForceMount { get; set; }
 
@@ -28,5 +26,5 @@
 
     private bool IsOpen => Context.IsOpen(ItemContext.Value);
 
-    private string CssClass => $"overflow-hidden text-sm {(IsOpen ? "animate-accordion-down" : "")} {Class}".Trim();
+    private string CssClass => $"text-sm {Class}".Trim();
 }

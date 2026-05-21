@@ -1,6 +1,7 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject Lumeo.Services.IComponentInteropService Interop
+@inject Microsoft.Extensions.Options.IOptions<Lumeo.Services.LumeoGestureOptions> GestureOpts
 @implements IAsyncDisposable
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -93,7 +94,7 @@
         if (shouldAttach && !_swipeAttached)
         {
             _swipeAttached = true;
-            try { await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync); }
+            try { await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync, GestureOpts.Value.SwipeThresholdPx, GestureOpts.Value.VerticalDeadZonePx); }
             catch (JSDisconnectedException) { _swipeAttached = false; }
             catch (InvalidOperationException) { _swipeAttached = false; } // JS unavailable during prerender
         }

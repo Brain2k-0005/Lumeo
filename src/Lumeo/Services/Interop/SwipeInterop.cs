@@ -19,20 +19,24 @@ internal sealed class SwipeInterop
         DotNetObjectReference<ComponentInteropService> selfRef,
         string elementId,
         string direction,
-        Func<Task> handler)
+        Func<Task> handler,
+        int? activationPx = null,
+        int? firePx = null)
     {
         _drawerSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, selfRef);
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, selfRef, new { activationPx, firePx });
     }
 
     public async ValueTask RegisterDrawerSwipe(
         IJSObjectReference module,
         DotNetObjectReference<ComponentInteropService> selfRef,
         string elementId,
-        Func<Task> handler)
+        Func<Task> handler,
+        int? activationPx = null,
+        int? firePx = null)
     {
         _drawerSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, "down", selfRef);
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, "down", selfRef, new { activationPx, firePx });
     }
 
     public async ValueTask UnregisterDrawerSwipe(IJSObjectReference module, string elementId)
@@ -57,11 +61,13 @@ internal sealed class SwipeInterop
         string elementId,
         string orientation,
         Func<string, Task> swipeHandler,
-        Func<double, double, int, Task> scrollHandler)
+        Func<double, double, int, Task> scrollHandler,
+        int? swipeThresholdPx = null,
+        int? verticalDeadZonePx = null)
     {
         _carouselSwipeHandlers[elementId] = swipeHandler;
         _carouselScrollHandlers[elementId] = scrollHandler;
-        await module.InvokeVoidAsync("registerCarouselSwipe", elementId, orientation, selfRef);
+        await module.InvokeVoidAsync("registerCarouselSwipe", elementId, orientation, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterCarouselSwipe(IJSObjectReference module, string elementId)
@@ -129,10 +135,12 @@ internal sealed class SwipeInterop
         IJSObjectReference module,
         DotNetObjectReference<ComponentInteropService> selfRef,
         string elementId,
-        Func<string, Task> handler)
+        Func<string, Task> handler,
+        int? swipeThresholdPx = null,
+        int? verticalDeadZonePx = null)
     {
         _horizontalSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerHorizontalSwipe", elementId, selfRef);
+        await module.InvokeVoidAsync("registerHorizontalSwipe", elementId, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterHorizontalSwipe(IJSObjectReference module, string elementId)
@@ -155,10 +163,12 @@ internal sealed class SwipeInterop
         IJSObjectReference module,
         DotNetObjectReference<ComponentInteropService> selfRef,
         string elementId,
-        Func<string, Task> handler)
+        Func<string, Task> handler,
+        int? swipeThresholdPx = null,
+        int? verticalDeadZonePx = null)
     {
         _gallerySwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerGallerySwipe", elementId, selfRef);
+        await module.InvokeVoidAsync("registerGallerySwipe", elementId, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterGallerySwipe(IJSObjectReference module, string elementId)
@@ -186,10 +196,12 @@ internal sealed class SwipeInterop
         DotNetObjectReference<ComponentInteropService> selfRef,
         string elementId,
         bool wrap,
-        Func<string, Task> handler)
+        Func<string, Task> handler,
+        int? swipeThresholdPx = null,
+        int? verticalDeadZonePx = null)
     {
         _tabSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerTabSwipe", elementId, wrap, selfRef);
+        await module.InvokeVoidAsync("registerTabSwipe", elementId, wrap, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterTabSwipe(IJSObjectReference module, string elementId)
