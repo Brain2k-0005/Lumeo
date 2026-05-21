@@ -25,8 +25,8 @@
             aria-expanded="@_isOpen"
             aria-required="@(Required ? "true" : "false")"
             aria-invalid="@(EffectiveInvalid ? "true" : "false")">
-        <span class="@(string.Join(" ", new[] { "flex-1 truncate text-left", displayText == (Placeholder ?? L["TreeSelect.Placeholder"]) ? "text-muted-foreground" : null }.Where(s => !string.IsNullOrWhiteSpace(s))))">@displayText</span>
-        @{ var chevronClass = string.Join(" ", new[] { "h-4 w-4 shrink-0 opacity-50 transition-transform", _isOpen ? "rotate-180" : null }.Where(s => !string.IsNullOrWhiteSpace(s))); }
+        <span class="@(Cx.Join("flex-1 truncate text-left", Cx.When(displayText == (Placeholder ?? L["TreeSelect.Placeholder"]), "text-muted-foreground")))">@displayText</span>
+        @{ var chevronClass = Cx.Join("h-4 w-4 shrink-0 opacity-50 transition-transform", Cx.When(_isOpen, "rotate-180")); }
         <Blazicon Svg="Lucide.ChevronDown" class="@chevronClass" />
     </button>
 
@@ -275,7 +275,7 @@
                             class="mr-1 rounded hover:bg-accent p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
                             @onclick="() => ToggleNode(item.Value)"
                             @onclick:stopPropagation="true">
-                        @{ var chevronRightClass = string.Join(" ", new[] { "h-3.5 w-3.5 transition-transform", isExpanded ? "rotate-90" : null }.Where(s => !string.IsNullOrWhiteSpace(s))); }
+                        @{ var chevronRightClass = Cx.Join("h-3.5 w-3.5 transition-transform", Cx.When(isExpanded, "rotate-90")); }
                         <Blazicon Svg="Lucide.ChevronRight" class="@chevronRightClass" />
                     </button>
                 }
@@ -317,11 +317,9 @@
             await SelectItem(item);
     }
 
-    private string GetItemClass(bool isSelected, bool disabled, bool isLeaf) =>
-        string.Join(" ", new[] {
-            "flex items-center gap-1 rounded-md py-1.5 pr-2 cursor-pointer transition-colors",
-            disabled ? "opacity-50 cursor-not-allowed" : isSelected && isLeaf ? "bg-accent text-accent-foreground" : "hover:bg-accent/60"
-        }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string GetItemClass(bool isSelected, bool disabled, bool isLeaf) => Cx.Join(
+        "flex items-center gap-1 rounded-md py-1.5 pr-2 cursor-pointer transition-colors",
+        disabled ? "opacity-50 cursor-not-allowed" : isSelected && isLeaf ? "bg-accent text-accent-foreground" : "hover:bg-accent/60");
 
     public async ValueTask DisposeAsync()
     {
