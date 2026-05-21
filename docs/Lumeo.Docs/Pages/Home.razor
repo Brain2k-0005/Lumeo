@@ -1,4 +1,5 @@
 @page "/"
+@implements IDisposable
 
 <PageTitle>Lumeo — The Blazor component library you'd actually want to ship</PageTitle>
 
@@ -456,25 +457,37 @@
                 <div class="flex h-full flex-col">
                     <div class="flex-1 p-2 bg-muted/10 overflow-hidden">
                         <Kanban Class="!p-2 !gap-3">
-                            <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]">
+                            <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]"
+                                          OnDrop="@(_ => MoveDraggingCard(_kanbanTodo))">
                                 @foreach (var card in _kanbanTodo)
                                 {
-                                    <KanbanCard Title="@card.Title" Description="@card.Description"
-                                                Class="rounded-md border border-border/40 bg-card p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/40 transition-colors" />
+                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
+                                        <KanbanCard Title="@card.Title" Description="@card.Description"
+                                                    Draggable="false"
+                                                    Class="rounded-md border border-border/40 bg-card p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/40 transition-colors" />
+                                    </div>
                                 }
                             </KanbanColumn>
-                            <KanbanColumn Title="In progress" Badge="@_kanbanDoing.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]">
+                            <KanbanColumn Title="In progress" Badge="@_kanbanDoing.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]"
+                                          OnDrop="@(_ => MoveDraggingCard(_kanbanDoing))">
                                 @foreach (var card in _kanbanDoing)
                                 {
-                                    <KanbanCard Title="@card.Title" Description="@card.Description"
-                                                Class="rounded-md border border-primary/40 bg-card p-2.5 ring-1 ring-primary/20 cursor-grab active:cursor-grabbing transition-colors" />
+                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
+                                        <KanbanCard Title="@card.Title" Description="@card.Description"
+                                                    Draggable="false"
+                                                    Class="rounded-md border border-primary/40 bg-card p-2.5 ring-1 ring-primary/20 cursor-grab active:cursor-grabbing transition-colors" />
+                                    </div>
                                 }
                             </KanbanColumn>
-                            <KanbanColumn Title="Done" Badge="@_kanbanDone.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]">
+                            <KanbanColumn Title="Done" Badge="@_kanbanDone.Count" Class="flex flex-col w-full rounded-lg border border-border/40 bg-background min-h-[200px]"
+                                          OnDrop="@(_ => MoveDraggingCard(_kanbanDone))">
                                 @foreach (var card in _kanbanDone)
                                 {
-                                    <KanbanCard Title="@card.Title" Description="@card.Description"
-                                                Class="rounded-md border border-border/40 bg-card/60 p-2.5 opacity-75 cursor-grab active:cursor-grabbing transition-colors" />
+                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
+                                        <KanbanCard Title="@card.Title" Description="@card.Description"
+                                                    Draggable="false"
+                                                    Class="rounded-md border border-border/40 bg-card/60 p-2.5 opacity-75 cursor-grab active:cursor-grabbing transition-colors" />
+                                    </div>
                                 }
                             </KanbanColumn>
                         </Kanban>
@@ -525,12 +538,12 @@
 
             <!-- DropdownMenu submenus — 3.0 headline feature, three-level recursive nesting -->
             <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
+                <div class="flex h-full flex-col" @onmouseenter="@(() => _dropdownHovered = true)" @onmouseleave="@(() => _dropdownHovered = false)">
                     <Stack Gap="3" Class="flex-1 items-center justify-center p-5 min-h-[160px] bg-muted/10">
                         <Lumeo.Text Size="xs" Color="muted" Class="text-center max-w-xs">
                             Three-level dropdown — hover opens each nested layer, arrow keys traverse, focus is roving.
                         </Lumeo.Text>
-                        <DropdownMenu>
+                        <DropdownMenu @bind-Open="_dropdownAutoOpen">
                             <DropdownMenuTrigger>
                                 <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
                                     <DynamicIcon Name="Menu" Class="h-4 w-4" />
@@ -963,6 +976,8 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 
     // Kanban tile — three columns of real cards, drag-reorderable.
     private record KanbanItem(string Title, string? Description);
+    private KanbanItem? _draggingCard;
+
     private readonly List<KanbanItem> _kanbanTodo = new()
     {
         new("Design audit", "Review spacing scale"),
@@ -1110,6 +1125,48 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         await Task.Delay(2000);
         _installCopied = false;
         StateHasChanged();
+    }
+
+    // Kanban drag-and-drop: each card sets _draggingCard on dragstart; each column's
+    // OnDrop calls MoveDraggingCard(targetList) to remove from its current list and
+    // append to the dropped-into list. KanbanColumn already preventDefaults dragover.
+    private void MoveDraggingCard(List<KanbanItem> target)
+    {
+        if (_draggingCard is null) return;
+        if (_kanbanTodo.Remove(_draggingCard) || _kanbanDoing.Remove(_draggingCard) || _kanbanDone.Remove(_draggingCard))
+        {
+            if (!target.Contains(_draggingCard))
+            {
+                target.Add(_draggingCard);
+            }
+        }
+        _draggingCard = null;
+        StateHasChanged();
+    }
+
+    // Auto-cycling DropdownMenu submenu showcase — opens for ~2.5s, closes for ~2s,
+    // repeats. Pauses while the user hovers the tile so manual interaction wins.
+    private bool _dropdownAutoOpen;
+    private bool _dropdownHovered;
+    private System.Threading.Timer? _dropdownTimer;
+
+    protected override void OnInitialized()
+    {
+        // First tick after 1.5s so the page settles, then alternate open/closed.
+        _dropdownTimer = new System.Threading.Timer(_ =>
+        {
+            if (_dropdownHovered) return; // user is interacting — don't fight them
+            _dropdownAutoOpen = !_dropdownAutoOpen;
+            var nextDelay = _dropdownAutoOpen ? 2500 : 2000;
+            _dropdownTimer?.Change(nextDelay, System.Threading.Timeout.Infinite);
+            InvokeAsync(StateHasChanged);
+        }, null, 1500, System.Threading.Timeout.Infinite);
+    }
+
+    public void Dispose()
+    {
+        _dropdownTimer?.Dispose();
+        _dropdownTimer = null;
     }
 }
 
