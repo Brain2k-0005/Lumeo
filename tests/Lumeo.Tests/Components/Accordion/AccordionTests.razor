@@ -3,6 +3,16 @@
 @code {
     public AccordionTests() { this.AddLumeoServices(); }
 
+    // 3.0.1 — AccordionContent is now always mounted (grid-rows animation needs both states present).
+    // Visibility is communicated via aria-hidden on the wrapper. Tests asserting "content is hidden"
+    // need to look at aria-hidden instead of markup absence.
+    private static bool ContentVisible(IRenderedFragment cut, string text)
+    {
+        var wrappers = cut.FindAll("[aria-hidden]");
+        var w = wrappers.FirstOrDefault(x => (x.TextContent ?? "").Contains(text));
+        return w?.GetAttribute("aria-hidden") == "false";
+    }
+
     [Fact]
     public void Renders_Root_Div_With_ChildContent()
     {
@@ -41,7 +51,7 @@
             </AccordionItem>
         </Accordion>);
 
-        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 1"));
     }
 
     [Fact]
@@ -73,7 +83,7 @@
         Assert.Contains("Content 1", cut.Markup);
 
         cut.Find("button").Click();
-        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 1"));
     }
 
     [Fact]
@@ -93,11 +103,11 @@
         var buttons = cut.FindAll("button");
         buttons[0].Click();
         Assert.Contains("Content 1", cut.Markup);
-        Assert.DoesNotContain("Content 2", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 2"));
 
         buttons = cut.FindAll("button");
         buttons[1].Click();
-        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 1"));
         Assert.Contains("Content 2", cut.Markup);
     }
 
@@ -143,7 +153,7 @@
         buttons = cut.FindAll("button");
         buttons[1].Click();
 
-        Assert.DoesNotContain("Content 1", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 1"));
         Assert.Contains("Content 2", cut.Markup);
     }
 
@@ -186,9 +196,9 @@
             </AccordionItem>
         </Accordion>);
 
-        Assert.DoesNotContain("Content 1", cut.Markup);
-        Assert.DoesNotContain("Content 2", cut.Markup);
-        Assert.DoesNotContain("Content 3", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 1"));
+        Assert.False(ContentVisible(cut, "Content 2"));
+        Assert.False(ContentVisible(cut, "Content 3"));
     }
 
     [Fact]
@@ -312,7 +322,7 @@
         </Accordion>);
 
         Assert.Contains("Content 1", cut.Markup);
-        Assert.DoesNotContain("Content 2", cut.Markup);
+        Assert.False(ContentVisible(cut, "Content 2"));
         Assert.Contains("Content 3", cut.Markup);
     }
 
