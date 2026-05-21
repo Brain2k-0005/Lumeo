@@ -91,14 +91,14 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) â
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="3.0.0" />
+  <PackageReference Include="Lumeo"            Version="3.0.1" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="3.0.0" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="3.0.0" />
-  <PackageReference Include="Lumeo.Editor"    Version="3.0.0" />
-  <PackageReference Include="Lumeo.Scheduler" Version="3.0.0" />
-  <PackageReference Include="Lumeo.Gantt"     Version="3.0.0" />
-  <PackageReference Include="Lumeo.Motion"    Version="3.0.0" />
+  <PackageReference Include="Lumeo.Charts"    Version="3.0.1" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="3.0.1" />
+  <PackageReference Include="Lumeo.Editor"    Version="3.0.1" />
+  <PackageReference Include="Lumeo.Scheduler" Version="3.0.1" />
+  <PackageReference Include="Lumeo.Gantt"     Version="3.0.1" />
+  <PackageReference Include="Lumeo.Motion"    Version="3.0.1" />
 </ItemGroup>
 ```
 
