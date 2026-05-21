@@ -133,6 +133,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Mention / Textarea Caret
     ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId);
 
+    // Tabs (active indicator measurement for animated underline)
+    ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
+
     // BackToTop
     ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler);
     ValueTask UnregisterBackToTop(string id);

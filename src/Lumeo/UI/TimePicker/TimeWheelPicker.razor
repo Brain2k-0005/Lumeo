@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.Globalization
+@using Lumeo.Internal
 @implements IDisposable
 
 <div class="@RootCssClass" @attributes="AdditionalAttributes" style="@RootStyle">
@@ -90,12 +91,10 @@
     private string _amLabel = "AM";
     private string _pmLabel = "PM";
 
-    private System.Threading.Timer? _hourTimer;
-    private System.Threading.Timer? _minuteTimer;
-    private System.Threading.Timer? _periodTimer;
-    private int _pendingHour;
-    private int _pendingMinute;
-    private int _pendingPeriod;
+    private const int SnapDebounceMs = 100;
+    private readonly DebouncedValue<int> _hourDebounced = new(SnapDebounceMs);
+    private readonly DebouncedValue<int> _minuteDebounced = new(SnapDebounceMs);
+    private readonly DebouncedValue<int> _periodDebounced = new(SnapDebounceMs);
     private bool _initialised;
 
     private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
@@ -153,8 +152,7 @@
         if (!_initialised) return;
         var idx = await GetIndexAsync(_hourCol);
         if (idx < 0 || idx >= _hours.Count) return;
-        _pendingHour = _hours[idx];
-        ResetTimer(ref _hourTimer, CommitHour);
+        _hourDebounced.Set(_hours[idx]);
     }
 
     private async Task OnMinuteScroll()
@@ -162,8 +160,7 @@
         if (!_initialised) return;
         var idx = await GetIndexAsync(_minuteCol);
         if (idx < 0 || idx >= _minutes.Count) return;
-        _pendingMinute = _minutes[idx];
-        ResetTimer(ref _minuteTimer, CommitMinute);
+        _minuteDebounced.Set(_minutes[idx]);
     }
 
     private async Task OnPeriodScroll()
@@ -171,8 +168,7 @@
         if (!_initialised) return;
         var idx = await GetIndexAsync(_periodCol);
         if (idx < 0 || idx > 1) return;
-        _pendingPeriod = idx;
-        ResetTimer(ref _periodTimer, CommitPeriod);
+        _periodDebounced.Set(idx);
     }
 
     private async Task<int> GetIndexAsync(ElementReference el)
@@ -181,38 +177,29 @@
         return (int)Math.Round(scrollTop / ItemHeight);
     }
 
-    // 2.2.3: ResetTimer's commit param is now Func<Task> so the Commit*
-    // methods can be async Task instead of async void. See DateWheelPicker
-    // for the full rationale — async void escapes exceptions to the
-    // thread-pool finalizer where they crash the circuit.
-    private void ResetTimer(ref System.Threading.Timer? timer, Func<Task> commit)
+    protected override void OnInitialized()
     {
-        timer?.Dispose();
-        timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);
-    }
-
-    private async Task CommitHour()
-    {
-        if (_pendingHour == _hour) return;
-        _hour = _pendingHour;
-        await RaiseChange();
-        StateHasChanged();
-    }
-
-    private async Task CommitMinute()
-    {
-        if (_pendingMinute == _minute) return;
-        _minute = _pendingMinute;
-        await RaiseChange();
-        StateHasChanged();
-    }
-
-    private async Task CommitPeriod()
-    {
-        if (_pendingPeriod == _periodIndex) return;
-        _periodIndex = _pendingPeriod;
-        await RaiseChange();
-        StateHasChanged();
+        _hourDebounced.OnChanged(pending => InvokeAsync(async () =>
+        {
+            if (pending == _hour) return;
+            _hour = pending;
+            await RaiseChange();
+            StateHasChanged();
+        }));
+        _minuteDebounced.OnChanged(pending => InvokeAsync(async () =>
+        {
+            if (pending == _minute) return;
+            _minute = pending;
+            await RaiseChange();
+            StateHasChanged();
+        }));
+        _periodDebounced.OnChanged(pending => InvokeAsync(async () =>
+        {
+            if (pending == _periodIndex) return;
+            _periodIndex = pending;
+            await RaiseChange();
+            StateHasChanged();
+        }));
     }
 
     private async Task RaiseChange()
@@ -263,8 +250,8 @@
 
     public void Dispose()
     {
-        _hourTimer?.Dispose();
-        _minuteTimer?.Dispose();
-        _periodTimer?.Dispose();
+        _hourDebounced.Dispose();
+        _minuteDebounced.Dispose();
+        _periodDebounced.Dispose();
     }
 }

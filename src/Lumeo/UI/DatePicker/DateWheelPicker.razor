@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.Globalization
+@using Lumeo.Internal
 @implements IDisposable
 
 <div class="@RootCssClass" @attributes="AdditionalAttributes" style="@RootStyle">
@@ -81,14 +82,12 @@
     private int _daysInMonth = 31;
     private List<int> _years = new();
 
-    // Debounce timer state — one per column so a scroll on one column doesn't
+    // Debounce state — one per column so a scroll on one column doesn't
     // cancel pending settle on another.
-    private System.Threading.Timer? _dayTimer;
-    private System.Threading.Timer? _monthTimer;
-    private System.Threading.Timer? _yearTimer;
-    private int _pendingDay;
-    private int _pendingMonth;
-    private int _pendingYear;
+    private const int SnapDebounceMs = 100;
+    private readonly DebouncedValue<int> _dayDebounced = new(SnapDebounceMs);
+    private readonly DebouncedValue<int> _monthDebounced = new(SnapDebounceMs);
+    private readonly DebouncedValue<int> _yearDebounced = new(SnapDebounceMs);
     private bool _initialised;
 
     private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
@@ -129,8 +128,7 @@
         var idx = await GetIndexAsync(_dayCol);
         if (idx < 0) return;
         var day = Math.Clamp(idx + 1, 1, _daysInMonth);
-        _pendingDay = day;
-        ResetTimer(ref _dayTimer, CommitDay);
+        _dayDebounced.Set(day);
     }
 
     private async Task OnMonthScroll()
@@ -139,8 +137,7 @@
         var idx = await GetIndexAsync(_monthCol);
         if (idx < 0) return;
         var month = Math.Clamp(idx + 1, 1, 12);
-        _pendingMonth = month;
-        ResetTimer(ref _monthTimer, CommitMonth);
+        _monthDebounced.Set(month);
     }
 
     private async Task OnYearScroll()
@@ -148,8 +145,7 @@
         if (!_initialised) return;
         var idx = await GetIndexAsync(_yearCol);
         if (idx < 0 || idx >= _years.Count) return;
-        _pendingYear = _years[idx];
-        ResetTimer(ref _yearTimer, CommitYear);
+        _yearDebounced.Set(_years[idx]);
     }
 
     private async Task<int> GetIndexAsync(ElementReference el)
@@ -162,44 +158,33 @@
         return (int)Math.Round(scrollTop / ItemHeight);
     }
 
-    // 2.2.3: ResetTimer's commit param is now Func<Task> so the Commit*
-    // methods can be async Task instead of async void. async void escapes
-    // exceptions to the thread-pool finalizer where they crash the circuit;
-    // returning Task lets InvokeAsync observe (and swallow if the circuit
-    // is already torn down — JSDisconnectedException is normal during
-    // teardown).
-    private void ResetTimer(ref System.Threading.Timer? timer, Func<Task> commit)
+    protected override void OnInitialized()
     {
-        timer?.Dispose();
-        timer = new System.Threading.Timer(_ => InvokeAsync(commit), null, 100, System.Threading.Timeout.Infinite);
-    }
-
-    private async Task CommitDay()
-    {
-        if (_pendingDay == _day) return;
-        _day = _pendingDay;
-        await RaiseChange();
-        StateHasChanged();
-    }
-
-    private async Task CommitMonth()
-    {
-        if (_pendingMonth == _month) return;
-        _month = _pendingMonth;
-        _daysInMonth = DateTime.DaysInMonth(_year, _month);
-        if (_day > _daysInMonth) _day = _daysInMonth;
-        await RaiseChange();
-        StateHasChanged();
-    }
-
-    private async Task CommitYear()
-    {
-        if (_pendingYear == _year) return;
-        _year = _pendingYear;
-        _daysInMonth = DateTime.DaysInMonth(_year, _month);
-        if (_day > _daysInMonth) _day = _daysInMonth;
-        await RaiseChange();
-        StateHasChanged();
+        _dayDebounced.OnChanged(pending => InvokeAsync(async () =>
+        {
+            if (pending == _day) return;
+            _day = pending;
+            await RaiseChange();
+            StateHasChanged();
+        }));
+        _monthDebounced.OnChanged(pending => InvokeAsync(async () =>
+        {
+            if (pending == _month) return;
+            _month = pending;
+            _daysInMonth = DateTime.DaysInMonth(_year, _month);
+            if (_day > _daysInMonth) _day = _daysInMonth;
+            await RaiseChange();
+            StateHasChanged();
+        }));
+        _yearDebounced.OnChanged(pending => InvokeAsync(async () =>
+        {
+            if (pending == _year) return;
+            _year = pending;
+            _daysInMonth = DateTime.DaysInMonth(_year, _month);
+            if (_day > _daysInMonth) _day = _daysInMonth;
+            await RaiseChange();
+            StateHasChanged();
+        }));
     }
 
     private async Task RaiseChange()
@@ -253,8 +238,8 @@
 
     public void Dispose()
     {
-        _dayTimer?.Dispose();
-        _monthTimer?.Dispose();
-        _yearTimer?.Dispose();
+        _dayDebounced.Dispose();
+        _monthDebounced.Dispose();
+        _yearDebounced.Dispose();
     }
 }
