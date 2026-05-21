@@ -355,16 +355,15 @@
             </AccordionItem>
         </Accordion>);
 
-        // Content must exist in the DOM even though the panel is closed.
+        // 3.0.1 — content is always mounted regardless of ForceMount (grid-rows animation needs both states).
         Assert.Contains("Mounted Content", cut.Markup);
 
-        // The outer content wrapper (overflow-hidden) must carry the hidden attribute.
+        // Visibility is now communicated via aria-hidden on the wrapper.
         var contentWrapper = cut.FindAll("div").FirstOrDefault(d =>
-            (d.GetAttribute("class") ?? "").Contains("overflow-hidden") &&
+            d.HasAttribute("aria-hidden") &&
             d.TextContent.Contains("Mounted Content"));
         Assert.NotNull(contentWrapper);
-        // bUnit renders boolean hidden attr as "" (empty string), not null.
-        Assert.NotNull(contentWrapper!.GetAttribute("hidden"));
+        Assert.Equal("true", contentWrapper!.GetAttribute("aria-hidden"));
     }
 
     [Fact]
@@ -379,11 +378,11 @@
 
         cut.Find("button").Click();
 
-        // After opening, the hidden attribute must be absent.
+        // After opening, aria-hidden flips to "false" (not removed entirely).
         var contentWrapper = cut.FindAll("div").FirstOrDefault(d =>
-            (d.GetAttribute("class") ?? "").Contains("overflow-hidden") &&
+            d.HasAttribute("aria-hidden") &&
             d.TextContent.Contains("Mounted Content"));
         Assert.NotNull(contentWrapper);
-        Assert.Null(contentWrapper!.GetAttribute("hidden"));
+        Assert.Equal("false", contentWrapper!.GetAttribute("aria-hidden"));
     }
 }
