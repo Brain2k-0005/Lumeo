@@ -54,9 +54,9 @@ public class ToastPositioningTests : IAsyncLifetime
 
         // Wait until eviction settles to exactly 2 (exit animation is 220 ms).
         cut.WaitForState(
-            () => cut.FindAll("[role='alert']").Count == 2,
+            () => cut.FindAll("[role='alert'],[role='status']").Count == 2,
             TimeSpan.FromSeconds(5));
 
-        Assert.Equal(2, cut.FindAll("[role='alert']").Count);
+        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
     }
 }

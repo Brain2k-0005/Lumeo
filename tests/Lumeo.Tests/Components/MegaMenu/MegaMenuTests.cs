@@ -41,7 +41,7 @@ public class MegaMenuTests : IAsyncLifetime
     public void Vertical_orientation_applies_flex_col()
     {
         var cut = _ctx.Render<L.MegaMenu>(p => p
-            .Add(c => c.Orientation, L.MegaMenu.MegaMenuOrientation.Vertical));
+            .Add(c => c.Orientation, L.Orientation.Vertical));
         Assert.Contains("flex-col", cut.Markup);
     }
 

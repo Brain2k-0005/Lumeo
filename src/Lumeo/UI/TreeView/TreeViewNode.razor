@@ -1,7 +1,7 @@
 @namespace Lumeo
 @typeparam T
 
-<div class="group focus-visible:outline-none" role="treeitem"
+<div class="@RootClass" role="treeitem"
      aria-expanded="@AriaExpanded"
      aria-selected="@IsSelected.ToString().ToLowerInvariant()"
      aria-disabled="@Item.IsDisabled.ToString().ToLowerInvariant()"
@@ -9,7 +9,8 @@
      @onfocus="HandleFocus"
      @onblur="HandleBlur"
      @onkeydown="HandleKeyDown"
-     @onkeydown:stopPropagation="true">
+     @onkeydown:stopPropagation="true"
+     @attributes="AdditionalAttributes">
 
     <div class="@NodeClass" style="padding-left: @(Level * 16)px" @onclick="HandleClick">
 
@@ -102,6 +103,11 @@
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnExpandChanged { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnSelectionChanged { get; set; }
 
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => $"group focus-visible:outline-none {Class}".Trim();
+
     // Roving tabindex: any node that currently holds DOM focus gets tabindex=0 so
     // the browser can return focus to it. Level-0 nodes are also in the tab sequence
     // initially (before any node has been focused) so the tree is reachable via Tab.
@@ -138,12 +144,9 @@
         }
     }
 
-    private string ChevronClass =>
-        string.Join(" ", new[]
-        {
-            "h-4 w-4 text-muted-foreground transition-transform",
-            Item.IsExpanded ? "rotate-90" : null
-        }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string ChevronClass => Cx.Join(
+        "h-4 w-4 text-muted-foreground transition-transform",
+        Cx.When(Item.IsExpanded, "rotate-90"));
 
     private string IconClass =>
         Item.IsDisabled

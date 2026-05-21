@@ -32,7 +32,7 @@ public class TimelineTests : IAsyncLifetime
     public void Horizontal_Orientation_Uses_FlexRow()
     {
         var cut = _ctx.Render<Lumeo.Timeline>(p => p
-            .Add(t => t.Orientation, Lumeo.Timeline.TimelineOrientation.Horizontal)
+            .Add(t => t.Orientation, Lumeo.Orientation.Horizontal)
             .AddChildContent("Timeline content"));
 
         var cls = cut.Find("div").GetAttribute("class");

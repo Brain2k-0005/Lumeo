@@ -17,6 +17,36 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private FormContext _context = new();
+    // JSON snapshot of the Model captured at initialization. Used by ResetValues() to
+    // restore the Model to its initial state. Captured via System.Text.Json round-trip
+    // so it covers nested objects and record types without needing to know the schema.
+    private string? _initialModelSnapshot;
+
+    protected override Task OnInitializedAsync()
+    {
+        CaptureInitialSnapshot();
+        return Task.CompletedTask;
+    }
+
+    private void CaptureInitialSnapshot()
+    {
+        if (Model is null)
+        {
+            _initialModelSnapshot = null;
+            return;
+        }
+
+        try
+        {
+            _initialModelSnapshot = System.Text.Json.JsonSerializer.Serialize(Model);
+        }
+        catch
+        {
+            // If the model is not JSON-serializable we silently skip the snapshot.
+            // ResetValues() will then be a no-op (besides clearing errors).
+            _initialModelSnapshot = null;
+        }
+    }
 
     private async Task HandleSubmit()
     {
@@ -29,7 +59,13 @@
         {
             if (Validator is not null)
             {
-                _context.Errors = Validator.Validate(Model);
+                // Merge sync validation results with any async errors already in the context
+                // so per-field async validators (e.g. "username taken") survive a sync re-validate.
+                var syncErrors = Validator.Validate(Model);
+                foreach (var kvp in syncErrors)
+                {
+                    _context.Errors[kvp.Key] = kvp.Value;
+                }
             }
 
             if (_context.IsValid)
@@ -63,5 +99,63 @@
     {
         _context.Reset();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Restores the <see cref="Model"/>'s public read/write properties to the values
+    /// captured during <see cref="OnInitializedAsync"/>, and clears validation errors.
+    /// <para>
+    /// Implementation note: the snapshot is taken via a <c>System.Text.Json</c> round-trip,
+    /// so the model type MUST be JSON-round-trippable — i.e. public properties with both a
+    /// getter and a setter (or an init-only setter for record types), no recursive cycles,
+    /// and serializable property types. Properties that are read-only, write-only, or marked
+    /// <c>[JsonIgnore]</c> will NOT be restored. If the model failed to serialize at
+    /// initialization time this method falls back to <see cref="Reset"/> behavior
+    /// (errors cleared, values untouched).
+    /// </para>
+    /// </summary>
+    public void ResetValues()
+    {
+        if (Model is not null && _initialModelSnapshot is not null)
+        {
+            try
+            {
+                var restored = System.Text.Json.JsonSerializer.Deserialize<TModel>(_initialModelSnapshot);
+                if (restored is not null)
+                {
+                    CopyPublicProperties(restored, Model);
+                }
+            }
+            catch
+            {
+                // Round-trip failed; leave Model untouched but still clear errors below.
+            }
+        }
+
+        _context.Reset();
+        StateHasChanged();
+    }
+
+    // Copies public read/write properties from source to destination using reflection.
+    // We mutate the existing Model instance (rather than reassigning the Model parameter)
+    // because the parent component owns Model and reassigning a [Parameter] from inside
+    // the child would be overwritten on the next render pass.
+    private static void CopyPublicProperties(TModel source, TModel destination)
+    {
+        var type = typeof(TModel);
+        foreach (var prop in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            if (prop.GetIndexParameters().Length > 0) continue;
+            try
+            {
+                var value = prop.GetValue(source);
+                prop.SetValue(destination, value);
+            }
+            catch
+            {
+                // Skip properties whose setter throws (init-only on a non-record class, etc.).
+            }
+        }
     }
 }

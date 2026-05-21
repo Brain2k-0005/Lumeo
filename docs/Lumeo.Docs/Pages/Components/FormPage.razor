@@ -138,6 +138,53 @@
     </ComponentDemo>
 </Stack>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="reset-to-initial-values" Level="2" Class="scroll-mt-20">Reset to initial values</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        The Form component takes a snapshot of the model when it's first attached. Two reset methods are available:
+    </Lumeo.Text>
+    <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+        <li>
+            <strong class="text-foreground">Form.Reset()</strong> — clears errors, dirty fields, and submission state,
+            but leaves the bound model values alone. Useful after a successful submit when you want to keep what the
+            user typed but drop the validation overlay.
+        </li>
+        <li>
+            <strong class="text-foreground">Form.ResetValues()</strong> — restores every property on the model to the
+            snapshot taken at first render, then clears errors / dirty / submission state. The "Cancel changes" button
+            on an edit form.
+        </li>
+    </ul>
+
+    <ComponentDemo Title="Reset to initial values" Code="@_resetValuesCode">
+        <Container MaxWidth="md" Center="false">
+            <Form @ref="_resetForm" TModel="ProfileModel" Model="@_resetModel" Validator="@_resetValidator">
+                <Stack Gap="4">
+                    <FormField Name="displayName" Label="Display name">
+                        <Input @bind-Value="_resetModel.DisplayName" />
+                    </FormField>
+                    <FormField Name="bio" Label="Bio">
+                        <Textarea @bind-Value="_resetModel.Bio" />
+                    </FormField>
+                    <Flex Gap="2">
+                        <Button OnClick="@(() => _resetForm?.Reset())">Save</Button>
+                        <Button Variant="Button.ButtonVariant.Outline"
+                                OnClick="@(() => _resetForm?.ResetValues())">Cancel changes</Button>
+                    </Flex>
+                </Stack>
+            </Form>
+        </Container>
+    </ComponentDemo>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        <strong>Snapshot timing.</strong> The snapshot is captured on first render against the model reference you
+        passed. If you swap the entire model (e.g. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_model = newOne</code>),
+        call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Form.CaptureSnapshot()</code>
+        on the new model so the next <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ResetValues()</code>
+        restores to the right baseline.
+    </Lumeo.Text>
+</div>
+
 <div class="mt-16">
     <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
 
@@ -180,7 +227,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">HelpText</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Helper text shown below the input when there is no error.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Error</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Error message. Turns the label red and displays below the input.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Required</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shows a red asterisk next to the label.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Orientation</TableCell><TableCell Class="font-mono text-xs">FormFieldOrientation</TableCell><TableCell Class="font-mono text-xs">Vertical</TableCell><TableCell>Layout orientation. Values: Vertical, Horizontal.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Orientation</TableCell><TableCell Class="font-mono text-xs">Lumeo.Orientation</TableCell><TableCell Class="font-mono text-xs">Vertical</TableCell><TableCell>Layout orientation. Values: Vertical, Horizontal.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">LabelWidth</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Width of the label column in horizontal orientation.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Field name identifier for validation.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Input elements for the field.</TableCell></TableRow>
@@ -277,6 +324,44 @@
 </div>
 
 @code {
+    public class ProfileModel
+    {
+        public string? DisplayName { get; set; } = "Ada Lovelace";
+        public string? Bio { get; set; } = "Mathematician.";
+    }
+
+    private Form<ProfileModel>? _resetForm;
+    private ProfileModel _resetModel = new();
+    private DataAnnotationsFormValidator _resetValidator = new();
+
+    private string _resetValuesCode = @"<Form @ref=""_form""
+      TModel=""ProfileModel""
+      Model=""@_model""
+      Validator=""@_validator""
+      OnValidSubmit=""@HandleSave"">
+
+    <FormField Label=""Display name"">
+        <Input @bind-Value=""_model.DisplayName"" />
+    </FormField>
+
+    <FormField Label=""Bio"">
+        <Textarea @bind-Value=""_model.Bio"" />
+    </FormField>
+
+    <Flex Gap=""2"">
+        <Button type=""submit"">Save</Button>
+        <Button type=""button""
+                Variant=""Button.ButtonVariant.Outline""
+                OnClick=""@(() => _form?.ResetValues())"">Cancel changes</Button>
+    </Flex>
+</Form>
+
+@code {
+    Form<ProfileModel>? _form;
+    ProfileModel _model = LoadFromApi();
+    DataAnnotationsFormValidator _validator = new();
+}";
+
     // Validation pattern demos
     private string? _emailValue;
     private string? _emailError;

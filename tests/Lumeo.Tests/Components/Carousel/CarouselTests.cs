@@ -20,7 +20,7 @@ public class CarouselTests : IAsyncLifetime
 
     private IRenderedComponent<IComponent> RenderCarousel(
         bool loop = false,
-        L.Carousel.CarouselOrientation orientation = L.Carousel.CarouselOrientation.Horizontal,
+        L.Orientation orientation = L.Orientation.Horizontal,
         int slideCount = 3,
         string? carouselClass = null)
     {
@@ -122,7 +122,7 @@ public class CarouselTests : IAsyncLifetime
     [Fact]
     public void Horizontal_Carousel_Content_Has_Flex_Class()
     {
-        var cut = RenderCarousel(orientation: L.Carousel.CarouselOrientation.Horizontal);
+        var cut = RenderCarousel(orientation: L.Orientation.Horizontal);
 
         // The inner scrollable div should have flex class
         var divs = cut.FindAll("div");
@@ -136,7 +136,7 @@ public class CarouselTests : IAsyncLifetime
     [Fact]
     public void Vertical_Carousel_Content_Has_Flex_Col_Class()
     {
-        var cut = RenderCarousel(orientation: L.Carousel.CarouselOrientation.Vertical);
+        var cut = RenderCarousel(orientation: L.Orientation.Vertical);
 
         var divs = cut.FindAll("div");
         Assert.Contains(divs, d =>
@@ -180,7 +180,7 @@ public class CarouselTests : IAsyncLifetime
         // rc.43: horizontal CarouselItem now uses `ps-4` (Tailwind logical
         // property) instead of `pl-4` so padding flips correctly in RTL.
         // ps-4 resolves to padding-left in LTR — same visual result.
-        var cut = RenderCarousel(orientation: L.Carousel.CarouselOrientation.Horizontal);
+        var cut = RenderCarousel(orientation: L.Orientation.Horizontal);
 
         var slides = cut.FindAll("[role='group']");
         Assert.NotEmpty(slides);
@@ -190,7 +190,7 @@ public class CarouselTests : IAsyncLifetime
     [Fact]
     public void Vertical_Slide_Has_Pt4_Class()
     {
-        var cut = RenderCarousel(orientation: L.Carousel.CarouselOrientation.Vertical);
+        var cut = RenderCarousel(orientation: L.Orientation.Vertical);
 
         var slides = cut.FindAll("[role='group']");
         Assert.NotEmpty(slides);

@@ -1,21 +1,29 @@
 @namespace Lumeo
+@using Lumeo.Internal
+@implements IDisposable
 
 @{
-    var context = new FormFieldContext(Name, EffectiveError);
+    var context = new FormFieldContext(Name, EffectiveError, IsValidating);
 }
 
 <CascadingValue Value="context" IsFixed="false">
     <div class="@CssClass" @attributes="AdditionalAttributes">
-        @if (Orientation == FormFieldOrientation.Vertical)
+        @if (Orientation == Lumeo.Orientation.Vertical)
         {
             @if (Label is not null)
             {
                 <Label>
-                    @Label
-                    @if (Required)
-                    {
-                        <span class="text-destructive ml-0.5">*</span>
-                    }
+                    <span class="inline-flex items-center gap-1.5">
+                        @Label
+                        @if (Required)
+                        {
+                            <span class="text-destructive ml-0.5">*</span>
+                        }
+                        @if (IsValidating)
+                        {
+                            <Spinner Size="Lumeo.Size.Sm" Color="text-muted-foreground" />
+                        }
+                    </span>
                 </Label>
             }
             @ChildContent
@@ -25,7 +33,7 @@
             }
             @if (EffectiveError is not null)
             {
-                <p class="text-xs text-destructive">@EffectiveError</p>
+                <p class="text-xs text-destructive" role="alert" aria-live="polite">@EffectiveError</p>
             }
         }
         else
@@ -33,12 +41,18 @@
             <div class="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1">
                 @if (Label is not null)
                 {
-                    <Label Class="@(string.Join(" ", new[] { "text-right", LabelWidth is not null ? $"w-[{LabelWidth}]" : null }.Where(s => !string.IsNullOrWhiteSpace(s))))">
-                        @Label
-                        @if (Required)
-                        {
-                            <span class="text-destructive ml-0.5">*</span>
-                        }
+                    <Label Class="@(Cx.Join("text-right", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
+                        <span class="inline-flex items-center justify-end gap-1.5">
+                            @Label
+                            @if (Required)
+                            {
+                                <span class="text-destructive ml-0.5">*</span>
+                            }
+                            @if (IsValidating)
+                            {
+                                <Spinner Size="Lumeo.Size.Sm" Color="text-muted-foreground" />
+                            }
+                        </span>
                     </Label>
                 }
                 <div>
@@ -49,7 +63,7 @@
                     }
                     @if (EffectiveError is not null)
                     {
-                        <p class="text-xs text-destructive mt-1">@EffectiveError</p>
+                        <p class="text-xs text-destructive mt-1" role="alert" aria-live="polite">@EffectiveError</p>
                     }
                 </div>
             </div>
@@ -62,12 +76,38 @@
     [Parameter] public string? HelpText { get; set; }
     [Parameter] public string? Error { get; set; }
     [Parameter] public bool Required { get; set; }
-    [Parameter] public FormFieldOrientation Orientation { get; set; } = FormFieldOrientation.Vertical;
+    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Vertical;
     [Parameter] public string? LabelWidth { get; set; }
     [Parameter] public string? Name { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // --- Async validation ---
+    /// <summary>
+    /// Optional async validator. Receives the current <see cref="Value"/>, returns
+    /// null when valid or an error message string otherwise. The result is stored
+    /// in <see cref="FormContext.Errors"/> against <see cref="Name"/>.
+    /// </summary>
+    [Parameter] public Func<object?, Task<string?>>? AsyncValidator { get; set; }
+
+    /// <summary>Debounce window in ms. 0 disables debouncing.</summary>
+    [Parameter] public int AsyncValidationDebounceMs { get; set; } = 0;
+
+    /// <summary>When async validation runs. Defaults to <see cref="AsyncValidationTrigger.OnBlur"/>.</summary>
+    [Parameter] public AsyncValidationTrigger AsyncValidateOn { get; set; } = AsyncValidationTrigger.OnBlur;
+
+    /// <summary>
+    /// Current value of the bound input. Required for <see cref="AsyncValidationTrigger.OnChange"/>
+    /// auto-triggering; also passed to the validator on blur. If unset, consumers may invoke
+    /// <see cref="ValidateAsync(object?)"/> directly.
+    /// </summary>
+    [Parameter] public object? Value { get; set; }
+
+    /// <summary>Fired whenever <see cref="IsValidating"/> flips.</summary>
+    [Parameter] public EventCallback<bool> OnValidatingChanged { get; set; }
+
+    public bool IsValidating { get; private set; }
 
     // Bug D fix: receive the parent Form's context so Reset() clears cascade to child fields.
     [CascadingParameter] private FormContext? ParentFormContext { get; set; }
@@ -78,17 +118,149 @@
             ? pc.GetFieldErrors(Name).FirstOrDefault() ?? Error
             : Error;
 
-    private string CssClass => Orientation == FormFieldOrientation.Vertical
+    private string CssClass => Orientation == Lumeo.Orientation.Vertical
         ? $"space-y-2 {Class}".Trim()
         : $"{Class}".Trim();
 
-    public enum FormFieldOrientation
+    // Async machinery
+    private DebouncedValue<object?>? _debouncer;
+    private int _lastDebounceMs = -1;
+    private CancellationTokenSource? _cts;
+    private object? _previousValue;
+    private bool _hasPreviousValue;
+    // Synthetic key used when no Name is set so the validating-fields set still aggregates.
+    private string FieldKey => string.IsNullOrEmpty(Name) ? $"__field_{GetHashCode()}" : Name!;
+
+    protected override async Task OnParametersSetAsync()
     {
-        Vertical,
-        Horizontal
+        // Re-create the debouncer if the window changed.
+        if (_lastDebounceMs != AsyncValidationDebounceMs)
+        {
+            _debouncer?.Dispose();
+            _debouncer = AsyncValidationDebounceMs > 0
+                ? new DebouncedValue<object?>(AsyncValidationDebounceMs)
+                : null;
+            _debouncer?.OnChanged(RunValidationAsync);
+            _lastDebounceMs = AsyncValidationDebounceMs;
+        }
+
+        // Detect value changes for OnChange trigger. Skip the first parameter-set
+        // pass so we don't auto-validate before the user has interacted.
+        if (AsyncValidator is not null && AsyncValidateOn == AsyncValidationTrigger.OnChange)
+        {
+            if (_hasPreviousValue && !Equals(_previousValue, Value))
+            {
+                ScheduleValidation(Value);
+            }
+        }
+        _previousValue = Value;
+        _hasPreviousValue = true;
+
+        await Task.CompletedTask;
     }
 
-    public record FormFieldContext(string? Name, string? Error)
+    /// <summary>
+    /// Manually trigger async validation (e.g. wire to an input's @onblur). Honors
+    /// the configured debounce window. Passes <paramref name="value"/> to the validator;
+    /// if null the current <see cref="Value"/> parameter is used.
+    /// </summary>
+    public Task ValidateAsync(object? value = null)
+    {
+        if (AsyncValidator is null) return Task.CompletedTask;
+        ScheduleValidation(value ?? Value);
+        return Task.CompletedTask;
+    }
+
+    private void ScheduleValidation(object? value)
+    {
+        if (AsyncValidator is null) return;
+        if (_debouncer is not null)
+        {
+            _debouncer.Set(value);
+        }
+        else
+        {
+            _ = RunValidationAsync(value);
+        }
+    }
+
+    private async Task RunValidationAsync(object? value)
+    {
+        var validator = AsyncValidator;
+        if (validator is null) return;
+
+        // Cancel previous in-flight call.
+        _cts?.Cancel();
+        _cts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+        var token = cts.Token;
+
+        await SetValidatingAsync(true);
+
+        string? error = null;
+        try
+        {
+            error = await validator(value).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch
+        {
+            // Swallow to avoid breaking the form; surface no error rather than throwing.
+        }
+
+        if (token.IsCancellationRequested) return;
+
+        if (ParentFormContext is { } ctx && !string.IsNullOrEmpty(Name))
+        {
+            ctx.SetFieldError(Name!, error);
+        }
+        else
+        {
+            // No parent context / no Name: fall back to the local Error parameter via re-render.
+            Error = error;
+        }
+
+        await SetValidatingAsync(false);
+        StateHasChanged();
+    }
+
+    private async Task SetValidatingAsync(bool validating)
+    {
+        if (IsValidating == validating) return;
+        IsValidating = validating;
+        if (ParentFormContext is not null)
+        {
+            ParentFormContext.MarkValidating(FieldKey, validating);
+        }
+        if (OnValidatingChanged.HasDelegate)
+        {
+            await OnValidatingChanged.InvokeAsync(validating);
+        }
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _debouncer?.Dispose();
+        _cts?.Cancel();
+        _cts?.Dispose();
+        if (ParentFormContext is not null)
+        {
+            ParentFormContext.MarkValidating(FieldKey, false);
+        }
+    }
+
+    public enum AsyncValidationTrigger
+    {
+        OnBlur,
+        OnChange
+    }
+
+    public record FormFieldContext(string? Name, string? Error, bool IsValidating)
     {
         public bool HasError => !string.IsNullOrEmpty(Error);
     }

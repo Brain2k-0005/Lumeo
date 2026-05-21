@@ -214,7 +214,7 @@ else
     /// match neighbouring buttons in toolbars or compact forms. Has no visual
     /// effect on <c>Dropzone</c> or <c>Avatar</c> variants today.
     /// </summary>
-    [Parameter] public FileUploadSize Size { get; set; } = FileUploadSize.Default;
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     // ── Legacy back-compat progress params ──────────────────────────────────
     [Parameter] public bool ShowProgress { get; set; }
@@ -280,7 +280,6 @@ else
 
     // ── Enums ────────────────────────────────────────────────────────────────
     public enum FileUploadVariant { Dropzone, Button, Avatar }
-    public enum FileUploadSize { Sm, Default, Lg }
 
     /// <summary>Per-file upload state tracked internally and exposed via events.</summary>
     public class FileUploadItem
@@ -317,8 +316,8 @@ else
     // ── CSS helpers ──────────────────────────────────────────────────────────
     private string ButtonSizeClasses => Size switch
     {
-        FileUploadSize.Sm => "h-8 px-3 text-xs",
-        FileUploadSize.Lg => "h-10 px-8 text-sm",
+        Lumeo.Size.Sm => "h-8 px-3 text-xs",
+        Lumeo.Size.Lg => "h-10 px-8 text-sm",
         _ => "h-9 px-4 py-2 text-sm"
     };
 
@@ -419,7 +418,29 @@ else
         if (OnUpload is not null && AutoUpload && validFiles.Count > 0)
         {
             var pendingItems = _uploadItems.Where(i => i.Status == FileUploadStatus.Pending && validFiles.Contains(i.File)).ToList();
-            _ = Task.Run(() => RunUploadsAsync(pendingItems));
+            // 2.2.3: was `_ = Task.Run(() => RunUploadsAsync(pendingItems))` which
+            // hopped to the thread pool and defeated the Blazor sync context —
+            // every StateHasChanged inside RunUploadsAsync then had to marshal
+            // back via InvokeAsync. Use InvokeAsync directly to stay on the
+            // sync context, with explicit exception swallowing so an unobserved
+            // task exception can't crash the circuit.
+            _ = InvokeAsync(async () =>
+            {
+                try { await RunUploadsAsync(pendingItems); }
+                catch (Exception ex)
+                {
+                    // Surface the failure on the per-item status so the UI
+                    // can show it. RunUploadsAsync already wraps per-file
+                    // errors; this catch is for unexpected systemic failures
+                    // (e.g. cancellation during dispose).
+                    foreach (var item in pendingItems.Where(i => i.Status == FileUploadStatus.Pending || i.Status == FileUploadStatus.Uploading))
+                    {
+                        item.Status = FileUploadStatus.Failed;
+                        item.ErrorMessage = ex.Message;
+                    }
+                    StateHasChanged();
+                }
+            });
         }
     }
 

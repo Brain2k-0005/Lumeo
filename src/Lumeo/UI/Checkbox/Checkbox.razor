@@ -42,7 +42,7 @@ else
 {
     @if (EffectiveInvalid && !string.IsNullOrEmpty(ErrorText))
     {
-        <p class="mt-1 text-xs text-destructive">@ErrorText</p>
+        <p class="mt-1 text-xs text-destructive" role="alert" aria-live="polite">@ErrorText</p>
     }
     else if (!string.IsNullOrEmpty(HelperText))
     {
@@ -117,20 +117,18 @@ else
 
     protected override void OnInitialized()
     {
-        _id = Id ?? $"checkbox-{Guid.NewGuid():N}";
+        _id = Id ?? LumeoIds.New("checkbox");
     }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();
 
-    private string CssClass => string.Join(" ", new[]
-    {
+    private string CssClass => Cx.Join(
         "peer inline-flex items-center justify-center h-4 w-4 shrink-0 cursor-pointer rounded transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         EffectiveInvalid
             ? (Checked || IsIndeterminate ? "bg-destructive border border-destructive text-primary-foreground focus-visible:ring-destructive/50" : "border border-destructive focus-visible:ring-destructive/50")
             : (Checked || IsIndeterminate ? "bg-primary border border-primary text-primary-foreground focus-visible:ring-ring" : "border border-primary/60 bg-background hover:border-primary focus-visible:ring-ring"),
-        Animated && Checked ? "lumeo-checkbox-animated" : null,
-        Class
-    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        Cx.When(Animated && Checked, "lumeo-checkbox-animated"),
+        Class);
 
     private async Task Toggle()
     {

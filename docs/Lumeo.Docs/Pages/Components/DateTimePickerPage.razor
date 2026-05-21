@@ -38,6 +38,39 @@
     </ComponentDemo>
 </Stack>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="time-zone" Level="2" Class="scroll-mt-20">Time zone</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        By default, DateTimePicker treats values as <em>unspecified</em> local-clock time. To pin the picker to a
+        specific time zone — useful when a user is in one zone but scheduling for another (e.g. booking a meeting in
+        Berlin from New York) — pass a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TimeZoneInfo</code>
+        to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TimeZone</code>. Bind
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OffsetValue</code>
+        (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DateTimeOffset</code>) instead
+        of <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Value</code> to round-trip
+        the offset cleanly. Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShowTimeZoneLabel="true"</code>
+        to display the zone abbreviation next to the input so users see which zone they're working in.
+    </Lumeo.Text>
+
+    <ComponentDemo Title="Time zone" Code="@_timeZoneCode">
+        <Stack Gap="2" Class="max-w-sm">
+            <DateTimePicker @bind-OffsetValue="_meeting" TimeZone="@_berlin" ShowTimeZoneLabel="true" />
+            @if (_meeting.HasValue)
+            {
+                <Lumeo.Text Size="sm" Color="muted">UTC: @_meeting.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'")</Lumeo.Text>
+            }
+        </Stack>
+    </ComponentDemo>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        The displayed wall-clock time is always in the picker's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TimeZone</code>,
+        regardless of the consumer's system zone. DST transitions are handled by
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">TimeZoneInfo</code> — the
+        underlying <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DateTimeOffset</code>
+        carries the correct UTC offset for any picked instant.
+    </Lumeo.Text>
+</div>
+
 <!-- API Reference -->
 <Stack Gap="6" Class="mt-12">
     <Heading Level="2">API Reference</Heading>
@@ -195,6 +228,23 @@
     private DateTime? _dateTime1 = DateTime.Now;
     private DateTime? _dateTime2 = DateTime.Today.AddHours(10).AddMinutes(30);
     private DateTime? _dateTime3;
+    private TimeZoneInfo _berlin = ResolveBerlin();
+    private DateTimeOffset? _meeting;
+
+    private static TimeZoneInfo ResolveBerlin()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin"); }
+        catch { return TimeZoneInfo.Utc; }
+    }
+
+    private string _timeZoneCode = @"<DateTimePicker @bind-OffsetValue=""_meeting""
+                TimeZone=""@_berlin""
+                ShowTimeZoneLabel=""true"" />
+
+@code {
+    TimeZoneInfo _berlin = TimeZoneInfo.FindSystemTimeZoneById(""Europe/Berlin"");
+    DateTimeOffset? _meeting;
+}";
 
     private DateTime? _dateTime4;
     private DateTime _dtMinDate = DateTime.Today;

@@ -133,6 +133,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Mention / Textarea Caret
     ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId);
 
+    // Tabs (active indicator measurement for animated underline)
+    ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
+
     // BackToTop
     ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler);
     ValueTask UnregisterBackToTop(string id);
@@ -198,6 +201,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttSetTasksAsync(string id, IEnumerable<object> tasks);
     Task GanttChangeViewModeAsync(string id, string mode);
     Task GanttDestroyAsync(string id);
+
+    // Toolbar overflow observer — registers a ResizeObserver on the toolbar
+    // element and invokes the handler with (fittingCount, totalCount) whenever
+    // the number of items that fit before the "..." overflow trigger changes.
+    ValueTask RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler);
+    ValueTask UnregisterToolbarOverflow(string elementId);
 
     // Rich Text Editor (TipTap wrapper)
     ValueTask<string> RichTextInitAsync<T>(

@@ -23,7 +23,11 @@
         await OnAction.InvokeAsync();
         if (!IsLoading)
         {
-            await Context.SetOpen.InvokeAsync(false);
+            // Route the auto-close through the gate so OnBeforeClose can
+            // veto with reason="action" (e.g. validation failed mid-action).
+            // The OnAction handler itself still ran — only the close is
+            // guarded.
+            await Context.TryDismiss("action");
         }
     }
 }

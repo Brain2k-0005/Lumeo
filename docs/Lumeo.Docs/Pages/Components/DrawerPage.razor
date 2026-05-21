@@ -147,7 +147,7 @@
                     <DrawerTrigger>
                         <Button Variant="Button.ButtonVariant.Outline">Open Drawer (@_drawerSideSel)</Button>
                     </DrawerTrigger>
-                    <DrawerContent Side="@_activeDrawerSide">
+                    <DrawerContent Side="@_activeSide">
                         <DrawerHeader>
                             <DrawerTitle>@_drawerSideSel Drawer</DrawerTitle>
                             <DrawerDescription>This drawer slides in from the @_drawerSideSel.ToLower().</DrawerDescription>
@@ -196,6 +196,51 @@
         </Drawer>
     </ComponentDemo>
 </Stack>
+
+<div class="mt-12 space-y-4">
+    <Heading Id="intercepting-close" Level="2" Class="scroll-mt-20">Intercepting close</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnBeforeClose</code> fires for
+        every close path including swipe-down on touch devices. The handler receives a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DismissEventArgs</code> with a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Reason</code> string —
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"escape"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"outside"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"swipe"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"close"</code>,
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"action"</code>, or
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"cancel"</code>. Set
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">e.Cancel = true</code> to keep
+        the drawer open.
+    </Lumeo.Text>
+
+    <ComponentDemo Title="Intercepting close" Code="@_onBeforeCloseCode">
+        <Drawer @bind-Open="_guardOpen" OnBeforeClose="GuardDrawerClose">
+            <DrawerTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">New entry</Button>
+            </DrawerTrigger>
+            <DrawerContent>
+                <DrawerHeader>
+                    <DrawerTitle>New entry</DrawerTitle>
+                    <DrawerDescription>Type a note — Escape, backdrop, and swipe are blocked while dirty.</DrawerDescription>
+                </DrawerHeader>
+                <Stack Gap="3" Class="px-4 pb-4">
+                    <Label>Note</Label>
+                    <Textarea Value="@_guardNote" ValueChanged="@((string v) => { _guardNote = v; _guardDirty = true; })" />
+                </Stack>
+                <DrawerFooter>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Discard</Button>
+                    <Button OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Save</Button>
+                </DrawerFooter>
+            </DrawerContent>
+        </Drawer>
+    </ComponentDemo>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        <strong>Nested stacking.</strong> Drawers stack automatically on top of Dialogs, Sheets, AlertDialogs, or other
+        Drawers — z-index is allocated per overlay, and Escape closes only the top-most one. No API change.
+    </Lumeo.Text>
+</div>
 
 <div class="mt-12">
     <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
@@ -288,7 +333,7 @@
                         </tr>
                                             <tr>
                             <td class="p-3 font-mono text-xs text-primary">Side</td>
-                            <td class="p-3 font-mono text-xs text-muted-foreground">DrawerSide</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Lumeo.Side</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">Bottom</td>
                             <td class="p-3 text-muted-foreground">Side the drawer slides in from. Values: Top, Right, Bottom, Left.</td>
                         </tr>
@@ -314,10 +359,43 @@
     private bool _isFiltersOpen;
     private bool _preventDrawerOpen;
     private bool _drawerSideInteractiveOpen;
+    private bool _guardOpen;
+    private bool _guardDirty;
+    private string? _guardNote;
+
+    private Task GuardDrawerClose(Lumeo.DismissEventArgs e)
+    {
+        if (e.Reason is "escape" or "outside" or "swipe" && _guardDirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    private string _onBeforeCloseCode = @"<Drawer @bind-Open=""_open"" OnBeforeClose=""GuardClose"">
+    <DrawerContent>
+        <DrawerHeader>
+            <DrawerTitle>New entry</DrawerTitle>
+        </DrawerHeader>
+        <Textarea @bind-Value=""_note"" @oninput=""() => _dirty = true"" />
+    </DrawerContent>
+</Drawer>
+
+@code {
+    bool _open;
+    bool _dirty;
+    string? _note;
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Mobile gestures are easy to trigger by accident — guard them while dirty.
+        if (e.Reason is ""escape"" or ""outside"" or ""swipe"" && _dirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+}";
 
     // Interactive: Side
     private string _drawerSideSel = "Bottom";
-    private DrawerContent.DrawerSide _activeDrawerSide => Enum.Parse<DrawerContent.DrawerSide>(_drawerSideSel);
+    private Lumeo.Side _activeSide => Enum.Parse<Lumeo.Side>(_drawerSideSel);
     private List<Segmented.SegmentedOption> _drawerSideOptions = new()
     {
         new() { Label = "Top", Value = "Top" },
@@ -330,7 +408,7 @@
     <DrawerTrigger>
         <Button Variant=""Button.ButtonVariant.Outline"">Open Drawer (@_drawerSideSel)</Button>
     </DrawerTrigger>
-    <DrawerContent Side=""@_activeDrawerSide"">
+    <DrawerContent Side=""@_activeSide"">
         <DrawerHeader>
             <DrawerTitle>@_drawerSideSel Drawer</DrawerTitle>
             <DrawerDescription>Slides in from the @_drawerSideSel.ToLower().</DrawerDescription>
@@ -343,7 +421,7 @@
 
 @code {
     private string _drawerSideSel = ""Bottom"";
-    private DrawerContent.DrawerSide _activeDrawerSide => Enum.Parse<DrawerContent.DrawerSide>(_drawerSideSel);
+    private Lumeo.Side _activeSide => Enum.Parse<Lumeo.Side>(_drawerSideSel);
     private List<Segmented.SegmentedOption> _drawerSideOptions = new()
     {
         new() { Label = ""Top"", Value = ""Top"" },

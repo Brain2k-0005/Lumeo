@@ -19,9 +19,9 @@
 }
 else if (Context.IsOpen)
 {
-    <div class="fixed inset-0 z-50">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" @onclick="HandleBackdropClick"></div>
-        <div id="@_contentId" class="@CssClass" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div class="fixed inset-0" style="z-index:@BackdropZ">
+        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
@@ -31,19 +31,23 @@ else if (Context.IsOpen)
     </div>
 }
 
-@inject ComponentInteropService Interop
+@inject IComponentInteropService Interop
 
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
     [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public DrawerSide Side { get; set; } = DrawerSide.Bottom;
+    [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Bottom;
     [Parameter] public DrawerAnimation Animation { get; set; } = DrawerAnimation.Slide;
     [Parameter] public bool PreventClose { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
+    /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
+    /// supplies an incrementing value per nested overlay.</summary>
+    [Parameter] public int ZIndex { get; set; } = OverlayService.BaseZIndex;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _contentId = $"drawer-{Guid.NewGuid():N}";
+    private readonly string _contentId = LumeoIds.New("drawer");
     private bool _wasOpen;
     // Slide-animation transform trap is fixed via JS interop:
     // Interop.AttachOverlaySlideEnd registers a native animationend listener
@@ -51,14 +55,17 @@ else if (Context.IsOpen)
     // element, then sets inline `transform: none`. See SheetContent for the
     // full rationale.
 
-    private bool ShowDragHandle => Side is DrawerSide.Top or DrawerSide.Bottom;
+    private int BackdropZ => ZIndex;
+    private int ContentZ => ZIndex + 1;
+
+    private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
 
     private string PositionClasses => Side switch
     {
-        DrawerSide.Top => "inset-x-0 top-0 rounded-b-[10px] max-h-[96vh]",
-        DrawerSide.Right => "inset-y-0 right-0 w-3/4 max-w-sm rounded-l-[10px] h-full max-h-screen",
-        DrawerSide.Bottom => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]",
-        DrawerSide.Left => "inset-y-0 left-0 w-3/4 max-w-sm rounded-r-[10px] h-full max-h-screen",
+        Lumeo.Side.Top => "inset-x-0 top-0 rounded-b-[10px] max-h-[96vh]",
+        Lumeo.Side.Right => "inset-y-0 right-0 w-3/4 max-w-sm rounded-l-[10px] h-full max-h-screen",
+        Lumeo.Side.Bottom => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]",
+        Lumeo.Side.Left => "inset-y-0 left-0 w-3/4 max-w-sm rounded-r-[10px] h-full max-h-screen",
         _ => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]"
     };
 
@@ -68,24 +75,24 @@ else if (Context.IsOpen)
         DrawerAnimation.Fade => "animate-fade-in",
         DrawerAnimation.Slide => Side switch
         {
-            DrawerSide.Top => "animate-slide-in-from-top",
-            DrawerSide.Right => "animate-slide-in-from-right",
-            DrawerSide.Bottom => "animate-slide-in-from-bottom",
-            DrawerSide.Left => "animate-slide-in-from-left",
+            Lumeo.Side.Top => "animate-slide-in-from-top",
+            Lumeo.Side.Right => "animate-slide-in-from-right",
+            Lumeo.Side.Bottom => "animate-slide-in-from-bottom",
+            Lumeo.Side.Left => "animate-slide-in-from-left",
             _ => "animate-slide-in-from-bottom"
         },
         _ => ""
     };
 
     private string CssClass =>
-        $"fixed z-50 mt-24 flex h-auto flex-col bg-background shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
+        $"fixed mt-24 flex h-auto flex-col bg-background shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
     private string SwipeDirection => Side switch
     {
-        DrawerSide.Top => "up",
-        DrawerSide.Right => "right",
-        DrawerSide.Bottom => "down",
-        DrawerSide.Left => "left",
+        Lumeo.Side.Top => "up",
+        Lumeo.Side.Right => "right",
+        Lumeo.Side.Bottom => "down",
+        Lumeo.Side.Left => "left",
         _ => "down"
     };
 
@@ -106,7 +113,7 @@ else if (Context.IsOpen)
             }
             if (!PreventClose)
             {
-                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, Close);
+                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe);
             }
             _wasOpen = true;
         }
@@ -117,18 +124,16 @@ else if (Context.IsOpen)
         }
     }
 
-    private async Task Close() => await Context.SetOpen.InvokeAsync(false);
+    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
 
-    private async Task HandleBackdropClick()
-    {
-        if (!PreventClose) await Close();
-    }
-
+    private Task HandleSwipe() => Dismiss("swipe");
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape" && !PreventClose) await Close();
+        if (e.Key == "Escape" && !PreventClose) await Dismiss("escape");
     }
+
+    private Task Dismiss(string reason) => Context.TryDismiss(reason);
 
     private async Task Cleanup()
     {
@@ -146,6 +151,5 @@ else if (Context.IsOpen)
         if (_wasOpen) await Cleanup();
     }
 
-    public enum DrawerSide { Top, Right, Bottom, Left }
     public enum DrawerAnimation { Slide, Fade, None }
 }

@@ -24,6 +24,10 @@
             @if (Value.HasValue)
             {
                 <span>@FormatDateTime(Value.Value)</span>
+                @if (ShowTimeZoneLabel && TimeZone is not null)
+                {
+                    <span class="ml-2 text-xs text-muted-foreground">@FormatZoneLabel(Value.Value)</span>
+                }
             }
             else
             {
@@ -37,7 +41,7 @@
             }
         </button>
     </PopoverTrigger>
-    <PopoverContent Align="PopoverContent.PopoverAlign.Start" Class="w-auto p-0">
+    <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0">
         <div class="flex">
             <div>
                 <Calendar Value="@_dateValue" ValueChanged="HandleDateChanged"
@@ -152,6 +156,31 @@
 
     [Parameter] public DateTime? Value { get; set; }
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Optional <see cref="DateTimeOffset"/> binding. When the caller binds this,
+    /// it takes precedence: writes flow back through <see cref="OffsetValueChanged"/>
+    /// with the offset that matches <see cref="TimeZone"/> at the picked wall-clock
+    /// time (DST-aware). The plain <see cref="ValueChanged"/> still fires for back-compat.
+    /// Recommended over <see cref="Value"/> when working with multi-zone scenarios.
+    /// </summary>
+    [Parameter] public DateTimeOffset? OffsetValue { get; set; }
+    [Parameter] public EventCallback<DateTimeOffset?> OffsetValueChanged { get; set; }
+
+    /// <summary>
+    /// When non-null, all display/edit happens in this zone — the user picks a
+    /// wall-clock instant in that zone, and the emitted <see cref="DateTimeOffset"/>
+    /// carries the matching offset for that instant (DST-aware). When null, the
+    /// picker behaves exactly as before (local time, no zone indicator).
+    /// </summary>
+    [Parameter] public TimeZoneInfo? TimeZone { get; set; }
+
+    /// <summary>
+    /// When true (default) and <see cref="TimeZone"/> is set, renders a small
+    /// "Europe/Berlin (UTC+1)"-style indicator next to the value.
+    /// </summary>
+    [Parameter] public bool ShowTimeZoneLabel { get; set; } = true;
+
     [Parameter] public bool Use24Hour { get; set; } = true;
     [Parameter] public bool ShowSeconds { get; set; }
     /// <summary>
@@ -188,11 +217,30 @@
     private bool _isOpen;
     private DateOnly? _dateValue;
     private TimeSpan? _timeValue;
+    private DateTimeOffset? _prevOffsetValue;
 
     private string CssClass => $"group flex h-9 w-full items-center rounded-md border {(EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input")} bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     protected override void OnParametersSet()
     {
+        // When the parent binds OffsetValue and it changed, derive Value from it
+        // by projecting into the configured TimeZone (or local if null).
+        if (OffsetValue != _prevOffsetValue)
+        {
+            _prevOffsetValue = OffsetValue;
+            if (OffsetValue.HasValue)
+            {
+                var local = TimeZone is null
+                    ? OffsetValue.Value.LocalDateTime
+                    : TimeZoneInfo.ConvertTime(OffsetValue.Value, TimeZone).DateTime;
+                Value = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+            }
+            else
+            {
+                Value = null;
+            }
+        }
+
         if (Value.HasValue)
         {
             _dateValue = DateOnly.FromDateTime(Value.Value);
@@ -203,6 +251,32 @@
             _dateValue = null;
             _timeValue = null;
         }
+    }
+
+    private string FormatZoneLabel(DateTime wallClock)
+    {
+        if (TimeZone is null) return string.Empty;
+        var unspecified = DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified);
+        var offset = TimeZone.GetUtcOffset(unspecified);
+        var sign = offset.Ticks >= 0 ? "+" : "-";
+        var abs = offset.Duration();
+        var offsetText = abs.Minutes == 0
+            ? $"UTC{sign}{abs.Hours}"
+            : $"UTC{sign}{abs.Hours}:{abs.Minutes:D2}";
+        return $"{TimeZone.Id} ({offsetText})";
+    }
+
+    private DateTimeOffset? ToOffset(DateTime? wallClock)
+    {
+        if (!wallClock.HasValue) return null;
+        var unspecified = DateTime.SpecifyKind(wallClock.Value, DateTimeKind.Unspecified);
+        if (TimeZone is null)
+        {
+            // Treat as local — preserve historic behaviour.
+            return new DateTimeOffset(DateTime.SpecifyKind(wallClock.Value, DateTimeKind.Local));
+        }
+        var offset = TimeZone.GetUtcOffset(unspecified);
+        return new DateTimeOffset(unspecified, offset);
     }
 
     private string FormatDateTime(DateTime dt)
@@ -287,8 +361,18 @@
         {
             var time = _timeValue ?? TimeSpan.Zero;
             var dt = _dateValue.Value.ToDateTime(new TimeOnly(time.Hours, time.Minutes, time.Seconds));
+            // When a TimeZone is configured, the wall-clock value is zone-relative —
+            // mark it Unspecified so callers don't mistake it for system-local.
+            if (TimeZone is not null) dt = DateTime.SpecifyKind(dt, DateTimeKind.Unspecified);
             Value = dt;
             await ValueChanged.InvokeAsync(dt);
+
+            if (OffsetValueChanged.HasDelegate)
+            {
+                var offset = ToOffset(dt);
+                _prevOffsetValue = offset;
+                await OffsetValueChanged.InvokeAsync(offset);
+            }
         }
     }
 
@@ -298,5 +382,10 @@
         _dateValue = null;
         _timeValue = null;
         await ValueChanged.InvokeAsync(null);
+        if (OffsetValueChanged.HasDelegate)
+        {
+            _prevOffsetValue = null;
+            await OffsetValueChanged.InvokeAsync(null);
+        }
     }
 }

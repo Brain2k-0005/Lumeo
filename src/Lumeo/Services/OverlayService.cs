@@ -4,6 +4,19 @@ namespace Lumeo.Services;
 
 public sealed class OverlayService : IOverlayService
 {
+    /// <summary>Base z-index assigned to the first overlay. Subsequent overlays
+    /// stack at <c>BaseZIndex + n * Step</c>. The backdrop sits at the assigned
+    /// value; the content sits one tier above (Z + 1) so a nested overlay's
+    /// backdrop always lands above the parent's content.</summary>
+    public const int BaseZIndex = 50;
+
+    /// <summary>Distance between consecutive overlay tiers. <c>Step</c> = 10
+    /// leaves room for backdrop (Z) + content (Z+1) without colliding with
+    /// the next overlay's backdrop.</summary>
+    public const int Step = 10;
+
+    private int _openCount;
+
     public event Action<OverlayInstance>? OnShow;
     public event Action<string, object?, bool>? OnClose;
 
@@ -17,7 +30,7 @@ public sealed class OverlayService : IOverlayService
 
     public Task<OverlayResult> ShowSheetAsync<TComponent>(
         string? title = null,
-        SheetSide side = SheetSide.Right,
+        Lumeo.Side side = Lumeo.Side.Right,
         SheetSize size = SheetSize.Default,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent
@@ -45,6 +58,7 @@ public sealed class OverlayService : IOverlayService
             Type = OverlayType.AlertDialog,
             Title = alertOptions.Title,
             AlertOptions = alertOptions,
+            ZIndex = AllocateZIndex(),
             Tcs = tcs
         };
         OnShow?.Invoke(instance);
@@ -53,12 +67,29 @@ public sealed class OverlayService : IOverlayService
 
     public void Close(string overlayId, object? result = null)
     {
+        ReleaseZIndex();
         OnClose?.Invoke(overlayId, result, false);
     }
 
     public void Cancel(string overlayId)
     {
+        ReleaseZIndex();
         OnClose?.Invoke(overlayId, null, true);
+    }
+
+    private int AllocateZIndex()
+    {
+        // Monotonic counter — each new overlay sits Step tiers above the
+        // previous one. We release on Close/Cancel so a long-running app
+        // doesn't drift the value to infinity, but stacking remains
+        // strictly increasing for the lifetime of any single open chain.
+        _openCount++;
+        return BaseZIndex + _openCount * Step;
+    }
+
+    private void ReleaseZIndex()
+    {
+        if (_openCount > 0) _openCount--;
     }
 
     private Task<OverlayResult> ShowAsync(
@@ -78,6 +109,7 @@ public sealed class OverlayService : IOverlayService
             Title = title,
             Parameters = parameters,
             Options = options ?? new OverlayOptions(),
+            ZIndex = AllocateZIndex(),
             Tcs = tcs
         };
         OnShow?.Invoke(instance);
@@ -87,8 +119,10 @@ public sealed class OverlayService : IOverlayService
 
 public enum OverlayType { Dialog, Sheet, Drawer, AlertDialog }
 
-public enum SheetSide { Top, Right, Bottom, Left }
-
+/// <summary>Sheet size as exposed through <see cref="OverlayService"/>. Mirrors
+/// <c>SheetContent.SheetSize</c> — kept distinct so the service layer doesn't
+/// take a hard dependency on the UI namespace. <c>Full</c> is layout-intent
+/// (entire viewport) and intentionally NOT folded into <see cref="Lumeo.Size"/>.</summary>
 public enum SheetSize { Sm, Default, Lg, Xl, Full }
 
 public sealed record OverlayResult
@@ -122,7 +156,7 @@ public sealed record OverlayOptions
 {
     public string? Class { get; init; }
     public bool PreventClose { get; init; }
-    public SheetSide SheetSide { get; init; } = SheetSide.Right;
+    public Lumeo.Side SheetSide { get; init; } = Lumeo.Side.Right;
     public SheetSize SheetSize { get; init; } = SheetSize.Default;
     /// <summary>
     /// When true, a Sheet opened via <see cref="OverlayService.ShowSheetAsync{T}"/>
@@ -149,9 +183,9 @@ public sealed record OverlayOptions
 
     /// <summary>Sheet side to use when the viewport is below
     /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSide"/> at all
-    /// sizes. Typical pattern: <c>SheetSide.Right</c> on desktop,
-    /// <c>SheetSide.Bottom</c> on mobile.</summary>
-    public SheetSide? MobileSheetSide { get; init; }
+    /// sizes. Typical pattern: <c>Lumeo.Side.Right</c> on desktop,
+    /// <c>Lumeo.Side.Bottom</c> on mobile.</summary>
+    public Lumeo.Side? MobileSheetSide { get; init; }
 
     /// <summary>Sheet size to use when the viewport is below
     /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSize"/> at all
@@ -183,5 +217,10 @@ public sealed class OverlayInstance
     public OverlayParameters? Parameters { get; init; }
     public OverlayOptions Options { get; init; } = new();
     public AlertDialogOptions? AlertOptions { get; init; }
+    /// <summary>Backdrop z-index for this overlay. Content sits at
+    /// <c>ZIndex + 1</c> so a nested overlay's backdrop (allocated later
+    /// with a strictly larger value) lands above the parent's content.
+    /// Assigned by <see cref="OverlayService"/> at registration time.</summary>
+    public int ZIndex { get; init; } = OverlayService.BaseZIndex;
     internal TaskCompletionSource<OverlayResult> Tcs { get; init; } = default!;
 }

@@ -1,57 +1,93 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
-<div role="tooltip" class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-    @if (ShowArrow)
-    {
-        <div class="@ArrowClasses"></div>
-    }
-</div>
+@*  rc.45 — fixed-position rendering + collision flip.
+    Previously the tooltip was an absolutely positioned child of the trigger
+    wrapper, anchored with Tailwind classes (`bottom-full left-1/2 ...`).
+    That meant a tooltip near the viewport edge clipped against it.
+    We now mirror the Popover pattern: render with `position: fixed`, hand
+    placement off to `ComponentInteropService.PositionFixed` (floating-ui
+    under the hood), which auto-flips to the opposite side when collision
+    space is tight. Side is still consumer-controlled as a preference. *@
+@if (IsOpen)
+{
+    <div id="@_contentId" role="tooltip" class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+        @if (ShowArrow)
+        {
+            <div class="@ArrowClasses"></div>
+        }
+    </div>
+}
+
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @code {
     [CascadingParameter] public Tooltip.TooltipContext? Context { get; set; }
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public TooltipSide Side { get; set; } = TooltipSide.Top;
+    [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Top;
     [Parameter] public bool ShowArrow { get; set; } = true;
     [Parameter] public int Offset { get; set; } = 8;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _contentId = LumeoIds.New("tooltip-content");
+    private bool _registered;
+
     private bool IsOpen => Context?.IsOpen ?? false;
 
-    private string CssClass => string.Join(" ", new[] { "absolute z-50 overflow-visible rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground", AnimationClasses, SideClasses, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string CssClass => Cx.Join(
+        "fixed z-50 overflow-visible rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground",
+        AnimationClasses,
+        Class);
 
     private string AnimationClasses => IsOpen
         ? "opacity-100 visible animate-fade-in"
         : "opacity-0 invisible";
 
-    private string SideClasses => Side switch
+    private string SideStr => Side switch
     {
-        TooltipSide.Top => $"bottom-full left-1/2 -translate-x-1/2 mb-{MarginValue}",
-        TooltipSide.Bottom => $"top-full left-1/2 -translate-x-1/2 mt-{MarginValue}",
-        TooltipSide.Left => $"right-full top-1/2 -translate-y-1/2 mr-{MarginValue}",
-        TooltipSide.Right => $"left-full top-1/2 -translate-y-1/2 ml-{MarginValue}",
-        _ => $"bottom-full left-1/2 -translate-x-1/2 mb-{MarginValue}"
-    };
-
-    private string MarginValue => Offset switch
-    {
-        <= 4 => "1",
-        <= 8 => "2",
-        <= 12 => "3",
-        _ => "4"
+        Lumeo.Side.Top => "top",
+        Lumeo.Side.Bottom => "bottom",
+        Lumeo.Side.Left => "left",
+        Lumeo.Side.Right => "right",
+        _ => "top"
     };
 
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
     private string ArrowClasses => Side switch
     {
-        TooltipSide.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        TooltipSide.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        TooltipSide.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        TooltipSide.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        Lumeo.Side.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        Lumeo.Side.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        Lumeo.Side.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        Lumeo.Side.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
         _ => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
     };
 
-    public enum TooltipSide { Top, Bottom, Left, Right }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && !_registered && Context is not null)
+        {
+            await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr);
+            _registered = true;
+        }
+        else if (!IsOpen && _registered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnpositionFixed(_contentId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registered) await Cleanup();
+    }
+
 }

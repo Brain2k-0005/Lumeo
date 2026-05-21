@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, NavigateBySwipe);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, NavigateBySwipe, _reorderState);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -14,7 +14,7 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string ActiveValue { get; set; } = "";
     [Parameter] public EventCallback<string> ActiveValueChanged { get; set; }
-    [Parameter] public TabsOrientation Orientation { get; set; } = TabsOrientation.Horizontal;
+    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
     [Parameter] public TabsVariant Variant { get; set; } = TabsVariant.Default;
 
     /// <summary>
@@ -66,8 +66,11 @@
     private readonly HashSet<string> _activatedValues = new();
     // Ordered list of registered TabsContent values — used for swipe navigation.
     private readonly List<string> _contentOrder = new();
+    // Shared mutable state for TabsList reordering — owned by TabsList but
+    // referenced via the cascading context so triggers can read it.
+    private readonly TabsReorderState _reorderState = new();
 
-    private string CssClass => Orientation == TabsOrientation.Vertical
+    private string CssClass => Orientation == Lumeo.Orientation.Vertical
         ? $"flex flex-row {Class}".Trim()
         : $"{Class}".Trim();
 
@@ -125,7 +128,7 @@
     public record TabsContext(
         string ActiveValue,
         EventCallback<string> SetValue,
-        TabsOrientation Orientation,
+        Lumeo.Orientation Orientation,
         TabsVariant Variant,
         Dictionary<string, (string TabId, string PanelId)> TabIds,
         bool AnimatedIndicator,
@@ -134,13 +137,32 @@
         bool SwipeEnabled,
         bool SwipeWrap,
         Action<string> RegisterContent,
-        Func<string, Task> SwipeNavigate)
+        Func<string, Task> SwipeNavigate,
+        TabsReorderState Reorder)
     {
-        public TabsContext(string ActiveValue, EventCallback<string> SetValue, TabsOrientation Orientation = TabsOrientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
-            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => Task.CompletedTask) { }
+        public TabsContext(string ActiveValue, EventCallback<string> SetValue, Lumeo.Orientation Orientation = Lumeo.Orientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
+            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => Task.CompletedTask, new TabsReorderState()) { }
     }
 
-    public enum TabsOrientation { Horizontal, Vertical }
+    /// <summary>
+    /// Shared mutable state that flows from <see cref="TabsList"/> down to its
+    /// <see cref="TabsTrigger"/> children via the cascading <see cref="TabsContext"/>.
+    /// Carries the per-render ordered list of trigger values, the
+    /// currently-dragged value (for opacity feedback), and the callbacks that
+    /// triggers fire on drag-start / drop. Only meaningful when the enclosing
+    /// <see cref="TabsList"/> has <c>Reorderable="true"</c>.
+    /// </summary>
+    public sealed class TabsReorderState
+    {
+        public bool Enabled { get; set; }
+        public string? DraggingValue { get; set; }
+        public List<string> Order { get; } = new();
+        public Action<string>? OnDragStart { get; set; }
+        public Func<string, Task>? OnDrop { get; set; }
+        public Action? OnDragEnd { get; set; }
+        public Action<string>? OnDragOver { get; set; }
+        public string? DragOverValue { get; set; }
+    }
 
     public enum TabsVariant
     {

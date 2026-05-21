@@ -1,6 +1,29 @@
 @namespace Lumeo
-@inject Lumeo.Services.ComponentInteropService Interop
+@inject Lumeo.Services.IComponentInteropService Interop
 @implements IAsyncDisposable
+
+@{
+    // When reorderable, wire the shared TabsReorderState that flows to each
+    // TabsTrigger via the cascading TabsContext, and reset the per-render
+    // ordered list so triggers can append themselves in render order.
+    if (Context is not null)
+    {
+        Context.Reorder.Enabled = Reorderable;
+        if (Reorderable)
+        {
+            Context.Reorder.Order.Clear();
+            Context.Reorder.OnDragStart = HandleDragStart;
+            Context.Reorder.OnDrop = HandleDrop;
+            Context.Reorder.OnDragEnd = HandleDragEnd;
+            Context.Reorder.OnDragOver = HandleDragOver;
+        }
+        else
+        {
+            Context.Reorder.DraggingValue = null;
+            Context.Reorder.DragOverValue = null;
+        }
+    }
+}
 
 @if (Scrollable)
 {
@@ -39,16 +62,53 @@ else
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter] public bool Scrollable { get; set; }
+
+    /// <summary>
+    /// When true, each enabled <see cref="TabsTrigger"/> becomes draggable
+    /// (HTML5 drag-and-drop on desktop, touch drag on mobile). On a successful
+    /// reorder the library raises <see cref="OnReorder"/> with the from/to
+    /// indices and moved value — <b>the library does NOT mutate the order</b>.
+    /// The consumer's handler is responsible for updating the underlying
+    /// collection and re-rendering.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// &lt;TabsList Reorderable="true" OnReorder="HandleReorder"&gt;
+    ///     @foreach (var t in _tabs)
+    ///     {
+    ///         &lt;TabsTrigger @key="t.Value" Value="@t.Value"&gt;@t.Label&lt;/TabsTrigger&gt;
+    ///     }
+    /// &lt;/TabsList&gt;
+    ///
+    /// @code {
+    ///     private void HandleReorder(TabsReorderEventArgs e)
+    ///     {
+    ///         var moved = _tabs[e.FromIndex];
+    ///         _tabs.RemoveAt(e.FromIndex);
+    ///         _tabs.Insert(e.ToIndex, moved);
+    ///     }
+    /// }
+    /// </code>
+    /// </example>
+    [Parameter] public bool Reorderable { get; set; }
+
+    /// <summary>
+    /// Fires when the user drops a dragged <see cref="TabsTrigger"/> on a new
+    /// position. Only meaningful when <see cref="Reorderable"/> is true.
+    /// </summary>
+    [Parameter] public EventCallback<TabsReorderEventArgs> OnReorder { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _listId = $"tabslist-{Guid.NewGuid():N}";
+    private readonly string _listId = LumeoIds.New("tabslist");
     private double _indicatorX;
     private double _indicatorW;
     private bool _indicatorReady;
     private string? _lastMeasuredValue;
+    private bool _touchRegistered;
 
-    private bool IsVertical => Context?.Orientation == Tabs.TabsOrientation.Vertical;
+    private bool IsVertical => Context?.Orientation == Lumeo.Orientation.Vertical;
     private string OrientationStr => IsVertical ? "vertical" : "horizontal";
     private Tabs.TabsVariant CurrentVariant => Context?.Variant ?? Tabs.TabsVariant.Default;
 
@@ -65,6 +125,17 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (Reorderable && firstRender && !_touchRegistered)
+        {
+            try
+            {
+                await Interop.RegisterSortableTouch(_listId, HandleTouchDrop);
+                _touchRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
+
         if (!RenderIndicator || Context is null) return;
 
         var active = Context.ActiveValue;
@@ -96,10 +167,74 @@ else
         }
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        // No persistent JS state to clean up — measure is a one-shot invocation.
-        return ValueTask.CompletedTask;
+        if (_touchRegistered)
+        {
+            await Interop.UnregisterSortableTouch(_listId);
+            _touchRegistered = false;
+        }
+    }
+
+    private void HandleDragStart(string value)
+    {
+        if (Context is null) return;
+        Context.Reorder.DraggingValue = value;
+        StateHasChanged();
+    }
+
+    private void HandleDragOver(string value)
+    {
+        if (Context is null) return;
+        if (Context.Reorder.DragOverValue == value) return;
+        Context.Reorder.DragOverValue = value;
+        StateHasChanged();
+    }
+
+    private void HandleDragEnd()
+    {
+        if (Context is null) return;
+        Context.Reorder.DraggingValue = null;
+        Context.Reorder.DragOverValue = null;
+        StateHasChanged();
+    }
+
+    private async Task HandleDrop(string targetValue)
+    {
+        if (Context is null) return;
+        var from = Context.Reorder.DraggingValue;
+        Context.Reorder.DraggingValue = null;
+        Context.Reorder.DragOverValue = null;
+
+        if (string.IsNullOrEmpty(from) || from == targetValue)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        var order = Context.Reorder.Order;
+        var fromIndex = order.IndexOf(from);
+        var toIndex = order.IndexOf(targetValue);
+        if (fromIndex < 0 || toIndex < 0)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        StateHasChanged();
+        await OnReorder.InvokeAsync(new TabsReorderEventArgs(fromIndex, toIndex, from));
+    }
+
+    private async Task HandleTouchDrop(int source, int target)
+    {
+        if (Context is null) return;
+        var order = Context.Reorder.Order;
+        if (source < 0 || target < 0 || source >= order.Count || target >= order.Count || source == target) return;
+        var moved = order[source];
+        await InvokeAsync(async () =>
+        {
+            await OnReorder.InvokeAsync(new TabsReorderEventArgs(source, target, moved));
+        });
     }
 
     private string CssClass
@@ -119,7 +254,7 @@ else
                     : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
             };
             var indicatorWrapper = RenderIndicator ? "relative lumeo-tabs-list" : null;
-            return string.Join(" ", new[] { baseClasses, indicatorWrapper, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            return Cx.Join(baseClasses, indicatorWrapper, Class);
         }
     }
 }

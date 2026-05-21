@@ -62,8 +62,8 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _itemId = $"megamenu-item-{Guid.NewGuid():N}";
-    private readonly string _triggerId = $"megamenu-trigger-{Guid.NewGuid():N}";
+    private readonly string _itemId = LumeoIds.New("megamenu-item");
+    private readonly string _triggerId = LumeoIds.New("megamenu-trigger");
     private readonly DelayedDispatch _dispatch = new();
     private const int CloseDelay = 150;
 
@@ -71,9 +71,13 @@
 
     private string CssClass => Class ?? "";
 
-    private string TriggerCssClass => string.Join(" ", new[] { "inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors focus:outline-none focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50", _isOpen ? "bg-accent/50" : null }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string TriggerCssClass => Cx.Join(
+        "inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors focus:outline-none focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50",
+        Cx.When(_isOpen, "bg-accent/50"));
 
-    private string ChevronCssClass => string.Join(" ", new[] { "h-3 w-3 transition-transform duration-200", _isOpen ? "rotate-180" : null }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    private string ChevronCssClass => Cx.Join(
+        "h-3 w-3 transition-transform duration-200",
+        Cx.When(_isOpen, "rotate-180"));
 
     // rc.44 — Approach B: pointer events gated to mouse only. Touch devices
     // open via @onclick on the inner trigger button, avoiding the

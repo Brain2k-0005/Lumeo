@@ -1,6 +1,18 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@{
+    // Register this trigger's position in the per-render ordered list used
+    // for drag-reorder. Order list is reset by TabsList at the start of each
+    // render; triggers append themselves here, so list order matches DOM order.
+    var reorderState = Context.Reorder;
+    var reorderActive = reorderState.Enabled && !Disabled;
+    if (reorderState.Enabled && !reorderState.Order.Contains(Value))
+    {
+        reorderState.Order.Add(Value);
+    }
+}
+
 <button type="button"
         id="@_tabId"
         role="tab"
@@ -9,6 +21,15 @@
         aria-controls="@_panelId"
         tabindex="@(Disabled ? -1 : IsActive ? 0 : -1)"
         class="@CssClass"
+        draggable="@(reorderActive ? "true" : null)"
+        data-sortable-item="@(reorderActive ? "" : null)"
+        data-sortable-index="@(reorderActive ? reorderState.Order.IndexOf(Value).ToString() : null)"
+        @ondragstart="HandleDragStart"
+        @ondragover="HandleDragOver"
+        @ondragover:preventDefault="@reorderActive"
+        @ondrop="HandleDrop"
+        @ondrop:preventDefault="@reorderActive"
+        @ondragend="HandleDragEnd"
         @onclick="Activate"
         @onkeydown="HandleKeyDown"
         @onkeydown:preventDefault="@_preventKey"
@@ -32,7 +53,7 @@
     }
 </button>
 
-@inject ComponentInteropService Interop
+@inject IComponentInteropService Interop
 @inject ThemeService Theme
 
 @code {
@@ -50,8 +71,8 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _tabId = $"tab-{Guid.NewGuid():N}";
-    private readonly string _panelId = $"tabpanel-{Guid.NewGuid():N}";
+    private readonly string _tabId = LumeoIds.New("tab");
+    private readonly string _panelId = LumeoIds.New("tabpanel");
     private bool _preventKey;
 
     private bool IsActive => Context.ActiveValue == Value;
@@ -79,14 +100,59 @@
                     ? "bg-background text-foreground shadow"
                     : ""
             };
-            return $"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed {variantClasses} {disabledClasses} {Class}".Trim();
+
+            var reorderState = Context.Reorder;
+            var reorderActive = reorderState.Enabled && !Disabled;
+            var isDragging = reorderActive && reorderState.DraggingValue == Value;
+            var isDragOver = reorderActive && reorderState.DragOverValue == Value && reorderState.DraggingValue != Value;
+
+            // Smooth transform transitions animate any sibling shifts after drop.
+            // Only enable touch-friendly grab cursor when this trigger can be dragged.
+            var reorderClasses = reorderActive
+                ? "transition-transform duration-150 ease-out cursor-grab active:cursor-grabbing select-none"
+                : "";
+            if (isDragging) reorderClasses += " opacity-50";
+            if (isDragOver) reorderClasses += Context.Orientation == Lumeo.Orientation.Vertical
+                ? " ring-2 ring-primary ring-offset-0"
+                : " ring-2 ring-primary ring-offset-0";
+
+            return $"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed {variantClasses} {disabledClasses} {reorderClasses} {Class}".Trim();
         }
     }
 
     private async Task Activate()
     {
         if (Disabled) return;
+        // Don't activate when finishing a drag (a click event fires after dragend).
+        if (Context.Reorder.Enabled && Context.Reorder.DraggingValue == Value) return;
         await Context.SetValue.InvokeAsync(Value);
+    }
+
+    private void HandleDragStart()
+    {
+        if (Context.Reorder.Enabled && !Disabled)
+            Context.Reorder.OnDragStart?.Invoke(Value);
+    }
+
+    private void HandleDragOver()
+    {
+        // Disabled triggers are not valid drop targets — skip both the visual
+        // hint and the over-tracking so a dragged item passes through.
+        if (Context.Reorder.Enabled && !Disabled && Context.Reorder.DraggingValue is not null)
+            Context.Reorder.OnDragOver?.Invoke(Value);
+    }
+
+    private async Task HandleDrop()
+    {
+        if (Context.Reorder.Enabled && !Disabled && Context.Reorder.OnDrop is not null)
+            await Context.Reorder.OnDrop.Invoke(Value);
+    }
+
+    private void HandleDragEnd()
+    {
+        // Always fire so the source clears its state even if dropped outside.
+        if (Context.Reorder.Enabled)
+            Context.Reorder.OnDragEnd?.Invoke();
     }
 
     private async Task HandleClose()
@@ -98,7 +164,7 @@
     {
         if (Disabled) return;
 
-        var isHorizontal = Context.Orientation == Tabs.TabsOrientation.Horizontal;
+        var isHorizontal = Context.Orientation == Lumeo.Orientation.Horizontal;
         var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
         var keys = Context.TabIds.Keys.ToList();
         var idx = keys.IndexOf(Value);

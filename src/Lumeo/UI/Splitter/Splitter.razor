@@ -21,22 +21,22 @@
     </CascadingValue>
 </div>
 
-@inject ComponentInteropService Interop
+@inject IComponentInteropService Interop
 
 @code {
-    [Parameter] public SplitterOrientation Orientation { get; set; } = SplitterOrientation.Horizontal;
+    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _groupId = $"splitter-{Guid.NewGuid():N}";
+    private readonly string _groupId = LumeoIds.New("splitter");
     private readonly List<object> _children = new();
     private bool _distributed;
 
-    private string OrientationString => Orientation == SplitterOrientation.Horizontal ? "horizontal" : "vertical";
+    private string OrientationString => Orientation == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
 
     private string CssClass =>
-        Orientation == SplitterOrientation.Horizontal
+        Orientation == Lumeo.Orientation.Horizontal
             ? $"flex flex-row h-full w-full {Class}".Trim()
             : $"flex flex-col h-full w-full {Class}".Trim();
 
@@ -106,7 +106,7 @@
 
         if (before is null || after is null) return;
 
-        var dimension = Orientation == SplitterOrientation.Horizontal ? "width" : "height";
+        var dimension = Orientation == Lumeo.Orientation.Horizontal ? "width" : "height";
         var totalSize = await Interop.GetElementDimension(_groupId, dimension);
         if (totalSize <= 0) return;
 
@@ -124,8 +124,6 @@
         StateHasChanged();
     }
 
-    public enum SplitterOrientation { Horizontal, Vertical }
-
     public class SplitterPaneHandle
     {
         public double Size { get; set; }
@@ -137,7 +135,7 @@
 
     public record SplitterContext(
         string GroupId,
-        SplitterOrientation Orientation,
+        Lumeo.Orientation Orientation,
         List<object> Children,
         Action<object> RegisterChild,
         Action<object> UnregisterChild,

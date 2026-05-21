@@ -21,7 +21,7 @@ public class SheetTests : IAsyncLifetime
     private IRenderedComponent<IComponent> RenderSheet(
         bool isOpen,
         EventCallback<bool>? isOpenChanged = null,
-        L.SheetContent.SheetSide side = L.SheetContent.SheetSide.Right)
+        L.Side side = L.Side.Right)
     {
         return _ctx.Render(builder =>
         {
@@ -124,7 +124,7 @@ public class SheetTests : IAsyncLifetime
     [Fact]
     public void SheetContent_Right_Side_Has_Right_Classes()
     {
-        var cut = RenderSheet(isOpen: true, side: L.SheetContent.SheetSide.Right);
+        var cut = RenderSheet(isOpen: true, side: L.Side.Right);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
         Assert.Contains("right-0", cls);
@@ -133,7 +133,7 @@ public class SheetTests : IAsyncLifetime
     [Fact]
     public void SheetContent_Left_Side_Has_Left_Classes()
     {
-        var cut = RenderSheet(isOpen: true, side: L.SheetContent.SheetSide.Left);
+        var cut = RenderSheet(isOpen: true, side: L.Side.Left);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
         Assert.Contains("left-0", cls);
@@ -142,7 +142,7 @@ public class SheetTests : IAsyncLifetime
     [Fact]
     public void SheetContent_Top_Side_Has_Top_Classes()
     {
-        var cut = RenderSheet(isOpen: true, side: L.SheetContent.SheetSide.Top);
+        var cut = RenderSheet(isOpen: true, side: L.Side.Top);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
         Assert.Contains("top-0", cls);
@@ -151,7 +151,7 @@ public class SheetTests : IAsyncLifetime
     [Fact]
     public void SheetContent_Bottom_Side_Has_Bottom_Classes()
     {
-        var cut = RenderSheet(isOpen: true, side: L.SheetContent.SheetSide.Bottom);
+        var cut = RenderSheet(isOpen: true, side: L.Side.Bottom);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
         Assert.Contains("bottom-0", cls);
@@ -400,7 +400,7 @@ public class SheetTests : IAsyncLifetime
     // bottom-0 / top-0 anchor so the sheet covers the entire viewport.
 
     private IRenderedComponent<IComponent> RenderSheetWithSize(
-        L.SheetContent.SheetSide side,
+        L.Side side,
         L.SheetContent.SheetSize size)
     {
         return _ctx.Render(builder =>
@@ -425,7 +425,7 @@ public class SheetTests : IAsyncLifetime
     [Fact]
     public void SheetContent_Bottom_Size_Full_Emits_FullScreen_Height_Classes()
     {
-        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Bottom, L.SheetContent.SheetSize.Full);
+        var cut = RenderSheetWithSize(L.Side.Bottom, L.SheetContent.SheetSize.Full);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
 
@@ -437,7 +437,7 @@ public class SheetTests : IAsyncLifetime
     [Fact]
     public void SheetContent_Top_Size_Full_Emits_FullScreen_Height_Classes()
     {
-        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Top, L.SheetContent.SheetSize.Full);
+        var cut = RenderSheetWithSize(L.Side.Top, L.SheetContent.SheetSize.Full);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
 
@@ -451,7 +451,7 @@ public class SheetTests : IAsyncLifetime
     {
         // Default size on Top/Bottom must remain content-height (legacy
         // behaviour). Only Full / Sm / Lg / Xl introduce height caps.
-        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Bottom, L.SheetContent.SheetSize.Default);
+        var cut = RenderSheetWithSize(L.Side.Bottom, L.SheetContent.SheetSize.Default);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
 
@@ -464,7 +464,7 @@ public class SheetTests : IAsyncLifetime
     {
         // Back-compat: Full on Left/Right must keep sm:max-w-full
         // and must NOT pick up the Top/Bottom inset-y-0/h-full branch.
-        var cut = RenderSheetWithSize(L.SheetContent.SheetSide.Right, L.SheetContent.SheetSize.Full);
+        var cut = RenderSheetWithSize(L.Side.Right, L.SheetContent.SheetSize.Full);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
 
