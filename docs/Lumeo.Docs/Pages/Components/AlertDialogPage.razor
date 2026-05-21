@@ -119,35 +119,27 @@
         it open — useful if you need to validate before allowing a destructive confirmation through.
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;AlertDialog @@bind-Open="_open" OnBeforeClose="GuardClose"&gt;
-    &lt;AlertDialogContent&gt;
-        &lt;AlertDialogHeader&gt;
-            &lt;AlertDialogTitle&gt;Delete project?&lt;/AlertDialogTitle&gt;
-            &lt;AlertDialogDescription&gt;Type the project name to confirm.&lt;/AlertDialogDescription&gt;
-        &lt;/AlertDialogHeader&gt;
-        &lt;Input @@bind-Value="_typed" /&gt;
-        &lt;AlertDialogFooter&gt;
-            &lt;AlertDialogCancel&gt;Keep it&lt;/AlertDialogCancel&gt;
-            &lt;AlertDialogAction OnAction="Delete"&gt;Delete&lt;/AlertDialogAction&gt;
-        &lt;/AlertDialogFooter&gt;
-    &lt;/AlertDialogContent&gt;
-&lt;/AlertDialog&gt;
-
-@@code {
-    bool _open;
-    string? _typed;
-    const string Expected = "lumeo";
-
-    Task GuardClose(DismissEventArgs e)
-    {
-        // Block the destructive action until the confirmation text matches.
-        if (e.Reason == "action" &amp;&amp; _typed != Expected)
-            e.Cancel = true;
-        return Task.CompletedTask;
-    }
-
-    Task Delete() =&gt; Task.CompletedTask;
-}</Stack>
+    <ComponentDemo Title="Intercepting close" Code="@_onBeforeCloseCode">
+        <AlertDialog @bind-Open="_guardOpen" OnBeforeClose="GuardAlertClose">
+            <AlertDialogTrigger>
+                <Button Variant="Button.ButtonVariant.Destructive">Delete project</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete project?</AlertDialogTitle>
+                    <AlertDialogDescription>Type <strong>lumeo</strong> to confirm. The action is blocked until the text matches.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <Stack Gap="3" Class="py-4">
+                    <Label>Confirmation</Label>
+                    <Input @bind-Value="_guardTyped" Placeholder="lumeo" />
+                </Stack>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Keep it</AlertDialogCancel>
+                    <AlertDialogAction OnAction="DeleteProject">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    </ComponentDemo>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         <strong>Nested stacking.</strong> AlertDialogs opened on top of a Dialog, Sheet, or Drawer now stack with
@@ -349,6 +341,48 @@
     private bool _loadingDialogOpen;
     private bool _isDeleting;
     private string? _actionMessage;
+    private bool _guardOpen;
+    private string? _guardTyped;
+    private const string _guardExpected = "lumeo";
+
+    private Task GuardAlertClose(Lumeo.DismissEventArgs e)
+    {
+        if (e.Reason == "action" && _guardTyped != _guardExpected)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    private Task DeleteProject() => Task.CompletedTask;
+
+    private string _onBeforeCloseCode = @"<AlertDialog @bind-Open=""_open"" OnBeforeClose=""GuardClose"">
+    <AlertDialogContent>
+        <AlertDialogHeader>
+            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogDescription>Type the project name to confirm.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <Input @bind-Value=""_typed"" />
+        <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction OnAction=""Delete"">Delete</AlertDialogAction>
+        </AlertDialogFooter>
+    </AlertDialogContent>
+</AlertDialog>
+
+@code {
+    bool _open;
+    string? _typed;
+    const string Expected = ""lumeo"";
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Block the destructive action until the confirmation text matches.
+        if (e.Reason == ""action"" && _typed != Expected)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    Task Delete() => Task.CompletedTask;
+}";
 
     private void HandleRemove()
     {

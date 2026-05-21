@@ -88,36 +88,19 @@
             </li>
         </ul>
 
-        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Form TModel="SignupModel" Model="@@_model" Validator="@@_validator"
-      OnValidSubmit="@@HandleSubmit"&gt;
-
-    &lt;FormField Label="Username"
-               Required="true"
-               AsyncValidator="@@CheckUsernameAvailable"
-               AsyncValidationDebounceMs="400"
-               AsyncValidateOn="AsyncValidationTrigger.OnChange"&gt;
-        &lt;Input @@bind-Value="_model.Username" /&gt;
-    &lt;/FormField&gt;
-
-    &lt;CascadingValue IsFixed="false" Value="_formContext"&gt;
-        &lt;Button type="submit" Disabled="@@(_formContext?.IsAnyFieldValidating == true)"&gt;
-            Sign up
-        &lt;/Button&gt;
-    &lt;/CascadingValue&gt;
-&lt;/Form&gt;
-
-@@code {
-    SignupModel _model = new();
-    DataAnnotationsFormValidator _validator = new();
-    FormContext? _formContext; // bound from the cascading context inside the form
-
-    async Task&lt;string?&gt; CheckUsernameAvailable(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null; // let sync validator complain
-        var taken = await UserApi.IsUsernameTaken(value);
-        return taken ? "That username is taken." : null;
-    }
-}</Stack>
+        <ComponentDemo Title="Async validators" Code="@_asyncValidatorCode">
+            <Container MaxWidth="sm" Center="false">
+                <FormField Label="Username"
+                           Required="true"
+                           Value="@_signupUsername"
+                           AsyncValidator="@CheckUsernameAvailable"
+                           AsyncValidationDebounceMs="400"
+                           AsyncValidateOn="FormField.AsyncValidationTrigger.OnChange"
+                           HelpText="Try 'taken' to see the async error.">
+                    <Input @bind-Value="_signupUsername" Placeholder="pick a username" />
+                </FormField>
+            </Container>
+        </ComponentDemo>
 
         <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
             Pair this with an <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@bind-IsValidating</code>
@@ -194,6 +177,50 @@
 </Stack>
 
 @code {
+    private string? _signupUsername;
+
+    private async Task<string?> CheckUsernameAvailable(object? value)
+    {
+        var name = value as string;
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        await Task.Delay(500); // simulate API latency
+        return string.Equals(name, "taken", StringComparison.OrdinalIgnoreCase)
+            ? "That username is taken."
+            : null;
+    }
+
+    private string _asyncValidatorCode = @"<Form TModel=""SignupModel"" Model=""@_model"" Validator=""@_validator""
+      OnValidSubmit=""@HandleSubmit"">
+
+    <FormField Label=""Username""
+               Required=""true""
+               AsyncValidator=""@CheckUsernameAvailable""
+               AsyncValidationDebounceMs=""400""
+               AsyncValidateOn=""AsyncValidationTrigger.OnChange"">
+        <Input @bind-Value=""_model.Username"" />
+    </FormField>
+
+    <CascadingValue IsFixed=""false"" Value=""_formContext"">
+        <Button type=""submit"" Disabled=""@(_formContext?.IsAnyFieldValidating == true)"">
+            Sign up
+        </Button>
+    </CascadingValue>
+</Form>
+
+@code {
+    SignupModel _model = new();
+    DataAnnotationsFormValidator _validator = new();
+    FormContext? _formContext; // bound from the cascading context inside the form
+
+    async Task<string?> CheckUsernameAvailable(object? value)
+    {
+        var name = value as string;
+        if (string.IsNullOrWhiteSpace(name)) return null; // let sync validator complain
+        var taken = await UserApi.IsUsernameTaken(name);
+        return taken ? ""That username is taken."" : null;
+    }
+}";
+
     private string _basicCode = @"<FormField Label=""Email"">
     <Input Type=""email"" placeholder=""you@example.com"" />
 </FormField>";

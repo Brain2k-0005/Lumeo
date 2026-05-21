@@ -172,28 +172,27 @@
         where typed input would defeat the constraints you've set on the calendar).
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;DatePicker @@bind-Value="_date"
-            AllowKeyboardInput="true"
-            OnParseError="HandleParseError" /&gt;
-
-@@code {
-    DateOnly? _date;
-    string? _parseError;
-
-    Task HandleParseError(string input)
-    {
-        // Fires when the user typed something the parser couldn't make sense of.
-        // Show a hint, log it, or restore the previous value — your call.
-        _parseError = $"Couldn't read \"{input}\" as a date.";
-        return Task.CompletedTask;
-    }
-}</Stack>
+    <ComponentDemo Title="Keyboard input" Code="@_keyboardInputCode">
+        <Container MaxWidth="sm" Center="false">
+            <Stack Gap="2">
+                <DatePicker @bind-Value="_kbDate" AllowKeyboardInput="true" OnParseError="HandleParseError" />
+                @if (!string.IsNullOrEmpty(_kbParseError))
+                {
+                    <Lumeo.Text Size="sm" Color="destructive">@_kbParseError</Lumeo.Text>
+                }
+            </Stack>
+        </Container>
+    </ComponentDemo>
 
     <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
         Opt out for calendar-only flows:
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;DatePicker @@bind-Value="_date" AllowKeyboardInput="false" /&gt;</Stack>
+    <ComponentDemo Title="Calendar-only (no keyboard input)" Code="@_calendarOnlyCode">
+        <Container MaxWidth="sm" Center="false">
+            <DatePicker @bind-Value="_kbDateReadonly" AllowKeyboardInput="false" />
+        </Container>
+    </ComponentDemo>
 </div>
 
 <div class="mt-12">
@@ -321,6 +320,34 @@
     private DateOnly? _birthDate;
     private DateOnly? _eventDate;
     private DateOnly? _constrainedDate;
+    private DateOnly? _kbDate;
+    private DateOnly? _kbDateReadonly;
+    private string? _kbParseError;
+
+    private Task HandleParseError(string input)
+    {
+        _kbParseError = $"Couldn't read \"{input}\" as a date.";
+        return Task.CompletedTask;
+    }
+
+    private string _keyboardInputCode = @"<DatePicker @bind-Value=""_date""
+            AllowKeyboardInput=""true""
+            OnParseError=""HandleParseError"" />
+
+@code {
+    DateOnly? _date;
+    string? _parseError;
+
+    Task HandleParseError(string input)
+    {
+        // Fires when the user typed something the parser couldn't make sense of.
+        // Show a hint, log it, or restore the previous value — your call.
+        _parseError = $""Couldn't read \""{input}\"" as a date."";
+        return Task.CompletedTask;
+    }
+}";
+
+    private string _calendarOnlyCode = @"<DatePicker @bind-Value=""_date"" AllowKeyboardInput=""false"" />";
     private DateOnly _minDate = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly _maxDate = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
     private DateOnly? _presetDate;

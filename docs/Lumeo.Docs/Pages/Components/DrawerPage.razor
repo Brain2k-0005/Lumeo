@@ -214,28 +214,27 @@
         the drawer open.
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Drawer @@bind-Open="_open" OnBeforeClose="GuardClose"&gt;
-    &lt;DrawerContent&gt;
-        &lt;DrawerHeader&gt;
-            &lt;DrawerTitle&gt;New entry&lt;/DrawerTitle&gt;
-        &lt;/DrawerHeader&gt;
-        &lt;Textarea @@bind-Value="_note" @@oninput="() =&gt; _dirty = true" /&gt;
-    &lt;/DrawerContent&gt;
-&lt;/Drawer&gt;
-
-@@code {
-    bool _open;
-    bool _dirty;
-    string? _note;
-
-    Task GuardClose(DismissEventArgs e)
-    {
-        // Mobile gestures are easy to trigger by accident — guard them while dirty.
-        if (e.Reason is "escape" or "outside" or "swipe" &amp;&amp; _dirty)
-            e.Cancel = true;
-        return Task.CompletedTask;
-    }
-}</Stack>
+    <ComponentDemo Title="Intercepting close" Code="@_onBeforeCloseCode">
+        <Drawer @bind-Open="_guardOpen" OnBeforeClose="GuardDrawerClose">
+            <DrawerTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">New entry</Button>
+            </DrawerTrigger>
+            <DrawerContent>
+                <DrawerHeader>
+                    <DrawerTitle>New entry</DrawerTitle>
+                    <DrawerDescription>Type a note — Escape, backdrop, and swipe are blocked while dirty.</DrawerDescription>
+                </DrawerHeader>
+                <Stack Gap="3" Class="px-4 pb-4">
+                    <Label>Note</Label>
+                    <Textarea Value="@_guardNote" ValueChanged="@((string v) => { _guardNote = v; _guardDirty = true; })" />
+                </Stack>
+                <DrawerFooter>
+                    <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Discard</Button>
+                    <Button OnClick="@(() => { _guardDirty = false; _guardOpen = false; })">Save</Button>
+                </DrawerFooter>
+            </DrawerContent>
+        </Drawer>
+    </ComponentDemo>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         <strong>Nested stacking.</strong> Drawers stack automatically on top of Dialogs, Sheets, AlertDialogs, or other
@@ -360,6 +359,39 @@
     private bool _isFiltersOpen;
     private bool _preventDrawerOpen;
     private bool _drawerSideInteractiveOpen;
+    private bool _guardOpen;
+    private bool _guardDirty;
+    private string? _guardNote;
+
+    private Task GuardDrawerClose(Lumeo.DismissEventArgs e)
+    {
+        if (e.Reason is "escape" or "outside" or "swipe" && _guardDirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    private string _onBeforeCloseCode = @"<Drawer @bind-Open=""_open"" OnBeforeClose=""GuardClose"">
+    <DrawerContent>
+        <DrawerHeader>
+            <DrawerTitle>New entry</DrawerTitle>
+        </DrawerHeader>
+        <Textarea @bind-Value=""_note"" @oninput=""() => _dirty = true"" />
+    </DrawerContent>
+</Drawer>
+
+@code {
+    bool _open;
+    bool _dirty;
+    string? _note;
+
+    Task GuardClose(DismissEventArgs e)
+    {
+        // Mobile gestures are easy to trigger by accident — guard them while dirty.
+        if (e.Reason is ""escape"" or ""outside"" or ""swipe"" && _dirty)
+            e.Cancel = true;
+        return Task.CompletedTask;
+    }
+}";
 
     // Interactive: Side
     private string _drawerSideSel = "Bottom";

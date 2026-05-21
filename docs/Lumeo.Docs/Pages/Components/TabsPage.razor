@@ -302,40 +302,22 @@
         persist the new order, reject the move, or animate it however you like.
     </Lumeo.Text>
 
-    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">&lt;Tabs @@bind-Value="_active"&gt;
-    &lt;TabsList Reorderable="true" OnReorder="HandleReorder"&gt;
-        @@foreach (var tab in _tabs)
-        {
-            &lt;TabsTrigger Value="@@tab.Id"&gt;@@tab.Label&lt;/TabsTrigger&gt;
-        }
-    &lt;/TabsList&gt;
-    @@foreach (var tab in _tabs)
-    {
-        &lt;TabsContent Value="@@tab.Id"&gt;@@tab.Body&lt;/TabsContent&gt;
-    }
-&lt;/Tabs&gt;
-
-@@code {
-    record TabModel(string Id, string Label, string Body);
-
-    string _active = "overview";
-    List&lt;TabModel&gt; _tabs = new()
-    {
-        new("overview",  "Overview",  "Welcome page."),
-        new("metrics",   "Metrics",   "Numbers and graphs."),
-        new("settings",  "Settings",  "Configuration."),
-    };
-
-    Task HandleReorder(TabsReorderEventArgs e)
-    {
-        // The library has *not* changed anything yet — we own the collection.
-        var moved = _tabs[e.FromIndex];
-        _tabs.RemoveAt(e.FromIndex);
-        _tabs.Insert(e.ToIndex, moved);
-        // Optional: PersistAsync(_tabs.Select(t =&gt; t.Id));
-        return Task.CompletedTask;
-    }
-}</Stack>
+    <ComponentDemo Title="Drag to reorder" Code="@_reorderCode">
+        <Tabs @bind-Value="_reorderActive">
+            <TabsList Reorderable="true" OnReorder="HandleReorder">
+                @foreach (var tab in _reorderTabs)
+                {
+                    <TabsTrigger Value="@tab.Id">@tab.Label</TabsTrigger>
+                }
+            </TabsList>
+            @foreach (var tab in _reorderTabs)
+            {
+                <TabsContent Value="@tab.Id">
+                    <Lumeo.Text Class="py-3">@tab.Body</Lumeo.Text>
+                </TabsContent>
+            }
+        </Tabs>
+    </ComponentDemo>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         If you skip the handler the tabs visually snap back to their original positions — there is no fallback
@@ -532,6 +514,58 @@
     private string _animatedTab = "home";
     private string _rmTab = "form";
     private string _swipeTab = "alpha";
+
+    private record ReorderTabModel(string Id, string Label, string Body);
+    private string _reorderActive = "overview";
+    private List<ReorderTabModel> _reorderTabs = new()
+    {
+        new("overview", "Overview", "Welcome page."),
+        new("metrics",  "Metrics",  "Numbers and graphs."),
+        new("settings", "Settings", "Configuration."),
+    };
+
+    private Task HandleReorder(TabsReorderEventArgs e)
+    {
+        var moved = _reorderTabs[e.FromIndex];
+        _reorderTabs.RemoveAt(e.FromIndex);
+        _reorderTabs.Insert(e.ToIndex, moved);
+        return Task.CompletedTask;
+    }
+
+    private string _reorderCode = @"<Tabs @bind-Value=""_active"">
+    <TabsList Reorderable=""true"" OnReorder=""HandleReorder"">
+        @foreach (var tab in _tabs)
+        {
+            <TabsTrigger Value=""@tab.Id"">@tab.Label</TabsTrigger>
+        }
+    </TabsList>
+    @foreach (var tab in _tabs)
+    {
+        <TabsContent Value=""@tab.Id"">@tab.Body</TabsContent>
+    }
+</Tabs>
+
+@code {
+    record TabModel(string Id, string Label, string Body);
+
+    string _active = ""overview"";
+    List<TabModel> _tabs = new()
+    {
+        new(""overview"",  ""Overview"",  ""Welcome page.""),
+        new(""metrics"",   ""Metrics"",   ""Numbers and graphs.""),
+        new(""settings"",  ""Settings"",  ""Configuration.""),
+    };
+
+    Task HandleReorder(TabsReorderEventArgs e)
+    {
+        // The library has *not* changed anything yet — we own the collection.
+        var moved = _tabs[e.FromIndex];
+        _tabs.RemoveAt(e.FromIndex);
+        _tabs.Insert(e.ToIndex, moved);
+        // Optional: PersistAsync(_tabs.Select(t => t.Id));
+        return Task.CompletedTask;
+    }
+}";
 
     // Interactive: Variant
     private string _variantSel = "Default";
