@@ -98,6 +98,44 @@ else
     /// </summary>
     [Parameter] public EventCallback<TabsReorderEventArgs> OnReorder { get; set; }
 
+    /// <summary>
+    /// Optional previously-persisted tab ordering. The library does not mutate
+    /// the consumer's backing collection on its own — pass this to your parent
+    /// component on init and apply <see cref="TabsLayout.Order"/> to your
+    /// collection before rendering. Mirrors DataGrid's <c>SavedLayout</c>
+    /// parameter and pairs with <see cref="OnLayoutChanged"/> to round-trip
+    /// the order through your storage of choice.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// // On init: read the persisted layout and re-order the backing list.
+    /// protected override void OnInitialized()
+    /// {
+    ///     _savedLayout = LoadFromStorage();
+    ///     if (_savedLayout is not null)
+    ///         _tabs = _tabs.OrderBy(t => _savedLayout.Order.IndexOf(t.Value)).ToList();
+    /// }
+    ///
+    /// // On change: persist the new layout so it survives the next load.
+    /// private Task HandleLayoutChanged(TabsLayout layout)
+    /// {
+    ///     _savedLayout = layout;
+    ///     return SaveToStorage(layout);
+    /// }
+    /// </code>
+    /// </example>
+    [Parameter] public TabsLayout? SavedLayout { get; set; }
+
+    /// <summary>
+    /// Fires immediately after each successful reorder with the post-drop tab
+    /// order, so the consumer can persist it (e.g. to local storage). The
+    /// snapshot reflects the order the consumer's collection will have once
+    /// it applies the corresponding <see cref="OnReorder"/>. Only meaningful
+    /// when <see cref="Reorderable"/> is true. Pairs with
+    /// <see cref="SavedLayout"/> to round-trip the order through storage.
+    /// </summary>
+    [Parameter] public EventCallback<TabsLayout> OnLayoutChanged { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -223,6 +261,7 @@ else
 
         StateHasChanged();
         await OnReorder.InvokeAsync(new TabsReorderEventArgs(fromIndex, toIndex, from));
+        await NotifyLayoutChangedAsync(fromIndex, toIndex);
     }
 
     private async Task HandleTouchDrop(int source, int target)
@@ -234,7 +273,24 @@ else
         await InvokeAsync(async () =>
         {
             await OnReorder.InvokeAsync(new TabsReorderEventArgs(source, target, moved));
+            await NotifyLayoutChangedAsync(source, target);
         });
+    }
+
+    // Computes the post-drop tab order (without mutating the live Order list,
+    // which is re-populated per-render by TabsTrigger) and raises
+    // OnLayoutChanged so the consumer can persist it.
+    private async Task NotifyLayoutChangedAsync(int fromIndex, int toIndex)
+    {
+        if (!OnLayoutChanged.HasDelegate || Context is null) return;
+        var live = Context.Reorder.Order;
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= live.Count || toIndex >= live.Count) return;
+
+        var snapshot = new List<string>(live);
+        var moved = snapshot[fromIndex];
+        snapshot.RemoveAt(fromIndex);
+        snapshot.Insert(toIndex, moved);
+        await OnLayoutChanged.InvokeAsync(new TabsLayout(snapshot));
     }
 
     private string CssClass
@@ -244,8 +300,8 @@ else
             var baseClasses = CurrentVariant switch
             {
                 Tabs.TabsVariant.Card => IsVertical
-                    ? "flex flex-col h-auto w-auto items-stretch justify-start text-muted-foreground"
-                    : "inline-flex h-10 items-center justify-center text-muted-foreground",
+                    ? "flex flex-col h-auto w-auto items-stretch justify-start border-r border-border/40 text-muted-foreground"
+                    : "inline-flex h-10 items-center justify-center border-b border-border/40 text-muted-foreground",
                 Tabs.TabsVariant.Pill => IsVertical
                     ? "flex flex-col h-auto w-auto items-stretch justify-start gap-1 text-muted-foreground"
                     : "inline-flex h-10 items-center justify-center gap-1 text-muted-foreground",

@@ -1,26 +1,25 @@
 @namespace Lumeo
 
-@if (ForceMount || Context.IsOpen)
-{
-    <div class="@CssClass" hidden="@(Context.IsOpen ? null : "hidden")" @attributes="AdditionalAttributes">
+<div class="grid transition-[grid-template-rows] duration-200 ease-out @(Context.IsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0") @CssClass" @attributes="AdditionalAttributes" aria-hidden="@(Context.IsOpen ? "false" : "true")">
+    <div class="overflow-hidden min-h-0">
         @ChildContent
     </div>
-}
+</div>
 
 @code {
     [CascadingParameter] public Collapsible.CollapsibleContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// When true, this content is always rendered into the DOM (with the
-    /// <c>hidden</c> attribute when the collapsible is closed) instead of
-    /// being unmounted. Use when child state must survive collapsing.
-    /// Default <c>false</c> preserves the original unmount behaviour.
+    /// Preserved for API compatibility only — Collapsible content is now
+    /// always mounted so the grid-rows close animation can run on collapse,
+    /// so this flag is effectively a no-op. Children always live in the DOM
+    /// whether the collapsible is open or closed.
     /// </summary>
     [Parameter] public bool ForceMount { get; set; }
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"animate-accordion-down overflow-hidden {Class}".Trim();
+    private string CssClass => $"{Class}".Trim();
 }
