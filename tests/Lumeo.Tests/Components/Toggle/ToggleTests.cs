@@ -189,10 +189,10 @@ public class ToggleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(Lumeo.Toggle.ToggleSize.Default, "h-9")]
-    [InlineData(Lumeo.Toggle.ToggleSize.Sm, "h-8")]
-    [InlineData(Lumeo.Toggle.ToggleSize.Lg, "h-10")]
-    public void Renders_Correct_Size_Classes(Lumeo.Toggle.ToggleSize size, string expectedClass)
+    [InlineData(Lumeo.Size.Md, "h-9")]
+    [InlineData(Lumeo.Size.Sm, "h-8")]
+    [InlineData(Lumeo.Size.Lg, "h-10")]
+    public void Renders_Correct_Size_Classes(Lumeo.Size size, string expectedClass)
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
             .Add(b => b.Size, size)
@@ -205,7 +205,7 @@ public class ToggleTests : IAsyncLifetime
     public void Default_Size_Has_Px_3_Padding()
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
-            .Add(b => b.Size, Lumeo.Toggle.ToggleSize.Default)
+            .Add(b => b.Size, Lumeo.Size.Md)
             .AddChildContent("B"));
 
         Assert.Contains("px-3", cut.Find("button").GetAttribute("class"));
@@ -215,7 +215,7 @@ public class ToggleTests : IAsyncLifetime
     public void Sm_Size_Has_Px_2_Padding()
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
-            .Add(b => b.Size, Lumeo.Toggle.ToggleSize.Sm)
+            .Add(b => b.Size, Lumeo.Size.Sm)
             .AddChildContent("B"));
 
         Assert.Contains("px-2", cut.Find("button").GetAttribute("class"));
@@ -225,7 +225,7 @@ public class ToggleTests : IAsyncLifetime
     public void Lg_Size_Has_Px_4_Padding()
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
-            .Add(b => b.Size, Lumeo.Toggle.ToggleSize.Lg)
+            .Add(b => b.Size, Lumeo.Size.Lg)
             .AddChildContent("B"));
 
         Assert.Contains("px-4", cut.Find("button").GetAttribute("class"));

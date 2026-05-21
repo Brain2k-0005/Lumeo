@@ -30,7 +30,7 @@ public sealed class OverlayService : IOverlayService
 
     public Task<OverlayResult> ShowSheetAsync<TComponent>(
         string? title = null,
-        SheetSide side = SheetSide.Right,
+        Lumeo.Side side = Lumeo.Side.Right,
         SheetSize size = SheetSize.Default,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent
@@ -119,8 +119,10 @@ public sealed class OverlayService : IOverlayService
 
 public enum OverlayType { Dialog, Sheet, Drawer, AlertDialog }
 
-public enum SheetSide { Top, Right, Bottom, Left }
-
+/// <summary>Sheet size as exposed through <see cref="OverlayService"/>. Mirrors
+/// <c>SheetContent.SheetSize</c> — kept distinct so the service layer doesn't
+/// take a hard dependency on the UI namespace. <c>Full</c> is layout-intent
+/// (entire viewport) and intentionally NOT folded into <see cref="Lumeo.Size"/>.</summary>
 public enum SheetSize { Sm, Default, Lg, Xl, Full }
 
 public sealed record OverlayResult
@@ -154,7 +156,7 @@ public sealed record OverlayOptions
 {
     public string? Class { get; init; }
     public bool PreventClose { get; init; }
-    public SheetSide SheetSide { get; init; } = SheetSide.Right;
+    public Lumeo.Side SheetSide { get; init; } = Lumeo.Side.Right;
     public SheetSize SheetSize { get; init; } = SheetSize.Default;
     /// <summary>
     /// When true, a Sheet opened via <see cref="OverlayService.ShowSheetAsync{T}"/>
@@ -181,9 +183,9 @@ public sealed record OverlayOptions
 
     /// <summary>Sheet side to use when the viewport is below
     /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSide"/> at all
-    /// sizes. Typical pattern: <c>SheetSide.Right</c> on desktop,
-    /// <c>SheetSide.Bottom</c> on mobile.</summary>
-    public SheetSide? MobileSheetSide { get; init; }
+    /// sizes. Typical pattern: <c>Lumeo.Side.Right</c> on desktop,
+    /// <c>Lumeo.Side.Bottom</c> on mobile.</summary>
+    public Lumeo.Side? MobileSheetSide { get; init; }
 
     /// <summary>Sheet size to use when the viewport is below
     /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSize"/> at all

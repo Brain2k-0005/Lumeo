@@ -25,7 +25,7 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public ResizableDirection Direction { get; set; } = ResizableDirection.Horizontal;
+    [Parameter] public Lumeo.Orientation Direction { get; set; } = Lumeo.Orientation.Horizontal;
     [Parameter] public double[]? DefaultSizes { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -35,10 +35,10 @@
     private int _panelCount;
     private readonly Dictionary<int, (double MinSize, double MaxSize)> _panelConstraints = new();
 
-    private string DirectionString => Direction == ResizableDirection.Horizontal ? "horizontal" : "vertical";
+    private string DirectionString => Direction == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
 
     private string CssClass =>
-        Direction == ResizableDirection.Horizontal
+        Direction == Lumeo.Orientation.Horizontal
             ? $"flex h-full w-full {Class}".Trim()
             : $"flex h-full w-full flex-col {Class}".Trim();
 
@@ -79,7 +79,7 @@
             return;
 
         // Convert delta from pixels to percentage of total group dimension
-        var dimension = Direction == ResizableDirection.Horizontal ? "width" : "height";
+        var dimension = Direction == Lumeo.Orientation.Horizontal ? "width" : "height";
         var totalSize = await Interop.GetElementDimension(_groupId, dimension);
 
         if (totalSize <= 0)
@@ -108,11 +108,9 @@
         return ValueTask.CompletedTask;
     }
 
-    public enum ResizableDirection { Horizontal, Vertical }
-
     public record ResizablePanelGroupContext(
         string GroupId,
-        ResizableDirection Direction,
+        Lumeo.Orientation Direction,
         EventCallback<(int PanelIndex, double Delta)> OnHandleDrag,
         Func<int, double> GetPanelSize,
         int PanelCount,

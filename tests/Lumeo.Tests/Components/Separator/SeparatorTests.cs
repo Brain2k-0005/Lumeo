@@ -48,7 +48,7 @@ public class SeparatorTests : IAsyncLifetime
     public void Horizontal_Has_Correct_Classes()
     {
         var cut = _ctx.Render<L.Separator>(p => p
-            .Add(s => s.Orientation, L.Separator.SeparatorOrientation.Horizontal));
+            .Add(s => s.Orientation, L.Orientation.Horizontal));
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("shrink-0", cls);
@@ -61,7 +61,7 @@ public class SeparatorTests : IAsyncLifetime
     public void Vertical_Has_Correct_Classes()
     {
         var cut = _ctx.Render<L.Separator>(p => p
-            .Add(s => s.Orientation, L.Separator.SeparatorOrientation.Vertical));
+            .Add(s => s.Orientation, L.Orientation.Vertical));
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("shrink-0", cls);
@@ -74,7 +74,7 @@ public class SeparatorTests : IAsyncLifetime
     public void Vertical_Does_Not_Have_Horizontal_Classes()
     {
         var cut = _ctx.Render<L.Separator>(p => p
-            .Add(s => s.Orientation, L.Separator.SeparatorOrientation.Vertical));
+            .Add(s => s.Orientation, L.Orientation.Vertical));
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.DoesNotContain("h-px", cls);

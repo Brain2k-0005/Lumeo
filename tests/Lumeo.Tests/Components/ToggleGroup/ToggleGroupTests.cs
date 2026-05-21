@@ -21,7 +21,7 @@ public class ToggleGroupTests : IAsyncLifetime
     private IRenderedComponent<IComponent> RenderToggleGroup(
         L.ToggleGroup.ToggleGroupType type = L.ToggleGroup.ToggleGroupType.Single,
         L.ToggleGroup.ToggleGroupVariant variant = L.ToggleGroup.ToggleGroupVariant.Default,
-        L.ToggleGroup.ToggleGroupSize size = L.ToggleGroup.ToggleGroupSize.Default,
+        L.Size size = L.Size.Md,
         string? customClass = null,
         RenderFragment? children = null)
     {
@@ -190,10 +190,10 @@ public class ToggleGroupTests : IAsyncLifetime
     // --- Sizes ---
 
     [Theory]
-    [InlineData(L.ToggleGroup.ToggleGroupSize.Default, "h-9", "px-3")]
-    [InlineData(L.ToggleGroup.ToggleGroupSize.Sm, "h-8", "px-2")]
-    [InlineData(L.ToggleGroup.ToggleGroupSize.Lg, "h-10", "px-4")]
-    public void Item_Renders_Correct_Size_Classes(L.ToggleGroup.ToggleGroupSize size, string heightClass, string paddingClass)
+    [InlineData(L.Size.Md, "h-9", "px-3")]
+    [InlineData(L.Size.Sm, "h-8", "px-2")]
+    [InlineData(L.Size.Lg, "h-10", "px-4")]
+    public void Item_Renders_Correct_Size_Classes(L.Size size, string heightClass, string paddingClass)
     {
         var cut = RenderToggleGroup(size: size);
         var cls = cut.FindAll("button")[0].GetAttribute("class") ?? "";
