@@ -32,7 +32,16 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    protected override void OnInitialized()
+    protected override void OnInitialized() => Register();
+
+    // Re-run registration on every parameter set so the parent grid picks up
+    // changes to per-column flags (Sortable, Filterable, Pinnable, ...) when
+    // they are bound to host-level state (e.g. playground toggles). AddColumnDef
+    // is upsert-safe: it updates an existing column in place rather than
+    // creating a duplicate.
+    protected override void OnParametersSet() => Register();
+
+    private void Register()
     {
         ParentGrid?.AddColumnDef(new DataGridColumn<TItem>
         {
