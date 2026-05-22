@@ -1,0 +1,207 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject ComponentInteropService Interop
+
+<CascadingValue Value="_context" IsFixed="true">
+    <div id="@_mapId"
+         role="application"
+         aria-label="Map"
+         class="@RootClass"
+         style="@RootStyle"
+         @attributes="AdditionalAttributes">
+    </div>
+    @* Markers register with us via the cascading context but do not render
+       DOM themselves — Leaflet draws them on the canvas. We still walk the
+       child content so MapMarker.OnInitialized fires. *@
+    <div style="display:none">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public (double Lat, double Lon) Center { get; set; } = (51.0, 10.4);
+    [Parameter] public EventCallback<(double Lat, double Lon)> CenterChanged { get; set; }
+
+    [Parameter] public int Zoom { get; set; } = 5;
+    [Parameter] public EventCallback<int> ZoomChanged { get; set; }
+
+    [Parameter] public string Height { get; set; } = "400px";
+
+    /// <summary>Accepts a preset name ("OpenStreetMap", "CartoLight", "CartoDark")
+    /// or a raw tile URL template (e.g. "https://your.tiles/{z}/{x}/{y}.png").</summary>
+    [Parameter] public string TileLayer { get; set; } = "OpenStreetMap";
+
+    [Parameter] public bool ZoomControl { get; set; } = true;
+    [Parameter] public bool Attribution { get; set; } = true;
+
+    /// <summary>Mirrors Leaflet's default (true). Set to false in dense scrollable
+    /// page layouts to avoid trapping page scroll inside the map.</summary>
+    [Parameter] public bool ScrollWheelZoom { get; set; } = true;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter] public EventCallback<(double Lat, double Lon)> OnClick { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _mapId = $"lumeo-map-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Map>? _selfRef;
+    private MapContext _context = null!;
+    private readonly List<MapMarker> _markers = new();
+    private bool _initialized;
+    private (double Lat, double Lon) _lastCenter;
+    private int _lastZoom;
+    private string _lastMarkerJson = "[]";
+
+    private string RootClass => $"lumeo-map relative {Class}".Trim();
+    private string RootStyle => $"width: 100%; height: {Height};";
+
+    protected override void OnInitialized()
+    {
+        _context = new MapContext(this);
+        _lastCenter = Center;
+        _lastZoom = Zoom;
+    }
+
+    internal void RegisterMarker(MapMarker marker)
+    {
+        if (!_markers.Contains(marker)) _markers.Add(marker);
+        if (_initialized) _ = InvokeAsync(SyncMarkersAsync);
+    }
+
+    internal void UnregisterMarker(MapMarker marker)
+    {
+        if (_markers.Remove(marker) && _initialized)
+            _ = InvokeAsync(SyncMarkersAsync);
+    }
+
+    internal void NotifyMarkerChanged(MapMarker marker)
+    {
+        if (_initialized) _ = InvokeAsync(SyncMarkersAsync);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await Interop.ImportModuleAsync("./_content/Lumeo.Maps/js/map.js");
+            _selfRef = DotNetObjectReference.Create(this);
+
+            var options = new
+            {
+                lat = Center.Lat,
+                lon = Center.Lon,
+                zoom = Zoom,
+                tileLayer = TileLayer,
+                zoomControl = ZoomControl,
+                attribution = Attribution,
+                scrollWheelZoom = ScrollWheelZoom,
+            };
+
+            try
+            {
+                await _module.InvokeVoidAsync("init", _mapId, options, _selfRef);
+                _initialized = true;
+                await SyncMarkersAsync();
+            }
+            catch (JSDisconnectedException) { }
+            return;
+        }
+
+        if (!_initialized || _module is null) return;
+
+        if (Center != _lastCenter || Zoom != _lastZoom)
+        {
+            _lastCenter = Center;
+            _lastZoom = Zoom;
+            try
+            {
+                await _module.InvokeVoidAsync("setCenter", _mapId, Center.Lat, Center.Lon, Zoom);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private async Task SyncMarkersAsync()
+    {
+        if (_module is null || !_initialized) return;
+        var payload = _markers.Select((m, i) => new
+        {
+            id = i,
+            lat = m.Lat,
+            lon = m.Lon,
+            title = m.Title,
+            iconUrl = m.IconUrl,
+            // When the marker has a rich Popup fragment, JS reads innerHTML
+            // from the host div MapMarker rendered (see MapMarker.BuildRenderTree).
+            // Otherwise it falls back to the plain Title string.
+            popupHtml = m.HasRichPopup ? null : m.GetPopupHtml(),
+            popupHostId = m.HasRichPopup ? m.PopupHostId : null,
+            hasClick = m.OnClick.HasDelegate,
+        }).ToArray();
+
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        if (json == _lastMarkerJson) return;
+        _lastMarkerJson = json;
+
+        try
+        {
+            await _module.InvokeVoidAsync("setMarkers", _mapId, payload);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnMapClick(double lat, double lon)
+    {
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync((lat, lon));
+    }
+
+    [JSInvokable]
+    public async Task OnViewChanged(double lat, double lon, int zoom)
+    {
+        var newCenter = (lat, lon);
+        if (newCenter != Center)
+        {
+            Center = newCenter;
+            _lastCenter = newCenter;
+            if (CenterChanged.HasDelegate) await CenterChanged.InvokeAsync(newCenter);
+        }
+        if (zoom != Zoom)
+        {
+            Zoom = zoom;
+            _lastZoom = zoom;
+            if (ZoomChanged.HasDelegate) await ZoomChanged.InvokeAsync(zoom);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerClick(int markerId)
+    {
+        if (markerId < 0 || markerId >= _markers.Count) return;
+        var marker = _markers[markerId];
+        if (marker.OnClick.HasDelegate) await marker.OnClick.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("destroy", _mapId);
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+
+    /// <summary>Cascading context passed to <see cref="MapMarker"/> children so
+    /// they can register themselves with the parent <see cref="Map"/>. Declared
+    /// here so consumers don't need an extra using.</summary>
+    public record MapContext(Map Owner);
+}

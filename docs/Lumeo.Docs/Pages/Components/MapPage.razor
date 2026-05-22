@@ -1,0 +1,191 @@
+@page "/components/map"
+
+<PageTitle>Map — Lumeo</PageTitle>
+
+<PageHeader Title="Map"
+            Description="Interactive geographic map with declarative markers. Powered by Leaflet — open-source, no API key required. Ships with three named tile presets and accepts custom URL templates." />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Satellite package.</strong> The Map lives in
+        <code>Lumeo.Maps</code> — install it alongside the core <code>Lumeo</code>
+        package. Leaflet and its stylesheet are loaded on demand from unpkg the
+        first time a Map mounts; no npm build step is required for consumers.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Locating addresses, stores, or events on a slippy map</li>
+        <li>Visualizing point data sets with up to a few hundred markers</li>
+        <li>Pickers that capture a lat/lon from a click anywhere on the map</li>
+        <li>Read-only embeds in dashboards, contact pages, and event details</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    <ComponentDemo Title="Basic" Code="@_basicCode">
+        <Map @bind-Center="_center"
+             @bind-Zoom="_zoom"
+             Height="400px" />
+        <div class="mt-3 text-xs text-muted-foreground">
+            Centered at @_center.Lat.ToString("F3"), @_center.Lon.ToString("F3") — zoom @_zoom
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Multiple markers (declarative)" Code="@_markersCode">
+        <Map Center="(50.5, 10.5)" Zoom="5" Height="450px">
+            <MapMarker Lat="48.137" Lon="11.575" Title="Munich" />
+            <MapMarker Lat="52.520" Lon="13.405" Title="Berlin" />
+            <MapMarker Lat="53.551" Lon="9.993" Title="Hamburg" />
+            <MapMarker Lat="50.937" Lon="6.960" Title="Cologne" />
+        </Map>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom tile layer (CartoDark)" Code="@_darkTileCode">
+        <Map Center="(48.137, 11.575)"
+             Zoom="11"
+             TileLayer="CartoDark"
+             Height="400px">
+            <MapMarker Lat="48.137" Lon="11.575" Title="Munich Hauptbahnhof" />
+        </Map>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Click-to-pick coordinate" Code="@_clickCode">
+        <Map Center="_pickedCenter"
+             Zoom="4"
+             Height="400px"
+             OnClick="HandleMapClick">
+            @if (_pickedPoint is { } p)
+            {
+                <MapMarker Lat="p.Lat" Lon="p.Lon" Title="@($"Picked: {p.Lat:F3}, {p.Lon:F3}")" />
+            }
+        </Map>
+        <div class="mt-3 text-xs text-muted-foreground">
+            @if (_pickedPoint is { } pp)
+            {
+                <span>Last click: @pp.Lat.ToString("F4"), @pp.Lon.ToString("F4")</span>
+            }
+            else
+            {
+                <span>Click anywhere on the map to drop a marker.</span>
+            }
+        </div>
+    </ComponentDemo>
+
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="map" Level="3" Class="mt-8 scroll-mt-20">Map</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[160px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Center</TableCell><TableCell Class="font-mono text-xs">(double Lat, double Lon)</TableCell><TableCell Class="font-mono text-xs">(51.0, 10.4)</TableCell><TableCell>Map center. Two-way bindable.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Zoom</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">5</TableCell><TableCell>Leaflet zoom level (0–18). Two-way bindable.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Height</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"400px"</TableCell><TableCell>CSS height applied to the container.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">TileLayer</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"OpenStreetMap"</TableCell><TableCell>Preset name (<code>OpenStreetMap</code>, <code>CartoLight</code>, <code>CartoDark</code>) or a raw <code>{z}/{x}/{y}</code> URL template.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ZoomControl</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show Leaflet's +/− zoom buttons.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Attribution</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show the tile-provider attribution control. Tile providers' terms typically require attribution to stay visible — leave on.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ScrollWheelZoom</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Mirrors Leaflet's default. Set to <code>false</code> in dense scrollable layouts to avoid trapping page scroll.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnClick</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;(double, double)&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with (lat, lon) when the user clicks the map.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Place <code>MapMarker</code> children here.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Extra CSS classes on the root container.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-marker" Level="3" Class="mt-8 scroll-mt-20">MapMarker</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[180px]">Type</TableHead>
+                    <TableHead Class="w-[120px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Lat</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Latitude in decimal degrees.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Lon</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Longitude in decimal degrees.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Title</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Tooltip on hover and fallback popup body.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">IconUrl</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom marker icon URL (32×32 anchored bottom-center).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Popup</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Rich popup body. Falls back to <code>Title</code> when null.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnClick</TableCell><TableCell Class="font-mono text-xs">EventCallback</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the marker icon is clicked.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+@code {
+    private (double Lat, double Lon) _center = (48.137, 11.575);
+    private int _zoom = 6;
+
+    private (double Lat, double Lon) _pickedCenter = (20.0, 0.0);
+    private (double Lat, double Lon)? _pickedPoint;
+
+    private void HandleMapClick((double Lat, double Lon) point)
+    {
+        _pickedPoint = point;
+    }
+
+    private const string _basicCode = """
+<Map @bind-Center="_center"
+     @bind-Zoom="_zoom"
+     Height="400px" />
+
+@code {
+    private (double Lat, double Lon) _center = (48.137, 11.575);
+    private int _zoom = 6;
+}
+""";
+
+    private const string _markersCode = """
+<Map Center="(50.5, 10.5)" Zoom="5" Height="450px">
+    <MapMarker Lat="48.137" Lon="11.575" Title="Munich" />
+    <MapMarker Lat="52.520" Lon="13.405" Title="Berlin" />
+    <MapMarker Lat="53.551" Lon="9.993" Title="Hamburg" />
+    <MapMarker Lat="50.937" Lon="6.960" Title="Cologne" />
+</Map>
+""";
+
+    private const string _darkTileCode = """
+<Map Center="(48.137, 11.575)"
+     Zoom="11"
+     TileLayer="CartoDark"
+     Height="400px">
+    <MapMarker Lat="48.137" Lon="11.575" Title="Munich Hauptbahnhof" />
+</Map>
+""";
+
+    private const string _clickCode = """
+<Map Center="_pickedCenter"
+     Zoom="4"
+     Height="400px"
+     OnClick="HandleMapClick">
+    @if (_pickedPoint is { } p)
+    {
+        <MapMarker Lat="p.Lat" Lon="p.Lon" Title="@($"Picked: {p.Lat:F3}, {p.Lon:F3}")" />
+    }
+</Map>
+
+@code {
+    private (double Lat, double Lon) _pickedCenter = (20.0, 0.0);
+    private (double Lat, double Lon)? _pickedPoint;
+
+    private void HandleMapClick((double Lat, double Lon) point) => _pickedPoint = point;
+}
+""";
+}
