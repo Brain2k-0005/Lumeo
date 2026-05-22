@@ -1,0 +1,63 @@
+@namespace Lumeo
+@implements IDisposable
+
+@code {
+    /// <summary>Ordered list of <c>(lat, lon)</c> points the polyline visits.</summary>
+    [Parameter, EditorRequired] public IEnumerable<(double Lat, double Lon)> Points { get; set; } = Array.Empty<(double, double)>();
+
+    /// <summary>Stroke color. Friendly name (<c>"red"</c>, <c>"blue"</c>, …) or
+    /// a raw CSS color. Null = theme primary.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Stroke width in pixels.</summary>
+    [Parameter] public double Weight { get; set; } = 3;
+
+    /// <summary>Stroke opacity, 0..1.</summary>
+    [Parameter] public double Opacity { get; set; } = 0.9;
+
+    /// <summary>SVG dash pattern (e.g. <c>"6 4"</c> for dashed). Null = solid.</summary>
+    [Parameter] public string? DashArray { get; set; }
+
+    /// <summary>Optional hover tooltip text.</summary>
+    [Parameter] public string? Tooltip { get; set; }
+
+    /// <summary>Optional popup HTML (rendered on click).</summary>
+    [Parameter] public string? PopupHtml { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _owner;
+    private MapShape? _shape;
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+        var snapshot = new MapShape
+        {
+            Type = "polyline",
+            Points = Points.Select(p => new MapShape.LatLon { Lat = p.Lat, Lon = p.Lon }).ToArray(),
+            Color = Color,
+            Weight = Weight,
+            Opacity = Opacity,
+            DashArray = DashArray,
+            Tooltip = Tooltip,
+            PopupHtml = PopupHtml,
+        };
+        if (_owner is null)
+        {
+            _owner = owner;
+            _shape = snapshot;
+            owner.RegisterShape(this, snapshot);
+        }
+        else
+        {
+            _shape = snapshot;
+            owner.NotifyShapeChanged(this, snapshot);
+        }
+    }
+
+    internal MapShape? GetSnapshot() => _shape;
+
+    public void Dispose() => _owner?.UnregisterShape(this);
+}

@@ -10,9 +10,9 @@
          style="@RootStyle"
          @attributes="AdditionalAttributes">
     </div>
-    @* Markers register with us via the cascading context but do not render
+    @* Markers + shapes register via the cascading context but do not render
        DOM themselves — Leaflet draws them on the canvas. We still walk the
-       child content so MapMarker.OnInitialized fires. *@
+       child content so the OnInitialized / OnParametersSet hooks fire. *@
     <div style="display:none">
         @ChildContent
     </div>
@@ -28,19 +28,37 @@
     [Parameter] public string Height { get; set; } = "400px";
 
     /// <summary>Accepts a preset name (<c>OpenStreetMap</c>, <c>CartoLight</c>,
-    /// <c>CartoDark</c>, <c>Satellite</c>, <c>Terrain</c>) or a raw tile URL
-    /// template (e.g. <c>"https://your.tiles/{z}/{x}/{y}.png"</c>).</summary>
-    [Parameter] public string TileLayer { get; set; } = "OpenStreetMap";
+    /// <c>CartoDark</c>, <c>Satellite</c>, <c>Terrain</c>, <c>Auto</c>) or a raw
+    /// tile URL template (e.g. <c>"https://your.tiles/{z}/{x}/{y}.png"</c>).
+    /// <c>Auto</c> picks CartoLight or CartoDark based on the host page's
+    /// theme — matches mapcn.dev's default behavior.</summary>
+    [Parameter] public string TileLayer { get; set; } = "Auto";
+
+    /// <summary>When set, renders a chip-style switcher in the top-right that
+    /// lets the user pick between presets (or custom <c>{ name, url }</c> records).</summary>
+    [Parameter] public string[]? Layers { get; set; }
 
     [Parameter] public bool ZoomControl { get; set; } = true;
     [Parameter] public bool Attribution { get; set; } = true;
-
-    /// <summary>Mirrors Leaflet's default (true). Set to false in dense scrollable
-    /// page layouts to avoid trapping page scroll inside the map.</summary>
     [Parameter] public bool ScrollWheelZoom { get; set; } = true;
 
-    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Marker clustering via leaflet.markercluster. CDN-loaded on
+    /// first use; falls back to plain markers if the script fails to fetch.</summary>
+    [Parameter] public bool Cluster { get; set; }
 
+    /// <summary>Adds a "My location" button that geolocates the user.</summary>
+    [Parameter] public bool Geolocate { get; set; }
+
+    /// <summary>Adds a fullscreen toggle button.</summary>
+    [Parameter] public bool Fullscreen { get; set; }
+
+    /// <summary>Adds a metric scale bar in the bottom-left corner.</summary>
+    [Parameter] public bool Scale { get; set; }
+
+    /// <summary>Adds a Nominatim-backed search bar in the top-left.</summary>
+    [Parameter] public bool Search { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public EventCallback<(double Lat, double Lon)> OnClick { get; set; }
 
     [Parameter] public string? Class { get; set; }
@@ -51,10 +69,12 @@
     private DotNetObjectReference<Map>? _selfRef;
     private MapContext _context = null!;
     private readonly List<MapMarker> _markers = new();
+    private readonly Dictionary<object, MapShape> _shapes = new();
     private bool _initialized;
     private (double Lat, double Lon) _lastCenter;
     private int _lastZoom;
     private string _lastMarkerJson = "[]";
+    private string _lastShapeJson = "[]";
 
     private string RootClass => $"lumeo-map relative {Class}".Trim();
     private string RootStyle => $"width: 100%; height: {Height};";
@@ -83,6 +103,24 @@
         if (_initialized) _ = InvokeAsync(SyncMarkersAsync);
     }
 
+    internal void RegisterShape(object owner, MapShape shape)
+    {
+        _shapes[owner] = shape;
+        if (_initialized) _ = InvokeAsync(SyncShapesAsync);
+    }
+
+    internal void UnregisterShape(object owner)
+    {
+        if (_shapes.Remove(owner) && _initialized)
+            _ = InvokeAsync(SyncShapesAsync);
+    }
+
+    internal void NotifyShapeChanged(object owner, MapShape shape)
+    {
+        _shapes[owner] = shape;
+        if (_initialized) _ = InvokeAsync(SyncShapesAsync);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -96,9 +134,15 @@
                 lon = Center.Lon,
                 zoom = Zoom,
                 tileLayer = TileLayer,
+                layers = Layers,
                 zoomControl = ZoomControl,
                 attribution = Attribution,
                 scrollWheelZoom = ScrollWheelZoom,
+                cluster = Cluster,
+                geolocate = Geolocate,
+                fullscreen = Fullscreen,
+                scale = Scale,
+                search = Search,
             };
 
             try
@@ -106,6 +150,7 @@
                 await _module.InvokeVoidAsync("init", _mapId, options, _selfRef);
                 _initialized = true;
                 await SyncMarkersAsync();
+                await SyncShapesAsync();
             }
             catch (JSDisconnectedException) { }
             return;
@@ -138,13 +183,7 @@
             variant = m.Variant,
             color = m.Color,
             label = m.Label,
-            // When the marker has an Icon RenderFragment, JS reads innerHTML
-            // from the host div and splices it into the DivIcon. Otherwise
-            // the DivIcon has no inner content.
             iconHostId = m.HasIcon ? m.IconHostId : null,
-            // When the marker has a rich Popup fragment, JS reads innerHTML
-            // from the host div MapMarker rendered (see MapMarker.BuildRenderTree).
-            // Otherwise it falls back to the plain Title string.
             popupHtml = m.HasRichPopup ? null : m.GetPopupHtml(),
             popupHostId = m.HasRichPopup ? m.PopupHostId : null,
             hasClick = m.OnClick.HasDelegate,
@@ -157,6 +196,33 @@
         try
         {
             await _module.InvokeVoidAsync("setMarkers", _mapId, payload);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task SyncShapesAsync()
+    {
+        if (_module is null || !_initialized) return;
+        var payload = _shapes.Values.ToArray();
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        if (json == _lastShapeJson) return;
+        _lastShapeJson = json;
+
+        try
+        {
+            await _module.InvokeVoidAsync("setShapes", _mapId, payload);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    /// <summary>Imperatively re-center the map. Useful for parent components
+    /// driving the view from non-parameter state (e.g. a "Fit to results" button).</summary>
+    public async Task FitBoundsAsync(double south, double west, double north, double east, int paddingPx = 30)
+    {
+        if (_module is null || !_initialized) return;
+        try
+        {
+            await _module.InvokeVoidAsync("fitBounds", _mapId, south, west, north, east, paddingPx);
         }
         catch (JSDisconnectedException) { }
     }
@@ -208,8 +274,7 @@
         _selfRef?.Dispose();
     }
 
-    /// <summary>Cascading context passed to <see cref="MapMarker"/> children so
-    /// they can register themselves with the parent <see cref="Map"/>. Declared
-    /// here so consumers don't need an extra using.</summary>
+    /// <summary>Cascading context passed to <see cref="MapMarker"/> + shape
+    /// children so they can register themselves with the parent <see cref="Map"/>.</summary>
     public record MapContext(Map Owner);
 }
