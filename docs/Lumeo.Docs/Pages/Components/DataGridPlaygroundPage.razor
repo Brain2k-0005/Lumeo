@@ -9,7 +9,7 @@
     hacks — MainLayout already gives this page a viewport-locked main. *@
 
 <SidebarProvider IsCollapsed="_sidebarCollapsed" IsCollapsedChanged="@(v => _sidebarCollapsed = v)" Class="h-full">
-    <SidebarComponent Side="Lumeo.Side.Left" Class="@($"!border-r-0 !bg-transparent {(_sidebarCollapsed ? "w-0 -translate-x-full" : "w-72 shrink-0")}")">
+    <SidebarComponent Side="Lumeo.Side.Left" Class="@(_sidebarCollapsed ? "w-0 -translate-x-full" : "w-72 shrink-0")">
         <SidebarHeader>
             <Stack Gap="1" Class="px-3 py-2">
                 <Flex Align="center" Gap="3">
@@ -36,6 +36,15 @@
             </SidebarGroup>
 
             <SidebarGroup>
+                <SidebarGroupLabel>Export formats</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
+                    <Checkbox Checked="_pgExportCsv" CheckedChanged="@((bool v) => { _pgExportCsv = v; RecomputeExportFormats(); })" Label="CSV" Disabled="!_pgShowToolbar || !_pgShowExport" />
+                    <Checkbox Checked="_pgExportExcel" CheckedChanged="@((bool v) => { _pgExportExcel = v; RecomputeExportFormats(); })" Label="Excel" Disabled="!_pgShowToolbar || !_pgShowExport" />
+                    <Checkbox Checked="_pgExportPdf" CheckedChanged="@((bool v) => { _pgExportPdf = v; RecomputeExportFormats(); })" Label="PDF" Disabled="!_pgShowToolbar || !_pgShowExport" />
+                </Stack>
+            </SidebarGroup>
+
+            <SidebarGroup>
                 <SidebarGroupLabel>Columns</SidebarGroupLabel>
                 <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgSortable" Label="Sortable columns" />
@@ -46,10 +55,24 @@
             </SidebarGroup>
 
             <SidebarGroup>
+                <SidebarGroupLabel>Rows</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
+                    <Switch @bind-Checked="_pgRowReorderable" Label="Drag to reorder rows" />
+                    <Switch @bind-Checked="_pgShowAddRow" Label="Show add-row button" />
+                </Stack>
+            </SidebarGroup>
+
+            <SidebarGroup>
                 <SidebarGroupLabel>Grouping</SidebarGroupLabel>
                 <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgShowGroupPanel" Label="Show group panel" />
                     <Switch @bind-Checked="_pgGroupsExpanded" Label="Groups expanded by default" />
+                    <Segmented Value="_pgGroupBySel" ValueChanged="@((string v) => { _pgGroupBySel = v; StateHasChanged(); })" Block="true">
+                        <SegmentedItem Value="None">None</SegmentedItem>
+                        <SegmentedItem Value="Team">Team</SegmentedItem>
+                        <SegmentedItem Value="Role">Role</SegmentedItem>
+                        <SegmentedItem Value="Status">Status</SegmentedItem>
+                    </Segmented>
                 </Stack>
             </SidebarGroup>
 
@@ -58,6 +81,20 @@
                 <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgShowPagination" Label="Show pagination" />
                     <NumberInput @bind-Value="_pgPageSizeNum" Min="3" Max="20" Step="1" Label="Page size" />
+                    <Segmented @bind-Value="_pgPageSizeOptionsSel" Block="true">
+                        <SegmentedItem Value="Default">Default</SegmentedItem>
+                        <SegmentedItem Value="Small">Small</SegmentedItem>
+                        <SegmentedItem Value="Large">Large</SegmentedItem>
+                    </Segmented>
+                </Stack>
+            </SidebarGroup>
+
+            <SidebarGroup>
+                <SidebarGroupLabel>Virtualization</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
+                    <Switch @bind-Checked="_pgVirtualized" Label="Virtualized rows" />
+                    <Switch @bind-Checked="_pgColumnVirtualize" Label="Column virtualization" />
+                    <NumberInput @bind-Value="_pgMaxVisibleColumns" Min="2" Max="6" Step="1" Label="Max visible columns" Disabled="!_pgColumnVirtualize" />
                 </Stack>
             </SidebarGroup>
 
@@ -69,6 +106,22 @@
                     <Switch @bind-Checked="_pgCompact" Label="Compact rows" />
                     <Switch @bind-Checked="_pgHoverable" Label="Hover highlight" />
                     <Switch @bind-Checked="_pgIsLoading" Label="Loading skeleton" />
+                    <Segmented @bind-Value="_pgHeightSel" Block="true">
+                        <SegmentedItem Value="Auto">Auto</SegmentedItem>
+                        <SegmentedItem Value="Compact">Compact</SegmentedItem>
+                        <SegmentedItem Value="Tall">Tall</SegmentedItem>
+                    </Segmented>
+                </Stack>
+            </SidebarGroup>
+
+            <SidebarGroup>
+                <SidebarGroupLabel>Persistence</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
+                    <Switch @bind-Checked="_pgEnableLayoutPersistence" Label="Persist layout to localStorage" />
+                    @if (_pgEnableLayoutPersistence)
+                    {
+                        <Input @bind-Value="_pgLayoutStorageKey" Placeholder="playground-layout" />
+                    }
                 </Stack>
             </SidebarGroup>
 
@@ -106,23 +159,34 @@
 
         <div class="flex-1 min-h-0 overflow-hidden rounded-xl border border-border/40 bg-card">
             <DataGrid TItem="PlaygroundRow"
-                      Height="100%"
+                      Height="@_pgHeight"
                       Items="@(_pgIsLoading ? new List<PlaygroundRow>() : _pgRows)"
                               ShowToolbar="_pgShowToolbar"
                               ShowSearch="_pgShowSearch"
                               ShowColumnChooser="_pgShowColumnChooser"
                               ShowExport="_pgShowExport"
+                              ExportFormats="_pgExportFormats"
                               Expandable="_pgExpandable"
                               ShowPagination="_pgShowPagination"
                               PageSize="_pgPageSize"
+                              PageSizeOptions="@_pgPageSizeOptions"
                               Striped="_pgStriped"
                               Bordered="_pgBordered"
                               Compact="_pgCompact"
                               Hoverable="_pgHoverable"
                               IsLoading="_pgIsLoading"
                               Reorderable="_pgReorderable"
+                              RowReorderable="_pgRowReorderable"
+                              ShowAddRow="_pgShowAddRow"
+                              NewItemFactory="@(() => new PlaygroundRow("New entry", "Team", "Role", 0, "Active", DateTime.Today))"
+                              Virtualized="_pgVirtualized"
+                              ColumnVirtualize="_pgColumnVirtualize"
+                              MaxVisibleColumns="@_pgMaxVisibleColumnsInt"
                               ShowGroupPanel="_pgShowGroupPanel"
                               GroupsExpandedByDefault="_pgGroupsExpanded"
+                              GroupBy="@(_pgGroupBySel == "None" ? null : _pgGroupBySel)"
+                              EnableLayoutPersistence="_pgEnableLayoutPersistence"
+                              LayoutStorageKey="@_pgLayoutStorageKey"
                               SelectionMode="@_pgSelectionModeEnum"
                               EditMode="@_pgEditModeEnum">
                         <DataGridColumnDef TItem="PlaygroundRow" Title="Name" Field="Name"
@@ -162,20 +226,53 @@
     private bool _pgShowExport = true;
     private bool _pgExpandable = true;
 
+    // Export formats (flags)
+    private bool _pgExportCsv = true;
+    private bool _pgExportExcel = true;
+    private bool _pgExportPdf = true;
+    private DataGridExportFormat _pgExportFormats = DataGridExportFormat.Csv | DataGridExportFormat.Excel | DataGridExportFormat.Pdf;
+
+    private void RecomputeExportFormats()
+    {
+        DataGridExportFormat f = 0;
+        if (_pgExportCsv) f |= DataGridExportFormat.Csv;
+        if (_pgExportExcel) f |= DataGridExportFormat.Excel;
+        if (_pgExportPdf) f |= DataGridExportFormat.Pdf;
+        _pgExportFormats = f;
+    }
+
     // Columns
     private bool _pgSortable = true;
     private bool _pgFilterable = true;
     private bool _pgReorderable = true;
     private bool _pgPinnable = true;
 
+    // Rows
+    private bool _pgRowReorderable;
+    private bool _pgShowAddRow;
+
+    // Virtualization
+    private bool _pgVirtualized;
+    private bool _pgColumnVirtualize;
+    private double? _pgMaxVisibleColumns = 4;
+    private int _pgMaxVisibleColumnsInt => (int)Math.Clamp((int)(_pgMaxVisibleColumns ?? 4), 2, 6);
+
     // Grouping
     private bool _pgShowGroupPanel = true;
     private bool _pgGroupsExpanded = true;
+    private string _pgGroupBySel = "None";
 
     // Pagination
     private bool _pgShowPagination = true;
     private double? _pgPageSizeNum = 8;
     private int _pgPageSize => (int)Math.Clamp((int)(_pgPageSizeNum ?? 8), 3, 20);
+    private string _pgPageSizeOptionsSel = "Default";
+    private int[] _pgPageSizeOptions => _pgPageSizeOptionsSel switch
+    {
+        "Small" => new[] { 5, 10 },
+        "Large" => new[] { 25, 50, 100 },
+        _ => new[] { 5, 10, 25, 50 },
+    };
 
     // Display
     private bool _pgStriped = true;
@@ -183,6 +280,17 @@
     private bool _pgCompact;
     private bool _pgHoverable = true;
     private bool _pgIsLoading;
+    private string _pgHeightSel = "Auto";
+    private string? _pgHeight => _pgHeightSel switch
+    {
+        "Compact" => "400px",
+        "Tall" => "calc(100vh - 200px)",
+        _ => "100%",
+    };
+
+    // Persistence
+    private bool _pgEnableLayoutPersistence;
+    private string? _pgLayoutStorageKey = "datagrid-playground";
 
     // Selection & editing (enum bridges via Segmented string value)
     private string _pgSelectionMode = "Multiple";
@@ -210,22 +318,40 @@
         _pgShowExport = true;
         _pgExpandable = true;
 
+        _pgExportCsv = true;
+        _pgExportExcel = true;
+        _pgExportPdf = true;
+        RecomputeExportFormats();
+
         _pgSortable = true;
         _pgFilterable = true;
         _pgReorderable = true;
         _pgPinnable = true;
 
+        _pgRowReorderable = false;
+        _pgShowAddRow = false;
+
+        _pgVirtualized = false;
+        _pgColumnVirtualize = false;
+        _pgMaxVisibleColumns = 4;
+
         _pgShowGroupPanel = true;
         _pgGroupsExpanded = true;
+        _pgGroupBySel = "None";
 
         _pgShowPagination = true;
         _pgPageSizeNum = 8;
+        _pgPageSizeOptionsSel = "Default";
 
         _pgStriped = true;
         _pgBordered = false;
         _pgCompact = false;
         _pgHoverable = true;
         _pgIsLoading = false;
+        _pgHeightSel = "Auto";
+
+        _pgEnableLayoutPersistence = false;
+        _pgLayoutStorageKey = "datagrid-playground";
 
         _pgSelectionMode = "Multiple";
         _pgEditMode = "None";
