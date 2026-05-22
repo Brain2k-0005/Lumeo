@@ -1183,6 +1183,7 @@
         _toolbarContext.EffectiveColumns = EffectiveColumns.AsReadOnly();
         _toolbarContext.OnColumnToggle = EventCallback.Factory.Create<DataGridColumn<TItem>>(this, HandleColumnVisibilityChanged);
         _toolbarContext.OnColumnReorder = EventCallback.Factory.Create<ColumnReorderEventArgs>(this, HandleColumnReorder);
+        _toolbarContext.OnColumnPin = EventCallback.Factory.Create<ColumnPinEventArgs>(this, HandleColumnPin);
 
         _toolbarContext.ExportFormats = ExportFormats;
         _toolbarContext.OnExport = EventCallback.Factory.Create<string>(this, HandleExport);
@@ -2418,6 +2419,21 @@
     {
         RefreshVisibleColumns();
         if (!ServerMode) ProcessClientData();
+        ScheduleAutoSave();
+        StateHasChanged();
+    }
+
+    // End-user "pin column" action surfaced from the column chooser. Pin state
+    // is purely visual layout (no data reprocessing required); we still refresh
+    // the visible-columns cache so the header re-orders left/right pinned
+    // columns on the next render, and trigger an autosave so layouts persist.
+    private void HandleColumnPin(ColumnPinEventArgs args)
+    {
+        var column = EffectiveColumns.FirstOrDefault(c => c.Id == args.ColumnId);
+        if (column is null || !column.Pinnable) return;
+
+        column.Pin = args.Direction;
+        RefreshVisibleColumns();
         ScheduleAutoSave();
         StateHasChanged();
     }
