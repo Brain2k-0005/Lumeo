@@ -3,68 +3,78 @@
 
 <PageTitle>DataGrid Playground — Lumeo</PageTitle>
 
-@*  Dedicated full-width, viewport-locked playground. The DataGridPage hosts
-    the canonical demos / API reference; this page is a single living
-    experiment surface. No outer page scroll — the sidebar scrolls internally,
-    the DataGrid scrolls its own rows.  *@
+@*  Full-canvas playground. Real Lumeo Sidebar (collapse/expand via the
+    SidebarTrigger in the page header), DataGrid sits to the right and
+    grows into the space the sidebar releases. No raw viewport-height
+    hacks — MainLayout already gives this page a viewport-locked main. *@
 
-<Stack Gap="3" Class="h-full overflow-hidden px-4 sm:px-6 py-3">
-    <Stack Gap="1" Class="shrink-0">
-        <Flex Align="center" Gap="3">
-            <Badge Variant="Badge.BadgeVariant.Outline">Playground</Badge>
-            <Lumeo.Link Href="/components/datagrid" Class="text-xs text-muted-foreground hover:text-foreground no-underline flex items-center gap-1">
-                <DynamicIcon Name="ArrowLeft" Class="h-3 w-3" />
-                Back to DataGrid docs
-            </Lumeo.Link>
-        </Flex>
-        <Heading Level="1" Class="text-xl sm:text-2xl font-bold tracking-tight leading-tight">DataGrid playground</Heading>
-        <Lumeo.Text Color="muted" Size="xs" Class="max-w-2xl">
-            Flip switches to see every feature in action. The DataGrid below re-renders live — no rebuild, no reload.
-        </Lumeo.Text>
-    </Stack>
+<SidebarProvider IsCollapsed="_sidebarCollapsed" IsCollapsedChanged="@(v => _sidebarCollapsed = v)" Class="h-full">
+    <SidebarComponent Side="Lumeo.Side.Left" Class="@(_sidebarCollapsed ? "w-0 -translate-x-full" : "w-72 shrink-0")">
+        <SidebarHeader>
+            <Stack Gap="1" Class="px-3 py-2">
+                <Flex Align="center" Gap="3">
+                    <Badge Variant="Badge.BadgeVariant.Outline">Playground</Badge>
+                    <Lumeo.Link Href="/components/datagrid" Class="text-xs text-muted-foreground hover:text-foreground no-underline flex items-center gap-1">
+                        <DynamicIcon Name="ArrowLeft" Class="h-3 w-3" />
+                        Back to docs
+                    </Lumeo.Link>
+                </Flex>
+                <Heading Level="2" Class="text-base font-semibold tracking-tight">Options</Heading>
+            </Stack>
+        </SidebarHeader>
 
-    <Grid Columns="12" Gap="6" Class="flex-1 min-h-0 overflow-hidden">
-            <aside class="col-span-12 lg:col-span-3 xl:col-span-2 overflow-y-auto pr-2 h-full flex flex-col gap-5">
-                <Stack Gap="2">
-                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Toolbar</h3>
+        <SidebarContent>
+            <SidebarGroup>
+                <SidebarGroupLabel>Toolbar</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgShowToolbar" Label="Show toolbar" />
                     <Switch @bind-Checked="_pgShowSearch" Label="Search box" Disabled="!_pgShowToolbar" />
                     <Switch @bind-Checked="_pgShowColumnChooser" Label="Column chooser" Disabled="!_pgShowToolbar" />
                     <Switch @bind-Checked="_pgShowExport" Label="Export button" Disabled="!_pgShowToolbar" />
                     <Switch @bind-Checked="_pgExpandable" Label="Expand to fullscreen" Disabled="!_pgShowToolbar" />
                 </Stack>
+            </SidebarGroup>
 
-                <Stack Gap="2">
-                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Columns</h3>
+            <SidebarGroup>
+                <SidebarGroupLabel>Columns</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgSortable" Label="Sortable columns" />
                     <Switch @bind-Checked="_pgFilterable" Label="Filterable columns" />
                     <Switch @bind-Checked="_pgReorderable" Label="Reorder columns (drag)" />
                     <Switch @bind-Checked="_pgPinnable" Label="Pin columns" />
                 </Stack>
+            </SidebarGroup>
 
-                <Stack Gap="2">
-                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Grouping</h3>
+            <SidebarGroup>
+                <SidebarGroupLabel>Grouping</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgShowGroupPanel" Label="Show group panel" />
                     <Switch @bind-Checked="_pgGroupsExpanded" Label="Groups expanded by default" />
                 </Stack>
+            </SidebarGroup>
 
-                <Stack Gap="2">
-                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pagination</h3>
+            <SidebarGroup>
+                <SidebarGroupLabel>Pagination</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgShowPagination" Label="Show pagination" />
                     <NumberInput @bind-Value="_pgPageSizeNum" Min="3" Max="20" Step="1" Label="Page size" />
                 </Stack>
+            </SidebarGroup>
 
-                <Stack Gap="2">
-                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Display</h3>
+            <SidebarGroup>
+                <SidebarGroupLabel>Display</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
                     <Switch @bind-Checked="_pgStriped" Label="Striped rows" />
                     <Switch @bind-Checked="_pgBordered" Label="Bordered" />
                     <Switch @bind-Checked="_pgCompact" Label="Compact rows" />
                     <Switch @bind-Checked="_pgHoverable" Label="Hover highlight" />
                     <Switch @bind-Checked="_pgIsLoading" Label="Loading skeleton" />
                 </Stack>
+            </SidebarGroup>
 
-                <Stack Gap="2">
-                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Selection &amp; editing</h3>
+            <SidebarGroup>
+                <SidebarGroupLabel>Selection &amp; editing</SidebarGroupLabel>
+                <Stack Gap="2" Class="px-2">
                     <Segmented @bind-Value="_pgSelectionMode" Block="true">
                         <SegmentedItem Value="None">None</SegmentedItem>
                         <SegmentedItem Value="Single">Single</SegmentedItem>
@@ -76,20 +86,28 @@
                         <SegmentedItem Value="Row">Row</SegmentedItem>
                     </Segmented>
                 </Stack>
+            </SidebarGroup>
+        </SidebarContent>
 
-                <div class="pt-2 border-t border-border/40">
-                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-full" OnClick="ResetPlayground">
-                        <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5 mr-1.5" />
-                        Reset to defaults
-                    </Button>
-                </div>
-            </aside>
+        <SidebarFooter>
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-full" OnClick="ResetPlayground">
+                <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5 mr-1.5" />
+                Reset to defaults
+            </Button>
+        </SidebarFooter>
+    </SidebarComponent>
 
-            <div class="col-span-12 lg:col-span-9 xl:col-span-10 h-full overflow-hidden">
-                <div class="rounded-xl border border-border/40 bg-card p-4 h-full overflow-hidden flex flex-col">
-                    <DataGrid TItem="PlaygroundRow"
-                              Height="100%"
-                              Items="@(_pgIsLoading ? new List<PlaygroundRow>() : _pgRows)"
+    <Stack Gap="3" Class="flex-1 min-w-0 h-full overflow-hidden px-4 py-3">
+        <Flex Align="center" Gap="3" Class="shrink-0">
+            <SidebarTrigger />
+            <Heading Level="1" Class="text-xl sm:text-2xl font-bold tracking-tight leading-tight">DataGrid playground</Heading>
+            <Lumeo.Text Color="muted" Size="xs" Class="hidden md:block">Flip switches to see every feature in action — no rebuild, no reload.</Lumeo.Text>
+        </Flex>
+
+        <div class="flex-1 min-h-0 overflow-hidden rounded-xl border border-border/40 bg-card">
+            <DataGrid TItem="PlaygroundRow"
+                      Height="100%"
+                      Items="@(_pgIsLoading ? new List<PlaygroundRow>() : _pgRows)"
                               ShowToolbar="_pgShowToolbar"
                               ShowSearch="_pgShowSearch"
                               ShowColumnChooser="_pgShowColumnChooser"
@@ -128,13 +146,14 @@
                                            Sortable="_pgSortable" Filterable="_pgFilterable"
                                            FilterType="DataGridFilterType.Date"
                                            Pinnable="_pgPinnable" />
-                    </DataGrid>
-                </div>
-            </div>
-    </Grid>
-</Stack>
+            </DataGrid>
+        </div>
+    </Stack>
+</SidebarProvider>
 
 @code {
+    private bool _sidebarCollapsed;
+
     // ---- Live Playground state -----------------------------------------
     // Toolbar
     private bool _pgShowToolbar = true;
