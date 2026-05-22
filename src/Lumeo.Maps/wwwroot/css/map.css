@@ -1,20 +1,17 @@
 /*
  * Lumeo.Maps — shadcn-flavored overrides for Leaflet's default chrome.
  *
- * This stylesheet is auto-injected by map.js on first map mount (one <link>
- * per page, idempotent). It assumes the Lumeo theme CSS variables defined by
- * the core package are available in the same document — `--primary`,
- * `--background`, `--card`, `--card-foreground`, `--border`, `--muted`,
- * `--muted-foreground`, `--radius`. If they are missing the rules fall back
- * to neutral grays so the map still looks sane in a vanilla page.
+ * Loaded once per document by map.js (idempotent <link data-lumeo-map>).
+ * Assumes the Lumeo theme tokens are on :root — `--primary`, `--background`,
+ * `--card`, `--card-foreground`, `--border`, `--muted`, `--muted-foreground`,
+ * `--accent`, `--accent-foreground`, `--radius`. Falls back to neutral grays
+ * when a host page hasn't pulled in lumeo.css, so the map still looks sane.
  *
- * Visual contract:
- *   - Markers are clean filled circles (DivIcon — see createMarkerIcon in
- *     map.js). The `lumeo-map-marker` class gets a hover scale + transition.
- *   - Popups drop the chunky Leaflet drop-shadow for a soft card shell with
- *     theme-aware bg/border, a Lucide-style X close button, and a fade-in
- *     entrance animation.
- *   - Cluster markers (TODO: clustering not yet wired) reuse `.lumeo-map-cluster`.
+ * Visual contract (mirrors mapcn.dev's MapLibre-on-shadcn look):
+ *   - Floating controls in soft rounded panels with backdrop blur.
+ *   - Square 32×32 buttons with hover/active background swap.
+ *   - Popups: card shell, soft shadow, animated entrance.
+ *   - Tooltips & labels share the same border + radius tokens.
  */
 
 /* -------------------------------------------------------------------- */
@@ -24,9 +21,6 @@
 .lumeo-map-marker {
     background: transparent;
     border: none;
-    /* Leaflet wraps DivIcon content in an element it positions absolutely;
-       the inner div we render owns the visual. Centered transforms so the
-       hover scale doesn't shift the anchor point. */
     transition: transform 150ms ease-out;
     will-change: transform;
 }
@@ -49,7 +43,6 @@
     cursor: pointer;
 }
 
-/* Permanent label rendered above the marker. */
 .lumeo-map-marker-label {
     position: absolute;
     bottom: 100%;
@@ -68,8 +61,10 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-/* TODO: clustering — placeholder rule so a future Leaflet.markercluster
-   integration (or our own JS clustering) has a class to target. */
+/* -------------------------------------------------------------------- */
+/* Clustering — leaflet.markercluster overrides                         */
+/* -------------------------------------------------------------------- */
+
 .lumeo-map-cluster {
     background: transparent;
     border: none;
@@ -81,13 +76,18 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    border-radius: 50%;
+    border-radius: 9999px;
     background: hsl(var(--primary, 222 47% 11%));
     color: hsl(var(--primary-foreground, 210 40% 98%));
     font-weight: 600;
     font-size: 13px;
     border: 2px solid hsl(var(--background, 0 0% 100%));
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    transition: transform 150ms ease-out;
+}
+
+.lumeo-map-cluster:hover > div {
+    transform: scale(1.08);
 }
 
 /* -------------------------------------------------------------------- */
@@ -111,9 +111,7 @@
     font-size: 13px;
 }
 
-.leaflet-popup-content p {
-    margin: 0 0 6px 0;
-}
+.leaflet-popup-content p { margin: 0 0 6px 0; }
 
 .leaflet-popup-tip {
     background: hsl(var(--card, 0 0% 100%));
@@ -121,9 +119,6 @@
     border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6);
 }
 
-/* Close button — square hit target, Lucide X via inline SVG. We hide the
-   default text X (a × glyph) and paint the SVG via background-image so we
-   don't need to inject HTML into Leaflet's internal close anchor. */
 .leaflet-popup-close-button {
     width: 22px !important;
     height: 22px !important;
@@ -147,7 +142,6 @@
     to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-/* Tooltip — match the label styling so hover affordance reads as one family. */
 .leaflet-tooltip {
     background: hsl(var(--card, 0 0% 100%));
     color: hsl(var(--card-foreground, 222 47% 11%));
@@ -157,4 +151,208 @@
     font-size: 11px;
     font-weight: 500;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* -------------------------------------------------------------------- */
+/* Controls — shadcn-style floating panels                              */
+/* -------------------------------------------------------------------- */
+
+/* Base panel look — every Leaflet bar plus our custom controls share it. */
+.leaflet-bar,
+.lumeo-map-panel {
+    background: hsl(var(--card, 0 0% 100%) / 0.92);
+    backdrop-filter: saturate(140%) blur(6px);
+    -webkit-backdrop-filter: saturate(140%) blur(6px);
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12),
+                0 1px 3px rgba(0, 0, 0, 0.06) !important;
+    overflow: hidden;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:link,
+.lumeo-map-btn {
+    width: 32px !important;
+    height: 32px !important;
+    line-height: 32px !important;
+    color: hsl(var(--card-foreground, 222 47% 11%)) !important;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid hsl(var(--border, 214 32% 91%) / 0.4) !important;
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.leaflet-bar a:last-child,
+.lumeo-map-btn:last-child {
+    border-bottom: none !important;
+}
+
+.leaflet-bar a:hover,
+.lumeo-map-btn:hover {
+    background: hsl(var(--accent, 210 40% 96%)) !important;
+    color: hsl(var(--accent-foreground, 222 47% 11%)) !important;
+}
+
+.leaflet-bar a:active,
+.lumeo-map-btn:active {
+    background: hsl(var(--muted, 210 40% 96%)) !important;
+}
+
+.leaflet-bar a.leaflet-disabled {
+    opacity: 0.4 !important;
+    pointer-events: none;
+}
+
+/* Custom control container — wraps Lumeo's own buttons (geolocate, fullscreen,
+   search) so they stack into the same rounded panel as the zoom control. */
+.lumeo-map-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.lumeo-map-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Attribution — pill in the corner with the same card look. */
+.leaflet-control-attribution {
+    background: hsl(var(--card, 0 0% 100%) / 0.85) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: hsl(var(--muted-foreground, 215 16% 47%)) !important;
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.5) !important;
+    border-radius: 8px !important;
+    padding: 2px 8px !important;
+    font-size: 10px !important;
+    margin: 8px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.leaflet-control-attribution a {
+    color: hsl(var(--primary, 222 47% 11%)) !important;
+}
+
+/* Scale control — bottom-left ruler. */
+.leaflet-control-scale-line {
+    background: hsl(var(--card, 0 0% 100%) / 0.9) !important;
+    color: hsl(var(--card-foreground, 222 47% 11%)) !important;
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-top: none !important;
+    border-radius: 0 0 6px 6px !important;
+    padding: 1px 6px !important;
+    font-size: 10px !important;
+    font-weight: 500;
+}
+
+/* Layer switcher (built-in) — chip-style buttons in a row */
+.lumeo-map-layers {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: hsl(var(--card, 0 0% 100%) / 0.92);
+    backdrop-filter: saturate(140%) blur(6px);
+    -webkit-backdrop-filter: saturate(140%) blur(6px);
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12),
+                0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+
+.lumeo-map-layers button {
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.lumeo-map-layers button:hover {
+    background: hsl(var(--accent, 210 40% 96%));
+    color: hsl(var(--accent-foreground, 222 47% 11%));
+}
+
+.lumeo-map-layers button[data-active="true"] {
+    background: hsl(var(--primary, 222 47% 11%));
+    color: hsl(var(--primary-foreground, 210 40% 98%));
+}
+
+/* Search control — search input in a floating panel. */
+.lumeo-map-search {
+    background: hsl(var(--card, 0 0% 100%) / 0.95);
+    backdrop-filter: saturate(140%) blur(6px);
+    -webkit-backdrop-filter: saturate(140%) blur(6px);
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12) !important;
+    width: 260px;
+    overflow: hidden;
+}
+
+.lumeo-map-search-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+}
+
+.lumeo-map-search-input-wrap svg {
+    width: 14px;
+    height: 14px;
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+    flex-shrink: 0;
+}
+
+.lumeo-map-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: hsl(var(--card-foreground, 222 47% 11%));
+}
+
+.lumeo-map-search input::placeholder {
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+}
+
+.lumeo-map-search-results {
+    border-top: 1px solid hsl(var(--border, 214 32% 91%) / 0.5);
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.lumeo-map-search-results button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    color: hsl(var(--card-foreground, 222 47% 11%));
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 120ms ease-out;
+}
+
+.lumeo-map-search-results button:hover {
+    background: hsl(var(--accent, 210 40% 96%));
+}
+
+.lumeo-map-search-empty {
+    padding: 10px;
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+    font-size: 12px;
+    text-align: center;
 }
