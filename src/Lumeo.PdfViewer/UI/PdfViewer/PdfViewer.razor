@@ -101,6 +101,17 @@
                 </IconContent>
             </EmptyState>
         }
+        else if (string.IsNullOrWhiteSpace(Src))
+        {
+            @* No Src yet — render a quiet placeholder rather than a blank canvas. *@
+            <EmptyState Class="py-16"
+                        Title="No PDF loaded"
+                        Description="Set the Src parameter to a PDF URL to display a document.">
+                <IconContent>
+                    <Blazicon Svg="Lucide.FileText" class="h-10 w-10" />
+                </IconContent>
+            </EmptyState>
+        }
         else
         {
             <div class="flex min-h-full items-start justify-center p-4">
@@ -131,6 +142,13 @@
     [Parameter] public bool ShowSearch { get; set; }
     [Parameter] public EventCallback<int> OnLoaded { get; set; }
     [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+    /// <summary>
+    /// Fires when the underlying JS load/render fails (CDN unreachable, malformed
+    /// PDF, worker init failure, …).  Receives the exception message.  Consumers
+    /// can use this to surface their own error UI; the built-in EmptyState fallback
+    /// renders regardless.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnError { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -202,6 +220,7 @@
                     _loadError = ex.Message;
                     _loading = false;
                     StateHasChanged();
+                    if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
                     return;
                 }
             }
@@ -236,6 +255,7 @@
             _loadError = ex.Message;
             _loading = false;
             StateHasChanged();
+            if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
         }
     }
 
