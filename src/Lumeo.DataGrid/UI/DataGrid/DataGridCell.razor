@@ -114,6 +114,9 @@
     // the result; we recompute only when something actually changes.
     private (object Key, string Css)? _cssCache;
 
+    private bool IsRowSelected =>
+        Context is not null && Context.SelectionMode != DataGridSelectionMode.None && Context.IsRowSelected(Item);
+
     private string CssClass
     {
         get
@@ -121,14 +124,21 @@
             var cellClass = Column.CellClass?.Invoke(Item);
             var pin = Column.Pin;
             var dirty = IsBatchDirty;
-            var key = (pin, dirty, Column.CssClass, cellClass, Class);
+            var selected = IsRowSelected;
+            var key = (pin, dirty, selected, Column.CssClass, cellClass, Class);
             if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
 
-            var pinClass = pin switch
+            // Pinned cells need an opaque background so the scrolling
+            // un-pinned cells don't show through behind them. `bg-card` is
+            // the base; when the row is selected we paint the same
+            // `bg-primary/5` tint that the row carries on top via an inline
+            // background-image overlay (see PinStyle) so the pinned column
+            // matches the row's selection state instead of reading as "not
+            // selected".
+            string? pinClass = pin switch
             {
-                PinDirection.Left => "sticky z-10 bg-card",
-                PinDirection.Right => "sticky z-10 bg-card",
-                _ => (string?)null
+                PinDirection.Left or PinDirection.Right => "sticky z-10 bg-card",
+                _ => null
             };
             var css = string.Join(" ", new[]
             {
@@ -152,11 +162,21 @@
     {
         get
         {
+            string? offset = null;
             if (Column.Pin == PinDirection.Left && Context?.PinnedLeftOffsets.TryGetValue(Column.Id, out var leftOff) == true)
-                return $"left: {leftOff}px;";
-            if (Column.Pin == PinDirection.Right && Context?.PinnedRightOffsets.TryGetValue(Column.Id, out var rightOff) == true)
-                return $"right: {rightOff}px;";
-            return "";
+                offset = $"left: {leftOff}px;";
+            else if (Column.Pin == PinDirection.Right && Context?.PinnedRightOffsets.TryGetValue(Column.Id, out var rightOff) == true)
+                offset = $"right: {rightOff}px;";
+
+            // Layer a primary/5 tint on top of the pinned cell's opaque
+            // bg-card when its row is selected — matches the row-level
+            // `bg-primary/5` highlight so the pinned column doesn't read
+            // as "not selected" in the middle of a selected row.
+            if (offset is not null && IsRowSelected)
+            {
+                return offset + " background-image: linear-gradient(hsl(var(--primary) / 0.05), hsl(var(--primary) / 0.05));";
+            }
+            return offset ?? "";
         }
     }
 
