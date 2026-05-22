@@ -34,12 +34,13 @@
 
     protected override void OnInitialized() => Register();
 
-    // Re-run registration on every parameter set so the parent grid picks up
-    // changes to per-column flags (Sortable, Filterable, Pinnable, ...) when
-    // they are bound to host-level state (e.g. playground toggles). AddColumnDef
-    // is upsert-safe: it updates an existing column in place rather than
-    // creating a duplicate.
-    protected override void OnParametersSet() => Register();
+    // NOTE: OnParametersSet was briefly wired to call Register() so per-column
+    // flags (Sortable / Filterable / Pinnable) updated reactively when bound
+    // to host-level state — but it re-registered on every cascading-context
+    // refresh and bumped the layout autosave generation in a tight loop,
+    // breaking the debounce window. Reverted: columns register once on
+    // initialization, host-level toggles need an explicit grid refresh
+    // (e.g. swap the @key on the grid).
 
     private void Register()
     {
