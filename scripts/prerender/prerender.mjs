@@ -62,7 +62,12 @@ try {
             const t0 = Date.now();
             let degraded = false;
             try {
-                await page.goto(server.url + route, { waitUntil: 'networkidle2', timeout: 45000 });
+                // `load` instead of `networkidle2`: component doc pages now lazy-load
+                // CDN deps (pdf.js, Leaflet, CodeMirror) on first render. networkidle2
+                // would never fire while those background imports stream in, blowing
+                // the 45s budget. `load` waits for DOM + primary resources, then we
+                // rely on the blazorReady signal below to know the app is mounted.
+                await page.goto(server.url + route, { waitUntil: 'load', timeout: 60000 });
                 try {
                     await page.waitForFunction(
                         () => document.documentElement.dataset.blazorReady === 'true',
