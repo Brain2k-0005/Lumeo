@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 3.0.5 is on NuGet** — soft borders sweep across 27 components and an accessibility + keyboard polish pass across 23. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (3.0.x patches require no migration).
+> **Lumeo 3.1.0 is on NuGet — AudioPlayer + SignaturePad + PdfViewer + Maps + CodeEditor satellites**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (3.0.x and 3.1.x patches require no migration).
 
 ## What's new in 3.0
 
@@ -91,14 +91,17 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="3.0.5" />
+  <PackageReference Include="Lumeo"            Version="3.1.0" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="3.0.5" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="3.0.5" />
-  <PackageReference Include="Lumeo.Editor"    Version="3.0.5" />
-  <PackageReference Include="Lumeo.Scheduler" Version="3.0.5" />
-  <PackageReference Include="Lumeo.Gantt"     Version="3.0.5" />
-  <PackageReference Include="Lumeo.Motion"    Version="3.0.5" />
+  <PackageReference Include="Lumeo.Charts"    Version="3.1.0" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="3.1.0" />
+  <PackageReference Include="Lumeo.Editor"    Version="3.1.0" />
+  <PackageReference Include="Lumeo.Scheduler" Version="3.1.0" />
+  <PackageReference Include="Lumeo.Gantt"     Version="3.1.0" />
+  <PackageReference Include="Lumeo.Motion"    Version="3.1.0" />
+  <PackageReference Include="Lumeo.PdfViewer" Version="3.1.0" />
+  <PackageReference Include="Lumeo.Maps"      Version="3.1.0" />
+  <PackageReference Include="Lumeo.CodeEditor" Version="3.1.0" />
 </ItemGroup>
 ```
 
