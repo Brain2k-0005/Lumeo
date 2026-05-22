@@ -1,0 +1,57 @@
+@namespace Lumeo
+@implements IDisposable
+
+@code {
+    /// <summary>Circle center as <c>(lat, lon)</c>.</summary>
+    [Parameter] public (double Lat, double Lon) Center { get; set; }
+    /// <summary>Radius in meters. Leaflet draws the circle in real-world units,
+    /// so its pixel size grows/shrinks with zoom.</summary>
+    [Parameter] public double RadiusMeters { get; set; } = 100;
+
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? FillColor { get; set; }
+    [Parameter] public double Weight { get; set; } = 2;
+    [Parameter] public double Opacity { get; set; } = 0.9;
+    [Parameter] public double FillOpacity { get; set; } = 0.2;
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public string? PopupHtml { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _owner;
+    private MapShape? _shape;
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+        var snapshot = new MapShape
+        {
+            Type = "circle",
+            Center = new MapShape.LatLon { Lat = Center.Lat, Lon = Center.Lon },
+            RadiusMeters = RadiusMeters,
+            Color = Color,
+            FillColor = FillColor,
+            Weight = Weight,
+            Opacity = Opacity,
+            FillOpacity = FillOpacity,
+            Tooltip = Tooltip,
+            PopupHtml = PopupHtml,
+        };
+        if (_owner is null)
+        {
+            _owner = owner;
+            _shape = snapshot;
+            owner.RegisterShape(this, snapshot);
+        }
+        else
+        {
+            _shape = snapshot;
+            owner.NotifyShapeChanged(this, snapshot);
+        }
+    }
+
+    internal MapShape? GetSnapshot() => _shape;
+
+    public void Dispose() => _owner?.UnregisterShape(this);
+}

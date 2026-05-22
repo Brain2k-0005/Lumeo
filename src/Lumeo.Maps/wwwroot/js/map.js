@@ -1,15 +1,18 @@
 // Lumeo.Maps — Leaflet wrapper module.
 //
-// Leaflet itself + its stylesheet are loaded from CDN on first use, then
-// cached on the window. Tile-layer URL templates for the named presets
-// match the docs at https://leafletjs.com/examples/quick-start/ — consumers
-// can also pass a raw URL template (anything containing "{z}/{x}/{y}").
+// Leaflet (+ leaflet.markercluster when Cluster=true) and its stylesheets
+// are loaded from CDN on first use, then cached on the window. Tile-layer
+// presets mirror the well-known providers; consumers can also pass a raw
+// URL template ("https://your.tiles/{z}/{x}/{y}.png") or a list of
+// switchable layers for the built-in layer switcher control.
 //
-// We also inject our own `map.css` (shadcn-style popup + DivIcon marker
-// overrides). It's idempotent: a single <link data-lumeo-map> per document.
+// We also inject our own `map.css` (shadcn-style chrome on top of Leaflet's
+// defaults). It's idempotent: one <link data-lumeo-map> per document.
 
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+const MARKERCLUSTER_JS = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js';
+const MARKERCLUSTER_CSS = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css';
 const LUMEO_MAP_CSS = '_content/Lumeo.Maps/css/map.css';
 
 const TILE_PRESETS = {
@@ -28,15 +31,11 @@ const TILE_PRESETS = {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
         maxZoom: 20,
     },
-    // Esri's World Imagery tile service — free for non-commercial use without
-    // an API key. Attribution string follows Esri's published requirement.
     Satellite: {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
         maxZoom: 19,
     },
-    // Stadia hosts the Stamen Terrain tiles since 2023. Free for non-commercial
-    // use; commercial users should sign up for a Stadia API key.
     Terrain: {
         url: 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://stamen.com/">Stamen Design</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -46,6 +45,7 @@ const TILE_PRESETS = {
 
 const instances = new Map();
 let leafletLoadPromise = null;
+let clusterLoadPromise = null;
 
 function ensureLumeoMapCss() {
     if (document.querySelector('link[data-lumeo-map]')) return;
@@ -61,7 +61,6 @@ function loadLeaflet() {
     if (leafletLoadPromise) return leafletLoadPromise;
 
     leafletLoadPromise = new Promise((resolve, reject) => {
-        // Stylesheet — append only once even if multiple maps mount.
         if (!document.querySelector('link[data-lumeo-leaflet]')) {
             const link = document.createElement('link');
             link.rel = 'stylesheet';
@@ -90,22 +89,88 @@ function loadLeaflet() {
     return leafletLoadPromise;
 }
 
+function loadMarkerCluster(L) {
+    if (L && L.markerClusterGroup) return Promise.resolve();
+    if (clusterLoadPromise) return clusterLoadPromise;
+
+    clusterLoadPromise = new Promise((resolve, reject) => {
+        if (!document.querySelector('link[data-lumeo-markercluster]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = MARKERCLUSTER_CSS;
+            link.setAttribute('data-lumeo-markercluster', '');
+            document.head.appendChild(link);
+        }
+        const existing = document.querySelector('script[data-lumeo-markercluster]');
+        if (existing) {
+            existing.addEventListener('load', resolve);
+            existing.addEventListener('error', () => reject(new Error('Failed to load leaflet.markercluster')));
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = MARKERCLUSTER_JS;
+        script.async = true;
+        script.setAttribute('data-lumeo-markercluster', '');
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Failed to load leaflet.markercluster'));
+        document.head.appendChild(script);
+    });
+    return clusterLoadPromise;
+}
+
+function isDarkTheme() {
+    // Lumeo's theme toggle adds `class="dark"` (or `data-theme="dark"`) on
+    // <html>. Fall back to the OS preference for hosts that don't manage a
+    // dedicated theme — matches mapcn.dev's auto-switch behavior.
+    const root = document.documentElement;
+    if (root.classList.contains('dark')) return true;
+    if (root.dataset?.theme === 'dark') return true;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 function resolveTileLayer(L, name) {
-    if (!name) name = 'OpenStreetMap';
+    if (!name || name === 'Auto') {
+        name = isDarkTheme() ? 'CartoDark' : 'CartoLight';
+    }
     const preset = TILE_PRESETS[name];
     if (preset) {
         return L.tileLayer(preset.url, { attribution: preset.attribution, maxZoom: preset.maxZoom });
     }
-    // Treat anything else as a raw URL template.
     return L.tileLayer(name, { maxZoom: 19 });
+}
+
+// Wire a MutationObserver on <html> so the Auto tile layer flips between
+// CartoLight and CartoDark in lockstep with the host page's theme toggle —
+// no consumer code needed. Returns a cleanup function.
+function watchThemeChanges(L, map, currentName, getCurrentLayer, onSwap) {
+    if (currentName !== 'Auto') return () => {};
+    const root = document.documentElement;
+    let last = isDarkTheme();
+    const apply = () => {
+        const dark = isDarkTheme();
+        if (dark === last) return;
+        last = dark;
+        const prev = getCurrentLayer();
+        const next = resolveTileLayer(L, 'Auto');
+        if (prev) map.removeLayer(prev);
+        next.addTo(map);
+        onSwap(next);
+    };
+    const mo = new MutationObserver(apply);
+    mo.observe(root, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    const mqHandler = () => apply();
+    mq?.addEventListener?.('change', mqHandler);
+    return () => {
+        mo.disconnect();
+        mq?.removeEventListener?.('change', mqHandler);
+    };
 }
 
 // ----------------------------------------------------------------------
 // Marker rendering — DivIcon variants.
 // ----------------------------------------------------------------------
 
-// Map a friendly color name (or pass-through CSS) to a CSS color string. When
-// `null`/undefined the caller gets the theme primary via CSS variables.
 const COLOR_MAP = {
     red:    '#ef4444',
     green:  '#22c55e',
@@ -123,18 +188,13 @@ function resolveColor(color) {
     if (!color) return 'hsl(var(--primary, 222 47% 11%))';
     const key = String(color).toLowerCase();
     if (COLOR_MAP[key]) return COLOR_MAP[key];
-    // Treat anything else as a raw CSS color (hex, hsl(), etc.).
     return color;
 }
 
-// Returns { html, iconSize, iconAnchor, popupAnchor } for a variant.
 function buildDivIconParts(variant, color, label, iconHtml) {
     const v = (variant || 'Default');
     const fill = resolveColor(color);
 
-    // Inner element receives the visual styling; the wrapper gets the
-    // `lumeo-map-marker` class so our hover transition kicks in. Style is
-    // inlined so the DivIcon is self-contained — no extra CSS per variant.
     let innerStyle = '';
     let labelHtml = '';
     let iconSize = [32, 32];
@@ -155,9 +215,7 @@ function buildDivIconParts(variant, color, label, iconHtml) {
                 box-shadow:0 2px 6px rgba(0,0,0,.18);
             `;
             break;
-
         case 'Dot':
-            // Smaller, no border, soft halo via box-shadow.
             innerStyle = `
                 width:12px;height:12px;border-radius:9999px;
                 background:${fill};
@@ -167,10 +225,7 @@ function buildDivIconParts(variant, color, label, iconHtml) {
             iconAnchor = [6, 6];
             popupAnchor = [0, -8];
             break;
-
         case 'Pin':
-            // Classic teardrop — SVG embedded so the variant doesn't depend on
-            // Leaflet's bitmap default. Anchor at the tip.
             return {
                 html: `${labelHtml}<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36" fill="${fill}" stroke="hsl(var(--background, 0 0% 100%))" stroke-width="1.5">
                     <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z"/>
@@ -180,7 +235,6 @@ function buildDivIconParts(variant, color, label, iconHtml) {
                 iconAnchor: [14, 40],
                 popupAnchor: [0, -36],
             };
-
         case 'Default':
         default:
             innerStyle = `
@@ -211,8 +265,6 @@ function escapeHtml(s) {
 }
 
 function createMarkerIcon(L, m) {
-    // If the consumer passed an explicit IconUrl, stay on the bitmap path —
-    // they've opted out of the DivIcon styling entirely.
     if (m.iconUrl) {
         return L.icon({
             iconUrl: m.iconUrl,
@@ -231,6 +283,263 @@ function createMarkerIcon(L, m) {
     });
 }
 
+// Cluster DivIcon — mirrors the marker visuals so clusters read as part of
+// the same family. Size scales with the child count (16/12 per tier).
+function makeClusterIcon(L, count) {
+    let size = 36;
+    let className = 'lumeo-map-cluster';
+    if (count >= 100) size = 52;
+    else if (count >= 25) size = 44;
+    return L.divIcon({
+        html: `<div>${count}</div>`,
+        className,
+        iconSize: [size, size],
+    });
+}
+
+// ----------------------------------------------------------------------
+// Custom controls — shadcn-styled floating panels.
+// ----------------------------------------------------------------------
+
+function makeCustomControlButton(L, opts) {
+    // Returns a Leaflet Control with one button — same look as a single-row
+    // .leaflet-bar but built from scratch so we can attach our own icons.
+    const ctl = L.control({ position: opts.position || 'topleft' });
+    ctl.onAdd = function () {
+        const container = L.DomUtil.create('div', 'leaflet-bar lumeo-map-panel');
+        const btn = L.DomUtil.create('a', 'lumeo-map-btn', container);
+        btn.href = '#';
+        btn.title = opts.title;
+        btn.setAttribute('role', 'button');
+        btn.setAttribute('aria-label', opts.title);
+        btn.innerHTML = opts.svg;
+        L.DomEvent.on(btn, 'click', (e) => {
+            L.DomEvent.stop(e);
+            opts.onClick();
+        });
+        L.DomEvent.disableClickPropagation(container);
+        return container;
+    };
+    return ctl;
+}
+
+// Inline Lucide SVGs — embedded so we don't depend on Blazicons at the JS layer.
+const ICON_LOCATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></svg>`;
+const ICON_EXPAND = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>`;
+const ICON_COMPRESS = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/></svg>`;
+const ICON_SEARCH = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
+
+function addGeolocateControl(L, map) {
+    const ctl = makeCustomControlButton(L, {
+        position: 'topleft',
+        title: 'My location',
+        svg: ICON_LOCATE,
+        onClick: () => {
+            if (!('geolocation' in navigator)) return;
+            navigator.geolocation.getCurrentPosition(
+                (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 14)),
+                () => { /* permission denied / no fix — silently */ },
+                { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+            );
+        },
+    });
+    ctl.addTo(map);
+    return ctl;
+}
+
+function addFullscreenControl(L, map) {
+    const el = map.getContainer();
+    const ctl = makeCustomControlButton(L, {
+        position: 'topleft',
+        title: 'Fullscreen',
+        svg: ICON_EXPAND,
+        onClick: () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            } else {
+                el.requestFullscreen().catch(() => {});
+            }
+        },
+    });
+    ctl.addTo(map);
+    const updateIcon = () => {
+        const btn = ctl.getContainer()?.querySelector('a');
+        if (btn) btn.innerHTML = document.fullscreenElement ? ICON_COMPRESS : ICON_EXPAND;
+        // Leaflet stalls on size changes during fullscreen entry/exit; nudge it.
+        setTimeout(() => map.invalidateSize(), 250);
+    };
+    document.addEventListener('fullscreenchange', updateIcon);
+    ctl._lumeoCleanup = () => document.removeEventListener('fullscreenchange', updateIcon);
+    return ctl;
+}
+
+function addScaleControl(L, map) {
+    const scale = L.control.scale({ position: 'bottomleft', imperial: false, maxWidth: 120 });
+    scale.addTo(map);
+    return scale;
+}
+
+function addLayerSwitcher(L, map, layers, currentName, onChange) {
+    // `layers` is an array of preset names or { name, url, attribution } records.
+    const ctl = L.control({ position: 'topright' });
+    ctl.onAdd = function () {
+        const container = L.DomUtil.create('div', 'lumeo-map-layers');
+        layers.forEach((entry) => {
+            const name = typeof entry === 'string' ? entry : entry.name;
+            const btn = L.DomUtil.create('button', '', container);
+            btn.type = 'button';
+            btn.textContent = name;
+            if (name === currentName) btn.setAttribute('data-active', 'true');
+            L.DomEvent.on(btn, 'click', (e) => {
+                L.DomEvent.stop(e);
+                container.querySelectorAll('button').forEach(b => b.removeAttribute('data-active'));
+                btn.setAttribute('data-active', 'true');
+                onChange(entry);
+            });
+        });
+        L.DomEvent.disableClickPropagation(container);
+        return container;
+    };
+    ctl.addTo(map);
+    return ctl;
+}
+
+function addSearchControl(L, map, dotNetRef) {
+    // Nominatim-backed search. Debounced; bounded to 5 results; respect their
+    // usage policy (no parallel calls, low rate, attribution implicit via OSM
+    // attribution since we hand back lat/lon and the user moves the map).
+    const ctl = L.control({ position: 'topleft' });
+    let debounceTimer = null;
+    let lastQuery = '';
+
+    ctl.onAdd = function () {
+        const container = L.DomUtil.create('div', 'lumeo-map-search');
+        container.innerHTML = `
+            <div class="lumeo-map-search-input-wrap">
+                ${ICON_SEARCH}
+                <input type="search" placeholder="Search places…" aria-label="Search places" />
+            </div>
+            <div class="lumeo-map-search-results" hidden></div>
+        `;
+        const input = container.querySelector('input');
+        const results = container.querySelector('.lumeo-map-search-results');
+
+        async function doSearch(q) {
+            const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
+            try {
+                const res = await fetch(url, { headers: { 'Accept-Language': navigator.language || 'en' } });
+                if (!res.ok) throw new Error('nominatim http ' + res.status);
+                const data = await res.json();
+                renderResults(data);
+            } catch {
+                renderResults([]);
+            }
+        }
+
+        function renderResults(data) {
+            results.innerHTML = '';
+            if (!data.length) {
+                results.innerHTML = '<div class="lumeo-map-search-empty">No results</div>';
+                results.hidden = false;
+                return;
+            }
+            data.forEach((r) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = r.display_name;
+                btn.addEventListener('click', () => {
+                    map.setView([parseFloat(r.lat), parseFloat(r.lon)], 14);
+                    input.value = r.display_name.split(',')[0];
+                    results.hidden = true;
+                });
+                results.appendChild(btn);
+            });
+            results.hidden = false;
+        }
+
+        input.addEventListener('input', () => {
+            const q = input.value.trim();
+            if (q === lastQuery) return;
+            lastQuery = q;
+            if (debounceTimer) clearTimeout(debounceTimer);
+            if (q.length < 3) {
+                results.hidden = true;
+                return;
+            }
+            debounceTimer = setTimeout(() => doSearch(q), 400);
+        });
+        input.addEventListener('blur', () => {
+            // delay so a click on a result still fires before we hide
+            setTimeout(() => { results.hidden = true; }, 150);
+        });
+        input.addEventListener('focus', () => {
+            if (results.children.length) results.hidden = false;
+        });
+
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        return container;
+    };
+    ctl.addTo(map);
+    return ctl;
+}
+
+// ----------------------------------------------------------------------
+// Shapes (polylines, polygons, circles, rectangles, GeoJSON).
+// ----------------------------------------------------------------------
+
+function resolveShapeStyle(s) {
+    return {
+        color: resolveColor(s.color),
+        weight: s.weight ?? 3,
+        opacity: s.opacity ?? 0.9,
+        fillColor: resolveColor(s.fillColor || s.color),
+        fillOpacity: s.fillOpacity ?? 0.18,
+        dashArray: s.dashArray || undefined,
+    };
+}
+
+function createShape(L, s) {
+    const style = resolveShapeStyle(s);
+    switch (s.type) {
+        case 'polyline':
+            return L.polyline(s.points.map(p => [p.lat, p.lon]), style);
+        case 'polygon':
+            return L.polygon(s.points.map(p => [p.lat, p.lon]), style);
+        case 'rectangle':
+            return L.rectangle([[s.bounds.south, s.bounds.west], [s.bounds.north, s.bounds.east]], style);
+        case 'circle':
+            return L.circle([s.center.lat, s.center.lon], { ...style, radius: s.radiusMeters });
+        case 'arc': {
+            // Quadratic Bezier between two points, sampled into a polyline.
+            // The control point sits perpendicular to the midpoint at a height
+            // of `curvature * chord-length` (so arcs scale with distance).
+            const A = [s.from.lat, s.from.lon];
+            const B = [s.to.lat, s.to.lon];
+            const mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+            const dx = B[1] - A[1];
+            const dy = B[0] - A[0];
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const curv = s.curvature ?? 0.25;
+            const cx = mid[1] + (-dy / len) * len * curv;
+            const cy = mid[0] + (dx / len) * len * curv;
+            const samples = 48;
+            const pts = [];
+            for (let i = 0; i <= samples; i++) {
+                const t = i / samples;
+                const lat = (1 - t) * (1 - t) * A[0] + 2 * (1 - t) * t * cy + t * t * B[0];
+                const lon = (1 - t) * (1 - t) * A[1] + 2 * (1 - t) * t * cx + t * t * B[1];
+                pts.push([lat, lon]);
+            }
+            return L.polyline(pts, style);
+        }
+        case 'geojson':
+            return L.geoJSON(s.geojson, { style });
+        default:
+            return null;
+    }
+}
+
 // ----------------------------------------------------------------------
 // Public API
 // ----------------------------------------------------------------------
@@ -241,8 +550,6 @@ export async function init(elementId, options, dotNetRef) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
-    // Idempotent: if a previous instance survived a re-render, tear it down
-    // before re-initializing on the same element id.
     if (instances.has(elementId)) {
         try { instances.get(elementId).map.remove(); } catch (_) {}
         instances.delete(elementId);
@@ -256,8 +563,34 @@ export async function init(elementId, options, dotNetRef) {
         scrollWheelZoom: options.scrollWheelZoom !== false,
     });
 
-    const tile = resolveTileLayer(L, options.tileLayer);
-    tile.addTo(map);
+    let currentTile = resolveTileLayer(L, options.tileLayer);
+    currentTile.addTo(map);
+
+    // Theme-aware swap for TileLayer="Auto" — flips between CartoLight and
+    // CartoDark when the host page toggles its theme. No-op for explicit
+    // preset names or raw URL templates.
+    const themeCleanup = watchThemeChanges(
+        L, map, options.tileLayer,
+        () => currentTile,
+        (next) => { currentTile = next; },
+    );
+
+    let markerGroup = null;
+    let clusterEnabled = !!options.cluster;
+    if (clusterEnabled) {
+        try {
+            await loadMarkerCluster(L);
+            markerGroup = L.markerClusterGroup({
+                showCoverageOnHover: false,
+                spiderfyOnMaxZoom: true,
+                iconCreateFunction: (cluster) => makeClusterIcon(L, cluster.getChildCount()),
+            });
+            map.addLayer(markerGroup);
+        } catch {
+            // fall back to plain group if cluster failed to load
+            clusterEnabled = false;
+        }
+    }
 
     map.on('click', (e) => {
         try { dotNetRef.invokeMethodAsync('OnMapClick', e.latlng.lat, e.latlng.lng); }
@@ -272,24 +605,47 @@ export async function init(elementId, options, dotNetRef) {
     map.on('moveend', fireViewChanged);
     map.on('zoomend', fireViewChanged);
 
-    instances.set(elementId, { L, map, tile, markers: [], dotNetRef });
+    const controls = [];
+    if (options.geolocate)   controls.push(addGeolocateControl(L, map));
+    if (options.fullscreen)  controls.push(addFullscreenControl(L, map));
+    if (options.scale)       controls.push(addScaleControl(L, map));
+    if (options.search)      controls.push(addSearchControl(L, map, dotNetRef));
+
+    let layerSwitcher = null;
+    if (Array.isArray(options.layers) && options.layers.length > 0) {
+        let currentTile = tile;
+        let currentName = options.tileLayer || 'OpenStreetMap';
+        layerSwitcher = addLayerSwitcher(L, map, options.layers, currentName, (entry) => {
+            const name = typeof entry === 'string' ? entry : entry.name;
+            const url = typeof entry === 'string' ? null : entry.url;
+            map.removeLayer(currentTile);
+            currentTile = url ? L.tileLayer(url, { maxZoom: entry.maxZoom || 19, attribution: entry.attribution || '' })
+                              : resolveTileLayer(L, name);
+            currentTile.addTo(map);
+            currentName = name;
+        });
+        controls.push(layerSwitcher);
+    }
+
+    instances.set(elementId, {
+        L, map, tile: currentTile, markers: [], shapes: [], dotNetRef,
+        markerGroup, clusterEnabled, controls, themeCleanup,
+    });
 }
 
 export async function setMarkers(elementId, markers) {
     const inst = instances.get(elementId);
     if (!inst) return;
-    const { L, map, markers: existing, dotNetRef } = inst;
+    const { L, map, markers: existing, dotNetRef, markerGroup, clusterEnabled } = inst;
 
-    // Wipe previous markers — declarative model: the C# side owns the full list
-    // and re-sends it on any change. Cheap because marker counts are bounded
-    // by how many <MapMarker> tags the consumer wrote.
-    for (const m of existing) map.removeLayer(m);
+    const layerHost = clusterEnabled ? markerGroup : map;
+
+    for (const m of existing) {
+        if (clusterEnabled) markerGroup.removeLayer(m); else map.removeLayer(m);
+    }
     existing.length = 0;
 
     for (const m of markers) {
-        // Resolve the inner icon HTML before building the DivIcon — if the
-        // consumer supplied an <Icon> RenderFragment, Map.razor sent us a
-        // hidden host id and we splice its innerHTML in.
         if (m.iconHostId) {
             const host = document.getElementById(m.iconHostId);
             if (host) m.iconHtml = host.innerHTML;
@@ -313,8 +669,27 @@ export async function setMarkers(elementId, markers) {
             });
         }
 
-        leafletMarker.addTo(map);
+        if (clusterEnabled) markerGroup.addLayer(leafletMarker);
+        else leafletMarker.addTo(map);
         existing.push(leafletMarker);
+    }
+}
+
+export async function setShapes(elementId, shapes) {
+    const inst = instances.get(elementId);
+    if (!inst) return;
+    const { L, map, shapes: existing } = inst;
+
+    for (const s of existing) map.removeLayer(s);
+    existing.length = 0;
+
+    for (const s of shapes) {
+        const layer = createShape(L, s);
+        if (!layer) continue;
+        if (s.tooltip) layer.bindTooltip(s.tooltip);
+        if (s.popupHtml) layer.bindPopup(s.popupHtml);
+        layer.addTo(map);
+        existing.push(layer);
     }
 }
 
@@ -324,9 +699,22 @@ export async function setCenter(elementId, lat, lon, zoom) {
     inst.map.setView([lat, lon], zoom);
 }
 
+export async function fitBounds(elementId, south, west, north, east, paddingPx) {
+    const inst = instances.get(elementId);
+    if (!inst) return;
+    const pad = paddingPx ?? 30;
+    inst.map.fitBounds([[south, west], [north, east]], { padding: [pad, pad] });
+}
+
 export async function destroy(elementId) {
     const inst = instances.get(elementId);
     if (!inst) return;
-    try { inst.map.remove(); } catch (_) {}
+    try {
+        if (inst.themeCleanup) inst.themeCleanup();
+        for (const c of inst.controls) {
+            if (c && c._lumeoCleanup) c._lumeoCleanup();
+        }
+        inst.map.remove();
+    } catch (_) {}
     instances.delete(elementId);
 }
