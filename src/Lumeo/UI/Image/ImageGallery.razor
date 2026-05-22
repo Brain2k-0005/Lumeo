@@ -6,17 +6,20 @@
     {
         @foreach (var (image, index) in Images.Select((img, i) => (img, i)))
         {
-            <div @key="image.Src" class="overflow-hidden rounded-md cursor-pointer group" @onclick="() => OpenPreview(index)">
+            <button @key="image.Src" type="button"
+                    class="overflow-hidden rounded-md cursor-pointer group focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label="@($"Open image {index + 1}")"
+                    @onclick="() => OpenPreview(index)">
                 <img src="@image.Src" alt="@image.Alt" loading="lazy"
                      class="w-full h-full object-cover transition-transform group-hover:scale-105" />
-            </div>
+            </button>
         }
     }
 </div>
 
 @if (_showPreview && Images is { Count: > 0 })
 {
-    <div class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center animate-fade-in" @onkeydown="HandleKeyDown" tabindex="-1" id="@_previewId">
+    <div class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center animate-fade-in" role="dialog" aria-modal="true" aria-label="Image preview" @onkeydown="HandleKeyDown" tabindex="-1" id="@_previewId">
         <button type="button" class="absolute top-4 right-4 text-white/80 hover:text-white transition-colors z-10 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black/80 rounded" @onclick="ClosePreview">
             <Blazicon Svg="Lucide.X" class="h-6 w-6" />
         </button>
@@ -79,6 +82,7 @@
     // Gesture state
     private bool _pinchRegistered;
     private bool _swipeRegistered;
+    private bool _shouldFocusPreview;
 
     private const int MinZoom = 25;
     private const int MaxZoom = 300;
@@ -108,6 +112,10 @@
         _zoom = 100;
         _showPreview = true;
         await Interop.LockScroll();
+        // Focus the overlay so Escape / arrow-key navigation work without
+        // requiring the user to click the overlay first (the wrapper has
+        // tabindex="-1" so keyboard events would otherwise never fire).
+        _shouldFocusPreview = true;
     }
 
     private async Task ClosePreview()
@@ -158,6 +166,12 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_shouldFocusPreview && _showPreview)
+        {
+            _shouldFocusPreview = false;
+            try { await Interop.FocusElement(_previewId); } catch (JSDisconnectedException) { }
+        }
+
         if (_showPreview && GesturesEnabled)
         {
             // Register pinch zoom on the preview image element.

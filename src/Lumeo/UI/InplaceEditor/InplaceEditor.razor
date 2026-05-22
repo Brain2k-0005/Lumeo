@@ -30,7 +30,7 @@
                 }
                 else if (EditMode == InplaceEditMode.Select && SelectOptions is not null)
                 {
-                    <select class="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    <select class="w-full rounded border border-border/40 bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                             value="@_editValue"
                             name="@(Name ?? FormField?.Name)"
                             aria-required="@(Required ? "true" : "false")"
@@ -76,7 +76,7 @@
     }
     else
     {
-        <div class="@DisplayClass" @onclick="StartEditing" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")">
+        <div class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
             <div class="flex-1 min-w-0">
                 @if (ChildContent is not null)
                 {
@@ -144,7 +144,7 @@
     private string? _editValue;
 
     private string CssClass => $"group w-full {Class}".Trim();
-    private string EditInputClass => $"w-full rounded border {(EffectiveInvalid ? "border-destructive focus:ring-destructive/20" : "border-border focus:ring-ring")} bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1";
+    private string EditInputClass => $"w-full rounded border {(EffectiveInvalid ? "border-destructive focus:ring-destructive/20" : "border-border/40 focus:ring-ring")} bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1";
 
     private string DisplayClass => Cx.Join(
         "flex items-center w-full rounded px-2 py-1 cursor-pointer hover:bg-muted/30 transition-colors min-h-8",
@@ -157,6 +157,12 @@
         if (Disabled) return;
         _editValue = Value;
         _editing = true;
+    }
+
+    private void HandleDisplayKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        if (e.Key is "Enter" or " ") StartEditing();
     }
 
     private void OnInput(ChangeEventArgs e)

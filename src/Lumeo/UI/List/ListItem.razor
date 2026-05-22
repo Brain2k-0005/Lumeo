@@ -41,7 +41,12 @@
 }
 else
 {
-    <li class="@liClass" @onclick="HandleClick" @attributes="AdditionalAttributes">
+    <li class="@liClass"
+        role="@(OnClick.HasDelegate ? "button" : null)"
+        tabindex="@(OnClick.HasDelegate && !Disabled ? "0" : null)"
+        @onclick="HandleClick"
+        @onkeydown="HandleKeyDown"
+        @attributes="AdditionalAttributes">
         @if (Leading != null)
         {
             <div class="shrink-0">@Leading</div>
@@ -82,5 +87,11 @@ else
     {
         if (!Disabled && OnClick.HasDelegate)
             await OnClick.InvokeAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled || !OnClick.HasDelegate) return;
+        if (e.Key is "Enter" or " ") await OnClick.InvokeAsync();
     }
 }

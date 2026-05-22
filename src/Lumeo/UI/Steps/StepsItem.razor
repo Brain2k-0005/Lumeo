@@ -13,6 +13,8 @@
             <button type="button"
                     class="@GetIndicatorClasses(status, isError)"
                     disabled="@(!IsClickable)"
+                    aria-current="@(status == StepStatus.Current ? "step" : null)"
+                    aria-label="@StepAriaLabel(status, isError)"
                     @onclick="HandleClick">
                 @if (IconContent is not null)
                 {
@@ -52,6 +54,8 @@ else
             <button type="button"
                     class="@GetIndicatorClasses(status, isError)"
                     disabled="@(!IsClickable)"
+                    aria-current="@(status == StepStatus.Current ? "step" : null)"
+                    aria-label="@StepAriaLabel(status, isError)"
                     @onclick="HandleClick">
                 @if (IconContent is not null)
                 {
@@ -198,6 +202,16 @@ else
         {
             await Context.OnStepClick.InvokeAsync(_index);
         }
+    }
+
+    private string StepAriaLabel(StepStatus status, bool isError)
+    {
+        var label = !string.IsNullOrEmpty(Title) ? Title! : $"Step {_index + 1}";
+        var state = isError ? " (error)"
+            : status == StepStatus.Completed ? " (completed)"
+            : status == StepStatus.Current ? " (current)"
+            : "";
+        return label + state;
     }
 
     private string HorizontalCssClass => $"flex flex-1 flex-row last:flex-initial {Class}".Trim();
