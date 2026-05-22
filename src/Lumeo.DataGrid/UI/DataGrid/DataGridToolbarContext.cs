@@ -17,6 +17,7 @@ public sealed class DataGridToolbarContext<TItem>
     public IReadOnlyList<DataGridColumn<TItem>>? EffectiveColumns { get; set; }
     public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
     public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+    public EventCallback<ColumnPinEventArgs> OnColumnPin { get; set; }
 
     public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
     public EventCallback<string> OnExport { get; set; }

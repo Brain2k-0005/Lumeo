@@ -1,0 +1,61 @@
+@namespace Lumeo
+@implements IDisposable
+
+@if (Popup is not null)
+{
+    @* Hidden host that holds the rendered RenderFragment. JS reads
+       this element's innerHTML and feeds it to Leaflet's bindPopup, so
+       any Razor markup (including child components) can appear in a
+       marker popup. Kept display:none so it doesn't leak into the page. *@
+    <div id="@_popupHostId" style="display:none">
+        @Popup
+    </div>
+}
+
+@code {
+    [Parameter] public double Lat { get; set; }
+    [Parameter] public double Lon { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? IconUrl { get; set; }
+
+    /// <summary>Optional rich popup body. When present, it overrides the plain
+    /// <see cref="Title"/> as the marker's popup content. The fragment renders
+    /// into a hidden host div and Leaflet uses the host's innerHTML.</summary>
+    [Parameter] public RenderFragment? Popup { get; set; }
+
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _registeredOwner;
+    private (double Lat, double Lon, string? Title, string? IconUrl)? _lastState;
+    private readonly string _popupHostId = $"lumeo-map-popup-{Guid.NewGuid():N}";
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+
+        if (_registeredOwner is null)
+        {
+            _registeredOwner = owner;
+            owner.RegisterMarker(this);
+        }
+        else
+        {
+            var snapshot = (Lat, Lon, Title, IconUrl);
+            if (_lastState is { } prev && prev != snapshot)
+                owner.NotifyMarkerChanged(this);
+        }
+        _lastState = (Lat, Lon, Title, IconUrl);
+    }
+
+    internal string? GetPopupHtml() => Title;
+    internal string PopupHostId => _popupHostId;
+    internal bool HasRichPopup => Popup is not null;
+
+    public void Dispose()
+    {
+        _registeredOwner?.UnregisterMarker(this);
+    }
+}

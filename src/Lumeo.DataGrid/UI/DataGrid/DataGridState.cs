@@ -107,6 +107,11 @@ public record ColumnReorderEventArgs(
     int NewIndex
 );
 
+public record ColumnPinEventArgs(
+    string ColumnId,
+    PinDirection Direction
+);
+
 public record FilterApplyEventArgs(
     string? Field,
     FilterDescriptor? Filter
