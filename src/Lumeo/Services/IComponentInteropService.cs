@@ -177,6 +177,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
 
+    // HTMLMediaElement helpers (AudioPlayer, 3.1.0). Pass-through to play()/pause()
+    // and a couple of property setters so Lumeo components never touch IJSRuntime
+    // directly. play() rejects when autoplay is blocked — the JS side swallows
+    // that, callers should rely on the element's "pause" event to reflect state.
+    ValueTask PlayMedia(Microsoft.AspNetCore.Components.ElementReference element);
+    ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element);
+    ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted);
+    ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds);
+    /// <summary>
+    /// Reads the live <c>duration</c> and <c>currentTime</c> off an
+    /// HTMLMediaElement. Required because Blazor's media event args don't
+    /// expose these — they're properties of the element itself.
+    /// </summary>
+    ValueTask<MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element);
+
     // Haptic feedback — best-effort, no-op on browsers without Vibration API (iOS Safari).
     ValueTask Vibrate(int milliseconds);
 
@@ -245,4 +260,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RichTextSetDisabledAsync(string id, bool disabled);
     ValueTask RichTextDestroyAsync(string id);
     ValueTask<string?> RichTextPromptLinkAsync(string? initial);
+
+    // SignaturePad — canvas-based handwritten signature capture (3.1.0).
+    // Ships its own tiny JS module (signature-pad.js) loaded lazily on first
+    // use so apps that never render a SignaturePad don't pay the import cost.
+    ValueTask SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef);
+    ValueTask SignaturePadClear(string elementId);
+    ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType);
+    ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width);
+    ValueTask SignaturePadSetDisabled(string elementId, bool disabled);
+    ValueTask SignaturePadLoadDataUrl(string elementId, string? dataUrl);
+    ValueTask SignaturePadDestroy(string elementId);
 }

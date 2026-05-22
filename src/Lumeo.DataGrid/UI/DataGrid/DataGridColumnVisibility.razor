@@ -8,38 +8,65 @@
             @L["DataGrid.ToggleColumns"]
         </div>
         @{
-            var columnList = Columns.ToList();
+            // Bind the SortableList to an in-place mutable buffer so its
+            // OnDrop / HandleTouchDrop callbacks have a stable list to update.
+            // We rebuild from Columns whenever the upstream column set changes
+            // (see OnParametersSet) — drag-reorder only ever fires the
+            // OnColumnReorder callback, the parent owns the canonical order.
         }
-        @for (int i = 0; i < columnList.Count; i++)
-        {
-            var column = columnList[i];
-            var index = i;
-            var isFirst = index == 0;
-            var isLast = index == columnList.Count - 1;
-
-            <div class="flex items-center gap-2 py-0.5">
-                <label class="flex items-center gap-2 text-sm cursor-pointer flex-1 min-w-0">
-                    <Checkbox Checked="@column.Visible" CheckedChanged="@(v => ToggleColumn(column, v))" />
-                    <span class="truncate">@(column.Title ?? column.Field ?? "Column")</span>
-                </label>
-                <div class="flex items-center gap-0.5 shrink-0">
-                    <button type="button"
-                            class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="@L["DataGrid.MoveUp"]"
-                            disabled="@isFirst"
-                            @onclick="@(async () => await MoveColumn(index, index - 1))">
-                        <Blazicon Svg="Lucide.ArrowUp" class="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button"
-                            class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="@L["DataGrid.MoveDown"]"
-                            disabled="@isLast"
-                            @onclick="@(async () => await MoveColumn(index, index + 1))">
-                        <Blazicon Svg="Lucide.ArrowDown" class="h-3.5 w-3.5" />
-                    </button>
+        <SortableList TItem="DataGridColumn<TItem>"
+                      Items="_buffer"
+                      ItemsChanged="HandleSortChanged"
+                      Key="@(c => c.Id)"
+                      Class="flex flex-col gap-1">
+            <ItemTemplate Context="column">
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                    <label class="flex items-center gap-2 text-sm cursor-pointer flex-1 min-w-0">
+                        <Checkbox Checked="@column.Visible" CheckedChanged="@(v => ToggleColumn(column, v))" />
+                        <span class="truncate">@(column.Title ?? column.Field ?? "Column")</span>
+                    </label>
+                    @if (column.Pinnable)
+                    {
+                        <div class="relative shrink-0">
+                            <button type="button"
+                                    class="inline-flex items-center justify-center h-6 w-6 rounded transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 @(column.Pin != PinDirection.None ? "text-primary hover:bg-accent" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")"
+                                    title="@L["DataGrid.PinColumn"]"
+                                    @onclick="@(() => TogglePinMenu(column.Id))"
+                                    @onclick:stopPropagation="true">
+                                <Blazicon Svg="Lucide.Pin" class="h-3.5 w-3.5" />
+                            </button>
+                            @if (_openPinMenu == column.Id)
+                            {
+                                <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover text-popover-foreground shadow-md p-1"
+                                     @onclick:stopPropagation="true">
+                                    <button type="button"
+                                            class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled="@(column.Pin == PinDirection.Left)"
+                                            @onclick="@(() => PinColumn(column, PinDirection.Left))">
+                                        <Blazicon Svg="Lucide.ChevronsLeft" class="h-3.5 w-3.5" />
+                                        <span>@L["DataGrid.PinLeft"]</span>
+                                    </button>
+                                    <button type="button"
+                                            class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled="@(column.Pin == PinDirection.Right)"
+                                            @onclick="@(() => PinColumn(column, PinDirection.Right))">
+                                        <Blazicon Svg="Lucide.ChevronsRight" class="h-3.5 w-3.5" />
+                                        <span>@L["DataGrid.PinRight"]</span>
+                                    </button>
+                                    <button type="button"
+                                            class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled="@(column.Pin == PinDirection.None)"
+                                            @onclick="@(() => PinColumn(column, PinDirection.None))">
+                                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                                        <span>@L["DataGrid.Unpin"]</span>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
-            </div>
-        }
+            </ItemTemplate>
+        </SortableList>
     </div>
 </div>
 
@@ -47,10 +74,23 @@
     [Parameter] public IReadOnlyList<DataGridColumn<TItem>> Columns { get; set; } = Array.Empty<DataGridColumn<TItem>>();
     [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+    [Parameter] public EventCallback<ColumnPinEventArgs> OnColumnPin { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => $"w-64 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md {Class}".Trim();
+
+    // Mutable buffer for SortableList. We keep it in sync with the readonly
+    // Columns parameter; the drag callback runs locally on this buffer, then
+    // we emit a single ColumnReorderEventArgs (oldIndex, newIndex) so the
+    // parent's reorder pipeline stays the keyboard/UI source of truth.
+    private List<DataGridColumn<TItem>> _buffer = new();
+    private string? _openPinMenu;
+
+    protected override void OnParametersSet()
+    {
+        _buffer = Columns.ToList();
+    }
 
     private async Task ToggleColumn(DataGridColumn<TItem> column, bool visible)
     {
@@ -58,10 +98,41 @@
         await OnColumnToggle.InvokeAsync(column);
     }
 
-    private async Task MoveColumn(int oldIndex, int newIndex)
+    private async Task HandleSortChanged(List<DataGridColumn<TItem>> reordered)
     {
-        var column = Columns[oldIndex];
-        var args = new ColumnReorderEventArgs(column.Id, oldIndex, newIndex);
+        // Diff old -> new to recover the (oldIndex, newIndex) move. SortableList
+        // performs a single Remove+Insert per drop, so exactly one column moved.
+        var oldOrder = Columns.ToList();
+        if (reordered.Count != oldOrder.Count) return;
+
+        int movedNewIndex = -1;
+        for (int i = 0; i < reordered.Count; i++)
+        {
+            if (!ReferenceEquals(reordered[i], oldOrder[i]))
+            {
+                movedNewIndex = i;
+                break;
+            }
+        }
+        if (movedNewIndex < 0) return;
+
+        var moved = reordered[movedNewIndex];
+        var oldIndex = oldOrder.FindIndex(c => ReferenceEquals(c, moved));
+        if (oldIndex < 0 || oldIndex == movedNewIndex) return;
+
+        _buffer = reordered;
+        var args = new ColumnReorderEventArgs(moved.Id, oldIndex, movedNewIndex);
         await OnColumnReorder.InvokeAsync(args);
+    }
+
+    private void TogglePinMenu(string columnId)
+    {
+        _openPinMenu = _openPinMenu == columnId ? null : columnId;
+    }
+
+    private async Task PinColumn(DataGridColumn<TItem> column, PinDirection direction)
+    {
+        _openPinMenu = null;
+        await OnColumnPin.InvokeAsync(new ColumnPinEventArgs(column.Id, direction));
     }
 }

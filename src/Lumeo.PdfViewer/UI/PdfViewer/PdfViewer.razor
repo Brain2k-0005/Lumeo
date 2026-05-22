@@ -1,0 +1,335 @@
+@namespace Lumeo
+@using System.Reflection
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    @if (ShowToolbar)
+    {
+        <div class="flex items-center justify-between gap-2 border-b border-border/40 bg-background/60 px-3 py-2">
+            @if (ShowPageNav)
+            {
+                <div class="flex items-center gap-1">
+                    <button type="button"
+                            class="@NavBtnClass"
+                            aria-label="Previous page"
+                            disabled="@(!CanGoPrev)"
+                            @onclick="GoPrev">
+                        <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+                    </button>
+                    <div class="flex items-center gap-1 text-xs text-muted-foreground">
+                        <input type="number"
+                               min="1"
+                               max="@_totalPages"
+                               value="@Page"
+                               class="h-7 w-12 rounded-md border border-border/60 bg-background px-1 text-center text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                               @onchange="HandlePageInput"
+                               aria-label="Page number" />
+                        <span>/ @_totalPages</span>
+                    </div>
+                    <button type="button"
+                            class="@NavBtnClass"
+                            aria-label="Next page"
+                            disabled="@(!CanGoNext)"
+                            @onclick="GoNext">
+                        <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div></div>
+            }
+
+            <div class="flex items-center gap-1">
+                @if (ShowSearch)
+                {
+                    <div class="flex items-center gap-1">
+                        <input type="search"
+                               placeholder="Search…"
+                               value="@_searchQuery"
+                               class="h-7 w-40 rounded-md border border-border/60 bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                               @onchange="HandleSearchInput"
+                               aria-label="Search PDF" />
+                        @if (_searchMatches.HasValue)
+                        {
+                            <span class="text-xs text-muted-foreground" aria-live="polite">
+                                @_searchMatches matches
+                            </span>
+                        }
+                    </div>
+                }
+                @if (ShowZoomControls)
+                {
+                    <button type="button" class="@NavBtnClass" aria-label="Zoom out" @onclick="ZoomOut">
+                        <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
+                    </button>
+                    <span class="min-w-[44px] text-center text-xs text-muted-foreground">
+                        @($"{(int)Math.Round(Zoom * 100)}%")
+                    </span>
+                    <button type="button" class="@NavBtnClass" aria-label="Zoom in" @onclick="ZoomIn">
+                        <Blazicon Svg="Lucide.Plus" class="h-4 w-4" />
+                    </button>
+                }
+                @if (ShowDownload && !string.IsNullOrEmpty(Src))
+                {
+                    <a href="@Src"
+                       download
+                       target="_blank"
+                       rel="noopener"
+                       class="@NavBtnClass"
+                       aria-label="Download PDF">
+                        <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
+                    </a>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="relative flex-1 overflow-auto bg-muted/30"
+         role="document"
+         aria-label="PDF document"
+         tabindex="0"
+         @onkeydown="HandleKeyDown">
+        @if (_loadError is not null)
+        {
+            <EmptyState Class="py-16"
+                        Title="Could not load PDF"
+                        Description="@_loadError">
+                <IconContent>
+                    <Blazicon Svg="Lucide.FileX" class="h-10 w-10" />
+                </IconContent>
+            </EmptyState>
+        }
+        else
+        {
+            <div class="flex min-h-full items-start justify-center p-4">
+                <canvas id="@_canvasId" class="@CanvasVisibilityClass shadow-md"></canvas>
+            </div>
+            @if (_loading)
+            {
+                <div class="absolute inset-0 flex items-center justify-center bg-background/40 backdrop-blur-[2px]"
+                     role="status"
+                     aria-live="polite">
+                    <Spinner />
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string? Src { get; set; }
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    [Parameter] public double Zoom { get; set; } = 1.0;
+    [Parameter] public EventCallback<double> ZoomChanged { get; set; }
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+    [Parameter] public bool ShowPageNav { get; set; } = true;
+    [Parameter] public bool ShowZoomControls { get; set; } = true;
+    [Parameter] public bool ShowDownload { get; set; } = true;
+    [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public EventCallback<int> OnLoaded { get; set; }
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private const double MinZoom = 0.5;
+    private const double MaxZoom = 4.0;
+    private const double ZoomStep = 0.25;
+
+    private readonly string _canvasId = $"lumeo-pdf-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private string? _lastSrc;
+    private int _lastPage;
+    private double _lastZoom;
+    private int _totalPages;
+    private bool _loading = true;
+    private string? _loadError;
+    private string _searchQuery = string.Empty;
+    private int? _searchMatches;
+
+    // Driven off the satellite assembly's informational version so the cached
+    // module URL changes whenever Lumeo.PdfViewer is republished — same trick
+    // ComponentInteropService uses for core components.js.
+    private static readonly string _moduleVersion =
+        typeof(PdfViewer).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? typeof(PdfViewer).Assembly.GetName().Version?.ToString()
+        ?? "0";
+
+    private string RootClass => $"flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden min-h-[400px] {Class}".Trim();
+    private string NavBtnClass => "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-ring transition-colors";
+    private string CanvasVisibilityClass => _loading || _loadError is not null ? "opacity-0" : "opacity-100 transition-opacity duration-150";
+
+    private bool CanGoPrev => _totalPages > 0 && Page > 1;
+    private bool CanGoNext => _totalPages > 0 && Page < _totalPages;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (string.IsNullOrWhiteSpace(Src))
+        {
+            // Nothing to render until Src is set.
+            if (_loading) { _loading = false; StateHasChanged(); }
+            return;
+        }
+
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import",
+                $"./_content/Lumeo.PdfViewer/js/pdf-viewer.js?v={_moduleVersion}");
+
+            // Src changed → (re)load document. Always runs at least once on the
+            // first render where Src is non-null.
+            if (!string.Equals(_lastSrc, Src, StringComparison.Ordinal))
+            {
+                _loading = true;
+                _loadError = null;
+                _searchMatches = null;
+                StateHasChanged();
+
+                try
+                {
+                    var info = await _module.InvokeAsync<LoadResult>("load", _canvasId, Src);
+                    _totalPages = info.TotalPages;
+                    _lastSrc = Src;
+                    _lastPage = 0;
+                    _lastZoom = 0;
+                    if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync(_totalPages);
+                }
+                catch (Exception ex)
+                {
+                    _loadError = ex.Message;
+                    _loading = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
+
+            // Render the current page if page or zoom changed.
+            var clampedPage = Math.Clamp(Page, 1, Math.Max(1, _totalPages));
+            var clampedZoom = Math.Clamp(Zoom, MinZoom, MaxZoom);
+
+            if (clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
+            {
+                _loading = true;
+                StateHasChanged();
+
+                await _module.InvokeVoidAsync("renderPage", _canvasId, clampedPage, clampedZoom);
+                _lastPage = clampedPage;
+                _lastZoom = clampedZoom;
+                _loading = false;
+                StateHasChanged();
+            }
+            else if (_loading)
+            {
+                _loading = false;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit dropped — nothing to do.
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetPageAsync(int next)
+    {
+        if (_totalPages == 0) return;
+        var clamped = Math.Clamp(next, 1, _totalPages);
+        if (clamped == Page) return;
+        Page = clamped;
+        if (PageChanged.HasDelegate) await PageChanged.InvokeAsync(Page);
+        if (OnPageChanged.HasDelegate) await OnPageChanged.InvokeAsync(Page);
+    }
+
+    private async Task SetZoomAsync(double next)
+    {
+        var clamped = Math.Clamp(next, MinZoom, MaxZoom);
+        if (Math.Abs(clamped - Zoom) < 0.0001) return;
+        Zoom = clamped;
+        if (ZoomChanged.HasDelegate) await ZoomChanged.InvokeAsync(Zoom);
+    }
+
+    private Task GoPrev() => SetPageAsync(Page - 1);
+    private Task GoNext() => SetPageAsync(Page + 1);
+    private Task ZoomIn() => SetZoomAsync(Zoom + ZoomStep);
+    private Task ZoomOut() => SetZoomAsync(Zoom - ZoomStep);
+
+    private Task HandlePageInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var parsed))
+        {
+            return SetPageAsync(parsed);
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? string.Empty;
+        if (_module is null) return;
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _searchMatches = null;
+            return;
+        }
+        try
+        {
+            _searchMatches = await _module.InvokeAsync<int>("search", _canvasId, _searchQuery);
+        }
+        catch
+        {
+            _searchMatches = 0;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "PageDown":
+            case "ArrowRight":
+                await SetPageAsync(Page + 1);
+                break;
+            case "PageUp":
+            case "ArrowLeft":
+                await SetPageAsync(Page - 1);
+                break;
+            case "+":
+            case "=":
+                await SetZoomAsync(Zoom + ZoomStep);
+                break;
+            case "-":
+            case "_":
+                await SetZoomAsync(Zoom - ZoomStep);
+                break;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("destroy", _canvasId);
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { /* circuit dropped */ }
+        catch { /* swallow */ }
+    }
+
+    // Matches the { totalPages } object returned by pdf-viewer.js#load.
+    // JS-side keys are camelCase; System.Text.Json (used by JSInterop) matches
+    // case-insensitively by default, so the PascalCase property name here lines up.
+    private class LoadResult
+    {
+        public int TotalPages { get; set; }
+    }
+}

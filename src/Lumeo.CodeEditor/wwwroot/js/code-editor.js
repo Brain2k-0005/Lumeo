@@ -1,0 +1,338 @@
+// Lumeo CodeEditor — CodeMirror 6 wrapper.
+//
+// Why CodeMirror over Monaco:
+//   - Monaco WASM bundle is ~5MB, exceeds Cloudflare Pages free tier 25MB
+//     asset ceiling once you stack a few satellite packages.
+//   - CodeMirror 6 is modular ESM; the core view+state is ~150KB and each
+//     `@codemirror/lang-*` pack is 5–30KB. We import only the language the
+//     consumer asks for, so a JSON-only page never downloads the Python pack.
+//
+// Module loading strategy
+// -----------------------
+//   - Core (`@codemirror/state`, `@codemirror/view`, `@codemirror/language`,
+//     `@codemirror/commands`, `@codemirror/search`, `@codemirror/autocomplete`)
+//     is dynamic-imported once on first init, cached in `_corePromise`.
+//   - Language packs are lazy-loaded per `language` arg, cached in
+//     `_langCache` so switching back to a language is instant.
+//   - Themes: the One Dark theme is dynamic-imported when needed; the light
+//     theme is CodeMirror's built-in default.
+//   - All imports go through `https://esm.sh/` — CDN already serves these
+//     packages as ES modules with proper HTTP caching headers.
+//
+// Theme="auto" detects `document.documentElement.classList.contains('dark')`
+// at init time and re-evaluates via a MutationObserver on the html element's
+// class attribute, so Lumeo's ThemeSwitcher flips CodeMirror instantly.
+
+const ESM = 'https://esm.sh';
+const CM_VERSION = '6';       // major; esm.sh resolves to latest 6.x
+const LANG_VERSION = '6';     // language packs
+
+// Instances keyed by elementId.
+const _instances = new Map();
+
+let _corePromise = null;
+const _langCache = new Map();
+let _oneDarkPromise = null;
+
+async function loadCore() {
+    if (_corePromise) return _corePromise;
+    _corePromise = (async () => {
+        const [state, view, language, commands, search, autocomplete] = await Promise.all([
+            import(`${ESM}/@codemirror/state@${CM_VERSION}`),
+            import(`${ESM}/@codemirror/view@${CM_VERSION}`),
+            import(`${ESM}/@codemirror/language@${CM_VERSION}`),
+            import(`${ESM}/@codemirror/commands@${CM_VERSION}`),
+            import(`${ESM}/@codemirror/search@${CM_VERSION}`),
+            import(`${ESM}/@codemirror/autocomplete@${CM_VERSION}`),
+        ]);
+        return { state, view, language, commands, search, autocomplete };
+    })();
+    return _corePromise;
+}
+
+// Maps the user-facing language string to (npm pkg, factory fn name on its exports).
+// `factory` is the function CodeMirror's lang packs export to build the LanguageSupport;
+// most are named after the language (`javascript`, `python`, …); a few are different.
+const LANG_MAP = {
+    csharp:     { pkg: '@codemirror/legacy-modes/mode/clike', mode: 'csharp', legacy: true },
+    javascript: { pkg: '@codemirror/lang-javascript', factory: 'javascript' },
+    typescript: { pkg: '@codemirror/lang-javascript', factory: 'javascript', opts: { typescript: true } },
+    html:       { pkg: '@codemirror/lang-html', factory: 'html' },
+    css:        { pkg: '@codemirror/lang-css', factory: 'css' },
+    json:       { pkg: '@codemirror/lang-json', factory: 'json' },
+    markdown:   { pkg: '@codemirror/lang-markdown', factory: 'markdown' },
+    xml:        { pkg: '@codemirror/lang-xml', factory: 'xml' },
+    sql:        { pkg: '@codemirror/lang-sql', factory: 'sql' },
+    python:     { pkg: '@codemirror/lang-python', factory: 'python' },
+    plaintext:  null, // no language extension
+};
+
+async function loadLanguage(language) {
+    const key = (language || 'plaintext').toLowerCase();
+    const spec = LANG_MAP[key];
+    if (!spec) return null;
+
+    if (_langCache.has(key)) return _langCache.get(key);
+
+    const promise = (async () => {
+        const core = await loadCore();
+        if (spec.legacy) {
+            // C# (and other clike dialects) live in @codemirror/legacy-modes — they wrap
+            // CodeMirror 5 modes via StreamLanguage. Bundle is small (~10KB) and saves
+            // us pulling a separate tree-sitter grammar for an admin-form-grade editor.
+            const [legacyLang, clike] = await Promise.all([
+                import(`${ESM}/@codemirror/language@${CM_VERSION}`),
+                import(`${ESM}/@codemirror/legacy-modes@${LANG_VERSION}/mode/clike`),
+            ]);
+            const StreamLanguage = legacyLang.StreamLanguage;
+            const mode = clike[spec.mode] || clike.default?.[spec.mode];
+            if (!StreamLanguage || !mode) return null;
+            return StreamLanguage.define(mode);
+        }
+
+        const mod = await import(`${ESM}/${spec.pkg}@${LANG_VERSION}`);
+        const fn = mod[spec.factory] || mod.default?.[spec.factory] || mod.default;
+        if (typeof fn !== 'function') return null;
+        return spec.opts ? fn(spec.opts) : fn();
+    })();
+
+    _langCache.set(key, promise);
+    return promise;
+}
+
+async function loadOneDark() {
+    if (_oneDarkPromise) return _oneDarkPromise;
+    _oneDarkPromise = (async () => {
+        const mod = await import(`${ESM}/@codemirror/theme-one-dark@${CM_VERSION}`);
+        return mod.oneDark || mod.default?.oneDark || mod.default;
+    })();
+    return _oneDarkPromise;
+}
+
+function isPageDark() {
+    try {
+        return document.documentElement.classList.contains('dark');
+    } catch {
+        return false;
+    }
+}
+
+function resolveDark(theme) {
+    if (theme === 'dark') return true;
+    if (theme === 'light') return false;
+    // auto
+    return isPageDark();
+}
+
+async function buildExtensions(opts, core) {
+    const { state, view, language, commands, search, autocomplete } = core;
+    const exts = [];
+
+    if (opts.lineNumbers) exts.push(view.lineNumbers());
+    exts.push(view.highlightActiveLineGutter());
+    exts.push(view.highlightSpecialChars());
+    exts.push(commands.history());
+    exts.push(language.foldGutter());
+    exts.push(view.drawSelection());
+    exts.push(view.dropCursor());
+    exts.push(state.EditorState.allowMultipleSelections.of(true));
+    exts.push(language.indentOnInput());
+    exts.push(language.bracketMatching());
+    exts.push(autocomplete.closeBrackets());
+    exts.push(autocomplete.autocompletion());
+    exts.push(view.rectangularSelection());
+    exts.push(view.crosshairCursor());
+    exts.push(view.highlightActiveLine());
+    exts.push(search.highlightSelectionMatches());
+
+    exts.push(view.keymap.of([
+        ...autocomplete.closeBracketsKeymap,
+        ...commands.defaultKeymap,
+        ...search.searchKeymap,
+        ...commands.historyKeymap,
+        ...language.foldKeymap,
+        ...autocomplete.completionKeymap,
+    ]));
+
+    // Tab size + (optional) hard-tab indent unit.
+    exts.push(state.EditorState.tabSize.of(opts.tabSize || 4));
+    if (opts.useTabs) {
+        exts.push(language.indentUnit.of('\t'));
+    } else {
+        exts.push(language.indentUnit.of(' '.repeat(opts.tabSize || 4)));
+    }
+
+    if (opts.wordWrap === 'on') exts.push(view.EditorView.lineWrapping);
+
+    if (opts.placeholder) exts.push(view.placeholder(opts.placeholder));
+
+    // ReadOnly: also disable editing so contenteditable stops capturing focus.
+    if (opts.readOnly) {
+        exts.push(state.EditorState.readOnly.of(true));
+        exts.push(view.EditorView.editable.of(false));
+    }
+
+    // Language extension (lazy).
+    const langExt = await loadLanguage(opts.language);
+    if (langExt) exts.push(langExt);
+
+    // Theme.
+    if (resolveDark(opts.theme)) {
+        const oneDark = await loadOneDark();
+        if (oneDark) exts.push(oneDark);
+    }
+
+    return exts;
+}
+
+export async function init(elementId, options, dotNetRef) {
+    const host = document.getElementById(elementId);
+    if (!host) {
+        console.warn(`[Lumeo.CodeEditor] host element not found: ${elementId}`);
+        return;
+    }
+
+    // Wipe any previous content (HMR / re-init safety).
+    host.innerHTML = '';
+
+    const core = await loadCore();
+    const { state, view } = core;
+
+    const exts = await buildExtensions(options, core);
+
+    // Change listener — fire dotNetRef.OnEditorChange with the latest doc on every edit.
+    // CodeMirror's `EditorView.updateListener` fires synchronously per transaction;
+    // we debounce to 60ms to match how RichTextEditor (TipTap) handles input — keeps
+    // C#-side state updates off the keystroke critical path.
+    let debounceTimer = null;
+    const debouncedNotify = (doc) => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            try {
+                dotNetRef.invokeMethodAsync('OnEditorChange', doc);
+            } catch (e) {
+                // Component disposed — observer may still fire briefly.
+            }
+        }, 60);
+    };
+
+    const listener = view.EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+            debouncedNotify(update.state.doc.toString());
+        }
+    });
+
+    const startState = state.EditorState.create({
+        doc: options.value || '',
+        extensions: [...exts, listener],
+    });
+
+    const editorView = new view.EditorView({
+        state: startState,
+        parent: host,
+    });
+
+    // Theme="auto": watch the page's <html class="dark"> toggle and rebuild the
+    // theme leg of the config without rebuilding the whole state (preserves
+    // selection + scroll position). We track the current dark-mode state so we
+    // only swap when it actually changes.
+    let themeObserver = null;
+    let lastDark = resolveDark(options.theme);
+    if (options.theme === 'auto') {
+        themeObserver = new MutationObserver(async () => {
+            const nextDark = isPageDark();
+            if (nextDark === lastDark) return;
+            lastDark = nextDark;
+            await applyTheme(elementId, options.theme);
+        });
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    _instances.set(elementId, {
+        view: editorView,
+        dotNetRef,
+        options: { ...options },
+        themeObserver,
+        debounceTimer: () => debounceTimer,
+    });
+}
+
+async function rebuild(elementId) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    const core = await loadCore();
+    const exts = await buildExtensions(inst.options, core);
+    // Track the change listener: must re-attach so doc changes still propagate.
+    const listener = core.view.EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+            try {
+                inst.dotNetRef.invokeMethodAsync('OnEditorChange', update.state.doc.toString());
+            } catch {}
+        }
+    });
+    inst.view.setState(core.state.EditorState.create({
+        doc: inst.view.state.doc,
+        selection: inst.view.state.selection,
+        extensions: [...exts, listener],
+    }));
+}
+
+export async function setValue(elementId, value) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    const current = inst.view.state.doc.toString();
+    if (current === value) return;
+    inst.view.dispatch({
+        changes: { from: 0, to: inst.view.state.doc.length, insert: value || '' },
+    });
+}
+
+export async function setLanguage(elementId, language) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    inst.options.language = language;
+    await rebuild(elementId);
+}
+
+async function applyTheme(elementId, theme) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    inst.options.theme = theme;
+    await rebuild(elementId);
+}
+
+export async function setTheme(elementId, theme) {
+    await applyTheme(elementId, theme);
+    // If the consumer switches away from auto, drop the MutationObserver;
+    // if they switch INTO auto we set one up.
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    if (theme !== 'auto' && inst.themeObserver) {
+        inst.themeObserver.disconnect();
+        inst.themeObserver = null;
+    } else if (theme === 'auto' && !inst.themeObserver) {
+        let lastDark = isPageDark();
+        inst.themeObserver = new MutationObserver(async () => {
+            const nextDark = isPageDark();
+            if (nextDark === lastDark) return;
+            lastDark = nextDark;
+            await applyTheme(elementId, 'auto');
+        });
+        inst.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
+}
+
+export async function setReadOnly(elementId, readOnly) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    inst.options.readOnly = readOnly;
+    await rebuild(elementId);
+}
+
+export async function destroy(elementId) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    try { inst.themeObserver?.disconnect(); } catch {}
+    try { inst.view.destroy(); } catch {}
+    _instances.delete(elementId);
+}

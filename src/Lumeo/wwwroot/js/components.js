@@ -2152,3 +2152,56 @@ export function unregisterViewportListener() {
     clearTimeout(viewportDebounceTimer);
     viewportDotnetRef = null;
 }
+
+// --- HTMLMediaElement (AudioPlayer / future VideoPlayer) ---
+//
+// Minimal pass-through helpers that invoke play()/pause() on an
+// HTMLMediaElement reference. Lives here rather than inline in the
+// component so the .NET side never touches IJSRuntime directly
+// (project rule: all JS interop goes through ComponentInteropService).
+// Both calls swallow errors — play() rejects on autoplay policy
+// violations and that's expected behaviour, not a bug.
+
+export function playMedia(el) {
+    if (!el) return;
+    try {
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+            p.catch(() => { /* autoplay blocked — caller already reflects paused state */ });
+        }
+    } catch { /* element detached / unsupported — swallow */ }
+}
+
+export function pauseMedia(el) {
+    if (!el) return;
+    try { el.pause(); } catch { /* swallow */ }
+}
+
+export function setMediaVolume(el, volume, muted) {
+    if (!el) return;
+    try {
+        if (typeof volume === 'number') el.volume = Math.max(0, Math.min(1, volume));
+        if (typeof muted === 'boolean') el.muted = muted;
+    } catch { /* swallow */ }
+}
+
+export function seekMedia(el, seconds) {
+    if (!el) return;
+    try { el.currentTime = Math.max(0, seconds); } catch { /* swallow */ }
+}
+
+// Reads the live `duration` and `currentTime` off a media element. Blazor
+// event args for media events don't carry these — they're properties of the
+// element. Returned as a fixed-shape object so the .NET side can use a
+// matching record without extra JSON inspection. NaN/Infinity are coerced to
+// 0 because the audio element exposes Infinity for live streams and NaN
+// before metadata is loaded.
+export function getMediaState(el) {
+    if (!el) return { duration: 0, currentTime: 0 };
+    const d = el.duration;
+    const t = el.currentTime;
+    return {
+        duration: (Number.isFinite(d) && d > 0) ? d : 0,
+        currentTime: Number.isFinite(t) ? t : 0
+    };
+}

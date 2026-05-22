@@ -1,0 +1,193 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+
+<div class="@WrapperClass" role="img" aria-label="Signature pad" @attributes="AdditionalAttributes">
+    <canvas id="@_canvasId"
+            width="@Width"
+            height="@Height"
+            class="@CanvasClass"
+            style="background: @BackgroundColor;"></canvas>
+
+    @if (string.IsNullOrEmpty(Value))
+    {
+        <span class="absolute inset-0 flex items-center justify-center text-muted-foreground/60 text-sm pointer-events-none italic select-none">
+            @Placeholder
+        </span>
+    }
+
+    @if (!Disabled && (ShowClearButton || ShowDownloadButton))
+    {
+        <Flex Gap="2" Class="absolute right-2 top-2">
+            @if (ShowDownloadButton)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Icon"
+                        OnClick="HandleDownloadAsync"
+                        aria-label="Download signature">
+                    <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
+                </Button>
+            }
+            @if (ShowClearButton)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Icon"
+                        OnClick="ClearAsync"
+                        aria-label="Clear signature">
+                    <Blazicon Svg="Lucide.Eraser" class="h-4 w-4" />
+                </Button>
+            }
+        </Flex>
+    }
+</div>
+
+@inject IComponentInteropService Interop
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter] public int Width { get; set; } = 500;
+    [Parameter] public int Height { get; set; } = 200;
+
+    [Parameter] public string StrokeColor { get; set; } = "currentColor";
+    [Parameter] public double StrokeWidth { get; set; } = 2.0;
+    [Parameter] public string BackgroundColor { get; set; } = "transparent";
+
+    [Parameter] public bool ShowClearButton { get; set; } = true;
+    [Parameter] public bool ShowDownloadButton { get; set; }
+
+    /// <summary>
+    /// Export format for the emitted data URL. <c>"png"</c> is the safe default
+    /// (universal browser support, transparent backgrounds work). <c>"svg"</c>
+    /// would require capturing strokes as path data rather than raster pixels;
+    /// not implemented in this initial 3.1.0 cut — falls back to PNG. TODO:
+    /// real SVG export by recording pointer paths client-side.
+    /// </summary>
+    [Parameter] public string Format { get; set; } = "png";
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public EventCallback OnSign { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    [Parameter] public string? Placeholder { get; set; } = "Sign here";
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _canvasId = LumeoIds.New("signature-pad");
+    private DotNetObjectReference<SignaturePad>? _selfRef;
+    private bool _initialised;
+    private string? _lastSyncedValue;
+    private string? _lastStrokeColor;
+    private double _lastStrokeWidth;
+    private bool _lastDisabled;
+
+    private string MimeType => Format?.Equals("svg", StringComparison.OrdinalIgnoreCase) == true
+        ? "image/svg+xml"
+        : "image/png";
+
+    private string WrapperClass =>
+        $"relative inline-block rounded-lg border border-border/40 bg-card {Class}".Trim();
+
+    private string CanvasClass =>
+        $"touch-none rounded-lg block {(Disabled ? "pointer-events-none opacity-60" : "cursor-crosshair")}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            _lastStrokeColor = StrokeColor;
+            _lastStrokeWidth = StrokeWidth;
+            _lastDisabled = Disabled;
+            _lastSyncedValue = Value;
+
+            var options = new
+            {
+                strokeColor = StrokeColor,
+                strokeWidth = StrokeWidth,
+                mimeType = MimeType,
+                debounceMs = 200,
+                disabled = Disabled,
+                initialDataUrl = Value,
+            };
+
+            await Interop.SignaturePadInit(_canvasId, options, _selfRef);
+            _initialised = true;
+            return;
+        }
+
+        if (!_initialised) return;
+
+        // Sync mutable parameters back into the JS pad on parent re-render. We
+        // skip the work when nothing changed to avoid resetting the in-flight
+        // stroke / wiping the canvas mid-signing.
+        if (!string.Equals(_lastStrokeColor, StrokeColor, StringComparison.Ordinal)
+            || Math.Abs(_lastStrokeWidth - StrokeWidth) > 0.0001)
+        {
+            await Interop.SignaturePadSetStrokeStyle(_canvasId, StrokeColor, StrokeWidth);
+            _lastStrokeColor = StrokeColor;
+            _lastStrokeWidth = StrokeWidth;
+        }
+
+        if (_lastDisabled != Disabled)
+        {
+            await Interop.SignaturePadSetDisabled(_canvasId, Disabled);
+            _lastDisabled = Disabled;
+        }
+
+        // Programmatic Value updates (parent set Value externally) — only
+        // re-render the canvas when the new value didn't originate from our
+        // own OnStrokeEnded callback. _lastSyncedValue tracks the latest
+        // value we either initialised with or emitted, so any other change
+        // came from the parent.
+        if (!string.Equals(_lastSyncedValue, Value, StringComparison.Ordinal))
+        {
+            await Interop.SignaturePadLoadDataUrl(_canvasId, Value);
+            _lastSyncedValue = Value;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnStrokeEnded(string? dataUrl)
+    {
+        Value = dataUrl;
+        _lastSyncedValue = dataUrl;
+        await ValueChanged.InvokeAsync(dataUrl);
+        await OnSign.InvokeAsync();
+        StateHasChanged();
+    }
+
+    public async Task ClearAsync()
+    {
+        await Interop.SignaturePadClear(_canvasId);
+        Value = null;
+        _lastSyncedValue = null;
+        await ValueChanged.InvokeAsync(null);
+        await OnClear.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task HandleDownloadAsync()
+    {
+        // Read the freshest data URL straight from the canvas in case the
+        // debounced ValueChanged hasn't fired yet — otherwise a fast user who
+        // hits Download right after their last stroke would download the
+        // previous version (or null).
+        var dataUrl = await Interop.SignaturePadDataUrl(_canvasId, MimeType) ?? Value;
+        if (string.IsNullOrEmpty(dataUrl)) return;
+
+        var commaIndex = dataUrl.IndexOf(',', StringComparison.Ordinal);
+        if (commaIndex < 0) return;
+        var base64 = dataUrl[(commaIndex + 1)..];
+        var fileName = $"signature.{(Format?.Equals("svg", StringComparison.OrdinalIgnoreCase) == true ? "svg" : "png")}";
+        await Interop.DownloadFile(fileName, base64, MimeType);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await Interop.SignaturePadDestroy(_canvasId); } catch (JSDisconnectedException) { }
+        _selfRef?.Dispose();
+    }
+}

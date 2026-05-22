@@ -1,0 +1,367 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
+
+@*
+    AudioPlayer (3.1.0) — HTML5 <audio> wrapper with custom Lumeo chrome.
+    Render owns its UI (cover slot, title/artist, play/pause, scrub bar, time,
+    mute toggle, optional download). We never set the native `controls` attr —
+    that would double up with our buttons. Playback state is driven entirely
+    off the element's own events (@onplay / @onpause / @ontimeupdate /
+    @onloadedmetadata / @onended) so the UI stays in sync even when an external
+    actor (autoplay policy, picture-in-picture, media-session) toggles state.
+
+    Scrubbing is intentionally pointer-driven rather than using <input type=range>:
+    we need to *suppress* timeupdate-driven UI refresh while the user is dragging,
+    otherwise the thumb jumps back to the current playback head on every event.
+*@
+
+<div class="@WrapperClass"
+     id="@_wrapperId"
+     role="region"
+     aria-label="Audio player"
+     tabindex="0"
+     @onkeydown="HandleKeyDown"
+     @attributes="AdditionalAttributes">
+
+    @* Cover art — slot wins, else fallback music icon tile *@
+    <div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+        @if (Cover is not null)
+        {
+            @Cover
+        }
+        else
+        {
+            <Blazicon Svg="Lucide.Music" class="h-6 w-6 text-muted-foreground" />
+        }
+    </div>
+
+    @* Main column: title/artist + transport row *@
+    <div class="flex min-w-0 flex-1 flex-col gap-1">
+        @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Artist))
+        {
+            <div class="flex min-w-0 flex-col leading-tight">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <span class="truncate text-sm font-medium text-foreground">@Title</span>
+                }
+                @if (!string.IsNullOrEmpty(Artist))
+                {
+                    <span class="truncate text-xs text-muted-foreground">@Artist</span>
+                }
+            </div>
+        }
+
+        <div class="flex items-center gap-2">
+            <Button Variant="Button.ButtonVariant.Ghost"
+                    Size="Button.ButtonSize.Icon"
+                    Class="h-8 w-8 shrink-0"
+                    OnClick="TogglePlay"
+                    aria-label="@(_playing ? "Pause" : "Play")">
+                @if (_playing)
+                {
+                    <Blazicon Svg="Lucide.Pause" class="h-4 w-4" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Play" class="h-4 w-4" />
+                }
+            </Button>
+
+            @* Progress bar — click-to-seek + drag-to-scrub.
+               Pointer events drive a local _scrubValue so timeupdate doesn't
+               yank the thumb back mid-drag. *@
+            <div class="relative flex h-8 flex-1 items-center"
+                 id="@_progressId"
+                 role="slider"
+                 aria-label="Seek"
+                 aria-valuemin="0"
+                 aria-valuemax="@FormatAria(_duration)"
+                 aria-valuenow="@FormatAria(DisplayTime)"
+                 aria-valuetext="@Format(DisplayTime)"
+                 @onpointerdown="OnScrubPointerDown"
+                 @onpointermove="OnScrubPointerMove"
+                 @onpointerup="OnScrubPointerUp"
+                 @onpointercancel="OnScrubPointerUp">
+                <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
+                    <div class="absolute inset-y-0 left-0 rounded-full bg-primary"
+                         style="width: @ProgressPercentCss%;"></div>
+                </div>
+            </div>
+
+            <span class="shrink-0 tabular-nums text-xs text-muted-foreground">
+                @Format(DisplayTime) / @Format(_duration)
+            </span>
+
+            <Button Variant="Button.ButtonVariant.Ghost"
+                    Size="Button.ButtonSize.Icon"
+                    Class="h-8 w-8 shrink-0"
+                    OnClick="ToggleMute"
+                    aria-label="@(_muted ? "Unmute" : "Mute")">
+                @if (_muted)
+                {
+                    <Blazicon Svg="Lucide.VolumeX" class="h-4 w-4" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Volume2" class="h-4 w-4" />
+                }
+            </Button>
+        </div>
+    </div>
+
+    @if (ShowDownload && !string.IsNullOrEmpty(Src))
+    {
+        <a href="@Src"
+           download
+           class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+           aria-label="Download audio">
+            <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
+        </a>
+    }
+
+    @* The actual media element. No `controls` attribute — we render our own.
+       Bound events keep the C# state in sync with whatever the browser does. *@
+    <audio @ref="_audioRef"
+           src="@Src"
+           preload="@PreloadMode"
+           autoplay="@Autoplay"
+           loop="@Loop"
+           class="sr-only"
+           @onloadedmetadata="OnLoadedMetadata"
+           @ontimeupdate="OnTimeUpdateInternal"
+           @onplay="OnPlayInternal"
+           @onpause="OnPauseInternal"
+           @onended="OnEndedInternal" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string? Src { get; set; }
+    [Parameter] public bool Autoplay { get; set; }
+    [Parameter] public bool Loop { get; set; }
+    [Parameter] public bool ShowDownload { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Artist { get; set; }
+    [Parameter] public RenderFragment? Cover { get; set; }
+    [Parameter] public string? PreloadMode { get; set; } = "metadata";
+
+    [Parameter] public EventCallback<double> OnTimeUpdate { get; set; }
+    [Parameter] public EventCallback OnEnded { get; set; }
+    [Parameter] public EventCallback OnPlay { get; set; }
+    [Parameter] public EventCallback OnPause { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private ElementReference _audioRef;
+    private readonly string _wrapperId = LumeoIds.New("audio-player");
+    private readonly string _progressId = LumeoIds.New("audio-progress");
+
+    private bool _playing;
+    private bool _muted;
+    private double _duration;
+    private double _currentTime;
+
+    // Scrub state — when the user is dragging the progress bar we suppress
+    // timeupdate-driven UI refresh and show their finger position instead.
+    // Commit happens on pointerup so we issue exactly one seek per drag.
+    private bool _scrubbing;
+    private double _scrubValue;
+    private double _scrubBarWidth;
+    private long? _capturedPointerId;
+
+    private double DisplayTime => _scrubbing ? _scrubValue : _currentTime;
+
+    private string WrapperClass => Cx.Join(
+        "flex items-center gap-3 rounded-xl border border-border/40 bg-card p-3",
+        "focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
+        Class);
+
+    // Percent string for the inline width style. Uses InvariantCulture so the
+    // decimal separator stays "." in locales like de-DE where it'd otherwise
+    // become "," and silently invalidate the CSS declaration.
+    private string ProgressPercentCss
+    {
+        get
+        {
+            var pct = _duration > 0 ? Math.Clamp(DisplayTime / _duration, 0, 1) * 100.0 : 0;
+            return pct.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    private static string FormatAria(double seconds) =>
+        Math.Round(seconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    // M:SS, e.g. 0:42, 3:14, 12:05. Negative / NaN -> "0:00" defensively.
+    private static string Format(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0) return "0:00";
+        var total = (int)Math.Floor(seconds);
+        var m = total / 60;
+        var s = total % 60;
+        return $"{m}:{s:00}";
+    }
+
+    private async Task TogglePlay()
+    {
+        if (_playing) await Interop.PauseMedia(_audioRef);
+        else await Interop.PlayMedia(_audioRef);
+        // Don't flip _playing here — wait for the <audio> element to fire
+        // play/pause events. Autoplay policy or a missing src can reject the
+        // play() promise, and we want our UI to reflect reality, not intent.
+    }
+
+    private async Task ToggleMute()
+    {
+        _muted = !_muted;
+        await Interop.SetMediaVolume(_audioRef, 1.0, _muted);
+    }
+
+    private async Task OnLoadedMetadata(EventArgs e)
+    {
+        // Blazor's EventArgs doesn't carry the element's `duration`; fetch
+        // it via a one-shot JS read. After this the scrub bar and time
+        // readout switch from "0:00 / 0:00" placeholder to real values.
+        var state = await Interop.GetMediaState(_audioRef);
+        _duration = state.Duration;
+        _currentTime = state.CurrentTime;
+    }
+
+    private async Task OnTimeUpdateInternal(EventArgs e)
+    {
+        // Skip the JS read while the user is dragging — we don't want the
+        // element's still-old currentTime to overwrite the scrub preview.
+        if (_scrubbing) return;
+        var state = await Interop.GetMediaState(_audioRef);
+        // Some sources expose duration only after some playback; refresh
+        // it opportunistically so the UI doesn't get stuck at 0.
+        if (state.Duration > 0) _duration = state.Duration;
+        _currentTime = state.CurrentTime;
+        await OnTimeUpdate.InvokeAsync(_currentTime);
+    }
+
+    private async Task OnPlayInternal(EventArgs e)
+    {
+        _playing = true;
+        await OnPlay.InvokeAsync();
+    }
+
+    private async Task OnPauseInternal(EventArgs e)
+    {
+        _playing = false;
+        await OnPause.InvokeAsync();
+    }
+
+    private async Task OnEndedInternal(EventArgs e)
+    {
+        _playing = false;
+        _currentTime = _duration;
+        await OnEnded.InvokeAsync();
+    }
+
+    // --- Scrubbing ---
+    //
+    // We compute the seek target from the pointer's offsetX inside the bar.
+    // PointerEventArgs gives us OffsetX/OffsetY relative to the target — for
+    // the inner pill that's exactly the bar's local coordinate space. We
+    // capture the pointer so dragging outside the bar still tracks.
+
+    private async Task OnScrubPointerDown(PointerEventArgs e)
+    {
+        if (_duration <= 0)
+        {
+            // Last-resort: probe duration once on first interaction in case
+            // metadata loaded silently before we wired the event. Without
+            // this an early click on the bar before timeupdate fires would
+            // do nothing.
+            var state = await Interop.GetMediaState(_audioRef);
+            if (state.Duration > 0) _duration = state.Duration;
+            if (_duration <= 0) return; // still no duration — bail
+        }
+        // Capture the bar's current width once per drag so subsequent
+        // pointermove events can map offsetX -> percent without a JS
+        // roundtrip per move. ResizeObserver would be overkill for a
+        // single drag interaction.
+        var rect = await Interop.GetElementRect(_progressId);
+        _scrubBarWidth = rect?.Width > 0 ? rect.Width : 1;
+        _scrubbing = true;
+        _capturedPointerId = e.PointerId;
+        try { await Interop.SetPointerCaptureOnElement(_progressId, e.PointerId); } catch (JSDisconnectedException) { }
+        UpdateScrubFromPointer(e);
+    }
+
+    private void OnScrubPointerMove(PointerEventArgs e)
+    {
+        if (!_scrubbing) return;
+        UpdateScrubFromPointer(e);
+    }
+
+    private async Task OnScrubPointerUp(PointerEventArgs e)
+    {
+        if (!_scrubbing) return;
+        UpdateScrubFromPointer(e);
+        var target = _scrubValue;
+        _scrubbing = false;
+        if (_capturedPointerId is long pid)
+        {
+            try { await Interop.ReleasePointerCaptureOnElement(_progressId, pid); } catch (JSDisconnectedException) { }
+            _capturedPointerId = null;
+        }
+        _currentTime = target;
+        await Interop.SeekMedia(_audioRef, target);
+        await OnTimeUpdate.InvokeAsync(target);
+    }
+
+    private void UpdateScrubFromPointer(PointerEventArgs e)
+    {
+        // _scrubBarWidth is snapshotted on pointerdown — using it here avoids
+        // a per-move JS roundtrip. OffsetX can go negative or exceed width
+        // when pointer capture drags outside the element; clamp into [0, 1].
+        if (_scrubBarWidth <= 0) return;
+        var pct = Math.Clamp(e.OffsetX / _scrubBarWidth, 0, 1);
+        _scrubValue = pct * _duration;
+    }
+
+    // --- Keyboard accessibility ---
+    //
+    // Space and "k" toggle play/pause when the wrapper has focus — matching
+    // the de-facto YouTube/SoundCloud convention. Arrow keys nudge ±5s.
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case " ":
+            case "k":
+            case "K":
+                await TogglePlay();
+                break;
+            case "ArrowRight":
+                {
+                    var target = Math.Min(_duration, _currentTime + 5);
+                    _currentTime = target;
+                    await Interop.SeekMedia(_audioRef, target);
+                    break;
+                }
+            case "ArrowLeft":
+                {
+                    var target = Math.Max(0, _currentTime - 5);
+                    _currentTime = target;
+                    await Interop.SeekMedia(_audioRef, target);
+                    break;
+                }
+            case "m":
+            case "M":
+                await ToggleMute();
+                break;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Pause on dispose so the element doesn't keep playing if the consumer
+        // unmounts the component (e.g. SPA navigation). JSDisconnectedException
+        // can fire if the circuit is already torn down.
+        try { await Interop.PauseMedia(_audioRef); } catch (JSDisconnectedException) { }
+    }
+}
