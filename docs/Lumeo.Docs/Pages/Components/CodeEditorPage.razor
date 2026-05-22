@@ -1,0 +1,136 @@
+@page "/components/code-editor"
+
+<PageTitle>Code Editor — Lumeo</PageTitle>
+
+<PageHeader Title="Code Editor"
+            Description="A lightweight source-code editor built on CodeMirror 6 — much smaller download than Monaco (≈150KB core + on-demand language packs vs. Monaco's 5MB WASM bundle), with the same essentials: syntax highlighting, line numbers, bracket matching, autocomplete, history, and search." />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Why CodeMirror, not Monaco?</strong> Monaco's WebAssembly + worker bundle weighs ~5MB —
+        awkward on static hosts (Cloudflare Pages caps single assets at 25MB and you stack up fast).
+        CodeMirror 6 is modular ESM: a tiny core plus per-language packs (5–30KB each) that are
+        dynamic-imported only when needed. A page that only edits JSON pays 150KB + ~10KB; a page
+        that edits Python pays for the Python pack, not the C# one.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Inline source-code editing — JSON config blobs, SQL snippets, code samples, Markdown drafts</li>
+        <li>Admin surfaces that need a code field but don't want a full IDE-sized download</li>
+        <li>Documentation pages with editable, runnable examples</li>
+        <li>Anywhere a <code>&lt;Textarea&gt;</code> is too primitive but Monaco is too heavy</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    <ComponentDemo Title="Basic — JSON" Code="@_basicCode">
+        <CodeEditor @bind-Value="_json" Language="json" Height="240px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="C#" Code="@_csharpCode">
+        <CodeEditor @bind-Value="_csharp" Language="csharp" Height="300px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="JavaScript / TypeScript" Code="@_jsCode">
+        <Stack Gap="6">
+            <div>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2 font-medium">JavaScript</Lumeo.Text>
+                <CodeEditor @bind-Value="_js" Language="javascript" Height="200px" />
+            </div>
+            <div>
+                <Lumeo.Text Size="sm" Color="muted" Class="mb-2 font-medium">TypeScript</Lumeo.Text>
+                <CodeEditor @bind-Value="_ts" Language="typescript" Height="200px" />
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="HTML / CSS" Code="@_htmlCssCode">
+        <Stack Gap="6">
+            <CodeEditor @bind-Value="_html" Language="html" Height="200px" />
+            <CodeEditor @bind-Value="_css" Language="css" Height="200px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Markdown" Code="@_markdownCode">
+        <CodeEditor @bind-Value="_markdown" Language="markdown" Height="240px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="SQL" Code="@_sqlCode">
+        <CodeEditor @bind-Value="_sql" Language="sql" Height="200px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Python" Code="@_pythonCode">
+        <CodeEditor @bind-Value="_python" Language="python" Height="220px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="XML" Code="@_xmlCode">
+        <CodeEditor @bind-Value="_xml" Language="xml" Height="200px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Read-only" Code="@_readOnlyCode">
+        <CodeEditor Value="@_readOnlySample" Language="json" Height="160px" ReadOnly="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Forced dark theme" Code="@_darkCode">
+        <CodeEditor @bind-Value="_dark" Language="javascript" Theme="dark" Height="200px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Word wrap + tabs" Code="@_wrapCode">
+        <CodeEditor @bind-Value="_wrap" Language="plaintext" Height="200px" WordWrap="on" UseTabs="true" TabSize="2" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Bound value" Code="@_boundCode">
+        <Stack Gap="3">
+            <CodeEditor @bind-Value="_boundJson" Language="json" Height="160px" />
+            <Lumeo.Text Size="sm" Color="muted">
+                Current length: <strong>@(_boundJson?.Length ?? 0)</strong> characters
+            </Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+
+</Stack>
+
+@code {
+    private string _json = "{\n  \"name\": \"lumeo\",\n  \"version\": \"3.1.0\"\n}";
+    private string _csharp = "public record User(string Name, int Age)\n{\n    public bool IsAdult => Age >= 18;\n}";
+    private string _js = "function greet(name) {\n    return `Hello, ${name}!`;\n}";
+    private string _ts = "interface User {\n    name: string;\n    age: number;\n}";
+    private string _html = "<div class=\"hero\">\n  <h1>Welcome</h1>\n</div>";
+    private string _css = ".hero {\n    color: var(--color-primary);\n    padding: 2rem;\n}";
+    private string _markdown = "# Heading\n\nSome **bold** and _italic_ text.\n\n- list item one\n- list item two";
+    private string _sql = "SELECT id, name FROM users\nWHERE active = true\nORDER BY created_at DESC;";
+    private string _python = "def greet(name: str) -> str:\n    return f\"Hello, {name}!\"\n";
+    private string _xml = "<root>\n  <item id=\"1\">value</item>\n</root>";
+    private string _readOnlySample = "{\n  \"locked\": true,\n  \"reason\": \"audit log\"\n}";
+    private string _dark = "// Forced dark — ignores the page theme.\nconst x = 42;";
+    private string _wrap = "This is a long line of plaintext that should wrap when WordWrap is on rather than scroll horizontally — useful for prose and READMEs inside the editor.";
+    private string _boundJson = "{ \"hello\": \"world\" }";
+
+    private const string _basicCode = "<CodeEditor @bind-Value=\"_json\" Language=\"json\" Height=\"240px\" />";
+    private const string _csharpCode = "<CodeEditor @bind-Value=\"_csharp\" Language=\"csharp\" Height=\"300px\" />";
+    private const string _jsCode = """
+<CodeEditor @bind-Value="_js" Language="javascript" Height="200px" />
+<CodeEditor @bind-Value="_ts" Language="typescript" Height="200px" />
+""";
+    private const string _htmlCssCode = """
+<CodeEditor @bind-Value="_html" Language="html" Height="200px" />
+<CodeEditor @bind-Value="_css"  Language="css"  Height="200px" />
+""";
+    private const string _markdownCode = "<CodeEditor @bind-Value=\"_md\" Language=\"markdown\" Height=\"240px\" />";
+    private const string _sqlCode = "<CodeEditor @bind-Value=\"_sql\" Language=\"sql\" Height=\"200px\" />";
+    private const string _pythonCode = "<CodeEditor @bind-Value=\"_py\" Language=\"python\" Height=\"220px\" />";
+    private const string _xmlCode = "<CodeEditor @bind-Value=\"_xml\" Language=\"xml\" Height=\"200px\" />";
+    private const string _readOnlyCode = "<CodeEditor Value=\"@audit\" Language=\"json\" Height=\"160px\" ReadOnly=\"true\" />";
+    private const string _darkCode = "<CodeEditor @bind-Value=\"_dark\" Language=\"javascript\" Theme=\"dark\" Height=\"200px\" />";
+    private const string _wrapCode = "<CodeEditor @bind-Value=\"_text\" Language=\"plaintext\" WordWrap=\"on\" UseTabs=\"true\" TabSize=\"2\" Height=\"200px\" />";
+    private const string _boundCode = """
+<CodeEditor @bind-Value="_boundJson" Language="json" Height="160px" />
+@code {
+    private string _boundJson = "{ \"hello\": \"world\" }";
+}
+""";
+}

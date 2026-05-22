@@ -1,0 +1,169 @@
+@namespace Lumeo
+@inject Services.ComponentInteropService Interop
+@implements IAsyncDisposable
+
+@*
+    CodeEditor — CodeMirror 6 wrapper.
+
+    Why CodeMirror over Monaco:
+      - Monaco's WASM/worker bundle is 5MB+; awkward on Cloudflare Pages
+        (25MB asset ceiling) and slow to first-paint on Blazor WASM.
+      - CodeMirror 6 is modular: ~150KB core + tiny language packs imported
+        on demand from esm.sh, so a JSON-only page only pays for JSON.
+
+    Language packs are loaded lazily via `import('https://esm.sh/@codemirror/lang-X')`
+    from inside the JS module. Switching languages re-imports only the new pack.
+*@
+
+<div class="@RootClass"
+     role="@(ReadOnly ? "document" : "textbox")"
+     aria-label="@(Placeholder ?? "Code editor")"
+     @attributes="AdditionalAttributes">
+    <div id="@_editorId" style="height: @Height" class="lumeo-code-editor h-full w-full"></div>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Source language. Currently supported: csharp, javascript, typescript, html,
+    /// css, json, markdown, xml, sql, python, plaintext. Unknown values fall back
+    /// to plaintext.
+    /// </summary>
+    [Parameter] public string Language { get; set; } = "plaintext";
+
+    /// <summary>light | dark | auto (follows page theme via the `dark` class on &lt;html&gt;).</summary>
+    [Parameter] public string Theme { get; set; } = "auto";
+
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public bool LineNumbers { get; set; } = true;
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>
+    /// CodeMirror 6 does not ship a native minimap. Kept for API symmetry with
+    /// Monaco-style wrappers; today this is a no-op. A future revision may
+    /// render a custom minimap using the scrollDOM viewport API.
+    /// </summary>
+    [Parameter] public bool ShowMinimap { get; set; }
+
+    [Parameter] public int TabSize { get; set; } = 4;
+    [Parameter] public bool UseTabs { get; set; }
+
+    /// <summary>"off" | "on"</summary>
+    [Parameter] public string WordWrap { get; set; } = "off";
+
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>Fires alongside ValueChanged; provided for symmetry with Monaco-style APIs.</summary>
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _editorId = $"lumeo-code-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<CodeEditor>? _selfRef;
+    private bool _initialized;
+    private string? _lastSyncedValue;
+    private string? _lastLanguage;
+    private string? _lastTheme;
+    private bool? _lastReadOnly;
+
+    private string RootClass
+        => $"rounded-lg border border-border/40 overflow-hidden bg-card {Class}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await Interop.ImportModuleAsync("./_content/Lumeo.CodeEditor/js/code-editor.js");
+            _selfRef = DotNetObjectReference.Create(this);
+
+            var options = new
+            {
+                value = Value ?? string.Empty,
+                language = Language,
+                theme = Theme,
+                lineNumbers = LineNumbers,
+                readOnly = ReadOnly,
+                tabSize = TabSize,
+                useTabs = UseTabs,
+                wordWrap = WordWrap,
+                placeholder = Placeholder,
+            };
+
+            await _module.InvokeVoidAsync("init", _editorId, options, _selfRef);
+            _initialized = true;
+            _lastSyncedValue = Value;
+            _lastLanguage = Language;
+            _lastTheme = Theme;
+            _lastReadOnly = ReadOnly;
+            return;
+        }
+
+        if (!_initialized || _module is null) return;
+
+        try
+        {
+            if (!string.Equals(_lastSyncedValue ?? string.Empty, Value ?? string.Empty, StringComparison.Ordinal))
+            {
+                _lastSyncedValue = Value;
+                await _module.InvokeVoidAsync("setValue", _editorId, Value ?? string.Empty);
+            }
+
+            if (!string.Equals(_lastLanguage, Language, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastLanguage = Language;
+                await _module.InvokeVoidAsync("setLanguage", _editorId, Language);
+            }
+
+            if (!string.Equals(_lastTheme, Theme, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastTheme = Theme;
+                await _module.InvokeVoidAsync("setTheme", _editorId, Theme);
+            }
+
+            if (_lastReadOnly != ReadOnly)
+            {
+                _lastReadOnly = ReadOnly;
+                await _module.InvokeVoidAsync("setReadOnly", _editorId, ReadOnly);
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnEditorChange(string value)
+    {
+        // Track the latest text so OnAfterRenderAsync doesn't push it straight
+        // back into CodeMirror after the bound field updates — a self-induced
+        // re-set would move the caret to position 0 on every keystroke.
+        _lastSyncedValue = value;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(value);
+        if (OnChange.HasDelegate)
+            await OnChange.InvokeAsync(value);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("destroy", _editorId);
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception) { /* never throw from disposer */ }
+
+        _selfRef?.Dispose();
+    }
+}
