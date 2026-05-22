@@ -1,26 +1,28 @@
 /*
- * Lumeo.Maps — shadcn-flavored overrides for Leaflet's default chrome.
+ * Lumeo.Maps — shadcn-flavored overrides for MapLibre GL's default chrome.
  *
- * Loaded once per document by map.js (idempotent <link data-lumeo-map>).
- * Assumes the Lumeo theme tokens are on :root — `--primary`, `--background`,
- * `--card`, `--card-foreground`, `--border`, `--muted`, `--muted-foreground`,
- * `--accent`, `--accent-foreground`, `--radius`. Falls back to neutral grays
- * when a host page hasn't pulled in lumeo.css, so the map still looks sane.
+ * Auto-injected by map.js on first map mount (one <link> per page, idempotent).
+ * Theme tokens (--primary, --card, --border, --accent, --muted, …) come from
+ * the host page's lumeo.css. Falls back to neutral grays when a host hasn't
+ * pulled in lumeo.css so the map still looks sane on a vanilla page.
  *
- * Visual contract (mirrors mapcn.dev's MapLibre-on-shadcn look):
- *   - Floating controls in soft rounded panels with backdrop blur.
- *   - Square 32×32 buttons with hover/active background swap.
- *   - Popups: card shell, soft shadow, animated entrance.
- *   - Tooltips & labels share the same border + radius tokens.
+ * Visual contract:
+ *   - Markers are DOM elements with our own `.lumeo-map-marker` class.
+ *   - Floating MapLibre controls (zoom, geolocate, fullscreen, attribution)
+ *     wear soft rounded panels with backdrop blur and 32×32 square buttons.
+ *   - Popups: card shell, animated entrance, Lucide X close button.
+ *   - Cluster circles + counts come from MapLibre layers; their colors are
+ *     driven by theme tokens via inline paint expressions in map.js.
  */
 
 /* -------------------------------------------------------------------- */
-/* Markers                                                              */
+/* Markers — DOM elements injected by map.js                            */
 /* -------------------------------------------------------------------- */
 
 .lumeo-map-marker {
     background: transparent;
     border: none;
+    cursor: pointer;
     transition: transform 150ms ease-out;
     will-change: transform;
 }
@@ -30,7 +32,7 @@
     z-index: 1000 !important;
 }
 
-.lumeo-map-marker > .lumeo-map-marker-inner {
+.lumeo-map-marker .lumeo-map-marker-inner {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -40,7 +42,6 @@
     font-weight: 600;
     font-size: 12px;
     line-height: 1;
-    cursor: pointer;
 }
 
 .lumeo-map-marker-label {
@@ -62,40 +63,11 @@
 }
 
 /* -------------------------------------------------------------------- */
-/* Clustering — leaflet.markercluster overrides                         */
-/* -------------------------------------------------------------------- */
-
-.lumeo-map-cluster {
-    background: transparent;
-    border: none;
-}
-
-.lumeo-map-cluster > div {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    border-radius: 9999px;
-    background: hsl(var(--primary, 222 47% 11%));
-    color: hsl(var(--primary-foreground, 210 40% 98%));
-    font-weight: 600;
-    font-size: 13px;
-    border: 2px solid hsl(var(--background, 0 0% 100%));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-    transition: transform 150ms ease-out;
-}
-
-.lumeo-map-cluster:hover > div {
-    transform: scale(1.08);
-}
-
-/* -------------------------------------------------------------------- */
 /* Popups — shadcn card style                                           */
 /* -------------------------------------------------------------------- */
 
-.leaflet-popup-content-wrapper {
-    padding: 0;
+.maplibregl-popup-content {
+    padding: 12px 16px;
     border-radius: 12px;
     background: hsl(var(--card, 0 0% 100%));
     color: hsl(var(--card-foreground, 222 47% 11%));
@@ -103,27 +75,28 @@
     box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.22),
                 0 2px 8px -2px rgba(0, 0, 0, 0.08);
     animation: lumeo-map-popup-in 140ms ease-out;
-}
-
-.leaflet-popup-content {
-    margin: 12px 16px;
-    line-height: 1.45;
     font-size: 13px;
+    line-height: 1.45;
 }
 
-.leaflet-popup-content p { margin: 0 0 6px 0; }
+.maplibregl-popup-content p { margin: 0 0 6px 0; }
 
-.leaflet-popup-tip {
-    background: hsl(var(--card, 0 0% 100%));
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
-    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6);
+.maplibregl-popup-tip {
+    border-top-color: hsl(var(--card, 0 0% 100%)) !important;
+    border-bottom-color: hsl(var(--card, 0 0% 100%)) !important;
 }
 
-.leaflet-popup-close-button {
-    width: 22px !important;
-    height: 22px !important;
-    top: 6px !important;
-    right: 6px !important;
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+    border-left-color: transparent;
+    border-right-color: transparent;
+}
+
+.maplibregl-popup-close-button {
+    width: 24px;
+    height: 24px;
+    top: 4px;
+    right: 4px;
     padding: 0 !important;
     border-radius: 6px;
     color: transparent !important;
@@ -131,9 +104,10 @@
         url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 6 18'/><path d='m6 6 12 12'/></svg>")
         center / 14px 14px no-repeat !important;
     transition: background-color 120ms ease-out;
+    border: none;
 }
 
-.leaflet-popup-close-button:hover {
+.maplibregl-popup-close-button:hover {
     background-color: hsl(var(--muted, 210 40% 96%)) !important;
 }
 
@@ -142,25 +116,12 @@
     to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-.leaflet-tooltip {
-    background: hsl(var(--card, 0 0% 100%));
-    color: hsl(var(--card-foreground, 222 47% 11%));
-    border: 1px solid hsl(var(--border, 214 32% 91%));
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-}
-
 /* -------------------------------------------------------------------- */
 /* Controls — shadcn-style floating panels                              */
 /* -------------------------------------------------------------------- */
 
-/* Base panel look — every Leaflet bar plus our custom controls share it. */
-.leaflet-bar,
-.lumeo-map-panel {
-    background: hsl(var(--card, 0 0% 100%) / 0.92);
+.maplibregl-ctrl-group {
+    background: hsl(var(--card, 0 0% 100%) / 0.92) !important;
     backdrop-filter: saturate(140%) blur(6px);
     -webkit-backdrop-filter: saturate(140%) blur(6px);
     border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
@@ -170,60 +131,37 @@
     overflow: hidden;
 }
 
-.leaflet-bar a,
-.leaflet-bar a:link,
-.lumeo-map-btn {
+.maplibregl-ctrl-group > button {
     width: 32px !important;
     height: 32px !important;
-    line-height: 32px !important;
-    color: hsl(var(--card-foreground, 222 47% 11%)) !important;
     background: transparent !important;
+    color: hsl(var(--card-foreground, 222 47% 11%)) !important;
     border: none !important;
     border-bottom: 1px solid hsl(var(--border, 214 32% 91%) / 0.4) !important;
     transition: background-color 120ms ease-out, color 120ms ease-out;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
 }
 
-.leaflet-bar a:last-child,
-.lumeo-map-btn:last-child {
+.maplibregl-ctrl-group > button:last-child {
     border-bottom: none !important;
 }
 
-.leaflet-bar a:hover,
-.lumeo-map-btn:hover {
+.maplibregl-ctrl-group > button:hover {
     background: hsl(var(--accent, 210 40% 96%)) !important;
     color: hsl(var(--accent-foreground, 222 47% 11%)) !important;
 }
 
-.leaflet-bar a:active,
-.lumeo-map-btn:active {
+.maplibregl-ctrl-group > button:active {
     background: hsl(var(--muted, 210 40% 96%)) !important;
 }
 
-.leaflet-bar a.leaflet-disabled {
-    opacity: 0.4 !important;
-    pointer-events: none;
+/* Recolor MapLibre's stock SVG button glyphs (zoom +/-, locate, fullscreen) so
+   they pick up the current foreground token instead of MapLibre's hard-coded
+   black. The glyphs are background-image SVGs; we mask them with currentColor. */
+.maplibregl-ctrl-group > button .maplibregl-ctrl-icon {
+    filter: none;
 }
 
-/* Custom control container — wraps Lumeo's own buttons (geolocate, fullscreen,
-   search) so they stack into the same rounded panel as the zoom control. */
-.lumeo-map-panel {
-    display: flex;
-    flex-direction: column;
-}
-
-.lumeo-map-btn svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* Attribution — pill in the corner with the same card look. */
-.leaflet-control-attribution {
+.maplibregl-ctrl-attrib {
     background: hsl(var(--card, 0 0% 100%) / 0.85) !important;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
@@ -236,12 +174,11 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-.leaflet-control-attribution a {
+.maplibregl-ctrl-attrib a {
     color: hsl(var(--primary, 222 47% 11%)) !important;
 }
 
-/* Scale control — bottom-left ruler. */
-.leaflet-control-scale-line {
+.maplibregl-ctrl-scale {
     background: hsl(var(--card, 0 0% 100%) / 0.9) !important;
     color: hsl(var(--card-foreground, 222 47% 11%)) !important;
     border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
@@ -252,7 +189,7 @@
     font-weight: 500;
 }
 
-/* Layer switcher (built-in) — chip-style buttons in a row */
+/* Layer switcher — chip row */
 .lumeo-map-layers {
     display: flex;
     gap: 4px;
@@ -288,7 +225,7 @@
     color: hsl(var(--primary-foreground, 210 40% 98%));
 }
 
-/* Search control — search input in a floating panel. */
+/* Search control */
 .lumeo-map-search {
     background: hsl(var(--card, 0 0% 100%) / 0.95);
     backdrop-filter: saturate(140%) blur(6px);
