@@ -12,11 +12,45 @@
     </div>
 }
 
+@if (Icon is not null)
+{
+    @* Same trick for the inner marker icon — we render the RenderFragment
+       to a hidden host so JS can splice its innerHTML into the DivIcon. This
+       lets consumers drop a <Blazicon Svg="..." /> straight inside the marker. *@
+    <div id="@_iconHostId" style="display:none">
+        @Icon
+    </div>
+}
+
 @code {
     [Parameter] public double Lat { get; set; }
     [Parameter] public double Lon { get; set; }
     [Parameter] public string? Title { get; set; }
+
+    /// <summary>Bitmap icon URL. When set, takes precedence over <see cref="Variant"/>
+    /// — we hand Leaflet a plain L.icon and skip the DivIcon path entirely.
+    /// Anchored bottom-center at 32×32, matching the pre-3.1 default.</summary>
     [Parameter] public string? IconUrl { get; set; }
+
+    /// <summary>Visual variant for the auto-generated DivIcon. Ignored when
+    /// <see cref="IconUrl"/> is set. Defaults to <c>"Default"</c> (filled circle).
+    /// Valid values: <c>"Default"</c>, <c>"Outline"</c>, <c>"Pin"</c>, <c>"Dot"</c>.</summary>
+    [Parameter] public string Variant { get; set; } = "Default";
+
+    /// <summary>Override the marker's theme color. Accepts a friendly name
+    /// (<c>"red"</c>, <c>"green"</c>, <c>"yellow"</c>, …) or a raw CSS color
+    /// (<c>"#ff0000"</c>, <c>"hsl(...)"</c>). Null = theme primary.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Permanent label rendered above the marker. Use for waypoints
+    /// or numbered tours. Different from <see cref="Title"/> (hover tooltip).</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Optional inline content inside the marker circle — a single
+    /// letter, a number, or a small <c>&lt;Blazicon&gt;</c> SVG. The fragment
+    /// is rendered to a hidden host and its innerHTML is spliced into the
+    /// DivIcon. Ignored when <see cref="IconUrl"/> is set.</summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
 
     /// <summary>Optional rich popup body. When present, it overrides the plain
     /// <see cref="Title"/> as the marker's popup content. The fragment renders
@@ -28,8 +62,9 @@
     [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
 
     private Map? _registeredOwner;
-    private (double Lat, double Lon, string? Title, string? IconUrl)? _lastState;
+    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool HasIcon)? _lastState;
     private readonly string _popupHostId = $"lumeo-map-popup-{Guid.NewGuid():N}";
+    private readonly string _iconHostId = $"lumeo-map-icon-{Guid.NewGuid():N}";
 
     protected override void OnParametersSet()
     {
@@ -43,16 +78,18 @@
         }
         else
         {
-            var snapshot = (Lat, Lon, Title, IconUrl);
+            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, Icon is not null);
             if (_lastState is { } prev && prev != snapshot)
                 owner.NotifyMarkerChanged(this);
         }
-        _lastState = (Lat, Lon, Title, IconUrl);
+        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, Icon is not null);
     }
 
     internal string? GetPopupHtml() => Title;
     internal string PopupHostId => _popupHostId;
+    internal string IconHostId => _iconHostId;
     internal bool HasRichPopup => Popup is not null;
+    internal bool HasIcon => Icon is not null;
 
     public void Dispose()
     {
