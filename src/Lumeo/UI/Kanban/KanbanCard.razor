@@ -2,7 +2,10 @@
 
 <div class="@CssClass"
      draggable="@(Draggable ? "true" : "false")"
+     role="@(OnClick.HasDelegate ? "button" : null)"
+     tabindex="@(OnClick.HasDelegate ? "0" : null)"
      @onclick="OnClick"
+     @onkeydown="HandleKeyDown"
      @attributes="AdditionalAttributes">
 
     @if (Labels is not null && Labels.Count > 0)
@@ -49,7 +52,13 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"bg-card rounded-lg border border-border/40 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow {Class}".Trim();
+    private string CssClass => $"bg-card rounded-lg border border-border/40 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 {Class}".Trim();
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!OnClick.HasDelegate) return;
+        if (e.Key is "Enter" or " ") await OnClick.InvokeAsync();
+    }
 
     private static string GetLabelClass(string color) => color switch
     {

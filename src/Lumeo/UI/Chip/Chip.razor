@@ -2,7 +2,7 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div @ref="_el" class="@CssClass" @onclick="HandleClick" @attributes="AdditionalAttributes" role="@(Clickable ? "button" : null)" tabindex="@(Clickable ? "0" : null)">
+<div @ref="_el" class="@CssClass" @onclick="HandleClick" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes" role="@(Clickable ? "button" : null)" tabindex="@(Clickable ? "0" : null)" aria-disabled="@(Clickable && Disabled ? "true" : null)">
     @if (!string.IsNullOrEmpty(Avatar))
     {
         <img src="@Avatar" alt="" class="@AvatarSizeClass rounded-full object-cover shrink-0" />
@@ -108,6 +108,12 @@
     {
         if (Disabled) return;
         if (Clickable) await OnClick.InvokeAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!Clickable || Disabled) return;
+        if (e.Key is "Enter" or " ") await OnClick.InvokeAsync();
     }
 
     private async Task HandleClose()
