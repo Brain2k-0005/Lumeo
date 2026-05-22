@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 3.0 is stable and on NuGet.** `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x.
+> **Lumeo 3.0.5 is on NuGet** â€” soft borders sweep across 27 components and an accessibility + keyboard polish pass across 23. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (3.0.x patches require no migration).
 
 ## What's new in 3.0
 
@@ -91,14 +91,14 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) â
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="3.0.1" />
+  <PackageReference Include="Lumeo"            Version="3.0.5" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="3.0.1" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="3.0.1" />
-  <PackageReference Include="Lumeo.Editor"    Version="3.0.1" />
-  <PackageReference Include="Lumeo.Scheduler" Version="3.0.1" />
-  <PackageReference Include="Lumeo.Gantt"     Version="3.0.1" />
-  <PackageReference Include="Lumeo.Motion"    Version="3.0.1" />
+  <PackageReference Include="Lumeo.Charts"    Version="3.0.5" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="3.0.5" />
+  <PackageReference Include="Lumeo.Editor"    Version="3.0.5" />
+  <PackageReference Include="Lumeo.Scheduler" Version="3.0.5" />
+  <PackageReference Include="Lumeo.Gantt"     Version="3.0.5" />
+  <PackageReference Include="Lumeo.Motion"    Version="3.0.5" />
 </ItemGroup>
 ```
 
