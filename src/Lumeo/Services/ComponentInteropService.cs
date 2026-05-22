@@ -10,6 +10,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private IJSObjectReference? _module;
     private IJSObjectReference? _motionModule;
     private IJSObjectReference? _toolbarModule;
+    private IJSObjectReference? _signaturePadModule;
     private DotNetObjectReference<ComponentInteropService>? _selfRef;
 
     // Adapters
@@ -688,6 +689,61 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- HTMLMediaElement helpers (AudioPlayer 3.1.0) ---
+
+    public async ValueTask PlayMedia(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("playMedia", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("pauseMedia", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setMediaVolume", element, volume, muted);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("seekMedia", element, seconds);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask<MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<MediaState>("getMediaState", element);
+        }
+        catch (JSDisconnectedException)
+        {
+            return new MediaState(0, 0);
+        }
+    }
+
     // --- Haptic feedback ---
 
     public async ValueTask Vibrate(int milliseconds)
@@ -1130,6 +1186,89 @@ public sealed class ComponentInteropService : IComponentInteropService
     public ValueTask<string?> RichTextPromptLinkAsync(string? initial)
         => _richText.PromptLinkAsync(_jsRuntime, initial);
 
+    // --- SignaturePad ---
+    // SignaturePad ships its own tiny JS module (signature-pad.js) that wires
+    // pointer events to a canvas. Loaded lazily so apps that never sign a
+    // contract don't pay the import cost. Cache-busted by assembly version
+    // like the main components.js (see GetModuleAsync for rationale).
+
+    private async Task<IJSObjectReference> GetSignaturePadModuleAsync()
+    {
+        _signaturePadModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", $"./_content/Lumeo/js/signature-pad.js?v={_jsModuleVersion}");
+        return _signaturePadModule;
+    }
+
+    public async ValueTask SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef)
+    {
+        try
+        {
+            var module = await GetSignaturePadModuleAsync();
+            await module.InvokeVoidAsync("init", elementId, options, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SignaturePadClear(string elementId)
+    {
+        try
+        {
+            if (_signaturePadModule is null) return;
+            await _signaturePadModule.InvokeVoidAsync("clear", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType)
+    {
+        try
+        {
+            if (_signaturePadModule is null) return null;
+            return await _signaturePadModule.InvokeAsync<string?>("getDataUrl", elementId, mimeType);
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
+    public async ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width)
+    {
+        try
+        {
+            if (_signaturePadModule is null) return;
+            await _signaturePadModule.InvokeVoidAsync("setStrokeStyle", elementId, color, width);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SignaturePadSetDisabled(string elementId, bool disabled)
+    {
+        try
+        {
+            if (_signaturePadModule is null) return;
+            await _signaturePadModule.InvokeVoidAsync("setDisabled", elementId, disabled);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SignaturePadLoadDataUrl(string elementId, string? dataUrl)
+    {
+        try
+        {
+            if (_signaturePadModule is null) return;
+            await _signaturePadModule.InvokeVoidAsync("loadDataUrl", elementId, dataUrl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SignaturePadDestroy(string elementId)
+    {
+        try
+        {
+            if (_signaturePadModule is null) return;
+            await _signaturePadModule.InvokeVoidAsync("destroy", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public void Dispose()
     {
         // Best-effort: fire-and-forget the JS-side cleanup so browser observers/listeners
@@ -1235,6 +1374,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _toolbarModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_signaturePadModule is not null)
+        {
+            try
+            {
+                await _signaturePadModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
