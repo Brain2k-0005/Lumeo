@@ -24,11 +24,14 @@ var uiRoots = new[]
 {
     Path.Combine(repoRoot, "src", "Lumeo", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Charts", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.CodeEditor", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.DataGrid", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Editor", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Scheduler", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Gantt", "UI"),
     Path.Combine(repoRoot, "src", "Lumeo.Motion", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.PdfViewer", "UI"),
+    Path.Combine(repoRoot, "src", "Lumeo.Maps", "UI"),
 };
 
 var outputDir = Path.Combine(repoRoot, "src", "Lumeo", "registry");
@@ -53,12 +56,19 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["DataGrid"] = "Lumeo.DataGrid",
     ["DataTable"] = "Lumeo.DataGrid",
     ["Filter"] = "Lumeo.DataGrid",
+    // CodeEditor satellite
+    ["CodeEditor"] = "Lumeo.CodeEditor",
     // Editor satellite
     ["RichTextEditor"] = "Lumeo.Editor",
     // Scheduler satellite
     ["Scheduler"] = "Lumeo.Scheduler",
     // Gantt satellite
     ["Gantt"] = "Lumeo.Gantt",
+    // PdfViewer satellite
+    ["PdfViewer"] = "Lumeo.PdfViewer",
+    // Maps satellite
+    ["Map"] = "Lumeo.Maps",
+    ["MapMarker"] = "Lumeo.Maps",
     // Motion satellite — Phase 1 (7 components)
     ["BlurFade"] = "Lumeo.Motion",
     ["BorderBeam"] = "Lumeo.Motion",
@@ -142,6 +152,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Rating"] = "Forms",
     ["InplaceEditor"] = "Forms",
     ["RichTextEditor"] = "Forms",
+    ["CodeEditor"] = "Forms",
     // Data Display
     ["Table"] = "Data Display",
     ["DataTable"] = "Data Display",
@@ -166,6 +177,8 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Scheduler"] = "Data Display",
     ["Sparkline"] = "Data Display",
     ["Gantt"] = "Data Display",
+    ["Map"] = "Data Display",
+    ["MapMarker"] = "Data Display",
     // Feedback
     ["Toast"] = "Feedback",
     ["Alert"] = "Feedback",
@@ -198,6 +211,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["RingProgress"] = "Feedback",
     ["Highlighter"] = "Typography",
     ["FileManager"] = "Data Display",
+    ["PdfViewer"] = "Data Display",
     ["QueryBuilder"] = "Forms",
     // Navigation
     ["Tabs"] = "Navigation",
@@ -286,6 +300,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["RingProgress"] = "Circular determinate progress ring with optional centre label or custom content.",
     ["Highlighter"] = "Wraps occurrences of one or more search terms in the text with highlight marks.",
     ["FileManager"] = "Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.",
+    ["PdfViewer"] = "Inline PDF document viewer powered by pdf.js — page navigation, zoom controls, optional text search, and download.",
     ["QueryBuilder"] = "Visual AND/OR predicate-tree builder; serializes to JSON or a LINQ predicate.",
     ["Toolbar"] = "Horizontal toolbar container with separator, spacer, and group sub-components.",
     ["AppBar"] = "Top application bar with start, center, and end slots; sticky and elevated variants.",
@@ -378,6 +393,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Resizable"] = "Draggable splitter for resizable panel layouts.",
     ["Result"] = "Full-page success/error/info status screen with actions.",
     ["RichTextEditor"] = "WYSIWYG editor wrapping TipTap with Lumeo styling.",
+    ["CodeEditor"] = "Source-code editor wrapping CodeMirror 6 with on-demand language packs, dark/light/auto theming, and line numbers.",
     ["Scheduler"] = "Calendar/agenda scheduler wrapping FullCalendar.",
     ["ScrollArea"] = "Styled custom scrollbar container.",
     ["Scrollspy"] = "Highlights the nav item matching the current scroll section.",
