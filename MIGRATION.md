@@ -4,6 +4,8 @@
 
 Lumeo 3.0 is a **quality release with one breaking change**: per-component size, side, alignment, and orientation enums collapse into four unified public enums under the root `Lumeo` namespace. Everything else — including dozens of new features — is additive.
 
+> **3.0.x patch releases require no migration.** 3.0.1 through 3.0.5 are drop-in upgrades from 3.0.0 — bump the version, rebuild, done. The enum unification below applies once when moving from 2.x → 3.0.0, and stays put for every subsequent patch.
+
 - **Breaking**: 39 per-component enums (e.g. `Button.ButtonSize`, `Popover.PopoverSide`, `Tabs.TabsOrientation`) replaced by `Lumeo.Size` / `Lumeo.Side` / `Lumeo.Align` / `Lumeo.Orientation`. See "Enum unification" below — most projects can migrate with a single project-wide find/replace.
 - **New features (additive)**: `OnBeforeClose` dismiss intercept on overlays; nested overlay z-index stacking; DatePicker keyboard input; DateTimePicker time-zone support; `Form.ResetValues()`; async per-field validators with pending state; menu submenus (`DropdownMenuSub` / `ContextMenuSub` / `MenubarSub`); `TabsList` drag-to-reorder; Toast pause-on-hover; Tooltip collision-flip; ARIA live error announcements across form controls.
 - **Internal**: components now inject `IComponentInteropService` (the interface) instead of the concrete class — drop-in for consumers, mockable for tests. Toolbar now goes through the same interop layer.
