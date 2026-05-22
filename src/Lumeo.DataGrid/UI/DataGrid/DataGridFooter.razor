@@ -2,35 +2,27 @@
 @typeparam TItem
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@*  3.0.4 — moved OUT of the <table> into a sibling strip below the scrolling
+    table wrapper. CSS `position: sticky` inside <tfoot> turned out unreliable
+    across browsers AND only worked when the table itself was actually
+    scrolling. Rendering as a sibling div pins the aggregate row to the bottom
+    of the DataGrid card regardless of row count. role="row" + sr-only label
+    keeps it accessible to screen readers. *@
 @if (Context is not null && HasAggregates)
 {
-    @* CSS sticky on <tfoot> is unreliable across browsers — most engines
-       ignore sticky on <thead>/<tfoot> wrapper elements. The pattern that
-       actually works is putting `position: sticky; bottom: 0` on each <td>
-       cell directly, so each cell sticks to the bottom of its scrolling
-       ancestor (the table wrapper div). bg-muted/95 + backdrop-blur-sm
-       occludes rows scrolling underneath. *@
-    <tfoot data-slot="datagrid-footer" class="@CssClass" @attributes="AdditionalAttributes">
-        <tr>
-            @if (Context.SelectionMode != DataGridSelectionMode.None)
-            {
-                <td class="sticky bottom-0 z-10 px-3 py-2 w-10 border-t border-border/40 bg-muted/95 backdrop-blur-sm"></td>
-            }
-            @if (HasDetailTemplate)
-            {
-                <td class="sticky bottom-0 z-10 px-1 py-2 w-8 border-t border-border/40 bg-muted/95 backdrop-blur-sm"></td>
-            }
-            @foreach (var column in Context.VisibleColumns)
-            {
-                <td @key="column.Id" class="sticky bottom-0 z-10 px-3 py-2 text-xs font-medium text-muted-foreground border-t border-border/40 bg-muted/95 backdrop-blur-sm">
-                    @if (column.Aggregate != AggregateType.None)
-                    {
-                        <span>@GetAggregateLabel(column.Aggregate): @ComputeAggregate(column)</span>
-                    }
-                </td>
-            }
-        </tr>
-    </tfoot>
+    <div data-slot="datagrid-aggregate-strip"
+         role="row"
+         aria-label="@L["DataGrid.AggregateRow"]"
+         class="@CssClass flex items-center border-t border-border/40 bg-muted/60 px-3 py-2 text-xs font-medium text-muted-foreground"
+         @attributes="AdditionalAttributes">
+        @foreach (var column in Context.VisibleColumns.Where(c => c.Aggregate != AggregateType.None))
+        {
+            <div @key="column.Id" class="flex-1 min-w-0 px-2">
+                <span class="text-foreground/70 mr-1">@GetAggregateLabel(column.Aggregate):</span>
+                <span class="font-mono text-foreground">@ComputeAggregate(column)</span>
+            </div>
+        }
+    </div>
 }
 
 @code {
