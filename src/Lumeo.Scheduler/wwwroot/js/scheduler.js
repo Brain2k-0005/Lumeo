@@ -29,11 +29,22 @@ function refreshAllCalendars() {
     }
 }
 
-const FC_CORE = 'https://esm.sh/@fullcalendar/core@6';
-const FC_DAYGRID = 'https://esm.sh/@fullcalendar/daygrid@6';
-const FC_TIMEGRID = 'https://esm.sh/@fullcalendar/timegrid@6';
-const FC_LIST = 'https://esm.sh/@fullcalendar/list@6';
-const FC_INTERACTION = 'https://esm.sh/@fullcalendar/interaction@6';
+// CDN URLs — overridable via the standard `window.lumeoCdn` config:
+//   window.lumeoCdn = { fullCalendarBase: '/lib/fullcalendar/' };
+// Individual modules can also be overridden one-by-one (fullCalendarCore, etc.)
+// for fine-grained self-hosting via the Lumeo CLI deps installer.
+function _cdn(key, fallback) {
+    return (typeof window !== 'undefined' && window.lumeoCdn && window.lumeoCdn[key]) || fallback;
+}
+function _fcUrl(pkg, fallback) {
+    const base = _cdn('fullCalendarBase', null);
+    return base ? `${base.replace(/\/$/, '')}/${pkg}.js` : _cdn(`fullCalendar${pkg[0].toUpperCase()}${pkg.slice(1)}`, fallback);
+}
+const FC_CORE = _fcUrl('core', 'https://esm.sh/@fullcalendar/core@6');
+const FC_DAYGRID = _fcUrl('daygrid', 'https://esm.sh/@fullcalendar/daygrid@6');
+const FC_TIMEGRID = _fcUrl('timegrid', 'https://esm.sh/@fullcalendar/timegrid@6');
+const FC_LIST = _fcUrl('list', 'https://esm.sh/@fullcalendar/list@6');
+const FC_INTERACTION = _fcUrl('interaction', 'https://esm.sh/@fullcalendar/interaction@6');
 
 function injectLumeoSchedulerOverrides() {
     if (document.querySelector('[data-lumeo-scheduler-overrides]')) return;
