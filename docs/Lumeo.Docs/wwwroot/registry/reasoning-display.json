@@ -18,6 +18,7 @@
     "--color-foreground",
     "--color-muted",
     "--color-muted-foreground",
+    "--color-ring",
     "--radius"
   ],
   "api": {
@@ -75,8 +76,8 @@
       },
       {
         "name": "Size",
-        "type": "ReasoningSize",
-        "default": "ReasoningSize.Medium",
+        "type": "Lumeo.Size",
+        "default": "Lumeo.Size.Md",
         "description": null,
         "isCascading": false,
         "captureUnmatched": false
@@ -109,15 +110,6 @@
     "events": [],
     "enums": [
       {
-        "name": "ReasoningSize",
-        "values": [
-          "Small",
-          "Medium",
-          "Large"
-        ],
-        "description": null
-      },
-      {
         "name": "ReasoningVariant",
         "values": [
           "Default",
@@ -133,6 +125,7 @@
       "--color-foreground",
       "--color-muted",
       "--color-muted-foreground",
+      "--color-ring",
       "--radius"
     ],
     "examples": [
@@ -146,7 +139,7 @@
       },
       {
         "title": "Streaming State",
-        "code": "<ReasoningDisplay Text=\"@_partialText\" IsStreaming=\"@_streaming\" DefaultOpen=\"true\" />\n\n@code {\n    private string _partialText = string.Empty;\n    private bool _streaming;\n}"
+        "code": "<ReasoningDisplay Text=\"@_partialText\" IsStreaming=\"@_streaming\" DefaultOpen=\"true\" />\r\n\r\n@code {\r\n    private string _partialText = string.Empty;\r\n    private bool _streaming;\r\n}"
       },
       {
         "title": "Open by Default",
@@ -169,7 +162,7 @@
   "source": [
     {
       "path": "UI/ReasoningDisplay/ReasoningDisplay.razor",
-      "content": "@namespace Lumeo\n\n<details class=\"@RootClass\" open=\"@DefaultOpen\" @attributes=\"AdditionalAttributes\">\n    <summary class=\"@SummaryClass\">\n        <span class=\"inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted-foreground transition-transform duration-150 [details[open]_&]:rotate-90\">\n            <Icon Name=\"ChevronRight\" Size=\"Icon.IconSize.Sm\" />\n        </span>\n        <span class=\"italic text-muted-foreground\">@ResolvedSummary</span>\n        @if (IsStreaming)\n        {\n            <span class=\"inline-flex items-center\">\n                <span class=\"h-1 w-1 rounded-full bg-muted-foreground animate-pulse\"></span>\n            </span>\n        }\n    </summary>\n\n    <div class=\"@BodyClass\">\n        <p class=\"m-0 whitespace-pre-wrap break-words\">@Text</p>\n    </div>\n</details>\n\n@code {\n    [Parameter] public string? Text { get; set; }\n    [Parameter] public bool IsStreaming { get; set; }\n    [Parameter] public string? Summary { get; set; }\n    [Parameter] public long? DurationMs { get; set; }\n    [Parameter] public bool DefaultOpen { get; set; }\n    [Parameter] public ReasoningSize Size { get; set; } = ReasoningSize.Medium;\n    [Parameter] public ReasoningVariant Variant { get; set; } = ReasoningVariant.Default;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string RootClass => $\"w-full min-w-0 max-w-full overflow-hidden {VariantRootClass} {Class}\".Trim();\n\n    private string VariantRootClass => Variant switch\n    {\n        ReasoningVariant.Compact => \"opacity-80\",\n        ReasoningVariant.Detailed => \"space-y-1\",\n        _ => \"\"\n    };\n\n    private string SummaryClass => Size switch\n    {\n        ReasoningSize.Small =>\n            \"flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden\",\n        ReasoningSize.Large =>\n            \"flex cursor-pointer list-none items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden\",\n        _ =>\n            \"flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors select-none [&::-webkit-details-marker]:hidden\"\n    };\n\n    private string BodyClass\n    {\n        get\n        {\n            // ml-1 adds breathing room between the rotated chevron column and the rule,\n            // pl-4 puts enough gap between the rule and the reasoning text.\n            var sizeClass = Size switch\n            {\n                ReasoningSize.Small => \"mt-1.5 ml-1 border-l-2 border-border pl-3 py-0.5 text-[11px] leading-relaxed text-muted-foreground\",\n                ReasoningSize.Large => \"mt-2.5 ml-1 border-l-2 border-border pl-5 py-1.5 text-sm leading-relaxed text-muted-foreground\",\n                _ => \"mt-2 ml-1 border-l-2 border-border pl-4 py-1 text-xs leading-relaxed text-muted-foreground\"\n            };\n            // Detailed variant shows full untruncated text; compact variant limits visible lines\n            var variantExtra = Variant switch\n            {\n                ReasoningVariant.Compact => \" line-clamp-3\",\n                ReasoningVariant.Detailed => \"\",\n                _ => \"\"\n            };\n            var baseClass = $\"{sizeClass}{variantExtra}\";\n            return IsStreaming ? $\"{baseClass} animate-pulse\" : baseClass;\n        }\n    }\n\n    private string ResolvedSummary\n    {\n        get\n        {\n            if (!string.IsNullOrEmpty(Summary)) return Summary!;\n            if (DurationMs is long ms) return $\"Reasoned for {ms / 1000.0:0.#}s\";\n            return IsStreaming ? \"Thinking…\" : \"Reasoning\";\n        }\n    }\n\n    public enum ReasoningSize { Small, Medium, Large }\n    /// <summary>\n    /// Default = standard expand/collapse display.\n    /// Compact = summary label + collapsed body limited to 3 lines.\n    /// Detailed = always shows full body text with extra padding.\n    /// </summary>\n    public enum ReasoningVariant { Default, Compact, Detailed }\n}\n"
+      "content": "@namespace Lumeo\r\n\r\n<details class=\"@RootClass\" open=\"@DefaultOpen\" @attributes=\"AdditionalAttributes\">\r\n    <summary class=\"@SummaryClass\">\r\n        <span class=\"inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted-foreground transition-transform duration-150 [details[open]_&]:rotate-90\">\r\n            <Icon Name=\"ChevronRight\" Size=\"Lumeo.Size.Sm\" />\r\n        </span>\r\n        <span class=\"italic text-muted-foreground\">@ResolvedSummary</span>\r\n        @if (IsStreaming)\r\n        {\r\n            <span class=\"inline-flex items-center\">\r\n                <span class=\"h-1 w-1 rounded-full bg-muted-foreground animate-pulse\"></span>\r\n            </span>\r\n        }\r\n    </summary>\r\n\r\n    <div class=\"@BodyClass\">\r\n        <p class=\"m-0 whitespace-pre-wrap break-words\">@Text</p>\r\n    </div>\r\n</details>\r\n\r\n@code {\r\n    [Parameter] public string? Text { get; set; }\r\n    [Parameter] public bool IsStreaming { get; set; }\r\n    [Parameter] public string? Summary { get; set; }\r\n    [Parameter] public long? DurationMs { get; set; }\r\n    [Parameter] public bool DefaultOpen { get; set; }\r\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\r\n    [Parameter] public ReasoningVariant Variant { get; set; } = ReasoningVariant.Default;\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string RootClass => $\"w-full min-w-0 max-w-full overflow-hidden {VariantRootClass} {Class}\".Trim();\r\n\r\n    private string VariantRootClass => Variant switch\r\n    {\r\n        ReasoningVariant.Compact => \"opacity-80\",\r\n        ReasoningVariant.Detailed => \"space-y-1\",\r\n        _ => \"\"\r\n    };\r\n\r\n    private string SummaryClass => Size switch\r\n    {\r\n        Lumeo.Size.Sm =>\r\n            \"flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded select-none [&::-webkit-details-marker]:hidden\",\r\n        Lumeo.Size.Lg =>\r\n            \"flex cursor-pointer list-none items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded select-none [&::-webkit-details-marker]:hidden\",\r\n        _ =>\r\n            \"flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded select-none [&::-webkit-details-marker]:hidden\"\r\n    };\r\n\r\n    private string BodyClass\r\n    {\r\n        get\r\n        {\r\n            // ml-1 adds breathing room between the rotated chevron column and the rule,\r\n            // pl-4 puts enough gap between the rule and the reasoning text.\r\n            var sizeClass = Size switch\r\n            {\r\n                Lumeo.Size.Sm => \"mt-1.5 ml-1 border-l-2 border-border/40 pl-3 py-0.5 text-[11px] leading-relaxed text-muted-foreground\",\r\n                Lumeo.Size.Lg => \"mt-2.5 ml-1 border-l-2 border-border/40 pl-5 py-1.5 text-sm leading-relaxed text-muted-foreground\",\r\n                _ => \"mt-2 ml-1 border-l-2 border-border/40 pl-4 py-1 text-xs leading-relaxed text-muted-foreground\"\r\n            };\r\n            // Detailed variant shows full untruncated text; compact variant limits visible lines\r\n            var variantExtra = Variant switch\r\n            {\r\n                ReasoningVariant.Compact => \" line-clamp-3\",\r\n                ReasoningVariant.Detailed => \"\",\r\n                _ => \"\"\r\n            };\r\n            var baseClass = $\"{sizeClass}{variantExtra}\";\r\n            return IsStreaming ? $\"{baseClass} animate-pulse\" : baseClass;\r\n        }\r\n    }\r\n\r\n    private string ResolvedSummary\r\n    {\r\n        get\r\n        {\r\n            if (!string.IsNullOrEmpty(Summary)) return Summary!;\r\n            if (DurationMs is long ms) return $\"Reasoned for {ms / 1000.0:0.#}s\";\r\n            return IsStreaming ? \"Thinking…\" : \"Reasoning\";\r\n        }\r\n    }\r\n\r\n    /// <summary>\r\n    /// Default = standard expand/collapse display.\r\n    /// Compact = summary label + collapsed body limited to 3 lines.\r\n    /// Detailed = always shows full body text with extra padding.\r\n    /// </summary>\r\n    public enum ReasoningVariant { Default, Compact, Detailed }\r\n}\r\n"
     }
   ],
   "slots": [],
@@ -185,5 +178,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/ReasoningDisplay/ReasoningDisplayTests.cs"
   ],
-  "mdSummary": "# ReasoningDisplay\n\nCollapsible chain-of-thought block for AI reasoning traces.\n\n**Package:** `Lumeo` · **Category:** AI\n**Docs:** https://lumeo.nativ.sh/components/reasoning-display\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ReasoningDisplay | Text | `string?` | `` |  |\n| ReasoningDisplay | IsStreaming | `bool` | `` |  |\n| ReasoningDisplay | Summary | `string?` | `` |  |\n| ReasoningDisplay | DurationMs | `long?` | `` |  |\n| ReasoningDisplay | DefaultOpen | `bool` | `` |  |\n| ReasoningDisplay | Size | `ReasoningSize` | `ReasoningSize.Medium` |  |\n| ReasoningDisplay | Variant | `ReasoningVariant` | `ReasoningVariant.Default` |  |\n| ReasoningDisplay | Class | `string?` | `` |  |\n| ReasoningDisplay | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ReasoningDisplay />\n```\n\n## CSS variables\n`--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/ReasoningDisplay/ReasoningDisplay.razor`\n"
+  "mdSummary": "# ReasoningDisplay\r\n\r\nCollapsible chain-of-thought block for AI reasoning traces.\r\n\r\n**Package:** `Lumeo` · **Category:** AI\r\n**Docs:** https://lumeo.nativ.sh/components/reasoning-display\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| ReasoningDisplay | Text | `string?` | `` |  |\r\n| ReasoningDisplay | IsStreaming | `bool` | `` |  |\r\n| ReasoningDisplay | Summary | `string?` | `` |  |\r\n| ReasoningDisplay | DurationMs | `long?` | `` |  |\r\n| ReasoningDisplay | DefaultOpen | `bool` | `` |  |\r\n| ReasoningDisplay | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\r\n| ReasoningDisplay | Variant | `ReasoningVariant` | `ReasoningVariant.Default` |  |\r\n| ReasoningDisplay | Class | `string?` | `` |  |\r\n| ReasoningDisplay | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<ReasoningDisplay />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-ring`, `--radius`\r\n\r\n## Files\r\n- `UI/ReasoningDisplay/ReasoningDisplay.razor`\r\n"
 }
