@@ -16,7 +16,9 @@ async function getClient() {
         _disabled = true;
         return null;
     }
-    const { liteClient } = await import('https://esm.sh/algoliasearch/lite');
+    // CDN URL overridable via `window.lumeoCdn.algoliasearchLite` for self-host.
+    const algoliaUrl = (window.lumeoCdn && window.lumeoCdn.algoliasearchLite) || 'https://esm.sh/algoliasearch/lite';
+    const { liteClient } = await import(/* @vite-ignore */ algoliaUrl);
     _client = liteClient(appId, searchKey);
     return _client;
 }

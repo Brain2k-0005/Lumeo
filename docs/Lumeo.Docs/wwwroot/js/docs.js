@@ -21,6 +21,29 @@ window.lumeo.resetScrollTopById = function (id) {
     if (el) el.scrollTop = 0;
 };
 
+// LazyRender — IntersectionObserver helper.
+// Watches `el` and calls dotNetRef.OnVisible() once it enters the viewport
+// within `rootMarginPx` pixels. Returns the observer so Blazor can disconnect it.
+window.lumeo.observeVisibility = function (el, dotNetRef, rootMarginPx) {
+    if (!el || typeof IntersectionObserver === 'undefined') {
+        // Fallback: fire immediately (SSR / older browsers).
+        dotNetRef.invokeMethodAsync('OnVisible');
+        return null;
+    }
+    var io = new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting) {
+            io.disconnect();
+            dotNetRef.invokeMethodAsync('OnVisible');
+        }
+    }, { rootMargin: rootMarginPx + 'px' });
+    io.observe(el);
+    return io;
+};
+
+window.lumeo.disconnectObserver = function (io) {
+    if (io && typeof io.disconnect === 'function') io.disconnect();
+};
+
 window.lumeo.setupSearch = function () {
     document.addEventListener('keydown', function (e) {
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
