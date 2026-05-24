@@ -69,6 +69,14 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     // Maps satellite
     ["Map"] = "Lumeo.Maps",
     ["MapMarker"] = "Lumeo.Maps",
+    ["MapHeatmap"] = "Lumeo.Maps",
+    ["MapLegend"] = "Lumeo.Maps",
+    ["MapLegendItem"] = "Lumeo.Maps",
+    ["MapPopup"] = "Lumeo.Maps",
+    ["MapArc"] = "Lumeo.Maps",
+    ["MapCircle"] = "Lumeo.Maps",
+    ["MapPolygon"] = "Lumeo.Maps",
+    ["MapPolyline"] = "Lumeo.Maps",
     // Motion satellite — Phase 1 (7 components)
     ["BlurFade"] = "Lumeo.Motion",
     ["BorderBeam"] = "Lumeo.Motion",
@@ -179,6 +187,14 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Gantt"] = "Data Display",
     ["Map"] = "Data Display",
     ["MapMarker"] = "Data Display",
+    ["MapHeatmap"] = "Data Display",
+    ["MapLegend"] = "Data Display",
+    ["MapLegendItem"] = "Data Display",
+    ["MapPopup"] = "Data Display",
+    ["MapArc"] = "Data Display",
+    ["MapCircle"] = "Data Display",
+    ["MapPolygon"] = "Data Display",
+    ["MapPolyline"] = "Data Display",
     // Feedback
     ["Toast"] = "Feedback",
     ["Alert"] = "Feedback",
@@ -365,8 +381,16 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Label"] = "Form label that links to a control via for/id.",
     ["Link"] = "Styled anchor with underline + color variants.",
     ["List"] = "Ordered/unordered list with Lumeo typographic styling.",
-    ["Map"] = "Interactive geographic map with declarative markers — Leaflet wrapper, open-source tiles, no API key required.",
+    ["Map"] = "Interactive geographic map powered by MapLibre GL — markers, polylines, polygons, circles, arcs, heatmaps, legend overlays, and popups; CARTO vector basemaps, no API key required.",
     ["MapMarker"] = "Declarative marker child for Map: latitude, longitude, optional custom icon and rich popup content.",
+    ["MapHeatmap"] = "Heatmap layer child for Map: renders a density overlay from a collection of (lat, lon, intensity) points.",
+    ["MapLegend"] = "Legend overlay container for Map — shows a titled list of color-keyed labels inside the map viewport.",
+    ["MapLegendItem"] = "Single color-swatch + label row inside a MapLegend.",
+    ["MapPopup"] = "Stand-alone popup anchored to a geographic coordinate inside Map — toggled via IsOpen, independent of any marker.",
+    ["MapArc"] = "Great-circle arc drawn between two coordinates on Map, with animated dash-draw effect.",
+    ["MapCircle"] = "Filled circle layer on Map defined by center coordinates and radius in meters.",
+    ["MapPolygon"] = "Filled polygon layer on Map defined by an ordered list of coordinate vertices.",
+    ["MapPolyline"] = "Polyline layer on Map connecting an ordered list of coordinate points.",
     ["Confetti"] = "Burst of colored particles on demand via imperative Fire() method.",
     ["Dock"] = "macOS-style icon dock with cursor-proximity magnification.",
     ["Globe"] = "Stylized rotating 3D globe rendered on canvas with dotted lat/long lines.",
@@ -759,6 +783,51 @@ catch (Exception ex)
     Console.Error.WriteLine($"[per-component] FAILED to emit: {ex.Message}");
     Console.Error.WriteLine(ex.StackTrace);
     return 3;
+}
+
+// ─────── Fourth pass: cdn-deps.json ──────────────────────────────────────────
+// Written to two locations:
+//   1) docs/Lumeo.Docs/wwwroot/registry/cdn-deps.json  — served by Cloudflare Pages as
+//      https://lumeo.nativ.sh/registry/cdn-deps.json (CLI remote fallback, docs site reads it at runtime)
+//   2) src/Lumeo/registry/cdn-deps.json                — bundled into Lumeo.nupkg as a static web asset
+//      so the CLI can read it from the assembly's embedded resources when offline.
+try
+{
+    var cdnDepsPayload = new Dictionary<string, object>
+    {
+        ["version"] = "1.0",
+        ["generated"] = DateTime.UtcNow.ToString("O"),
+        ["deps"] = CdnDeps.All.Select(d => new Dictionary<string, string>
+        {
+            ["key"]     = d.Key,
+            ["package"] = d.Package,
+            ["version"] = d.Version,
+            ["url"]     = d.Url,
+            ["owner"]   = d.Owner,
+        }).ToArray(),
+    };
+
+    var cdnDepsJson = JsonSerializer.Serialize(cdnDepsPayload, jsonOpts);
+
+    var cdnDepsOutputDirs = new[]
+    {
+        Path.Combine(repoRoot, "docs", "Lumeo.Docs", "wwwroot", "registry"),
+        Path.Combine(repoRoot, "src", "Lumeo", "registry"),
+    };
+
+    foreach (var dir in cdnDepsOutputDirs)
+    {
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "cdn-deps.json"), cdnDepsJson, new UTF8Encoding(false));
+    }
+
+    Console.WriteLine($"Wrote cdn-deps.json ({CdnDeps.All.Length} deps) to {string.Join(" + ", cdnDepsOutputDirs.Select(d => Path.GetRelativePath(repoRoot, d)))}");
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[cdn-deps] FAILED to emit: {ex.Message}");
+    Console.Error.WriteLine(ex.StackTrace);
+    return 4;
 }
 
 return 0;

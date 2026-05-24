@@ -212,6 +212,32 @@ var updateAssetsCmd = new Command("update-assets", "Refresh copied CSS/JS assets
 };
 updateAssetsCmd.SetHandler(Commands.UpdateAssets, updateAssetsLocalOpt, updateAssetsForceOpt, updateAssetsDryOpt);
 
+// --- deps install ---
+// Self-host all (or a subset of) CDN JavaScript/CSS dependencies so the app
+// works in airgapped / strict-CSP environments without touching public CDNs.
+var depsLibOpt    = new Option<string?>("--lib",             "Satellite name, package name, or key to download. Default: all.");
+var depsTargetOpt = new Option<string?>("--target",          "Target project directory (defaults to first parent dir containing a *.csproj).");
+var depsNoBootOpt = new Option<bool>(   "--no-bootstrap",    "Skip generating wwwroot/js/lumeo-cdn-init.js.");
+var depsForceOpt  = new Option<bool>(   "--force",           "Re-download files that already exist locally.");
+var depsDryOpt    = new Option<bool>(   "--dry-run",         "Print what would happen without writing any files.");
+
+var depsInstallCmd = new Command("install", "Download vendor copies of all CDN JS/CSS dependencies into wwwroot/lib/lumeo-vendor/.")
+{
+    depsLibOpt, depsTargetOpt, depsNoBootOpt, depsForceOpt, depsDryOpt,
+};
+depsInstallCmd.SetHandler(async ctx =>
+{
+    var lib    = ctx.ParseResult.GetValueForOption(depsLibOpt);
+    var target = ctx.ParseResult.GetValueForOption(depsTargetOpt);
+    var noBoot = ctx.ParseResult.GetValueForOption(depsNoBootOpt);
+    var force  = ctx.ParseResult.GetValueForOption(depsForceOpt);
+    var dry    = ctx.ParseResult.GetValueForOption(depsDryOpt);
+    await DepsCommand.InstallAsync(lib, target, writeBootstrap: !noBoot, force: force, dryRun: dry);
+});
+
+var depsCmd = new Command("deps", "Manage CDN JavaScript/CSS dependencies for self-hosting.");
+depsCmd.AddCommand(depsInstallCmd);
+
 root.AddCommand(initCmd);
 root.AddCommand(addCmd);
 root.AddCommand(updateCmd);
@@ -222,6 +248,7 @@ root.AddCommand(viewCmd);
 root.AddCommand(infoCmd);
 root.AddCommand(applyCmd);
 root.AddCommand(updateAssetsCmd);
+root.AddCommand(depsCmd);
 root.AddCommand(presetCmd);
 root.AddCommand(themeCmd);
 
