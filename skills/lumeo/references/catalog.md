@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 149 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 154 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -41,6 +41,8 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Image** — Image with lazy-loading, loading skeleton, and error fallback. _(sub-components: ImageGallery)_
 - **ImageCompare** — Before/after slider comparison for two images.
 - **List** — Ordered/unordered list with Lumeo typographic styling. _(sub-components: ListItem)_
+- **Map** **[Maps]** — Interactive geographic map powered by MapLibre GL — markers, polylines, polygons, circles, arcs, heatmaps, legend overlays, and popups; CARTO vector basemaps, no API key required. _(sub-components: MapArc, MapCircle, MapHeatmap, MapLegend, MapLegendItem, MapMarker, MapPolygon, MapPolyline, MapPopup)_
+- **PdfViewer** **[PdfViewer]** — Inline PDF document viewer powered by pdf.js — page navigation, zoom controls, optional text search, and download.
 - **PivotGrid** — Cross-tab / pivot table that summarizes flat data into rows x columns x aggregated measures.
 - **QRCode** — Renders a QR code SVG for a string payload.
 - **Scheduler** **[Scheduler]** — Calendar/agenda scheduler wrapping FullCalendar.
@@ -74,6 +76,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Button** — Versatile button with variants, sizes, icons, and loading states.
 - **Cascader** — Multi-level dropdown for hierarchical selection.
 - **Checkbox** — Binary input with indeterminate state and accessible label.
+- **CodeEditor** **[CodeEditor]** — Source-code editor wrapping CodeMirror 6 with on-demand language packs, dark/light/auto theming, and line numbers.
 - **ColorPicker** — Hue + saturation/value picker with hex input.
 - **Combobox** — Searchable select with filtering, custom values, and grouping. _(sub-components: ComboboxContent, ComboboxCreate, ComboboxEmpty, ComboboxInput, ComboboxItem)_
 - **DatePicker** — Calendar popover for picking a single date or range. _(sub-components: DateRangePicker, DateWheelPicker)_
@@ -139,7 +142,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Carousel** — Slide-based content rotator with autoplay and keyboard nav. _(sub-components: CarouselContent, CarouselItem, CarouselNext, CarouselPrevious)_
 - **Collapsible** — Single expandable region with animated height transition. _(sub-components: CollapsibleContent, CollapsibleTrigger)_
 - **MegaMenu** — Full-width dropdown for site-wide navigation with columns. _(sub-components: MegaMenuGroup, MegaMenuItem, MegaMenuLink, MegaMenuPanel)_
-- **Menubar** — Horizontal menubar with File/Edit-style dropdowns. _(sub-components: MenubarContent, MenubarItem, MenubarLabel, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarTrigger)_
+- **Menubar** — Horizontal menubar with File/Edit-style dropdowns. _(sub-components: MenubarContent, MenubarItem, MenubarLabel, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger)_
 - **NavigationMenu** — Top-level site nav with animated dropdown panels. _(sub-components: NavigationMenuContent, NavigationMenuHamburger, NavigationMenuIndicator, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuMobile, NavigationMenuTrigger, NavigationMenuViewport)_
 - **Pagination** — Page number bar with prev/next and configurable ranges. _(sub-components: PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious)_
 - **Scrollspy** — Highlights the nav item matching the current scroll section. _(sub-components: ScrollspyLink, ScrollspySection)_
@@ -154,10 +157,10 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 
 - **AlertDialog** — Modal confirmation dialog that interrupts the user for destructive actions. _(sub-components: AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger)_
 - **Command** — Command palette — keyboard-driven finder for actions. _(sub-components: CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator)_
-- **ContextMenu** — Right-click menu tied to a container element. _(sub-components: ContextMenuCheckboxItem, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuSeparator, ContextMenuTrigger)_
+- **ContextMenu** — Right-click menu tied to a container element. _(sub-components: ContextMenuCheckboxItem, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger)_
 - **Dialog** — Modal dialog with header, content, footer, and focus trap. _(sub-components: DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger)_
 - **Drawer** — Slide-up sheet for mobile-first contextual content. _(sub-components: DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger)_
-- **DropdownMenu** — Menu button with items, separators, submenus, and checkboxes. _(sub-components: DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger)_
+- **DropdownMenu** — Menu button with items, separators, submenus, and checkboxes. _(sub-components: DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger)_
 - **HoverCard** — Popover that opens on hover for rich previews. _(sub-components: HoverCardContent, HoverCardTrigger)_
 - **Overlay** — Low-level backdrop primitive for custom popovers and modals.
 - **PopConfirm** — Inline 'are you sure?' popover attached to a trigger.
@@ -177,6 +180,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 
 ## Utility
 
+- **AudioPlayer** — Audio Player component.
 - **ButtonGroup** — Button Group component.
 - **ConsentBanner** — Consent Banner component.
 - **DropdownButton** — Dropdown Button component.
@@ -185,6 +189,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Label** — Form label that links to a control via for/id.
 - **PullToRefresh** — Pull To Refresh component.
 - **SafeArea** — Safe Area component.
+- **SignaturePad** — Signature Pad component.
 - **SplitButton** — Split Button component.
 - **SwipeActions** — Swipe Actions component.
 - **ThemeSwitcher** — Color-scheme picker that writes to ThemeService.
