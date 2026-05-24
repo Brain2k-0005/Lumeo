@@ -1,0 +1,64 @@
+@*
+    MapInfoChip — reusable info chip overlay for Map demos.
+
+    Usage inside a <Map> Overlay slot:
+
+        <Overlay>
+            <MapInfoChip Position="top-left">
+                London → NYC
+            </MapInfoChip>
+        </Overlay>
+
+    Position values: "top-left" (default), "top-right", "bottom-left", "bottom-right".
+    SAFE zones (no MapLibre default controls): top-left, bottom-left.
+    top-right is occupied by NavigationControl (+/−) and optionally Geolocate/Fullscreen/Layers.
+    bottom-right is occupied by the Attribution badge.
+    bottom-left hosts the Scale control (optional) — leave a gap with bottom-8 if Scale="true".
+*@
+
+<div class="@_positionClass pointer-events-auto rounded-lg text-xs @_paddingClass @Class"
+     style="background:var(--color-card);color:var(--color-foreground);border:1px solid var(--color-border);box-shadow:0 6px 18px -4px hsl(0 0% 0% / 0.28);"
+     @attributes="AdditionalAttributes">
+    @if (Title is not null)
+    {
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 mb-1.5 select-none">@Title</div>
+    }
+    <div class="@(_isCompactInline ? "flex items-center gap-1.5 font-medium" : "")">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Corner shorthand. Defaults to <c>"top-left"</c> (safe — no MapLibre controls).
+    /// Values: <c>"top-left"</c>, <c>"top-right"</c>, <c>"bottom-left"</c>, <c>"bottom-right"</c>.
+    /// </summary>
+    [Parameter] public string Position { get; set; } = "top-left";
+
+    /// <summary>Optional small uppercase title rendered above the content.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Layout preset for the inner content area:
+    /// <c>"compact"</c> (default) — single horizontal row, icon + text;
+    /// <c>"stack"</c> — vertical content (multi-line lists, button groups).
+    /// </summary>
+    [Parameter] public string Layout { get; set; } = "compact";
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isCompactInline => Layout == "compact" && Title is null;
+    private string _paddingClass => Title is null && Layout == "compact" ? "px-2.5 py-1.5" : "px-3 py-2";
+
+    private static readonly Dictionary<string, string> _positions = new()
+    {
+        ["top-left"]     = "absolute top-2 left-2",
+        ["top-right"]    = "absolute top-2 right-2",
+        ["bottom-left"]  = "absolute bottom-2 left-2",
+        ["bottom-right"] = "absolute bottom-2 right-2",
+    };
+
+    private string _positionClass => _positions.TryGetValue(Position, out var cls) ? cls : "absolute top-2 left-2";
+}

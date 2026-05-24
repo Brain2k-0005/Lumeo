@@ -1,0 +1,343 @@
+@namespace Lumeo.Docs.Pages.Components
+@page "/components/map-legend"
+
+<PageTitle>MapLegend — Lumeo</PageTitle>
+
+<PageHeader Title="MapLegend"
+            Description="A small overlay panel that explains the symbols and colours used on a map. Place MapLegend inside the Map Overlay slot; nest MapLegendItem children to define rows." />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Satellite package.</strong> <code>MapLegend</code> and <code>MapLegendItem</code>
+        live in <code>Lumeo.Maps</code> — install it alongside the core <code>Lumeo</code> package.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Explaining fill colours on a choropleth or density map</li>
+        <li>Labelling marker categories (e.g., store types, risk levels)</li>
+        <li>Distinguishing route types — air vs. sea, fastest vs. scenic</li>
+        <li>Identifying threshold bands on a heatmap</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    @* Demo 1 — Basic legend in bottom-left corner *@
+    <ComponentDemo Title="Basic legend — traffic conditions" Code="@_basicCode">
+        <LazyRender Height="380px">
+            <Map Center="(51.505, -0.09)" Zoom="11" Height="380px" TileLayer="CartoLight">
+                <ChildContent>
+                    <MapMarker Lat="51.507" Lon="-0.128" Title="London" Variant="Dot" Color="green" />
+                    <MapMarker Lat="51.503" Lon="-0.119" Title="Tower Bridge" Variant="Dot" Color="yellow" />
+                    <MapMarker Lat="51.501" Lon="-0.142" Title="Buckingham Palace" Variant="Dot" Color="red" />
+                </ChildContent>
+                <Overlay>
+                    <MapLegend Title="Traffic" Position="bottom-left">
+                        <MapLegendItem Color="green"  Label="Clear" />
+                        <MapLegendItem Color="yellow" Label="Slow" />
+                        <MapLegendItem Color="red"    Label="Congested" />
+                    </MapLegend>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 2 — Air vs Sea route legend combined with polylines *@
+    <ComponentDemo Title="Route legend — Air vs. Sea arcs" Code="@_routeLegendCode">
+        <LazyRender Height="480px">
+            <Map Center="(30.0, 0.0)" Zoom="2" Height="480px" TileLayer="CartoDark">
+                <ChildContent>
+                    @foreach (var (lat, lon, name) in _globeCities)
+                    {
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Dot" Color="gray" />
+                    }
+                    @foreach (var (from, to) in _airArcs)
+                    {
+                        <MapArc From="from" To="to"
+                                Color="#3b82f6" HoverColor="#93c5fd" HoverWeight="4"
+                                Weight="2" Opacity="0.8" Dashed="false"
+                                Tooltip="Air route" />
+                    }
+                    @foreach (var (from, to) in _seaArcs)
+                    {
+                        <MapArc From="from" To="to"
+                                Color="#14b8a6" HoverColor="#5eead4" HoverWeight="4"
+                                Weight="2" Opacity="0.7" Dashed="true"
+                                Tooltip="Sea route" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    <MapLegend Title="Routes" Position="bottom-left">
+                        <MapLegendItem Color="blue" Label="Air" />
+                        <MapLegendItem Color="teal" Label="Sea (dashed)" />
+                    </MapLegend>
+                    <MapInfoChip Position="top-left">Hover arcs to highlight</MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 3 — All four Position values *@
+    <ComponentDemo Title="All four corner positions" Code="@_cornersCode">
+        <LazyRender Height="380px">
+            <Map Center="(20.0, 10.0)" Zoom="1" Height="380px" TileLayer="Positron">
+                <Overlay>
+                    <MapLegend Title="Top-Left" Position="top-left">
+                        <MapLegendItem Color="blue"   Label="Ocean" />
+                        <MapLegendItem Color="green"  Label="Forest" />
+                    </MapLegend>
+                    <MapLegend Title="Top-Right" Position="top-right">
+                        <MapLegendItem Color="orange" Label="Desert" />
+                        <MapLegendItem Color="teal"   Label="Tundra" />
+                    </MapLegend>
+                    <MapLegend Title="Bottom-Left" Position="bottom-left">
+                        <MapLegendItem Color="purple" Label="Urban" />
+                        <MapLegendItem Color="rose"   Label="Industrial" />
+                    </MapLegend>
+                    <MapLegend Title="Bottom-Right" Position="bottom-right">
+                        <MapLegendItem Color="amber"  Label="Savanna" />
+                        <MapLegendItem Color="cyan"   Label="Wetland" />
+                    </MapLegend>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 4 — Heatmap legend with custom CSS colors *@
+    <ComponentDemo Title="Heatmap density legend with CSS color values" Code="@_heatLegendCode">
+        <LazyRender Height="420px">
+            <Map Center="(51.5, 10.0)" Zoom="4" Height="420px" TileLayer="DarkMatter">
+                <ChildContent>
+                    <MapHeatmap Points="_heatPoints" Radius="25" Opacity="0.85" />
+                </ChildContent>
+                <Overlay>
+                    <MapLegend Title="Density" Position="bottom-left">
+                        <MapLegendItem Color="#ef4444" Label="Very high" />
+                        <MapLegendItem Color="#f97316" Label="High" />
+                        <MapLegendItem Color="#eab308" Label="Medium" />
+                        <MapLegendItem Color="#22c55e" Label="Low" />
+                    </MapLegend>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="map-legend" Level="3" Class="mt-8 scroll-mt-20">MapLegend</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[180px]">Prop</TableHead>
+                    <TableHead Class="w-[180px]">Type</TableHead>
+                    <TableHead Class="w-[120px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Title</TableCell>
+                    <TableCell Class="font-mono text-xs">string?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Optional heading shown in bold above the legend rows.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Position</TableCell>
+                    <TableCell Class="font-mono text-xs">string</TableCell>
+                    <TableCell Class="font-mono text-xs">"bottom-left"</TableCell>
+                    <TableCell>Corner shorthand. Accepted values: <code>"top-left"</code>, <code>"top-right"</code>, <code>"bottom-left"</code>, <code>"bottom-right"</code>. Custom Tailwind position classes can be applied via <code>Class</code>.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">ChildContent</TableCell>
+                    <TableCell Class="font-mono text-xs">RenderFragment?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>One or more <code>MapLegendItem</code> children.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Class</TableCell>
+                    <TableCell Class="font-mono text-xs">string?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Extra Tailwind classes applied to the legend container.</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-legend-item" Level="3" Class="mt-8 scroll-mt-20">MapLegendItem</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[180px]">Prop</TableHead>
+                    <TableHead Class="w-[180px]">Type</TableHead>
+                    <TableHead Class="w-[120px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Color</TableCell>
+                    <TableCell Class="font-mono text-xs">string?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Dot fill color. Friendly names (<code>red</code>, <code>green</code>, <code>blue</code>, <code>yellow</code>, <code>orange</code>, <code>teal</code>, <code>purple</code>, <code>pink</code>, <code>rose</code>, <code>amber</code>, <code>sky</code>, <code>cyan</code>, <code>emerald</code>, <code>violet</code>, <code>gray</code>, <code>slate</code>) or any CSS color value. Null = theme primary.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Label</TableCell>
+                    <TableCell Class="font-mono text-xs">string?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Text label displayed to the right of the colored dot.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Class</TableCell>
+                    <TableCell Class="font-mono text-xs">string?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Extra Tailwind classes on the row container.</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+@code {
+    // European cities for heatmap demo
+    private static readonly (double Lat, double Lon, double Intensity)[] _heatPoints =
+    [
+        (51.507, -0.128, 1.0),   // London
+        (48.853,  2.350, 0.95),  // Paris
+        (52.520, 13.405, 0.90),  // Berlin
+        (41.902, 12.496, 0.85),  // Rome
+        (40.416, -3.704, 0.80),  // Madrid
+        (48.209, 16.372, 0.75),  // Vienna
+        (52.379,  4.900, 0.75),  // Amsterdam
+        (50.850,  4.352, 0.70),  // Brussels
+        (59.913, 10.752, 0.65),  // Oslo
+        (59.331, 18.065, 0.65),  // Stockholm
+        (53.551,  9.993, 0.70),  // Hamburg
+        (48.137, 11.575, 0.75),  // Munich
+        (45.464,  9.190, 0.80),  // Milan
+        (50.075, 14.438, 0.60),  // Prague
+        (47.498, 19.040, 0.65),  // Budapest
+        (52.230, 21.012, 0.65),  // Warsaw
+    ];
+
+    // Global city coordinates
+    private static readonly (double Lat, double Lon, string Name)[] _globeCities =
+    [
+        (51.507,  -0.128, "London"),
+        (40.712,  -74.006, "New York"),
+        (35.689,  139.692, "Tokyo"),
+        (-33.868,  151.209, "Sydney"),
+        (-23.550,  -46.633, "São Paulo"),
+        (-33.925,   18.424, "Cape Town"),
+        (  1.352,  103.820, "Singapore"),
+        ( 19.076,   72.878, "Mumbai"),
+    ];
+
+    // Air routes
+    private static readonly ((double Lat, double Lon) From, (double Lat, double Lon) To)[] _airArcs =
+    [
+        ((51.507, -0.128),  (40.712,  -74.006)),  // London ↔ NYC
+        ((40.712, -74.006), (35.689,  139.692)),  // NYC ↔ Tokyo
+        ((35.689, 139.692), ( 1.352,  103.820)),  // Tokyo ↔ Singapore
+        ((51.507, -0.128),  (19.076,   72.878)),  // London ↔ Mumbai
+    ];
+
+    // Sea routes
+    private static readonly ((double Lat, double Lon) From, (double Lat, double Lon) To)[] _seaArcs =
+    [
+        ((-33.868, 151.209), (-23.550, -46.633)), // Sydney ↔ São Paulo
+        ((-33.925,  18.424), ( 1.352,  103.820)), // Cape Town ↔ Singapore
+        ((-23.550, -46.633), (-33.925,  18.424)), // São Paulo ↔ Cape Town
+    ];
+
+    private const string _basicCode = """
+<Map Center="(51.505, -0.09)" Zoom="11" Height="380px" TileLayer="CartoLight">
+    <ChildContent>
+        <MapMarker Lat="51.507" Lon="-0.128" Title="London" Variant="Dot" Color="green" />
+        <MapMarker Lat="51.503" Lon="-0.119" Title="Tower Bridge" Variant="Dot" Color="yellow" />
+        <MapMarker Lat="51.501" Lon="-0.142" Title="Buckingham Palace" Variant="Dot" Color="red" />
+    </ChildContent>
+    <Overlay>
+        <MapLegend Title="Traffic" Position="bottom-left">
+            <MapLegendItem Color="green"  Label="Clear" />
+            <MapLegendItem Color="yellow" Label="Slow" />
+            <MapLegendItem Color="red"    Label="Congested" />
+        </MapLegend>
+    </Overlay>
+</Map>
+""";
+
+    private const string _routeLegendCode = """
+<Map Center="(30.0, 0.0)" Zoom="2" Height="480px" TileLayer="CartoDark">
+    <ChildContent>
+        @foreach (var (from, to) in _airArcs)
+        {
+            <MapArc From="from" To="to"
+                    Color="#3b82f6" HoverColor="#93c5fd" HoverWeight="4"
+                    Weight="2" Opacity="0.8" Dashed="false"
+                    Tooltip="Air route" />
+        }
+        @foreach (var (from, to) in _seaArcs)
+        {
+            <MapArc From="from" To="to"
+                    Color="#14b8a6" HoverColor="#5eead4" HoverWeight="4"
+                    Weight="2" Opacity="0.7" Dashed="true"
+                    Tooltip="Sea route" />
+        }
+    </ChildContent>
+    <Overlay>
+        <MapLegend Title="Routes" Position="bottom-left">
+            <MapLegendItem Color="blue" Label="Air" />
+            <MapLegendItem Color="teal" Label="Sea (dashed)" />
+        </MapLegend>
+        <MapInfoChip Position="top-left">Hover arcs to highlight</MapInfoChip>
+    </Overlay>
+</Map>
+""";
+
+    private const string _cornersCode = """
+<Map Center="(20.0, 10.0)" Zoom="1" Height="380px" TileLayer="Positron">
+    <Overlay>
+        <MapLegend Title="Top-Left" Position="top-left">
+            <MapLegendItem Color="blue"   Label="Ocean" />
+            <MapLegendItem Color="green"  Label="Forest" />
+        </MapLegend>
+        <MapLegend Title="Top-Right" Position="top-right">
+            <MapLegendItem Color="orange" Label="Desert" />
+            <MapLegendItem Color="teal"   Label="Tundra" />
+        </MapLegend>
+        <MapLegend Title="Bottom-Left" Position="bottom-left">
+            <MapLegendItem Color="purple" Label="Urban" />
+            <MapLegendItem Color="rose"   Label="Industrial" />
+        </MapLegend>
+        <MapLegend Title="Bottom-Right" Position="bottom-right">
+            <MapLegendItem Color="amber"  Label="Savanna" />
+            <MapLegendItem Color="cyan"   Label="Wetland" />
+        </MapLegend>
+    </Overlay>
+</Map>
+""";
+
+    private const string _heatLegendCode = """
+<Map Center="(51.5, 10.0)" Zoom="4" Height="420px" TileLayer="DarkMatter">
+    <ChildContent>
+        <MapHeatmap Points="_heatPoints" Radius="25" Opacity="0.85" />
+    </ChildContent>
+    <Overlay>
+        <MapLegend Title="Density" Position="bottom-left">
+            <MapLegendItem Color="#ef4444" Label="Very high" />
+            <MapLegendItem Color="#f97316" Label="High" />
+            <MapLegendItem Color="#eab308" Label="Medium" />
+            <MapLegendItem Color="#22c55e" Label="Low" />
+        </MapLegend>
+    </Overlay>
+</Map>
+""";
+}

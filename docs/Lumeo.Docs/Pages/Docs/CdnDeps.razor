@@ -1,0 +1,249 @@
+@page "/docs/cdn-deps"
+@namespace Lumeo.Docs.Pages.Docs
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject HttpClient Http
+
+<PageTitle>CDN Dependencies — Lumeo</PageTitle>
+
+<Container MaxWidth="4xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <!-- Header -->
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">CDN Dependencies</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Satellite packages (Maps, PdfViewer, Charts, Scheduler, CodeEditor) load their
+            JavaScript libraries from a public CDN at runtime.  This page lists every dependency,
+            explains how to override the URLs, and shows how to self-host them with the CLI for
+            airgapped or strict-CSP deployments.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- How it works -->
+    <Stack Gap="4">
+        <Heading Level="2">How it works</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Every satellite's JavaScript interop file uses a small helper:
+        </Lumeo.Text>
+        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">
+function _cdn(key, fallback) {
+    return (window.lumeoCdn &amp;&amp; window.lumeoCdn[key]) || fallback;
+}
+const MAPLIBRE_JS = _cdn('mapLibreJs', 'https://unpkg.com/maplibre-gl@5.7.1/...');</Stack>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            If <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">window.lumeoCdn</code>
+            is set before the first component mounts, its values take priority.  If not, the CDN
+            fallback is used.  Nothing else to configure — the default works out of the box.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- Self-hosting with the CLI -->
+    <Stack Gap="4">
+        <Heading Level="2">Self-hosting with the CLI</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Run once from your Blazor project root to download every dependency into
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/lib/lumeo-vendor/</code>:
+        </Lumeo.Text>
+        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground">
+            lumeo deps install
+        </Stack>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            This also generates
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/js/lumeo-cdn-init.js</code>
+            which sets <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">window.lumeoCdn</code>
+            to the local paths.  Add one script tag to your
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">App.razor</code>
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;head&gt;</code>
+            before Blazor's framework script:
+        </Lumeo.Text>
+        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground">
+            @("<script src=\"js/lumeo-cdn-init.js\"></script>")
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Options</Heading>
+            <div class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-muted/50 text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-2 font-medium">Flag</th>
+                            <th class="px-4 py-2 font-medium">Default</th>
+                            <th class="px-4 py-2 font-medium">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="px-4 py-2 font-mono text-xs text-foreground">--lib &lt;name&gt;</td>
+                            <td class="px-4 py-2 text-muted-foreground">all</td>
+                            <td class="px-4 py-2 text-muted-foreground">Filter by satellite name, package, or key (e.g. <code class="text-xs font-mono">Lumeo.Maps</code>)</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 font-mono text-xs text-foreground">--target &lt;dir&gt;</td>
+                            <td class="px-4 py-2 text-muted-foreground">auto</td>
+                            <td class="px-4 py-2 text-muted-foreground">Project root (defaults to first parent dir with a *.csproj)</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 font-mono text-xs text-foreground">--no-bootstrap</td>
+                            <td class="px-4 py-2 text-muted-foreground">false</td>
+                            <td class="px-4 py-2 text-muted-foreground">Skip generating lumeo-cdn-init.js</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 font-mono text-xs text-foreground">--force</td>
+                            <td class="px-4 py-2 text-muted-foreground">false</td>
+                            <td class="px-4 py-2 text-muted-foreground">Re-download files that already exist</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 font-mono text-xs text-foreground">--dry-run</td>
+                            <td class="px-4 py-2 text-muted-foreground">false</td>
+                            <td class="px-4 py-2 text-muted-foreground">Print what would happen without writing files</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- Manual override -->
+    <Stack Gap="4">
+        <Heading Level="2">Manual override</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            You can point individual keys at any URL — your own CDN, a local path, or an alternative
+            version — without running the CLI.  Set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">window.lumeoCdn</code>
+            before Blazor boots:
+        </Lumeo.Text>
+        <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">
+@("<script>")
+  window.lumeoCdn = {
+    mapLibreJs:  '/my-cdn/maplibre-gl.js',
+    mapLibreCss: '/my-cdn/maplibre-gl.css',
+  };
+@("</script>")</Stack>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Only the keys you set are overridden — unset keys fall back to the CDN default.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-2" />
+
+    <!-- Dependency table -->
+    <Stack Gap="4">
+        <Heading Level="2">Current dependencies</Heading>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Loaded from
+            <Lumeo.Link Href="/registry/cdn-deps.json" Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
+                /registry/cdn-deps.json
+            </Lumeo.Link>
+            — regenerated by <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">tools/Lumeo.RegistryGen</code> on every CI run.
+        </Lumeo.Text>
+
+        @if (_loading)
+        {
+            <Stack Gap="2">
+                <Skeleton Height="40" />
+                <Skeleton Height="40" Width="90%" />
+                <Skeleton Height="40" Width="80%" />
+            </Stack>
+        }
+        else if (_error is not null)
+        {
+            <Alert Variant="Alert.AlertVariant.Destructive"
+                   Title="Failed to load cdn-deps.json"
+                   Description="@_error" />
+        }
+        else if (_deps is not null)
+        {
+            <div class="overflow-x-auto rounded-lg border border-border/40">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-muted/50 text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-2 font-medium">Key</th>
+                            <th class="px-4 py-2 font-medium">Package</th>
+                            <th class="px-4 py-2 font-medium">Version</th>
+                            <th class="px-4 py-2 font-medium">Owner</th>
+                            <th class="px-4 py-2 font-medium">CDN URL</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        @foreach (var dep in _deps)
+                        {
+                            <tr class="hover:bg-muted/30 transition-colors">
+                                <td class="px-4 py-2 font-mono text-xs text-foreground">@dep.Key</td>
+                                <td class="px-4 py-2 font-mono text-xs text-muted-foreground">@dep.Package</td>
+                                <td class="px-4 py-2 text-muted-foreground">@dep.Version</td>
+                                <td class="px-4 py-2">
+                                    <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs font-mono">@dep.Owner</Badge>
+                                </td>
+                                <td class="px-4 py-2">
+                                    <Lumeo.Link Href="@dep.Url" Class="text-xs font-mono text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors break-all">
+                                        @TruncateUrl(dep.Url)
+                                    </Lumeo.Link>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Lumeo.Text Size="xs" Color="muted">
+                Generated: @_generated
+            </Lumeo.Text>
+        }
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private CdnDepEntry[]? _deps;
+    private string _generated = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var manifest = await Http.GetFromJsonAsync<CdnDepsManifest>(
+                "registry/cdn-deps.json",
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            if (manifest is not null)
+            {
+                _deps = manifest.Deps;
+                _generated = manifest.Generated.Length > 10 ? manifest.Generated[..10] : manifest.Generated;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string TruncateUrl(string url, int max = 60) =>
+        url.Length <= max ? url : url[..max] + "…";
+
+    private sealed class CdnDepEntry
+    {
+        [JsonPropertyName("key")]     public string Key     { get; set; } = "";
+        [JsonPropertyName("package")] public string Package { get; set; } = "";
+        [JsonPropertyName("version")] public string Version { get; set; } = "";
+        [JsonPropertyName("url")]     public string Url     { get; set; } = "";
+        [JsonPropertyName("owner")]   public string Owner   { get; set; } = "";
+    }
+
+    private sealed class CdnDepsManifest
+    {
+        [JsonPropertyName("version")]   public string       Version   { get; set; } = "";
+        [JsonPropertyName("generated")] public string       Generated { get; set; } = "";
+        [JsonPropertyName("deps")]      public CdnDepEntry[] Deps     { get; set; } = [];
+    }
+}
