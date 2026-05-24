@@ -1,0 +1,75 @@
+@namespace Lumeo
+@implements IDisposable
+
+@*  Stand-alone popup anchored to a geographic coordinate, independent of any
+    marker. Place inside <Map> ChildContent. Toggle visibility via IsOpen.
+
+    The ChildContent (or Html string) renders into a hidden host div so JS can
+    read its innerHTML — the same pattern used by MapMarker's rich popup. *@
+
+@if (ChildContent is not null)
+{
+    <div id="@_hostId" style="display:none">
+        @ChildContent
+    </div>
+}
+
+@code {
+    /// <summary>Latitude of the popup anchor point.</summary>
+    [Parameter] public double Lat { get; set; }
+
+    /// <summary>Longitude of the popup anchor point.</summary>
+    [Parameter] public double Lon { get; set; }
+
+    /// <summary>Whether the popup is currently visible.</summary>
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    /// <summary>Show a close (×) button inside the popup.</summary>
+    [Parameter] public bool CloseButton { get; set; } = true;
+
+    /// <summary>Close the popup when the user clicks the map background.</summary>
+    [Parameter] public bool CloseOnClick { get; set; } = true;
+
+    /// <summary>HTML string for the popup body. Overrides <see cref="ChildContent"/>.</summary>
+    [Parameter] public string? Html { get; set; }
+
+    /// <summary>Blazor render fragment for rich popup body. Rendered into a hidden
+    /// host element; JS reads the innerHTML to open the MapLibre popup.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _owner;
+    private bool _registered;
+
+    internal string HostId => _hostId;
+    private readonly string _hostId = $"lumeo-standalone-popup-{Guid.NewGuid():N}";
+    internal bool HasRichContent => ChildContent is not null && Html is null;
+    internal string? GetHtml() => Html;
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+        if (!_registered)
+        {
+            _registered = true;
+            _owner = owner;
+            owner.RegisterStandalonePopup(this);
+        }
+        else
+        {
+            owner.NotifyStandalonePopupChanged(this);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPopupClosed()
+    {
+        IsOpen = false;
+        if (IsOpenChanged.HasDelegate) await IsOpenChanged.InvokeAsync(false);
+    }
+
+    public void Dispose() => _owner?.UnregisterStandalonePopup(this);
+}

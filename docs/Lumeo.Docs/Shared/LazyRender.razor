@@ -1,0 +1,87 @@
+@*
+    LazyRender — IntersectionObserver-based lazy mount.
+
+    Wraps heavy content (maps, charts, iframes) so that the child only mounts
+    once its placeholder div scrolls within <RootMarginPx> of the viewport.
+    Until then, a skeleton placeholder of the given Height is shown.
+
+    Falls back to immediate mount when IntersectionObserver is not available
+    (server-side rendering, older browsers, bUnit tests).
+
+    Usage:
+        <LazyRender Height="400px">
+            <Map ... />
+        </LazyRender>
+*@
+
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (_mounted)
+{
+    @ChildContent
+}
+else
+{
+    <div @ref="_placeholder"
+         class="rounded-lg bg-muted/30 animate-pulse @Class"
+         style="width:100%;height:@Height;"
+         aria-label="Loading…"
+         aria-busy="true">
+    </div>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Height of the skeleton placeholder shown before the content mounts.</summary>
+    [Parameter] public string Height { get; set; } = "400px";
+
+    /// <summary>How far outside the viewport (px) to begin mounting. Default 200.</summary>
+    [Parameter] public int RootMarginPx { get; set; } = 200;
+
+    [Parameter] public string? Class { get; set; }
+
+    private ElementReference _placeholder;
+    private bool _mounted;
+    private IJSObjectReference? _observer;
+    private DotNetObjectReference<LazyRender>? _selfRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _mounted) return;
+        try
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            _observer = await JS.InvokeAsync<IJSObjectReference?>(
+                "lumeo.observeVisibility",
+                _placeholder,
+                _selfRef,
+                RootMarginPx);
+        }
+        catch
+        {
+            // IntersectionObserver unavailable (SSR, bUnit) — mount immediately.
+            _mounted = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public void OnVisible()
+    {
+        _mounted = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_observer is not null)
+                await JS.InvokeVoidAsync("lumeo.disconnectObserver", _observer);
+        }
+        catch { /* map page teardown — ignore */ }
+        _selfRef?.Dispose();
+    }
+}

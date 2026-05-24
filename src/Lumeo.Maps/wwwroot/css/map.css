@@ -1,32 +1,28 @@
 /*
- * Lumeo.Maps — shadcn-flavored overrides for Leaflet's default chrome.
+ * Lumeo.Maps — shadcn-flavored overrides for MapLibre GL's default chrome.
  *
- * This stylesheet is auto-injected by map.js on first map mount (one <link>
- * per page, idempotent). It assumes the Lumeo theme CSS variables defined by
- * the core package are available in the same document — `--primary`,
- * `--background`, `--card`, `--card-foreground`, `--border`, `--muted`,
- * `--muted-foreground`, `--radius`. If they are missing the rules fall back
- * to neutral grays so the map still looks sane in a vanilla page.
+ * Auto-injected by map.js on first map mount (one <link> per page, idempotent).
+ * Theme tokens (--primary, --card, --border, --accent, --muted, …) come from
+ * the host page's lumeo.css. Falls back to neutral grays when a host hasn't
+ * pulled in lumeo.css so the map still looks sane on a vanilla page.
  *
  * Visual contract:
- *   - Markers are clean filled circles (DivIcon — see createMarkerIcon in
- *     map.js). The `lumeo-map-marker` class gets a hover scale + transition.
- *   - Popups drop the chunky Leaflet drop-shadow for a soft card shell with
- *     theme-aware bg/border, a Lucide-style X close button, and a fade-in
- *     entrance animation.
- *   - Cluster markers (TODO: clustering not yet wired) reuse `.lumeo-map-cluster`.
+ *   - Markers are DOM elements with our own `.lumeo-map-marker` class.
+ *   - Floating MapLibre controls (zoom, geolocate, fullscreen, attribution)
+ *     wear soft rounded panels with backdrop blur and 32×32 square buttons.
+ *   - Popups: card shell, animated entrance, Lucide X close button.
+ *   - Cluster circles + counts come from MapLibre layers; their colors are
+ *     driven by theme tokens via inline paint expressions in map.js.
  */
 
 /* -------------------------------------------------------------------- */
-/* Markers                                                              */
+/* Markers — DOM elements injected by map.js                            */
 /* -------------------------------------------------------------------- */
 
 .lumeo-map-marker {
     background: transparent;
     border: none;
-    /* Leaflet wraps DivIcon content in an element it positions absolutely;
-       the inner div we render owns the visual. Centered transforms so the
-       hover scale doesn't shift the anchor point. */
+    cursor: pointer;
     transition: transform 150ms ease-out;
     will-change: transform;
 }
@@ -36,7 +32,7 @@
     z-index: 1000 !important;
 }
 
-.lumeo-map-marker > .lumeo-map-marker-inner {
+.lumeo-map-marker .lumeo-map-marker-inner {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -46,10 +42,8 @@
     font-weight: 600;
     font-size: 12px;
     line-height: 1;
-    cursor: pointer;
 }
 
-/* Permanent label rendered above the marker. */
 .lumeo-map-marker-label {
     position: absolute;
     bottom: 100%;
@@ -68,34 +62,22 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-/* TODO: clustering — placeholder rule so a future Leaflet.markercluster
-   integration (or our own JS clustering) has a class to target. */
-.lumeo-map-cluster {
-    background: transparent;
-    border: none;
+/* LabelHoverOnly — hidden until the marker is hovered */
+.lumeo-map-marker-label--hover {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
 }
 
-.lumeo-map-cluster > div {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: hsl(var(--primary, 222 47% 11%));
-    color: hsl(var(--primary-foreground, 210 40% 98%));
-    font-weight: 600;
-    font-size: 13px;
-    border: 2px solid hsl(var(--background, 0 0% 100%));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+.lumeo-map-marker:hover .lumeo-map-marker-label--hover {
+    opacity: 1;
 }
 
 /* -------------------------------------------------------------------- */
 /* Popups — shadcn card style                                           */
 /* -------------------------------------------------------------------- */
 
-.leaflet-popup-content-wrapper {
-    padding: 0;
+.maplibregl-popup-content {
+    padding: 12px 16px;
     border-radius: 12px;
     background: hsl(var(--card, 0 0% 100%));
     color: hsl(var(--card-foreground, 222 47% 11%));
@@ -103,32 +85,28 @@
     box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.22),
                 0 2px 8px -2px rgba(0, 0, 0, 0.08);
     animation: lumeo-map-popup-in 140ms ease-out;
-}
-
-.leaflet-popup-content {
-    margin: 12px 16px;
-    line-height: 1.45;
     font-size: 13px;
+    line-height: 1.45;
 }
 
-.leaflet-popup-content p {
-    margin: 0 0 6px 0;
+.maplibregl-popup-content p { margin: 0 0 6px 0; }
+
+.maplibregl-popup-tip {
+    border-top-color: hsl(var(--card, 0 0% 100%)) !important;
+    border-bottom-color: hsl(var(--card, 0 0% 100%)) !important;
 }
 
-.leaflet-popup-tip {
-    background: hsl(var(--card, 0 0% 100%));
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
-    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6);
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+    border-left-color: transparent;
+    border-right-color: transparent;
 }
 
-/* Close button — square hit target, Lucide X via inline SVG. We hide the
-   default text X (a × glyph) and paint the SVG via background-image so we
-   don't need to inject HTML into Leaflet's internal close anchor. */
-.leaflet-popup-close-button {
-    width: 22px !important;
-    height: 22px !important;
-    top: 6px !important;
-    right: 6px !important;
+.maplibregl-popup-close-button {
+    width: 24px;
+    height: 24px;
+    top: 4px;
+    right: 4px;
     padding: 0 !important;
     border-radius: 6px;
     color: transparent !important;
@@ -136,9 +114,10 @@
         url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 6 18'/><path d='m6 6 12 12'/></svg>")
         center / 14px 14px no-repeat !important;
     transition: background-color 120ms ease-out;
+    border: none;
 }
 
-.leaflet-popup-close-button:hover {
+.maplibregl-popup-close-button:hover {
     background-color: hsl(var(--muted, 210 40% 96%)) !important;
 }
 
@@ -147,14 +126,269 @@
     to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-/* Tooltip — match the label styling so hover affordance reads as one family. */
-.leaflet-tooltip {
-    background: hsl(var(--card, 0 0% 100%));
-    color: hsl(var(--card-foreground, 222 47% 11%));
-    border: 1px solid hsl(var(--border, 214 32% 91%));
+/* -------------------------------------------------------------------- */
+/* Controls — shadcn-style floating panels                              */
+/* -------------------------------------------------------------------- */
+
+.maplibregl-ctrl-group {
+    background: hsl(var(--card, 0 0% 100%) / 0.92) !important;
+    backdrop-filter: saturate(140%) blur(6px);
+    -webkit-backdrop-filter: saturate(140%) blur(6px);
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12),
+                0 1px 3px rgba(0, 0, 0, 0.06) !important;
+    overflow: hidden;
+}
+
+.maplibregl-ctrl-group > button {
+    width: 32px !important;
+    height: 32px !important;
+    background: transparent !important;
+    color: hsl(var(--card-foreground, 222 47% 11%)) !important;
+    border: none !important;
+    border-bottom: 1px solid hsl(var(--border, 214 32% 91%) / 0.4) !important;
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.maplibregl-ctrl-group > button:last-child {
+    border-bottom: none !important;
+}
+
+.maplibregl-ctrl-group > button:hover {
+    background: hsl(var(--accent, 210 40% 96%)) !important;
+    color: hsl(var(--accent-foreground, 222 47% 11%)) !important;
+}
+
+.maplibregl-ctrl-group > button:active {
+    background: hsl(var(--muted, 210 40% 96%)) !important;
+}
+
+/* Recolor MapLibre's stock SVG button glyphs (zoom +/-, locate, fullscreen) so
+   they pick up the current foreground token instead of MapLibre's hard-coded
+   black. The glyphs are background-image SVGs; we mask them with currentColor. */
+.maplibregl-ctrl-group > button .maplibregl-ctrl-icon {
+    filter: none;
+}
+
+/* Attribution: hideable behind a small (i) chip, mapcn-style. We use
+   MapLibre's compact mode (a <details> element). Closed: 22×22 rounded
+   chip with our own "i" glyph. Open: pill expands to show the attribution
+   text alongside the chip, anchored at the bottom-right of the map. */
+.maplibregl-ctrl-attrib {
+    /* MapLibre adds .maplibregl-ctrl class with default chrome; we strip it. */
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 10px 10px 0 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Compact <details> wrapper IS the chip when collapsed. */
+.maplibregl-ctrl-attrib.maplibregl-compact {
+    background: var(--color-card, #fff) !important;
+    color: var(--color-muted-foreground, hsl(215 16% 47%)) !important;
+    border: 1px solid var(--color-border, hsl(214 32% 91%)) !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 2px 6px hsl(0 0% 0% / 0.18) !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-direction: row-reverse !important;
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact:hover {
+    background: var(--color-card, #fff) !important;
+    color: var(--color-foreground, hsl(222 47% 11%)) !important;
+}
+
+/* The <summary> is the (i) button — always visible, sits to the right of the
+   text in the open pill OR alone in the closed circle. */
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
+    width: 22px !important;
+    height: 22px !important;
+    background: transparent !important;
+    background-image: none !important;  /* hide MapLibre default mask-image */
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 9999px !important;
+    color: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    list-style: none;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button::-webkit-details-marker {
+    display: none;
+}
+
+/* Render our own "i" glyph — sans-serif sized to fit cleanly in 22px. */
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button::after {
+    content: "i";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-style: normal;
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 1;
+    color: inherit;
+}
+
+/* Closed — the inner attribution text is hidden, only the (i) is shown. */
+.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show) .maplibregl-ctrl-attrib-inner {
+    display: none !important;
+}
+
+/* Open (compact-show) — pill expands left to reveal the text. */
+.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show {
+    padding: 0 0 0 10px !important;
+    gap: 6px;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    display: inline !important;
+    font-size: 10px;
+    line-height: 20px;
+    white-space: nowrap;
+    color: var(--color-foreground, hsl(222 47% 11%));
+}
+
+.maplibregl-ctrl-attrib a {
+    color: var(--color-foreground, hsl(222 47% 11%)) !important;
+    text-decoration: none !important;
+    font-weight: 500;
+}
+.maplibregl-ctrl-attrib a:hover {
+    text-decoration: underline !important;
+}
+
+.maplibregl-ctrl-scale {
+    background: hsl(var(--card, 0 0% 100%) / 0.9) !important;
+    color: hsl(var(--card-foreground, 222 47% 11%)) !important;
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-top: none !important;
+    border-radius: 0 0 6px 6px !important;
+    padding: 1px 6px !important;
+    font-size: 10px !important;
+    font-weight: 500;
+}
+
+/* Layer switcher — chip row */
+.lumeo-map-layers {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: hsl(var(--card, 0 0% 100%) / 0.92);
+    backdrop-filter: saturate(140%) blur(6px);
+    -webkit-backdrop-filter: saturate(140%) blur(6px);
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12),
+                0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+
+.lumeo-map-layers button {
+    padding: 4px 10px;
     border-radius: 6px;
-    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    color: hsl(var(--muted-foreground, 215 16% 47%));
     font-size: 11px;
     font-weight: 500;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.lumeo-map-layers button:hover {
+    background: hsl(var(--accent, 210 40% 96%));
+    color: hsl(var(--accent-foreground, 222 47% 11%));
+}
+
+.lumeo-map-layers button[data-active="true"] {
+    background: hsl(var(--primary, 222 47% 11%));
+    color: hsl(var(--primary-foreground, 210 40% 98%));
+}
+
+/* Search control */
+.lumeo-map-search {
+    background: hsl(var(--card, 0 0% 100%) / 0.95);
+    backdrop-filter: saturate(140%) blur(6px);
+    -webkit-backdrop-filter: saturate(140%) blur(6px);
+    border: 1px solid hsl(var(--border, 214 32% 91%) / 0.6) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12) !important;
+    width: 260px;
+    overflow: hidden;
+}
+
+.lumeo-map-search-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+}
+
+.lumeo-map-search-input-wrap svg {
+    width: 14px;
+    height: 14px;
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+    flex-shrink: 0;
+}
+
+.lumeo-map-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: hsl(var(--card-foreground, 222 47% 11%));
+}
+
+.lumeo-map-search input::placeholder {
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+}
+
+.lumeo-map-search-results {
+    border-top: 1px solid hsl(var(--border, 214 32% 91%) / 0.5);
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.lumeo-map-search-results button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    color: hsl(var(--card-foreground, 222 47% 11%));
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 120ms ease-out;
+}
+
+.lumeo-map-search-results button:hover {
+    background: hsl(var(--accent, 210 40% 96%));
+}
+
+.lumeo-map-search-empty {
+    padding: 10px;
+    color: hsl(var(--muted-foreground, 215 16% 47%));
+    font-size: 12px;
+    text-align: center;
 }

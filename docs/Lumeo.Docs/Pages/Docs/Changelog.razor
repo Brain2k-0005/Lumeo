@@ -15,6 +15,77 @@
 
     <Separator Class="my-4" />
 
+    <!-- v3.2.0 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v3.2.0</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            MapLibre GL JS upgraded to 5.x (stable globe projection), three new Map components, a new CLI deps-install command, DataGrid pin/grouping correctness fixes, PdfViewer search overhaul, and home page polish. No breaking API changes; drop-in upgrade from 3.1.x.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Maps (Lumeo.Maps)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>MapLibre GL JS 4.7.1 → 5.7.1.</strong> Upgraded to the MapLibre 5 stable release, which ships globe projection as a first-class supported mode.</li>
+                <li><strong>Globe projection.</strong> New <code class="rounded bg-muted px-1 text-xs">Projection="globe"</code> parameter on <code class="rounded bg-muted px-1 text-xs">Map</code> renders the map as a 3-D sphere with back-face culling — existing flat usage is unchanged.</li>
+                <li><strong>MapHeatmap.</strong> New component — renders a density heat map layer from a list of <code class="rounded bg-muted px-1 text-xs">(Lat, Lon, Weight)</code> points. Configurable radius, blur, intensity, and colour gradient.</li>
+                <li><strong>MapLegend / MapLegendItem.</strong> New components — a positioned card overlay listing colour swatches, lines, or symbols. Accepts any child <code class="rounded bg-muted px-1 text-xs">MapLegendItem</code> nodes; position controlled via <code class="rounded bg-muted px-1 text-xs">Position</code> (TopLeft / TopRight / BottomLeft / BottomRight).</li>
+                <li><strong>MapPopup.</strong> New component — attaches an HTML balloon to a geographic coordinate. Configurable close button, max-width, and offset. Content is arbitrary Blazor markup via <code class="rounded bg-muted px-1 text-xs">ChildContent</code>.</li>
+                <li><strong>MapMarker: Draggable, OnDragEnd, LabelHoverOnly.</strong> Markers can now be repositioned by the user; <code class="rounded bg-muted px-1 text-xs">OnDragEnd</code> fires with the new coordinates. <code class="rounded bg-muted px-1 text-xs">LabelHoverOnly</code> hides the label until mouse-over.</li>
+                <li><strong>MapArc / MapPolyline: Dashed, HoverColor, HoverWeight, Tooltip, Animate.</strong> Lines support dashed strokes, colour/weight changes on hover, a hover tooltip string, and an animated dash-offset marquee effect.</li>
+                <li><strong>Cluster click → smooth easeTo.</strong> Clicking a cluster marker now smooth-zooms to the expansion zoom level instead of snapping.</li>
+                <li><strong>ExportPngAsync — HTML markers included.</strong> The composite-canvas export now paints Pin, Default, Outline, and Dot HTML markers on top of the tile canvas; previously only tiles were captured.</li>
+                <li><strong>Attribution control.</strong> Rendered as a compact card-pill; click the <code class="rounded bg-muted px-1 text-xs">(i)</code> button to expand the full attribution text inline.</li>
+                <li><strong>Auto-theme tile selection.</strong> <code class="rounded bg-muted px-1 text-xs">TileLayer="Auto"</code> picks a dark or light basemap by observing the host page's colour-scheme, updating live when the user toggles the theme.</li>
+                <li><strong>AutoFitBounds / FitBoundsAsync.</strong> New parameter and imperative method to automatically zoom/pan the viewport to contain all current markers and lines.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">DataGrid (Lumeo.DataGrid)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Pin transparency fix.</strong> Striped + pinned cells are now fully opaque via an inline <code class="rounded bg-muted px-1 text-xs">color-mix()</code> value; Tailwind v4 JIT cannot see dynamically-interpolated arbitrary classes so the background was bleeding through previously.</li>
+                <li><strong>Pin icon active state.</strong> When a column is pinned the toolbar icon gains a filled pill background and rotates 45°, giving clear visual feedback of pinned state.</li>
+                <li><strong>Outside-click + Escape on all toolbar dropdowns.</strong> Pin sub-menu, Export, Columns, and Layouts dropdowns all gained consistent outside-click and Escape close handling, plus a chevron rotate animation on open/close.</li>
+                <li><strong>Pin × Grouping auto-coordination.</strong> Adding a column as a group level automatically unpins and hides it (the value lives in the group header row). Removing the group reverses both changes.</li>
+                <li><strong>Add Row (Batch edit) double-count fix.</strong> A single Add Row click no longer reports "2 pending changes". Root cause: <code class="rounded bg-muted px-1 text-xs">_batchChanges</code> and <code class="rounded bg-muted px-1 text-xs">_batchAdded</code> were double-counted. After add, the grid now auto-navigates to the new row's page.</li>
+                <li><strong>Selection column sticky-left when columns are pinned.</strong> The selection checkbox column now participates in the pin-left sticky stack; previously it could scroll out of view when any data column was pinned.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">PdfViewer (Lumeo.PdfViewer)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Configurable highlight colour.</strong> New <code class="rounded bg-muted px-1 text-xs">[Parameter] HighlightColor</code> (named / hex / hsl). Active match is rendered brighter; inactive matches dimmer. Defaults to yellow.</li>
+                <li><strong>Search match position fix.</strong> Off-by-one-line and whole-line highlight were caused by <code class="rounded bg-muted px-1 text-xs">charMap</code> vs <code class="rounded bg-muted px-1 text-xs">flatText</code> desync when empty-string text items were filtered out. Empty items are now kept so indexes align.</li>
+                <li><strong>Prev / next-match navigation.</strong> Search bar gained previous and next buttons; the viewer auto-jumps to the first match's page when a new search term is confirmed.</li>
+                <li><strong>Zoom + page nav in unbound demos.</strong> Zoom and page navigation now work correctly in demos that do not bind <code class="rounded bg-muted px-1 text-xs">Page</code> or <code class="rounded bg-muted px-1 text-xs">Zoom</code> two-way — root cause was a <code class="rounded bg-muted px-1 text-xs">_dirty</code> flag miss in <code class="rounded bg-muted px-1 text-xs">OnAfterRenderAsync</code>.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">CLI (Lumeo.Cli)</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>lumeo deps install.</strong> New subcommand — <code class="rounded bg-muted px-1 text-xs">lumeo deps install [--lib X|all] [--target &lt;dir&gt;] [--write-bootstrap]</code>. Downloads self-hostable CDN libraries into <code class="rounded bg-muted px-1 text-xs">wwwroot/lib/lumeo-vendor/</code> and generates a <code class="rounded bg-muted px-1 text-xs">wwwroot/js/lumeo-cdn-init.js</code> bootstrap that sets <code class="rounded bg-muted px-1 text-xs">window.lumeoCdn</code>.</li>
+                <li><strong>cdn-deps.json registry.</strong> <code class="rounded bg-muted px-1 text-xs">tools/Lumeo.RegistryGen/CdnDeps.cs</code> is the single source of truth; the CLI embeds the generated <code class="rounded bg-muted px-1 text-xs">cdn-deps.json</code> artifact for offline use. Five self-hostable deps (MapLibre, pdf.js, ECharts); seven ESM-only deps are skipped with clear messaging (FullCalendar, CodeMirror, algoliasearch, and others).</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Docs</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Home page polish.</strong> Hero gradient mesh + tighter typography, "What's New" cards with primary accent, Steps tile progress pulse, Final CTA gradient + sparkles, new live component showcase tiles for Map Globe, PdfViewer, AudioPlayer, and Charts (Bar / Line / Radar with 2 s dataset rotation).</li>
+                <li><strong>CDN Dependencies docs page.</strong> New page at <code class="rounded bg-muted px-1 text-xs">/docs/cdn-deps</code> documenting which satellite packages require CDN assets, how to self-host them with the CLI, and which ESM-only deps must be loaded separately.</li>
+                <li><strong>DataGrid Playground rebuild.</strong> Full layout overhaul — sticky header, sidebar toggle, <code class="rounded bg-muted px-1 text-xs">max-h-full</code> viewport clamp, and a status bar showing live pending-change counts.</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v3.1.0 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">

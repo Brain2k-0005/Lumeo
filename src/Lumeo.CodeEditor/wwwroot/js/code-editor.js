@@ -23,7 +23,12 @@
 // at init time and re-evaluates via a MutationObserver on the html element's
 // class attribute, so Lumeo's ThemeSwitcher flips CodeMirror instantly.
 
-const ESM = 'https://esm.sh';
+// ESM base — overridable via `window.lumeoCdn.codeMirrorBase` so airgapped /
+// self-hosted consumers can swap esm.sh for their own bundle directory.
+function _cdn(key, fallback) {
+    return (typeof window !== 'undefined' && window.lumeoCdn && window.lumeoCdn[key]) || fallback;
+}
+const ESM = _cdn('codeMirrorBase', 'https://esm.sh').replace(/\/$/, '');
 const CM_VERSION = '6';       // major; esm.sh resolves to latest 6.x
 const LANG_VERSION = '6';     // language packs
 

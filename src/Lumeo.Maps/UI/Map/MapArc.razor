@@ -1,0 +1,83 @@
+@namespace Lumeo
+@implements IDisposable
+
+@*  Curved geographic line — a quadratic Bezier between two points. Useful
+    for flight paths, "from → to" visualizations, hub-spoke diagrams. The
+    arc rises above the straight chord by `Curvature × chord length`. *@
+
+@code {
+    [Parameter] public (double Lat, double Lon) From { get; set; }
+    [Parameter] public (double Lat, double Lon) To { get; set; }
+
+    /// <summary>How tall the arc rises above the straight chord, as a
+    /// fraction of the chord's length. 0 = straight line, 1 = a full
+    /// semicircle-ish bulge. Defaults to 0.25.</summary>
+    [Parameter] public double Curvature { get; set; } = 0.25;
+
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public double Weight { get; set; } = 2.5;
+    [Parameter] public double Opacity { get; set; } = 0.9;
+    /// <summary>SVG dash pattern. Defaults to <c>"5 6"</c> (arcs are dashed by default).</summary>
+    [Parameter] public string? DashArray { get; set; } = "5 6";
+
+    /// <summary>Set to <c>false</c> to draw the arc as a solid line instead of the
+    /// default dashed style. Has no effect when <see cref="DashArray"/> is set explicitly.</summary>
+    [Parameter] public bool Dashed { get; set; } = true;
+
+    /// <summary>Stroke color on hover. Null = no hover highlight.</summary>
+    [Parameter] public string? HoverColor { get; set; }
+
+    /// <summary>Stroke width on hover. Null = same as <see cref="Weight"/>.</summary>
+    [Parameter] public double? HoverWeight { get; set; }
+
+    /// <summary>Animate the arc drawing on first render (line draws from start to end over ~1 s).</summary>
+    [Parameter] public bool Animate { get; set; }
+
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public string? PopupHtml { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _owner;
+    private MapShape? _shape;
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+        // When Dashed=true and no explicit DashArray, use the default arc dash.
+        // When Dashed=false and no explicit DashArray, clear the default.
+        var dashArray = DashArray != "5 6" ? DashArray : (Dashed ? "5 6" : null);
+        var snapshot = new MapShape
+        {
+            Type = "arc",
+            From = new MapShape.LatLon { Lat = From.Lat, Lon = From.Lon },
+            To = new MapShape.LatLon { Lat = To.Lat, Lon = To.Lon },
+            Curvature = Curvature,
+            Color = Color,
+            Weight = Weight,
+            Opacity = Opacity,
+            DashArray = dashArray,
+            HoverColor = HoverColor,
+            HoverWeight = HoverWeight,
+            Animate = Animate,
+            Tooltip = Tooltip,
+            PopupHtml = PopupHtml,
+        };
+        if (_owner is null)
+        {
+            _owner = owner;
+            _shape = snapshot;
+            owner.RegisterShape(this, snapshot);
+        }
+        else
+        {
+            _shape = snapshot;
+            owner.NotifyShapeChanged(this, snapshot);
+        }
+    }
+
+    internal MapShape? GetSnapshot() => _shape;
+
+    public void Dispose() => _owner?.UnregisterShape(this);
+}

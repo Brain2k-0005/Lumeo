@@ -1,0 +1,65 @@
+@namespace Lumeo
+@implements IDisposable
+
+@code {
+    /// <summary>Collection of heat points. Each tuple is <c>(lat, lon, intensity)</c>
+    /// where <c>intensity</c> should be in the range 0–1 (defaults to 1 when not
+    /// meaningful). Pass a bare <c>(lat, lon)</c> list via a helper or use the
+    /// convenience constructor that sets intensity to 1.</summary>
+    [Parameter, EditorRequired]
+    public IEnumerable<(double Lat, double Lon, double Intensity)> Points { get; set; } = [];
+
+    /// <summary>Radius of each point in pixels at full zoom. Defaults to 20.</summary>
+    [Parameter] public int Radius { get; set; } = 20;
+
+    /// <summary>Opacity of the heatmap layer (0–1). Defaults to 0.8.</summary>
+    [Parameter] public double Opacity { get; set; } = 0.8;
+
+    /// <summary>Color ramp expressed as a MapLibre interpolation stops list.
+    /// Format: alternating stop (0–1) and CSS color values.
+    /// Example: <c>new object[] { 0, "transparent", 0.4, "blue", 0.8, "red", 1, "orange" }</c>.
+    /// Defaults to a blue → cyan → yellow → orange → red ramp.</summary>
+    [Parameter] public object[]? ColorRamp { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _owner;
+    private MapHeatmapShape? _shape;
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+        var snapshot = BuildShape();
+
+        if (_owner is null)
+        {
+            _owner = owner;
+            _shape = snapshot;
+            owner.RegisterShape(this, snapshot);
+        }
+        else
+        {
+            _shape = snapshot;
+            owner.NotifyShapeChanged(this, snapshot);
+        }
+    }
+
+    private MapHeatmapShape BuildShape()
+    {
+        var pts = Points
+            .Select(p => new MapShape.LatLon { Lat = p.Lat, Lon = p.Lon, Weight = p.Intensity })
+            .ToArray();
+
+        return new MapHeatmapShape
+        {
+            Type = "heatmap",
+            Points = pts,
+            Radius = Radius,
+            Opacity = Opacity,
+            ColorRamp = ColorRamp,
+        };
+    }
+
+    public void Dispose() => _owner?.UnregisterShape(this);
+}

@@ -1,0 +1,54 @@
+@namespace Lumeo
+@implements IDisposable
+
+@code {
+    /// <summary>Ordered list of <c>(lat, lon)</c> points forming the polygon ring.
+    /// The first and last points are connected automatically.</summary>
+    [Parameter, EditorRequired] public IEnumerable<(double Lat, double Lon)> Points { get; set; } = Array.Empty<(double, double)>();
+
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? FillColor { get; set; }
+    [Parameter] public double Weight { get; set; } = 2;
+    [Parameter] public double Opacity { get; set; } = 0.9;
+    [Parameter] public double FillOpacity { get; set; } = 0.2;
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public string? PopupHtml { get; set; }
+
+    [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
+
+    private Map? _owner;
+    private MapShape? _shape;
+
+    protected override void OnParametersSet()
+    {
+        if (MapCtx is null) return;
+        var owner = MapCtx.Owner;
+        var snapshot = new MapShape
+        {
+            Type = "polygon",
+            Points = Points.Select(p => new MapShape.LatLon { Lat = p.Lat, Lon = p.Lon }).ToArray(),
+            Color = Color,
+            FillColor = FillColor,
+            Weight = Weight,
+            Opacity = Opacity,
+            FillOpacity = FillOpacity,
+            Tooltip = Tooltip,
+            PopupHtml = PopupHtml,
+        };
+        if (_owner is null)
+        {
+            _owner = owner;
+            _shape = snapshot;
+            owner.RegisterShape(this, snapshot);
+        }
+        else
+        {
+            _shape = snapshot;
+            owner.NotifyShapeChanged(this, snapshot);
+        }
+    }
+
+    internal MapShape? GetSnapshot() => _shape;
+
+    public void Dispose() => _owner?.UnregisterShape(this);
+}

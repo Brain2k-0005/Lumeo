@@ -43,7 +43,7 @@
     @* Preview panel *@
     @if (_activeTab == Tab.Preview)
     {
-        <div class="@PreviewContainerClass">
+        <div class="@PreviewContainerClass" style="@PreviewContainerStyle">
             @if (ShowViewportToggle && _viewport == Viewport.Mobile)
             {
                 <div class="max-w-[420px] w-full mx-auto rounded-[var(--radius-lg)] border border-border/60 bg-background shadow-sm overflow-x-auto">
@@ -121,6 +121,14 @@
     /// </summary>
     [Parameter] public bool ShowViewportToggle { get; set; }
 
+    /// <summary>
+    /// When set, locks the preview container to this fixed CSS height so toggling
+    /// demo state doesn't reflow the docs page. Accepts any CSS length
+    /// (e.g. <c>"360px"</c>, <c>"24rem"</c>). When null the container uses
+    /// <c>min-h-[160px]</c> and grows with content.
+    /// </summary>
+    [Parameter] public string? PreviewHeight { get; set; }
+
     private string? ComputedId => Id ?? (string.IsNullOrWhiteSpace(Title) ? null : Slugify(Title!));
 
     private static string Slugify(string input)
@@ -136,9 +144,17 @@
         return string.IsNullOrEmpty(s) ? "demo" : s;
     }
 
-    private string PreviewContainerClass => OverflowVisible
-        ? "min-h-[160px] p-6 sm:p-8 bg-muted/20 overflow-visible flex items-center justify-center"
-        : "min-h-[160px] p-6 sm:p-8 bg-muted/20 overflow-x-auto flex items-center justify-center";
+    private string PreviewContainerClass
+    {
+        get
+        {
+            var heightCls = string.IsNullOrEmpty(PreviewHeight) ? "min-h-[160px]" : string.Empty;
+            var overflow  = OverflowVisible ? "overflow-visible" : "overflow-x-auto overflow-y-auto";
+            return $"{heightCls} p-6 sm:p-8 bg-muted/20 {overflow} flex items-center justify-center".Trim();
+        }
+    }
+
+    private string? PreviewContainerStyle => string.IsNullOrEmpty(PreviewHeight) ? null : $"height:{PreviewHeight}";
 
     private enum Tab { Preview, Code }
     private Tab _activeTab = Tab.Preview;

@@ -1,6 +1,8 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.ComponentInteropService Interop
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     <div class="p-3 space-y-1">
@@ -29,16 +31,21 @@
                     {
                         <div class="relative shrink-0">
                             <button type="button"
-                                    class="inline-flex items-center justify-center h-6 w-6 rounded transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 @(column.Pin != PinDirection.None ? "text-primary hover:bg-accent" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")"
+                                    id="@PinTriggerId(column.Id)"
+                                    class="@(column.Pin != PinDirection.None
+                                        ? "inline-flex items-center justify-center h-6 w-6 rounded bg-primary/15 text-primary hover:bg-primary/20 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                                        : "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1")"
                                     title="@L["DataGrid.PinColumn"]"
                                     @onclick="@(() => TogglePinMenu(column.Id))"
                                     @onclick:stopPropagation="true">
-                                <Blazicon Svg="Lucide.Pin" class="h-3.5 w-3.5" />
+                                <Blazicon Svg="Lucide.Pin" class="@(column.Pin != PinDirection.None ? "h-3.5 w-3.5 rotate-45" : "h-3.5 w-3.5")" />
                             </button>
                             @if (_openPinMenu == column.Id)
                             {
-                                <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover text-popover-foreground shadow-md p-1"
-                                     @onclick:stopPropagation="true">
+                                <div id="@PinMenuId(column.Id)"
+                                     class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover text-popover-foreground shadow-md p-1"
+                                     @onclick:stopPropagation="true"
+                                     @onkeydown="@(e => HandlePinMenuKeyDown(e, column.Id))">
                                     <button type="button"
                                             class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                                             disabled="@(column.Pin == PinDirection.Left)"
@@ -86,6 +93,11 @@
     // parent's reorder pipeline stays the keyboard/UI source of truth.
     private List<DataGridColumn<TItem>> _buffer = new();
     private string? _openPinMenu;
+    private bool _pinMenuClickOutsideRegistered;
+
+    // Stable per-column IDs for click-outside registration.
+    private string PinTriggerId(string columnId) => $"dg-pin-trigger-{columnId}";
+    private string PinMenuId(string columnId) => $"dg-pin-menu-{columnId}";
 
     protected override void OnParametersSet()
     {
@@ -125,14 +137,87 @@
         await OnColumnReorder.InvokeAsync(args);
     }
 
-    private void TogglePinMenu(string columnId)
+    private async Task TogglePinMenu(string columnId)
     {
-        _openPinMenu = _openPinMenu == columnId ? null : columnId;
+        if (_openPinMenu == columnId)
+        {
+            await ClosePinMenuAsync();
+        }
+        else
+        {
+            // Close any previously open menu first.
+            if (_openPinMenu is not null)
+                await ClosePinMenuAsync();
+
+            _openPinMenu = columnId;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_openPinMenu is not null && !_pinMenuClickOutsideRegistered)
+        {
+            var menuId = PinMenuId(_openPinMenu);
+            var triggerId = PinTriggerId(_openPinMenu);
+            try
+            {
+                await Interop.RegisterClickOutside(menuId, triggerId, async () =>
+                {
+                    _openPinMenu = null;
+                    _pinMenuClickOutsideRegistered = false;
+                    await InvokeAsync(StateHasChanged);
+                });
+                _pinMenuClickOutsideRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (_openPinMenu is null && _pinMenuClickOutsideRegistered)
+        {
+            await UnregisterPinMenuClickOutsideAsync();
+        }
+    }
+
+    private async Task ClosePinMenuAsync()
+    {
+        _openPinMenu = null;
+        if (_pinMenuClickOutsideRegistered)
+            await UnregisterPinMenuClickOutsideAsync();
+        StateHasChanged();
+    }
+
+    private async Task UnregisterPinMenuClickOutsideAsync()
+    {
+        _pinMenuClickOutsideRegistered = false;
+        // We need to unregister for each column; use a snapshot of the last open menu id.
+        // Since _openPinMenu is already null here, iterate the column list and try all.
+        foreach (var col in _buffer)
+        {
+            try { await Interop.UnregisterClickOutside(PinMenuId(col.Id)); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch { /* element may not have been registered */ }
+        }
+    }
+
+    private void HandlePinMenuKeyDown(KeyboardEventArgs e, string columnId)
+    {
+        if (e.Key == "Escape" && _openPinMenu == columnId)
+        {
+            _ = ClosePinMenuAsync();
+        }
     }
 
     private async Task PinColumn(DataGridColumn<TItem> column, PinDirection direction)
     {
-        _openPinMenu = null;
+        await ClosePinMenuAsync();
         await OnColumnPin.InvokeAsync(new ColumnPinEventArgs(column.Id, direction));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pinMenuClickOutsideRegistered)
+        {
+            await UnregisterPinMenuClickOutsideAsync();
+        }
     }
 }
