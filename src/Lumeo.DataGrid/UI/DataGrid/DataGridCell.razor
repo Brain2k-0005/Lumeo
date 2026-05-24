@@ -125,19 +125,31 @@
             var pin = Column.Pin;
             var dirty = IsBatchDirty;
             var selected = IsRowSelected;
-            var key = (pin, dirty, selected, Column.CssClass, cellClass, Class);
+            var striped = Context?.Striped == true;
+            var hoverable = Context?.Hoverable == true;
+            var key = (pin, dirty, selected, striped, hoverable, RowIndex % 2, Column.CssClass, cellClass, Class);
             if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
 
             // Pinned cells need an opaque background so the scrolling
-            // un-pinned cells don't show through behind them. `bg-card` is
-            // the base; when the row is selected we paint the same
-            // `bg-primary/5` tint that the row carries on top via an inline
-            // background-image overlay (see PinStyle) so the pinned column
-            // matches the row's selection state instead of reading as "not
-            // selected".
+            // un-pinned cells don't show through behind them. When the grid
+            // is Striped we must mirror the row's alternating background:
+            // even rows get bg-muted/30 (matching [&_tbody>tr:nth-child(even)]:bg-muted/30
+            // on the root), odd rows get bg-background. Without this the pinned
+            // column would render as a flat bg-card block breaking the stripe pattern.
+            // When not Striped a flat bg-card is fine (matches the card surface).
+            // group-hover/row:bg-muted/50 re-applies the row hover tint on the pinned
+            // cell (the td's own bg otherwise prevents the tr hover from showing through).
+            // The selection highlight is layered on top via PinStyle (background-image
+            // linear-gradient) so it survives either stripe variant.
+            var hoverClass = hoverable ? "group-hover/row:bg-muted/50" : null;
+            // For pinned cells the actual background-color is set inline via
+            // PinStyle — Tailwind v4's JIT can't see arbitrary classes built
+            // through C# string interpolation, so `bg-[color-mix(...)]` never
+            // produces a rule and the cell renders transparent. The class only
+            // carries sticky positioning + hover behavior; PinStyle paints.
             string? pinClass = pin switch
             {
-                PinDirection.Left or PinDirection.Right => "sticky z-10 bg-card",
+                PinDirection.Left or PinDirection.Right => $"sticky z-10 {hoverClass}",
                 _ => null
             };
             var css = string.Join(" ", new[]
@@ -168,15 +180,33 @@
             else if (Column.Pin == PinDirection.Right && Context?.PinnedRightOffsets.TryGetValue(Column.Id, out var rightOff) == true)
                 offset = $"right: {rightOff}px;";
 
-            // Layer a primary/5 tint on top of the pinned cell's opaque
-            // bg-card when its row is selected — matches the row-level
-            // `bg-primary/5` highlight so the pinned column doesn't read
-            // as "not selected" in the middle of a selected row.
-            if (offset is not null && IsRowSelected)
+            if (offset is null) return string.Empty;
+
+            // OPAQUE background for pinned cells so scrolling non-pinned columns
+            // don't bleed through. When the grid is Striped we mirror the row's
+            // alternating bg via color-mix at runtime (Tailwind v4 can't see
+            // dynamically-interpolated arbitrary classes, so we paint in inline
+            // style instead). Non-striped → flat card.
+            string bg;
+            if (Context?.Striped == true && RowIndex % 2 == 1)
             {
-                return offset + " background-image: linear-gradient(hsl(var(--primary) / 0.05), hsl(var(--primary) / 0.05));";
+                // 30% muted over card = exact visual of bg-muted/30 row stripe,
+                // but rendered as a fully opaque single color.
+                bg = " background-color: color-mix(in srgb, var(--color-card) 70%, var(--color-muted));";
             }
-            return offset ?? "";
+            else
+            {
+                bg = " background-color: var(--color-card);";
+            }
+
+            // Layer a primary/5 tint on top of the opaque pinned bg when the row
+            // is selected — matches the row-level bg-primary/5 highlight so the
+            // pinned column doesn't read as "not selected" mid-row.
+            if (IsRowSelected)
+            {
+                return offset + bg + " background-image: linear-gradient(hsl(var(--primary) / 0.05), hsl(var(--primary) / 0.05));";
+            }
+            return offset + bg;
         }
     }
 

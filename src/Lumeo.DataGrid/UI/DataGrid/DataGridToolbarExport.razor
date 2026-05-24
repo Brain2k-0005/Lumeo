@@ -1,20 +1,24 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 
 @if (Context is not null && Context.ExportFormats != DataGridExportFormat.None)
 {
     <div class="relative">
         <button type="button"
+                id="@_triggerButtonId"
                 class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                 @onclick="ToggleExportMenu">
             <Blazicon Svg="Lucide.Download" class="h-4 w-4 mr-1.5" />
             <span>@Context.Localizer["DataGrid.Export"]</span>
-            <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-1" />
+            <Blazicon Svg="Lucide.ChevronDown" class="@($"h-3.5 w-3.5 ml-1 transition-transform duration-150 {(_exportMenuOpen ? "rotate-180" : "")}")" />
         </button>
 
         @if (_exportMenuOpen)
         {
-            <div class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md">
+            <div id="@_menuId"
+                 class="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-border/40 bg-popover p-1 shadow-md"
+                 @onkeydown="HandleMenuKeyDown">
                 @if (Context.ExportFormats.HasFlag(DataGridExportFormat.Csv))
                 {
                     <button type="button"
@@ -54,16 +58,74 @@
     [CascadingParameter] public DataGridToolbarContext<TItem>? Context { get; set; }
 
     private bool _exportMenuOpen;
+    private bool _clickOutsideRegistered;
+    private readonly string _triggerButtonId = $"dg-export-trigger-{Guid.NewGuid():N}";
+    private readonly string _menuId = $"dg-export-menu-{Guid.NewGuid():N}";
 
-    private void ToggleExportMenu()
+    private async Task ToggleExportMenu()
     {
-        _exportMenuOpen = !_exportMenuOpen;
+        if (_exportMenuOpen)
+            await CloseMenuAsync();
+        else
+            _exportMenuOpen = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_exportMenuOpen && !_clickOutsideRegistered && Context?.Interop is not null)
+        {
+            try
+            {
+                await Context.Interop.RegisterClickOutside(_menuId, _triggerButtonId, async () =>
+                {
+                    _exportMenuOpen = false;
+                    _clickOutsideRegistered = false;
+                    await InvokeAsync(StateHasChanged);
+                });
+                _clickOutsideRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (!_exportMenuOpen && _clickOutsideRegistered)
+        {
+            await UnregisterClickOutsideAsync();
+        }
+    }
+
+    private async Task CloseMenuAsync()
+    {
+        _exportMenuOpen = false;
+        if (_clickOutsideRegistered)
+            await UnregisterClickOutsideAsync();
+        StateHasChanged();
+    }
+
+    private async Task UnregisterClickOutsideAsync()
+    {
+        _clickOutsideRegistered = false;
+        if (Context?.Interop is not null)
+        {
+            try { await Context.Interop.UnregisterClickOutside(_menuId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    private void HandleMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            _ = CloseMenuAsync();
     }
 
     private async Task Export(string format)
     {
         if (Context is null) return;
-        _exportMenuOpen = false;
+        await CloseMenuAsync();
         await Context.OnExport.InvokeAsync(format);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_clickOutsideRegistered)
+            await UnregisterClickOutsideAsync();
     }
 }

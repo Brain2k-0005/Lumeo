@@ -2,7 +2,7 @@
 @typeparam TItem
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<tr data-slot="datagrid-row" class="@CssClass" style="@RowStyleString"
+<tr data-slot="datagrid-row" class="group/row @CssClass" style="@RowStyleString"
     role="row"
     aria-rowindex="@AriaRowIndex"
     aria-level="@AriaLevel"
@@ -28,13 +28,17 @@
 
     @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
     {
-        <td role="gridcell" class="px-3 py-2 w-10">
+        @* When any column is pinned left, the selection cell must also be sticky at
+           left:0 so it stays visible during horizontal scroll and doesn't slide
+           behind the pinned data column. Matches the z-index of DataGridHeaderCell
+           pinned headers (z-20 on thead, z-10 on body cells). *@
+        <td role="gridcell" class="@(Context.HasPinnedLeft ? "px-3 py-2 w-10 sticky left-0 z-10 group-hover/row:bg-muted/50" : "px-3 py-2 w-10")" style="@SelectionPinStyle">
             <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" />
         </td>
     }
     else if (Context?.SelectionMode == DataGridSelectionMode.Single)
     {
-        <td role="gridcell" class="px-3 py-2 w-10">
+        <td role="gridcell" class="@(Context.HasPinnedLeft ? "px-3 py-2 w-10 sticky left-0 z-10 group-hover/row:bg-muted/50" : "px-3 py-2 w-10")" style="@SelectionPinStyle">
             <button type="button"
                     class="h-4 w-4 rounded-full border border-primary @(IsSelected ? "bg-primary" : "bg-background")"
                     @onclick="@(() => Context?.ToggleSelection(Item))"
@@ -224,6 +228,21 @@
     }
 
     private string? RowStyleString => Context?.RowStyle?.Invoke(Item);
+
+    // Opaque background for the sticky-left selection cell so it doesn't show
+    // scrolling content through, while preserving the row's stripe pattern when
+    // Striped=true (Tailwind v4 can't generate arbitrary classes built via
+    // C# string interpolation — inline color-mix is the reliable path).
+    private string SelectionPinStyle
+    {
+        get
+        {
+            if (Context?.HasPinnedLeft != true) return string.Empty;
+            return (Context?.Striped == true && RowIndex % 2 == 1)
+                ? "background-color: color-mix(in srgb, var(--color-card) 70%, var(--color-muted));"
+                : "background-color: var(--color-card);";
+        }
+    }
 
     private async Task HandleClick()
     {
