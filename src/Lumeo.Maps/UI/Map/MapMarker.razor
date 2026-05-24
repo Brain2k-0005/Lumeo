@@ -46,6 +46,11 @@
     /// or numbered tours. Different from <see cref="Title"/> (hover tooltip).</summary>
     [Parameter] public string? Label { get; set; }
 
+    /// <summary>When <c>true</c>, the <see cref="Label"/> is hidden by default and
+    /// only appears on hover. Useful for dense maps where always-on labels create
+    /// visual noise. Default is <c>false</c> (label always visible).</summary>
+    [Parameter] public bool LabelHoverOnly { get; set; }
+
     /// <summary>Optional inline content inside the marker circle — a single
     /// letter, a number, or a small <c>&lt;Blazicon&gt;</c> SVG. The fragment
     /// is rendered to a hidden host and its innerHTML is spliced into the
@@ -59,10 +64,18 @@
 
     [Parameter] public EventCallback OnClick { get; set; }
 
+    /// <summary>Allow the user to drag the marker to a new position.</summary>
+    [Parameter] public bool Draggable { get; set; }
+
+    /// <summary>Fires with the new <c>(lat, lon)</c> after the user finishes
+    /// dragging the marker. Use with two-way binding or to update your own state.
+    /// Only fires when <see cref="Draggable"/> is <c>true</c>.</summary>
+    [Parameter] public EventCallback<(double Lat, double Lon)> OnDragEnd { get; set; }
+
     [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
 
     private Map? _registeredOwner;
-    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool HasIcon)? _lastState;
+    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool LabelHoverOnly, bool HasIcon, bool Draggable)? _lastState;
     private readonly string _popupHostId = $"lumeo-map-popup-{Guid.NewGuid():N}";
     private readonly string _iconHostId = $"lumeo-map-icon-{Guid.NewGuid():N}";
 
@@ -78,11 +91,11 @@
         }
         else
         {
-            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, Icon is not null);
+            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable);
             if (_lastState is { } prev && prev != snapshot)
                 owner.NotifyMarkerChanged(this);
         }
-        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, Icon is not null);
+        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable);
     }
 
     internal string? GetPopupHtml() => Title;

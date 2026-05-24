@@ -17,7 +17,22 @@
     [Parameter] public string? Color { get; set; }
     [Parameter] public double Weight { get; set; } = 2.5;
     [Parameter] public double Opacity { get; set; } = 0.9;
+    /// <summary>SVG dash pattern. Defaults to <c>"5 6"</c> (arcs are dashed by default).</summary>
     [Parameter] public string? DashArray { get; set; } = "5 6";
+
+    /// <summary>Set to <c>false</c> to draw the arc as a solid line instead of the
+    /// default dashed style. Has no effect when <see cref="DashArray"/> is set explicitly.</summary>
+    [Parameter] public bool Dashed { get; set; } = true;
+
+    /// <summary>Stroke color on hover. Null = no hover highlight.</summary>
+    [Parameter] public string? HoverColor { get; set; }
+
+    /// <summary>Stroke width on hover. Null = same as <see cref="Weight"/>.</summary>
+    [Parameter] public double? HoverWeight { get; set; }
+
+    /// <summary>Animate the arc drawing on first render (line draws from start to end over ~1 s).</summary>
+    [Parameter] public bool Animate { get; set; }
+
     [Parameter] public string? Tooltip { get; set; }
     [Parameter] public string? PopupHtml { get; set; }
 
@@ -30,6 +45,9 @@
     {
         if (MapCtx is null) return;
         var owner = MapCtx.Owner;
+        // When Dashed=true and no explicit DashArray, use the default arc dash.
+        // When Dashed=false and no explicit DashArray, clear the default.
+        var dashArray = DashArray != "5 6" ? DashArray : (Dashed ? "5 6" : null);
         var snapshot = new MapShape
         {
             Type = "arc",
@@ -39,7 +57,10 @@
             Color = Color,
             Weight = Weight,
             Opacity = Opacity,
-            DashArray = DashArray,
+            DashArray = dashArray,
+            HoverColor = HoverColor,
+            HoverWeight = HoverWeight,
+            Animate = Animate,
             Tooltip = Tooltip,
             PopupHtml = PopupHtml,
         };

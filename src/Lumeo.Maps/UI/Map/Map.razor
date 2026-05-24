@@ -9,6 +9,14 @@
          class="@RootClass"
          style="@RootStyle"
          @attributes="AdditionalAttributes">
+        @if (Overlay is not null)
+        {
+            @* Overlay slot — renders inside the map container so it floats above
+               the canvas. Position it with absolute Tailwind classes on the child. *@
+            <div class="absolute inset-0 pointer-events-none z-10" style="position:absolute;inset:0;pointer-events:none;z-index:10;">
+                @Overlay
+            </div>
+        }
     </div>
     @* Markers + shapes register via the cascading context but do not render
        DOM themselves — Leaflet draws them on the canvas. We still walk the
@@ -59,7 +67,24 @@
     /// <summary>Adds a Nominatim-backed search bar in the top-left.</summary>
     [Parameter] public bool Search { get; set; }
 
+    /// <summary>MapLibre projection name. <c>"mercator"</c> (default flat web-map)
+    /// or <c>"globe"</c> for a 3-D spherical view. The globe becomes visible at
+    /// zoom levels roughly 0–3; it blends back to mercator above zoom 4.</summary>
+    [Parameter] public string Projection { get; set; } = "mercator";
+
+    /// <summary>When <c>true</c> the map automatically fits its viewport to include
+    /// all registered markers and shapes after the first render.</summary>
+    [Parameter] public bool AutoFitBounds { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Optional content rendered as an absolutely-positioned overlay
+    /// <em>inside</em> the map container (z-index 10, pointer-events none on the
+    /// wrapper so map interaction is not blocked). Use absolute-position classes
+    /// on your own child element to place chips, legends, or status badges
+    /// (e.g. <c>class="absolute bottom-2 right-2 pointer-events-auto …"</c>).</summary>
+    [Parameter] public RenderFragment? Overlay { get; set; }
+
     [Parameter] public EventCallback<(double Lat, double Lon)> OnClick { get; set; }
 
     [Parameter] public string? Class { get; set; }
@@ -71,11 +96,13 @@
     private MapContext _context = null!;
     private readonly List<MapMarker> _markers = new();
     private readonly Dictionary<object, MapShape> _shapes = new();
+    private readonly List<MapPopup> _standalonePopups = new();
     private bool _initialized;
     private (double Lat, double Lon) _lastCenter;
     private int _lastZoom;
     private string _lastMarkerJson = "[]";
     private string _lastShapeJson = "[]";
+    private string _lastPopupJson = "[]";
 
     private string RootClass => $"lumeo-map relative {Class}".Trim();
     private string RootStyle => $"width: 100%; height: {Height};";
@@ -116,6 +143,23 @@
             _ = InvokeAsync(SyncShapesAsync);
     }
 
+    internal void RegisterStandalonePopup(MapPopup popup)
+    {
+        if (!_standalonePopups.Contains(popup)) _standalonePopups.Add(popup);
+        if (_initialized) _ = InvokeAsync(SyncStandalonePopupsAsync);
+    }
+
+    internal void UnregisterStandalonePopup(MapPopup popup)
+    {
+        if (_standalonePopups.Remove(popup) && _initialized)
+            _ = InvokeAsync(SyncStandalonePopupsAsync);
+    }
+
+    internal void NotifyStandalonePopupChanged(MapPopup popup)
+    {
+        if (_initialized) _ = InvokeAsync(SyncStandalonePopupsAsync);
+    }
+
     internal void NotifyShapeChanged(object owner, MapShape shape)
     {
         _shapes[owner] = shape;
@@ -144,6 +188,8 @@
                 fullscreen = Fullscreen,
                 scale = Scale,
                 search = Search,
+                projection = Projection,
+                autoFitBounds = AutoFitBounds,
             };
 
             try
@@ -152,6 +198,7 @@
                 _initialized = true;
                 await SyncMarkersAsync();
                 await SyncShapesAsync();
+                await SyncStandalonePopupsAsync();
             }
             catch (JSDisconnectedException) { }
             return;
@@ -184,10 +231,13 @@
             variant = m.Variant,
             color = m.Color,
             label = m.Label,
+            labelHoverOnly = m.LabelHoverOnly,
             iconHostId = m.HasIcon ? m.IconHostId : null,
             popupHtml = m.HasRichPopup ? null : m.GetPopupHtml(),
             popupHostId = m.HasRichPopup ? m.PopupHostId : null,
             hasClick = m.OnClick.HasDelegate,
+            draggable = m.Draggable,
+            hasDragEnd = m.OnDragEnd.HasDelegate,
         }).ToArray();
 
         var json = System.Text.Json.JsonSerializer.Serialize(payload);
@@ -197,6 +247,29 @@
         try
         {
             await _module.InvokeVoidAsync("setMarkers", _mapId, payload);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task SyncStandalonePopupsAsync()
+    {
+        if (_module is null || !_initialized) return;
+        var payload = _standalonePopups.Select(p => new
+        {
+            lat = p.Lat,
+            lon = p.Lon,
+            isOpen = p.IsOpen,
+            closeButton = p.CloseButton,
+            closeOnClick = p.CloseOnClick,
+            html = p.GetHtml(),
+            hostId = p.HasRichContent ? p.HostId : null,
+        }).ToArray();
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        if (json == _lastPopupJson) return;
+        _lastPopupJson = json;
+        try
+        {
+            await _module.InvokeVoidAsync("setStandalonePopups", _mapId, payload);
         }
         catch (JSDisconnectedException) { }
     }
@@ -214,6 +287,19 @@
             await _module.InvokeVoidAsync("setShapes", _mapId, payload);
         }
         catch (JSDisconnectedException) { }
+    }
+
+    /// <summary>Returns the current map view as a PNG data-URL string
+    /// (<c>data:image/png;base64,…</c>) by reading the underlying MapLibre GL canvas.
+    /// Returns <c>null</c> when the map is not yet initialized.</summary>
+    public async Task<string?> ExportPngAsync()
+    {
+        if (_module is null || !_initialized) return null;
+        try
+        {
+            return await _module.InvokeAsync<string?>("exportPng", _mapId);
+        }
+        catch (JSDisconnectedException) { return null; }
     }
 
     /// <summary>Imperatively re-center the map. Useful for parent components
@@ -258,6 +344,14 @@
         if (markerId < 0 || markerId >= _markers.Count) return;
         var marker = _markers[markerId];
         if (marker.OnClick.HasDelegate) await marker.OnClick.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerDragEnd(int markerId, double lat, double lon)
+    {
+        if (markerId < 0 || markerId >= _markers.Count) return;
+        var marker = _markers[markerId];
+        if (marker.OnDragEnd.HasDelegate) await marker.OnDragEnd.InvokeAsync((lat, lon));
     }
 
     public async ValueTask DisposeAsync()
