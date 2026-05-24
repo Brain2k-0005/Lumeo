@@ -1,15 +1,16 @@
 @page "/components/map"
+@inject HttpClient Http
 
 <PageTitle>Map — Lumeo</PageTitle>
 
 <PageHeader Title="Map"
-            Description="Interactive geographic map with declarative markers. Powered by Leaflet — open-source, no API key required. Ships with three named tile presets and accepts custom URL templates." />
+            Description="Interactive geographic map with declarative markers. Powered by MapLibre GL — open-source, no API key required. Ships with named tile presets including Auto, which follows the site theme automatically, and accepts raw style.json URLs." />
 
 <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
     <ChildContent>
         <strong>Satellite package.</strong> The Map lives in
         <code>Lumeo.Maps</code> — install it alongside the core <code>Lumeo</code>
-        package. Leaflet and its stylesheet are loaded on demand from unpkg the
+        package. MapLibre GL and its stylesheet are loaded on demand from unpkg the
         first time a Map mounts; no npm build step is required for consumers.
     </ChildContent>
 </Alert>
@@ -26,99 +27,406 @@
 
 <Stack Gap="8" Class="mt-8">
 
-    <ComponentDemo Title="Basic" Code="@_basicCode">
-        <Map @bind-Center="_center"
-             @bind-Zoom="_zoom"
-             Height="400px" />
-        <div class="mt-3 text-xs text-muted-foreground">
-            Centered at @_center.Lat.ToString("F3"), @_center.Lon.ToString("F3") — zoom @_zoom
-        </div>
+    @* Demo 1: Basic — info chip top-left (safe zone, no MapLibre controls there) *@
+    @* TileLayer="Auto" (the default) picks Positron or DarkMatter based on the site theme. Toggle the theme switch to see tiles swap. *@
+    <ComponentDemo Title="Basic (Auto theme)" Code="@_basicCode">
+        <LazyRender Height="400px">
+            <Map @bind-Center="_center"
+                 @bind-Zoom="_zoom"
+                 Height="400px"
+                 TileLayer="Auto">
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        @_center.Lat.ToString("F3"), @_center.Lon.ToString("F3") — zoom @_zoom
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
     </ComponentDemo>
 
-    <ComponentDemo Title="Multiple markers (declarative)" Code="@_markersCode">
-        <Map Center="(50.5, 10.5)" Zoom="5" Height="450px">
-            <MapMarker Lat="48.137" Lon="11.575" Title="Munich" />
-            <MapMarker Lat="52.520" Lon="13.405" Title="Berlin" />
-            <MapMarker Lat="53.551" Lon="9.993" Title="Hamburg" />
-            <MapMarker Lat="50.937" Lon="6.960" Title="Cologne" />
-        </Map>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Custom tile layer (CartoDark)" Code="@_darkTileCode">
-        <Map Center="(48.137, 11.575)"
-             Zoom="11"
-             TileLayer="CartoDark"
-             Height="400px">
-            <MapMarker Lat="48.137" Lon="11.575" Title="Munich Hauptbahnhof" />
-        </Map>
-    </ComponentDemo>
-
+    @* Demo 2: Marker variants (replaces both "Multiple markers" and "Marker variants") *@
     <ComponentDemo Title="Marker variants" Code="@_variantsCode">
-        <Map Center="(50.5, 10.5)" Zoom="5" Height="450px" TileLayer="CartoLight">
-            <MapMarker Lat="48.137" Lon="11.575" Title="Default (primary)" />
-            <MapMarker Lat="52.520" Lon="13.405" Title="Outline" Variant="Outline" />
-            <MapMarker Lat="53.551" Lon="9.993"  Title="Pin" Variant="Pin" Color="red" />
-            <MapMarker Lat="50.937" Lon="6.960"  Title="Dot" Variant="Dot" Color="green" />
-            <MapMarker Lat="48.783" Lon="9.183"  Title="Numbered" Label="1">
-                <Icon><span>A</span></Icon>
-            </MapMarker>
-            <MapMarker Lat="51.339" Lon="12.373" Title="Yellow warning" Color="yellow" />
-        </Map>
-        <div class="mt-3 text-xs text-muted-foreground">
-            All variants honor the theme — switch the docs site to dark mode and the
-            <code>Default</code> circle's border swaps to the dark background color.
-        </div>
+        <LazyRender Height="450px">
+            <Map Center="(50.5, 10.5)" Zoom="5" Height="450px">
+                <ChildContent>
+                    <MapMarker Lat="48.137" Lon="11.575" Title="Default (primary)" Label="Munich" />
+                    <MapMarker Lat="52.520" Lon="13.405" Title="Outline" Variant="Outline" Label="Berlin" LabelHoverOnly="true" />
+                    <MapMarker Lat="53.551" Lon="9.993"  Title="Pin" Variant="Pin" Color="red" Label="Hamburg" LabelHoverOnly="true" />
+                    <MapMarker Lat="50.937" Lon="6.960"  Title="Dot" Variant="Dot" Color="green" Label="Cologne" LabelHoverOnly="true" />
+                    <MapMarker Lat="48.783" Lon="9.183"  Title="Numbered (custom icon)" Label="Stuttgart">
+                        <Icon><span>A</span></Icon>
+                    </MapMarker>
+                    <MapMarker Lat="51.339" Lon="12.373" Title="Yellow warning" Color="yellow" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        Permanent label on Munich · hover others for label
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
     </ComponentDemo>
 
+    @* Demo 3: Rich popup *@
     <ComponentDemo Title="Rich popup content (RenderFragment)" Code="@_richPopupCode">
-        <Map Center="(48.137, 11.575)" Zoom="11" Height="420px" TileLayer="CartoLight">
-            <MapMarker Lat="48.137" Lon="11.575" Title="Marienplatz" Color="red">
-                <Popup>
-                    <div class="space-y-2 min-w-[220px]">
-                        <div class="font-semibold text-sm">Marienplatz</div>
-                        <p class="text-xs text-muted-foreground m-0">
-                            Munich's central square, home of the Neues Rathaus and the
-                            famous Glockenspiel.
-                        </p>
-                        <div class="flex gap-2 pt-1">
-                            <Badge Variant="Badge.BadgeVariant.Secondary">Historic</Badge>
-                            <Badge Variant="Badge.BadgeVariant.Outline">Free</Badge>
-                        </div>
-                    </div>
-                </Popup>
-            </MapMarker>
-        </Map>
+        <LazyRender Height="420px">
+            <Map Center="(48.137, 11.575)" Zoom="11" Height="420px" TileLayer="CartoLight">
+                <ChildContent>
+                    <MapMarker Lat="48.137" Lon="11.575" Title="Marienplatz" Color="red">
+                        <Popup>
+                            <div class="space-y-2 min-w-[220px]">
+                                <div class="font-semibold text-sm">Marienplatz</div>
+                                <p class="text-xs text-muted-foreground m-0">
+                                    Munich's central square, home of the Neues Rathaus and the
+                                    famous Glockenspiel.
+                                </p>
+                                <div class="flex gap-2 pt-1">
+                                    <Badge Variant="Badge.BadgeVariant.Secondary">Historic</Badge>
+                                    <Badge Variant="Badge.BadgeVariant.Outline">Free</Badge>
+                                </div>
+                            </div>
+                        </Popup>
+                    </MapMarker>
+                </ChildContent>
+            </Map>
+        </LazyRender>
     </ComponentDemo>
 
-    <ComponentDemo Title="Satellite imagery" Code="@_satelliteCode">
-        <Map Center="(48.858, 2.294)"
-             Zoom="16"
-             TileLayer="Satellite"
-             Height="400px">
-            <MapMarker Lat="48.858" Lon="2.294" Title="Eiffel Tower" Variant="Pin" />
-        </Map>
-    </ComponentDemo>
-
+    @* Demo 4: Click-to-pick *@
     <ComponentDemo Title="Click-to-pick coordinate" Code="@_clickCode">
-        <Map Center="_pickedCenter"
-             Zoom="4"
-             Height="400px"
-             OnClick="HandleMapClick">
-            @if (_pickedPoint is { } p)
-            {
-                <MapMarker Lat="p.Lat" Lon="p.Lon" Title="@($"Picked: {p.Lat:F3}, {p.Lon:F3}")" />
-            }
-        </Map>
-        <div class="mt-3 text-xs text-muted-foreground">
-            @if (_pickedPoint is { } pp)
-            {
-                <span>Last click: @pp.Lat.ToString("F4"), @pp.Lon.ToString("F4")</span>
-            }
-            else
-            {
-                <span>Click anywhere on the map to drop a marker.</span>
-            }
+        <LazyRender Height="400px">
+            <Map Center="_pickedCenter"
+                 Zoom="4"
+                 Height="400px"
+                 OnClick="HandleMapClick">
+                <ChildContent>
+                    @if (_pickedPoint is { } p)
+                    {
+                        <MapMarker Lat="p.Lat" Lon="p.Lon" Title="@($"Picked: {p.Lat:F3}, {p.Lon:F3}")" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    @* bottom-left: safe — no MapLibre default controls there *@
+                    <MapInfoChip Position="bottom-left">
+                        @if (_pickedPoint is { } pp)
+                        {
+                            <span>@pp.Lat.ToString("F4"), @pp.Lon.ToString("F4")</span>
+                        }
+                        else
+                        {
+                            <span>Click to drop a marker</span>
+                        }
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 5: Draggable marker — chip moved from bottom-right to bottom-left *@
+    <ComponentDemo Title="Draggable marker" Code="@_draggableCode">
+        <LazyRender Height="400px">
+            <Map Center="(48.137, 11.575)" Zoom="9" Height="400px">
+                <ChildContent>
+                    <MapMarker Lat="@_dragLat"
+                               Lon="@_dragLon"
+                               Title="Drag me"
+                               Draggable="true"
+                               OnDragEnd="HandleMarkerDragEnd" />
+                </ChildContent>
+                <Overlay>
+                    @* bottom-left: safe — attribution is bottom-right *@
+                    <MapInfoChip Position="bottom-left">
+                        @_dragLat.ToString("F4"), @_dragLon.ToString("F4")
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 6: Heatmap *@
+    <ComponentDemo Title="Heatmap" Code="@_heatmapCode">
+        <LazyRender Height="450px">
+            <Map Center="(51.5, 10.0)" Zoom="4" Height="450px" TileLayer="DarkMatter">
+                <ChildContent>
+                    <MapHeatmap Points="_heatPoints" Radius="25" Opacity="0.85" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        Population density — Europe
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 7: Polyline styles — solid + dashed + activity (merged 3→1) *@
+    <ComponentDemo Title="Polyline styles — solid, dashed, animated loop" Code="@_polylineCode">
+        <LazyRender Height="430px">
+            <Map Center="(40.785, -73.968)" Zoom="14" Height="430px" TileLayer="Voyager">
+                <ChildContent>
+                    <MapPolyline Points="_centralParkLoop" Color="#22c55e" Weight="4" Animate="true" Tooltip="Central Park Loop" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        <Blazicon Svg="Lucide.Bike" Class="w-3.5 h-3.5" />
+                        6.2 mi · 32 min · 285 cal
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+        <div class="mt-4">
+            <LazyRender Height="420px">
+                <Map Center="(47.5, -30.0)" Zoom="3" Height="420px">
+                    <ChildContent>
+                        <MapMarker Lat="51.507" Lon="-0.128" Title="London" Variant="Pin" Color="blue" />
+                        <MapMarker Lat="40.712" Lon="-74.006" Title="New York City" Variant="Pin" Color="blue" />
+                        <MapPolyline Points="_londonNycRoute" Color="var(--color-primary)" Weight="3" Animate="true" Tooltip="London → NYC" />
+                        <MapPolyline Points="_londonNycRoute" Color="#3b82f6" Weight="2" Dashed="true" Opacity="0.5" Tooltip="Dashed overlay" />
+                    </ChildContent>
+                    <Overlay>
+                        <MapInfoChip Position="top-left">
+                            Solid + dashed — London → NYC
+                        </MapInfoChip>
+                    </Overlay>
+                </Map>
+            </LazyRender>
         </div>
+    </ComponentDemo>
+
+    @* Demo 8: Shapes — polygon + circle (merged 2→1) *@
+    <ComponentDemo Title="Shapes — polygon and circle" Code="@_polygonCode">
+        <LazyRender Height="420px">
+            <Map Center="(51.5, -0.09)" Zoom="12" Height="420px" TileLayer="CartoLight">
+                <ChildContent>
+                    <MapPolygon Points="_serviceAreaPolygon"
+                                Color="#6366f1"
+                                FillColor="#6366f1"
+                                FillOpacity="0.15"
+                                Weight="2"
+                                Tooltip="Delivery service area" />
+                    <MapCircle Center="(51.505, -0.09)"
+                               RadiusMeters="800"
+                               Color="#f97316"
+                               FillColor="#f97316"
+                               FillOpacity="0.12"
+                               Weight="2"
+                               Tooltip="800 m depot radius" />
+                    <MapMarker Lat="51.505" Lon="-0.09" Title="Depot" Variant="Pin" Color="purple" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        Delivery zone + depot radius — East London
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 9: Globe + arcs (merged 2→1: "Globe projection" + "Arcs — globe projection") *@
+    <ComponentDemo Title="Globe projection with arcs" Code="@_arcsGlobeCode">
+        <LazyRender Height="500px">
+            <Map Center="(20.0, 10.0)" Zoom="1" Height="500px" TileLayer="DarkMatter" Projection="globe">
+                <ChildContent>
+                    @foreach (var (lat, lon, name) in _globeCities)
+                    {
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" Label="@name" Variant="Dot" Color="teal" LabelHoverOnly="false" />
+                    }
+                    @foreach (var (from, to) in _globalArcs)
+                    {
+                        <MapArc From="from" To="to" Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        <Blazicon Svg="Lucide.Globe" Class="w-3.5 h-3.5" />
+                        Globe projection — great-circle arcs
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 10: Interactive arcs — chip moved from top-right to top-left *@
+    <ComponentDemo Title="Interactive arcs — Air vs Sea routes" Code="@_interactiveArcsCode">
+        <LazyRender Height="500px">
+            <Map Center="(30.0, 0.0)" Zoom="2" Height="500px" TileLayer="CartoDark">
+                <ChildContent>
+                    @foreach (var (lat, lon, name) in _globeCities)
+                    {
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Dot" Color="gray" />
+                    }
+                    @foreach (var (from, to) in _airArcs)
+                    {
+                        <MapArc From="from" To="to"
+                                Color="#3b82f6" HoverColor="#93c5fd" HoverWeight="4"
+                                Weight="2" Opacity="0.8" Dashed="false"
+                                Tooltip="Air route" />
+                    }
+                    @foreach (var (from, to) in _seaArcs)
+                    {
+                        <MapArc From="from" To="to"
+                                Color="#14b8a6" HoverColor="#5eead4" HoverWeight="4"
+                                Weight="2" Opacity="0.7" Dashed="true"
+                                Tooltip="Sea route" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    @* Single chip combining hint + legend, no overlap. *@
+                    <MapInfoChip Position="top-left" Title="Hover arcs to highlight" Layout="stack" Class="min-w-[140px]">
+                        <div class="flex flex-col gap-1">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#3b82f6"></span>
+                                <span class="text-foreground/85">Air</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#14b8a6"></span>
+                                <span class="text-foreground/85">Sea</span>
+                            </div>
+                        </div>
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 11: Clustered markers *@
+    <ComponentDemo Title="Clustered markers" Code="@_clusterCode">
+        <LazyRender Height="480px">
+            <Map Center="(20.0, 10.0)" Zoom="2" Height="480px" Cluster="true">
+                <ChildContent>
+                    @foreach (var (lat, lon, name) in _worldCities)
+                    {
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        @_worldCities.Length markers — <code>Cluster="true"</code>
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 12: Auto-fit bounds — chip moved from top-right to top-left *@
+    <ComponentDemo Title="Auto-fit bounds" Code="@_autoFitCode">
+        <LazyRender Height="460px">
+            <Map Center="(20.0, 0.0)" Zoom="2" Height="460px" AutoFitBounds="true">
+                <ChildContent>
+                    @foreach (var (lat, lon, name) in _spreadMarkers)
+                    {
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Pin" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        <code>AutoFitBounds="true"</code> — auto-zoom to all markers
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 13: Route Planning *@
+    <ComponentDemo Title="Route Planning" Code="@_routePlanningCode">
+        <LazyRender Height="480px">
+            <Map Center="(52.15, 4.69)" Zoom="8" Height="480px" TileLayer="CartoLight">
+                <ChildContent>
+                    @* Inactive routes rendered first (underneath) *@
+                    @for (int i = 0; i < _routes.Count; i++)
+                    {
+                        int idx = i;
+                        if (idx != _selectedRoute)
+                        {
+                            <MapPolyline Points="_routes[idx].Points"
+                                         Color="#94a3b8"
+                                         Weight="4"
+                                         Opacity="0.6"
+                                         Tooltip="@_routes[idx].Label" />
+                        }
+                    }
+                    @* Active route on top *@
+                    @if (_routes.Count > 0)
+                    {
+                        <MapPolyline Points="_routes[_selectedRoute].Points"
+                                     Color="#3b82f6"
+                                     Weight="5"
+                                     Opacity="0.95"
+                                     Tooltip="@_routes[_selectedRoute].Label" />
+                    }
+                    <MapMarker Lat="52.3676" Lon="4.9041" Title="Amsterdam" Variant="Pin" Color="green" Label="Amsterdam" />
+                    <MapMarker Lat="51.9244" Lon="4.4777" Title="Rotterdam" Variant="Pin" Color="red" Label="Rotterdam" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left" Title="Route options" Layout="stack" Class="min-w-[200px] max-w-[240px]">
+                        @if (_routesLoading)
+                        {
+                            <span class="text-muted-foreground text-xs">Fetching routes…</span>
+                        }
+                        else
+                        {
+                            <div class="flex flex-col gap-1">
+                                @for (int i = 0; i < _routes.Count; i++)
+                                {
+                                    int idx = i;
+                                    bool active = idx == _selectedRoute;
+                                    <button type="button"
+                                            class="w-full text-left rounded-md px-2 py-1 text-xs transition-colors leading-tight @(active ? "bg-primary text-primary-foreground font-medium" : "hover:bg-accent text-foreground/80")"
+                                            @onclick="() => _selectedRoute = idx">
+                                        @_routes[idx].Label
+                                    </button>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(_routeNote))
+                        {
+                            <span class="text-muted-foreground text-[10px] mt-1 leading-tight block">@_routeNote</span>
+                        }
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 14: Export to PNG *@
+    <ComponentDemo Title="Export to PNG" Code="@_exportCode">
+        <Stack Gap="3" Class="w-full">
+            <LazyRender Height="400px">
+                <Map @ref="_exportMapRef"
+                     Center="(51.505, -0.09)"
+                     Zoom="12"
+                     Height="400px">
+                    <ChildContent>
+                        <MapMarker Lat="51.507" Lon="-0.128" Title="London" Variant="Pin" Color="blue" />
+                        <MapMarker Lat="51.503" Lon="-0.119" Title="Tower Bridge" Variant="Pin" Color="red" />
+                        <MapMarker Lat="51.501" Lon="-0.142" Title="Buckingham Palace" Variant="Pin" Color="purple" />
+                    </ChildContent>
+                </Map>
+            </LazyRender>
+            <div class="flex items-center gap-3">
+                <Button OnClick="HandleExportClick" Variant="Button.ButtonVariant.Outline">
+                    <Blazicon Svg="Lucide.Download" Class="w-4 h-4 mr-1.5" />
+                    Export to PNG
+                </Button>
+                @if (_exportBusy)
+                {
+                    <span class="text-xs text-muted-foreground">Exporting…</span>
+                }
+                @if (_exportDataUrl is not null)
+                {
+                    <Button OnClick="@(() => _exportDataUrl = null)" Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm">
+                        <Blazicon Svg="Lucide.X" Class="w-3.5 h-3.5 mr-1" />
+                        Clear
+                    </Button>
+                }
+            </div>
+            @if (_exportDataUrl is { } url)
+            {
+                <div class="rounded-lg overflow-hidden border border-border">
+                    <img src="@url" alt="Exported map snapshot" class="w-full block" />
+                </div>
+            }
+        </Stack>
     </ComponentDemo>
 
 </Stack>
@@ -139,14 +447,23 @@
             </TableHeader>
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">Center</TableCell><TableCell Class="font-mono text-xs">(double Lat, double Lon)</TableCell><TableCell Class="font-mono text-xs">(51.0, 10.4)</TableCell><TableCell>Map center. Two-way bindable.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Zoom</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">5</TableCell><TableCell>Leaflet zoom level (0–18). Two-way bindable.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Zoom</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">5</TableCell><TableCell>MapLibre zoom level (0–22). Two-way bindable.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Height</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"400px"</TableCell><TableCell>CSS height applied to the container.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">TileLayer</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"OpenStreetMap"</TableCell><TableCell>Preset name (<code>OpenStreetMap</code>, <code>CartoLight</code>, <code>CartoDark</code>, <code>Satellite</code>, <code>Terrain</code>) or a raw <code>{z}/{x}/{y}</code> URL template.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">ZoomControl</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show Leaflet's +/− zoom buttons.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">TileLayer</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Auto"</TableCell><TableCell>Tile preset or style URL. <code>Auto</code> (default) picks <code>Positron</code> (light) or <code>DarkMatter</code> (dark) based on the host page theme and swaps automatically when the user toggles dark mode. Other presets: <code>Positron</code>, <code>DarkMatter</code>, <code>Voyager</code>, <code>CartoLight</code>, <code>CartoDark</code>, <code>OpenStreetMap</code>, <code>Satellite</code>, <code>Terrain</code>. Also accepts a raw MapLibre <code>style.json</code> URL.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ZoomControl</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show MapLibre's +/− zoom buttons.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Attribution</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show the tile-provider attribution control. Tile providers' terms typically require attribution to stay visible — leave on.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">ScrollWheelZoom</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Mirrors Leaflet's default. Set to <code>false</code> in dense scrollable layouts to avoid trapping page scroll.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ScrollWheelZoom</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Enable scroll-wheel zoom. Set to <code>false</code> in dense scrollable layouts to avoid trapping page scroll.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">OnClick</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;(double, double)&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with (lat, lon) when the user clicks the map.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Place <code>MapMarker</code> children here.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Cluster</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Enable MapLibre-native marker clustering. Markers merge into count circles when close together.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Geolocate</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Show a "My location" button (browser Geolocation API).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Fullscreen</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Show a fullscreen toggle button.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Scale</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Show a metric scale bar in the bottom-left corner.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Search</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Show a Nominatim-backed geocoder search bar in the top-left.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Layers</TableCell><TableCell Class="font-mono text-xs">string[]?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Preset names or <code>&#123; name, url &#125;</code> objects rendered as a chip-style layer switcher in the top-right.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Projection</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"mercator"</TableCell><TableCell>MapLibre projection. <code>"mercator"</code> for a standard flat web map or <code>"globe"</code> for a 3-D spherical view (blends back to mercator above zoom 4).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AutoFitBounds</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>When <code>true</code>, the map automatically fits its viewport to include all registered markers and shapes after the first render.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Place <code>MapMarker</code>, <code>MapPolyline</code>, <code>MapPolygon</code>, <code>MapCircle</code>, <code>MapArc</code>, <code>MapHeatmap</code>, and <code>MapPopup</code> children here.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Overlay</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Content rendered as an absolutely-positioned layer inside the map (z-index 10). Use absolute-position classes on the child to place chips, legends, or badges in any corner.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Extra CSS classes on the root container.</TableCell></TableRow>
             </TableBody>
         </Table>
@@ -170,16 +487,272 @@
                 <TableRow><TableCell Class="font-mono text-xs">IconUrl</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Bitmap icon URL (32×32 anchored bottom-center). When set, overrides <code>Variant</code> / <code>Color</code> / <code>Icon</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Variant</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Default"</TableCell><TableCell>Visual style of the auto-generated marker: <code>Default</code> (filled circle), <code>Outline</code>, <code>Pin</code> (classic teardrop), or <code>Dot</code> (minimal).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the marker fill. Friendly names (<code>red</code>, <code>green</code>, <code>yellow</code>, <code>blue</code>, <code>purple</code>, <code>pink</code>, <code>orange</code>, <code>teal</code>, <code>gray</code>, <code>slate</code>) or any CSS color. Null = theme primary.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Permanent text label rendered above the marker (always visible).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Text label rendered above the marker. Always visible by default; set <code>LabelHoverOnly</code> to show only on hover.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">LabelHoverOnly</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>When <code>true</code>, the <code>Label</code> is hidden until the marker is hovered. Useful on dense maps to reduce visual noise.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Icon</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Inline content inside the marker circle — a letter, number, or <code>&lt;Blazicon&gt;</code> SVG.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Popup</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Rich popup body. Falls back to <code>Title</code> when null. Styled as a shadcn card via <code>map.css</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">OnClick</TableCell><TableCell Class="font-mono text-xs">EventCallback</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when the marker icon is clicked.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Draggable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Allow the user to drag the marker to a new position.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">OnDragEnd</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;(double, double)&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires with the new <code>(lat, lon)</code> after the user finishes dragging. Only fires when <code>Draggable</code> is <code>true</code>.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-heatmap" Level="3" Class="mt-8 scroll-mt-20">MapHeatmap</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[260px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Points</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;(double Lat, double Lon, double Intensity)&gt;</TableCell><TableCell Class="font-mono text-xs">required</TableCell><TableCell>Heat point collection. <code>Intensity</code> should be in 0–1; use 1 for uniform weight.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Radius</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">20</TableCell><TableCell>Pixel radius of each point at full zoom. Scales with zoom automatically.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Opacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.8</TableCell><TableCell>Overall opacity of the heatmap layer (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ColorRamp</TableCell><TableCell Class="font-mono text-xs">object[]?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom color ramp as alternating <code>stop, cssColor</code> values (e.g. <code>new object[] &#123; 0, "transparent", 1, "red" &#125;</code>). Defaults to a blue→cyan→yellow→red ramp.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-polyline" Level="3" Class="mt-8 scroll-mt-20">MapPolyline</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Points</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;(double Lat, double Lon)&gt;</TableCell><TableCell Class="font-mono text-xs">required</TableCell><TableCell>Ordered list of coordinates the polyline visits.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stroke color. Friendly name or CSS color. Null = theme primary.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Weight</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">3</TableCell><TableCell>Stroke width in pixels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Opacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.9</TableCell><TableCell>Stroke opacity (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Dashed</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Convenience toggle to render a standard <code>"6 4"</code> dash pattern. Ignored when <code>DashArray</code> is set explicitly.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DashArray</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom SVG dash pattern (e.g. <code>"6 4"</code>). Null = solid.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HoverColor</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stroke color applied on hover. Null = no hover highlight.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HoverWeight</TableCell><TableCell Class="font-mono text-xs">double?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stroke width applied on hover. Null = same as <code>Weight</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Animate</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Animate the line drawing on first render (draws from start to end over ~1 s).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Tooltip</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Hover tooltip text.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PopupHtml</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML string rendered inside a click popup.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-polygon" Level="3" Class="mt-8 scroll-mt-20">MapPolygon</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Points</TableCell><TableCell Class="font-mono text-xs">IEnumerable&lt;(double Lat, double Lon)&gt;</TableCell><TableCell Class="font-mono text-xs">required</TableCell><TableCell>Ordered points forming the polygon ring. First and last are connected automatically.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Border stroke color.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FillColor</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Fill color. Null = same as <code>Color</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Weight</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">2</TableCell><TableCell>Border stroke width in pixels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Opacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.9</TableCell><TableCell>Border stroke opacity (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FillOpacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.2</TableCell><TableCell>Fill opacity (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Tooltip</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Hover tooltip text.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PopupHtml</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML string rendered inside a click popup.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-circle" Level="3" Class="mt-8 scroll-mt-20">MapCircle</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[120px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Center</TableCell><TableCell Class="font-mono text-xs">(double Lat, double Lon)</TableCell><TableCell Class="font-mono text-xs">(0, 0)</TableCell><TableCell>Circle center in decimal degrees.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">RadiusMeters</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">100</TableCell><TableCell>Radius in real-world meters. Pixel size scales with zoom.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Border stroke color.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FillColor</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Fill color. Null = same as <code>Color</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Weight</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">2</TableCell><TableCell>Border stroke width in pixels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Opacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.9</TableCell><TableCell>Border stroke opacity (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FillOpacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.2</TableCell><TableCell>Fill opacity (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Tooltip</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Hover tooltip text.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PopupHtml</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML string rendered inside a click popup.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-arc" Level="3" Class="mt-8 scroll-mt-20">MapArc</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">From</TableCell><TableCell Class="font-mono text-xs">(double Lat, double Lon)</TableCell><TableCell Class="font-mono text-xs">(0, 0)</TableCell><TableCell>Arc start point.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">To</TableCell><TableCell Class="font-mono text-xs">(double Lat, double Lon)</TableCell><TableCell Class="font-mono text-xs">(0, 0)</TableCell><TableCell>Arc end point.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Curvature</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.25</TableCell><TableCell>Height of the arc above the straight chord as a fraction of chord length. 0 = straight line, 1 = full-semicircle bulge.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stroke color. Friendly name or CSS color. Null = theme primary.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Weight</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">2.5</TableCell><TableCell>Stroke width in pixels.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Opacity</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0.9</TableCell><TableCell>Stroke opacity (0–1).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Dashed</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Arcs are dashed by default. Set to <code>false</code> for a solid line. Ignored when <code>DashArray</code> is set explicitly.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DashArray</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">"5 6"</TableCell><TableCell>Custom SVG dash pattern. Overrides <code>Dashed</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HoverColor</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stroke color applied on hover. Null = no hover highlight.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HoverWeight</TableCell><TableCell Class="font-mono text-xs">double?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stroke width applied on hover. Null = same as <code>Weight</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Animate</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Animate the arc drawing on first render (draws from start to end over ~1 s).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Tooltip</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Hover tooltip text.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PopupHtml</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML string rendered inside a click popup.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-popup" Level="3" Class="mt-8 scroll-mt-20">MapPopup</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Lat</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Latitude of the popup anchor point.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Lon</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell Class="font-mono text-xs">0</TableCell><TableCell>Longitude of the popup anchor point.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">IsOpen</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Whether the popup is visible. Two-way bindable via <code>IsOpenChanged</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CloseButton</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Show a close (×) button inside the popup.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CloseOnClick</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Close the popup when the user clicks the map background.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Html</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML string for the popup body. Overrides <code>ChildContent</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Rich popup body as a Blazor render fragment.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="map-legend" Level="3" Class="mt-8 scroll-mt-20">MapLegend / MapLegendItem</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Prop</TableHead>
+                    <TableHead Class="w-[160px]">Type</TableHead>
+                    <TableHead Class="w-[140px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">MapLegend.Title</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Optional heading shown above the legend rows.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MapLegend.Position</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"bottom-left"</TableCell><TableCell>Corner shorthand: <code>"top-left"</code>, <code>"top-right"</code>, <code>"bottom-left"</code>, <code>"bottom-right"</code>. Or pass Tailwind classes via <code>Class</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MapLegendItem.Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Dot fill color. Friendly names (<code>red</code>, <code>green</code>, <code>blue</code>, <code>teal</code>, etc.) or any CSS color.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MapLegendItem.Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Text label shown beside the colored dot.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
 </div>
 
 @code {
+    // Route Planning demo
+    private record RouteOption(string Label, List<(double Lat, double Lon)> Points);
+    private List<RouteOption> _routes = new();
+    private int _selectedRoute;
+    private bool _routesLoading = true;
+    private string? _routeNote;
+
+    // Hardcoded fallback routes Amsterdam → Rotterdam (used when OSRM CORS is blocked)
+    private static readonly List<(double Lat, double Lon)> _fallbackRoute1 =
+    [
+        (52.3676, 4.9041), (52.340, 4.870), (52.290, 4.820),
+        (52.230, 4.760), (52.170, 4.700), (52.100, 4.640),
+        (52.040, 4.560), (51.980, 4.510), (51.9244, 4.4777),
+    ];
+    private static readonly List<(double Lat, double Lon)> _fallbackRoute2 =
+    [
+        (52.3676, 4.9041), (52.350, 4.950), (52.300, 4.980),
+        (52.250, 4.940), (52.200, 4.880), (52.140, 4.820),
+        (52.070, 4.700), (52.000, 4.580), (51.9244, 4.4777),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoutesAsync();
+    }
+
+    private async Task LoadRoutesAsync()
+    {
+        // Amsterdam (52.3676, 4.9041) → Rotterdam (51.9244, 4.4777)
+        const string osrmUrl = "https://router.project-osrm.org/route/v1/driving/4.9041,52.3676;4.4777,51.9244?overview=full&geometries=geojson&alternatives=true";
+        try
+        {
+            var response = await Http.GetFromJsonAsync<OsrmResponse>(osrmUrl);
+            if (response?.Routes is { Length: > 0 })
+            {
+                _routes = response.Routes.Select((r, i) =>
+                {
+                    var mins = (int)Math.Round(r.Duration / 60.0);
+                    var km = Math.Round(r.Distance / 1000.0, 1);
+                    var label = i == 0
+                        ? $"{mins / 60}h {mins % 60}m · {km} km · Fastest"
+                        : $"{mins / 60}h {mins % 60}m · {km} km";
+                    var pts = r.Geometry.Coordinates
+                        .Select(c => (Lat: c[1], Lon: c[0]))
+                        .ToList();
+                    return new RouteOption(label, pts);
+                }).ToList();
+                _routeNote = "Live data from OSRM";
+            }
+            else
+            {
+                LoadFallbackRoutes();
+            }
+        }
+        catch
+        {
+            LoadFallbackRoutes();
+        }
+        _routesLoading = false;
+    }
+
+    private void LoadFallbackRoutes()
+    {
+        _routes =
+        [
+            new RouteOption("1h 10m · 80.2 km · Fastest", _fallbackRoute1),
+            new RouteOption("1h 16m · 80.9 km", _fallbackRoute2),
+        ];
+        _routeNote = "Hardcoded fallback (OSRM CORS blocked in browser)";
+    }
+
+    // Minimal OSRM response model
+    private record OsrmResponse(
+        [property: System.Text.Json.Serialization.JsonPropertyName("routes")]
+        OsrmRoute[] Routes
+    );
+    private record OsrmRoute(
+        [property: System.Text.Json.Serialization.JsonPropertyName("duration")] double Duration,
+        [property: System.Text.Json.Serialization.JsonPropertyName("distance")] double Distance,
+        [property: System.Text.Json.Serialization.JsonPropertyName("geometry")] OsrmGeometry Geometry
+    );
+    private record OsrmGeometry(
+        [property: System.Text.Json.Serialization.JsonPropertyName("coordinates")] double[][] Coordinates
+    );
+
     private (double Lat, double Lon) _center = (48.137, 11.575);
     private int _zoom = 6;
 
@@ -191,10 +764,187 @@
         _pickedPoint = point;
     }
 
+    // Draggable demo
+    private double _dragLat = 48.137;
+    private double _dragLon = 11.575;
+
+    private void HandleMarkerDragEnd((double Lat, double Lon) pos)
+    {
+        _dragLat = pos.Lat;
+        _dragLon = pos.Lon;
+    }
+
+    // Heatmap demo — major European cities with population-based intensity
+    private static readonly (double Lat, double Lon, double Intensity)[] _heatPoints =
+    [
+        (51.507, -0.128, 1.0),   // London
+        (48.853,  2.350, 0.95),  // Paris
+        (52.520, 13.405, 0.90),  // Berlin
+        (41.902, 12.496, 0.85),  // Rome
+        (40.416, -3.704, 0.80),  // Madrid
+        (48.209, 16.372, 0.75),  // Vienna
+        (52.379,  4.900, 0.75),  // Amsterdam
+        (50.850,  4.352, 0.70),  // Brussels
+        (59.913, 10.752, 0.65),  // Oslo
+        (59.331, 18.065, 0.65),  // Stockholm
+        (55.676, 12.568, 0.60),  // Copenhagen
+        (60.170, 24.945, 0.60),  // Helsinki
+        (47.376,  8.547, 0.60),  // Zurich
+        (53.551,  9.993, 0.70),  // Hamburg
+        (48.137, 11.575, 0.75),  // Munich
+        (50.937,  6.960, 0.72),  // Cologne
+        (53.339, -6.257, 0.55),  // Dublin
+        (45.464,  9.190, 0.80),  // Milan
+        (37.983, 23.727, 0.65),  // Athens
+        (50.075, 14.438, 0.60),  // Prague
+        (47.498, 19.040, 0.65),  // Budapest
+        (52.230, 21.012, 0.65),  // Warsaw
+        (44.817, 20.457, 0.55),  // Belgrade
+        (43.848, 18.356, 0.50),  // Sarajevo
+        (45.815, 15.981, 0.50),  // Zagreb
+        (46.056, 14.505, 0.45),  // Ljubljana
+        (48.148, 17.107, 0.55),  // Bratislava
+        (56.946, 24.106, 0.45),  // Riga
+        (59.437, 24.745, 0.45),  // Tallinn
+        (54.687, 25.279, 0.45),  // Vilnius
+    ];
+
+    // Polyline route — London → NYC via Atlantic waypoints
+    private static readonly (double Lat, double Lon)[] _londonNycRoute =
+    [
+        (51.507, -0.128),  // London
+        (53.0, -10.0),     // Irish coast
+        (55.0, -20.0),     // Mid-Atlantic
+        (52.0, -35.0),     // Halfway
+        (47.0, -52.0),     // Newfoundland area
+        (43.0, -65.0),     // Nova Scotia
+        (40.712, -74.006), // NYC
+    ];
+
+    // Central Park Loop (approximate)
+    private static readonly (double Lat, double Lon)[] _centralParkLoop =
+    [
+        (40.800, -73.958),
+        (40.797, -73.952),
+        (40.785, -73.949),
+        (40.768, -73.974),
+        (40.772, -73.981),
+        (40.785, -73.981),
+        (40.800, -73.958),
+    ];
+
+    // Service-area polygon — East London
+    private static readonly (double Lat, double Lon)[] _serviceAreaPolygon =
+    [
+        (51.530, -0.050),
+        (51.540, -0.020),
+        (51.528,  0.010),
+        (51.510,  0.020),
+        (51.495, -0.005),
+        (51.500, -0.060),
+        (51.530, -0.050),
+    ];
+
+    // Globe / arc city set
+    private static readonly (double Lat, double Lon, string Name)[] _globeCities =
+    [
+        (51.507,  -0.128, "London"),
+        (40.712,  -74.006, "New York"),
+        (35.689,  139.692, "Tokyo"),
+        (-33.868,  151.209, "Sydney"),
+        (-23.550,  -46.633, "São Paulo"),
+        (-33.925,   18.424, "Cape Town"),
+        (  1.352,  103.820, "Singapore"),
+        ( 19.076,   72.878, "Mumbai"),
+    ];
+
+    private static readonly ((double Lat, double Lon) From, (double Lat, double Lon) To)[] _globalArcs =
+    [
+        ((51.507, -0.128),  (40.712,  -74.006)),  // London ↔ NYC
+        ((40.712, -74.006), (35.689,  139.692)),  // NYC ↔ Tokyo
+        ((35.689, 139.692), (-33.868, 151.209)),  // Tokyo ↔ Sydney
+        ((-33.868, 151.209), (-23.550, -46.633)), // Sydney ↔ São Paulo
+        ((-23.550, -46.633), (-33.925,  18.424)), // São Paulo ↔ Cape Town
+        ((-33.925,  18.424), ( 1.352,  103.820)), // Cape Town ↔ Singapore
+        ((  1.352, 103.820), (51.507,   -0.128)), // Singapore ↔ London
+        (( 19.076,  72.878), (51.507,   -0.128)), // Mumbai ↔ London
+    ];
+
+    private static readonly ((double Lat, double Lon) From, (double Lat, double Lon) To)[] _airArcs =
+    [
+        ((51.507, -0.128),  (40.712,  -74.006)),  // London ↔ NYC
+        ((40.712, -74.006), (35.689,  139.692)),  // NYC ↔ Tokyo
+        ((35.689, 139.692), ( 1.352,  103.820)),  // Tokyo ↔ Singapore
+        ((51.507, -0.128),  (19.076,   72.878)),  // London ↔ Mumbai
+    ];
+
+    private static readonly ((double Lat, double Lon) From, (double Lat, double Lon) To)[] _seaArcs =
+    [
+        ((-33.868, 151.209), (-23.550, -46.633)), // Sydney ↔ São Paulo
+        ((-33.925,  18.424), ( 1.352,  103.820)), // Cape Town ↔ Singapore
+        ((-23.550, -46.633), (-33.925,  18.424)), // São Paulo ↔ Cape Town
+    ];
+
+    // Clustered markers — world cities
+    private static readonly (double Lat, double Lon, string Name)[] _worldCities =
+    [
+        (51.507, -0.128, "London"),       (48.853,  2.350, "Paris"),
+        (52.520, 13.405, "Berlin"),       (41.902, 12.496, "Rome"),
+        (40.416, -3.704, "Madrid"),       (48.209, 16.372, "Vienna"),
+        (52.379,  4.900, "Amsterdam"),    (50.850,  4.352, "Brussels"),
+        (59.913, 10.752, "Oslo"),         (59.331, 18.065, "Stockholm"),
+        (40.712, -74.006, "New York"),    (34.052,-118.244, "Los Angeles"),
+        (41.878, -87.629, "Chicago"),     (29.760, -95.370, "Houston"),
+        (37.774,-122.419, "San Francisco"),(43.653, -79.383, "Toronto"),
+        (19.432, -99.133, "Mexico City"), (-23.550, -46.633, "São Paulo"),
+        (-34.603, -58.381, "Buenos Aires"),(4.711, -74.072, "Bogotá"),
+        (35.689, 139.692, "Tokyo"),       (31.230, 121.474, "Shanghai"),
+        (39.904, 116.407, "Beijing"),     (22.302, 114.177, "Hong Kong"),
+        (28.613,  77.209, "New Delhi"),   (19.076,  72.878, "Mumbai"),
+        ( 1.352, 103.820, "Singapore"),   (-33.868, 151.209, "Sydney"),
+        (-36.840, 174.740, "Auckland"),   (-33.925,  18.424, "Cape Town"),
+        ( 9.006,  38.763, "Addis Ababa"), (30.033,  31.233, "Cairo"),
+        (55.751,  37.617, "Moscow"),      (41.016,  28.975, "Istanbul"),
+    ];
+
+    // Auto-fit bounds — widely spread markers across continents
+    private static readonly (double Lat, double Lon, string Name)[] _spreadMarkers =
+    [
+        (64.135, -21.895, "Reykjavík"),
+        (-54.800, -68.303, "Ushuaia"),
+        (22.302, 114.177, "Hong Kong"),
+        (-33.925,  18.424, "Cape Town"),
+        (71.170,  25.784, "Nordkapp"),
+    ];
+
+    // Export demo
+    private Map? _exportMapRef;
+    private bool _exportBusy;
+    private string? _exportDataUrl;
+
+    private async Task HandleExportClick()
+    {
+        if (_exportMapRef is null) return;
+        _exportBusy = true;
+        StateHasChanged();
+        _exportDataUrl = await _exportMapRef.ExportPngAsync();
+        _exportBusy = false;
+    }
+
     private const string _basicCode = """
+@* TileLayer="Auto" (the default) picks Positron or DarkMatter based on the site
+   theme. Toggle the theme switch — tiles and cluster colors update automatically. *@
 <Map @bind-Center="_center"
      @bind-Zoom="_zoom"
-     Height="400px" />
+     Height="400px"
+     TileLayer="Auto">
+    <Overlay>
+        @* top-left: safe zone — no MapLibre default controls there *@
+        <MapInfoChip Position="top-left">
+            @_center.Lat.ToString("F3"), @_center.Lon.ToString("F3") — zoom @_zoom
+        </MapInfoChip>
+    </Overlay>
+</Map>
 
 @code {
     private (double Lat, double Lon) _center = (48.137, 11.575);
@@ -202,62 +952,48 @@
 }
 """;
 
-    private const string _markersCode = """
-<Map Center="(50.5, 10.5)" Zoom="5" Height="450px">
-    <MapMarker Lat="48.137" Lon="11.575" Title="Munich" />
-    <MapMarker Lat="52.520" Lon="13.405" Title="Berlin" />
-    <MapMarker Lat="53.551" Lon="9.993" Title="Hamburg" />
-    <MapMarker Lat="50.937" Lon="6.960" Title="Cologne" />
-</Map>
-""";
-
-    private const string _darkTileCode = """
-<Map Center="(48.137, 11.575)"
-     Zoom="11"
-     TileLayer="CartoDark"
-     Height="400px">
-    <MapMarker Lat="48.137" Lon="11.575" Title="Munich Hauptbahnhof" />
-</Map>
-""";
-
     private const string _variantsCode = """
-<Map Center="(50.5, 10.5)" Zoom="5" Height="450px" TileLayer="CartoLight">
-    <MapMarker Lat="48.137" Lon="11.575" Title="Default (primary)" />
-    <MapMarker Lat="52.520" Lon="13.405" Title="Outline" Variant="Outline" />
-    <MapMarker Lat="53.551" Lon="9.993"  Title="Pin" Variant="Pin" Color="red" />
-    <MapMarker Lat="50.937" Lon="6.960"  Title="Dot" Variant="Dot" Color="green" />
-    <MapMarker Lat="48.783" Lon="9.183"  Title="Numbered" Label="1">
-        <Icon><span>A</span></Icon>
-    </MapMarker>
-    <MapMarker Lat="51.339" Lon="12.373" Title="Yellow warning" Color="yellow" />
+<Map Center="(50.5, 10.5)" Zoom="5" Height="450px">
+    <ChildContent>
+        @* Label always visible on Munich; LabelHoverOnly on the rest *@
+        <MapMarker Lat="48.137" Lon="11.575" Title="Default (primary)" Label="Munich" />
+        <MapMarker Lat="52.520" Lon="13.405" Title="Outline" Variant="Outline"
+                   Label="Berlin" LabelHoverOnly="true" />
+        <MapMarker Lat="53.551" Lon="9.993"  Title="Pin" Variant="Pin" Color="red"
+                   Label="Hamburg" LabelHoverOnly="true" />
+        <MapMarker Lat="50.937" Lon="6.960"  Title="Dot" Variant="Dot" Color="green"
+                   Label="Cologne" LabelHoverOnly="true" />
+        <MapMarker Lat="48.783" Lon="9.183"  Title="Numbered (custom icon)" Label="Stuttgart">
+            <Icon><span>A</span></Icon>
+        </MapMarker>
+        <MapMarker Lat="51.339" Lon="12.373" Title="Yellow warning" Color="yellow" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">
+            Permanent label on Munich · hover others for label
+        </MapInfoChip>
+    </Overlay>
 </Map>
 """;
 
     private const string _richPopupCode = """
 <Map Center="(48.137, 11.575)" Zoom="11" Height="420px" TileLayer="CartoLight">
-    <MapMarker Lat="48.137" Lon="11.575" Title="Marienplatz" Color="red">
-        <Popup>
-            <div class="space-y-2 min-w-[220px]">
-                <div class="font-semibold text-sm">Marienplatz</div>
-                <p class="text-xs text-muted-foreground m-0">
-                    Munich's central square, home of the Neues Rathaus.
-                </p>
-                <div class="flex gap-2 pt-1">
-                    <Badge Variant="Badge.BadgeVariant.Secondary">Historic</Badge>
-                    <Badge Variant="Badge.BadgeVariant.Outline">Free</Badge>
+    <ChildContent>
+        <MapMarker Lat="48.137" Lon="11.575" Title="Marienplatz" Color="red">
+            <Popup>
+                <div class="space-y-2 min-w-[220px]">
+                    <div class="font-semibold text-sm">Marienplatz</div>
+                    <p class="text-xs text-muted-foreground m-0">
+                        Munich's central square, home of the Neues Rathaus.
+                    </p>
+                    <div class="flex gap-2 pt-1">
+                        <Badge Variant="Badge.BadgeVariant.Secondary">Historic</Badge>
+                        <Badge Variant="Badge.BadgeVariant.Outline">Free</Badge>
+                    </div>
                 </div>
-            </div>
-        </Popup>
-    </MapMarker>
-</Map>
-""";
-
-    private const string _satelliteCode = """
-<Map Center="(48.858, 2.294)"
-     Zoom="16"
-     TileLayer="Satellite"
-     Height="400px">
-    <MapMarker Lat="48.858" Lon="2.294" Title="Eiffel Tower" Variant="Pin" />
+            </Popup>
+        </MapMarker>
+    </ChildContent>
 </Map>
 """;
 
@@ -266,10 +1002,18 @@
      Zoom="4"
      Height="400px"
      OnClick="HandleMapClick">
-    @if (_pickedPoint is { } p)
-    {
-        <MapMarker Lat="p.Lat" Lon="p.Lon" Title="@($"Picked: {p.Lat:F3}, {p.Lon:F3}")" />
-    }
+    <ChildContent>
+        @if (_pickedPoint is { } p)
+        {
+            <MapMarker Lat="p.Lat" Lon="p.Lon" Title="@($"Picked: {p.Lat:F3}, {p.Lon:F3}")" />
+        }
+    </ChildContent>
+    <Overlay>
+        @* bottom-left: safe zone — attribution is bottom-right *@
+        <MapInfoChip Position="bottom-left">
+            @(_pickedPoint is { } pp ? $"{pp.Lat:F4}, {pp.Lon:F4}" : "Click to drop a marker")
+        </MapInfoChip>
+    </Overlay>
 </Map>
 
 @code {
@@ -277,6 +1021,308 @@
     private (double Lat, double Lon)? _pickedPoint;
 
     private void HandleMapClick((double Lat, double Lon) point) => _pickedPoint = point;
+}
+""";
+
+    private const string _draggableCode = """
+<Map Center="(48.137, 11.575)" Zoom="9" Height="400px">
+    <ChildContent>
+        <MapMarker Lat="@_dragLat"
+                   Lon="@_dragLon"
+                   Title="Drag me"
+                   Draggable="true"
+                   OnDragEnd="HandleMarkerDragEnd" />
+    </ChildContent>
+    <Overlay>
+        @* bottom-left: safe — attribution (bottom-right) won't overlap *@
+        <MapInfoChip Position="bottom-left">
+            @_dragLat.ToString("F4"), @_dragLon.ToString("F4")
+        </MapInfoChip>
+    </Overlay>
+</Map>
+
+@code {
+    private double _dragLat = 48.137;
+    private double _dragLon = 11.575;
+
+    private void HandleMarkerDragEnd((double Lat, double Lon) pos)
+    {
+        _dragLat = pos.Lat;
+        _dragLon = pos.Lon;
+    }
+}
+""";
+
+    private const string _heatmapCode = """
+<Map Center="(51.5, 10.0)" Zoom="4" Height="450px" TileLayer="DarkMatter">
+    <ChildContent>
+        <MapHeatmap Points="_heatPoints" Radius="25" Opacity="0.85" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">Population density — Europe</MapInfoChip>
+    </Overlay>
+</Map>
+
+@code {
+    // (Lat, Lon, Intensity) — intensity in 0–1
+    private static readonly (double Lat, double Lon, double Intensity)[] _heatPoints =
+    [
+        (51.507, -0.128, 1.0),  // London
+        (48.853,  2.350, 0.95), // Paris
+        (52.520, 13.405, 0.90), // Berlin
+        // ... more cities
+    ];
+}
+""";
+
+    private const string _polylineCode = """
+@* Activity loop — solid animated polyline *@
+<Map Center="(40.785, -73.968)" Zoom="14" Height="430px" TileLayer="Voyager">
+    <ChildContent>
+        <MapPolyline Points="_centralParkLoop" Color="#22c55e" Weight="4" Animate="true"
+                     Tooltip="Central Park Loop" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">
+            <Blazicon Svg="Lucide.Bike" Class="w-3.5 h-3.5" />
+            6.2 mi · 32 min · 285 cal
+        </MapInfoChip>
+    </Overlay>
+</Map>
+
+@* Atlantic route — solid + dashed overlay *@
+<Map Center="(47.5, -30.0)" Zoom="3" Height="420px">
+    <ChildContent>
+        <MapMarker Lat="51.507" Lon="-0.128" Title="London" Variant="Pin" Color="blue" />
+        <MapMarker Lat="40.712" Lon="-74.006" Title="New York City" Variant="Pin" Color="blue" />
+        <MapPolyline Points="_londonNycRoute" Color="var(--color-primary)"
+                     Weight="3" Animate="true" Tooltip="London → NYC" />
+        <MapPolyline Points="_londonNycRoute" Color="#3b82f6"
+                     Weight="2" Dashed="true" Opacity="0.5" Tooltip="Dashed overlay" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">Solid + dashed — London → NYC</MapInfoChip>
+    </Overlay>
+</Map>
+""";
+
+    private const string _polygonCode = """
+@* Polygon + circle on the same map *@
+<Map Center="(51.5, -0.09)" Zoom="12" Height="420px" TileLayer="CartoLight">
+    <ChildContent>
+        <MapPolygon Points="_serviceAreaPolygon"
+                    Color="#6366f1" FillColor="#6366f1" FillOpacity="0.15"
+                    Weight="2" Tooltip="Delivery service area" />
+        <MapCircle Center="(51.505, -0.09)"
+                   RadiusMeters="800"
+                   Color="#f97316" FillColor="#f97316" FillOpacity="0.12"
+                   Weight="2" Tooltip="800 m depot radius" />
+        <MapMarker Lat="51.505" Lon="-0.09" Title="Depot" Variant="Pin" Color="purple" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">Delivery zone + depot radius — East London</MapInfoChip>
+    </Overlay>
+</Map>
+""";
+
+    private const string _arcsGlobeCode = """
+<Map Center="(20.0, 10.0)" Zoom="1" Height="500px"
+     TileLayer="Positron" Projection="globe">
+    <ChildContent>
+        @foreach (var (lat, lon, name) in _globeCities)
+        {
+            <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Dot" Color="blue" />
+        }
+        @foreach (var (from, to) in _globalArcs)
+        {
+            <MapArc From="from" To="to"
+                    Color="#3b82f6" Dashed="true"
+                    Weight="2" Opacity="0.7" Animate="true" />
+        }
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">
+            <Blazicon Svg="Lucide.Globe" Class="w-3.5 h-3.5" />
+            Globe projection — great-circle arcs
+        </MapInfoChip>
+    </Overlay>
+</Map>
+""";
+
+    private const string _interactiveArcsCode = """
+<Map Center="(30.0, 0.0)" Zoom="2" Height="500px" TileLayer="CartoDark">
+    <ChildContent>
+        @foreach (var (from, to) in _airArcs)
+        {
+            <MapArc From="from" To="to"
+                    Color="#3b82f6" HoverColor="#93c5fd" HoverWeight="4"
+                    Weight="2" Opacity="0.8" Dashed="false"
+                    Tooltip="Air route" />
+        }
+        @foreach (var (from, to) in _seaArcs)
+        {
+            <MapArc From="from" To="to"
+                    Color="#14b8a6" HoverColor="#5eead4" HoverWeight="4"
+                    Weight="2" Opacity="0.7" Dashed="true"
+                    Tooltip="Sea route" />
+        }
+    </ChildContent>
+    <Overlay>
+        @* Legend bottom-left (safe), chip top-left (safe) *@
+        <MapLegend Title="Routes" Position="bottom-left">
+            <MapLegendItem Color="blue" Label="Air" />
+            <MapLegendItem Color="teal" Label="Sea" />
+        </MapLegend>
+        <MapInfoChip Position="top-left">Hover arcs to highlight</MapInfoChip>
+    </Overlay>
+</Map>
+""";
+
+    private const string _clusterCode = """
+<Map Center="(20.0, 10.0)" Zoom="2" Height="480px" Cluster="true">
+    <ChildContent>
+        @foreach (var (lat, lon, name) in _worldCities)
+        {
+            <MapMarker Lat="lat" Lon="lon" Title="@name" />
+        }
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">
+            @_worldCities.Length markers — <code>Cluster="true"</code>
+        </MapInfoChip>
+    </Overlay>
+</Map>
+""";
+
+    private const string _autoFitCode = """
+<Map Center="(20.0, 0.0)" Zoom="2" Height="460px" AutoFitBounds="true">
+    <ChildContent>
+        @foreach (var (lat, lon, name) in _spreadMarkers)
+        {
+            <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Pin" />
+        }
+    </ChildContent>
+    <Overlay>
+        @* top-left: safe zone *@
+        <MapInfoChip Position="top-left">
+            <code>AutoFitBounds="true"</code> — auto-zoom to all markers
+        </MapInfoChip>
+    </Overlay>
+</Map>
+
+@code {
+    private static readonly (double Lat, double Lon, string Name)[] _spreadMarkers =
+    [
+        (64.135, -21.895, "Reykjavík"),
+        (-54.800, -68.303, "Ushuaia"),
+        (22.302, 114.177, "Hong Kong"),
+        (-33.925,  18.424, "Cape Town"),
+        (71.170,  25.784, "Nordkapp"),
+    ];
+}
+""";
+
+    private const string _routePlanningCode = """
+@inject HttpClient Http
+
+<Map Center="(52.15, 4.69)" Zoom="8" Height="480px" TileLayer="CartoLight">
+    <ChildContent>
+        @* Inactive routes first (gray, underneath) *@
+        @for (int i = 0; i < _routes.Count; i++)
+        {
+            int idx = i;
+            if (idx != _selectedRoute)
+            {
+                <MapPolyline Points="_routes[idx].Points"
+                             Color="#94a3b8" Weight="4" Opacity="0.6"
+                             Tooltip="@_routes[idx].Label" />
+            }
+        }
+        @* Active route on top (blue) *@
+        @if (_routes.Count > 0)
+        {
+            <MapPolyline Points="_routes[_selectedRoute].Points"
+                         Color="#3b82f6" Weight="5" Opacity="0.95"
+                         Tooltip="@_routes[_selectedRoute].Label" />
+        }
+        <MapMarker Lat="52.3676" Lon="4.9041" Variant="Pin" Color="green" Label="Amsterdam" />
+        <MapMarker Lat="51.9244" Lon="4.4777" Variant="Pin" Color="red"   Label="Rotterdam" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left" Class="flex-col !items-start gap-0.5 max-w-[210px] py-1.5 px-2.5">
+            <span class="font-semibold text-xs mb-1">Route options</span>
+            @foreach (var (route, idx) in _routes.Select((r, i) => (r, i)))
+            {
+                bool active = idx == _selectedRoute;
+                <button @onclick="() => _selectedRoute = idx"
+                        class="w-full text-left rounded px-1.5 py-0.5 text-xs
+                               @(active ? "bg-primary text-primary-foreground" : "hover:bg-accent")">
+                    @route.Label
+                </button>
+            }
+        </MapInfoChip>
+    </Overlay>
+</Map>
+
+@code {
+    private record RouteOption(string Label, List<(double Lat, double Lon)> Points);
+    private List<RouteOption> _routes = new();
+    private int _selectedRoute;
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string osrmUrl =
+            "https://router.project-osrm.org/route/v1/driving/" +
+            "4.9041,52.3676;4.4777,51.9244" +
+            "?overview=full&geometries=geojson&alternatives=true";
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<OsrmResponse>(osrmUrl);
+            _routes = (resp?.Routes ?? []).Select((r, i) =>
+            {
+                var mins = (int)Math.Round(r.Duration / 60.0);
+                var km   = Math.Round(r.Distance / 1000.0, 1);
+                var label = i == 0
+                    ? $"{mins / 60}h {mins % 60}m · {km} km · Fastest"
+                    : $"{mins / 60}h {mins % 60}m · {km} km";
+                var pts = r.Geometry.Coordinates
+                    .Select(c => (Lat: c[1], Lon: c[0])).ToList();
+                return new RouteOption(label, pts);
+            }).ToList();
+        }
+        catch { /* CORS blocked — use hardcoded fallback */ }
+    }
+}
+""";
+
+    private const string _exportCode = """
+<Map @ref="_mapRef" Center="(51.505, -0.09)" Zoom="12" Height="400px">
+    <ChildContent>
+        <MapMarker Lat="51.507" Lon="-0.128" Title="London" Variant="Pin" Color="blue" />
+        <MapMarker Lat="51.503" Lon="-0.119" Title="Tower Bridge" Variant="Pin" Color="red" />
+        <MapMarker Lat="51.501" Lon="-0.142" Title="Buckingham Palace" Variant="Pin" Color="purple" />
+    </ChildContent>
+</Map>
+<div class="mt-3">
+    <Button OnClick="HandleExportClick" Variant="Button.ButtonVariant.Outline">
+        <Blazicon Svg="Lucide.Download" Class="w-4 h-4 mr-1.5" />
+        Export to PNG
+    </Button>
+</div>
+@if (_exportDataUrl is { } url)
+{
+    <img src="@url" alt="Exported map" class="mt-3 rounded-lg border border-border w-full" />
+}
+
+@code {
+    private Map? _mapRef;
+    private string? _exportDataUrl;
+
+    private async Task HandleExportClick()
+    {
+        if (_mapRef is not null)
+            _exportDataUrl = await _mapRef.ExportPngAsync();
+    }
 }
 """;
 }

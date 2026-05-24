@@ -1,0 +1,308 @@
+@namespace Lumeo.Docs.Pages.Components
+@page "/components/map-heatmap"
+
+<PageTitle>MapHeatmap — Lumeo</PageTitle>
+
+<PageHeader Title="MapHeatmap"
+            Description="Density visualisation layer for the Map component. Renders a smooth colour-gradient heatmap from a collection of weighted lat/lon points using MapLibre GL's native heatmap layer." />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Satellite package.</strong> <code>MapHeatmap</code> lives in
+        <code>Lumeo.Maps</code> — install it alongside the core <code>Lumeo</code>
+        package. Place it inside a <code>&lt;Map&gt;</code> <code>ChildContent</code> slot.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Showing population or user-location density across a region</li>
+        <li>Visualising server-request origin hot spots on a world map</li>
+        <li>Displaying weather data (precipitation, temperature) as a continuous gradient</li>
+        <li>Highlighting event or crime concentration in a city dashboard</li>
+        <li>Any scenario where individual markers would be too dense to read at low zoom</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    @* Demo 1 — European population density heatmap *@
+    <ComponentDemo Title="Population density — Europe" Code="@_basicCode">
+        <LazyRender Height="450px">
+            <Map Center="(51.5, 10.0)" Zoom="4" Height="450px" TileLayer="DarkMatter">
+                <ChildContent>
+                    <MapHeatmap Points="_heatPoints" Radius="25" Opacity="0.85" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        Population density — Europe
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 2 — Tight vs. broad radius comparison *@
+    <ComponentDemo Title="Radius comparison — tight (10 px) vs. broad (40 px)" Code="@_radiusCode">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <p class="text-xs text-muted-foreground mb-2 font-medium">Radius = 10 px — tight clusters</p>
+                <LazyRender Height="320px">
+                    <Map Center="(48.137, 11.575)" Zoom="6" Height="320px" TileLayer="DarkMatter">
+                        <ChildContent>
+                            <MapHeatmap Points="_munichPoints" Radius="10" Opacity="0.9" />
+                        </ChildContent>
+                    </Map>
+                </LazyRender>
+            </div>
+            <div>
+                <p class="text-xs text-muted-foreground mb-2 font-medium">Radius = 40 px — broad heat blobs</p>
+                <LazyRender Height="320px">
+                    <Map Center="(48.137, 11.575)" Zoom="6" Height="320px" TileLayer="DarkMatter">
+                        <ChildContent>
+                            <MapHeatmap Points="_munichPoints" Radius="40" Opacity="0.9" />
+                        </ChildContent>
+                    </Map>
+                </LazyRender>
+            </div>
+        </div>
+    </ComponentDemo>
+
+    @* Demo 3 — Custom color ramp *@
+    <ComponentDemo Title="Custom color ramp — red / yellow / white" Code="@_colorRampCode">
+        <LazyRender Height="430px">
+            <Map Center="(51.5, 10.0)" Zoom="4" Height="430px" TileLayer="CartoDark">
+                <ChildContent>
+                    <MapHeatmap Points="_heatPoints"
+                                Radius="30"
+                                Opacity="0.75"
+                                ColorRamp="_hotRamp" />
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        Custom ramp: transparent → red → yellow → white
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+    @* Demo 4 — Heatmap + cluster markers layered *@
+    <ComponentDemo Title="Heatmap + clustered markers" Code="@_clusterCode">
+        <LazyRender Height="460px">
+            <Map Center="(51.5, 10.0)" Zoom="4" Height="460px" Cluster="true">
+                <ChildContent>
+                    <MapHeatmap Points="_heatPoints" Radius="22" Opacity="0.65" />
+                    @foreach (var (lat, lon, name, _) in _cityList)
+                    {
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Dot" Color="sky" />
+                    }
+                </ChildContent>
+                <Overlay>
+                    <MapInfoChip Position="top-left">
+                        Heatmap underneath · markers cluster on zoom-in
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="map-heatmap" Level="3" Class="mt-8 scroll-mt-20">MapHeatmap</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[180px]">Prop</TableHead>
+                    <TableHead Class="w-[280px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Points</TableCell>
+                    <TableCell Class="font-mono text-xs">IEnumerable&lt;(double Lat, double Lon, double Intensity)&gt;</TableCell>
+                    <TableCell Class="font-mono text-xs">required</TableCell>
+                    <TableCell>Collection of heat points. <code>Intensity</code> should be in the range 0–1; pass 1 for uniform weight. Use a helper or LINQ to project from your data model.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Radius</TableCell>
+                    <TableCell Class="font-mono text-xs">int</TableCell>
+                    <TableCell Class="font-mono text-xs">20</TableCell>
+                    <TableCell>Pixel radius of each point at full zoom. MapLibre scales this automatically as the user zooms. Smaller values create sharper, more localised hot spots; larger values produce broad blobs.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Opacity</TableCell>
+                    <TableCell Class="font-mono text-xs">double</TableCell>
+                    <TableCell Class="font-mono text-xs">0.8</TableCell>
+                    <TableCell>Overall opacity of the heatmap layer (0–1). Lower values let the base tile show through more clearly.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">ColorRamp</TableCell>
+                    <TableCell Class="font-mono text-xs">object[]?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Custom color ramp as alternating <code>stop, cssColor</code> values — e.g. <code>new object[] &#123; 0, "transparent", 0.5, "blue", 1, "red" &#125;</code>. When null, the default blue → cyan → yellow → orange → red ramp is used.</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+@code {
+    // European city heat data (lat, lon, intensity)
+    private static readonly (double Lat, double Lon, double Intensity)[] _heatPoints =
+    [
+        (51.507, -0.128, 1.0),   // London
+        (48.853,  2.350, 0.95),  // Paris
+        (52.520, 13.405, 0.90),  // Berlin
+        (41.902, 12.496, 0.85),  // Rome
+        (40.416, -3.704, 0.80),  // Madrid
+        (48.209, 16.372, 0.75),  // Vienna
+        (52.379,  4.900, 0.75),  // Amsterdam
+        (50.850,  4.352, 0.70),  // Brussels
+        (59.913, 10.752, 0.65),  // Oslo
+        (59.331, 18.065, 0.65),  // Stockholm
+        (55.676, 12.568, 0.60),  // Copenhagen
+        (60.170, 24.945, 0.60),  // Helsinki
+        (47.376,  8.547, 0.60),  // Zurich
+        (53.551,  9.993, 0.70),  // Hamburg
+        (48.137, 11.575, 0.75),  // Munich
+        (50.937,  6.960, 0.72),  // Cologne
+        (53.339, -6.257, 0.55),  // Dublin
+        (45.464,  9.190, 0.80),  // Milan
+        (37.983, 23.727, 0.65),  // Athens
+        (50.075, 14.438, 0.60),  // Prague
+        (47.498, 19.040, 0.65),  // Budapest
+        (52.230, 21.012, 0.65),  // Warsaw
+        (44.817, 20.457, 0.55),  // Belgrade
+        (48.148, 17.107, 0.55),  // Bratislava
+        (56.946, 24.106, 0.45),  // Riga
+        (59.437, 24.745, 0.45),  // Tallinn
+        (54.687, 25.279, 0.45),  // Vilnius
+    ];
+
+    // Munich-region scatter for radius demo
+    private static readonly (double Lat, double Lon, double Intensity)[] _munichPoints =
+    [
+        (48.137, 11.575, 1.0),
+        (48.209, 11.620, 0.8),  (48.080, 11.510, 0.7),
+        (48.160, 11.490, 0.75), (48.100, 11.650, 0.6),
+        (48.190, 11.550, 0.85), (48.050, 11.580, 0.5),
+        (47.997, 11.402, 0.9),  // Starnberg
+        (48.370, 11.745, 0.8),  // Erding
+        (48.250, 11.330, 0.6),  // Dachau
+        (47.808, 11.077, 0.5),  // Weilheim
+        (48.515, 11.890, 0.55), // Landshut
+        (48.026, 12.145, 0.6),  // Rosenheim
+    ];
+
+    // City list for the clustered overlay demo
+    private static readonly (double Lat, double Lon, string Name, double Intensity)[] _cityList =
+    [
+        (51.507, -0.128, "London", 1.0),   (48.853,  2.350, "Paris", 0.95),
+        (52.520, 13.405, "Berlin", 0.90),  (41.902, 12.496, "Rome", 0.85),
+        (40.416, -3.704, "Madrid", 0.80),  (48.209, 16.372, "Vienna", 0.75),
+        (52.379,  4.900, "Amsterdam", 0.75),(50.850,  4.352, "Brussels", 0.70),
+        (59.913, 10.752, "Oslo", 0.65),    (59.331, 18.065, "Stockholm", 0.65),
+        (55.676, 12.568, "Copenhagen", 0.60),(47.376, 8.547, "Zurich", 0.60),
+        (53.551,  9.993, "Hamburg", 0.70), (48.137, 11.575, "Munich", 0.75),
+        (45.464,  9.190, "Milan", 0.80),   (37.983, 23.727, "Athens", 0.65),
+        (50.075, 14.438, "Prague", 0.60),  (47.498, 19.040, "Budapest", 0.65),
+        (52.230, 21.012, "Warsaw", 0.65),  (53.339, -6.257, "Dublin", 0.55),
+    ];
+
+    // Custom hot color ramp: transparent → dark-red → red → yellow → white
+    private static readonly object[] _hotRamp =
+    [
+        0,   "transparent",
+        0.2, "#7f0000",
+        0.5, "#ef4444",
+        0.8, "#fde047",
+        1,   "#ffffff",
+    ];
+
+    private const string _basicCode = """
+<Map Center="(51.5, 10.0)" Zoom="4" Height="450px" TileLayer="DarkMatter">
+    <ChildContent>
+        <MapHeatmap Points="_heatPoints" Radius="25" Opacity="0.85" />
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">Population density — Europe</MapInfoChip>
+    </Overlay>
+</Map>
+
+@code {
+    // (Lat, Lon, Intensity) — intensity in 0–1; 1 = maximum weight
+    private static readonly (double Lat, double Lon, double Intensity)[] _heatPoints =
+    [
+        (51.507, -0.128, 1.0),  // London
+        (48.853,  2.350, 0.95), // Paris
+        (52.520, 13.405, 0.90), // Berlin
+        // ... more cities
+    ];
+}
+""";
+
+    private const string _radiusCode = """
+@* Tight radius (10 px) *@
+<Map Center="(48.137, 11.575)" Zoom="6" Height="320px" TileLayer="DarkMatter">
+    <ChildContent>
+        <MapHeatmap Points="_munichPoints" Radius="10" Opacity="0.9" />
+    </ChildContent>
+</Map>
+
+@* Broad radius (40 px) *@
+<Map Center="(48.137, 11.575)" Zoom="6" Height="320px" TileLayer="DarkMatter">
+    <ChildContent>
+        <MapHeatmap Points="_munichPoints" Radius="40" Opacity="0.9" />
+    </ChildContent>
+</Map>
+""";
+
+    private const string _colorRampCode = """
+@* ColorRamp — alternating stop (0–1) and CSS color values *@
+<Map Center="(51.5, 10.0)" Zoom="4" Height="430px" TileLayer="CartoDark">
+    <ChildContent>
+        <MapHeatmap Points="_heatPoints"
+                    Radius="30"
+                    Opacity="0.75"
+                    ColorRamp="_hotRamp" />
+    </ChildContent>
+</Map>
+
+@code {
+    private static readonly object[] _hotRamp =
+    [
+        0,   "transparent",
+        0.2, "#7f0000",
+        0.5, "#ef4444",
+        0.8, "#fde047",
+        1,   "#ffffff",
+    ];
+}
+""";
+
+    private const string _clusterCode = """
+@* Heatmap beneath cluster markers on the same Map *@
+<Map Center="(51.5, 10.0)" Zoom="4" Height="460px" Cluster="true">
+    <ChildContent>
+        <MapHeatmap Points="_heatPoints" Radius="22" Opacity="0.65" />
+        @foreach (var (lat, lon, name, _) in _cityList)
+        {
+            <MapMarker Lat="lat" Lon="lon" Title="@name" Variant="Dot" Color="sky" />
+        }
+    </ChildContent>
+    <Overlay>
+        <MapInfoChip Position="top-left">
+            Heatmap underneath · markers cluster on zoom-in
+        </MapInfoChip>
+    </Overlay>
+</Map>
+""";
+}

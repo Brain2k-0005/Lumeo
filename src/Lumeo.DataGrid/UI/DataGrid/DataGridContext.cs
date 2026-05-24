@@ -120,5 +120,17 @@ public record DataGridContext<TItem>(
     /// <summary>Invoked by a body cell on keydown. Args: (rowIndex, colIndex, KeyboardEventArgs).</summary>
     Func<int, int, KeyboardEventArgs, Task> OnCellKeyDown,
     /// <summary>Invoked by a header cell on keydown. Args: (colIndex, KeyboardEventArgs).</summary>
-    Func<int, KeyboardEventArgs, Task> OnHeaderKeyDown
+    Func<int, KeyboardEventArgs, Task> OnHeaderKeyDown,
+
+    // --- Appearance flags (needed by sub-components for conditional styling) ---
+    /// <summary>True when the grid has <c>Striped="true"</c>. Used by pinned cells to
+    /// apply the correct alternating background instead of a flat <c>bg-card</c>.</summary>
+    bool Striped,
+    /// <summary>True when at least one column is pinned to the left. Used by leading
+    /// non-data cells (selection checkbox, drag handle) to make them sticky too so
+    /// they don't scroll behind pinned data columns.</summary>
+    bool HasPinnedLeft,
+    /// <summary>True when the grid has <c>Hoverable="true"</c>. Used by pinned cells
+    /// to apply a group-hover tint that matches the row hover highlight.</summary>
+    bool Hoverable
 );

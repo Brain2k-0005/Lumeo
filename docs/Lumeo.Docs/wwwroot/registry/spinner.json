@@ -31,8 +31,8 @@
     "parameters": [
       {
         "name": "Size",
-        "type": "SpinnerSize",
-        "default": "SpinnerSize.Default",
+        "type": "Lumeo.Size",
+        "default": "Lumeo.Size.Md",
         "description": null,
         "isCascading": false,
         "captureUnmatched": false
@@ -81,15 +81,6 @@
     "events": [],
     "enums": [
       {
-        "name": "SpinnerSize",
-        "values": [
-          "Sm",
-          "Default",
-          "Lg"
-        ],
-        "description": null
-      },
-      {
         "name": "SpinnerVariant",
         "values": [
           "Ring",
@@ -108,19 +99,19 @@
     "examples": [
       {
         "title": "Sizes",
-        "code": "<Spinner Size=\"Spinner.SpinnerSize.Sm\" />\n<Spinner />\n<Spinner Size=\"Spinner.SpinnerSize.Lg\" />"
+        "code": "<Spinner Size=\"Lumeo.Size.Sm\" />\r\n<Spinner />\r\n<Spinner Size=\"Lumeo.Size.Lg\" />"
       },
       {
         "title": "With Text",
-        "code": "<Flex Align=\"center\" Gap=\"2\">\n    <Spinner Size=\"Spinner.SpinnerSize.Sm\" />\n    <Lumeo.Text As=\"span\" Size=\"sm\" Color=\"muted\">Loading...</Lumeo.Text>\n</Flex>"
+        "code": "<Flex Align=\"center\" Gap=\"2\">\r\n    <Spinner Size=\"Lumeo.Size.Sm\" />\r\n    <Lumeo.Text As=\"span\" Size=\"sm\" Color=\"muted\">Loading...</Lumeo.Text>\r\n</Flex>"
       },
       {
         "title": "In a Button",
-        "code": "<Button Disabled=\"true\">\n    <Spinner Size=\"Spinner.SpinnerSize.Sm\" Class=\"mr-2\" />\n    Please wait\n</Button>"
+        "code": "<Button Disabled=\"true\">\r\n    <Spinner Size=\"Lumeo.Size.Sm\" Class=\"mr-2\" />\r\n    Please wait\r\n</Button>"
       },
       {
         "title": "Variant — interactive",
-        "code": "<Spinner Variant=\"Spinner.SpinnerVariant.Ring\" />\n<Spinner Variant=\"Spinner.SpinnerVariant.Dots\" />\n<Spinner Variant=\"Spinner.SpinnerVariant.Bars\" />"
+        "code": "<Spinner Variant=\"Spinner.SpinnerVariant.Ring\" />\r\n<Spinner Variant=\"Spinner.SpinnerVariant.Dots\" />\r\n<Spinner Variant=\"Spinner.SpinnerVariant.Bars\" />"
       }
     ],
     "subComponents": {},
@@ -139,7 +130,7 @@
   "source": [
     {
       "path": "UI/Spinner/Spinner.razor",
-      "content": "@namespace Lumeo\n\n@if (Variant == SpinnerVariant.Ring)\n{\n    <div class=\"@WrapperClass\" @attributes=\"AdditionalAttributes\">\n        <svg class=\"@RingCssClass\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\">\n            <circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle>\n            <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z\"></path>\n        </svg>\n        @if (!string.IsNullOrEmpty(Label))\n        {\n            <span class=\"text-sm text-muted-foreground\">@Label</span>\n        }\n    </div>\n}\nelse if (Variant == SpinnerVariant.Dots)\n{\n    <div class=\"@WrapperClass\" @attributes=\"AdditionalAttributes\">\n        <div class=\"@DotsContainerClass\">\n            <div class=\"@DotClass\" style=\"animation-delay: 0ms\"></div>\n            <div class=\"@DotClass\" style=\"animation-delay: 150ms\"></div>\n            <div class=\"@DotClass\" style=\"animation-delay: 300ms\"></div>\n        </div>\n        @if (!string.IsNullOrEmpty(Label))\n        {\n            <span class=\"text-sm text-muted-foreground\">@Label</span>\n        }\n    </div>\n}\nelse if (Variant == SpinnerVariant.Bars)\n{\n    <div class=\"@WrapperClass\" @attributes=\"AdditionalAttributes\">\n        <div class=\"@BarsContainerClass\">\n            <div class=\"@BarClass\" style=\"height: 60%; animation-delay: 0ms\"></div>\n            <div class=\"@BarClass\" style=\"height: 100%; animation-delay: 150ms\"></div>\n            <div class=\"@BarClass\" style=\"height: 60%; animation-delay: 300ms\"></div>\n        </div>\n        @if (!string.IsNullOrEmpty(Label))\n        {\n            <span class=\"text-sm text-muted-foreground\">@Label</span>\n        }\n    </div>\n}\n\n@code {\n    [Parameter] public SpinnerSize Size { get; set; } = SpinnerSize.Default;\n    [Parameter] public SpinnerVariant Variant { get; set; } = SpinnerVariant.Ring;\n    [Parameter] public string? Label { get; set; }\n    [Parameter] public string? Color { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string WrapperClass => string.Join(\" \", new[] { \"inline-flex items-center gap-2\", Color, Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    private string RingCssClass => string.Join(\" \", new[] { \"animate-spin\", SizeClasses }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    private string SizeClasses => Size switch\n    {\n        SpinnerSize.Sm => \"h-4 w-4\",\n        SpinnerSize.Default => \"h-6 w-6\",\n        SpinnerSize.Lg => \"h-8 w-8\",\n        _ => \"h-6 w-6\"\n    };\n\n    private string DotsContainerClass => $\"flex items-center {DotGapClass}\".Trim();\n\n    private string DotGapClass => Size switch\n    {\n        SpinnerSize.Sm => \"gap-0.5\",\n        SpinnerSize.Default => \"gap-1\",\n        SpinnerSize.Lg => \"gap-1.5\",\n        _ => \"gap-1\"\n    };\n\n    private string DotClass\n    {\n        get\n        {\n            var sizeClass = Size switch\n            {\n                SpinnerSize.Sm => \"h-1.5 w-1.5\",\n                SpinnerSize.Default => \"h-2 w-2\",\n                SpinnerSize.Lg => \"h-3 w-3\",\n                _ => \"h-2 w-2\"\n            };\n            return $\"{sizeClass} rounded-full bg-current animate-bounce\";\n        }\n    }\n\n    private string BarsContainerClass\n    {\n        get\n        {\n            var heightClass = Size switch\n            {\n                SpinnerSize.Sm => \"h-3\",\n                SpinnerSize.Default => \"h-4\",\n                SpinnerSize.Lg => \"h-6\",\n                _ => \"h-4\"\n            };\n            return $\"flex items-end gap-0.5 {heightClass}\";\n        }\n    }\n\n    private string BarClass\n    {\n        get\n        {\n            var widthClass = Size switch\n            {\n                SpinnerSize.Sm => \"w-0.5\",\n                SpinnerSize.Default => \"w-1\",\n                SpinnerSize.Lg => \"w-1.5\",\n                _ => \"w-1\"\n            };\n            return $\"{widthClass} bg-current rounded-sm animate-pulse\";\n        }\n    }\n\n    public enum SpinnerSize { Sm, Default, Lg }\n    public enum SpinnerVariant { Ring, Dots, Bars }\n}\n"
+      "content": "@namespace Lumeo\r\n\r\n@if (Variant == SpinnerVariant.Ring)\r\n{\r\n    <div class=\"@WrapperClass\" @attributes=\"AdditionalAttributes\">\r\n        <svg class=\"@RingCssClass\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\">\r\n            <circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle>\r\n            <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z\"></path>\r\n        </svg>\r\n        @if (!string.IsNullOrEmpty(Label))\r\n        {\r\n            <span class=\"text-sm text-muted-foreground\">@Label</span>\r\n        }\r\n    </div>\r\n}\r\nelse if (Variant == SpinnerVariant.Dots)\r\n{\r\n    <div class=\"@WrapperClass\" @attributes=\"AdditionalAttributes\">\r\n        <div class=\"@DotsContainerClass\">\r\n            <div class=\"@DotClass\" style=\"animation-delay: 0ms\"></div>\r\n            <div class=\"@DotClass\" style=\"animation-delay: 150ms\"></div>\r\n            <div class=\"@DotClass\" style=\"animation-delay: 300ms\"></div>\r\n        </div>\r\n        @if (!string.IsNullOrEmpty(Label))\r\n        {\r\n            <span class=\"text-sm text-muted-foreground\">@Label</span>\r\n        }\r\n    </div>\r\n}\r\nelse if (Variant == SpinnerVariant.Bars)\r\n{\r\n    <div class=\"@WrapperClass\" @attributes=\"AdditionalAttributes\">\r\n        <div class=\"@BarsContainerClass\">\r\n            <div class=\"@BarClass\" style=\"height: 60%; animation-delay: 0ms\"></div>\r\n            <div class=\"@BarClass\" style=\"height: 100%; animation-delay: 150ms\"></div>\r\n            <div class=\"@BarClass\" style=\"height: 60%; animation-delay: 300ms\"></div>\r\n        </div>\r\n        @if (!string.IsNullOrEmpty(Label))\r\n        {\r\n            <span class=\"text-sm text-muted-foreground\">@Label</span>\r\n        }\r\n    </div>\r\n}\r\n\r\n@code {\r\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\r\n    [Parameter] public SpinnerVariant Variant { get; set; } = SpinnerVariant.Ring;\r\n    [Parameter] public string? Label { get; set; }\r\n    [Parameter] public string? Color { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string WrapperClass => Cx.Join(\"inline-flex items-center gap-2\", Color, Class);\r\n\r\n    private string RingCssClass => Cx.Join(\"animate-spin\", SizeClasses);\r\n\r\n    private string SizeClasses => Size switch\r\n    {\r\n        Lumeo.Size.Sm => \"h-4 w-4\",\r\n        Lumeo.Size.Md => \"h-6 w-6\",\r\n        Lumeo.Size.Lg => \"h-8 w-8\",\r\n        _ => \"h-6 w-6\"\r\n    };\r\n\r\n    private string DotsContainerClass => $\"flex items-center {DotGapClass}\".Trim();\r\n\r\n    private string DotGapClass => Size switch\r\n    {\r\n        Lumeo.Size.Sm => \"gap-0.5\",\r\n        Lumeo.Size.Md => \"gap-1\",\r\n        Lumeo.Size.Lg => \"gap-1.5\",\r\n        _ => \"gap-1\"\r\n    };\r\n\r\n    private string DotClass\r\n    {\r\n        get\r\n        {\r\n            var sizeClass = Size switch\r\n            {\r\n                Lumeo.Size.Sm => \"h-1.5 w-1.5\",\r\n                Lumeo.Size.Md => \"h-2 w-2\",\r\n                Lumeo.Size.Lg => \"h-3 w-3\",\r\n                _ => \"h-2 w-2\"\r\n            };\r\n            return $\"{sizeClass} rounded-full bg-current animate-bounce\";\r\n        }\r\n    }\r\n\r\n    private string BarsContainerClass\r\n    {\r\n        get\r\n        {\r\n            var heightClass = Size switch\r\n            {\r\n                Lumeo.Size.Sm => \"h-3\",\r\n                Lumeo.Size.Md => \"h-4\",\r\n                Lumeo.Size.Lg => \"h-6\",\r\n                _ => \"h-4\"\r\n            };\r\n            return $\"flex items-end gap-0.5 {heightClass}\";\r\n        }\r\n    }\r\n\r\n    private string BarClass\r\n    {\r\n        get\r\n        {\r\n            var widthClass = Size switch\r\n            {\r\n                Lumeo.Size.Sm => \"w-0.5\",\r\n                Lumeo.Size.Md => \"w-1\",\r\n                Lumeo.Size.Lg => \"w-1.5\",\r\n                _ => \"w-1\"\r\n            };\r\n            return $\"{widthClass} bg-current rounded-sm animate-pulse\";\r\n        }\r\n    }\r\n\r\n    public enum SpinnerVariant { Ring, Dots, Bars }\r\n}\r\n"
     }
   ],
   "slots": [],
@@ -150,5 +141,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/Spinner/SpinnerTests.cs"
   ],
-  "mdSummary": "# Spinner\n\nIndeterminate loading spinner with size variants.\n\n**Package:** `Lumeo` · **Category:** Feedback\n**Docs:** https://lumeo.nativ.sh/components/spinner\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Spinner | Size | `SpinnerSize` | `SpinnerSize.Default` |  |\n| Spinner | Variant | `SpinnerVariant` | `SpinnerVariant.Ring` |  |\n| Spinner | Label | `string?` | `` |  |\n| Spinner | Color | `string?` | `` |  |\n| Spinner | Class | `string?` | `` |  |\n| Spinner | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Spinner />\n```\n\n## CSS variables\n`--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Spinner/Spinner.razor`\n"
+  "mdSummary": "# Spinner\r\n\r\nIndeterminate loading spinner with size variants.\r\n\r\n**Package:** `Lumeo` · **Category:** Feedback\r\n**Docs:** https://lumeo.nativ.sh/components/spinner\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Spinner | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\r\n| Spinner | Variant | `SpinnerVariant` | `SpinnerVariant.Ring` |  |\r\n| Spinner | Label | `string?` | `` |  |\r\n| Spinner | Color | `string?` | `` |  |\r\n| Spinner | Class | `string?` | `` |  |\r\n| Spinner | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Spinner />\r\n```\r\n\r\n## CSS variables\r\n`--color-muted`, `--color-muted-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/Spinner/Spinner.razor`\r\n"
 }

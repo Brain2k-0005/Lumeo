@@ -1,0 +1,339 @@
+@namespace Lumeo.Docs.Pages.Components
+@page "/components/map-popup"
+
+<PageTitle>MapPopup — Lumeo</PageTitle>
+
+<PageHeader Title="MapPopup"
+            Description="A standalone popup anchored to a geographic coordinate, independent of any marker. Toggle visibility programmatically via IsOpen and bind to IsOpenChanged to react when the user closes it." />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Satellite package.</strong> <code>MapPopup</code> lives in
+        <code>Lumeo.Maps</code> — install it alongside the core <code>Lumeo</code> package.
+        Place it inside a <code>&lt;Map&gt;</code> <code>ChildContent</code> slot.
+        For marker-attached popups use the <code>Popup</code> slot on <code>MapMarker</code> instead.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Showing rich contextual information at a specific lat/lon without a visible marker</li>
+        <li>Displaying a location info panel triggered by an external button or list item</li>
+        <li>Pinning a persistent info card to a geographic coordinate (e.g., a selected search result)</li>
+        <li>Building custom "click-anywhere" detail panels on top of the map</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    @* Demo 1 — Rich popup with marker (open on button click) *@
+    <ComponentDemo Title="Rich popup triggered by a button" Code="@_richCode">
+        <Stack Gap="3">
+            <LazyRender Height="380px">
+                <Map Center="(48.137, 11.575)" Zoom="12" Height="380px" TileLayer="CartoLight">
+                    <ChildContent>
+                        <MapMarker Lat="48.137" Lon="11.575" Title="Marienplatz" Variant="Pin" Color="red" />
+                        <MapPopup Lat="48.137" Lon="11.575"
+                                  @bind-IsOpen="_richOpen"
+                                  CloseButton="true"
+                                  CloseOnClick="true">
+                            <div class="space-y-2 min-w-[220px]">
+                                <div class="font-semibold text-sm">Marienplatz, Munich</div>
+                                <p class="text-xs text-muted-foreground m-0">
+                                    Munich's central square, home of the Neues Rathaus and the
+                                    famous Glockenspiel that chimes daily at 11 am and noon.
+                                </p>
+                                <div class="flex gap-2 pt-1">
+                                    <Badge Variant="Badge.BadgeVariant.Secondary">Historic</Badge>
+                                    <Badge Variant="Badge.BadgeVariant.Outline">Free</Badge>
+                                </div>
+                            </div>
+                        </MapPopup>
+                    </ChildContent>
+                </Map>
+            </LazyRender>
+            <div class="flex items-center gap-3">
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _richOpen = !_richOpen)">
+                    @(_richOpen ? "Close popup" : "Open popup")
+                </Button>
+                <Lumeo.Text Size="sm" Color="muted">or click the map to close</Lumeo.Text>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    @* Demo 2 — Standalone popup pinned to a coordinate (no marker) *@
+    <ComponentDemo Title="Standalone popup — no marker required" Code="@_standaloneCode">
+        <Stack Gap="3">
+            <LazyRender Height="360px">
+                <Map Center="(51.478, 0.0)" Zoom="10" Height="360px">
+                    <ChildContent>
+                        <MapPopup Lat="51.478" Lon="0.0"
+                                  @bind-IsOpen="_standaloneOpen"
+                                  CloseButton="true"
+                                  CloseOnClick="false">
+                            <div class="min-w-[180px] space-y-1">
+                                <div class="font-semibold text-xs">Prime Meridian</div>
+                                <p class="text-xs text-muted-foreground m-0">
+                                    0° longitude — the reference line for all time zones.
+                                </p>
+                            </div>
+                        </MapPopup>
+                    </ChildContent>
+                </Map>
+            </LazyRender>
+            <Button Variant="Button.ButtonVariant.Secondary"
+                    Class="self-start"
+                    OnClick="@(() => _standaloneOpen = !_standaloneOpen)">
+                @(_standaloneOpen ? "Hide" : "Show") Prime Meridian popup
+            </Button>
+        </Stack>
+    </ComponentDemo>
+
+    @* Demo 3 — Popup with action buttons (directions link) *@
+    <ComponentDemo Title="Popup with action buttons" Code="@_actionsCode">
+        <Stack Gap="3">
+            <LazyRender Height="380px">
+                <Map Center="(48.860, 2.352)" Zoom="14" Height="380px" TileLayer="Voyager">
+                    <ChildContent>
+                        <MapMarker Lat="48.861" Lon="2.335" Title="Eiffel Tower" Variant="Pin" Color="blue" />
+                        <MapPopup Lat="48.861" Lon="2.335"
+                                  @bind-IsOpen="_actionsOpen"
+                                  CloseButton="true"
+                                  CloseOnClick="true">
+                            <div class="space-y-3 min-w-[200px]">
+                                <div>
+                                    <div class="font-semibold text-sm">Eiffel Tower</div>
+                                    <p class="text-xs text-muted-foreground m-0 mt-0.5">
+                                        Champ de Mars, 5 Av. Anatole France, Paris
+                                    </p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <Lumeo.Link Href="https://maps.google.com/?q=Eiffel+Tower" Class="text-xs">
+                                        Get directions
+                                    </Lumeo.Link>
+                                    <span class="text-muted-foreground/40 text-xs">·</span>
+                                    <Lumeo.Link Href="https://en.wikipedia.org/wiki/Eiffel_Tower" Class="text-xs">
+                                        Wikipedia
+                                    </Lumeo.Link>
+                                </div>
+                            </div>
+                        </MapPopup>
+                    </ChildContent>
+                </Map>
+            </LazyRender>
+            <Button Variant="Button.ButtonVariant.Outline"
+                    Class="self-start"
+                    OnClick="@(() => _actionsOpen = !_actionsOpen)">
+                @(_actionsOpen ? "Close" : "Open") Eiffel Tower info
+            </Button>
+        </Stack>
+    </ComponentDemo>
+
+    @* Demo 4 — CloseOnClick=false (persistent popup) *@
+    <ComponentDemo Title="Persistent popup — CloseOnClick disabled" Code="@_persistentCode">
+        <LazyRender Height="360px">
+            <Map Center="(51.178, -1.826)" Zoom="13" Height="360px" TileLayer="CartoLight">
+                <ChildContent>
+                    <MapMarker Lat="51.179" Lon="-1.826" Title="Stonehenge" Variant="Pin" Color="purple" />
+                    <MapPopup Lat="51.179" Lon="-1.826"
+                              IsOpen="true"
+                              CloseButton="false"
+                              CloseOnClick="false">
+                        <div class="min-w-[160px] space-y-1">
+                            <div class="font-semibold text-xs">Stonehenge</div>
+                            <p class="text-xs text-muted-foreground m-0">
+                                Prehistoric monument · ~2500 BC
+                            </p>
+                        </div>
+                    </MapPopup>
+                </ChildContent>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="map-popup" Level="3" Class="mt-8 scroll-mt-20">MapPopup</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[180px]">Prop</TableHead>
+                    <TableHead Class="w-[200px]">Type</TableHead>
+                    <TableHead Class="w-[100px]">Default</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Lat</TableCell>
+                    <TableCell Class="font-mono text-xs">double</TableCell>
+                    <TableCell Class="font-mono text-xs">0</TableCell>
+                    <TableCell>Latitude of the popup anchor point in decimal degrees.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Lon</TableCell>
+                    <TableCell Class="font-mono text-xs">double</TableCell>
+                    <TableCell Class="font-mono text-xs">0</TableCell>
+                    <TableCell>Longitude of the popup anchor point in decimal degrees.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">IsOpen</TableCell>
+                    <TableCell Class="font-mono text-xs">bool</TableCell>
+                    <TableCell Class="font-mono text-xs">false</TableCell>
+                    <TableCell>Whether the popup is currently visible. Use <code>@@bind-IsOpen</code> for two-way binding so the popup updates your state when closed by the user.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">IsOpenChanged</TableCell>
+                    <TableCell Class="font-mono text-xs">EventCallback&lt;bool&gt;</TableCell>
+                    <TableCell Class="font-mono text-xs">—</TableCell>
+                    <TableCell>Fires with <code>false</code> when the user closes the popup (close button or map click). Enables two-way binding via <code>@@bind-IsOpen</code>.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">CloseButton</TableCell>
+                    <TableCell Class="font-mono text-xs">bool</TableCell>
+                    <TableCell Class="font-mono text-xs">true</TableCell>
+                    <TableCell>Show a close (×) button in the popup header. Set to <code>false</code> for persistent popups controlled entirely from code.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">CloseOnClick</TableCell>
+                    <TableCell Class="font-mono text-xs">bool</TableCell>
+                    <TableCell Class="font-mono text-xs">true</TableCell>
+                    <TableCell>Close the popup when the user clicks on the map background. Set to <code>false</code> for pinned popups that should stay open until explicitly dismissed.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">Html</TableCell>
+                    <TableCell Class="font-mono text-xs">string?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>HTML string for the popup body. Overrides <code>ChildContent</code> when set.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">ChildContent</TableCell>
+                    <TableCell Class="font-mono text-xs">RenderFragment?</TableCell>
+                    <TableCell Class="font-mono text-xs">null</TableCell>
+                    <TableCell>Rich Blazor render fragment for the popup body. Rendered into a hidden host element; MapLibre reads its <code>innerHTML</code> when the popup opens.</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+@code {
+    private bool _richOpen;
+    private bool _standaloneOpen;
+    private bool _actionsOpen;
+
+    private const string _richCode = """
+<Map Center="(48.137, 11.575)" Zoom="12" Height="380px" TileLayer="CartoLight">
+    <ChildContent>
+        <MapMarker Lat="48.137" Lon="11.575" Title="Marienplatz" Variant="Pin" Color="red" />
+        <MapPopup Lat="48.137" Lon="11.575"
+                  @bind-IsOpen="_popupOpen"
+                  CloseButton="true"
+                  CloseOnClick="true">
+            <div class="space-y-2 min-w-[220px]">
+                <div class="font-semibold text-sm">Marienplatz, Munich</div>
+                <p class="text-xs text-muted-foreground m-0">
+                    Munich's central square, home of the Neues Rathaus and the
+                    famous Glockenspiel that chimes daily at 11 am and noon.
+                </p>
+                <div class="flex gap-2 pt-1">
+                    <Badge Variant="Badge.BadgeVariant.Secondary">Historic</Badge>
+                    <Badge Variant="Badge.BadgeVariant.Outline">Free</Badge>
+                </div>
+            </div>
+        </MapPopup>
+    </ChildContent>
+</Map>
+<Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _popupOpen = !_popupOpen)">
+    @(_popupOpen ? "Close popup" : "Open popup")
+</Button>
+
+@code {
+    private bool _popupOpen;
+}
+""";
+
+    private const string _standaloneCode = """
+<Map Center="(51.478, 0.0)" Zoom="10" Height="360px">
+    <ChildContent>
+        @* No MapMarker — popup is anchored directly to the coordinate *@
+        <MapPopup Lat="51.478" Lon="0.0"
+                  @bind-IsOpen="_open"
+                  CloseButton="true"
+                  CloseOnClick="false">
+            <div class="min-w-[180px] space-y-1">
+                <div class="font-semibold text-xs">Prime Meridian</div>
+                <p class="text-xs text-muted-foreground m-0">
+                    0° longitude — the reference line for all time zones.
+                </p>
+            </div>
+        </MapPopup>
+    </ChildContent>
+</Map>
+<Button OnClick="@(() => _open = !_open)">
+    @(_open ? "Hide" : "Show") popup
+</Button>
+
+@code {
+    private bool _open;
+}
+""";
+
+    private const string _actionsCode = """
+<Map Center="(48.860, 2.352)" Zoom="14" Height="380px" TileLayer="Voyager">
+    <ChildContent>
+        <MapMarker Lat="48.861" Lon="2.335" Title="Eiffel Tower" Variant="Pin" Color="blue" />
+        <MapPopup Lat="48.861" Lon="2.335"
+                  @bind-IsOpen="_open"
+                  CloseButton="true"
+                  CloseOnClick="true">
+            <div class="space-y-3 min-w-[200px]">
+                <div>
+                    <div class="font-semibold text-sm">Eiffel Tower</div>
+                    <p class="text-xs text-muted-foreground m-0 mt-0.5">
+                        Champ de Mars, 5 Av. Anatole France, Paris
+                    </p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="https://maps.google.com/?q=Eiffel+Tower"
+                       class="text-xs text-primary underline">Get directions</a>
+                    <span class="text-muted-foreground/40 text-xs">·</span>
+                    <a href="https://en.wikipedia.org/wiki/Eiffel_Tower"
+                       class="text-xs text-primary underline">Wikipedia</a>
+                </div>
+            </div>
+        </MapPopup>
+    </ChildContent>
+</Map>
+<Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _open = !_open)">
+    @(_open ? "Close" : "Open") info
+</Button>
+
+@code {
+    private bool _open;
+}
+""";
+
+    private const string _persistentCode = """
+@* IsOpen="true", CloseButton="false", CloseOnClick="false" — always visible *@
+<Map Center="(51.178, -1.826)" Zoom="13" Height="360px" TileLayer="CartoLight">
+    <ChildContent>
+        <MapMarker Lat="51.179" Lon="-1.826" Title="Stonehenge" Variant="Pin" Color="purple" />
+        <MapPopup Lat="51.179" Lon="-1.826"
+                  IsOpen="true"
+                  CloseButton="false"
+                  CloseOnClick="false">
+            <div class="min-w-[160px] space-y-1">
+                <div class="font-semibold text-xs">Stonehenge</div>
+                <p class="text-xs text-muted-foreground m-0">Prehistoric monument · ~2500 BC</p>
+            </div>
+        </MapPopup>
+    </ChildContent>
+</Map>
+""";
+}

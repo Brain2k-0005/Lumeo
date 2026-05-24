@@ -3,221 +3,328 @@
 
 <PageTitle>DataGrid Playground — Lumeo</PageTitle>
 
-@*  Full-canvas playground. Real Lumeo Sidebar (collapse/expand via the
-    SidebarTrigger in the page header), DataGrid sits to the right and
-    grows into the space the sidebar releases. No raw viewport-height
-    hacks — MainLayout already gives this page a viewport-locked main. *@
+@* Two-pane playground (shadcn / Storybook style).
+   Height is set via inline style because Tailwind v4's static scanner misses
+   arbitrary dvh values inside Blazor C# render-fragments / @if branches.
+   Desktop (≥1024px): left controls panel (272px) always visible, toggleable.
+   Mobile (<1024px):  controls hidden; hamburger → left Sheet. *@
 
-<SidebarProvider IsCollapsed="_sidebarCollapsed" IsCollapsedChanged="@(v => _sidebarCollapsed = v)" Class="h-full">
-    <SidebarComponent Side="Lumeo.Side.Left" Class="@($"!border-r-0 !bg-transparent !text-foreground {(_sidebarCollapsed ? "w-0 -translate-x-full" : "w-72 shrink-0")}")">
-        <SidebarHeader>
-            <Stack Gap="1" Class="px-3 py-2">
-                <Flex Align="center" Gap="3">
-                    <Badge Variant="Badge.BadgeVariant.Outline">Playground</Badge>
-                    <Lumeo.Link Href="/components/datagrid" Class="text-xs text-muted-foreground hover:text-foreground no-underline flex items-center gap-1">
-                        <DynamicIcon Name="ArrowLeft" Class="h-3 w-3" />
-                        Back to docs
-                    </Lumeo.Link>
-                </Flex>
-                <Heading Level="2" Class="text-base font-semibold tracking-tight">Options</Heading>
-            </Stack>
-        </SidebarHeader>
+<div class="flex flex-col overflow-hidden" style="height:calc(100dvh - 76px)">
 
-        <SidebarContent>
-            <SidebarGroup>
-                <SidebarGroupLabel>Toolbar</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgShowToolbar" Label="Show toolbar" />
-                    <Switch @bind-Checked="_pgShowSearch" Label="Search box" Disabled="!_pgShowToolbar" />
-                    <Switch @bind-Checked="_pgShowColumnChooser" Label="Column chooser" Disabled="!_pgShowToolbar" />
-                    <Switch @bind-Checked="_pgShowExport" Label="Export button" Disabled="!_pgShowToolbar" />
-                    <Switch @bind-Checked="_pgExpandable" Label="Expand to fullscreen" Disabled="!_pgShowToolbar" />
-                </Stack>
-            </SidebarGroup>
+    @* ── Header bar ──────────────────────────────────────────────────────── *@
+    <header class="shrink-0 flex items-center gap-3 px-4 border-b border-border/40 bg-card" style="height:3.25rem">
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Export formats</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Checkbox Checked="_pgExportCsv" CheckedChanged="@((bool v) => { _pgExportCsv = v; RecomputeExportFormats(); })" Label="CSV" Disabled="!_pgShowToolbar || !_pgShowExport" />
-                    <Checkbox Checked="_pgExportExcel" CheckedChanged="@((bool v) => { _pgExportExcel = v; RecomputeExportFormats(); })" Label="Excel" Disabled="!_pgShowToolbar || !_pgShowExport" />
-                    <Checkbox Checked="_pgExportPdf" CheckedChanged="@((bool v) => { _pgExportPdf = v; RecomputeExportFormats(); })" Label="PDF" Disabled="!_pgShowToolbar || !_pgShowExport" />
-                </Stack>
-            </SidebarGroup>
+        <Lumeo.Link Href="/components/datagrid"
+                    Class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground no-underline transition-colors shrink-0">
+            <DynamicIcon Name="ArrowLeft" Class="h-3.5 w-3.5" />
+            <span>DataGrid</span>
+        </Lumeo.Link>
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Columns</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgSortable" Label="Sortable columns" />
-                    <Switch @bind-Checked="_pgFilterable" Label="Filterable columns" />
-                    <Switch @bind-Checked="_pgReorderable" Label="Reorder columns (drag)" />
-                    <Switch @bind-Checked="_pgPinnable" Label="Pin columns" />
-                </Stack>
-            </SidebarGroup>
+        <div class="w-px h-4 bg-border/50 shrink-0"></div>
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Rows</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgRowReorderable" Label="Drag to reorder rows" />
-                    <Switch @bind-Checked="_pgShowAddRow" Label="Show add-row button" />
-                </Stack>
-            </SidebarGroup>
+        <Heading Level="1" Class="text-sm font-semibold tracking-tight leading-none flex-1 min-w-0 truncate">
+            DataGrid Playground
+        </Heading>
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Grouping</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgShowGroupPanel" Label="Show group panel" />
-                    <Switch @bind-Checked="_pgGroupsExpanded" Label="Groups expanded by default" />
-                    <Segmented Value="_pgGroupBySel" ValueChanged="@((string v) => { _pgGroupBySel = v; StateHasChanged(); })" Block="true">
-                        <SegmentedItem Value="None">None</SegmentedItem>
-                        <SegmentedItem Value="Team">Team</SegmentedItem>
-                        <SegmentedItem Value="Role">Role</SegmentedItem>
-                        <SegmentedItem Value="Status">Status</SegmentedItem>
-                    </Segmented>
-                </Stack>
-            </SidebarGroup>
+        @* Desktop panel toggle — visible only at lg+ *@
+        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                Class="hidden lg:inline-flex shrink-0"
+                OnClick="@(() => _desktopOptionsOpen = !_desktopOptionsOpen)"
+                title="@(_desktopOptionsOpen ? "Hide options panel" : "Show options panel")"
+                aria-label="Toggle options panel">
+            <DynamicIcon Name="@(_desktopOptionsOpen ? "PanelLeftClose" : "PanelLeftOpen")" Class="h-4 w-4" />
+        </Button>
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Pagination</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgShowPagination" Label="Show pagination" />
-                    <NumberInput @bind-Value="_pgPageSizeNum" Min="3" Max="20" Step="1" Label="Page size" />
-                    <Segmented @bind-Value="_pgPageSizeOptionsSel" Block="true">
-                        <SegmentedItem Value="Default">Default</SegmentedItem>
-                        <SegmentedItem Value="Small">Small</SegmentedItem>
-                        <SegmentedItem Value="Large">Large</SegmentedItem>
-                    </Segmented>
-                </Stack>
-            </SidebarGroup>
+        @* Mobile hamburger — visible only below lg *@
+        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                Class="lg:hidden shrink-0"
+                OnClick="@(() => _mobileOptionsOpen = true)"
+                aria-label="Open options">
+            <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4" />
+        </Button>
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Virtualization</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgVirtualized" Label="Virtualized rows" />
-                    <Switch @bind-Checked="_pgColumnVirtualize" Label="Column virtualization" />
-                    <NumberInput @bind-Value="_pgMaxVisibleColumns" Min="2" Max="6" Step="1" Label="Max visible columns" Disabled="!_pgColumnVirtualize" />
-                </Stack>
-            </SidebarGroup>
+    </header>
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Display</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgStriped" Label="Striped rows" />
-                    <Switch @bind-Checked="_pgBordered" Label="Bordered" />
-                    <Switch @bind-Checked="_pgCompact" Label="Compact rows" />
-                    <Switch @bind-Checked="_pgHoverable" Label="Hover highlight" />
-                    <Switch @bind-Checked="_pgIsLoading" Label="Loading skeleton" />
-                    <Segmented @bind-Value="_pgHeightSel" Block="true">
-                        <SegmentedItem Value="Auto">Auto</SegmentedItem>
-                        <SegmentedItem Value="Compact">Compact</SegmentedItem>
-                        <SegmentedItem Value="Tall">Tall</SegmentedItem>
-                    </Segmented>
-                </Stack>
-            </SidebarGroup>
+    @* ── Body: side-by-side panes ─────────────────────────────────────────── *@
+    <div class="flex-1 min-h-0 flex overflow-hidden">
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Persistence</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Switch @bind-Checked="_pgEnableLayoutPersistence" Label="Persist layout to localStorage" />
-                    @if (_pgEnableLayoutPersistence)
-                    {
-                        <Input @bind-Value="_pgLayoutStorageKey" Placeholder="playground-layout" />
-                    }
-                </Stack>
-            </SidebarGroup>
+        @* Controls panel — desktop only (conditionally shown when toggled) *@
+        @if (_desktopOptionsOpen)
+        {
+            <aside class="hidden lg:flex flex-col shrink-0 border-r border-border/40 bg-muted/30" style="width:304px">
+                <div class="flex-1 overflow-y-auto overscroll-contain">
+                    @ControlsPanel
+                </div>
+                <div class="shrink-0 border-t border-border/40 px-3 py-2.5 bg-card/40">
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                            Class="w-full gap-1.5 text-xs"
+                            OnClick="ResetPlayground">
+                        <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5" />
+                        Reset to defaults
+                    </Button>
+                </div>
+            </aside>
+        }
 
-            <SidebarGroup>
-                <SidebarGroupLabel>Selection &amp; editing</SidebarGroupLabel>
-                <Stack Gap="2" Class="px-2">
-                    <Segmented @bind-Value="_pgSelectionMode" Block="true">
-                        <SegmentedItem Value="None">None</SegmentedItem>
-                        <SegmentedItem Value="Single">Single</SegmentedItem>
-                        <SegmentedItem Value="Multiple">Multiple</SegmentedItem>
-                    </Segmented>
-                    <Segmented @bind-Value="_pgEditMode" Block="true">
-                        <SegmentedItem Value="None">No edit</SegmentedItem>
-                        <SegmentedItem Value="Cell">Cell</SegmentedItem>
-                        <SegmentedItem Value="Row">Row</SegmentedItem>
-                        <SegmentedItem Value="Batch">Batch</SegmentedItem>
-                    </Segmented>
-                </Stack>
-            </SidebarGroup>
-        </SidebarContent>
+        @* DataGrid pane *@
+        <main class="flex-1 min-w-0 overflow-hidden p-4">
+            <div class="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm" style="height:100%">
+                <DataGrid TItem="PlaygroundRow"
+                          @ref="_pgGrid"
+                          Height="@_pgHeight"
+                          Items="@(_pgIsLoading ? new List<PlaygroundRow>() : _pgRows)"
+                          ShowToolbar="_pgShowToolbar"
+                          ShowSearch="_pgShowSearch"
+                          ShowColumnChooser="_pgShowColumnChooser"
+                          ShowExport="_pgShowExport"
+                          ExportFormats="_pgExportFormats"
+                          Expandable="_pgExpandable"
+                          ShowPagination="_pgShowPagination"
+                          PageSize="_pgPageSize"
+                          PageSizeOptions="@_pgPageSizeOptions"
+                          Striped="_pgStriped"
+                          Bordered="_pgBordered"
+                          Compact="_pgCompact"
+                          Hoverable="_pgHoverable"
+                          IsLoading="_pgIsLoading"
+                          Reorderable="_pgReorderable"
+                          RowReorderable="_pgRowReorderable"
+                          ShowAddRow="_pgShowAddRow"
+                          NewItemFactory="@(() => new PlaygroundRow($"New entry {++_pgAddCounter}", "Team", "Role", 0, "Active", DateTime.Today))"
+                          Virtualized="_pgVirtualized"
+                          ColumnVirtualize="_pgColumnVirtualize"
+                          MaxVisibleColumns="@_pgMaxVisibleColumnsInt"
+                          ShowGroupPanel="_pgShowGroupPanel"
+                          GroupsExpandedByDefault="_pgGroupsExpanded"
+                          GroupBy="@(_pgGroupBySel == "None" ? null : _pgGroupBySel)"
+                          EnableLayoutPersistence="_pgEnableLayoutPersistence"
+                          LayoutStorageKey="@_pgLayoutStorageKey"
+                          SelectionMode="@_pgSelectionModeEnum"
+                          EditMode="@_pgEditModeEnum">
+                    <DataGridColumnDef TItem="PlaygroundRow" Title="Name" Field="Name"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Pinnable="_pgPinnable" Groupable="true" />
+                    <DataGridColumnDef TItem="PlaygroundRow" Title="Team" Field="Team"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Pinnable="_pgPinnable" Groupable="true" />
+                    <DataGridColumnDef TItem="PlaygroundRow" Title="Role" Field="Role"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Pinnable="_pgPinnable" Groupable="true" />
+                    <DataGridColumnDef TItem="PlaygroundRow" Title="Salary" Field="Salary" Format="C0"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       FilterType="DataGridFilterType.Number"
+                                       Pinnable="_pgPinnable"
+                                       Aggregate="AggregateType.Average" />
+                    <DataGridColumnDef TItem="PlaygroundRow" Title="Status" Field="Status"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Pinnable="_pgPinnable" Groupable="true" />
+                    <DataGridColumnDef TItem="PlaygroundRow" Title="Joined" Field="Joined" Format="yyyy-MM-dd"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       FilterType="DataGridFilterType.Date"
+                                       Pinnable="_pgPinnable" />
+                </DataGrid>
+            </div>
+        </main>
+    </div>
 
-        <SidebarFooter>
-            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-full" OnClick="ResetPlayground">
-                <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5 mr-1.5" />
+    @* ── Status bar ───────────────────────────────────────────────────────── *@
+    @{
+        // Always-rendered pills with toggleable on/off colors so toggling demo
+        // state never reflows the bar (Phase 1 polish).
+        string On  = "text-foreground/80";
+        string Off = "text-muted-foreground/35";
+    }
+    <footer class="shrink-0 flex items-center px-4 border-t border-border/30 bg-card/60 text-xs select-none gap-3" style="height:2.25rem">
+        <span class="font-medium text-foreground/80 tabular-nums shrink-0">@_pgRows.Count rows</span>
+        <span class="opacity-25">|</span>
+        <span class="tabular-nums shrink-0 @On">@_pgPageSize / page</span>
+        <span class="opacity-25">|</span>
+        <span class="shrink-0 @(_pgGroupBySel != "None" ? On : Off)">@(_pgGroupBySel != "None" ? $"Group: {_pgGroupBySel}" : "Group: —")</span>
+        <span class="opacity-25">|</span>
+        <span class="shrink-0 @(_pgStriped  ? On : Off)">Striped</span>
+        <span class="shrink-0 @(_pgBordered ? On : Off)">Bordered</span>
+        <span class="shrink-0 @(_pgCompact  ? On : Off)">Compact</span>
+        <span class="opacity-25">|</span>
+        <span class="shrink-0 @(_pgSelectionMode != "None" ? On : Off)">@(_pgSelectionMode != "None" ? $"Select: {_pgSelectionMode}" : "Select: —")</span>
+        <span class="shrink-0 @(_pgEditMode      != "None" ? On : Off)">@(_pgEditMode      != "None" ? $"Edit: {_pgEditMode}"      : "Edit: —")</span>
+        <span class="shrink-0 @(_pgVirtualized ? On : Off)">Virtualized</span>
+        @if (_pgIsLoading)
+        {
+            <span class="opacity-25">|</span>
+            <span class="text-amber-500/80 shrink-0">Loading skeleton</span>
+        }
+        <div class="flex-1"></div>
+        <span class="shrink-0 flex items-center gap-1 @(_pgEnableLayoutPersistence ? On : Off)">
+            <DynamicIcon Name="Save" Class="h-3 w-3" />Layout @(_pgEnableLayoutPersistence ? "saved" : "off")
+        </span>
+    </footer>
+
+</div>
+
+@* ── Mobile Sheet (left side) ─────────────────────────────────────────────── *@
+<Sheet @bind-Open="_mobileOptionsOpen">
+    <SheetContent Side="Lumeo.Side.Left" Class="flex flex-col p-0 gap-0 w-72">
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-border/40 shrink-0">
+            <SheetTitle>Playground options</SheetTitle>
+            <SheetClose Class="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                <DynamicIcon Name="X" Class="h-4 w-4" />
+            </SheetClose>
+        </div>
+        <div class="flex-1 overflow-y-auto overscroll-contain">
+            @ControlsPanel
+        </div>
+        <div class="shrink-0 border-t border-border/40 px-4 py-3">
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                    Class="w-full gap-1.5"
+                    OnClick="@(() => { ResetPlayground(); _mobileOptionsOpen = false; })">
+                <DynamicIcon Name="RotateCcw" Class="h-3.5 w-3.5" />
                 Reset to defaults
             </Button>
-        </SidebarFooter>
-    </SidebarComponent>
-
-    <Stack Gap="3" Class="flex-1 min-w-0 h-full overflow-hidden px-4 py-3">
-        <Flex Align="center" Gap="3" Class="shrink-0">
-            <SidebarTrigger />
-            <Heading Level="1" Class="text-xl sm:text-2xl font-bold tracking-tight leading-tight">DataGrid playground</Heading>
-            <Lumeo.Text Color="muted" Size="xs" Class="hidden md:block">Flip switches to see every feature in action — no rebuild, no reload.</Lumeo.Text>
-        </Flex>
-
-        <div class="flex-1 min-h-0 overflow-hidden rounded-xl border border-border/40 bg-card">
-            <DataGrid TItem="PlaygroundRow"
-                      Height="@_pgHeight"
-                      Items="@(_pgIsLoading ? new List<PlaygroundRow>() : _pgRows)"
-                              ShowToolbar="_pgShowToolbar"
-                              ShowSearch="_pgShowSearch"
-                              ShowColumnChooser="_pgShowColumnChooser"
-                              ShowExport="_pgShowExport"
-                              ExportFormats="_pgExportFormats"
-                              Expandable="_pgExpandable"
-                              ShowPagination="_pgShowPagination"
-                              PageSize="_pgPageSize"
-                              PageSizeOptions="@_pgPageSizeOptions"
-                              Striped="_pgStriped"
-                              Bordered="_pgBordered"
-                              Compact="_pgCompact"
-                              Hoverable="_pgHoverable"
-                              IsLoading="_pgIsLoading"
-                              Reorderable="_pgReorderable"
-                              RowReorderable="_pgRowReorderable"
-                              ShowAddRow="_pgShowAddRow"
-                              NewItemFactory="@(() => new PlaygroundRow("New entry", "Team", "Role", 0, "Active", DateTime.Today))"
-                              Virtualized="_pgVirtualized"
-                              ColumnVirtualize="_pgColumnVirtualize"
-                              MaxVisibleColumns="@_pgMaxVisibleColumnsInt"
-                              ShowGroupPanel="_pgShowGroupPanel"
-                              GroupsExpandedByDefault="_pgGroupsExpanded"
-                              GroupBy="@(_pgGroupBySel == "None" ? null : _pgGroupBySel)"
-                              EnableLayoutPersistence="_pgEnableLayoutPersistence"
-                              LayoutStorageKey="@_pgLayoutStorageKey"
-                              SelectionMode="@_pgSelectionModeEnum"
-                              EditMode="@_pgEditModeEnum">
-                        <DataGridColumnDef TItem="PlaygroundRow" Title="Name" Field="Name"
-                                           Sortable="_pgSortable" Filterable="_pgFilterable"
-                                           Pinnable="_pgPinnable" Groupable="true" />
-                        <DataGridColumnDef TItem="PlaygroundRow" Title="Team" Field="Team"
-                                           Sortable="_pgSortable" Filterable="_pgFilterable"
-                                           Pinnable="_pgPinnable" Groupable="true" />
-                        <DataGridColumnDef TItem="PlaygroundRow" Title="Role" Field="Role"
-                                           Sortable="_pgSortable" Filterable="_pgFilterable"
-                                           Pinnable="_pgPinnable" Groupable="true" />
-                        <DataGridColumnDef TItem="PlaygroundRow" Title="Salary" Field="Salary" Format="C0"
-                                           Sortable="_pgSortable" Filterable="_pgFilterable"
-                                           FilterType="DataGridFilterType.Number"
-                                           Pinnable="_pgPinnable"
-                                           Aggregate="AggregateType.Average" />
-                        <DataGridColumnDef TItem="PlaygroundRow" Title="Status" Field="Status"
-                                           Sortable="_pgSortable" Filterable="_pgFilterable"
-                                           Pinnable="_pgPinnable" Groupable="true" />
-                        <DataGridColumnDef TItem="PlaygroundRow" Title="Joined" Field="Joined" Format="yyyy-MM-dd"
-                                           Sortable="_pgSortable" Filterable="_pgFilterable"
-                                           FilterType="DataGridFilterType.Date"
-                                           Pinnable="_pgPinnable" />
-            </DataGrid>
         </div>
-    </Stack>
-</SidebarProvider>
+    </SheetContent>
+</Sheet>
 
 @code {
-    private bool _sidebarCollapsed;
+    private DataGrid<PlaygroundRow>? _pgGrid;
+    private bool _mobileOptionsOpen;
+    private bool _desktopOptionsOpen = true;
+
+    @* ── Shared controls panel (used in desktop aside + mobile Sheet) ─────── *@
+    private RenderFragment ControlsPanel => __builder =>
+    {
+        <div class="py-1">
+
+            @* ── Toolbar ── *@
+            @SectionHeader("Toolbar")
+            @ControlRow(label: "Show toolbar", active: true,         control: @<Switch @bind-Checked="_pgShowToolbar" />)
+            @ControlRow(label: "Search box",    active: _pgShowToolbar, control: @<Switch @bind-Checked="_pgShowSearch"       Disabled="!_pgShowToolbar" />)
+            @ControlRow(label: "Column chooser",active: _pgShowToolbar, control: @<Switch @bind-Checked="_pgShowColumnChooser" Disabled="!_pgShowToolbar" />)
+            @ControlRow(label: "Export button", active: _pgShowToolbar, control: @<Switch @bind-Checked="_pgShowExport"        Disabled="!_pgShowToolbar" />)
+            @ControlRow(label: "Expand fullscreen", active: _pgShowToolbar, control: @<Switch @bind-Checked="_pgExpandable"   Disabled="!_pgShowToolbar" />)
+
+            @* ── Export formats ── *@
+            @SectionHeader("Export formats")
+            @ControlRow(label: "CSV",   active: _pgShowToolbar && _pgShowExport, control: @<Checkbox Checked="_pgExportCsv"   CheckedChanged="@((bool v) => { _pgExportCsv   = v; RecomputeExportFormats(); })" Disabled="!_pgShowToolbar || !_pgShowExport" />)
+            @ControlRow(label: "Excel", active: _pgShowToolbar && _pgShowExport, control: @<Checkbox Checked="_pgExportExcel" CheckedChanged="@((bool v) => { _pgExportExcel = v; RecomputeExportFormats(); })" Disabled="!_pgShowToolbar || !_pgShowExport" />)
+            @ControlRow(label: "PDF",   active: _pgShowToolbar && _pgShowExport, control: @<Checkbox Checked="_pgExportPdf"   CheckedChanged="@((bool v) => { _pgExportPdf   = v; RecomputeExportFormats(); })" Disabled="!_pgShowToolbar || !_pgShowExport" />)
+
+            @* ── Columns ── *@
+            @SectionHeader("Columns")
+            @ControlRow(label: "Sortable",         active: true, control: @<Switch @bind-Checked="_pgSortable" />)
+            @ControlRow(label: "Filterable",        active: true, control: @<Switch @bind-Checked="_pgFilterable" />)
+            @ControlRow(label: "Drag to reorder",   active: true, control: @<Switch @bind-Checked="_pgReorderable" />)
+            @ControlRow(label: "Pinnable",          active: true, control: @<Switch @bind-Checked="_pgPinnable" />)
+
+            @* ── Rows ── *@
+            @SectionHeader("Rows")
+            @ControlRow(label: "Drag to reorder rows",   active: true, control: @<Switch @bind-Checked="_pgRowReorderable" />)
+            @ControlRow(label: "Show add-row button", active: _pgEditMode == "Batch", control: @<Switch @bind-Checked="_pgShowAddRow" Disabled="@(_pgEditMode != "Batch")" />)
+
+            @* ── Grouping ── *@
+            @SectionHeader("Grouping")
+            @ControlRow(label: "Show group panel",    active: true, control: @<Switch @bind-Checked="_pgShowGroupPanel" />)
+            @ControlRow(label: "Expanded by default", active: true, control: @<Switch @bind-Checked="_pgGroupsExpanded" />)
+            <div class="px-4 pb-3 pt-1">
+                <Lumeo.Text Size="xs" Color="muted" Class="mb-1.5 block">Group by</Lumeo.Text>
+                <Segmented Value="_pgGroupBySel" ValueChanged="@((string v) => { _pgGroupBySel = v; StateHasChanged(); })" Block="true">
+                    <SegmentedItem Value="None">None</SegmentedItem>
+                    <SegmentedItem Value="Team">Team</SegmentedItem>
+                    <SegmentedItem Value="Role">Role</SegmentedItem>
+                    <SegmentedItem Value="Status">Status</SegmentedItem>
+                </Segmented>
+            </div>
+
+            @* ── Pagination ── *@
+            @SectionHeader("Pagination")
+            @ControlRow(label: "Show pagination", active: true, control: @<Switch @bind-Checked="_pgShowPagination" />)
+            <div class="px-4 pb-3 pt-1">
+                <NumberInput @bind-Value="_pgPageSizeNum" Min="3" Max="20" Step="1" Label="Page size" />
+            </div>
+            <div class="px-4 pb-3">
+                <Lumeo.Text Size="xs" Color="muted" Class="mb-1.5 block">Page size options</Lumeo.Text>
+                <Segmented @bind-Value="_pgPageSizeOptionsSel" Block="true">
+                    <SegmentedItem Value="Default">Default</SegmentedItem>
+                    <SegmentedItem Value="Small">Small</SegmentedItem>
+                    <SegmentedItem Value="Large">Large</SegmentedItem>
+                </Segmented>
+            </div>
+
+            @* ── Virtualization ── *@
+            @SectionHeader("Virtualization")
+            @ControlRow(label: "Virtualized rows",      active: true, control: @<Switch @bind-Checked="_pgVirtualized" />)
+            @ControlRow(label: "Column virtualization", active: true, control: @<Switch @bind-Checked="_pgColumnVirtualize" />)
+            <div class="px-4 pb-3 pt-1">
+                <NumberInput @bind-Value="_pgMaxVisibleColumns" Min="2" Max="6" Step="1"
+                             Label="Max visible columns" Disabled="!_pgColumnVirtualize" />
+            </div>
+
+            @* ── Display ── *@
+            @SectionHeader("Display")
+            @ControlRow(label: "Striped rows",    active: true, control: @<Switch @bind-Checked="_pgStriped" />)
+            @ControlRow(label: "Bordered",        active: true, control: @<Switch @bind-Checked="_pgBordered" />)
+            @ControlRow(label: "Compact rows",    active: true, control: @<Switch @bind-Checked="_pgCompact" />)
+            @ControlRow(label: "Hover highlight", active: true, control: @<Switch @bind-Checked="_pgHoverable" />)
+            @ControlRow(label: "Loading skeleton",active: true, control: @<Switch @bind-Checked="_pgIsLoading" />)
+            <div class="px-4 pb-3 pt-1">
+                <Lumeo.Text Size="xs" Color="muted" Class="mb-1.5 block">Row height</Lumeo.Text>
+                <Segmented @bind-Value="_pgHeightSel" Block="true">
+                    <SegmentedItem Value="Auto">Auto</SegmentedItem>
+                    <SegmentedItem Value="Compact">Compact</SegmentedItem>
+                    <SegmentedItem Value="Tall">Tall</SegmentedItem>
+                </Segmented>
+            </div>
+
+            @* ── Persistence ── *@
+            @SectionHeader("Persistence")
+            @ControlRow(label: "Persist to localStorage", active: true, control: @<Switch @bind-Checked="_pgEnableLayoutPersistence" />)
+            @if (_pgEnableLayoutPersistence)
+            {
+                <div class="px-4 pb-3 pt-1">
+                    <Input @bind-Value="_pgLayoutStorageKey" Placeholder="playground-layout" />
+                </div>
+            }
+
+            @* ── Selection & editing ── *@
+            @SectionHeader("Selection &amp; editing")
+            <div class="px-4 pb-3 pt-1">
+                <Lumeo.Text Size="xs" Color="muted" Class="mb-1.5 block">Selection mode</Lumeo.Text>
+                <Segmented @bind-Value="_pgSelectionMode" Block="true">
+                    <SegmentedItem Value="None">None</SegmentedItem>
+                    <SegmentedItem Value="Single">Single</SegmentedItem>
+                    <SegmentedItem Value="Multiple">Multi</SegmentedItem>
+                </Segmented>
+            </div>
+            <div class="px-4 pb-3">
+                <Lumeo.Text Size="xs" Color="muted" Class="mb-1.5 block">Edit mode</Lumeo.Text>
+                <Segmented @bind-Value="_pgEditMode" Block="true">
+                    <SegmentedItem Value="None">None</SegmentedItem>
+                    <SegmentedItem Value="Cell">Cell</SegmentedItem>
+                    <SegmentedItem Value="Row">Row</SegmentedItem>
+                    <SegmentedItem Value="Batch">Batch</SegmentedItem>
+                </Segmented>
+            </div>
+
+            <div style="height:1rem"></div>
+        </div>
+    };
+
+    @* ── Section header — uppercase label, whitespace-only separation
+         (no border line — relies on extra top padding to break sections). *@
+    private RenderFragment SectionHeader(string label) => __builder =>
+    {
+        <div class="px-4 pt-5 pb-1">
+            <Lumeo.Text Size="xs" Class="font-semibold uppercase tracking-wider text-muted-foreground/45 select-none">@label</Lumeo.Text>
+        </div>
+    };
+
+    @* ── Control row: label on left, control slot on right ────────────────── *@
+    private RenderFragment ControlRow(string label, bool active, RenderFragment control) => __builder =>
+    {
+        <div class="@(!active ? "opacity-50" : "") flex items-center justify-between gap-3 px-4 py-1.5 hover:bg-accent/30 transition-colors">
+            <Lumeo.Text Size="sm" Class="leading-none text-foreground/85 flex-1 min-w-0 select-none">@label</Lumeo.Text>
+            <div class="shrink-0">@control</div>
+        </div>
+    };
 
     // ---- Live Playground state -----------------------------------------
     // Toolbar
@@ -236,9 +343,9 @@
     private void RecomputeExportFormats()
     {
         DataGridExportFormat f = 0;
-        if (_pgExportCsv) f |= DataGridExportFormat.Csv;
+        if (_pgExportCsv)   f |= DataGridExportFormat.Csv;
         if (_pgExportExcel) f |= DataGridExportFormat.Excel;
-        if (_pgExportPdf) f |= DataGridExportFormat.Pdf;
+        if (_pgExportPdf)   f |= DataGridExportFormat.Pdf;
         _pgExportFormats = f;
     }
 
@@ -285,8 +392,8 @@
     private string? _pgHeight => _pgHeightSel switch
     {
         "Compact" => "400px",
-        "Tall" => "calc(100vh - 200px)",
-        _ => "100%",
+        "Tall"    => "calc(100vh - 200px)",
+        _         => "100%",
     };
 
     // Persistence
@@ -299,17 +406,17 @@
 
     private DataGridSelectionMode _pgSelectionModeEnum => _pgSelectionMode switch
     {
-        "Single" => DataGridSelectionMode.Single,
+        "Single"   => DataGridSelectionMode.Single,
         "Multiple" => DataGridSelectionMode.Multiple,
-        _ => DataGridSelectionMode.None,
+        _          => DataGridSelectionMode.None,
     };
 
     private DataGridEditMode _pgEditModeEnum => _pgEditMode switch
     {
-        "Cell" => DataGridEditMode.Cell,
-        "Row" => DataGridEditMode.Row,
+        "Cell"  => DataGridEditMode.Cell,
+        "Row"   => DataGridEditMode.Row,
         "Batch" => DataGridEditMode.Batch,
-        _ => DataGridEditMode.None,
+        _       => DataGridEditMode.None,
     };
 
     private void ResetPlayground()
@@ -359,24 +466,27 @@
         _pgEditMode = "None";
     }
 
+    // Counter so each "Add row" produces a unique record.
+    private int _pgAddCounter;
+
     private record PlaygroundRow(string Name, string Team, string Role, double Salary, string Status, DateTime Joined);
 
     private List<PlaygroundRow> _pgRows = new()
     {
-        new("Ada Lovelace",      "Platform",     "Staff Engineer",   182_000, "Active",   new DateTime(2019, 03, 12)),
-        new("Linus Torvalds",    "Platform",     "Principal",        225_000, "Active",   new DateTime(2015, 08, 01)),
-        new("Margaret Hamilton", "Platform",     "Engineering Lead", 198_000, "Active",   new DateTime(2018, 06, 21)),
-        new("Grace Hopper",      "Data",         "Director",         245_000, "Active",   new DateTime(2014, 02, 04)),
-        new("Alan Turing",       "Data",         "Senior Engineer",  165_000, "Active",   new DateTime(2020, 11, 30)),
-        new("Katherine Johnson", "Data",         "Analytics Lead",   172_000, "Active",   new DateTime(2017, 09, 14)),
-        new("Tim Berners-Lee",   "Design",       "Design Director",  210_000, "Active",   new DateTime(2016, 05, 22)),
-        new("Don Norman",        "Design",       "Principal UX",     188_000, "Active",   new DateTime(2018, 01, 17)),
-        new("Susan Kare",        "Design",       "Senior Designer",  148_000, "On Leave", new DateTime(2021, 04, 09)),
-        new("Dennis Ritchie",    "Infrastructure", "Distinguished",  260_000, "Active",   new DateTime(2013, 10, 30)),
-        new("Brian Kernighan",   "Infrastructure", "Principal",      215_000, "Active",   new DateTime(2014, 07, 18)),
-        new("Barbara Liskov",    "Infrastructure", "Senior Engineer",170_000, "Active",   new DateTime(2019, 12, 03)),
-        new("Donald Knuth",      "Research",     "Research Fellow",  235_000, "Active",   new DateTime(2012, 06, 11)),
-        new("Edsger Dijkstra",   "Research",     "Principal",        205_000, "Inactive", new DateTime(2015, 02, 28)),
-        new("John von Neumann",  "Research",     "Senior Researcher",178_000, "Active",   new DateTime(2017, 11, 25)),
+        new("Ada Lovelace",      "Platform",       "Staff Engineer",   182_000, "Active",   new DateTime(2019, 03, 12)),
+        new("Linus Torvalds",    "Platform",       "Principal",        225_000, "Active",   new DateTime(2015, 08, 01)),
+        new("Margaret Hamilton", "Platform",       "Engineering Lead", 198_000, "Active",   new DateTime(2018, 06, 21)),
+        new("Grace Hopper",      "Data",           "Director",         245_000, "Active",   new DateTime(2014, 02, 04)),
+        new("Alan Turing",       "Data",           "Senior Engineer",  165_000, "Active",   new DateTime(2020, 11, 30)),
+        new("Katherine Johnson", "Data",           "Analytics Lead",   172_000, "Active",   new DateTime(2017, 09, 14)),
+        new("Tim Berners-Lee",   "Design",         "Design Director",  210_000, "Active",   new DateTime(2016, 05, 22)),
+        new("Don Norman",        "Design",         "Principal UX",     188_000, "Active",   new DateTime(2018, 01, 17)),
+        new("Susan Kare",        "Design",         "Senior Designer",  148_000, "On Leave", new DateTime(2021, 04, 09)),
+        new("Dennis Ritchie",    "Infrastructure", "Distinguished",    260_000, "Active",   new DateTime(2013, 10, 30)),
+        new("Brian Kernighan",   "Infrastructure", "Principal",        215_000, "Active",   new DateTime(2014, 07, 18)),
+        new("Barbara Liskov",    "Infrastructure", "Senior Engineer",  170_000, "Active",   new DateTime(2019, 12, 03)),
+        new("Donald Knuth",      "Research",       "Research Fellow",  235_000, "Active",   new DateTime(2012, 06, 11)),
+        new("Edsger Dijkstra",   "Research",       "Principal",        205_000, "Inactive", new DateTime(2015, 02, 28)),
+        new("John von Neumann",  "Research",       "Senior Researcher",178_000, "Active",   new DateTime(2017, 11, 25)),
     };
 }
