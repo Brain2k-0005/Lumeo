@@ -30,7 +30,10 @@ function loadECharts(src) {
             return;
         }
         const script = document.createElement('script');
-        script.src = src || 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';
+        // Standard override: `window.lumeoCdn.echarts`; legacy `src` param takes
+        // precedence so existing per-call overrides keep working.
+        const globalOverride = (typeof window !== 'undefined' && window.lumeoCdn && window.lumeoCdn.echarts) || null;
+        script.src = src || globalOverride || 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';
         script.onload = () => {
             echartsLoaded = true;
             resolve();
