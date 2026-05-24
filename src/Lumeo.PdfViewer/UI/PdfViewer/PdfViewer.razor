@@ -51,11 +51,24 @@
                                class="h-7 w-40 rounded-md border border-border/60 bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                @onchange="HandleSearchInput"
                                aria-label="Search PDF" />
-                        @if (_searchMatches.HasValue)
+                        @if (_searchResult is not null)
                         {
-                            <span class="text-xs text-muted-foreground" aria-live="polite">
-                                @_searchMatches matches
-                            </span>
+                            @if (_searchResult.TotalCount == 0)
+                            {
+                                <span class="text-xs text-muted-foreground" aria-live="polite">No matches</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="@NavBtnClass" aria-label="Previous match" disabled="@(_searchResult.TotalCount == 0)" @onclick="GoPrevMatch">
+                                    <Blazicon Svg="Lucide.ChevronUp" class="h-4 w-4" />
+                                </button>
+                                <span class="min-w-[52px] text-center text-xs text-muted-foreground" aria-live="polite">
+                                    @(_activeMatchIndex + 1) / @_searchResult.TotalCount
+                                </span>
+                                <button type="button" class="@NavBtnClass" aria-label="Next match" disabled="@(_searchResult.TotalCount == 0)" @onclick="GoNextMatch">
+                                    <Blazicon Svg="Lucide.ChevronDown" class="h-4 w-4" />
+                                </button>
+                            }
                         }
                     </div>
                 }
@@ -95,7 +108,7 @@
         {
             <EmptyState Class="py-16"
                         Title="Could not load PDF"
-                        Description="@_loadError">
+                        Description="@_loadErrorShort">
                 <IconContent>
                     <Blazicon Svg="Lucide.FileX" class="h-10 w-10" />
                 </IconContent>
@@ -115,7 +128,21 @@
         else
         {
             <div class="flex min-h-full items-start justify-center p-4">
-                <canvas id="@_canvasId" class="@CanvasVisibilityClass shadow-md"></canvas>
+                <div class="relative inline-block">
+                    <canvas id="@_canvasId" class="@CanvasVisibilityClass shadow-md"></canvas>
+                    @if (_highlights.Count > 0 && !string.IsNullOrWhiteSpace(_searchQuery))
+                    {
+                        <div class="lumeo-pdf-highlights pointer-events-none absolute inset-0" aria-hidden="true">
+                            @for (var i = 0; i < _highlights.Count; i++)
+                            {
+                                var h = _highlights[i];
+                                var isActive = i == _activeMatchOnPage;
+                                var bg = isActive ? $"color-mix(in srgb, {HighlightColor} 70%, transparent)" : $"color-mix(in srgb, {HighlightColor} 45%, transparent)";
+                                <div style="position:absolute;left:@(h.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))px;top:@(h.Y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))px;width:@(h.Width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))px;height:@(h.Height.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))px;background:@bg;border-radius:2px;"></div>
+                            }
+                        </div>
+                    }
+                </div>
             </div>
             @if (_loading)
             {
@@ -140,6 +167,7 @@
     [Parameter] public bool ShowZoomControls { get; set; } = true;
     [Parameter] public bool ShowDownload { get; set; } = true;
     [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public string HighlightColor { get; set; } = "yellow";
     [Parameter] public EventCallback<int> OnLoaded { get; set; }
     [Parameter] public EventCallback<int> OnPageChanged { get; set; }
     /// <summary>
@@ -164,8 +192,23 @@
     private int _totalPages;
     private bool _loading = true;
     private string? _loadError;
+    private string? _loadErrorShort;
     private string _searchQuery = string.Empty;
-    private int? _searchMatches;
+    private SearchResult? _searchResult;          // null = no query yet
+    private int _activeMatchIndex;                // 0-based global match index
+    private List<MatchRect> _highlights = [];     // rects for current page
+    private int _activeMatchOnPage = -1;          // index within _highlights that is "active"
+
+    // Strip the long pdf.js stack trace (everything after the first " at ")
+    // so the in-component EmptyState shows a short, human-readable message.
+    // The full message still flows to OnError for consumers that want it.
+    private static string ShortenError(string msg)
+    {
+        var firstLine = msg.Split('\n')[0];
+        var idx = firstLine.IndexOf(" at ", StringComparison.Ordinal);
+        if (idx > 0) firstLine = firstLine[..idx];
+        return firstLine.Length > 120 ? firstLine[..120] + "…" : firstLine;
+    }
 
     // Re-entrancy guard. OnAfterRenderAsync calls StateHasChanged() to flip the
     // loading spinner, which queues another render → another OnAfterRenderAsync
@@ -240,7 +283,10 @@
                     _lastZoom = 0;
                     _loading = true;
                     _loadError = null;
-                    _searchMatches = null;
+                    _searchResult = null;
+                    _highlights = [];
+                    _activeMatchIndex = 0;
+                    _activeMatchOnPage = -1;
                     StateHasChanged();
 
                     try
@@ -253,6 +299,7 @@
                     {
                         _lastSrc = null;
                         _loadError = ex.Message;
+                        _loadErrorShort = ShortenError(ex.Message);
                         _loading = false;
                         StateHasChanged();
                         if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
@@ -275,6 +322,7 @@
                     await _module.InvokeVoidAsync("renderPage", _canvasId, targetPage, targetZoom);
 
                     _loading = false;
+                    await RefreshHighlightsAsync();
                     StateHasChanged();
                 }
                 else if (_loading)
@@ -289,6 +337,7 @@
         catch (Exception ex)
         {
             _loadError = ex.Message;
+            _loadErrorShort = ShortenError(ex.Message);
             _loading = false;
             StateHasChanged();
             if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
@@ -305,6 +354,7 @@
         var clamped = Math.Clamp(next, 1, _totalPages);
         if (clamped == Page) return;
         Page = clamped;
+        _dirty = true;
         if (PageChanged.HasDelegate) await PageChanged.InvokeAsync(Page);
         if (OnPageChanged.HasDelegate) await OnPageChanged.InvokeAsync(Page);
     }
@@ -314,6 +364,7 @@
         var clamped = Math.Clamp(next, MinZoom, MaxZoom);
         if (Math.Abs(clamped - Zoom) < 0.0001) return;
         Zoom = clamped;
+        _dirty = true;
         if (ZoomChanged.HasDelegate) await ZoomChanged.InvokeAsync(Zoom);
     }
 
@@ -335,19 +386,129 @@
     {
         _searchQuery = e.Value?.ToString() ?? string.Empty;
         if (_module is null) return;
+
         if (string.IsNullOrWhiteSpace(_searchQuery))
         {
-            _searchMatches = null;
+            _searchResult = null;
+            _highlights = [];
+            _activeMatchIndex = 0;
+            _activeMatchOnPage = -1;
+            StateHasChanged();
             return;
         }
+
         try
         {
-            _searchMatches = await _module.InvokeAsync<int>("search", _canvasId, _searchQuery);
+            _searchResult = await _module.InvokeAsync<SearchResult>("search", _canvasId, _searchQuery);
         }
         catch
         {
-            _searchMatches = 0;
+            _searchResult = new SearchResult { TotalCount = 0, Pages = [] };
         }
+
+        _activeMatchIndex = 0;
+
+        // Jump to first match page, then load overlays.
+        if (_searchResult is { TotalCount: > 0 } && _searchResult.Pages.Count > 0)
+        {
+            var firstPage = _searchResult.Pages[0].PageNum;
+            if (firstPage != Page)
+            {
+                await SetPageAsync(firstPage);
+                // SetPageAsync sets _dirty = true and invokes PageChanged;
+                // OnAfterRenderAsync will re-render the page and call RefreshHighlightsAsync.
+                // We still need the counter displayed, so call StateHasChanged for the toolbar.
+                StateHasChanged();
+                return;
+            }
+        }
+
+        await RefreshHighlightsAsync();
+        StateHasChanged();
+    }
+
+    // Fetch pixel-space rects for the current page and current query from JS,
+    // then figure out which rect corresponds to _activeMatchIndex.
+    private async Task RefreshHighlightsAsync()
+    {
+        if (_module is null || string.IsNullOrWhiteSpace(_searchQuery) || _searchResult is null || _searchResult.TotalCount == 0)
+        {
+            _highlights = [];
+            _activeMatchOnPage = -1;
+            return;
+        }
+
+        try
+        {
+            var rects = await _module.InvokeAsync<List<MatchRect>>("getMatchOverlays", _canvasId, Page, _searchQuery);
+            _highlights = rects ?? [];
+        }
+        catch
+        {
+            _highlights = [];
+        }
+
+        // Determine which highlight on this page corresponds to the global _activeMatchIndex.
+        _activeMatchOnPage = -1;
+        if (_highlights.Count > 0 && _searchResult.Pages.Count > 0)
+        {
+            // Count how many global matches appear before the current page.
+            var matchesBefore = 0;
+            foreach (var pg in _searchResult.Pages)
+            {
+                if (pg.PageNum < Page)
+                    matchesBefore += pg.Matches.Count;
+                else
+                    break;
+            }
+            var localIndex = _activeMatchIndex - matchesBefore;
+            if (localIndex >= 0 && localIndex < _highlights.Count)
+                _activeMatchOnPage = localIndex;
+        }
+    }
+
+    // Build a flat ordered list of (pageNum, localMatchIndex) pairs so we can
+    // step through all matches across pages sequentially.
+    private List<(int PageNum, int LocalIndex)> BuildMatchList()
+    {
+        if (_searchResult is null) return [];
+        var list = new List<(int, int)>();
+        foreach (var pg in _searchResult.Pages)
+            for (var i = 0; i < pg.Matches.Count; i++)
+                list.Add((pg.PageNum, i));
+        return list;
+    }
+
+    private async Task GoNextMatch()
+    {
+        if (_searchResult is null || _searchResult.TotalCount == 0) return;
+        _activeMatchIndex = (_activeMatchIndex + 1) % _searchResult.TotalCount;
+        await NavigateToActiveMatchAsync();
+    }
+
+    private async Task GoPrevMatch()
+    {
+        if (_searchResult is null || _searchResult.TotalCount == 0) return;
+        _activeMatchIndex = (_activeMatchIndex - 1 + _searchResult.TotalCount) % _searchResult.TotalCount;
+        await NavigateToActiveMatchAsync();
+    }
+
+    private async Task NavigateToActiveMatchAsync()
+    {
+        if (_searchResult is null) return;
+        var matches = BuildMatchList();
+        if (_activeMatchIndex >= matches.Count) return;
+        var (targetPage, _) = matches[_activeMatchIndex];
+        if (targetPage != Page)
+        {
+            await SetPageAsync(targetPage);
+            // OnAfterRenderAsync → RefreshHighlightsAsync will update highlights.
+        }
+        else
+        {
+            await RefreshHighlightsAsync();
+        }
+        StateHasChanged();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -391,5 +552,27 @@
     private class LoadResult
     {
         public int TotalPages { get; set; }
+    }
+
+    // Matches { totalCount, pages: [{ pageNum, matches: [{x,y,width,height}] }] }
+    private class SearchResult
+    {
+        public int TotalCount { get; set; }
+        public List<SearchPageResult> Pages { get; set; } = [];
+    }
+
+    private class SearchPageResult
+    {
+        public int PageNum { get; set; }
+        public List<MatchRect> Matches { get; set; } = [];
+    }
+
+    // Matches { x, y, width, height } — CSS pixel coords for the current zoom.
+    private class MatchRect
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
     }
 }
