@@ -1,0 +1,51 @@
+@namespace Lumeo
+
+@*  Legend overlay for a map. Renders as a small pill chip inside the
+    Overlay slot. Typical usage:
+
+        <Map ...>
+            <Overlay>
+                <MapLegend Title="Traffic" Position="bottom-left">
+                    <MapLegendItem Color="green" Label="Low" />
+                    <MapLegendItem Color="yellow" Label="Medium" />
+                    <MapLegendItem Color="red" Label="High" />
+                </MapLegend>
+            </Overlay>
+        </Map>
+
+    Position is a CSS snippet — use any combination of `top-2 left-2`,
+    `bottom-2 right-2`, etc. or leave it at the default bottom-left.        *@
+
+<div class="@_rootClass pointer-events-auto px-3 py-2 rounded-lg text-xs font-medium space-y-1.5 @Class"
+     @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <div class="font-semibold text-foreground mb-1">@Title</div>
+    }
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>Optional title shown above the legend items.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Absolute-position corner shorthand. Defaults to <c>"bottom-left"</c>.
+    /// Values: <c>"top-left"</c>, <c>"top-right"</c>, <c>"bottom-left"</c>,
+    /// <c>"bottom-right"</c>. Can also pass a raw Tailwind class via <see cref="Class"/>.</summary>
+    [Parameter] public string Position { get; set; } = "bottom-left";
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private static readonly Dictionary<string, string> _positionClasses = new()
+    {
+        ["top-left"]     = "absolute top-2 left-2",
+        ["top-right"]    = "absolute top-2 right-2",
+        ["bottom-left"]  = "absolute bottom-2 left-2",
+        ["bottom-right"] = "absolute bottom-2 right-2",
+    };
+
+    private string _rootClass => (_positionClasses.TryGetValue(Position, out var cls) ? cls : "absolute bottom-2 left-2")
+        + " bg-background border border-border shadow-md";
+}

@@ -13,8 +13,17 @@
 // We also inject our own `map.css` (shadcn-style chrome on top of MapLibre's
 // defaults). It's idempotent: one <link data-lumeo-map> per document.
 
-const MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
-const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+// CDN URLs — can be overridden globally by setting
+//   window.lumeoCdn = { mapLibreJs: '/lib/maplibre/maplibre-gl.js',
+//                       mapLibreCss: '/lib/maplibre/maplibre-gl.css' };
+// before the first Map mounts.  Lets airgapped / strict-CSP / CLI-installed
+// consumers self-host the lib without forking the satellite.  MapLibre v5+
+// ships the globe projection as a stable feature (it was experimental in v4).
+function _cdn(key, fallback) {
+    return (typeof window !== 'undefined' && window.lumeoCdn && window.lumeoCdn[key]) || fallback;
+}
+const MAPLIBRE_JS = _cdn('mapLibreJs', 'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js');
+const MAPLIBRE_CSS = _cdn('mapLibreCss', 'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css');
 const LUMEO_MAP_CSS = '_content/Lumeo.Maps/css/map.css';
 
 // CARTO basemaps (free, no API key, OSM + CARTO attribution).
@@ -35,6 +44,12 @@ const STYLE_PRESETS = {
 
 const instances = new Map();
 let maplibreLoadPromise = null;
+
+// Single shared MutationObserver + media-query listener for theme changes.
+// Watching per-document (not per-map) to avoid N observers for N maps.
+let _themeObserver = null;
+let _themeMq = null;
+let _lastDark = null; // cached state so we only react on actual toggles
 
 function toLngLat(lat, lon) { return [lon, lat]; }
 
@@ -85,9 +100,24 @@ function loadMapLibre() {
 // ----------------------------------------------------------------------
 
 function isDarkTheme() {
+    // Priority 1: explicit class on <html> (Lumeo's themeManager adds/removes 'dark').
+    // This is the most reliable signal — it reflects whatever the user has chosen.
     const root = document.documentElement;
     if (root.classList.contains('dark')) return true;
+
+    // Priority 2: data-theme="dark" attribute (non-Lumeo hosts).
     if (root.dataset?.theme === 'dark') return true;
+
+    // Priority 3: if the theme was explicitly set to light via localStorage
+    // (Lumeo's themeManager stores 'theme-mode'), don't fall through to matchMedia.
+    // Without this guard, toggling to 'light' while the OS is in dark mode would
+    // still return true here — meaning our observer wouldn't detect the toggle.
+    const storedMode = (typeof localStorage !== 'undefined')
+        ? (localStorage.getItem('theme-mode') || localStorage.getItem('theme'))
+        : null;
+    if (storedMode === 'light') return false;
+
+    // Priority 4: OS / browser preference (only when no explicit override).
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
@@ -101,27 +131,65 @@ function resolveStyleUrl(name) {
     return name;
 }
 
-function watchThemeChanges(map, requestedName, getInstance) {
-    if (requestedName !== 'Auto') return () => {};
-    let last = isDarkTheme();
-    const apply = () => {
-        const dark = isDarkTheme();
-        if (dark === last) return;
-        last = dark;
-        const newStyle = resolveStyleUrl('Auto');
-        // setStyle wipes all user-added sources/layers; we re-add them after
-        // the new style finishes loading (see attachStyleReloadHandler below).
-        map.setStyle(newStyle);
-    };
-    const mo = new MutationObserver(apply);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
-    const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-    const mqHandler = () => apply();
-    mq?.addEventListener?.('change', mqHandler);
-    return () => {
-        mo.disconnect();
-        mq?.removeEventListener?.('change', mqHandler);
-    };
+// Called whenever the host page's dark/light class toggles. Iterates every
+// live map instance and:
+//   • Auto-tile instances: calls setStyle() with the new basemap URL. MapLibre
+//     wipes user sources/layers on setStyle; the 'styledata' handler in init()
+//     re-adds cluster layers (with freshly resolved CSS-var colors) and shapes.
+//   • All cluster instances: if the source is already present (non-Auto maps),
+//     re-resolve CSS vars and push new colors via setPaintProperty so cluster
+//     bubbles match the new theme without a full style reload.
+function _onThemeToggle() {
+    const dark = isDarkTheme();
+    if (dark === _lastDark) return; // spurious mutation (class change unrelated to theme)
+    _lastDark = dark;
+
+    const newAutoStyle = resolveStyleUrl('Auto');
+    for (const inst of instances.values()) {
+        try { applyThemeToInstance(inst, dark, newAutoStyle); } catch (_) {}
+    }
+}
+
+function applyThemeToInstance(inst, dark, newAutoStyle) {
+    const { map } = inst;
+    if (inst.requestedStyle === 'Auto' || inst.requestedStyle == null || inst.requestedStyle === '') {
+        // setStyle triggers 'styledata' → applyClusterMarkers + applyShapes run
+        // with fresh getComputedStyle colors. DOM markers use var() refs so they
+        // update automatically.
+        map.setStyle(newAutoStyle);
+    } else if (inst.clusterEnabled && map.getSource('lumeo-markers')) {
+        // Non-Auto map: tile does not change, but cluster paint colors should
+        // track the theme. Re-resolve and push paint properties directly.
+        const clusterColor    = resolveCssVar('--primary',            '#3b82f6');
+        const clusterBgColor  = resolveCssVar('--background',         '#ffffff');
+        const clusterTextColor = resolveCssVar('--primary-foreground', '#ffffff');
+        try { map.setPaintProperty('lumeo-clusters',          'circle-color',        clusterColor);    } catch (_) {}
+        try { map.setPaintProperty('lumeo-clusters',          'circle-stroke-color', clusterBgColor);  } catch (_) {}
+        try { map.setPaintProperty('lumeo-unclustered-point', 'circle-stroke-color', clusterBgColor);  } catch (_) {}
+        try { map.setPaintProperty('lumeo-cluster-count',     'text-color',          clusterTextColor);} catch (_) {}
+    }
+}
+
+// Start the shared observer if it isn't running yet.
+function ensureThemeWatcher() {
+    if (_themeObserver) return;
+    _lastDark = isDarkTheme();
+    _themeObserver = new MutationObserver(_onThemeToggle);
+    _themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme'],
+    });
+    _themeMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    _themeMq?.addEventListener?.('change', _onThemeToggle);
+}
+
+// Tear down the shared observer when no map instances are left.
+function maybeStopThemeWatcher() {
+    if (instances.size > 0) return;
+    if (_themeObserver) { _themeObserver.disconnect(); _themeObserver = null; }
+    _themeMq?.removeEventListener?.('change', _onThemeToggle);
+    _themeMq = null;
+    _lastDark = null;
 }
 
 // ----------------------------------------------------------------------
@@ -150,7 +218,7 @@ function resolveColor(color) {
 
 // Returns { html, anchor } for a marker variant. `anchor` is the MapLibre
 // anchor string — center for circular variants, bottom for the Pin teardrop.
-function buildMarkerVariant(variant, color, label, iconHtml) {
+function buildMarkerVariant(variant, color, label, iconHtml, labelHoverOnly) {
     const v = (variant || 'Default');
     const fill = resolveColor(color);
 
@@ -159,7 +227,10 @@ function buildMarkerVariant(variant, color, label, iconHtml) {
     let anchor = 'center';
 
     if (label) {
-        labelHtml = `<span class="lumeo-map-marker-label">${escapeHtml(label)}</span>`;
+        const labelClass = labelHoverOnly
+            ? 'lumeo-map-marker-label lumeo-map-marker-label--hover'
+            : 'lumeo-map-marker-label';
+        labelHtml = `<span class="${labelClass}">${escapeHtml(label)}</span>`;
     }
 
     switch (v) {
@@ -182,9 +253,12 @@ function buildMarkerVariant(variant, color, label, iconHtml) {
         case 'Pin':
             anchor = 'bottom';
             return {
-                html: `${labelHtml}<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36" fill="${fill}" stroke="hsl(var(--background, 0 0% 100%))" stroke-width="1.5">
-                    <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z"/>
-                    <circle cx="12" cy="12" r="4.5" fill="hsl(var(--background, 0 0% 100%))"/>
+                // Use style="" not the fill= presentation attribute so that
+                // CSS variable references (e.g. hsl(var(--primary,...))) are
+                // resolved by the CSS engine and update on theme change.
+                html: `${labelHtml}<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36" stroke-width="1.5" style="stroke:hsl(var(--background, 0 0% 100%))">
+                    <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z" style="fill:${fill}"/>
+                    <circle cx="12" cy="12" r="4.5" style="fill:hsl(var(--background, 0 0% 100%))"/>
                 </svg>`,
                 anchor,
             };
@@ -226,7 +300,7 @@ function buildMarkerElement(m) {
         el.style.cssText = `width:32px;height:32px;background:url(${m.iconUrl}) center/contain no-repeat;`;
         return { el, anchor: 'bottom' };
     }
-    const parts = buildMarkerVariant(m.variant, m.color, m.label, m.iconHtml);
+    const parts = buildMarkerVariant(m.variant, m.color, m.label, m.iconHtml, !!m.labelHoverOnly);
     const el = document.createElement('div');
     el.className = 'lumeo-map-marker';
     el.innerHTML = parts.html;
@@ -321,6 +395,22 @@ function shapeToFeature(s) {
         }
         case 'geojson':
             return { kind: 'geojson', feature: s.geojson };
+        case 'heatmap': {
+            // Build a GeoJSON FeatureCollection where each point carries an
+            // `intensity` property for the MapLibre heatmap weight expression.
+            const features = (s.points || []).map(p => ({
+                type: 'Feature',
+                properties: { intensity: p.weight != null ? p.weight : 1 },
+                geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+            }));
+            return {
+                kind: 'heatmap',
+                feature: { type: 'FeatureCollection', features },
+                radius: s.radius ?? 20,
+                opacity: s.opacity ?? 0.8,
+                colorRamp: s.colorRamp ?? null,
+            };
+        }
         default:
             return null;
     }
@@ -454,13 +544,60 @@ export async function init(elementId, options, dotNetRef) {
         instances.delete(elementId);
     }
 
-    const map = new maplibregl.Map({
+    const mapOptions = {
         container: el,
         style: resolveStyleUrl(options.tileLayer),
         center: toLngLat(options.lat, options.lon),
         zoom: options.zoom,
-        attributionControl: options.attribution !== false,
-    });
+        // Compact attribution — collapsed to a small (i) chip in the bottom-right,
+        // expands to a pill on click. Custom CSS in map.css theme the
+        // <details>/<summary> element.
+        attributionControl: options.attribution !== false ? { compact: true } : false,
+        // Required so getCanvas().toDataURL() returns a non-empty image —
+        // WebGL clears the back buffer after each frame by default, which
+        // causes PNG export to produce a black canvas. Small perf cost.
+        preserveDrawingBuffer: true,
+    };
+    // Globe projection — supported in MapLibre GL ≥ 3.0.
+    // We set it after creation via setProjection so the map still initialises
+    // even if an older CDN bundle is loaded (safe no-op degradation).
+    const map = new maplibregl.Map(mapOptions);
+
+    // Force the compact attribution to start CLOSED (just the (i) chip).
+    // MapLibre v5.7.1's compact=true initialises the <details> with the open
+    // attribute set, which means the attribution pill is fully expanded on
+    // first paint. We want the collapsed (i)-only state by default — users
+    // click to reveal — so we strip `open` and the compact-show class on the
+    // first `load` event (and again on `idle` as a safety net for race
+    // conditions where MapLibre re-applies the class).
+    const closeAttribOnce = () => {
+        try {
+            const details = el.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
+            if (!details) return;
+            details.removeAttribute('open');
+            details.classList.remove('maplibregl-compact-show');
+        } catch { /* ignore */ }
+    };
+    map.once('load', closeAttribOnce);
+    map.once('idle', closeAttribOnce);
+
+    // Globe projection — set after the style loads. With MapLibre 5+ this is
+    // a stable API; we still wrap defensively because older bundles may be
+    // cached and we don't want a console-level failure to break init.
+    if (options.projection && options.projection !== 'mercator') {
+        const applyProjection = () => {
+            try {
+                map.setProjection({ type: options.projection });
+            } catch (err) {
+                console.warn('Lumeo.Maps: setProjection failed', err);
+            }
+        };
+        if (map.isStyleLoaded()) {
+            applyProjection();
+        } else {
+            map.once('style.load', applyProjection);
+        }
+    }
 
     // Built-in chrome — MapLibre handles zoom +/- via NavigationControl.
     if (options.zoomControl !== false) {
@@ -522,10 +659,12 @@ export async function init(elementId, options, dotNetRef) {
         markers: [],          // [{ marker, popup, id, hasClick, listener }]
         markerSpecs: [],      // last spec list (so we can re-render after a style swap in cluster mode)
         shapeSpecs: [],       // last shape spec list (re-applied after style swap)
+        standalonePopups: [], // [{ maplibrePopup }] — programmatic popups not tied to markers
         clusterEnabled: !!options.cluster,
+        autoFitBounds: !!options.autoFitBounds,
         controls,
-        themeCleanup: null,
         requestedStyle: options.tileLayer,
+        animatingShapes: new Set(), // track active animation timers
     };
 
     // After a setStyle() call, MapLibre wipes user-added sources/layers.
@@ -537,9 +676,8 @@ export async function init(elementId, options, dotNetRef) {
         applyShapes(inst);
     });
 
-    inst.themeCleanup = watchThemeChanges(map, options.tileLayer, () => inst);
-
     instances.set(elementId, inst);
+    ensureThemeWatcher();
 }
 
 // ----------------------------------------------------------------------
@@ -560,7 +698,7 @@ function applyDomMarkers(inst) {
 
     for (const m of markerSpecs) {
         const { el, anchor } = buildMarkerElement(m);
-        const marker = new maplibregl.Marker({ element: el, anchor })
+        const marker = new maplibregl.Marker({ element: el, anchor, draggable: !!m.draggable })
             .setLngLat(toLngLat(m.lat, m.lon))
             .addTo(map);
 
@@ -587,7 +725,33 @@ function applyDomMarkers(inst) {
             el.addEventListener('click', listener);
         }
 
+        if (m.draggable && m.hasDragEnd) {
+            const id = m.id;
+            marker.on('dragend', () => {
+                const pos = marker.getLngLat();
+                try { dotNetRef.invokeMethodAsync('OnMarkerDragEnd', id, pos.lat, pos.lng); } catch (_) {}
+            });
+        }
+
         inst.markers.push({ marker, popup, id: m.id, hasClick: m.hasClick, listener });
+    }
+}
+
+// Resolve a CSS variable name to its current computed value as a color string.
+// MapLibre GL JS paint properties cannot use CSS `hsl(var(--x))` syntax —
+// they require actual color values resolved at the time the layer is added.
+function resolveCssVar(varName, fallback) {
+    try {
+        const raw = getComputedStyle(document.documentElement)
+            .getPropertyValue(varName)
+            .trim();
+        if (!raw) return fallback;
+        // CSS variables for HSL channels are stored as "222 47% 11%" — wrap them.
+        // If the value already starts with '#' or 'rgb' it's a full color; return as-is.
+        if (raw.startsWith('#') || raw.startsWith('rgb') || raw.startsWith('hsl(')) return raw;
+        return `hsl(${raw})`;
+    } catch (_) {
+        return fallback;
     }
 }
 
@@ -608,6 +772,12 @@ function applyClusterMarkers(inst) {
         return;
     }
 
+    // Resolve CSS variables to actual color values — MapLibre GL JS paint
+    // properties do not support `hsl(var(--x))` CSS syntax.
+    const clusterColor = resolveCssVar('--primary', '#3b82f6');
+    const clusterBgColor = resolveCssVar('--background', '#ffffff');
+    const clusterTextColor = resolveCssVar('--primary-foreground', '#ffffff');
+
     map.addSource(sourceId, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features },
@@ -622,8 +792,8 @@ function applyClusterMarkers(inst) {
         source: sourceId,
         filter: ['has', 'point_count'],
         paint: {
-            'circle-color': 'hsl(var(--primary, 222 47% 11%))',
-            'circle-stroke-color': 'hsl(var(--background, 0 0% 100%))',
+            'circle-color': clusterColor,
+            'circle-stroke-color': clusterBgColor,
             'circle-stroke-width': 2,
             'circle-radius': ['step', ['get', 'point_count'], 18, 25, 24, 100, 30],
         },
@@ -638,7 +808,7 @@ function applyClusterMarkers(inst) {
             'text-size': 12,
             'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
         },
-        paint: { 'text-color': 'hsl(var(--primary-foreground, 0 0% 100%))' },
+        paint: { 'text-color': clusterTextColor },
     });
     map.addLayer({
         id: 'lumeo-unclustered-point',
@@ -648,21 +818,29 @@ function applyClusterMarkers(inst) {
         paint: {
             'circle-color': ['get', 'color'],
             'circle-radius': 8,
-            'circle-stroke-color': 'hsl(var(--background, 0 0% 100%))',
+            'circle-stroke-color': clusterBgColor,
             'circle-stroke-width': 2,
         },
     });
 
     // Click handlers — clusters zoom in; individual points fire OnMarkerClick.
-    map.on('click', 'lumeo-clusters', (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        const clusterId = feature.properties.cluster_id;
-        map.getSource(sourceId).getClusterExpansionZoom(clusterId, (err, zoom) => {
-            if (err) return;
-            map.easeTo({ center: feature.geometry.coordinates, zoom });
-        });
-    });
+    // Bind to BOTH the circle layer AND the count-text layer — otherwise a click
+    // landing on the number label is swallowed by the symbol layer and never
+    // reaches the circle handler. Also query both layers when looking up the
+    // feature, so we always find the cluster_id property.
+    const handleClusterClick = async (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ['lumeo-clusters', 'lumeo-cluster-count'] });
+        const f = features.find(ft => ft.properties && ft.properties.cluster_id != null);
+        if (!f) return;
+        const clusterId = f.properties.cluster_id;
+        const source = map.getSource(sourceId);
+        try {
+            const zoom = await source.getClusterExpansionZoom(clusterId);
+            map.easeTo({ center: f.geometry.coordinates, zoom, duration: 500 });
+        } catch (_) {}
+    };
+    map.on('click', 'lumeo-clusters', handleClusterClick);
+    map.on('click', 'lumeo-cluster-count', handleClusterClick);
     map.on('click', 'lumeo-unclustered-point', (e) => {
         const feature = e.features?.[0];
         if (!feature || !feature.properties.hasClick) return;
@@ -671,6 +849,8 @@ function applyClusterMarkers(inst) {
     const setCursor = (cur) => () => { map.getCanvas().style.cursor = cur; };
     map.on('mouseenter', 'lumeo-clusters', setCursor('pointer'));
     map.on('mouseleave', 'lumeo-clusters', setCursor(''));
+    map.on('mouseenter', 'lumeo-cluster-count', setCursor('pointer'));
+    map.on('mouseleave', 'lumeo-cluster-count', setCursor(''));
     map.on('mouseenter', 'lumeo-unclustered-point', setCursor('pointer'));
     map.on('mouseleave', 'lumeo-unclustered-point', setCursor(''));
 }
@@ -687,6 +867,7 @@ export async function setMarkers(elementId, markers) {
     } else {
         applyDomMarkers(inst);
     }
+    maybeAutoFitBounds(inst);
 }
 
 // ----------------------------------------------------------------------
@@ -725,20 +906,73 @@ function applyShapes(inst) {
         const fillOpacity = s.fillOpacity ?? 0.18;
         const dash = parseDashArray(s.dashArray, weight);
 
+        const hoverColor = s.hoverColor ? resolveColor(s.hoverColor) : null;
+        const hoverWeight = s.hoverWeight ?? null;
+
+        // Helper: add hover state to a line layer (feature-state based).
+        const attachHoverToLine = (layerId, srcId) => {
+            if (!hoverColor && !hoverWeight) return;
+            let hoverFeatureId = null;
+            const hoverIn = (e) => {
+                if (e.features && e.features.length > 0) {
+                    if (hoverFeatureId !== null) {
+                        try { map.setFeatureState({ source: srcId, id: hoverFeatureId }, { hover: false }); } catch(_) {}
+                    }
+                    hoverFeatureId = e.features[0].id;
+                    try { map.setFeatureState({ source: srcId, id: hoverFeatureId }, { hover: true }); } catch(_) {}
+                }
+                map.getCanvas().style.cursor = 'pointer';
+            };
+            const hoverOut = () => {
+                if (hoverFeatureId !== null) {
+                    try { map.setFeatureState({ source: srcId, id: hoverFeatureId }, { hover: false }); } catch(_) {}
+                    hoverFeatureId = null;
+                }
+                map.getCanvas().style.cursor = '';
+            };
+            map.on('mouseenter', layerId, hoverIn);
+            map.on('mouseleave', layerId, hoverOut);
+        };
+
+        // Helper: animate line drawing (draws from start to end over ~1s).
+        const animateLine = (layerId, srcId, coords) => {
+            if (!s.animate || !coords || coords.length < 2) return;
+            const total = coords.length;
+            let current = 1;
+            const step = () => {
+                current = Math.min(current + Math.max(1, Math.floor(total / 60)), total);
+                const partial = { type: 'Feature', geometry: { type: 'LineString', coordinates: coords.slice(0, current) } };
+                try { map.getSource(srcId)?.setData(partial); } catch(_) {}
+                if (current < total) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        };
+
         if (built.kind === 'line') {
-            map.addSource(sourceId, { type: 'geojson', data: built.feature });
+            const coords = built.feature.geometry.coordinates;
+            const startFeature = s.animate
+                ? { type: 'Feature', geometry: { type: 'LineString', coordinates: [coords[0], coords[0]] } }
+                : built.feature;
+            map.addSource(sourceId, { type: 'geojson', data: startFeature, generateId: true });
+            const linePaint = {
+                'line-color': hoverColor
+                    ? ['case', ['boolean', ['feature-state', 'hover'], false], hoverColor, color]
+                    : color,
+                'line-width': hoverWeight
+                    ? ['case', ['boolean', ['feature-state', 'hover'], false], hoverWeight, weight]
+                    : weight,
+                'line-opacity': opacity,
+                ...(dash ? { 'line-dasharray': dash } : {}),
+            };
             map.addLayer({
                 id: `${sourceId}-line`,
                 type: 'line',
                 source: sourceId,
                 layout: { 'line-cap': 'round', 'line-join': 'round' },
-                paint: {
-                    'line-color': color,
-                    'line-width': weight,
-                    'line-opacity': opacity,
-                    ...(dash ? { 'line-dasharray': dash } : {}),
-                },
+                paint: linePaint,
             });
+            attachHoverToLine(`${sourceId}-line`, sourceId);
+            if (s.animate) animateLine(`${sourceId}-line`, sourceId, coords);
         } else if (built.kind === 'polygon') {
             map.addSource(sourceId, { type: 'geojson', data: built.feature });
             map.addLayer({
@@ -772,6 +1006,37 @@ function applyShapes(inst) {
                 type: 'line',
                 source: sourceId,
                 paint: { 'line-color': color, 'line-width': weight, 'line-opacity': opacity },
+            });
+        } else if (built.kind === 'heatmap') {
+            map.addSource(sourceId, { type: 'geojson', data: built.feature });
+            // Default color ramp: transparent → blue → cyan → yellow → orange → red
+            const defaultRamp = [
+                0,      'rgba(0,0,255,0)',
+                0.2,    'rgba(65,105,225,0.7)',
+                0.4,    'rgba(0,200,200,0.8)',
+                0.6,    'rgba(100,200,0,0.9)',
+                0.8,    'rgba(255,165,0,1)',
+                1,      'rgba(255,30,0,1)',
+            ];
+            const rampStops = built.colorRamp && built.colorRamp.length >= 4
+                ? built.colorRamp
+                : defaultRamp;
+            // Build a MapLibre interpolate expression from the flat stop/color array.
+            const colorExpr = ['interpolate', ['linear'], ['heatmap-density']];
+            for (let i = 0; i < rampStops.length; i += 2) {
+                colorExpr.push(rampStops[i], rampStops[i + 1]);
+            }
+            map.addLayer({
+                id: `${sourceId}-heatmap`,
+                type: 'heatmap',
+                source: sourceId,
+                paint: {
+                    'heatmap-weight': ['interpolate', ['linear'], ['get', 'intensity'], 0, 0, 1, 1],
+                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 18, 3],
+                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, built.radius / 2, 18, built.radius * 4],
+                    'heatmap-opacity': built.opacity,
+                    'heatmap-color': colorExpr,
+                },
             });
         }
 
@@ -818,6 +1083,66 @@ export async function setShapes(elementId, shapes) {
 }
 
 // ----------------------------------------------------------------------
+// Standalone popups (MapPopup component)
+// ----------------------------------------------------------------------
+
+function clearStandalonePopups(inst) {
+    for (const p of (inst.standalonePopups || [])) {
+        try { p.remove(); } catch (_) {}
+    }
+    inst.standalonePopups = [];
+}
+
+export async function setStandalonePopups(elementId, popups) {
+    const inst = instances.get(elementId);
+    if (!inst) return;
+    clearStandalonePopups(inst);
+    for (const p of (popups || [])) {
+        if (!p.isOpen) continue;
+        let html = p.html;
+        if (!html && p.hostId) {
+            const host = document.getElementById(p.hostId);
+            if (host) html = host.innerHTML;
+        }
+        if (!html) continue;
+        const popup = new inst.maplibregl.Popup({
+            closeButton: p.closeButton !== false,
+            closeOnClick: p.closeOnClick !== false,
+        })
+            .setLngLat(toLngLat(p.lat, p.lon))
+            .setHTML(html)
+            .addTo(inst.map);
+        inst.standalonePopups.push(popup);
+    }
+}
+
+// ----------------------------------------------------------------------
+// Auto-fit bounds helper
+// ----------------------------------------------------------------------
+
+function computeBoundsFromMarkers(markerSpecs) {
+    if (!markerSpecs || !markerSpecs.length) return null;
+    let south = Infinity, west = Infinity, north = -Infinity, east = -Infinity;
+    for (const m of markerSpecs) {
+        south = Math.min(south, m.lat);
+        north = Math.max(north, m.lat);
+        west  = Math.min(west,  m.lon);
+        east  = Math.max(east,  m.lon);
+    }
+    if (south === north && west === east) return null; // single point — skip
+    return { south, west, north, east };
+}
+
+function maybeAutoFitBounds(inst) {
+    if (!inst.autoFitBounds) return;
+    const b = computeBoundsFromMarkers(inst.markerSpecs);
+    if (!b) return;
+    try {
+        inst.map.fitBounds([[b.west, b.south], [b.east, b.north]], { padding: 50, maxZoom: 14 });
+    } catch (_) {}
+}
+
+// ----------------------------------------------------------------------
 // Imperative view control
 // ----------------------------------------------------------------------
 
@@ -834,13 +1159,143 @@ export async function fitBounds(elementId, south, west, north, east, paddingPx) 
     inst.map.fitBounds([[west, south], [east, north]], { padding: pad });
 }
 
+export async function exportPng(elementId) {
+    const inst = instances.get(elementId);
+    if (!inst) return null;
+    try {
+        const glCanvas = inst.map.getCanvas();
+        const mapEl    = inst.map.getContainer();
+
+        // If there are no DOM markers, return the GL canvas directly — fast path.
+        if (!inst.markers || inst.markers.length === 0) {
+            return glCanvas.toDataURL('image/png');
+        }
+
+        // Composite: draw the GL canvas onto a new canvas, then paint each
+        // DOM marker's visual centre at the projected pixel position.
+        const w = glCanvas.width;
+        const h = glCanvas.height;
+        const dpr = window.devicePixelRatio || 1;
+        const mapRect = mapEl.getBoundingClientRect();
+
+        const out = document.createElement('canvas');
+        out.width  = w;
+        out.height = h;
+        const ctx = out.getContext('2d');
+
+        // Layer 1: the GL tiles + vector layers.
+        ctx.drawImage(glCanvas, 0, 0);
+
+        // Layer 2: one shape per DOM marker, drawn at the projected pixel position.
+        for (const entry of inst.markers) {
+            const spec = inst.markerSpecs.find(s => s.id === entry.id);
+            if (!spec) continue;
+
+            // Project geographic coordinates to pixel offset within the map container.
+            const pt = inst.map.project([spec.lon, spec.lat]);
+            // pt is in CSS pixels; scale to physical canvas pixels.
+            const px = pt.x * dpr;
+            const py = pt.y * dpr;
+
+            const fill   = resolveColor(spec.color);
+            const v      = spec.variant || 'Default';
+            const radius = 8 * dpr;
+
+            ctx.save();
+            ctx.shadowColor   = 'rgba(0,0,0,0.25)';
+            ctx.shadowBlur    = 6 * dpr;
+            ctx.shadowOffsetY = 2 * dpr;
+
+            switch (v) {
+                case 'Dot': {
+                    ctx.beginPath();
+                    ctx.arc(px, py, 6 * dpr, 0, 2 * Math.PI);
+                    ctx.fillStyle = fill;
+                    ctx.fill();
+                    break;
+                }
+                case 'Outline': {
+                    ctx.beginPath();
+                    ctx.arc(px, py, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                    ctx.strokeStyle = fill;
+                    ctx.lineWidth   = 2 * dpr;
+                    ctx.stroke();
+                    break;
+                }
+                case 'Pin': {
+                    // Replicate the exact SVG used in buildMarkerVariant:
+                    //   width="28" height="40" viewBox="0 0 24 36"
+                    //   path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z"
+                    //   circle cx="12" cy="12" r="4.5"
+                    // Anchor is 'bottom': the SVG tip is at viewBox (12, 36) →
+                    // CSS px (14, 40). So the draw origin top-left in CSS px is:
+                    //   left = px - 14,  top = py - 40
+                    // Scale to physical pixels via dpr.
+                    const svgW  = 28 * dpr;   // physical width
+                    const svgH  = 40 * dpr;   // physical height
+                    const vbW   = 24;          // viewBox width
+                    const vbH   = 36;          // viewBox height
+                    const scaleX = svgW / vbW;
+                    const scaleY = svgH / vbH;
+                    // Top-left corner of the pin in physical canvas pixels.
+                    // py is the bottom tip (anchor=bottom), so top = py - svgH.
+                    // px is the horizontal center; tip is at viewBox x=12 → px offset = 12*scaleX = 14*dpr.
+                    const ox = px - 12 * scaleX;
+                    const oy = py - svgH;
+
+                    ctx.save();
+                    ctx.translate(ox, oy);
+                    ctx.scale(scaleX, scaleY);
+
+                    // Body path (matches SVG d attribute exactly)
+                    const bodyPath = new Path2D('M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z');
+                    ctx.fillStyle = fill;
+                    ctx.fill(bodyPath);
+                    // White outline — matches the SVG's stroke-width="1.5" + stroke=background.
+                    // Without this the exported pin looks softer than the live one.
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = resolveCssVar('--background', '#ffffff');
+                    ctx.stroke(bodyPath);
+
+                    // Inner white dot: cx=12 cy=12 r=4.5
+                    ctx.shadowColor = 'transparent';
+                    ctx.beginPath();
+                    ctx.arc(12, 12, 4.5, 0, 2 * Math.PI);
+                    ctx.fillStyle = resolveCssVar('--background', '#ffffff');
+                    ctx.fill();
+
+                    ctx.restore();
+                    break;
+                }
+                default: { // Default — filled circle with white border
+                    ctx.beginPath();
+                    ctx.arc(px, py, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = fill;
+                    ctx.fill();
+                    ctx.shadowColor = 'transparent';
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth   = 2 * dpr;
+                    ctx.stroke();
+                    break;
+                }
+            }
+
+            ctx.restore();
+        }
+
+        return out.toDataURL('image/png');
+    } catch (_) { return null; }
+}
+
 export async function destroy(elementId) {
     const inst = instances.get(elementId);
     if (!inst) return;
     try {
-        if (inst.themeCleanup) inst.themeCleanup();
         clearDomMarkers(inst);
         inst.map.remove();
     } catch (_) {}
     instances.delete(elementId);
+    maybeStopThemeWatcher();
 }
