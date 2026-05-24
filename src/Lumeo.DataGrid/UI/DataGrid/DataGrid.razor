@@ -85,7 +85,10 @@
         RowCount: _displayedItems.Count,
         ColCount: _visibleColumns.Count,
         OnCellKeyDown: HandleCellKeyDownAsync,
-        OnHeaderKeyDown: HandleHeaderKeyDownAsync
+        OnHeaderKeyDown: HandleHeaderKeyDownAsync,
+        Striped: Striped,
+        HasPinnedLeft: _orderedColumns.Any(c => c.Visible && c.Pin == PinDirection.Left),
+        Hoverable: Hoverable
     );
 }
 
@@ -158,12 +161,19 @@
                from lumeo.css (--color-warning, --color-warning-text). Sits
                above the table body so it's visually associated with dirty cells. *@
             <div data-slot="datagrid-batch-strip"
-                 class="flex items-center gap-2 px-4 py-2 border-b border-warning/40 bg-warning/10 text-xs"
+                 class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-warning/40 bg-warning/10 text-xs"
                  role="status"
                  aria-live="polite">
                 <Blazicon Svg="Lucide.CircleAlert" class="h-4 w-4 text-warning-text shrink-0" />
                 <span class="text-warning-text font-medium">
-                    @($"{_batchChanges.Count + _batchAdded.Count} pending change(s)")
+                    @{
+                        // _batchChanges contains entries for both modified existing rows AND
+                        // newly-added rows (the latter seeded with an empty dict). Count only
+                        // changes to *existing* rows by excluding items that are in _batchAdded.
+                        var modifiedCount = _batchChanges.Keys.Count(k => !_batchAdded.Contains(k));
+                        var pendingTotal = modifiedCount + _batchAdded.Count;
+                    }
+                    @($"{pendingTotal} pending change(s)")
                 </span>
                 <div class="ml-auto flex items-center gap-2">
                     <button type="button"
@@ -898,6 +908,11 @@
     private HashSet<string> _expandedGroupPaths = new();
     private HashSet<string> _knownGroupPaths = new();
 
+    // Tracks column Pin + Visible state that was auto-changed when the column
+    // was promoted to a grouping level. Restored when the grouping is removed.
+    // Key = column Field.
+    private Dictionary<string, (PinDirection PrevPin, bool PrevVisible)> _groupedColPrevState = new();
+
     // --- Tree-grid mode (rc.35) ---
     private HashSet<TItem> _expandedTreeNodes = new();
     private bool _treeExpandSeeded;
@@ -982,7 +997,7 @@
         {
             return string.Join(" ", new[]
             {
-                "w-full overflow-auto border border-border/40 rounded-lg bg-card text-card-foreground flex flex-col",
+                "w-full overflow-hidden border border-border/40 rounded-lg bg-card text-card-foreground flex flex-col",
                 Compact ? "text-sm" : null,
                 Bordered ? "[&_td]:border [&_td]:border-border/40 [&_th]:border [&_th]:border-border/40" : null,
                 Striped ? "[&_tbody>tr:nth-child(even)]:bg-muted/30" : null,
@@ -1510,8 +1525,21 @@
     {
         if (string.IsNullOrEmpty(field)) return;
         if (_runtimeGroupFields.Contains(field)) return;
-        if (!EffectiveColumns.Any(c => c.Field == field && c.Groupable)) return;
+        var col = EffectiveColumns.FirstOrDefault(c => c.Field == field && c.Groupable);
+        if (col is null) return;
         _runtimeGroupFields.Add(field);
+
+        // Auto-unpin and auto-hide the grouped column so the value isn't shown
+        // redundantly in the data cells (it's already shown in the group header).
+        // Snapshot the original state so we can restore it on un-group.
+        if (!_groupedColPrevState.ContainsKey(field))
+        {
+            _groupedColPrevState[field] = (col.Pin, col.Visible);
+            col.Pin = PinDirection.None;
+            col.Visible = false;
+            RefreshVisibleColumns();
+        }
+
         _expandedGroupPaths.Clear();
         _knownGroupPaths.Clear();
         _expandedGroups.Clear();
@@ -1529,6 +1557,20 @@
     private void RemoveGroupField(string field)
     {
         if (!_runtimeGroupFields.Remove(field)) return;
+
+        // Restore previously-snapshotted Pin + Visible state if we auto-changed it.
+        if (_groupedColPrevState.TryGetValue(field, out var prev))
+        {
+            _groupedColPrevState.Remove(field);
+            var col = EffectiveColumns.FirstOrDefault(c => c.Field == field);
+            if (col is not null)
+            {
+                col.Pin = prev.PrevPin;
+                col.Visible = prev.PrevVisible;
+                RefreshVisibleColumns();
+            }
+        }
+
         _expandedGroupPaths.Clear();
         _knownGroupPaths.Clear();
         _expandedGroups.Clear();
@@ -1546,6 +1588,23 @@
     private void ClearGroupFields()
     {
         if (_runtimeGroupFields.Count == 0) return;
+
+        // Restore all auto-hidden/unpinned columns.
+        foreach (var (field, prev) in _groupedColPrevState)
+        {
+            var col = EffectiveColumns.FirstOrDefault(c => c.Field == field);
+            if (col is not null)
+            {
+                col.Pin = prev.PrevPin;
+                col.Visible = prev.PrevVisible;
+            }
+        }
+        if (_groupedColPrevState.Count > 0)
+        {
+            _groupedColPrevState.Clear();
+            RefreshVisibleColumns();
+        }
+
         _runtimeGroupFields.Clear();
         _expandedGroupPaths.Clear();
         _knownGroupPaths.Clear();
@@ -2336,6 +2395,20 @@
         {
             _batchChanges[item] = new Dictionary<string, object?>();
         }
+
+        // Navigate to the last page so the newly-added row is visible.
+        // ProcessClientData computes total pages from _processedItems; we
+        // jump there first, then let ProcessClientData append the batch row
+        // to _displayedItems at the end of that page.
+        if (ShowPagination && PageSize > 0 && _processedItems.Count > 0)
+        {
+            _currentPage = Math.Max(1, (int)Math.Ceiling((double)_processedItems.Count / PageSize));
+        }
+
+        // ProcessClientData must be called (not just StateHasChanged) so
+        // _displayedItems is rebuilt to include the new _batchAdded entry.
+        // Without this the row doesn't appear until the next parameter change.
+        ProcessClientData();
         StateHasChanged();
     }
 

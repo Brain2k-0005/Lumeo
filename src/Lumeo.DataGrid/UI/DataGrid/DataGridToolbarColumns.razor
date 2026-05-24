@@ -1,19 +1,24 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 
 @if (Context is not null && Context.EffectiveColumns is not null)
 {
     <div class="relative">
         <button type="button"
+                id="@_triggerButtonId"
                 class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                 @onclick="ToggleColumnPanel">
             <Blazicon Svg="Lucide.Columns3" class="h-4 w-4 mr-1.5" />
             <span>@Context.Localizer["DataGrid.Columns"]</span>
+            <Blazicon Svg="Lucide.ChevronDown" class="@($"h-3.5 w-3.5 ml-1 transition-transform duration-150 {(_columnPanelOpen ? "rotate-180" : "")}")" />
         </button>
 
         @if (_columnPanelOpen)
         {
-            <div class="absolute right-0 top-full mt-1 z-50">
+            <div id="@_menuId"
+                 class="absolute right-0 top-full mt-1 z-50"
+                 @onkeydown="HandleMenuKeyDown">
                 <DataGridColumnVisibility TItem="TItem"
                                           Columns="Context.EffectiveColumns"
                                           OnColumnToggle="Context.OnColumnToggle"
@@ -28,9 +33,67 @@
     [CascadingParameter] public DataGridToolbarContext<TItem>? Context { get; set; }
 
     private bool _columnPanelOpen;
+    private bool _clickOutsideRegistered;
+    private readonly string _triggerButtonId = $"dg-columns-trigger-{Guid.NewGuid():N}";
+    private readonly string _menuId = $"dg-columns-menu-{Guid.NewGuid():N}";
 
-    private void ToggleColumnPanel()
+    private async Task ToggleColumnPanel()
     {
-        _columnPanelOpen = !_columnPanelOpen;
+        if (_columnPanelOpen)
+            await CloseMenuAsync();
+        else
+            _columnPanelOpen = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_columnPanelOpen && !_clickOutsideRegistered && Context?.Interop is not null)
+        {
+            try
+            {
+                await Context.Interop.RegisterClickOutside(_menuId, _triggerButtonId, async () =>
+                {
+                    _columnPanelOpen = false;
+                    _clickOutsideRegistered = false;
+                    await InvokeAsync(StateHasChanged);
+                });
+                _clickOutsideRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (!_columnPanelOpen && _clickOutsideRegistered)
+        {
+            await UnregisterClickOutsideAsync();
+        }
+    }
+
+    private async Task CloseMenuAsync()
+    {
+        _columnPanelOpen = false;
+        if (_clickOutsideRegistered)
+            await UnregisterClickOutsideAsync();
+        StateHasChanged();
+    }
+
+    private async Task UnregisterClickOutsideAsync()
+    {
+        _clickOutsideRegistered = false;
+        if (Context?.Interop is not null)
+        {
+            try { await Context.Interop.UnregisterClickOutside(_menuId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    private void HandleMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            _ = CloseMenuAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_clickOutsideRegistered)
+            await UnregisterClickOutsideAsync();
     }
 }
