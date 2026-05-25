@@ -58,8 +58,11 @@ public class CatalogPageRendersTests : PlaywrightTestBase
         await Goto("/components");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        // Button is a core component — its card must always be present
-        var buttonCard = Page.Locator("a[href='components/button']");
+        // Button is a core component — its card must always be present.
+        // The Catalog page renders the link twice (desktop grid + mobile list),
+        // toggled via CSS, so the bare selector matches 2 elements. Take the
+        // currently-visible one rather than triggering Playwright strict-mode.
+        var buttonCard = Page.Locator("a[href='components/button']:visible").First;
         await buttonCard.WaitForAsync(new()
         {
             State = WaitForSelectorState.Visible,
