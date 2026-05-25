@@ -85,9 +85,18 @@ else
         if (IsActive is not null) { _active = IsActive.Value; return; }
         if (string.IsNullOrEmpty(Href)) { _active = false; return; }
         var current = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
-        var target = Href.StartsWith('/') ? Href.TrimEnd('/') : "/" + Href.TrimEnd('/');
+        // Normalize target so root ("/") stays as "/" — TrimEnd('/') alone would
+        // turn it into "" and make every path StartsWith match it.
+        var raw = Href.StartsWith('/') ? Href : "/" + Href;
+        var target = raw == "/" ? "/" : raw.TrimEnd('/');
+        if (target == "/")
+        {
+            // Root only matches the bare root, never a child route.
+            _active = current == "/";
+            return;
+        }
         _active = string.Equals(current, target, StringComparison.OrdinalIgnoreCase)
-                  || (target != "/" && current.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase));
+                  || current.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task HandleClick()
