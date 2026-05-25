@@ -1,6 +1,97 @@
-﻿<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+@using Microsoft.AspNetCore.Components.WebAssembly.Services
+@inject LazyAssemblyLoader AssemblyLoader
+
+<Router AppAssembly="@typeof(App).Assembly"
+        AdditionalAssemblies="@_lazyAssemblies"
+        NotFoundPage="typeof(Pages.NotFound)"
+        OnNavigateAsync="OnNavigateAsync">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    // Assemblies discovered at runtime are accumulated here so the Router can
+    // find routes defined in satellite packages once they are loaded.
+    private List<System.Reflection.Assembly> _lazyAssemblies = new();
+
+    /// <summary>
+    /// Fired before each navigation. Loads the satellite assembly (or assemblies)
+    /// required by the target route, if not already loaded. Assemblies are
+    /// accumulated — once loaded they stay for the lifetime of the session.
+    /// </summary>
+    private async Task OnNavigateAsync(NavigationContext ctx)
+    {
+        var path = ctx.Path.Trim('/').ToLowerInvariant();
+        var toLoad = new List<string>();
+
+        if (path == "")
+        {
+            // Home page embeds DataGrid, Maps, Charts, and PdfViewer in the bento.
+            toLoad.Add("Lumeo.DataGrid.wasm");
+            toLoad.Add("Lumeo.Maps.wasm");
+            toLoad.Add("Lumeo.Charts.wasm");
+            toLoad.Add("Lumeo.PdfViewer.wasm");
+        }
+        else if (path.StartsWith("components/datagrid") || path.StartsWith("components/data-grid") || path.StartsWith("components/data-table"))
+        {
+            toLoad.Add("Lumeo.DataGrid.wasm");
+        }
+        else if (path.StartsWith("components/charts") || path.StartsWith("components/chart") ||
+                 path.StartsWith("components/bar-chart") || path.StartsWith("components/line-chart") ||
+                 path.StartsWith("components/area-chart") || path.StartsWith("components/pie-chart") ||
+                 path.StartsWith("components/scatter-chart") || path.StartsWith("components/radar-chart") ||
+                 path.StartsWith("components/gauge") || path.StartsWith("components/sparkline") ||
+                 path.StartsWith("components/ring-progress") || path.StartsWith("components/kpi-card"))
+        {
+            toLoad.Add("Lumeo.Charts.wasm");
+        }
+        else if (path.StartsWith("components/map"))
+        {
+            toLoad.Add("Lumeo.Maps.wasm");
+        }
+        else if (path.StartsWith("components/pdf-viewer") || path.StartsWith("components/pdfviewer"))
+        {
+            toLoad.Add("Lumeo.PdfViewer.wasm");
+        }
+        else if (path.StartsWith("components/editor") || path.StartsWith("components/rich-text-editor"))
+        {
+            toLoad.Add("Lumeo.Editor.wasm");
+        }
+        else if (path.StartsWith("components/code-editor"))
+        {
+            toLoad.Add("Lumeo.CodeEditor.wasm");
+        }
+        else if (path.StartsWith("components/scheduler"))
+        {
+            toLoad.Add("Lumeo.Scheduler.wasm");
+        }
+        else if (path.StartsWith("components/gantt"))
+        {
+            toLoad.Add("Lumeo.Gantt.wasm");
+        }
+        else if (path.StartsWith("components/pivot-grid"))
+        {
+            toLoad.Add("Lumeo.DataGrid.wasm");
+        }
+        else if (path.StartsWith("components/kanban"))
+        {
+            // Kanban is in the core Lumeo package — no satellite needed.
+        }
+
+        if (toLoad.Count == 0) return;
+
+        try
+        {
+            var loaded = await AssemblyLoader.LoadAssembliesAsync(toLoad);
+            _lazyAssemblies.AddRange(loaded);
+        }
+        catch (Exception ex)
+        {
+            // Log but don't crash — the page may still render if the satellite
+            // is available via other means (e.g. already in the bundle).
+            Console.WriteLine($"[Lumeo] LazyLoad failed for route '{path}': {ex.Message}");
+        }
+    }
+}
