@@ -52,7 +52,17 @@
 
         if (CurrentStep != _lastCurrentStep)
         {
-            _direction = CurrentStep < _lastCurrentStep ? StepsDirection.Backward : StepsDirection.Forward;
+            // Only treat single-step decrements as "backward" — these get the
+            // unwind animation on the one connector that just lost its
+            // completed state. Multi-step jumps (e.g. a demo timer wrapping
+            // 3 -> 0) would only animate ONE connector while the others
+            // silently flip from bg-primary to bg-border, AND the unwound
+            // connector would be permanently stuck at scaleX(0) because the
+            // animation has fill-mode: both. Skip the animation in that case
+            // — direction stays Forward, connectors render static defaultColor.
+            _direction = (CurrentStep < _lastCurrentStep && _lastCurrentStep - CurrentStep == 1)
+                ? StepsDirection.Backward
+                : StepsDirection.Forward;
             _lastCurrentStep = CurrentStep;
             _replayKey++;
         }

@@ -28,6 +28,7 @@
                name="@Name"
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+               aria-label="@EffectiveAriaLabel"
                class="h-9 w-20 bg-transparent @(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1") text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                value="@DisplayValue"
                disabled="@Disabled"
@@ -95,12 +96,18 @@
     [Parameter] public string? ErrorText { get; set; }
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Screen readers need an accessible name on the <input type="number"> even when the
+    // visible label is rendered as a sibling element rather than a <label for="..."> wrapper.
+    // Priority: explicit AriaLabel > Label parameter > FormField label context.
+    private string? EffectiveAriaLabel => !string.IsNullOrEmpty(AriaLabel) ? AriaLabel : Label;
 
     private string CssClass => $"inline-flex items-center {Class}".Trim();
 
