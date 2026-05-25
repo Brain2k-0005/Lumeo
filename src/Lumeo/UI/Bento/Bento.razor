@@ -18,13 +18,19 @@
         _ => "gap-4"
     };
 
-    // Pre-approved columns use Tailwind utilities. Any other value falls back to inline style.
+    // Pre-approved column counts use responsive Tailwind utilities so the grid
+    // collapses gracefully on mobile (1 col), tablet (2 cols) and only expands
+    // to the caller-configured count at the lg: breakpoint. Without this,
+    // a Bento Columns="4" on a 375 px phone screen renders four tiny columns
+    // and the embedded components become unreadable.
     private string ColumnsClass => Columns switch
     {
-        2 => "grid-cols-2",
-        3 => "grid-cols-3",
-        4 => "grid-cols-4",
-        6 => "grid-cols-6",
+        1 => "grid-cols-1",
+        2 => "grid-cols-1 sm:grid-cols-2",
+        3 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+        4 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4",
+        5 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-5",
+        6 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-6",
         _ => ""
     };
 
@@ -37,6 +43,8 @@
             var baseStyle = "grid-auto-rows: minmax(0, 1fr);";
             if (string.IsNullOrEmpty(ColumnsClass))
             {
+                // Non-standard column count — fall back to inline grid-template-columns
+                // without responsive breakpoints. (Inline styles can't carry media queries.)
                 baseStyle += $" grid-template-columns: repeat({Columns}, minmax(0, 1fr));";
             }
             return baseStyle;

@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<div class="@RootClasses" style="@RootStyle" @attributes="AdditionalAttributes">
+<div class="@RootClasses" @attributes="AdditionalAttributes">
     @if (HeaderContent is not null || !string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Description))
     {
         <div class="mb-3 flex flex-col gap-1">
@@ -48,8 +48,32 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string RootClasses => $"flex flex-col min-w-0 min-h-0 rounded-xl border border-border/60 bg-card text-card-foreground p-5 {Class}".Trim();
+    private string RootClasses => $"flex flex-col min-w-0 min-h-0 rounded-xl border border-border/60 bg-card text-card-foreground p-5 {SpanClasses} {RowSpanClasses} {Class}".Trim();
 
-    private string RootStyle =>
-        $"grid-column: span {Span} / span {Span}; grid-row: span {RowSpan} / span {RowSpan};";
+    // Span classes are emitted as literal Tailwind strings (not interpolated
+    // `col-span-{n}`) so the JIT can see them at scan time. On mobile every
+    // tile spans 1 col; from `sm:` (≥ 640 px) we widen tiles meant to be 2+
+    // wide so they don't go single-column on tablet; the caller's exact span
+    // kicks in at `lg:` (≥ 1024 px). RowSpan stays at 1 on mobile so each
+    // tile's natural content height drives layout instead of an enforced
+    // double-row that creates huge empty boxes on a phone.
+    private string SpanClasses => Span switch
+    {
+        <= 1 => "col-span-1",
+        2 => "col-span-1 sm:col-span-2",
+        3 => "col-span-1 sm:col-span-2 lg:col-span-3",
+        4 => "col-span-1 sm:col-span-2 lg:col-span-4",
+        5 => "col-span-1 sm:col-span-2 lg:col-span-5",
+        6 => "col-span-1 sm:col-span-2 lg:col-span-6",
+        _ => "col-span-1 sm:col-span-2"
+    };
+
+    private string RowSpanClasses => RowSpan switch
+    {
+        <= 1 => "row-span-1",
+        2 => "row-span-1 lg:row-span-2",
+        3 => "row-span-1 lg:row-span-3",
+        4 => "row-span-1 lg:row-span-4",
+        _ => "row-span-1"
+    };
 }
