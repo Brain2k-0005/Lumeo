@@ -1,63 +1,6 @@
-@using Microsoft.AspNetCore.Components.WebAssembly.Services
-@inject LazyAssemblyLoader AssemblyLoader
-
-<Router AppAssembly="@typeof(App).Assembly"
-        AdditionalAssemblies="@_lazyAssemblies"
-        NotFoundPage="typeof(Pages.NotFound)"
-        OnNavigateAsync="OnNavigateAsync">
+﻿<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
 </Router>
-
-@code {
-    // Assemblies discovered at runtime are accumulated here so the Router can
-    // find routes defined in satellite packages once they are loaded.
-    private List<System.Reflection.Assembly> _lazyAssemblies = new();
-
-    /// <summary>
-    /// Fired before each navigation. Loads the satellite assembly (or assemblies)
-    /// required by the target route, if not already loaded. Assemblies are
-    /// accumulated — once loaded they stay for the lifetime of the session.
-    /// </summary>
-    private async Task OnNavigateAsync(NavigationContext ctx)
-    {
-        var path = ctx.Path.Trim('/').ToLowerInvariant();
-        var toLoad = new List<string>();
-
-        // Only assemblies declared as <BlazorWebAssemblyLazyLoad> in the csproj
-        // are deferrable. Charts/DataGrid/Maps/PdfViewer ship eagerly because
-        // they render on Home — see Lumeo.Docs.csproj for the canonical list.
-        if (path.StartsWith("components/editor") || path.StartsWith("components/rich-text-editor"))
-        {
-            toLoad.Add("Lumeo.Editor.wasm");
-        }
-        else if (path.StartsWith("components/code-editor"))
-        {
-            toLoad.Add("Lumeo.CodeEditor.wasm");
-        }
-        else if (path.StartsWith("components/scheduler"))
-        {
-            toLoad.Add("Lumeo.Scheduler.wasm");
-        }
-        else if (path.StartsWith("components/gantt"))
-        {
-            toLoad.Add("Lumeo.Gantt.wasm");
-        }
-
-        if (toLoad.Count == 0) return;
-
-        try
-        {
-            var loaded = await AssemblyLoader.LoadAssembliesAsync(toLoad);
-            _lazyAssemblies.AddRange(loaded);
-        }
-        catch (Exception ex)
-        {
-            // Log but don't crash — the page may still render if the satellite
-            // is available via other means (e.g. already in the bundle).
-            Console.WriteLine($"[Lumeo] LazyLoad failed for route '{path}': {ex.Message}");
-        }
-    }
-}

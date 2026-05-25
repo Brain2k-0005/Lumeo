@@ -123,20 +123,23 @@
             </Stack>
         </BlurFade>
 
-        <Bento Columns="4" Gap="Bento.BentoGap.Md">
-            <!-- Central tile spans 2 cols and 2 rows — the size chart -->
-            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-6">
-                <Stack Gap="5" Class="h-full">
+        @* Responsive layout: at lg+ the size-breakdown takes 2/3 width with 4
+           compact KPIs stacked vertically on the right; below lg it stacks —
+           breakdown full-width on top, KPIs in a 2-col grid below.
+           No Bento RowSpan trickery — the KPIs sit in their own grid so they
+           never stretch to match the breakdown's height. *@
+        <div class="grid gap-4 lg:grid-cols-3">
+            @* Size breakdown — tall card with per-package bars *@
+            <BentoTile Class="lg:col-span-2 border-border/60 p-6">
+                <Stack Gap="5">
                     <Stack Gap="1">
-                        <Flex Align="center" Gap="2">
-                            <Heading Level="3" Class="text-2xl font-semibold tracking-tight">
-                                149 components across 7 packages. <Lumeo.Text As="span" Class="text-primary">~400 KB core</Lumeo.Text>.
-                            </Heading>
-                        </Flex>
+                        <Heading Level="3" Class="text-2xl font-semibold tracking-tight">
+                            149 components across 7 packages. <Lumeo.Text As="span" Class="text-primary">~400 KB core</Lumeo.Text>.
+                        </Heading>
                         <Lumeo.Text Size="sm" Color="muted">Per-package breakdown — install only the satellites you use. Each row shows what that package adds to your app's bundle.</Lumeo.Text>
                     </Stack>
 
-                    <Stack Gap="4" Class="flex-1 justify-center">
+                    <Stack Gap="4">
                         @foreach (var row in _sizeRows)
                         {
                             <Stack Gap="1.5">
@@ -159,72 +162,74 @@
                         }
                     </Stack>
 
-                    <Flex Align="center" Gap="2" Class="pt-1 text-xs text-muted-foreground border-t border-border/40 pt-4">
+                    <Flex Align="center" Gap="2" Class="text-xs text-muted-foreground border-t border-border/40 pt-4">
                         <DynamicIcon Name="Info" Class="h-3.5 w-3.5" />
-                        <Lumeo.Text As="span">Brotli-compressed assembly bytes (v3.1.0, 2026-05-22). NuGet <code class="text-foreground">.nupkg</code> ships at ~660 KB; the runtime core brotli-compresses to ~400 KB in your published app.</Lumeo.Text>
+                        <Lumeo.Text As="span">Brotli-compressed assembly bytes. NuGet <code class="text-foreground">.nupkg</code> ships at ~660 KB; the runtime core brotli-compresses to ~400 KB in your published app.</Lumeo.Text>
                     </Flex>
                 </Stack>
             </BentoTile>
 
-            <!-- 4 KPI tiles stacked on the right -->
-            <BentoTile Class="border-border/60 p-5">
-                <Stack Gap="2" Class="h-full">
-                    <Flex Align="center" Gap="2">
-                        <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent/40 text-primary">
+            @* 4 KPIs — at lg+ vertical stack inside one column; below lg a 2-col grid *@
+            <div class="grid grid-cols-2 lg:grid-cols-1 gap-4 content-start">
+                <BentoTile Class="border-border/60 p-4">
+                    <Flex Align="center" Gap="3">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
                             <DynamicIcon Name="TestTube" Class="h-4 w-4" />
                         </div>
-                        <Lumeo.Text Size="sm" Color="muted">Tests</Lumeo.Text>
+                        <Stack Gap="0" Class="min-w-0 flex-1">
+                            <Lumeo.Text Size="xs" Color="muted">Tests</Lumeo.Text>
+                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">
+                                <NumberTicker Value="2480" DurationMs="1800" />
+                            </div>
+                            <Lumeo.Text Size="xs" Color="muted" Class="truncate">CI green, every commit.</Lumeo.Text>
+                        </Stack>
                     </Flex>
-                    <div class="text-3xl font-semibold tracking-tight text-foreground">
-                        <NumberTicker Value="2194" DurationMs="1800" />
-                    </div>
-                    <Lumeo.Text Size="xs" Color="muted" Class="mt-auto">CI green, every commit.</Lumeo.Text>
-                </Stack>
-            </BentoTile>
+                </BentoTile>
 
-            <BentoTile Class="border-border/60 p-5">
-                <Stack Gap="2" Class="h-full">
-                    <Flex Align="center" Gap="2">
-                        <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent/40 text-primary">
+                <BentoTile Class="border-border/60 p-4">
+                    <Flex Align="center" Gap="3">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
                             <DynamicIcon Name="Languages" Class="h-4 w-4" />
                         </div>
-                        <Lumeo.Text Size="sm" Color="muted">Locales</Lumeo.Text>
+                        <Stack Gap="0" Class="min-w-0 flex-1">
+                            <Lumeo.Text Size="xs" Color="muted">Locales</Lumeo.Text>
+                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">
+                                <NumberTicker Value="14" DurationMs="1600" />
+                            </div>
+                            <Lumeo.Text Size="xs" Color="muted" Class="truncate">Bundled ILumeoLocalizer.</Lumeo.Text>
+                        </Stack>
                     </Flex>
-                    <div class="text-3xl font-semibold tracking-tight text-foreground">
-                        <NumberTicker Value="14" DurationMs="1600" />
-                    </div>
-                    <Lumeo.Text Size="xs" Color="muted" Class="mt-auto">Bundled ILumeoLocalizer.</Lumeo.Text>
-                </Stack>
-            </BentoTile>
+                </BentoTile>
 
-            <BentoTile Class="border-border/60 p-5">
-                <Stack Gap="2" Class="h-full">
-                    <Flex Align="center" Gap="2">
-                        <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent/40 text-primary">
+                <BentoTile Class="border-border/60 p-4">
+                    <Flex Align="center" Gap="3">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
                             <DynamicIcon Name="Palette" Class="h-4 w-4" />
                         </div>
-                        <Lumeo.Text Size="sm" Color="muted">Themes</Lumeo.Text>
+                        <Stack Gap="0" Class="min-w-0 flex-1">
+                            <Lumeo.Text Size="xs" Color="muted">Themes</Lumeo.Text>
+                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">
+                                <NumberTicker Value="8" DurationMs="1400" />
+                            </div>
+                            <Lumeo.Text Size="xs" Color="muted" Class="truncate">CSS-variable presets.</Lumeo.Text>
+                        </Stack>
                     </Flex>
-                    <div class="text-3xl font-semibold tracking-tight text-foreground">
-                        <NumberTicker Value="8" DurationMs="1400" />
-                    </div>
-                    <Lumeo.Text Size="xs" Color="muted" Class="mt-auto">CSS-variable presets.</Lumeo.Text>
-                </Stack>
-            </BentoTile>
+                </BentoTile>
 
-            <BentoTile Class="border-border/60 p-5">
-                <Stack Gap="2" Class="h-full">
-                    <Flex Align="center" Gap="2">
-                        <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent/40 text-primary">
+                <BentoTile Class="border-border/60 p-4">
+                    <Flex Align="center" Gap="3">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
                             <DynamicIcon Name="Accessibility" Class="h-4 w-4" />
                         </div>
-                        <Lumeo.Text Size="sm" Color="muted">Compliance</Lumeo.Text>
+                        <Stack Gap="0" Class="min-w-0 flex-1">
+                            <Lumeo.Text Size="xs" Color="muted">Compliance</Lumeo.Text>
+                            <div class="text-xl font-semibold tracking-tight text-foreground leading-none">WCAG AA</div>
+                            <Lumeo.Text Size="xs" Color="muted" Class="truncate">Keyboard + ARIA built in.</Lumeo.Text>
+                        </Stack>
                     </Flex>
-                    <div class="text-3xl font-semibold tracking-tight text-foreground">WCAG AA</div>
-                    <Lumeo.Text Size="xs" Color="muted" Class="mt-auto">Keyboard + ARIA built in.</Lumeo.Text>
-                </Stack>
-            </BentoTile>
-        </Bento>
+                </BentoTile>
+            </div>
+        </div>
     </Container>
 </section>
 
