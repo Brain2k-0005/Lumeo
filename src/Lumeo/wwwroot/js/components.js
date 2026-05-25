@@ -30,6 +30,24 @@ document.addEventListener('mousedown', _clickOutsideHandler);
 document.addEventListener('touchstart', _clickOutsideHandler, { passive: true });
 
 // ----------------------------------------------------------------------------
+// touch-action: none on every [draggable="true"] element. Without this, the
+// mobile browser commits to a vertical-scroll interpretation of the touch
+// gesture before our touchmove listener can call preventDefault, so the
+// polyfill below never gets a chance to take over. We do it from JS rather
+// than CSS so consumer apps that already ship a Lumeo CSS bundle pick it up
+// automatically without having to add a global rule. Opt out with
+// `data-no-touch-drag="true"` on the element itself or any ancestor.
+(function injectDraggableTouchActionStyle() {
+    if (document.getElementById('lumeo-draggable-touch-action')) return;
+    const style = document.createElement('style');
+    style.id = 'lumeo-draggable-touch-action';
+    style.textContent =
+        '[draggable="true"]:not([data-no-touch-drag="true"]):not([data-no-touch-drag="true"] *) ' +
+        '{ touch-action: none; -webkit-user-select: none; user-select: none; }';
+    (document.head || document.documentElement).appendChild(style);
+})();
+
+// ----------------------------------------------------------------------------
 // Touch-to-drag polyfill. iOS Safari and Android Chrome do not fire dragstart /
 // dragover / drop for `draggable="true"` elements on touch input, so every
 // Blazor `@ondragstart` / `@ondrop` handler is silently desktop-only.
