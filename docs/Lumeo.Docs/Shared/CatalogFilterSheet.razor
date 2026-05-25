@@ -1,0 +1,33 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo
+@using Lumeo.Services
+
+@*
+    Mobile filter sheet for the Catalog page. Rendered by Lumeo's
+    OverlayProvider — which lives at MainLayout root, OUTSIDE the page's
+    BlurFade and page-transition wrappers — so it doesn't get caught in any
+    parent containing block. The OverlayReference is passed in as a
+    CascadingValue by the provider (NOT a DI service); calling
+    Reference.Close(value) returns the result to the awaiter.
+*@
+
+<div class="px-4 pb-2">
+    <CatalogFilterChips Categories="@Categories" Selected="@_selected" SelectedChanged="OnChanged" />
+</div>
+<div class="px-4 pt-3 pb-2">
+    <Button Variant="Button.ButtonVariant.Secondary" Class="w-full" OnClick="OnDone">Done</Button>
+</div>
+
+@code {
+    [CascadingParameter] public Lumeo.OverlayReference Reference { get; set; } = default!;
+    [Parameter] public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyCollection<string>? InitialSelected { get; set; }
+
+    private IReadOnlyCollection<string> _selected = Array.Empty<string>();
+
+    protected override void OnInitialized() => _selected = InitialSelected ?? Array.Empty<string>();
+
+    private void OnChanged(IReadOnlyCollection<string> value) => _selected = value;
+
+    private void OnDone() => Reference.Close(_selected);
+}

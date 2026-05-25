@@ -10,13 +10,9 @@
     <!-- Floating Navbar (outside animation wrapper — CSS transforms break fixed positioning) -->
     <div class="fixed top-3 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">
         <header class="pointer-events-auto flex h-14 w-full max-w-[1400px] items-center gap-4 rounded-[var(--radius-xl)] border border-border/50 bg-background/85 backdrop-blur-md shadow-md px-4">
-            <!-- Hamburger (mobile only) -->
-            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
-                    Class="lg:hidden mr-1"
-                    aria-label="@(_mobileNavOpen ? "Close navigation" : "Open navigation")"
-                    OnClick="@(() => _mobileNavOpen = !_mobileNavOpen)">
-                <DynamicIcon Name="@(_mobileNavOpen ? "X" : "Menu")" Class="h-4 w-4" />
-            </Button>
+            @* Hamburger removed on mobile — BottomNav already exposes a "Menu"
+               entry that opens the same drawer (_mobileNavOpen). Keeping both
+               was redundant; the header now just shows the logo + actions. *@
 
             <!-- Logo -->
             <Lumeo.Link Href="" Class="flex items-center space-x-2 font-bold text-lg text-foreground no-underline shrink-0">
@@ -28,7 +24,7 @@
             </Lumeo.Link>
 
             <!-- Nav links (desktop) -->
-            <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2">
+            <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2" aria-label="Primary navigation">
                 <a href="docs/introduction" class="@NavLinkClass("docs")">Docs</a>
                 <a href="components" class="@NavLinkClass("catalog")">Components</a>
                 <a href="patterns" class="@NavLinkClass("patterns")">Patterns</a>
@@ -38,15 +34,21 @@
             <!-- Spacer -->
             <div class="flex-1"></div>
 
-            <!-- Search (icon on mobile, full bar on desktop) -->
-            <Button Variant="Button.ButtonVariant.Ghost"
-                    Class="h-auto items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sm:border sm:border-border sm:bg-muted/50 sm:px-3 sm:w-52"
-                    data-search-trigger="true"
-                    OnClick="OpenSearch">
-                <DynamicIcon Name="Search" Class="h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0" />
-                <Lumeo.Text As="span" Class="hidden sm:block flex-1 text-left">Search docs...</Lumeo.Text>
-                <kbd class="hidden sm:inline-flex pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
-            </Button>
+            @* Search trigger hidden until the desktop breakpoint (lg = 1024px+).
+               The BottomNav exposes its own Search entry on mobile. We wrap the
+               Button in a hidden/lg:block div because Lumeo's Button component
+               injects `inline-flex` into its own base classes — putting `hidden`
+               on the Button itself collides with that and the latter wins. *@
+            <div class="hidden lg:block">
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Class="h-auto items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors border border-border bg-muted/50 w-52"
+                        data-search-trigger="true"
+                        OnClick="OpenSearch">
+                    <DynamicIcon Name="Search" Class="h-3.5 w-3.5 shrink-0" />
+                    <Lumeo.Text As="span" Class="block flex-1 text-left">Search docs...</Lumeo.Text>
+                    <kbd class="inline-flex pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
+                </Button>
+            </div>
 
             <!-- Right actions -->
             <Flex Class="items-center gap-1">
@@ -111,14 +113,14 @@
                    exactly the remaining viewport height. Pages render with
                    h-full and stay inside this box. *@
                 <main class="flex-1 min-w-0 h-[calc(100dvh-76px)] overflow-hidden">
-                    @Body
+                    <div @key="@Nav.Uri" class="page-transition lg:contents h-full">@Body</div>
                 </main>
             }
             else
             {
-                <main class="flex-1 min-w-0">
+                <main class="flex-1 min-w-0 pb-20 lg:pb-0">
                     <div class="container mx-auto px-4 sm:px-6 py-8 @(SidebarSection is "blocks" or "none" ? "" : "max-w-5xl")">
-                        @Body
+                        <div @key="@Nav.Uri" class="page-transition lg:contents">@Body</div>
                     </div>
                 </main>
             }
@@ -133,10 +135,33 @@
     }
     else
     {
-        <main class="flex-1 min-w-0">
-            @Body
+        <main class="flex-1 min-w-0 pb-20 lg:pb-0">
+            <div @key="@Nav.Uri" class="page-transition lg:contents">@Body</div>
         </main>
     }
+    </div>
+
+    <!-- Bottom Navigation (mobile only, feature 1) -->
+    <div class="lg:hidden lumeo-mobile-nav">
+        <BottomNav Fixed="true" AnimatedIndicator="true" Variant="BottomNav.BottomNavVariant.Pill">
+            <BottomNavItem Href="/" Label="Home" PressEffect="Button.ButtonPressEffect.Scale">
+                <IconContent><Blazicon Svg="Lucide.House" class="h-5 w-5" /></IconContent>
+            </BottomNavItem>
+            <BottomNavItem Href="/components" Label="Components" PressEffect="Button.ButtonPressEffect.Scale">
+                <IconContent><Blazicon Svg="Lucide.LayoutGrid" class="h-5 w-5" /></IconContent>
+            </BottomNavItem>
+            <BottomNavItem Href="/docs/introduction" Label="Docs" PressEffect="Button.ButtonPressEffect.Scale">
+                <IconContent><Blazicon Svg="Lucide.BookOpen" class="h-5 w-5" /></IconContent>
+            </BottomNavItem>
+            <BottomNavItem Label="Search" OnClick="OpenSearch" PressEffect="Button.ButtonPressEffect.Scale"
+                           IsActive="@_searchOpen">
+                <IconContent><Blazicon Svg="Lucide.Search" class="h-5 w-5" /></IconContent>
+            </BottomNavItem>
+            <BottomNavItem Label="Menu" OnClick="@(() => _mobileNavOpen = !_mobileNavOpen)" PressEffect="Button.ButtonPressEffect.Scale"
+                           IsActive="@_mobileNavOpen">
+                <IconContent><Blazicon Svg="Lucide.Menu" class="h-5 w-5" /></IconContent>
+            </BottomNavItem>
+        </BottomNav>
     </div>
 </div>
 
@@ -241,68 +266,53 @@
     </div>
 }
 
-<!-- Mobile Nav Overlay -->
+<!-- Mobile Nav Overlay — full-screen sheet with swipable tabs (Docs / Components / Patterns / Blocks).
+     Pages are stacked side-by-side in a horizontal scroll-snap container so users can swipe
+     between sections; tab buttons programmatically scroll. JS in lumeo.bindMobileNavTabs syncs
+     the active-tab indicator with the scroll position. -->
 @if (_mobileNavOpen)
 {
-    <div class="fixed inset-0 z-[80] lg:hidden" @onclick="@(() => _mobileNavOpen = false)">
-        <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
-        <div class="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border/50 shadow-2xl overflow-y-auto flex flex-col"
-             @onclick:stopPropagation>
-            <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
-                <Lumeo.Text Class="font-semibold text-sm text-foreground">Navigation</Lumeo.Text>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7"
-                        OnClick="@(() => _mobileNavOpen = false)">
-                    <DynamicIcon Name="X" Class="h-4 w-4" />
-                </Button>
-            </div>
-            <nav class="px-3 py-2 border-b border-border/30 flex gap-1 shrink-0">
-                <a href="docs/introduction" class="@MobileNavLinkClass("docs")">Docs</a>
-                <a href="components" class="@MobileNavLinkClass("catalog")">Components</a>
-                <a href="patterns" class="@MobileNavLinkClass("patterns")">Patterns</a>
-                <a href="blocks" class="@MobileNavLinkClass("blocks")">Blocks</a>
-            </nav>
-            @* On home + bare catalog ShowDocsLayout is false (the page itself owns
-               its canvas). The mobile drawer used to render an empty body there,
-               which is useless — phone visitors had no way to discover the docs
-               tree without first navigating into a doc page. We now always show
-               a sidebar in the mobile drawer, defaulting to DocsSidebar when no
-               other section applies, and the matching "Docs" tab above lights up
-               so the active state matches what's shown. *@
-            <div class="flex-1 overflow-y-auto">
-                @switch (MobileSidebarSection)
-                {
-                    case "blocks":
-                        <BlocksSidebar IsMobile="true" />
-                        break;
-                    case "components":
-                        <NavMenu Section="components" IsMobile="true" />
-                        break;
-                    case "patterns":
-                        <PatternsSidebar IsMobile="true" />
-                        break;
-                    default:
-                        <DocsSidebar IsMobile="true" />
-                        break;
-                }
-            </div>
+    <div class="fixed inset-0 z-[80] lg:hidden bg-background flex flex-col lumeo-mobile-nav-drawer"
+         @ref="_mobileNavDrawerRef"
+         style="padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);">
+        <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
+            <Lumeo.Text Class="font-semibold text-base text-foreground">Navigation</Lumeo.Text>
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                    OnClick="@(() => _mobileNavOpen = false)"
+                    aria-label="Close navigation">
+                <DynamicIcon Name="X" Class="h-5 w-5" />
+            </Button>
+        </div>
+        <nav class="px-2 border-b border-border/30 shrink-0 flex gap-0 lumeo-mobile-nav-tabs"
+             role="tablist" aria-label="Mobile sections">
+            <button type="button" role="tab" data-target="0" class="lumeo-mobile-nav-tab is-active flex-1 px-3 py-3 text-sm font-medium text-muted-foreground border-b-2 border-transparent transition-colors">Docs</button>
+            <button type="button" role="tab" data-target="1" class="lumeo-mobile-nav-tab flex-1 px-3 py-3 text-sm font-medium text-muted-foreground border-b-2 border-transparent transition-colors">Components</button>
+            <button type="button" role="tab" data-target="2" class="lumeo-mobile-nav-tab flex-1 px-3 py-3 text-sm font-medium text-muted-foreground border-b-2 border-transparent transition-colors">Patterns</button>
+            <button type="button" role="tab" data-target="3" class="lumeo-mobile-nav-tab flex-1 px-3 py-3 text-sm font-medium text-muted-foreground border-b-2 border-transparent transition-colors">Blocks</button>
+        </nav>
+        <div class="lumeo-mobile-nav-pages flex-1 flex overflow-x-auto overscroll-x-contain">
+            <div data-section="0" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><DocsSidebar IsMobile="true" /></div>
+            <div data-section="1" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><NavMenu Section="components" IsMobile="true" /></div>
+            <div data-section="2" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><PatternsSidebar IsMobile="true" /></div>
+            <div data-section="3" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><BlocksSidebar IsMobile="true" /></div>
         </div>
     </div>
 }
 
-<!-- Mobile Customizer Overlay -->
+<!-- Mobile Customizer Overlay — full-screen on phones. -->
 @if (_customizerOpen && ShowDocsLayout)
 {
-    <div class="fixed inset-0 z-[90] lg:hidden" @onclick="@(() => _customizerOpen = false)">
-        <div class="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
-        <div class="absolute right-0 top-0 bottom-0 w-72 bg-card border-l border-border/50 shadow-2xl flex flex-col"
-             @onclick:stopPropagation>
-            <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
-                <Lumeo.Text Class="font-semibold text-sm text-foreground">Customizer</Lumeo.Text>
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7"
-                        OnClick="@(() => _customizerOpen = false)">
-                    <DynamicIcon Name="X" Class="h-4 w-4" />
-                </Button>
-            </div>
+    <div class="fixed inset-0 z-[90] lg:hidden bg-background flex flex-col"
+         style="padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);">
+        <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
+            <Lumeo.Text Class="font-semibold text-base text-foreground">Customizer</Lumeo.Text>
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                    OnClick="@(() => _customizerOpen = false)"
+                    aria-label="Close customizer">
+                <DynamicIcon Name="X" Class="h-5 w-5" />
+            </Button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
             <CustomizerSidebar IsOpen="true" IsMobile="true" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
         </div>
     </div>
@@ -330,6 +340,8 @@
     private bool _darkMode;
     private bool _customizerOpen = false;
     private bool _mobileNavOpen;
+    private bool _mobileNavTabsBound;
+    private ElementReference _mobileNavDrawerRef;
     private bool _searchOpen;
     private string _query = string.Empty;
     private List<SearchHit> _hits = [];
@@ -492,6 +504,24 @@
             {
                 Console.WriteLine($"[Lumeo] Init error: {ex.Message}");
             }
+        }
+
+        // Bind swipable tabs JS each time the mobile nav drawer is freshly
+        // opened — the element is re-created on @if-toggle so we need to
+        // re-wire scroll listeners.
+        if (_mobileNavOpen && !_mobileNavTabsBound)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("lumeo.bindMobileNavTabs", _mobileNavDrawerRef);
+                _mobileNavTabsBound = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+        }
+        else if (!_mobileNavOpen && _mobileNavTabsBound)
+        {
+            _mobileNavTabsBound = false;
         }
     }
 

@@ -103,3 +103,113 @@ h1:focus { outline: none; }
 html.lumeo-fullscreen-active header {
   display: none !important;
 }
+
+/* ── Mobile page-slide transition (Feature 4) ──────────────────────────────
+   Opacity-only fade-in on route change. We deliberately avoid `transform`
+   here — any non-identity transform on the wrapper (even mid-animation)
+   creates a CSS containing block, which makes `position: fixed` descendants
+   (e.g. Drawer panels at the bottom of the viewport) anchor to this wrapper
+   instead of the actual viewport. The slide-in feel is sacrificed for
+   correct modal overlays. The @key="Nav.Uri" still re-mounts the wrapper on
+   every navigation, so the animation re-runs each route change. */
+@media (max-width: 1023px) and (prefers-reduced-motion: no-preference) {
+    .page-transition {
+        animation: lumeo-page-fade 200ms ease-out both;
+    }
+    @keyframes lumeo-page-fade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+}
+
+/* ── Mobile constellation polish ────────────────────────────────────────────
+   At narrow viewports the 1000×560 viewBox compresses every cluster into a
+   tiny patch — the labels overlap dots and the result feels cramped. Hide the
+   cluster labels and let the colour-coded legend below carry the meaning. */
+@media (max-width: 639px) {
+    .lumeo-constellation-host .lumeo-constellation-label { display: none; }
+}
+
+/* ── Component Constellation (Home page) ──────────────────────────────────
+   JS-driven hover/filter to avoid Blazor re-render storms. Dots transition
+   r/opacity via CSS only, never via Blazor diff. data-matched="0" dims the
+   dot during filter. The :hover state grows the dot slightly. */
+.lumeo-constellation-host svg { display: block; }
+.lumeo-constellation-host circle {
+    transition: r 140ms cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 180ms ease,
+                filter 140ms ease;
+}
+.lumeo-constellation-host circle[data-matched="0"] {
+    r: 3.5;
+    opacity: 0.16;
+}
+.lumeo-constellation-host circle[data-matched="1"]:hover,
+.lumeo-constellation-host circle[data-matched="1"]:focus-visible {
+    r: 7;
+    filter: drop-shadow(0 0 6px currentColor);
+    outline: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .lumeo-constellation-host circle { transition: none; }
+}
+/* Mobile: shorter container, slightly smaller dots so the layout doesn't feel cramped */
+@media (max-width: 639px) {
+    .lumeo-constellation-host { height: 380px !important; }
+    .lumeo-constellation-host circle { r: 4; }
+    .lumeo-constellation-host circle[data-matched="1"]:hover { r: 6; }
+}
+
+/* ── Mobile BottomNav polish ────────────────────────────────────────────────
+   Active item gets a subtle pill background instead of just the top hairline
+   indicator, so the current page is unmistakable at a glance. */
+.lumeo-mobile-nav nav a[aria-current="page"],
+.lumeo-mobile-nav nav button[aria-current="page"] {
+    background: color-mix(in oklab, var(--color-accent) 70%, transparent);
+    color: var(--color-foreground);
+    border-radius: 0.65rem;
+}
+/* Hide the small top indicator on the Pill variant — the pill background
+   carries the active state instead. */
+.lumeo-mobile-nav nav a[aria-current="page"] > span:last-child,
+.lumeo-mobile-nav nav button[aria-current="page"] > span:last-child {
+    display: none;
+}
+
+/* ── Constellation tooltip visibility ────────────────────────────────────
+   The JS hover/show logic toggles `.is-visible` instead of inline opacity
+   because Chrome's automation harness was wedging computed opacity to 0
+   even with the inline value at 1 (likely a transition-flush race). The
+   class is deterministic and survives stress-testing. */
+.lumeo-constellation-tip {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.lumeo-constellation-tip.is-visible {
+    opacity: 1;
+}
+
+/* ── Constellation tooltip Visit button ─────────────────────────────────
+   Hidden on desktop — hovering a dot already shows the tooltip and clicking
+   navigates immediately, so an extra Visit button is noise. On mobile the
+   first tap pins the tooltip and the button becomes the explicit CTA. */
+@media (min-width: 1024px) {
+    .lumeo-tip-visit { display: none !important; }
+}
+
+/* ── Mobile nav drawer: swipable tabs (full-screen) ──────────────────────
+   Pages are stacked side-by-side in a horizontal scroll-snap track. Tab
+   buttons get an underline + foreground colour when active. CSS scroll-snap
+   carries the swipe; JS in lumeo.bindMobileNavTabs syncs the indicator. */
+.lumeo-mobile-nav-pages {
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+}
+.lumeo-mobile-nav-page {
+    scroll-snap-align: start;
+}
+.lumeo-mobile-nav-tab.is-active {
+    color: var(--color-foreground);
+    border-bottom-color: var(--color-primary);
+}

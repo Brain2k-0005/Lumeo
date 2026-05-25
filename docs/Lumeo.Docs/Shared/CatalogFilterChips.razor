@@ -4,7 +4,7 @@
     <button type="button" data-chip="All"
             class="@ChipClass(null)"
             aria-pressed="@(IsActive(null) ? "true" : "false")"
-            @onclick="() => Set(null)">
+            @onclick="ClearAll">
         All
     </button>
     @foreach (var c in Categories)
@@ -12,7 +12,7 @@
         <button type="button" data-chip="@c"
                 class="@ChipClass(c)"
                 aria-pressed="@(IsActive(c) ? "true" : "false")"
-                @onclick="() => Set(c)">
+                @onclick="() => Toggle(c)">
             @c
         </button>
     }
@@ -20,16 +20,33 @@
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<string> Categories { get; set; } = [];
-    [Parameter] public string? Selected { get; set; }
-    [Parameter] public EventCallback<string?> SelectedChanged { get; set; }
 
-    private async Task Set(string? value)
+    /// <summary>
+    /// Currently selected categories. Empty (or null) means "no filter — show everything",
+    /// which lights up the "All" chip. Multiple values mean union (any-of) filter.
+    /// </summary>
+    [Parameter] public IReadOnlyCollection<string>? Selected { get; set; }
+    [Parameter] public EventCallback<IReadOnlyCollection<string>> SelectedChanged { get; set; }
+
+    private async Task Toggle(string value)
     {
-        Selected = value;
-        await SelectedChanged.InvokeAsync(value);
+        var next = new HashSet<string>(Selected ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        if (!next.Add(value)) next.Remove(value);
+        Selected = next;
+        await SelectedChanged.InvokeAsync(next);
     }
 
-    private bool IsActive(string? c) => (Selected ?? "") == (c ?? "");
+    private async Task ClearAll()
+    {
+        Selected = Array.Empty<string>();
+        await SelectedChanged.InvokeAsync(Selected);
+    }
+
+    private bool IsActive(string? c)
+    {
+        if (c is null) return Selected is null || Selected.Count == 0;
+        return Selected is not null && Selected.Contains(c, StringComparer.OrdinalIgnoreCase);
+    }
 
     private string ChipClass(string? c) => IsActive(c)
         ? "rounded-full px-3 py-1 text-xs font-medium bg-primary text-primary-foreground"
