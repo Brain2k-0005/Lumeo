@@ -97,14 +97,18 @@ public class BentoTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Grid_Auto_Rows_Inline_Style_Is_Present()
+    public void Grid_Auto_Rows_Equalises_Tile_Height_On_Desktop()
     {
-        // Bento swapped `container-type: inline-size` for `grid-auto-rows: minmax(0, 1fr)` so mixed
-        // RowSpan tiles stay aligned — every row gets the same fr unit and short-content tiles don't
-        // collapse to their minimum height.
+        // Mixed-RowSpan tiles need equal fr-unit rows so a `RowSpan=2` tile is
+        // exactly twice as tall as a single tile. We apply this only at the
+        // lg: breakpoint — on mobile every tile sizes to content, otherwise
+        // short KPI cards inherit the height of the tallest possible row and
+        // each stat fills the entire phone viewport.
         var cut = _ctx.Render<Lumeo.Bento>();
 
-        Assert.Contains("grid-auto-rows: minmax(0, 1fr)", cut.Find("div").GetAttribute("style"));
+        var cls = cut.Find("div").GetAttribute("class");
+        Assert.Contains("auto-rows-auto", cls);
+        Assert.Contains("lg:auto-rows-fr", cls);
     }
 
     [Fact]

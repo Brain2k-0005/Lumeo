@@ -29,6 +29,102 @@ const _clickOutsideHandler = (e) => {
 document.addEventListener('mousedown', _clickOutsideHandler);
 document.addEventListener('touchstart', _clickOutsideHandler, { passive: true });
 
+// ----------------------------------------------------------------------------
+// Touch-to-drag polyfill. iOS Safari and Android Chrome do not fire dragstart /
+// dragover / drop for `draggable="true"` elements on touch input, so every
+// Blazor `@ondragstart` / `@ondrop` handler is silently desktop-only.
+//
+// This shim synthesises the HTML5 drag-and-drop event sequence from touch
+// events so any [draggable="true"] element in a Lumeo (or consumer) page works
+// the same on phone as on desktop. Active on the document — single-finger
+// drags only; multitouch is left alone for pinch-zoom etc.
+//
+// Behaviour:
+//   touchstart on a draggable → record source, wait for movement (dead-zone)
+//   first touchmove past 8 px → dispatch `dragstart` on source
+//   subsequent touchmoves     → dispatch `dragenter`/`dragleave`/`dragover`
+//                               on the element under the finger
+//   touchend                  → dispatch `drop` on that element, then
+//                               `dragend` on the source
+//
+// Targets receive plain `Event` instances (not real `DragEvent`s). Blazor's
+// `DragEventArgs` will carry empty DataTransfer, which is fine for the typical
+// "remember which card is being dragged in C#" pattern. If you need real
+// DataTransfer payloads on mobile, opt out via `data-no-touch-drag="true"`.
+// ----------------------------------------------------------------------------
+const TOUCH_DRAG_DEAD_ZONE_PX = 8;
+let _touchDragSource = null;
+
+const _onTouchDragMove = (e) => {
+    if (!_touchDragSource || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = t.clientX - _touchDragSource.startX;
+    const dy = t.clientY - _touchDragSource.startY;
+
+    if (!_touchDragSource.started) {
+        if (Math.hypot(dx, dy) < TOUCH_DRAG_DEAD_ZONE_PX) return;
+        _touchDragSource.started = true;
+        _touchDragSource.element.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+    }
+
+    // Stop the page from scrolling while a drag is in progress. We only call
+    // preventDefault after the dead-zone is crossed so light taps and short
+    // intentional scrolls aren't hijacked.
+    e.preventDefault();
+
+    const over = document.elementFromPoint(t.clientX, t.clientY);
+    if (over !== _touchDragSource.lastOver) {
+        if (_touchDragSource.lastOver) {
+            _touchDragSource.lastOver.dispatchEvent(new Event('dragleave', { bubbles: true }));
+        }
+        if (over) {
+            over.dispatchEvent(new Event('dragenter', { bubbles: true }));
+        }
+        _touchDragSource.lastOver = over;
+    }
+    if (over) {
+        over.dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }));
+    }
+};
+
+const _onTouchDragEnd = (e) => {
+    if (!_touchDragSource) return;
+    if (_touchDragSource.started) {
+        const t = e.changedTouches && e.changedTouches[0];
+        const dropTarget = t ? document.elementFromPoint(t.clientX, t.clientY) : null;
+        if (dropTarget) {
+            dropTarget.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+        }
+        _touchDragSource.element.dispatchEvent(new Event('dragend', { bubbles: true }));
+    }
+    document.removeEventListener('touchmove', _onTouchDragMove, { passive: false });
+    document.removeEventListener('touchend', _onTouchDragEnd);
+    document.removeEventListener('touchcancel', _onTouchDragEnd);
+    _touchDragSource = null;
+};
+
+document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const target = (t.target instanceof Element) ? t.target : null;
+    if (!target) return;
+    const src = target.closest('[draggable="true"]');
+    if (!src) return;
+    if (src.closest('[data-no-touch-drag="true"]')) return;
+
+    _touchDragSource = {
+        element: src,
+        startX: t.clientX,
+        startY: t.clientY,
+        started: false,
+        lastOver: null,
+    };
+    // touchmove must be non-passive so we can preventDefault once the drag starts.
+    document.addEventListener('touchmove', _onTouchDragMove, { passive: false });
+    document.addEventListener('touchend', _onTouchDragEnd, { passive: true });
+    document.addEventListener('touchcancel', _onTouchDragEnd, { passive: true });
+}, { passive: true });
+
 export function registerClickOutside(elementId, triggerElementId, dotnetRef) {
     clickOutsideHandlers.set(elementId, { triggerElementId, dotnetRef });
 }
