@@ -49,12 +49,31 @@ public class BentoTests : IAsyncLifetime
     [Fact]
     public void Columns_Custom_Value_Falls_Back_To_Inline_Style()
     {
+        // 1–6 columns now use Tailwind utilities with responsive collapse;
+        // 7+ is the off-the-beaten-path fallback that emits inline
+        // grid-template-columns without responsive breakpoints.
         var cut = _ctx.Render<Lumeo.Bento>(p => p
-            .Add(b => b.Columns, 5));
+            .Add(b => b.Columns, 7));
 
         var style = cut.Find("div").GetAttribute("style");
         Assert.Contains("grid-template-columns", style);
-        Assert.Contains("repeat(5", style);
+        Assert.Contains("repeat(7", style);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void Columns_Collapse_To_One_On_Mobile(int columns)
+    {
+        // Every multi-column Bento must collapse to grid-cols-1 on phones —
+        // without this guard, a regression that drops the responsive prefix
+        // would silently reintroduce the unusable-on-mobile bug.
+        var cut = _ctx.Render<Lumeo.Bento>(p => p
+            .Add(b => b.Columns, columns));
+
+        Assert.Contains("grid-cols-1", cut.Find("div").GetAttribute("class"));
     }
 
     [Fact]
