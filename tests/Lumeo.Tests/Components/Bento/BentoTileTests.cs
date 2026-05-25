@@ -20,29 +20,42 @@ public class BentoTileTests : IAsyncLifetime
     [Fact]
     public void Default_Span_And_RowSpan_Render_As_Span_1()
     {
+        // Span/RowSpan moved off inline styles onto literal Tailwind classes
+        // so the mobile breakpoint can override them. Default tile is a
+        // single-cell tile in any grid.
         var cut = _ctx.Render<Lumeo.BentoTile>();
 
-        var style = cut.Find("div").GetAttribute("style");
-        Assert.Contains("grid-column: span 1 / span 1", style);
-        Assert.Contains("grid-row: span 1 / span 1", style);
+        var cls = cut.Find("div").GetAttribute("class");
+        Assert.Contains("col-span-1", cls);
+        Assert.Contains("row-span-1", cls);
     }
 
     [Fact]
-    public void Span_Produces_Inline_Grid_Column_Style()
+    public void Span_Produces_Responsive_Col_Span_Classes()
     {
+        // Mobile-first: every tile spans 1 on phones, widens to 2 at sm:, and
+        // hits the caller's Span at lg: so wide tiles don't punch holes in
+        // the mobile single-column stack.
         var cut = _ctx.Render<Lumeo.BentoTile>(p => p
             .Add(t => t.Span, 3));
 
-        Assert.Contains("grid-column: span 3 / span 3", cut.Find("div").GetAttribute("style"));
+        var cls = cut.Find("div").GetAttribute("class");
+        Assert.Contains("col-span-1", cls);
+        Assert.Contains("sm:col-span-2", cls);
+        Assert.Contains("lg:col-span-3", cls);
     }
 
     [Fact]
-    public void RowSpan_Produces_Inline_Grid_Row_Style()
+    public void RowSpan_Produces_Responsive_Row_Span_Classes()
     {
+        // RowSpan only kicks in at lg: so mobile rows hug their content
+        // height instead of inheriting a desktop multi-row tile.
         var cut = _ctx.Render<Lumeo.BentoTile>(p => p
             .Add(t => t.RowSpan, 2));
 
-        Assert.Contains("grid-row: span 2 / span 2", cut.Find("div").GetAttribute("style"));
+        var cls = cut.Find("div").GetAttribute("class");
+        Assert.Contains("row-span-1", cls);
+        Assert.Contains("lg:row-span-2", cls);
     }
 
     [Fact]
