@@ -109,7 +109,71 @@
                    Class="h-[600px]" />
     </ComponentDemo>
 
+    <ComponentDemo Title="Controlled — header reports state + jump to page" Code="@_controlledCode">
+        <Stack Gap="3">
+            <Flex Align="center" Justify="between" Wrap="true" Gap="3" Class="rounded-md border border-border/40 bg-muted/30 px-4 py-2.5">
+                <Lumeo.Text Size="sm" Color="muted">
+                    Page <Lumeo.Text As="span" Color="foreground" Weight="semibold">@_ctrlPage</Lumeo.Text>
+                    of <Lumeo.Text As="span" Color="foreground" Weight="semibold">@_ctrlTotal</Lumeo.Text>
+                    &middot; zoom <Lumeo.Text As="span" Color="foreground" Weight="semibold">@($"{(int)Math.Round(_ctrlZoom * 100)}%")</Lumeo.Text>
+                </Lumeo.Text>
+                <Flex Align="center" Gap="2">
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="@(() => _ctrlPage = 1)" Disabled="@(_ctrlPage == 1)">First</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="@(() => _ctrlPage = Math.Max(1, _ctrlTotal))" Disabled="@(_ctrlPage == _ctrlTotal)">Last</Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="@(() => _ctrlZoom = 1.0)">Reset zoom</Button>
+                </Flex>
+            </Flex>
+            <PdfViewer Src="@SamplePdfUrl"
+                       @bind-Page="_ctrlPage"
+                       @bind-Zoom="_ctrlZoom"
+                       OnLoaded="@((t) => _ctrlTotal = t)"
+                       ShowSearch="true"
+                       Class="h-[500px]" />
+        </Stack>
+    </ComponentDemo>
+
 </Stack>
+
+<div class="mt-12 space-y-3">
+    <Heading Id="self-hosting" Level="2" Class="scroll-mt-20">Self-hosting pdf.js</Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        By default the viewer lazy-loads <Code>pdf.js</Code> + its worker from jsDelivr the
+        first time a <Code>PdfViewer</Code> mounts. That's the right tradeoff for low-traffic
+        apps and demos, but it doesn't work behind a strict CSP, on an air-gapped intranet,
+        or in compliance scenarios where every third-party script call is a no-go.
+    </Lumeo.Text>
+    <Lumeo.Text Size="sm" Color="muted">
+        The Lumeo CLI ships a one-shot installer that vendors <Code>pdf.js</Code> into
+        <Code>wwwroot/lib/lumeo-vendor/</Code> and wires up
+        <Code>window.lumeoCdn</Code> so the runtime loads from your own origin instead of
+        the CDN:
+    </Lumeo.Text>
+    <div class="rounded-lg overflow-hidden ring-1 ring-border/40" style="background-color: #0a0a0a;">
+        <div class="flex items-center justify-between px-3 py-2 border-b" style="border-color: rgba(255,255,255,0.08);">
+            <div class="flex items-center gap-1.5">
+                <span class="h-2.5 w-2.5 rounded-full" style="background-color: #ff5f56;"></span>
+                <span class="h-2.5 w-2.5 rounded-full" style="background-color: #ffbd2e;"></span>
+                <span class="h-2.5 w-2.5 rounded-full" style="background-color: #27c93f;"></span>
+            </div>
+            <span class="font-mono text-[10px]" style="color: rgba(255,255,255,0.55);">bash</span>
+        </div>
+<pre class="font-mono text-[12px] leading-relaxed whitespace-pre overflow-x-auto px-4 py-3 m-0" style="color: #e4e4e7;"><span style="color: #64748b;"># 1. Install the Lumeo CLI as a global dotnet tool</span>
+<span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">dotnet</span> tool install -g <span style="color: #fbbf24;">Lumeo.Cli</span>
+
+<span style="color: #64748b;"># 2. Vendor pdf.js into wwwroot/lib/lumeo-vendor/ and write the bootstrap</span>
+<span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">lumeo</span> deps install --lib pdfjs --write-bootstrap
+
+<span style="color: #64748b;"># 3. Include the bootstrap before _content/Lumeo.PdfViewer/js/* in index.html</span>
+<span style="color: #64748b;">#    &lt;script src="js/lumeo-cdn-init.js"&gt;&lt;/script&gt;</span></pre>
+    </div>
+    <Lumeo.Text Size="sm" Color="muted">
+        See <Lumeo.Link Href="docs/cdn-deps">CDN dependencies</Lumeo.Link> for the full list
+        of self-hostable libraries and the <Code>window.lumeoCdn</Code> override surface.
+        For more granular control (custom URL, integrity hash, alternative CDN) you can
+        set <Code>window.lumeoCdn = { pdfJs: "/my/cdn/pdf.min.mjs", pdfJsWorker: "/my/cdn/pdf.worker.min.mjs" };</Code>
+        before the first <Code>PdfViewer</Code> mounts.
+    </Lumeo.Text>
+</div>
 
 <div class="mt-16">
     <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
@@ -275,6 +339,12 @@
     private int _totalPages;
     private string? _errorMessage;
 
+    // Controlled-demo state — page + zoom owned by the parent, surfaced in the
+    // header strip, and jumped via "First" / "Last" / "Reset zoom" buttons.
+    private int _ctrlPage = 1;
+    private double _ctrlZoom = 1.0;
+    private int _ctrlTotal = 1;
+
     private void HandleLoaded(int total) => _totalPages = total;
     private void HandleError(string msg) => _errorMessage = msg;
 
@@ -375,4 +445,31 @@
            Zoom="1.5"
            Class="h-[600px]" />
 """;
+
+    private const string _controlledCode = """
+<Flex Align="center" Justify="between" Class="rounded-md border bg-muted/30 px-4 py-2.5">
+    <Lumeo.Text Size="sm">
+        Page @_page of @_total &middot; zoom @($"{(int)Math.Round(_zoom * 100)}%")
+    </Lumeo.Text>
+    <Flex Gap="2">
+        <Button Size="Sm" OnClick="@(() => _page = 1)" Disabled="@(_page == 1)">First</Button>
+        <Button Size="Sm" OnClick="@(() => _page = _total)" Disabled="@(_page == _total)">Last</Button>
+        <Button Size="Sm" OnClick="@(() => _zoom = 1.0)">Reset zoom</Button>
+    </Flex>
+</Flex>
+
+<PdfViewer Src="@_pdfUrl"
+           @bind-Page="_page"
+           @bind-Zoom="_zoom"
+           OnLoaded="@(t => _total = t)"
+           ShowSearch="true"
+           Class="h-[500px]" />
+
+@code {
+    private int _page = 1;
+    private double _zoom = 1.0;
+    private int _total = 1;
+}
+""";
+
 }
