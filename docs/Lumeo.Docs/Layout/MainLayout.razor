@@ -254,33 +254,35 @@
                 </Button>
             </div>
             <nav class="px-3 py-2 border-b border-border/30 flex gap-1 shrink-0">
-                <a href="docs/introduction" class="@NavLinkClass("docs")">Docs</a>
-                <a href="components" class="@NavLinkClass("catalog")">Components</a>
-                <a href="patterns" class="@NavLinkClass("patterns")">Patterns</a>
-                <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
+                <a href="docs/introduction" class="@MobileNavLinkClass("docs")">Docs</a>
+                <a href="components" class="@MobileNavLinkClass("catalog")">Components</a>
+                <a href="patterns" class="@MobileNavLinkClass("patterns")">Patterns</a>
+                <a href="blocks" class="@MobileNavLinkClass("blocks")">Blocks</a>
             </nav>
-            @if (ShowDocsLayout)
-            {
-                <div class="flex-1 overflow-y-auto">
-                    @switch (SidebarSection)
-                    {
-                        case "blocks":
-                            <BlocksSidebar IsMobile="true" />
-                            break;
-                        case "docs":
-                            <DocsSidebar IsMobile="true" />
-                            break;
-                        case "components":
-                            <NavMenu Section="components" IsMobile="true" />
-                            break;
-                        case "patterns":
-                            <PatternsSidebar IsMobile="true" />
-                            break;
-                        default:
-                            break;
-                    }
-                </div>
-            }
+            @* On home + bare catalog ShowDocsLayout is false (the page itself owns
+               its canvas). The mobile drawer used to render an empty body there,
+               which is useless — phone visitors had no way to discover the docs
+               tree without first navigating into a doc page. We now always show
+               a sidebar in the mobile drawer, defaulting to DocsSidebar when no
+               other section applies, and the matching "Docs" tab above lights up
+               so the active state matches what's shown. *@
+            <div class="flex-1 overflow-y-auto">
+                @switch (MobileSidebarSection)
+                {
+                    case "blocks":
+                        <BlocksSidebar IsMobile="true" />
+                        break;
+                    case "components":
+                        <NavMenu Section="components" IsMobile="true" />
+                        break;
+                    case "patterns":
+                        <PatternsSidebar IsMobile="true" />
+                        break;
+                    default:
+                        <DocsSidebar IsMobile="true" />
+                        break;
+                }
+            </div>
         </div>
     </div>
 }
@@ -400,6 +402,48 @@
                 isActive = CurrentPath.StartsWith(segment, StringComparison.OrdinalIgnoreCase);
                 break;
         }
+        return isActive
+            ? "rounded-md px-3 py-1.5 text-foreground bg-accent transition-colors no-underline"
+            : "rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline";
+    }
+
+    /// <summary>
+    /// Mobile-only counterpart to <see cref="SidebarSection"/>. Diverges in
+    /// two places where the desktop layout intentionally has no sidebar but
+    /// the mobile drawer would otherwise be empty:
+    ///   "/"             → "docs"        (home defaults to the docs tree)
+    ///   "/components"   → "components"  (bare catalog shows the component list)
+    /// Every other route delegates to the existing SidebarSection mapping.
+    /// </summary>
+    private string MobileSidebarSection
+    {
+        get
+        {
+            var p = CurrentPath;
+            if (p == "") return "docs";
+            if (p.Equals("components", StringComparison.OrdinalIgnoreCase)) return "components";
+            return SidebarSection;
+        }
+    }
+
+    /// <summary>
+    /// Top-tab highlight inside the mobile drawer — keyed off
+    /// <see cref="MobileSidebarSection"/> so the active tab always matches the
+    /// sidebar body shown below it. Specifically: on home the "Docs" tab is
+    /// pre-selected (instead of "no tab active") because the drawer also
+    /// defaults to the DocsSidebar there.
+    /// </summary>
+    private string MobileNavLinkClass(string segment)
+    {
+        var sec = MobileSidebarSection;
+        bool isActive = segment switch
+        {
+            "docs"     => sec == "docs",
+            "catalog"  => sec == "components",
+            "patterns" => sec == "patterns",
+            "blocks"   => sec == "blocks",
+            _          => false
+        };
         return isActive
             ? "rounded-md px-3 py-1.5 text-foreground bg-accent transition-colors no-underline"
             : "rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline";
