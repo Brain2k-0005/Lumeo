@@ -1146,42 +1146,63 @@ export function unregisterTabSwipe(elementId) {
 
 const resizeHandlers = new Map();
 
+// Resizable panel-group handle. Originally listened to mousedown/mousemove/
+// mouseup on document, so touch users could not drag the divider at all
+// (mouse events are only synthesised AFTER a touch sequence ends, never
+// during). Migrated to pointer events with setPointerCapture so a single
+// code path serves mouse, pen and touch — matching what Splitter/Window/
+// AudioPlayer already do. `touch-action: none` on the handle hands the
+// gesture to us instead of the browser interpreting it as a vertical scroll.
 export function registerResizeHandle(elementId, direction, dotnetRef) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
+    el.style.touchAction = 'none';
+
     let isDragging = false;
     let startPos = 0;
+    let activePointerId = null;
 
-    const onMouseDown = (e) => {
+    const onPointerDown = (e) => {
+        // Ignore secondary buttons (right-click, middle-click) so the divider
+        // doesn't grab a context-menu attempt.
+        if (e.button !== undefined && e.button !== 0) return;
         isDragging = true;
+        activePointerId = e.pointerId;
         startPos = direction === 'horizontal' ? e.clientX : e.clientY;
         document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
         document.body.style.userSelect = 'none';
+        try { el.setPointerCapture(e.pointerId); } catch { /* not all browsers/contexts */ }
         e.preventDefault();
     };
 
-    const onMouseMove = (e) => {
-        if (!isDragging) return;
+    const onPointerMove = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
         const currentPos = direction === 'horizontal' ? e.clientX : e.clientY;
         const delta = currentPos - startPos;
         startPos = currentPos;
         dotnetRef.invokeMethodAsync('OnResize', elementId, delta);
     };
 
-    const onMouseUp = () => {
-        if (!isDragging) return;
+    const onPointerUp = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
         isDragging = false;
+        activePointerId = null;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        try { el.releasePointerCapture(e.pointerId); } catch { /* fallthrough */ }
         dotnetRef.invokeMethodAsync('OnResizeEnd', elementId);
     };
 
-    el.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+    // pointermove + pointerup go on the element itself: setPointerCapture
+    // guarantees subsequent events route to it even when the finger drifts
+    // off the (visually 1 px wide) divider during a fast drag.
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerUp);
 
-    resizeHandlers.set(elementId, { onMouseDown, onMouseMove, onMouseUp });
+    resizeHandlers.set(elementId, { onPointerDown, onPointerMove, onPointerUp });
 }
 
 export function unregisterResizeHandle(elementId) {
@@ -1189,10 +1210,11 @@ export function unregisterResizeHandle(elementId) {
     if (handlers) {
         const el = document.getElementById(elementId);
         if (el) {
-            el.removeEventListener('mousedown', handlers.onMouseDown);
+            el.removeEventListener('pointerdown', handlers.onPointerDown);
+            el.removeEventListener('pointermove', handlers.onPointerMove);
+            el.removeEventListener('pointerup', handlers.onPointerUp);
+            el.removeEventListener('pointercancel', handlers.onPointerUp);
         }
-        document.removeEventListener('mousemove', handlers.onMouseMove);
-        document.removeEventListener('mouseup', handlers.onMouseUp);
         resizeHandlers.delete(elementId);
     }
 }
