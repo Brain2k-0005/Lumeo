@@ -1,111 +1,313 @@
-@page "/"
+﻿@page "/"
 @using Lumeo.Services
+@using System.Net.Http.Json
 @implements IAsyncDisposable
-@inject ToastService ToastService
 @inject IJSRuntime JS
+@inject HttpClient Http
+@inject NavigationManager Nav
 
-<PageTitle>Lumeo — The Blazor component library you'd actually want to ship</PageTitle>
+<PageTitle>Lumeo - The Blazor component library you would actually want to ship</PageTitle>
 
-<!-- ======================= HERO ======================= -->
-<section class="relative overflow-hidden">
-    <!-- Subtle grid pattern background -->
-    <div class="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)] pointer-events-none opacity-50"></div>
-    <!-- Radial gradient mesh orb — primary-tinted warm glow centered above the fold -->
-    <div class="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-[600px] w-[900px] rounded-full opacity-[0.12]"
-         style="background: radial-gradient(ellipse at center, hsl(var(--primary)) 0%, transparent 70%);"></div>
-    <!-- Secondary soft orb offset left for depth -->
-    <div class="pointer-events-none absolute top-20 left-1/4 h-[300px] w-[400px] rounded-full opacity-[0.06]"
-         style="background: radial-gradient(ellipse at center, hsl(var(--primary)) 0%, transparent 70%);"></div>
+<!-- ======================= LIVE ADMIN-APP ======================= -->
+<section class="relative min-h-screen overflow-hidden border-b border-border/40">
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,#000_60%,transparent_110%)] pointer-events-none opacity-30"></div>
 
-    <Container MaxWidth="6xl" Class="relative px-4 py-28 pb-20">
+    <Container MaxWidth="6xl" Class="relative px-4 pt-8 pb-6">
+
+        <!-- Topbar -->
         <BlurFade DelayMs="0">
-            <Stack Gap="5" Class="items-center text-center">
-                <!-- Version badge — tighter, more structured pill -->
-                <Lumeo.Link Href="docs/changelog" Class="no-underline group">
-                    <Flex Inline="true" Align="center" Gap="2" Class="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm hover:border-primary/40 hover:text-foreground transition-colors">
-                        <Badge Variant="Badge.BadgeVariant.Default" Class="h-4 px-1.5 text-[10px] leading-none">v3.2</Badge>
-                        <Lumeo.Text As="span">Map Globe (MapLibre 5), Heatmap, Legend, Popup · CDN-deps CLI · DataGrid pin/grouping fixes · Home polish</Lumeo.Text>
-                        <DynamicIcon Name="ArrowRight" Class="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                    </Flex>
-                </Lumeo.Link>
-
-                <!-- Giant headline — tighter tracking, stronger hierarchy -->
-                <Heading Level="1" Class="text-5xl sm:text-7xl md:text-[5.5rem] font-bold tracking-[-0.02em] leading-[1.0] max-w-4xl">
-                    The Blazor library<br />
-                    you'd actually want to <Lumeo.Text As="span" Class="text-primary">ship</Lumeo.Text>.
-                </Heading>
-
-                <!-- Subtitle -->
-                <Lumeo.Text Size="lg" Color="muted" Class="max-w-xl leading-relaxed">
-                    149 components across a
-                    <Lumeo.Link Href="/docs/bundle-facts" Class="font-semibold text-foreground decoration-dotted decoration-primary/60 underline underline-offset-4 hover:text-primary transition-colors no-underline">~400 KB core</Lumeo.Link>
-                    plus opt-in satellites.
-                </Lumeo.Text>
-
-                <!-- CTA row -->
-                <Flex Gap="3" Wrap="true" Justify="center" Class="pt-1">
+            <Flex Align="center" Justify="between" Wrap="true" Gap="3" Class="mb-6">
+                <Flex Align="center" Gap="3">
+                    <Lumeo.Link Href="docs/changelog" Class="no-underline group">
+                        <Flex Inline="true" Align="center" Gap="2" Class="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm hover:border-primary/40 hover:text-foreground transition-colors">
+                            <Badge Variant="Badge.BadgeVariant.Default" Class="h-4 px-1.5 text-[10px] leading-none">v3.2</Badge>
+                            <Lumeo.Text As="span" Class="hidden sm:inline">Map Globe &middot; DataGrid pin/grouping &middot; Heatmap &middot; Popup</Lumeo.Text>
+                            <DynamicIcon Name="ArrowRight" Class="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                        </Flex>
+                    </Lumeo.Link>
+                    <Lumeo.Text Size="sm" Color="muted" Class="hidden md:inline">154 components &middot; MIT &middot; ~400 KB core</Lumeo.Text>
+                </Flex>
+                <Flex Gap="2" Align="center">
                     <Lumeo.Link Href="docs/introduction" Class="no-underline">
-                        <ShimmerButton Size="Button.ButtonSize.Lg" Class="rounded-lg">
+                        <ShimmerButton Size="Button.ButtonSize.Sm" Class="rounded-lg">
                             Get Started
-                            <DynamicIcon Name="ArrowRight" Class="h-4 w-4" />
+                            <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5" />
                         </ShimmerButton>
                     </Lumeo.Link>
-                    <Lumeo.Link Href="components/button" Class="inline-flex h-10 items-center gap-2 justify-center rounded-lg border border-border/60 bg-background px-6 text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-colors no-underline">
-                        <DynamicIcon Name="LayoutGrid" Class="h-4 w-4" />
-                        Browse Components
+                    <Lumeo.Link Href="components/button" Class="inline-flex h-8 items-center gap-1.5 justify-center rounded-lg border border-border/60 bg-background px-4 text-xs font-semibold hover:bg-accent hover:text-accent-foreground transition-colors no-underline">
+                        <DynamicIcon Name="LayoutGrid" Class="h-3.5 w-3.5" />
+                        Components
                     </Lumeo.Link>
                 </Flex>
+            </Flex>
+        </BlurFade>
 
-                <!-- Install command wrapped in BorderBeam -->
-                <Stack Align="center" Gap="2" Class="pt-2">
-                    <BorderBeam DurationMs="6000" Class="inline-block shadow-[0_0_28px_-12px_hsl(var(--primary)/0.5)] rounded-lg">
-                        <Flex Align="center" Gap="0" Class="rounded-lg border border-border/40 bg-muted/30 pl-4 pr-2 py-2 font-mono text-xs text-foreground backdrop-blur-sm">
-                            <Lumeo.Text As="span" Color="muted" Class="mr-2 select-none">$</Lumeo.Text>
-                            <Lumeo.Text As="span" Class="whitespace-nowrap">dotnet add package Lumeo</Lumeo.Text>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="ml-3 inline-flex items-center justify-center h-8 w-8 p-0 rounded-md text-muted-foreground hover:text-foreground" OnClick="CopyInstall" aria-label="Copy install command">
-                                @if (_installCopied)
-                                {
-                                    <DynamicIcon Name="Check" Class="h-4 w-4 text-primary" />
-                                }
-                                else
-                                {
-                                    <DynamicIcon Name="Copy" Class="h-4 w-4" />
-                                }
-                            </Button>
-                        </Flex>
-                    </BorderBeam>
-                    <Lumeo.Text Size="xs" Color="muted">Core only — <Lumeo.Link Href="docs/introduction" Class="underline underline-offset-2 hover:text-foreground transition-colors">satellites</Lumeo.Link> ship separately.</Lumeo.Text>
-                </Stack>
-
-                <!-- Hero stats strip — moved below install for better hierarchy flow.
-                     Four numbered facts as a clean inline row with dividers. -->
-                <div class="pt-6 border-t border-border/30 w-full max-w-lg">
-                    <Flex Align="center" Justify="center" Wrap="true" Gap="0" Class="text-sm">
-                        <Flex Align="center" Gap="2" Class="px-4 py-1">
-                            <span class="font-bold text-foreground tabular-nums text-base"><NumberTicker Value="149" DurationMs="1400" /></span>
-                            <Lumeo.Text As="span" Size="xs" Color="muted">components</Lumeo.Text>
-                        </Flex>
-                        <span class="h-3 w-px bg-border/60" aria-hidden="true"></span>
-                        <Flex Align="center" Gap="2" Class="px-4 py-1">
-                            <span class="font-bold text-foreground tabular-nums text-base"><NumberTicker Value="2194" DurationMs="2000" /></span>
-                            <Lumeo.Text As="span" Size="xs" Color="muted">tests</Lumeo.Text>
-                        </Flex>
-                        <span class="h-3 w-px bg-border/60" aria-hidden="true"></span>
-                        <Flex Align="center" Gap="2" Class="px-4 py-1">
-                            <span class="font-bold text-foreground tabular-nums text-base"><NumberTicker Value="8" DurationMs="1600" /></span>
-                            <Lumeo.Text As="span" Size="xs" Color="muted">themes</Lumeo.Text>
-                        </Flex>
-                        <span class="h-3 w-px bg-border/60" aria-hidden="true"></span>
-                        <Flex Align="center" Gap="2" Class="px-4 py-1">
-                            <span class="font-bold text-foreground tabular-nums text-base"><NumberTicker Value="14" DurationMs="1800" /></span>
-                            <Lumeo.Text As="span" Size="xs" Color="muted">locales</Lumeo.Text>
-                        </Flex>
+        <!-- KPI strip -->
+        <BlurFade DelayMs="80">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4"
+                     @onmouseenter="@(() => _kpiHovered = true)" @onmouseleave="@(() => _kpiHovered = false)">
+                    <Flex Align="center" Justify="between" Class="mb-1">
+                        <Lumeo.Text Size="xs" Color="muted">Revenue</Lumeo.Text>
+                        <DynamicIcon Name="DollarSign" Class="h-3.5 w-3.5 text-primary" />
+                    </Flex>
+                    <div class="text-2xl font-bold tracking-tight text-foreground">
+                        $<NumberTicker Value="1214" DurationMs="1600" />K
+                    </div>
+                    <Flex Align="center" Gap="1" Class="mt-1">
+                        <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-primary" />
+                        <Lumeo.Text Size="xs" Color="muted">+12.4% vs last Q</Lumeo.Text>
                     </Flex>
                 </div>
+                <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+                    <Flex Align="center" Justify="between" Class="mb-1">
+                        <Lumeo.Text Size="xs" Color="muted">Active users</Lumeo.Text>
+                        <DynamicIcon Name="Users" Class="h-3.5 w-3.5 text-primary" />
+                    </Flex>
+                    <div class="text-2xl font-bold tracking-tight text-foreground">
+                        <NumberTicker Value="8421" DurationMs="1800" />
+                    </div>
+                    <Flex Align="center" Gap="1" Class="mt-1">
+                        <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-primary" />
+                        <Lumeo.Text Size="xs" Color="muted">+841 this week</Lumeo.Text>
+                    </Flex>
+                </div>
+                <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+                    <Flex Align="center" Justify="between" Class="mb-1">
+                        <Lumeo.Text Size="xs" Color="muted">Conversion</Lumeo.Text>
+                        <DynamicIcon Name="Percent" Class="h-3.5 w-3.5 text-primary" />
+                    </Flex>
+                    <div class="text-2xl font-bold tracking-tight text-foreground">
+                        <NumberTicker Value="12" DurationMs="1400" />.<NumberTicker Value="4" DurationMs="1400" />%
+                    </div>
+                    <Flex Align="center" Gap="1" Class="mt-1">
+                        <DynamicIcon Name="TrendingDown" Class="h-3 w-3 text-muted-foreground" />
+                        <Lumeo.Text Size="xs" Color="muted">-0.3% vs last Q</Lumeo.Text>
+                    </Flex>
+                </div>
+                <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+                    <Flex Align="center" Justify="between" Class="mb-1">
+                        <Lumeo.Text Size="xs" Color="muted">Open tickets</Lumeo.Text>
+                        <DynamicIcon Name="Ticket" Class="h-3.5 w-3.5 text-primary" />
+                    </Flex>
+                    <div class="text-2xl font-bold tracking-tight text-foreground">
+                        <NumberTicker Value="47" DurationMs="1200" />
+                    </div>
+                    <Flex Align="center" Gap="1" Class="mt-1">
+                        <DynamicIcon Name="Clock" Class="h-3 w-3 text-muted-foreground" />
+                        <Lumeo.Text Size="xs" Color="muted">6 critical priority</Lumeo.Text>
+                    </Flex>
+                </div>
+            </div>
+        </BlurFade>
+        <!-- Chart (60%) + Map (40%) -->
+        <BlurFade DelayMs="160">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+
+                <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden"
+                     @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
+                    <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm" Weight="semibold">Revenue by package</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">Quarterly, last 6 periods</Lumeo.Text>
+                        </Stack>
+                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-5">
+                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-primary mr-1 animate-pulse"></span>
+                            Live
+                        </Badge>
+                    </Flex>
+                    <div class="h-56 sm:h-64 lg:h-80 px-2 pb-3">
+                        <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
+                    </div>
+                </div>
+
+                <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+                    <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm" Weight="semibold">Global reach</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">5 cities, animated arcs</Lumeo.Text>
+                        </Stack>
+                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-5">MapLibre</Badge>
+                    </Flex>
+                    <div class="h-56 sm:h-64 lg:h-80 overflow-hidden">
+                        <LazyRender Height="100%">
+                            <Map @bind-Center="_mapCenter" @bind-Zoom="_mapZoom" Height="100%" TileLayer="DarkMatter" Projection="globe">
+                                <ChildContent>
+                                    <MapMarker Lat="51.5074"  Lon="-0.1278"   Title="London"    Variant="Dot" Color="teal" Label="London" />
+                                    <MapMarker Lat="40.7128"  Lon="-74.0060"  Title="New York"  Variant="Dot" Color="teal" Label="New York" />
+                                    <MapMarker Lat="35.6762"  Lon="139.6503"  Title="Tokyo"     Variant="Dot" Color="teal" Label="Tokyo" />
+                                    <MapMarker Lat="-33.8688" Lon="151.2093"  Title="Sydney"    Variant="Dot" Color="teal" Label="Sydney" />
+                                    <MapMarker Lat="-23.5505" Lon="-46.6333"  Title="Sao Paulo" Variant="Dot" Color="teal" Label="Sao Paulo" />
+                                    <MapArc From="(51.5074, -0.1278)"  To="(40.7128, -74.0060)"  Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
+                                    <MapArc From="(51.5074, -0.1278)"  To="(35.6762, 139.6503)"  Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
+                                    <MapArc From="(40.7128, -74.0060)" To="(-23.5505, -46.6333)" Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
+                                </ChildContent>
+                            </Map>
+                        </LazyRender>
+                    </div>
+                </div>
+            </div>
+        </BlurFade>
+
+        <!-- DataGrid + Kanban -->
+        <BlurFade DelayMs="240">
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
+
+                <div class="lg:col-span-3 rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+                    <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm" Weight="semibold">Team roster</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">Grouped by department, salary aggregated</Lumeo.Text>
+                        </Stack>
+                        <Lumeo.Link Href="components/data-grid" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
+                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
+                        </Lumeo.Link>
+                    </Flex>
+                    <div class="px-3 pb-3">
+                        <DataGrid TItem="Employee" Items="@_employees" PageSize="10" ShowPagination="false"
+                                  GroupBy="Department" GroupsExpandedByDefault="true">
+                            <DataGridColumnDef TItem="Employee" Title="Name"   Field="Name"   Sortable="true" />
+                            <DataGridColumnDef TItem="Employee" Title="Role"   Field="Role" />
+                            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Sum" />
+                        </DataGrid>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2 rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+                    <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm" Weight="semibold">Sprint board</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">Drag cards between columns</Lumeo.Text>
+                        </Stack>
+                        <Lumeo.Link Href="components/kanban" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
+                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
+                        </Lumeo.Link>
+                    </Flex>
+                    <div class="px-3 pb-3 overflow-x-auto">
+                        <Kanban Class="!p-0 !gap-2 min-w-[360px]">
+                            <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count"
+                                          Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
+                                          OnDrop="@(_ => MoveDraggingCard(_kanbanTodo))">
+                                @foreach (var card in _kanbanTodo)
+                                {
+                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
+                                        <KanbanCard Title="@card.Title" Description="@card.Description" Draggable="false"
+                                                    Class="rounded-md border border-border/40 bg-card p-2 cursor-grab active:cursor-grabbing hover:border-primary/40 transition-colors" />
+                                    </div>
+                                }
+                            </KanbanColumn>
+                            <KanbanColumn Title="Doing" Badge="@_kanbanDoing.Count"
+                                          Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
+                                          OnDrop="@(_ => MoveDraggingCard(_kanbanDoing))">
+                                @foreach (var card in _kanbanDoing)
+                                {
+                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
+                                        <KanbanCard Title="@card.Title" Description="@card.Description" Draggable="false"
+                                                    Class="rounded-md border border-primary/40 bg-card p-2 ring-1 ring-primary/20 cursor-grab active:cursor-grabbing transition-colors" />
+                                    </div>
+                                }
+                            </KanbanColumn>
+                            <KanbanColumn Title="Done" Badge="@_kanbanDone.Count"
+                                          Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
+                                          OnDrop="@(_ => MoveDraggingCard(_kanbanDone))">
+                                @foreach (var card in _kanbanDone)
+                                {
+                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
+                                        <KanbanCard Title="@card.Title" Description="@card.Description" Draggable="false"
+                                                    Class="rounded-md border border-border/40 bg-card/60 p-2 opacity-70 cursor-grab active:cursor-grabbing transition-colors" />
+                                    </div>
+                                }
+                            </KanbanColumn>
+                        </Kanban>
+                    </div>
+                </div>
+            </div>
+        </BlurFade>
+
+        <!-- Attribution -->
+        <BlurFade DelayMs="320">
+            <Flex Align="center" Justify="center" Gap="3" Class="mt-5 pt-4 border-t border-border/30">
+                <div class="flex items-center gap-1.5">
+                    <span class="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
+                    <Lumeo.Text Size="xs" Color="muted">This entire dashboard is built with Lumeo &mdash; 154 components, MIT licensed.</Lumeo.Text>
+                </div>
+                <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
+                    View source <DynamicIcon Name="ExternalLink" Class="h-3 w-3" />
+                </Lumeo.Link>
+            </Flex>
+        </BlurFade>
+
+    </Container>
+</section>
+
+<!-- ======================= COMPONENT CONSTELLATION ======================= -->
+<section class="py-20 border-b border-border/40">
+    <Container MaxWidth="6xl" Class="px-4">
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="text-center mb-8">
+                <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">154 components</Badge>
+                <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">Every component, at a glance.</Heading>
+                <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
+                    A star-map of the full library. Hover to preview, click to open docs.
+                </Lumeo.Text>
             </Stack>
+        </BlurFade>
+
+        <BlurFade DelayMs="80">
+            <div class="flex justify-center mb-6">
+                <div class="relative w-full max-w-md">
+                    <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <input type="search"
+                           placeholder="Filter components..."
+                           value="@_constellationFilter"
+                           @oninput="OnConstellationSearchInput"
+                           aria-label="Filter components by name"
+                           class="w-full rounded-lg border border-border/60 bg-background pl-9 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors" />
+                </div>
+            </div>
+        </BlurFade>
+
+        <BlurFade DelayMs="120">
+            <Flex Wrap="true" Justify="center" Gap="3" Class="mb-4">
+                @foreach (var cat in _categoryColors)
+                {
+                    <Flex Align="center" Gap="1" Class="text-xs text-muted-foreground">
+                        <span class="inline-block h-2.5 w-2.5 rounded-full" style="background-color: @cat.Value;"></span>
+                        @cat.Key
+                    </Flex>
+                }
+            </Flex>
+        </BlurFade>
+
+        <BlurFade DelayMs="160">
+            <div @ref="_constellationRoot"
+                 class="lumeo-constellation-host relative w-full overflow-hidden rounded-2xl border border-border/40 bg-card/30 backdrop-blur-sm"
+                 style="height: 560px;">
+
+                @if (_constellationNodes.Count == 0)
+                {
+                    <div class="flex items-center justify-center h-full">
+                        <Flex Align="center" Gap="2">
+                            <Spinner Size="Lumeo.Size.Sm" />
+                            <Lumeo.Text Size="sm" Color="muted">Building constellation...</Lumeo.Text>
+                        </Flex>
+                    </div>
+                }
+            </div>
+        </BlurFade>
+
+        <BlurFade DelayMs="200">
+            <Flex Justify="center" Class="mt-4">
+                <Lumeo.Text Size="xs" Color="muted">
+                    @(_constellationFilter.Length > 0
+                        ? $"{_constellationNodes.Count(n => n.Title.Contains(_constellationFilter, StringComparison.OrdinalIgnoreCase))} of {_constellationNodes.Count} components match"
+                        : $"{_constellationNodes.Count} components across {_categoryColors.Count} categories")
+                </Lumeo.Text>
+            </Flex>
         </BlurFade>
     </Container>
 </section>
+
 
 <Separator Class="opacity-30" />
 
@@ -118,25 +320,19 @@
                 <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">The hook</Badge>
                 <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">A fraction of the size.</Heading>
                 <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
-                    Brotli-compressed assembly size — what an end user's browser actually downloads from your published app.
+                    Brotli-compressed assembly size &mdash; what an end user's browser actually downloads from your published app.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
 
-        @* Responsive layout: at lg+ the size-breakdown takes 2/3 width with 4
-           compact KPIs stacked vertically on the right; below lg it stacks —
-           breakdown full-width on top, KPIs in a 2-col grid below.
-           No Bento RowSpan trickery — the KPIs sit in their own grid so they
-           never stretch to match the breakdown's height. *@
         <div class="grid gap-4 lg:grid-cols-3">
-            @* Size breakdown — tall card with per-package bars *@
             <BentoTile Class="lg:col-span-2 border-border/60 p-6">
                 <Stack Gap="5">
                     <Stack Gap="1">
                         <Heading Level="3" Class="text-2xl font-semibold tracking-tight">
-                            149 components across 7 packages. <Lumeo.Text As="span" Class="text-primary">~400 KB core</Lumeo.Text>.
+                            154 components across 7 packages. <Lumeo.Text As="span" Class="text-primary">~400 KB core</Lumeo.Text>.
                         </Heading>
-                        <Lumeo.Text Size="sm" Color="muted">Per-package breakdown — install only the satellites you use. Each row shows what that package adds to your app's bundle.</Lumeo.Text>
+                        <Lumeo.Text Size="sm" Color="muted">Per-package breakdown &mdash; install only the satellites you use.</Lumeo.Text>
                     </Stack>
 
                     <Stack Gap="4">
@@ -148,7 +344,7 @@
                                         <span class="h-2 w-2 rounded-full @(row.IsCore ? "bg-primary" : "bg-primary/50")"></span>
                                         <Lumeo.Text As="span" Weight="@(row.IsCore ? "semibold" : "medium")" Color="foreground">@row.Name</Lumeo.Text>
                                         <span class="hidden sm:inline-block w-16 opacity-70" aria-hidden="true">
-                                            <Sparkline Values="row.Spark" Height="14" ShowArea="true" StrokeWidth="1" AriaLabel="@($"{row.Name} downloads trend")" />
+                                            <Sparkline Values="row.Spark" Height="14" ShowArea="true" StrokeWidth="1" AriaLabel="@($"{row.Name} trend")" />
                                         </span>
                                         <Lumeo.Text As="span" Size="xs" Color="muted">@row.Components</Lumeo.Text>
                                     </Flex>
@@ -164,12 +360,11 @@
 
                     <Flex Align="center" Gap="2" Class="text-xs text-muted-foreground border-t border-border/40 pt-4">
                         <DynamicIcon Name="Info" Class="h-3.5 w-3.5" />
-                        <Lumeo.Text As="span">Brotli-compressed assembly bytes. NuGet <code class="text-foreground">.nupkg</code> ships at ~660 KB; the runtime core brotli-compresses to ~400 KB in your published app.</Lumeo.Text>
+                        <Lumeo.Text As="span">Brotli-compressed assembly bytes. Core brotli-compresses to ~400 KB in your published app.</Lumeo.Text>
                     </Flex>
                 </Stack>
             </BentoTile>
 
-            @* 4 KPIs — at lg+ vertical stack inside one column; below lg a 2-col grid *@
             <div class="grid grid-cols-2 lg:grid-cols-1 gap-4 content-start">
                 <BentoTile Class="border-border/60 p-4">
                     <Flex Align="center" Gap="3">
@@ -185,7 +380,6 @@
                         </Stack>
                     </Flex>
                 </BentoTile>
-
                 <BentoTile Class="border-border/60 p-4">
                     <Flex Align="center" Gap="3">
                         <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
@@ -200,7 +394,6 @@
                         </Stack>
                     </Flex>
                 </BentoTile>
-
                 <BentoTile Class="border-border/60 p-4">
                     <Flex Align="center" Gap="3">
                         <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
@@ -215,7 +408,6 @@
                         </Stack>
                     </Flex>
                 </BentoTile>
-
                 <BentoTile Class="border-border/60 p-4">
                     <Flex Align="center" Gap="3">
                         <div class="flex h-9 w-9 items-center justify-center rounded-md bg-accent/40 text-primary shrink-0">
@@ -233,7 +425,6 @@
     </Container>
 </section>
 
-
 <!-- ======================= WHAT'S NEW IN 3.0 ======================= -->
 <section class="py-20 bg-muted/[0.03]">
     <Container MaxWidth="6xl" Class="px-4">
@@ -242,7 +433,7 @@
                 <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">New in 3.0</Badge>
                 <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">The 3.0 highlights.</Heading>
                 <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
-                    A unified enum surface across the library, plus six new primitives you'd otherwise wire up yourself.
+                    A unified enum surface across the library, plus six new primitives.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -257,14 +448,13 @@
                         <Heading Level="3" Class="text-base font-semibold">Menu submenus</Heading>
                     </Flex>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
-                        The <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">DropdownMenuSub</code> / <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">SubTrigger</code> / <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">SubContent</code> triplet, recursively nestable with proper keyboard + roving-focus.
+                        The <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">DropdownMenuSub</code> triplet, recursively nestable with keyboard + roving-focus.
                     </Lumeo.Text>
                     <Lumeo.Link Href="components/dropdown-menu" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline mt-auto">
                         Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
                     </Lumeo.Link>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-t-2 border-t-primary/60 border-border/40 p-6 bg-card/60">
                 <Stack Gap="3" Class="h-full">
                     <Flex Align="center" Gap="3">
@@ -274,14 +464,13 @@
                         <Heading Level="3" Class="text-base font-semibold">OnBeforeClose</Heading>
                     </Flex>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
-                        A dismiss-gate on Dialog, Sheet, Drawer and AlertDialog — inspect <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">DismissEventArgs.Reason</code>, cancel to keep open.
+                        A dismiss-gate on Dialog, Sheet, Drawer and AlertDialog &mdash; inspect <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">DismissEventArgs.Reason</code>, cancel to keep open.
                     </Lumeo.Text>
                     <Lumeo.Link Href="components/dialog" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline mt-auto">
                         Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
                     </Lumeo.Link>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-t-2 border-t-primary/60 border-border/40 p-6 bg-card/60">
                 <Stack Gap="3" Class="h-full">
                     <Flex Align="center" Gap="3">
@@ -291,14 +480,13 @@
                         <Heading Level="3" Class="text-base font-semibold">Async field validation</Heading>
                     </Flex>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
-                        <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">FormField.AsyncValidator</code> debounces server checks, surfaces a pending state, and renders a spinner alongside the field.
+                        <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">FormField.AsyncValidator</code> debounces server checks and renders a spinner alongside the field.
                     </Lumeo.Text>
                     <Lumeo.Link Href="components/form-field" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline mt-auto">
                         Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
                     </Lumeo.Link>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-t-2 border-t-primary/60 border-border/40 p-6 bg-card/60">
                 <Stack Gap="3" Class="h-full">
                     <Flex Align="center" Gap="3">
@@ -308,14 +496,13 @@
                         <Heading Level="3" Class="text-base font-semibold">DatePicker keyboard input</Heading>
                     </Flex>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
-                        Type the date directly in the field's <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">Format</code> — auto-parses on Enter or blur. The calendar remains a click away.
+                        Type the date directly in <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">Format</code> &mdash; auto-parses on Enter or blur.
                     </Lumeo.Text>
                     <Lumeo.Link Href="components/date-picker" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline mt-auto">
                         Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
                     </Lumeo.Link>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-t-2 border-t-primary/60 border-border/40 p-6 bg-card/60">
                 <Stack Gap="3" Class="h-full">
                     <Flex Align="center" Gap="3">
@@ -325,14 +512,13 @@
                         <Heading Level="3" Class="text-base font-semibold">DateTimePicker time zone</Heading>
                     </Flex>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
-                        DST-aware <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">DateTimeOffset</code> binding — pick a zone, get the right wall-clock and the right instant.
+                        DST-aware <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">DateTimeOffset</code> binding &mdash; pick a zone, get the right wall-clock and the right instant.
                     </Lumeo.Text>
                     <Lumeo.Link Href="components/date-time-picker" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline mt-auto">
                         Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
                     </Lumeo.Link>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-t-2 border-t-primary/60 border-border/40 p-6 bg-card/60">
                 <Stack Gap="3" Class="h-full">
                     <Flex Align="center" Gap="3">
@@ -342,7 +528,7 @@
                         <Heading Level="3" Class="text-base font-semibold">Tabs drag-to-reorder</Heading>
                     </Flex>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
-                        Opt-in <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">TabsList.Reorderable</code> with an <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">OnReorder</code> callback — pointer + keyboard, both wired.
+                        Opt-in <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">TabsList.Reorderable</code> with an <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">OnReorder</code> callback.
                     </Lumeo.Text>
                     <Lumeo.Link Href="components/tabs" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline mt-auto">
                         Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
@@ -354,12 +540,10 @@
 </section>
 
 
-<!-- ======================= MARQUEE WALL (two rows, opposite directions) ======================= -->
+<!-- ======================= MARQUEE WALL ======================= -->
 <section class="py-14 border-y border-border/40 bg-gradient-to-b from-muted/30 via-muted/10 to-muted/30 overflow-hidden relative">
-    @* Edge fades so pills dissolve in/out instead of hard-cutting at the container. *@
     <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-background to-transparent z-10"></div>
     <div class="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-background to-transparent z-10"></div>
-
     <BlurFade DelayMs="0">
         <Stack Gap="4">
             <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Class="[--gap:1rem]">
@@ -371,7 +555,6 @@
                     </span>
                 }
             </Marquee>
-
             <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Reverse="true" Class="[--gap:1rem]">
                 @foreach (var p in _marqueeRowB)
                 {
@@ -385,370 +568,7 @@
     </BlurFade>
 </section>
 
-
-<!-- ======================= LIVE COMPONENT SHOWCASE ======================= -->
-<section class="py-24">
-    <Container MaxWidth="6xl" Class="px-4">
-        <BlurFade DelayMs="0">
-            <Stack Gap="3" Class="text-center mb-12">
-                <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Live</Badge>
-                <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">Real components. No screenshots.</Heading>
-                <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
-                    Every tile below is the actual Lumeo component rendered in your browser.
-                </Lumeo.Text>
-            </Stack>
-        </BlurFade>
-
-        <Bento Columns="4" Gap="Bento.BentoGap.Md">
-
-            <!-- DataGrid — wide tile (grouped by Team, Salary aggregated) -->
-            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
-                    <div class="flex-1 p-5 bg-muted/10">
-                        <DataGrid TItem="Employee" Items="@_employees" PageSize="10" ShowPagination="false"
-                                  GroupBy="Department" GroupsExpandedByDefault="true">
-                            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" />
-                            <DataGridColumnDef TItem="Employee" Title="Role" Field="Role" />
-                            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Sum" />
-                        </DataGrid>
-                    </div>
-                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
-                        <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="Table2" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">DataGrid</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Link Href="components/datagrid" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                            View docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- Map — Globe projection with great-circle arcs, DarkMatter basemap.
-                 RowSpan=2 so the globe fills a tall tile next to the PdfViewer
-                 row, and Zoom=2 so the sphere itself takes more of the canvas
-                 instead of floating tiny in the middle.
-                 Mobile gets a clamped 320 px tile (down from desktop's ~560 px)
-                 so the globe is visible but doesn't dominate the page. The
-                 heavy MapLibre bundle still defers via LazyRender. -->
-            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex flex-col overflow-hidden h-[440px] lg:h-full">
-                    <div class="flex-1 min-h-0 relative overflow-hidden">
-                        <LazyRender Height="100%">
-                            <Map @bind-Center="_mapCenter" @bind-Zoom="_mapZoom" Height="100%" TileLayer="DarkMatter" Projection="globe">
-                                <ChildContent>
-                                    <MapMarker Lat="51.5074" Lon="-0.1278"  Title="London"     Variant="Dot" Color="teal" Label="London" />
-                                    <MapMarker Lat="40.7128" Lon="-74.0060" Title="New York"   Variant="Dot" Color="teal" Label="New York" />
-                                    <MapMarker Lat="35.6762" Lon="139.6503" Title="Tokyo"      Variant="Dot" Color="teal" Label="Tokyo" />
-                                    <MapMarker Lat="-33.8688" Lon="151.2093" Title="Sydney"    Variant="Dot" Color="teal" Label="Sydney" />
-                                    <MapMarker Lat="-23.5505" Lon="-46.6333" Title="São Paulo" Variant="Dot" Color="teal" Label="São Paulo" />
-                                    <MapArc From="(51.5074, -0.1278)" To="(40.7128, -74.0060)"  Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                                    <MapArc From="(51.5074, -0.1278)" To="(35.6762, 139.6503)"  Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                                    <MapArc From="(51.5074, -0.1278)" To="(-33.8688, 151.2093)" Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                                    <MapArc From="(40.7128, -74.0060)" To="(-23.5505, -46.6333)" Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                                </ChildContent>
-                            </Map>
-                        </LazyRender>
-                    </div>
-                    <Flex Align="center" Justify="between" Gap="2" Class="border-t border-border/40 px-4 py-2.5 min-w-0">
-                        <Flex Align="center" Gap="2" Class="min-w-0">
-                            <DynamicIcon Name="Globe" Class="h-4 w-4 text-primary shrink-0" />
-                            <Lumeo.Text Size="xs" Weight="semibold" Class="truncate">Map · Globe projection</Lumeo.Text>
-                            <Badge Variant="Badge.BadgeVariant.Outline" Class="hidden sm:inline-flex text-[10px] h-4 ml-1 shrink-0">Lumeo.Maps</Badge>
-                        </Flex>
-                        <Lumeo.Link Href="components/map" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline whitespace-nowrap shrink-0">
-                            <Lumeo.Text As="span" Class="hidden sm:inline">View docs</Lumeo.Text><DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- Charts — three live ECharts stacked vertically (Bar / Line /
-                 Area), datasets reshuffle every ~2s in sync. Hover pauses.
-                 RowSpan=2 so each chart gets ~240px height. No Pie/Donut.
-                 Mobile gets a clamped 360 px tile so all three charts still
-                 fit without dominating the page. ECharts handles narrow
-                 viewports gracefully thanks to the chart container's
-                 ResizeObserver. -->
-            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex flex-col overflow-hidden h-[620px] lg:h-full" @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
-                    <div class="flex-1 min-h-0 grid grid-rows-3 gap-2 p-3 bg-muted/10">
-                        <div class="rounded-md border border-border/40 bg-card/60 p-2 min-h-0 overflow-hidden">
-                            <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
-                        </div>
-                        <div class="rounded-md border border-border/40 bg-card/60 p-2 min-h-0 overflow-hidden">
-                            <LineChart Categories="_lineCategories" Series="_lineSeries" Smooth="true" Height="100%" ShowLoadingSkeleton="false" />
-                        </div>
-                        <div class="rounded-md border border-border/40 bg-card/60 p-2 min-h-0 overflow-hidden">
-                            <RadarChart Indicators="_radarIndicators" Series="_radarSeries" Height="100%" ShowLegend="false" ShowLoadingSkeleton="false" />
-                        </div>
-                    </div>
-                    <Flex Align="center" Justify="between" Gap="2" Class="border-t border-border/40 px-4 py-2.5 min-w-0">
-                        <Flex Align="center" Gap="2" Class="min-w-0">
-                            <DynamicIcon Name="BarChart3" Class="h-4 w-4 text-primary shrink-0" />
-                            <Lumeo.Text Size="xs" Weight="semibold" Class="truncate">Charts · Bar · Line · Radar</Lumeo.Text>
-                            <Badge Variant="Badge.BadgeVariant.Outline" Class="hidden sm:inline-flex text-[10px] h-4 ml-1 shrink-0">Lumeo.Charts</Badge>
-                        </Flex>
-                        <Lumeo.Link Href="components/charts/bar" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline whitespace-nowrap shrink-0">
-                            <Lumeo.Text As="span" Class="hidden sm:inline">View docs</Lumeo.Text><DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- PdfViewer — inline PDF with search highlight. We use HARD heights
-                 (not max-height) so the PdfViewer's `h-full` resolves to a real
-                 number; without that, its inner `flex-1 overflow-auto` document
-                 area has no upper bound and the canvas can't scroll when zoomed in.
-                 Mobile gets a tighter 380 px tile so the PDF surface is browsable
-                 without taking up two phone screens. LazyRender keeps pdf.js out
-                 of the bundle until the tile is on screen. -->
-            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex flex-col overflow-hidden h-[380px] lg:h-[560px]">
-                    <div class="flex-1 min-h-0 overflow-hidden">
-                        <LazyRender Height="100%">
-                            <PdfViewer Src="https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf"
-                                       Page="1" Zoom="0.5" ShowSearch="true" ShowDownload="false" Class="h-full" />
-                        </LazyRender>
-                    </div>
-                    <Flex Align="center" Justify="between" Gap="2" Class="border-t border-border/40 px-4 py-2.5 min-w-0">
-                        <Flex Align="center" Gap="2" Class="min-w-0">
-                            <DynamicIcon Name="FileText" Class="h-4 w-4 text-primary shrink-0" />
-                            <Lumeo.Text Size="xs" Weight="semibold" Class="truncate">PdfViewer · Search + Highlight</Lumeo.Text>
-                            <Badge Variant="Badge.BadgeVariant.Outline" Class="hidden sm:inline-flex text-[10px] h-4 ml-1 shrink-0">Lumeo.PdfViewer</Badge>
-                        </Flex>
-                        <Lumeo.Link Href="components/pdf-viewer" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline whitespace-nowrap shrink-0">
-                            <Lumeo.Text As="span" Class="hidden sm:inline">View docs</Lumeo.Text><DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- AudioPlayer — scrub bar, mute, keyboard shortcuts -->
-            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
-                    <div class="flex-1 flex items-center justify-center p-4 bg-gradient-to-br from-primary/5 via-transparent to-primary/10">
-                        <AudioPlayer Src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-                                     Title="SoundHelix Song 1" Artist="T. Schürger" Class="w-full max-w-md" />
-                    </div>
-                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
-                        <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="Music" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">AudioPlayer · Scrub + Download</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Link Href="components/audio-player" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                            View docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- Form controls — single row, content centered. RowSpan=2 left
-                 too much dead space below the form so we dropped to RowSpan=1. -->
-            <BentoTile Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
-                    <Stack Gap="4" Class="flex-1 justify-center p-6 bg-muted/10">
-                        <Flex Align="center" Gap="3">
-                            <Switch @bind-Checked="_switchOn" Label="Notifications" />
-                            <Lumeo.Text Size="sm" Color="muted">@(_switchOn ? "On" : "Off")</Lumeo.Text>
-                        </Flex>
-                        <Stack Gap="2">
-                            <Lumeo.Text Size="xs" Color="muted" id="lumeo-volume-label">Volume · @((int)_sliderVal)%</Lumeo.Text>
-                            <Slider @bind-Value="_sliderVal" AriaLabel="Volume" />
-                        </Stack>
-                        <Stack Gap="2">
-                            <Lumeo.Text Size="xs" Color="muted">Seats</Lumeo.Text>
-                            <NumberInput @bind-Value="_seats" Min="1" Max="99" Suffix="users" />
-                        </Stack>
-                        <Stack Gap="2">
-                            <Lumeo.Text Size="xs" Color="muted">Plan</Lumeo.Text>
-                            <RadioGroup @bind-Value="_plan" AriaLabel="Plan" Class="flex gap-3">
-                                <Flex Align="center" Gap="2">
-                                    <RadioGroupItem Value="hobby" />
-                                    <Lumeo.Text Size="sm">Hobby</Lumeo.Text>
-                                </Flex>
-                                <Flex Align="center" Gap="2">
-                                    <RadioGroupItem Value="pro" />
-                                    <Lumeo.Text Size="sm">Pro</Lumeo.Text>
-                                </Flex>
-                                <Flex Align="center" Gap="2">
-                                    <RadioGroupItem Value="team" />
-                                    <Lumeo.Text Size="sm">Team</Lumeo.Text>
-                                </Flex>
-                            </RadioGroup>
-                        </Stack>
-                        <Flex Gap="3" Align="center">
-                            <Checkbox @bind-Checked="_checkOn" AriaLabel="Subscribe" />
-                            <Lumeo.Text Size="sm" Color="muted">Subscribe</Lumeo.Text>
-                        </Flex>
-                        <Flex Gap="2" Align="center">
-                            <Toggle @bind-Pressed="_togglePressed" AriaLabel="Bold">
-                                <DynamicIcon Name="Bold" Class="h-4 w-4" />
-                            </Toggle>
-                            <Toggle AriaLabel="Italic">
-                                <DynamicIcon Name="Italic" Class="h-4 w-4" />
-                            </Toggle>
-                            <Toggle AriaLabel="Underline">
-                                <DynamicIcon Name="Underline" Class="h-4 w-4" />
-                            </Toggle>
-                        </Flex>
-                    </Stack>
-                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
-                        <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">Form controls</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Link Href="components/switch" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- Kanban — real Lumeo.Kanban / KanbanColumn / KanbanCard, drag-enabled -->
-            <BentoTile Span="3" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col">
-                    <div class="flex-1 p-2 bg-muted/10 overflow-hidden">
-                        <Kanban Class="!p-2 !gap-3">
-                            <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count" Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[200px]"
-                                          OnDrop="@(_ => MoveDraggingCard(_kanbanTodo))">
-                                @foreach (var card in _kanbanTodo)
-                                {
-                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
-                                        <KanbanCard Title="@card.Title" Description="@card.Description"
-                                                    Draggable="false"
-                                                    Class="rounded-md border border-border/40 bg-card p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/40 transition-colors" />
-                                    </div>
-                                }
-                            </KanbanColumn>
-                            <KanbanColumn Title="In progress" Badge="@_kanbanDoing.Count" Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[200px]"
-                                          OnDrop="@(_ => MoveDraggingCard(_kanbanDoing))">
-                                @foreach (var card in _kanbanDoing)
-                                {
-                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
-                                        <KanbanCard Title="@card.Title" Description="@card.Description"
-                                                    Draggable="false"
-                                                    Class="rounded-md border border-primary/40 bg-card p-2.5 ring-1 ring-primary/20 cursor-grab active:cursor-grabbing transition-colors" />
-                                    </div>
-                                }
-                            </KanbanColumn>
-                            <KanbanColumn Title="Done" Badge="@_kanbanDone.Count" Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[200px]"
-                                          OnDrop="@(_ => MoveDraggingCard(_kanbanDone))">
-                                @foreach (var card in _kanbanDone)
-                                {
-                                    <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
-                                        <KanbanCard Title="@card.Title" Description="@card.Description"
-                                                    Draggable="false"
-                                                    Class="rounded-md border border-border/40 bg-card/60 p-2.5 opacity-75 cursor-grab active:cursor-grabbing transition-colors" />
-                                    </div>
-                                }
-                            </KanbanColumn>
-                        </Kanban>
-                    </div>
-                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
-                        <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="LayoutList" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">Kanban · drag to reorder</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Link Href="components/kanban" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- Auto-cycling Tabs — sliding indicator, advances every 3s. Pause-on-hover so
-                 visitors who want to read a specific panel aren't fighting the timer. -->
-            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col" @onmouseenter="@(() => _tabsHovered = true)" @onmouseleave="@(() => _tabsHovered = false)">
-                    <Stack Gap="3" Class="flex-1 justify-center p-5 min-h-[160px] bg-muted/10">
-                        <Tabs @bind-ActiveValue="_tabsActive" AnimatedIndicator="true">
-                            <TabsList>
-                                <TabsTrigger Value="overview">Overview</TabsTrigger>
-                                <TabsTrigger Value="activity">Activity</TabsTrigger>
-                                <TabsTrigger Value="reports">Reports</TabsTrigger>
-                                <TabsTrigger Value="settings">Settings</TabsTrigger>
-                            </TabsList>
-                            <TabsContent Value="overview">
-                                <Stack Gap="2" Class="p-4">
-                                    <Lumeo.Text Size="sm" Weight="semibold">Today at a glance</Lumeo.Text>
-                                    <Lumeo.Text Size="xs" Color="muted">14 active workflows, 3 deploys, all CI green.</Lumeo.Text>
-                                </Stack>
-                            </TabsContent>
-                            <TabsContent Value="activity">
-                                <Stack Gap="2" Class="p-4">
-                                    <Lumeo.Text Size="sm" Weight="semibold">Recent activity</Lumeo.Text>
-                                    <Lumeo.Text Size="xs" Color="muted">Ava merged #482 · Jonas opened #491 · 2.4k events this week.</Lumeo.Text>
-                                </Stack>
-                            </TabsContent>
-                            <TabsContent Value="reports">
-                                <Stack Gap="2" Class="p-4">
-                                    <Lumeo.Text Size="sm" Weight="semibold">Reports</Lumeo.Text>
-                                    <Lumeo.Text Size="xs" Color="muted">Weekly digest · Bundle-size delta · Auth funnel · 4 scheduled.</Lumeo.Text>
-                                </Stack>
-                            </TabsContent>
-                            <TabsContent Value="settings">
-                                <Stack Gap="2" Class="p-4">
-                                    <Lumeo.Text Size="sm" Weight="semibold">Settings</Lumeo.Text>
-                                    <Lumeo.Text Size="xs" Color="muted">Workspace · Members · Integrations · Billing.</Lumeo.Text>
-                                </Stack>
-                            </TabsContent>
-                        </Tabs>
-                    </Stack>
-                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
-                        <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="LayoutTemplate" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">Tabs · sliding indicator</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Link Href="components/tabs" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-            <!-- Auto-advancing Steps tile — wraps 0→3→0 every 2.5s. Pause-on-hover. -->
-            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
-                <div class="flex h-full flex-col" @onmouseenter="@(() => _stepsHovered = true)" @onmouseleave="@(() => _stepsHovered = false)">
-                    <Stack Gap="5" Class="flex-1 justify-center p-6 min-h-[160px] bg-muted/10">
-                        <Steps CurrentStep="_stepIndex" Animated="true" Class="w-full">
-                            <StepsItem Title="Plan" Description="Scope the work" />
-                            <StepsItem Title="Build" Description="Ship the code" />
-                            <StepsItem Title="Test" Description="2,194 specs" />
-                            <StepsItem Title="Ship" Description="Brotli to prod" />
-                        </Steps>
-                        <!-- Step label row — shows current active step name with a pulsing indicator -->
-                        <Flex Align="center" Justify="center" Gap="2" Class="text-xs text-muted-foreground">
-                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
-                            <Lumeo.Text As="span" Size="xs" Color="muted">
-                                Step @(_stepIndex + 1) of 4 —
-                                @(_stepIndex switch {
-                                    0 => "scoping the requirements",
-                                    1 => "writing and reviewing code",
-                                    2 => "running 2,194 CI specs",
-                                    _ => "pushing Brotli to production"
-                                })
-                            </Lumeo.Text>
-                        </Flex>
-                    </Stack>
-                    <Flex Align="center" Justify="between" Class="border-t border-border/40 px-4 py-2.5">
-                        <Flex Align="center" Gap="2">
-                            <DynamicIcon Name="Layers" Class="h-4 w-4 text-primary" />
-                            <Lumeo.Text Size="xs" Weight="semibold">Steps · animated progression</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Link Href="components/steps" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                            Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                        </Lumeo.Link>
-                    </Flex>
-                </div>
-            </BentoTile>
-
-        </Bento>
-    </Container>
-</section>
-
 <Separator Class="opacity-30" />
-
 
 <!-- ======================= WHY LUMEO ======================= -->
 <section class="py-20">
@@ -758,11 +578,10 @@
                 <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Built-in</Badge>
                 <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">Everything you'd otherwise build.</Heading>
                 <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
-                    A complete kit for modern Blazor apps — batteries included, DX-obsessed.
+                    A complete kit for modern Blazor apps &mdash; batteries included, DX-obsessed.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
-
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @for (var i = 0; i < _features.Length; i++)
             {
@@ -793,13 +612,11 @@
                 <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Install</Badge>
                 <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">Three ways to start.</Heading>
                 <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
-                    Pick the path that fits your workflow. Every option ends in a shipping-ready project.
+                    Pick the path that fits your workflow.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
-
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <!-- NuGet -->
             <Stack Gap="3" Class="rounded-xl border border-border/40 bg-card p-5">
                 <Flex Align="center" Gap="2">
                     <div class="flex h-8 w-8 items-center justify-center rounded-md bg-accent/40 text-primary">
@@ -807,7 +624,7 @@
                     </div>
                     <Heading Level="3" Class="text-base font-semibold">NuGet</Heading>
                 </Flex>
-                <Lumeo.Text Size="sm" Color="muted" Class="flex-1">Core package (~400 KB brotli) is always required. Add satellite packages only for the heavy or motion components you use.</Lumeo.Text>
+                <Lumeo.Text Size="sm" Color="muted" Class="flex-1">Core package (~400 KB brotli) is always required. Add satellites only for the heavy components you use.</Lumeo.Text>
                 <div class="rounded-lg overflow-hidden ring-1 ring-border/40" style="background-color: #0a0a0a;">
                     <div class="flex items-center justify-between px-3 py-2 border-b" style="border-color: rgba(255,255,255,0.08);">
                         <div class="flex items-center gap-1.5">
@@ -817,16 +634,11 @@
                         </div>
                         <span class="font-mono text-[10px]" style="color: rgba(255,255,255,0.55);">nuget</span>
                     </div>
-<pre class="font-mono text-[12px] leading-relaxed whitespace-pre overflow-x-auto px-4 py-3 m-0" style="color: #e4e4e7;"><span style="color: #64748b;"># core — always</span>
-<span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">dotnet</span> add package <span style="color: #fbbf24;">Lumeo</span>
-<span style="color: #64748b;"># satellites — only what you need</span>
+<pre class="font-mono text-[12px] leading-relaxed whitespace-pre overflow-x-auto px-4 py-3 m-0" style="color: #e4e4e7;"><span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">dotnet</span> add package <span style="color: #fbbf24;">Lumeo</span>
 <span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">dotnet</span> add package <span style="color: #fbbf24;">Lumeo.Charts</span>
-<span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">dotnet</span> add package <span style="color: #fbbf24;">Lumeo.DataGrid</span>
 builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                 </div>
             </Stack>
-
-            <!-- CLI -->
             <Stack Gap="3" Class="rounded-xl border border-border/40 bg-card p-5">
                 <Flex Align="center" Gap="2">
                     <div class="flex h-8 w-8 items-center justify-center rounded-md bg-accent/40 text-primary">
@@ -848,8 +660,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 <span style="color: #27c93f;">$</span> <span style="color: #60a5fa;">lumeo</span> init</pre>
                 </div>
             </Stack>
-
-            <!-- Templates -->
             <Stack Gap="3" Class="rounded-xl border border-border/40 bg-card p-5">
                 <Flex Align="center" Gap="2">
                     <div class="flex h-8 w-8 items-center justify-center rounded-md bg-accent/40 text-primary">
@@ -890,7 +700,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
-
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @foreach (var uc in _useCases)
             {
@@ -914,7 +723,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     </Container>
 </section>
 
-
 <Separator Class="opacity-30" />
 
 
@@ -925,12 +733,9 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             <Stack Gap="3" Class="text-center mb-12">
                 <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Principles</Badge>
                 <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">What Lumeo gets right.</Heading>
-                <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
-                    Design decisions baked in from day one — not bolted on after.
-                </Lumeo.Text>
+                <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">Design decisions baked in from day one.</Lumeo.Text>
             </Stack>
         </BlurFade>
-
         <Bento Columns="3" Gap="Bento.BentoGap.Md">
             <BentoTile Span="1" Class="border-border/60 p-6">
                 <Stack Gap="3">
@@ -939,11 +744,10 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                     <Heading Level="3" Class="text-base font-semibold">Source ownership</Heading>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                        <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">lumeo add component-name</code> copies the source into your repo. You own it — read it, modify it, ship it.
+                        <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">lumeo add component-name</code> copies the source into your repo. You own it.
                     </Lumeo.Text>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-border/60 p-6">
                 <Stack Gap="3">
                     <Flex Align="center" Justify="center" Class="h-9 w-9 rounded-md bg-accent/40 text-primary shrink-0">
@@ -951,11 +755,10 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                     <Heading Level="3" Class="text-base font-semibold">Tailwind v4 native</Heading>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                        CSS variable theming throughout. No SCSS pipeline, no theme provider component, no JS-driven style injection. Switch palettes with <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">lumeo apply --preset</code>.
+                        CSS variable theming throughout. No SCSS pipeline. Switch palettes with <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">lumeo apply --preset</code>.
                     </Lumeo.Text>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-border/60 p-6">
                 <Stack Gap="3">
                     <Flex Align="center" Justify="center" Class="h-9 w-9 rounded-md bg-accent/40 text-primary shrink-0">
@@ -963,11 +766,10 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                     <Heading Level="3" Class="text-base font-semibold">MIT. No tiers.</Heading>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                        Commercial use, white-label products, redistribution — all covered. No community edition. No revenue cap. No seat licensing.
+                        Commercial use, white-label products, redistribution &mdash; all covered. No community edition. No revenue cap.
                     </Lumeo.Text>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-border/60 p-6">
                 <Stack Gap="3">
                     <Flex Align="center" Justify="center" Class="h-9 w-9 rounded-md bg-accent/40 text-primary shrink-0">
@@ -975,11 +777,10 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                     <Heading Level="3" Class="text-base font-semibold">Lockstep packages</Heading>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                        Start with the ~400 KB core. Pull in Charts, DataGrid, Editor, Scheduler, Gantt, or Motion only when you need them. All six satellites version together.
+                        Start with the ~400 KB core. Pull in Charts, DataGrid, Editor, Scheduler, Gantt, or Motion only when you need them.
                     </Lumeo.Text>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-border/60 p-6">
                 <Stack Gap="3">
                     <Flex Align="center" Justify="center" Class="h-9 w-9 rounded-md bg-accent/40 text-primary shrink-0">
@@ -987,11 +788,10 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                     <Heading Level="3" Class="text-base font-semibold">Accessibility as a contract</Heading>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                        Keyboard nav, focus traps, ARIA roles, and prefers-reduced-motion respected in every interactive component. Verified in CI — not a checklist item.
+                        Keyboard nav, focus traps, ARIA roles, and prefers-reduced-motion respected in every interactive component. Verified in CI.
                     </Lumeo.Text>
                 </Stack>
             </BentoTile>
-
             <BentoTile Span="1" Class="border-border/60 p-6">
                 <Stack Gap="3">
                     <Flex Align="center" Justify="center" Class="h-9 w-9 rounded-md bg-accent/40 text-primary shrink-0">
@@ -999,7 +799,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                     <Heading Level="3" Class="text-base font-semibold">Shipping today</Heading>
                     <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                        149 components, AI primitives, a full motion library, and a virtualized DataGrid with export — all live on NuGet. Not on a roadmap.
+                        154 components, AI primitives, a full motion library, and a virtualized DataGrid with export &mdash; all live on NuGet.
                     </Lumeo.Text>
                 </Stack>
             </BentoTile>
@@ -1008,22 +808,21 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 </section>
 
 
-<!-- ======================= MOTION DELIGHT STRIP (TextReveal on scroll) ======================= -->
+<!-- ======================= MOTION STRIP ======================= -->
 <section class="py-14 border-y border-border/40">
     <Container MaxWidth="4xl" Class="px-4">
-        <TextReveal Text="Move pixels. Not blocks. Lumeo ships motion primitives that scale from a 4 KB BlurFade to a 30 KB animated chart — pay only for the motion you use."
+        <TextReveal Text="Move pixels. Not blocks. Lumeo ships motion primitives that scale from a 4 KB BlurFade to a 30 KB animated chart pay only for the motion you use."
                     Stagger="40"
                     Class="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground leading-snug block text-center" />
     </Container>
 </section>
 
 
-<!-- ======================= FINAL CTA WITH SPARKLES ======================= -->
+<!-- ======================= FINAL CTA ======================= -->
 <section class="py-24">
     <Container MaxWidth="4xl" Class="px-4">
         <div class="relative overflow-hidden rounded-2xl border border-primary/20 p-10 sm:p-16"
              style="background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.06) 50%, hsl(var(--card)) 100%);">
-            <!-- Subtle radial orb behind text -->
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <div class="h-[350px] w-[600px] rounded-full opacity-[0.08]"
                      style="background: radial-gradient(ellipse at center, hsl(var(--primary)) 0%, transparent 70%);"></div>
@@ -1034,7 +833,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             <div class="relative z-10">
                 <BlurFade DelayMs="0">
                     <Stack Gap="5" Class="text-center items-center">
-                        <!-- Accent rule above headline -->
                         <div class="flex items-center gap-3">
                             <div class="h-px w-12 bg-gradient-to-r from-transparent to-primary/50"></div>
                             <Lumeo.Text Size="xs" Color="muted" Class="tracking-widest uppercase font-semibold">Ready to ship</Lumeo.Text>
@@ -1044,7 +842,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                             Start shipping today.
                         </Heading>
                         <Lumeo.Text Color="muted" Class="max-w-md text-base leading-relaxed">
-                            MIT-licensed — build commercial products for free. Used by teams who care about bundle size.
+                            MIT-licensed &mdash; build commercial products for free.
                         </Lumeo.Text>
                         <Flex Gap="3" Wrap="true" Justify="center" Class="pt-3">
                             <Lumeo.Link Href="docs/introduction" Class="no-underline">
@@ -1069,11 +867,11 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 </section>
 
 
-<!-- ======================= FOOTER STRIP ======================= -->
+<!-- ======================= FOOTER ======================= -->
 <footer class="border-t border-border/40 py-8">
     <Container MaxWidth="6xl" Class="px-4">
         <Flex Align="center" Justify="between" Wrap="true" Gap="4">
-            <Lumeo.Text Size="xs" Color="muted">© Lumeo 2026 · MIT licensed · built with Lumeo</Lumeo.Text>
+            <Lumeo.Text Size="xs" Color="muted">© Lumeo 2026 &middot; MIT licensed &middot; built with Lumeo</Lumeo.Text>
             <Flex Align="center" Gap="4">
                 <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo" Class="text-muted-foreground hover:text-foreground transition-colors no-underline"
                             aria-label="Lumeo on GitHub" title="Lumeo on GitHub">
@@ -1087,28 +885,15 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         </Flex>
     </Container>
 </footer>
-
 @code {
-    // Map view state — two-way bound so the user's pan / zoom survives the
-    // chart tile's 2 s StateHasChanged ticks. Without `@bind-Center`/`@bind-Zoom`
-    // every re-render would resubmit the literal Center/Zoom parameter values
-    // and the Map's "did the parameter change?" guard would call setCenter()
-    // back to the original view, undoing every pan the user just made.
+    // Map
     private (double Lat, double Lon) _mapCenter = (20.0, 10.0);
-    private int _mapZoom = 2;
+    private int _mapZoom = 1;
+    private bool _kpiHovered;
 
-    private bool _switchOn = true;
-    private double _sliderVal = 62;
-    private bool _togglePressed;
-    private bool _checkOn = true;
-    private bool _installCopied;
-    private double? _seats = 5;
-    private string _plan = "pro";
-
-    // Kanban tile — three columns of real cards, drag-reorderable.
+    // Kanban
     private record KanbanItem(string Title, string? Description);
     private KanbanItem? _draggingCard;
-
     private readonly List<KanbanItem> _kanbanTodo = new()
     {
         new("Design audit", "Review spacing scale"),
@@ -1127,35 +912,29 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new("BorderBeam", "Motion satellite"),
     };
 
+    // Records
     private record FeatureItem(string Icon, string Title, string Body);
     private record UseCaseItem(string Icon, string Title, string Body, string[] Components);
     private record SizeRow(string Name, string Components, string Size, double Percent, bool IsCore, double[] Spark);
     private record Employee(string Name, string Department, string Role, double Salary);
-    // Per-package breakdown (verified 2026-05-13, brotli-compressed assembly bytes from rc.38).
-    // Brotli is what a Blazor WASM browser actually downloads — matches what Bundlephobia and
-    // the .NET framework loader report. Bars normalize against Lumeo core (~400 KB → 100%).
-    // Spark = synthetic 30-point "downloads-over-time" curve to make the row feel alive —
-    // each package has a roughly-monotonic-rising shape with package-specific noise.
+
+    // Size rows
     private readonly SizeRow[] _sizeRows =
     {
-        new("Lumeo",           "85 components", "~400 KB", 100.0, true,  Spark(  240,    9, 0.92)),
-        new("Lumeo.Charts",    "30 components", "120 KB",   30.0, false, Spark(   90,    5, 0.85)),
-        new("Lumeo.DataGrid",  "5 components",  "100 KB",   25.0, false, Spark(   75,    4, 0.80)),
-        new("Lumeo.Editor",    "2 components",  "26 KB",     6.5, false, Spark(   34,    2, 0.78)),
-        new("Lumeo.Motion",    "10 components", "18 KB",     4.5, false, Spark(   48,    3, 0.90)),
-        new("Lumeo.Scheduler", "1 component",   "16 KB",     4.0, false, Spark(   22,    2, 0.72)),
-        new("Lumeo.Gantt",     "1 component",   "12 KB",     3.0, false, Spark(   18,  1.5, 0.70)),
+        new("Lumeo",           "85 components", "~400 KB", 100.0, true,  Spark(240,  9, 0.92)),
+        new("Lumeo.Charts",    "30 components", "120 KB",   30.0, false, Spark( 90,  5, 0.85)),
+        new("Lumeo.DataGrid",  "5 components",  "100 KB",   25.0, false, Spark( 75,  4, 0.80)),
+        new("Lumeo.Editor",    "2 components",  "26 KB",     6.5, false, Spark( 34,  2, 0.78)),
+        new("Lumeo.Motion",    "10 components", "18 KB",     4.5, false, Spark( 48,  3, 0.90)),
+        new("Lumeo.Scheduler", "1 component",   "16 KB",     4.0, false, Spark( 22,  2, 0.72)),
+        new("Lumeo.Gantt",     "1 component",   "12 KB",     3.0, false, Spark( 18,1.5, 0.70)),
     };
 
-    // Synthetic sparkline generator — 30 points rising roughly linearly with seeded noise so
-    // the curves look like real download counts (jittery but trending up) and are stable
-    // across renders. Salt picks a deterministic noise pattern per row.
     private static double[] Spark(double start, double slope, double salt)
     {
         var pts = new double[30];
         for (int i = 0; i < pts.Length; i++)
         {
-            // Pseudo-random ±20% wobble keyed off (i, salt) so each row has its own shape.
             var phase = Math.Sin(i * 0.7 + salt * 11) * 0.12;
             var bump  = Math.Cos(i * 0.31 + salt * 17) * 0.08;
             pts[i] = Math.Max(0, start + slope * i + (start + slope * i) * (phase + bump));
@@ -1163,10 +942,8 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         return pts;
     }
 
+    // Marquee
     private record MarqueePill(string Icon, string Label);
-
-    // Two rows, opposing directions, icon-anchored pills. Content-rich so the strip
-    // reads as "here's everything that ships" rather than a sparse ornament.
     private readonly MarqueePill[] _marqueeRowA =
     {
         new("Zap",             "AI primitives"),
@@ -1185,7 +962,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new("MessageCircle",   "Chat primitives"),
         new("Send",            "Streaming"),
     };
-
     private readonly MarqueePill[] _marqueeRowB =
     {
         new("Moon",             "Dark mode"),
@@ -1198,51 +974,54 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new("Palette",          "Tailwind v4 ready"),
         new("Package",          "~400 KB core + opt-in satellites"),
         new("ShieldCheck",      "WCAG AA"),
-        new("TestTube",         "2,194 tests"),
+        new("TestTube",         "2,480 tests"),
         new("Shield",           "MIT licensed"),
         new("Monitor",          "WASM + Server"),
         new("Github",           "Source-available"),
         new("Lightbulb",        "shadcn-style vendoring"),
     };
 
+    // Features
     private readonly FeatureItem[] _features =
     {
-        new("Palette", "Tailwind CSS v4", "Built on CSS custom properties. Theme with variables, not config files. Full v4 API."),
-        new("Accessibility", "Accessible by default", "ARIA, keyboard navigation, and focus management built in. WCAG AA across the library."),
-        new("Moon", "Dark mode", "Automatic dark mode via CSS variable swaps. No dark: prefixes. Instant theme switching."),
-        new("Copy", "Copy & paste", "Every component ships with inline code examples. Copy into your project and done."),
-        new("ChartBar", "ECharts integration", "30+ chart components powered by Apache ECharts. AOT-friendly and fully themeable."),
-        new("Package", "Single NuGet package", "One install. No peer dependencies. Works with Blazor WASM and Server, .NET 10+."),
-        new("Zap", "AI primitives", "Streaming messages, tool calls, markdown rendering — drop-in building blocks for AI chat UIs."),
-        new("Globe", "14 locales", "Bundled translations for 14 languages plus ILumeoLocalizer for per-string overrides."),
-        new("MousePointerClick", "Motion", "Built-in animation primitives — BlurFade, BorderBeam, Marquee — with zero JS config."),
-        new("Languages", "RTL support", "Every component renders correctly in right-to-left locales out of the box."),
-        new("Code", "Source generator", "Compile-time helpers for theme registration, registries, and zero-reflection setup."),
-        new("Blocks", "Register your own", "Extend the component registry with your own components and keep the same API surface.")
+        new("Palette",           "Tailwind CSS v4",        "Built on CSS custom properties. Theme with variables, not config files. Full v4 API."),
+        new("Accessibility",     "Accessible by default",  "ARIA, keyboard navigation, and focus management built in. WCAG AA across the library."),
+        new("Moon",              "Dark mode",              "Automatic dark mode via CSS variable swaps. No dark: prefixes. Instant theme switching."),
+        new("Copy",              "Copy & paste",           "Every component ships with inline code examples. Copy into your project and done."),
+        new("ChartBar",          "ECharts integration",    "30+ chart components powered by Apache ECharts. AOT-friendly and fully themeable."),
+        new("Package",           "Single NuGet package",   "One install. No peer dependencies. Works with Blazor WASM and Server, .NET 10+."),
+        new("Zap",               "AI primitives",          "Streaming messages, tool calls, markdown rendering - drop-in building blocks for AI chat UIs."),
+        new("Globe",             "14 locales",             "Bundled translations for 14 languages plus ILumeoLocalizer for per-string overrides."),
+        new("MousePointerClick", "Motion",                 "Built-in animation primitives - BlurFade, BorderBeam, Marquee - with zero JS config."),
+        new("Languages",         "RTL support",            "Every component renders correctly in right-to-left locales out of the box."),
+        new("Code",              "Source generator",       "Compile-time helpers for theme registration, registries, and zero-reflection setup."),
+        new("Blocks",            "Register your own",      "Extend the component registry with your own components and keep the same API surface."),
     };
 
+    // Use cases
     private readonly UseCaseItem[] _useCases =
     {
         new("Zap", "AI surfaces",
-            "Chat UIs, agent dashboards, copilot sidebars. The primitives are shipped — drop them in and wire your model.",
+            "Chat UIs, agent dashboards, copilot sidebars. The primitives are shipped.",
             new[] { "PromptInput", "StreamingText", "AgentMessageList", "ToolCallCard", "ReasoningDisplay" }),
         new("LayoutDashboard", "Internal tools & admin dashboards",
-            "Virtualized DataGrid with keyboard nav, sortable lists, accessible modals. Sane defaults cover the 80% case without custom CSS.",
+            "Virtualized DataGrid with keyboard nav, sortable lists, accessible modals.",
             new[] { "DataGrid", "Sheet", "Dialog", "SortableList", "Kanban" }),
         new("Sparkles", "SaaS marketing pages",
-            "Hero blocks, pricing tables, animated motion primitives, and Tailwind v4 theming. Looks polished out of the box.",
+            "Hero blocks, pricing tables, animated motion primitives, and Tailwind v4 theming.",
             new[] { "BlurFade", "BorderBeam", "Sparkles", "AnimatedBeam", "PricingTable" }),
         new("BookOpen", "Content & docs sites",
-            "Tabs, accordions, callouts, code blocks, and a full motion library for delight that doesn't add bundle weight.",
+            "Tabs, accordions, callouts, code blocks, and a full motion library.",
             new[] { "Accordion", "Tabs", "Callout", "Code", "BlurFade" }),
         new("ClipboardList", "Forms-heavy line-of-business apps",
-            "Full input library, FormField pattern, source-generated form bindings, and validation via stock EditContext + DataAnnotations.",
+            "Full input library, FormField pattern, validation via EditContext + DataAnnotations.",
             new[] { "FormField", "DatePicker", "OtpInput", "FileUpload", "TagInput" }),
         new("Layers", "Multi-tenant white-label products",
-            "8 built-in themes, CSS variable theming, and a palette swap CLI command. Each tenant gets a distinct look from a single codebase.",
+            "8 built-in themes, CSS variable theming, palette swap CLI command.",
             new[] { "ThemeProvider", "lumeo apply --preset", "8 themes", "CSS variables" }),
     };
 
+    // Employees
     private readonly Employee[] _employees =
     {
         new("Ava Chen",       "Engineering", "Staff Eng.",       198000),
@@ -1255,215 +1034,81 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new("Sofia Bianchi",  "Product",     "Assoc. PM",        108000),
     };
 
-    // ---- Multi-chart cycle state ----
-    private enum ChartKind { Bar, Line, Area, Donut }
-    private ChartKind _chartKind = ChartKind.Bar;
-
-    private string ChartLabel => _chartKind switch
-    {
-        ChartKind.Bar   => "BarChart",
-        ChartKind.Line  => "LineChart",
-        ChartKind.Area  => "AreaChart",
-        ChartKind.Donut => "DonutChart",
-        _               => "Chart"
-    };
-
-    private string ChartIcon => _chartKind switch
-    {
-        ChartKind.Bar   => "BarChart3",
-        ChartKind.Line  => "LineChart",
-        ChartKind.Area  => "AreaChart",
-        ChartKind.Donut => "PieChart",
-        _               => "BarChart3"
-    };
-
-    // Bar — quarterly revenue by product line (stacked)
+    // Charts
     private List<string> _barCategories = new() { "Q1", "Q2", "Q3", "Q4", "Q1 '26", "Q2 '26" };
     private List<BarChart.ChartSeriesData> _barSeries = new()
     {
         new() { Name = "Core",     Values = new() { 28400, 31200, 36800, 42100, 48700, 55300 } },
         new() { Name = "Charts",   Values = new() {  8700, 10400, 13100, 15800, 19200, 22700 } },
-        new() { Name = "DataGrid", Values = new() {  4100,  6800,  9200, 11400, 14600, 18100 } }
+        new() { Name = "DataGrid", Values = new() {  4100,  6800,  9200, 11400, 14600, 18100 } },
     };
-
-    // Line — page views (6-week trend) — 6 buckets to match the snapshot stride
-    // so the timer can swap values directly without padding.
-    private List<string> _lineCategories = new() { "W-5", "W-4", "W-3", "W-2", "W-1", "Now" };
-    private List<LineChart.ChartSeriesData> _lineSeries = new()
-    {
-        new() { Name = "Page views", Values = new() { 1240, 1820, 1640, 2380, 2920, 2140 } }
-    };
-
-    // Area — memory usage (6-hour buckets) — 6 entries — kept around in case
-    // the showcase ever swaps back; not currently rendered on the homepage.
-    private List<string> _areaCategories = new() { "00", "04", "08", "12", "16", "20" };
-    private List<AreaChart.ChartSeriesData> _areaSeries = new()
-    {
-        new() { Name = "RSS MB", Values = new() { 320, 280, 480, 720, 690, 540 } }
-    };
-
-    // Radar — perf "shape" across 6 axes. Same 6-stride as the snapshots so
-    // the rotation maps cleanly. Indicators set the max-axis so the polygon
-    // doesn't collapse when values are small.
-    private List<RadarChart.RadarIndicator> _radarIndicators = new()
-    {
-        new() { Name = "TTFB",       Max = 100 },
-        new() { Name = "FCP",        Max = 100 },
-        new() { Name = "LCP",        Max = 100 },
-        new() { Name = "CLS",        Max = 100 },
-        new() { Name = "INP",        Max = 100 },
-        new() { Name = "Bundle",     Max = 100 },
-    };
-    private List<RadarChart.RadarSeriesData> _radarSeries = new()
-    {
-        new() { Name = "Lumeo", Values = new() { 88, 92, 84, 95, 90, 78 } }
-    };
-
-    // Donut — market share split (kept for completeness even though the tile
-    // now shows Bar/Line/Area only — donut still referenced in @code blocks).
-    private List<DonutChart.DonutChartData> _donutData = new()
-    {
-        new() { Name = "Core",     Value = 48 },
-        new() { Name = "DataGrid", Value = 22 },
-        new() { Name = "Charts",   Value = 14 },
-        new() { Name = "Maps",     Value = 10 },
-        new() { Name = "Other",    Value = 6  },
-    };
-
-    // Rotation snapshots — each tick advances `_chartSnapshot` by 1 and the
-    // timer maps it into Bar/Line/Area series. Quick 2s cadence so the three
-    // charts pulse together as a single visual heartbeat.
     private int _chartSnapshot;
+    private bool _chartHovered;
     private static readonly List<double>[][] _chartSnapshots =
     {
-        new[]
-        {
-            new List<double> { 28400, 31200, 36800, 42100, 48700, 55300 },
-            new List<double> {  8700, 10400, 13100, 15800, 19200, 22700 },
-            new List<double> {  4100,  6800,  9200, 11400, 14600, 18100 },
-        },
-        new[]
-        {
-            new List<double> { 32100, 29800, 41200, 38400, 52600, 47900 },
-            new List<double> { 12400, 15600, 11800, 18900, 14700, 21300 },
-            new List<double> {  6200,  8900,  5400, 12100,  9800, 15600 },
-        },
-        new[]
-        {
-            new List<double> { 41200, 47800, 38400, 55600, 49100, 62300 },
-            new List<double> { 18400, 14200, 22600, 17800, 26400, 21900 },
-            new List<double> {  9100, 14600, 10800, 17400, 13200, 19800 },
-        },
-        new[]
-        {
-            new List<double> { 24800, 35400, 31200, 44600, 39800, 51400 },
-            new List<double> { 10200, 16800, 13400, 21700, 18200, 24600 },
-            new List<double> {  5400, 11200,  8600, 14800, 12400, 17900 },
-        },
+        new[] { new List<double> { 28400, 31200, 36800, 42100, 48700, 55300 }, new List<double> { 8700, 10400, 13100, 15800, 19200, 22700 }, new List<double> { 4100, 6800, 9200, 11400, 14600, 18100 } },
+        new[] { new List<double> { 32100, 29800, 41200, 38400, 52600, 47900 }, new List<double> { 12400, 15600, 11800, 18900, 14700, 21300 }, new List<double> { 6200, 8900, 5400, 12100, 9800, 15600 } },
+        new[] { new List<double> { 41200, 47800, 38400, 55600, 49100, 62300 }, new List<double> { 18400, 14200, 22600, 17800, 26400, 21900 }, new List<double> { 9100, 14600, 10800, 17400, 13200, 19800 } },
+        new[] { new List<double> { 24800, 35400, 31200, 44600, 39800, 51400 }, new List<double> { 10200, 16800, 13400, 21700, 18200, 24600 }, new List<double> { 5400, 11200, 8600, 14800, 12400, 17900 } },
+    };
+    // Constellation
+    private record ConstellationNode(string Id, string Title, string Summary, string Category, string Url, double X, double Y);
+    private record ClusterDef(double Cx, double Cy, double R);
+
+    private readonly Dictionary<string, ClusterDef> _clusterCenters = new()
+    {
+        ["Forms"]        = new(155, 165,  90),
+        ["Navigation"]   = new(385, 108,  85),
+        ["Data Display"] = new(640, 138, 100),
+        ["Overlay"]      = new(860, 198,  75),
+        ["Motion"]       = new(820, 395,  65),
+        ["Layout"]       = new(575, 430,  70),
+        ["Feedback"]     = new(355, 418,  65),
+        ["Utility"]      = new(155, 390,  70),
+        ["Dashboard"]    = new(498, 278,  58),
+        ["Drag & Drop"]  = new(278, 288,  48),
+        ["Typography"]   = new(718, 308,  55),
+        ["AI"]           = new(870,  98,  52),
     };
 
-    private async Task CopyInstall()
+    private readonly Dictionary<string, string> _categoryColors = new()
     {
-        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", "dotnet add package Lumeo"); }
-        catch (JSException) { }
-        _installCopied = true;
-        StateHasChanged();
-        await Task.Delay(2000);
-        _installCopied = false;
-        StateHasChanged();
-    }
+        ["Forms"]        = "#6366f1",
+        ["Navigation"]   = "#0ea5e9",
+        ["Data Display"] = "#10b981",
+        ["Overlay"]      = "#8b5cf6",
+        ["Motion"]       = "#f59e0b",
+        ["Layout"]       = "#64748b",
+        ["Feedback"]     = "#ef4444",
+        ["Utility"]      = "#94a3b8",
+        ["Dashboard"]    = "#06b6d4",
+        ["Drag & Drop"]  = "#f97316",
+        ["Typography"]   = "#84cc16",
+        ["AI"]           = "#ec4899",
+    };
 
-    // Kanban drag-and-drop: each card sets _draggingCard on dragstart; each column's
-    // OnDrop calls MoveDraggingCard(targetList) to remove from its current list and
-    // append to the dropped-into list. KanbanColumn already preventDefaults dragover.
-    private void MoveDraggingCard(List<KanbanItem> target)
-    {
-        if (_draggingCard is null) return;
-        if (_kanbanTodo.Remove(_draggingCard) || _kanbanDoing.Remove(_draggingCard) || _kanbanDone.Remove(_draggingCard))
-        {
-            if (!target.Contains(_draggingCard))
-            {
-                target.Add(_draggingCard);
-            }
-        }
-        _draggingCard = null;
-        StateHasChanged();
-    }
+    private List<ConstellationNode> _constellationNodes = new();
+    private string _constellationFilter = "";
+    private ElementReference _constellationRoot;
+    private bool _constellationInitialized;
 
-    // ------------------------------------------------------------------------------------
-    // Living-demo timers — all kept in a single list so Dispose() can blanket-clean them up.
-    // Each timer:
-    //   * guards on its tile-local hovered bool so user interaction wins
-    //   * mutates state inside InvokeAsync + StateHasChanged for thread-safety
-    // ------------------------------------------------------------------------------------
-    private readonly List<System.Threading.Timer> _timers = new();
-
-    // DropdownMenu submenu showcase — opens ~2.5s, closes ~2s, repeats.
-
-    // Auto-cycling Tabs — advances through 4 values every 3s.
-    private string _tabsActive = "overview";
-    private bool _tabsHovered;
-    private static readonly string[] _tabsValues = { "overview", "activity", "reports", "settings" };
-
-    // Auto-advancing Steps — wraps 0→3→0 every 2.5s.
-    private int _stepIndex;
-    private bool _stepsHovered;
-
-    // Chart cycling — hover pauses.
-    private bool _chartHovered;
-
-    // Page-visibility gate. When the user switches to another tab, all timer
-    // callbacks short-circuit so we don't queue work that bursts on return
-    // (was: dozens of stale toasts + rapid chart reshuffles when refocusing).
-    // The flag is flipped from JS via the `visibilitychange` listener wired
-    // up in OnAfterRenderAsync.
+    // Timers / visibility
     private bool _pageVisible = true;
     private IJSObjectReference? _visibilityHandle;
     private DotNetObjectReference<Home>? _selfRef;
+    private readonly List<System.Threading.Timer> _timers = new();
+    // Toast ticker removed — the looping notifications were intrusive on
+    // mobile (they slide in over the dashboard while the user is reading),
+    // and the Toast component has its own dedicated docs page where the
+    // behaviour can be demonstrated on demand.
 
     [JSInvokable]
-    public void SetPageVisibility(bool visible)
+    public void SetPageVisibility(bool visible) => _pageVisible = visible;
+
+    protected override async Task OnInitializedAsync()
     {
-        _pageVisible = visible;
-    }
+        BuildConstellation();
 
-    // Toast bank — cycled every 11s. Realistic dev-experience copy so the demo feels
-    // like a working app, not a test harness.
-    private int _toastIndex;
-    private static readonly (string Title, string? Desc, ToastVariant Variant)[] _toastBank =
-    {
-        ("Build succeeded",   "2.4s · 0 warnings",                ToastVariant.Default),
-        ("Saved to draft",    "Auto-saved 12 seconds ago",        ToastVariant.Success),
-        ("Cloudflare deploy", "ready · pages.dev",                ToastVariant.Info),
-        ("Approaching quota", "87% used · upgrade or prune",      ToastVariant.Warning),
-    };
-
-    protected override void OnInitialized()
-    {
-        // DropdownMenu auto-cycle removed — fixed-position menu rendered free of
-        // its trigger when opened programmatically without a user click. Visitors
-        // open it manually via hover/click, which fires the proper positioning.
-
-        // 2. Tabs — fixed 3s rotation.
-        _timers.Add(new System.Threading.Timer(_ =>
-        {
-            if (_tabsHovered || !_pageVisible) return;
-            var nextIx = (Array.IndexOf(_tabsValues, _tabsActive) + 1) % _tabsValues.Length;
-            _tabsActive = _tabsValues[nextIx];
-            InvokeAsync(StateHasChanged);
-        }, null, 3000, 3000));
-
-        // 3. Steps — 2.5s rotation, wraps 0→3→0.
-        _timers.Add(new System.Threading.Timer(_ =>
-        {
-            if (_stepsHovered || !_pageVisible) return;
-            _stepIndex = (_stepIndex + 1) % 4;
-            InvokeAsync(StateHasChanged);
-        }, null, 2500, 2500));
-
-        // 4. Charts — three live ECharts (Bar/Line/Area) all reshuffle their
-        //    series values every 2s so the showcase pulses with motion. The
-        //    chart types stay fixed (user wanted no Pie/Donut, no cycling).
         _timers.Add(new System.Threading.Timer(_ =>
         {
             if (_chartHovered || !_pageVisible) return;
@@ -1471,53 +1116,262 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             var snap = _chartSnapshots[_chartSnapshot];
             InvokeAsync(() =>
             {
-                // Bar — stacked, 3-series quarterly.
                 for (int i = 0; i < _barSeries.Count && i < snap.Length; i++)
                     _barSeries[i].Values = new List<double>(snap[i]);
-                // Line — first stripe of the snapshot, scaled down so the axis stays readable.
-                _lineSeries[0].Values = snap[0].Select(v => Math.Round(v / 12d)).ToList();
-                // Radar — second stripe normalised into 0–100 range per axis so
-                // the polygon morphs visibly without collapsing.
-                var raw = snap[1];
-                var maxv = raw.Max();
-                _radarSeries[0].Values = raw.Select(v => Math.Round(v / maxv * 95d, 1)).ToList();
                 StateHasChanged();
             });
-        }, null, 1500, 2000));
+        }, null, 5000, 5000));
 
-        // 5. Toasts — fire every 11s with short Duration so they come and go cleanly.
-        // No hover guard: toasts already render bottom-right via the global viewport,
-        // they're not bound to a specific tile. Page-visibility guard prevents the
-        // toast queue from spamming on tab refocus.
-        _timers.Add(new System.Threading.Timer(_ =>
-        {
-            if (!_pageVisible) return;
-            var t = _toastBank[_toastIndex];
-            _toastIndex = (_toastIndex + 1) % _toastBank.Length;
-            InvokeAsync(() =>
-            {
-                ToastService.Show(new ToastOptions
-                {
-                    Title = t.Title,
-                    Description = t.Desc,
-                    Variant = t.Variant,
-                    Duration = 4500,
-                });
-            });
-        }, null, 6000, 11000));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        try
+        if (firstRender)
         {
-            _selfRef = DotNetObjectReference.Create(this);
-            _visibilityHandle = await JS.InvokeAsync<IJSObjectReference>(
-                "lumeo.onPageVisibility", _selfRef, nameof(SetPageVisibility));
+            try
+            {
+                _selfRef = DotNetObjectReference.Create(this);
+                _visibilityHandle = await JS.InvokeAsync<IJSObjectReference>(
+                    "lumeo.onPageVisibility", _selfRef, nameof(SetPageVisibility));
+            }
+            catch (JSException) { /* SSR / prerender */ }
+            catch (JSDisconnectedException) { }
         }
-        catch (JSException) { /* SSR / bUnit / prerender — visibility hook is a nice-to-have */ }
-        catch (JSDisconnectedException) { }
+
+        // Initialize the JS-driven constellation once nodes are ready.
+        if (!_constellationInitialized && _constellationNodes.Count > 0)
+        {
+            _constellationInitialized = true;
+            try
+            {
+                var nodesPayload = _constellationNodes.Select(n => new
+                {
+                    id = n.Id,
+                    title = n.Title,
+                    summary = n.Summary,
+                    category = n.Category,
+                    url = n.Url,
+                    x = n.X,
+                    y = n.Y
+                });
+                var clustersPayload = _clusterCenters.ToDictionary(
+                    kv => kv.Key,
+                    kv => new { cx = kv.Value.Cx, cy = kv.Value.Cy, r = kv.Value.R });
+                await JS.InvokeVoidAsync("lumeoConstellation.init",
+                    _constellationRoot, nodesPayload, clustersPayload, _categoryColors);
+            }
+            catch (JSException) { _constellationInitialized = false; }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private void BuildConstellation()
+    {
+        var registry = new (string id, string title, string summary, string category, string url)[]
+        {
+            ("component:accordion",        "Accordion",         "Vertically stacked collapsible sections that expand to reveal content.",              "Navigation",   "/components/accordion"),
+            ("component:affix",            "Affix",             "Pins an element to the viewport edge as the user scrolls.",                          "Navigation",   "/components/affix"),
+            ("component:agent-message-list","AgentMessageList", "Chat message stream for AI agents with role-based styling.",                         "AI",           "/components/agent-message-list"),
+            ("component:alert",            "Alert",             "Inline callout for status, warning, or informational messages.",                      "Feedback",     "/components/alert"),
+            ("component:alert-dialog",     "AlertDialog",       "Modal confirmation dialog that interrupts the user for destructive actions.",         "Overlay",      "/components/alert-dialog"),
+            ("component:animated-beam",    "AnimatedBeam",      "SVG beam that traces an animated gradient path between two DOM elements.",            "Motion",       "/components/animated-beam"),
+            ("component:app-bar",          "AppBar",            "Top application bar with start, center, and end slots.",                             "Navigation",   "/components/app-bar"),
+            ("component:aspect-ratio",     "AspectRatio",       "Constrains child content to a fixed width-to-height ratio.",                         "Layout",       "/components/aspect-ratio"),
+            ("component:audio-player",     "AudioPlayer",       "Audio Player component.",                                                             "Utility",      "/components/audio-player"),
+            ("component:avatar",           "Avatar",            "Circular user image with initials fallback and status indicator.",                    "Data Display", "/components/avatar"),
+            ("component:back-to-top",      "BackToTop",         "Floating button that scrolls the page back to the top.",                             "Navigation",   "/components/back-to-top"),
+            ("component:badge",            "Badge",             "Small label for counts, statuses, or category tags.",                                "Data Display", "/components/badge"),
+            ("component:barcode",          "Barcode",           "Inline SVG Code 128B barcode renderer.",                                             "Data Display", "/components/barcode"),
+            ("component:bento",            "Bento",             "Masonry grid for dashboard tiles and marketing feature layouts.",                     "Dashboard",    "/components/bento"),
+            ("component:blur-fade",        "BlurFade",          "Motion primitive: blur and fade-in on mount or when in view.",                       "Motion",       "/components/blur-fade"),
+            ("component:border-beam",      "BorderBeam",        "Animated gradient border beam effect for hero elements.",                            "Motion",       "/components/border-beam"),
+            ("component:bottom-nav",       "BottomNav",         "Mobile-first bottom navigation bar with icon items.",                                "Navigation",   "/components/bottom-nav"),
+            ("component:breadcrumb",       "Breadcrumb",        "Hierarchical page path with separator characters.",                                  "Navigation",   "/components/breadcrumb"),
+            ("component:button",           "Button",            "Versatile button with variants, sizes, icons, and loading states.",                  "Forms",        "/components/button"),
+            ("component:button-group",     "ButtonGroup",       "Button Group component.",                                                            "Utility",      "/components/button-group"),
+            ("component:calendar",         "Calendar",          "Date picker calendar grid with single, range, and multi-select modes.",              "Data Display", "/components/calendar"),
+            ("component:card",             "Card",              "Flexible container with header, content, and footer slots.",                         "Data Display", "/components/card"),
+            ("component:carousel",         "Carousel",          "Slide-based content rotator with autoplay and keyboard nav.",                        "Navigation",   "/components/carousel"),
+            ("component:cascader",         "Cascader",          "Multi-level dropdown for hierarchical selection.",                                   "Forms",        "/components/cascader"),
+            ("component:center",           "Center",            "Flexbox helper that centers its children on both axes.",                             "Layout",       "/components/center"),
+            ("component:chart",            "Chart",             "Declarative chart wrapper over ECharts with 30+ types supported.",                   "Data Display", "/components/chart"),
+            ("component:checkbox",         "Checkbox",          "Binary input with indeterminate state and accessible label.",                        "Forms",        "/components/checkbox"),
+            ("component:chip",             "Chip",              "Compact removable tag, optionally toggleable.",                                      "Data Display", "/components/chip"),
+            ("component:code",             "Code",              "Inline or block monospace code snippet with optional copy button.",                  "Typography",   "/components/code"),
+            ("component:code-editor",      "CodeEditor",        "Source-code editor wrapping CodeMirror 6 with on-demand language packs.",            "Forms",        "/components/code-editor"),
+            ("component:collapsible",      "Collapsible",       "Single expandable region with animated height transition.",                           "Navigation",   "/components/collapsible"),
+            ("component:color-picker",     "ColorPicker",       "Hue plus saturation/value picker with hex input.",                                   "Forms",        "/components/color-picker"),
+            ("component:combobox",         "Combobox",          "Searchable select with filtering, custom values, and grouping.",                     "Forms",        "/components/combobox"),
+            ("component:command",          "Command",           "Command palette with keyboard-driven finder for actions.",                           "Overlay",      "/components/command"),
+            ("component:confetti",         "Confetti",          "Burst of colored particles on demand via imperative Fire() method.",                 "Motion",       "/components/confetti"),
+            ("component:consent-banner",   "ConsentBanner",     "Consent Banner component.",                                                          "Utility",      "/components/consent-banner"),
+            ("component:container",        "Container",         "Responsive max-width wrapper with consistent page padding.",                         "Layout",       "/components/container"),
+            ("component:context-menu",     "ContextMenu",       "Right-click menu tied to a container element.",                                      "Overlay",      "/components/context-menu"),
+            ("component:data-grid",        "DataGrid",          "Enterprise grid: sort, filter, inline edit, multi-level group, pin, virtualize.",    "Data Display", "/components/data-grid"),
+            ("component:data-table",       "DataTable",         "Table with sorting, pagination, and row selection built in.",                        "Data Display", "/components/data-table"),
+            ("component:date-picker",      "DatePicker",        "Calendar popover for picking a single date or range.",                              "Forms",        "/components/date-picker"),
+            ("component:date-time-picker", "DateTimePicker",    "Combined date and time picker with timezone awareness.",                             "Forms",        "/components/date-time-picker"),
+            ("component:delta",            "Delta",             "Trend indicator showing delta value with up/down arrow and color.",                  "Dashboard",    "/components/delta"),
+            ("component:descriptions",     "Descriptions",      "Key-value pair list for read-only entity details.",                                  "Data Display", "/components/descriptions"),
+            ("component:dialog",           "Dialog",            "Modal dialog with header, content, footer, and focus trap.",                         "Overlay",      "/components/dialog"),
+            ("component:dock",             "Dock",              "macOS-style icon dock with cursor-proximity magnification.",                         "Motion",       "/components/dock"),
+            ("component:drawer",           "Drawer",            "Slide-up sheet for mobile-first contextual content.",                               "Overlay",      "/components/drawer"),
+            ("component:dropdown-button",  "DropdownButton",    "Dropdown Button component.",                                                         "Utility",      "/components/dropdown-button"),
+            ("component:dropdown-menu",    "DropdownMenu",      "Menu button with items, separators, submenus, and checkboxes.",                     "Overlay",      "/components/dropdown-menu"),
+            ("component:empty-state",      "EmptyState",        "Illustrated placeholder for empty lists with call-to-action.",                       "Feedback",     "/components/empty-state"),
+            ("component:file-manager",     "FileManager",       "Headless file and folder explorer with tree, breadcrumb, and lazy loading.",         "Data Display", "/components/file-manager"),
+            ("component:file-upload",      "FileUpload",        "Drag-and-drop file dropzone with progress and validation.",                          "Forms",        "/components/file-upload"),
+            ("component:filter",           "Filter",            "Composable faceted filter builder with chips.",                                      "Data Display", "/components/filter"),
+            ("component:flex",             "Flex",              "Flexbox wrapper exposing direction, gap, align, justify as props.",                  "Layout",       "/components/flex"),
+            ("component:form",             "Form",              "EditForm wrapper with styled validation, field groups, and submit state.",            "Forms",        "/components/form"),
+            ("component:gantt",            "Gantt",             "Gantt component.",                                                                   "Data Display", "/components/gantt"),
+            ("component:gauge",            "Gauge",             "Single-value gauge with radial, arc, linear variants and threshold colour bands.",   "Data Display", "/components/gauge"),
+            ("component:grid",             "Grid",              "CSS grid wrapper with columns and gap as props.",                                    "Layout",       "/components/grid"),
+            ("component:heading",          "Heading",           "Semantic h1-h6 heading with Lumeo typographic scale.",                               "Typography",   "/components/heading"),
+            ("component:highlighter",      "Highlighter",       "Wraps occurrences of search terms in the text with highlight marks.",               "Typography",   "/components/highlighter"),
+            ("component:hover-card",       "HoverCard",         "Popover that opens on hover for rich previews.",                                     "Overlay",      "/components/hover-card"),
+            ("component:icon",             "Icon",              "Icon wrapper that renders Lucide icons via Blazicons.",                              "Utility",      "/components/icon"),
+            ("component:image",            "Image",             "Image with lazy-loading, loading skeleton, and error fallback.",                     "Data Display", "/components/image"),
+            ("component:image-compare",    "ImageCompare",      "Before/after slider comparison for two images.",                                     "Data Display", "/components/image-compare"),
+            ("component:inplace-editor",   "InplaceEditor",     "Click-to-edit text/number field that swaps in an input.",                            "Forms",        "/components/inplace-editor"),
+            ("component:input",            "Input",             "Styled text input with label, prefix/suffix, icons, error state.",                  "Forms",        "/components/input"),
+            ("component:input-mask",       "InputMask",         "Masked input for phone numbers, dates, and custom patterns.",                        "Forms",        "/components/input-mask"),
+            ("component:kanban",           "Kanban",            "Drag-and-drop board with swimlanes.",                                                "Drag & Drop",  "/components/kanban"),
+            ("component:kbd",              "Kbd",               "Keyboard shortcut glyph that renders kbd with styling.",                            "Utility",      "/components/kbd"),
+            ("component:kpi-card",         "KpiCard",           "Dashboard KPI tile showing value, label, and trend.",                               "Dashboard",    "/components/kpi-card"),
+            ("component:label",            "Label",             "Form label that links to a control via for/id.",                                     "Utility",      "/components/label"),
+            ("component:link",             "Link",              "Styled anchor with underline and color variants.",                                   "Typography",   "/components/link"),
+            ("component:list",             "List",              "Ordered/unordered list with Lumeo typographic styling.",                             "Data Display", "/components/list"),
+            ("component:map",              "Map",               "Interactive geographic map powered by MapLibre GL with markers, arcs, heatmaps.",    "Data Display", "/components/map"),
+            ("component:marquee",          "Marquee",           "Infinitely scrolling horizontal band of children.",                                  "Motion",       "/components/marquee"),
+            ("component:mega-menu",        "MegaMenu",          "Full-width dropdown for site-wide navigation with columns.",                         "Navigation",   "/components/mega-menu"),
+            ("component:mention",          "Mention",           "Textarea with at-trigger dropdown for mentioning users.",                            "Forms",        "/components/mention"),
+            ("component:menubar",          "Menubar",           "Horizontal menubar with File/Edit-style dropdowns.",                                 "Navigation",   "/components/menubar"),
+            ("component:navigation-menu",  "NavigationMenu",    "Top-level site nav with animated dropdown panels.",                                  "Navigation",   "/components/navigation-menu"),
+            ("component:number-input",     "NumberInput",       "Numeric input with stepper buttons and locale formatting.",                          "Forms",        "/components/number-input"),
+            ("component:number-ticker",    "NumberTicker",      "Animated count-up from zero to target number.",                                     "Motion",       "/components/number-ticker"),
+            ("component:otp-input",        "OtpInput",          "One-time password input, auto-advances between boxes.",                             "Forms",        "/components/otp-input"),
+            ("component:overlay",          "Overlay",           "Low-level backdrop primitive for custom popovers and modals.",                       "Overlay",      "/components/overlay"),
+            ("component:pagination",       "Pagination",        "Page number bar with prev/next and configurable ranges.",                            "Navigation",   "/components/pagination"),
+            ("component:password-input",   "PasswordInput",     "Password field with show/hide toggle and strength meter.",                          "Forms",        "/components/password-input"),
+            ("component:pdf-viewer",       "PdfViewer",         "Inline PDF viewer powered by pdf.js with page nav, zoom, search, download.",        "Data Display", "/components/pdf-viewer"),
+            ("component:pick-list",        "PickList",          "Two-column shuttle picker to move items between lists.",                            "Dashboard",    "/components/pick-list"),
+            ("component:pivot-grid",       "PivotGrid",         "Cross-tab pivot table summarizing flat data into rows x columns x measures.",       "Data Display", "/components/pivot-grid"),
+            ("component:pop-confirm",      "PopConfirm",        "Inline confirmation popover attached to a trigger.",                                 "Overlay",      "/components/pop-confirm"),
+            ("component:popover",          "Popover",           "Positionable floating panel with anchor and arrow.",                                 "Overlay",      "/components/popover"),
+            ("component:progress",         "Progress",          "Linear progress bar with determinate and indeterminate modes.",                      "Feedback",     "/components/progress"),
+            ("component:prompt-input",     "PromptInput",       "Multiline AI prompt textarea with submit and keyboard shortcuts.",                   "AI",           "/components/prompt-input"),
+            ("component:pull-to-refresh",  "PullToRefresh",     "Pull To Refresh component.",                                                         "Utility",      "/components/pull-to-refresh"),
+            ("component:qr-code",          "QRCode",            "Renders a QR code SVG for a string payload.",                                        "Data Display", "/components/qr-code"),
+            ("component:query-builder",    "QueryBuilder",      "Visual AND/OR predicate-tree builder that serializes to JSON or LINQ.",              "Forms",        "/components/query-builder"),
+            ("component:radio-group",      "RadioGroup",        "Grouped radio buttons with horizontal or vertical layout.",                          "Forms",        "/components/radio-group"),
+            ("component:rating",           "Rating",            "Star rating input with half-star support.",                                          "Forms",        "/components/rating"),
+            ("component:reasoning-display","ReasoningDisplay",  "Collapsible chain-of-thought block for AI reasoning traces.",                        "AI",           "/components/reasoning-display"),
+            ("component:resizable",        "Resizable",         "Draggable splitter for resizable panel layouts.",                                    "Layout",       "/components/resizable"),
+            ("component:result",           "Result",            "Full-page success/error/info status screen with actions.",                           "Feedback",     "/components/result"),
+            ("component:rich-text-editor", "RichTextEditor",    "WYSIWYG editor wrapping TipTap with Lumeo styling.",                                 "Forms",        "/components/rich-text-editor"),
+            ("component:ring-progress",    "RingProgress",      "Circular determinate progress ring with optional centre label.",                      "Feedback",     "/components/ring-progress"),
+            ("component:safe-area",        "SafeArea",          "Safe Area component.",                                                               "Utility",      "/components/safe-area"),
+            ("component:scheduler",        "Scheduler",         "Calendar/agenda scheduler wrapping FullCalendar.",                                   "Data Display", "/components/scheduler"),
+            ("component:scroll-area",      "ScrollArea",        "Styled custom scrollbar container.",                                                 "Layout",       "/components/scroll-area"),
+            ("component:scrollspy",        "Scrollspy",         "Highlights the nav item matching the current scroll section.",                       "Navigation",   "/components/scrollspy"),
+            ("component:segmented",        "Segmented",         "Pill-shaped tab-like single-select control.",                                        "Forms",        "/components/segmented"),
+            ("component:select",           "Select",            "Native-feeling styled dropdown with search and groups.",                             "Forms",        "/components/select"),
+            ("component:separator",        "Separator",         "Horizontal or vertical dividing rule.",                                              "Layout",       "/components/separator"),
+            ("component:sheet",            "Sheet",             "Slide-in side panel from left/right/top/bottom.",                                    "Overlay",      "/components/sheet"),
+            ("component:shimmer-button",   "ShimmerButton",     "Button with animated shimmer border beam.",                                          "Motion",       "/components/shimmer-button"),
+            ("component:sidebar",          "Sidebar",           "Collapsible app sidebar with groups, menu, and trigger.",                            "Navigation",   "/components/sidebar"),
+            ("component:signature-pad",    "SignaturePad",      "Signature Pad component.",                                                           "Utility",      "/components/signature-pad"),
+            ("component:skeleton",         "Skeleton",          "Pulsing placeholder block for loading states.",                                      "Feedback",     "/components/skeleton"),
+            ("component:slider",           "Slider",            "Range slider with single and dual thumb modes.",                                     "Forms",        "/components/slider"),
+            ("component:sortable",         "Sortable",          "Drag-and-drop reorderable list.",                                                    "Drag & Drop",  "/components/sortable"),
+            ("component:spacer",           "Spacer",            "Flex-grow spacer that pushes siblings apart.",                                       "Layout",       "/components/spacer"),
+            ("component:spark-card",       "SparkCard",         "Small dashboard card with an inline sparkline chart.",                               "Dashboard",    "/components/spark-card"),
+            ("component:sparkles",         "Sparkles",          "Decorative sparkle particle animation.",                                             "Motion",       "/components/sparkles"),
+            ("component:sparkline",        "Sparkline",         "Inline SVG trend chart primitive for line, area, or bars.",                         "Data Display", "/components/sparkline"),
+            ("component:speed-dial",       "SpeedDial",         "Floating action button that fans out sub-actions.",                                  "Navigation",   "/components/speed-dial"),
+            ("component:spinner",          "Spinner",           "Indeterminate loading spinner with size variants.",                                  "Feedback",     "/components/spinner"),
+            ("component:split-button",     "SplitButton",       "Split Button component.",                                                            "Utility",      "/components/split-button"),
+            ("component:splitter",         "Splitter",          "Resizable split pane for horizontal/vertical layouts.",                              "Navigation",   "/components/splitter"),
+            ("component:stack",            "Stack",             "Vertical flex wrapper with gap prop.",                                               "Layout",       "/components/stack"),
+            ("component:statistic",        "Statistic",         "Big-number statistic display with label and unit.",                                  "Data Display", "/components/statistic"),
+            ("component:stepper",          "Stepper",           "Stateful multi-step wizard with navigation and validation gating.",                  "Navigation",   "/components/stepper"),
+            ("component:steps",            "Steps",             "Numbered step indicator for wizards and progress flows.",                            "Data Display", "/components/steps"),
+            ("component:streaming-text",   "StreamingText",     "Token-by-token streaming text renderer for AI responses.",                           "AI",           "/components/streaming-text"),
+            ("component:swipe-actions",    "SwipeActions",      "Swipe Actions component.",                                                           "Utility",      "/components/swipe-actions"),
+            ("component:switch",           "Switch",            "Toggle switch for boolean settings.",                                                "Forms",        "/components/switch"),
+            ("component:table",            "Table",             "Minimal styled HTML table with header, row, cell components.",                       "Data Display", "/components/table"),
+            ("component:tabs",             "Tabs",              "Tabbed content with keyboard nav and animated active indicator.",                     "Navigation",   "/components/tabs"),
+            ("component:tag-input",        "TagInput",          "Input that turns entries into removable tag chips.",                                  "Forms",        "/components/tag-input"),
+            ("component:text",             "Text",              "Paragraph text with size, color, weight props.",                                     "Typography",   "/components/text"),
+            ("component:text-reveal",      "TextReveal",        "Word-by-word reveal animation on scroll.",                                           "Motion",       "/components/text-reveal"),
+            ("component:textarea",         "Textarea",          "Multiline text input with auto-resize option.",                                      "Forms",        "/components/textarea"),
+            ("component:theme-switcher",   "ThemeSwitcher",     "Color-scheme picker that writes to ThemeService.",                                   "Utility",      "/components/theme-switcher"),
+            ("component:theme-toggle",     "ThemeToggle",       "Dark/light mode toggle button.",                                                     "Utility",      "/components/theme-toggle"),
+            ("component:time-picker",      "TimePicker",        "Time-of-day picker with 12h/24h formats.",                                           "Forms",        "/components/time-picker"),
+            ("component:timeline",         "Timeline",          "Vertical event timeline with icons and connectors.",                                 "Data Display", "/components/timeline"),
+            ("component:toast",            "Toast",             "Notification toast that renders from ToastService queue.",                           "Feedback",     "/components/toast"),
+            ("component:toggle",           "Toggle",            "Two-state button with pressed/unpressed styling.",                                   "Forms",        "/components/toggle"),
+            ("component:toggle-group",     "ToggleGroup",       "Group of toggles with single or multiple selection.",                                "Forms",        "/components/toggle-group"),
+            ("component:tool-call-card",   "ToolCallCard",      "AI tool-invocation card showing call and result.",                                   "AI",           "/components/tool-call-card"),
+            ("component:toolbar",          "Toolbar",           "Horizontal toolbar container with separator, spacer, group sub-components.",         "Navigation",   "/components/toolbar"),
+            ("component:tooltip",          "Tooltip",           "Hover/focus tooltip with arrow and configurable placement.",                         "Overlay",      "/components/tooltip"),
+            ("component:touch-ripple",     "TouchRipple",       "Touch Ripple component.",                                                            "Utility",      "/components/touch-ripple"),
+            ("component:tour",             "Tour",              "Multi-step spotlight onboarding tour.",                                              "Overlay",      "/components/tour"),
+            ("component:transfer",         "Transfer",          "Dual-list transfer picker with left/right arrows.",                                  "Drag & Drop",  "/components/transfer"),
+            ("component:tree-select",      "TreeSelect",        "Select input with a hierarchical tree dropdown.",                                    "Forms",        "/components/tree-select"),
+            ("component:tree-view",        "TreeView",          "Hierarchical tree with expand/collapse and selection.",                              "Data Display", "/components/tree-view"),
+            ("component:watermark",        "Watermark",         "Repeating diagonal watermark overlay.",                                              "Data Display", "/components/watermark"),
+            ("component:window",           "Window",            "Non-modal draggable and resizable floating panel with minimize/maximize support.",   "Overlay",      "/components/window"),
+        };
+
+        var countPerCat = registry.GroupBy(r => r.category).ToDictionary(g => g.Key, g => g.Count());
+        var clusterIdx  = new Dictionary<string, int>();
+        const double phi = 2.3999632297286535;
+
+        foreach (var (id, title, summary, category, url) in registry)
+        {
+            if (!_clusterCenters.TryGetValue(category, out var cluster))
+                cluster = new ClusterDef(500, 280, 60);
+
+            clusterIdx.TryGetValue(category, out var idx);
+            clusterIdx[category] = idx + 1;
+
+            var total  = countPerCat.TryGetValue(category, out var ct) ? ct : 1;
+            var angle  = idx * phi;
+            var radius = cluster.R * Math.Sqrt((double)idx / Math.Max(1, total));
+            var x      = Math.Clamp(cluster.Cx + radius * Math.Cos(angle), 8, 992);
+            var y      = Math.Clamp(cluster.Cy + radius * Math.Sin(angle), 8, 552);
+
+            _constellationNodes.Add(new ConstellationNode(id, title, summary, category, url, x, y));
+        }
+    }
+
+    private async Task OnConstellationSearchInput(ChangeEventArgs e)
+    {
+        _constellationFilter = e.Value?.ToString() ?? "";
+        if (_constellationInitialized)
+        {
+            try { await JS.InvokeVoidAsync("lumeoConstellation.filter", _constellationFilter); }
+            catch (JSException) { }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    // Navigation handled by lumeoConstellation.js (window.location.assign on click/tap).
+
+    private void MoveDraggingCard(List<KanbanItem> target)
+    {
+        if (_draggingCard is null) return;
+        if (_kanbanTodo.Remove(_draggingCard)
+            || _kanbanDoing.Remove(_draggingCard)
+            || _kanbanDone.Remove(_draggingCard))
+        {
+            if (!target.Contains(_draggingCard))
+                target.Add(_draggingCard);
+        }
+        _draggingCard = null;
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()
@@ -1532,8 +1386,8 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                 await _visibilityHandle.DisposeAsync();
             }
         }
-        catch (JSDisconnectedException) { /* circuit dropped */ }
-        catch { /* swallow on teardown */ }
+        catch (JSDisconnectedException) { }
+        catch { }
         _selfRef?.Dispose();
     }
 }

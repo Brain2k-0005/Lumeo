@@ -78,3 +78,44 @@ window.lumeo.setupSearch = function () {
         if (btn) btn.click();
     });
 };
+
+// Swipable tabs for the mobile Navigation drawer.
+// Pages are stacked horizontally inside .lumeo-mobile-nav-pages with
+// scroll-snap; tab buttons programmatically scroll to their section, and
+// the scroll listener updates the active tab indicator as the user swipes.
+window.lumeo.bindMobileNavTabs = function (host) {
+    if (!host) return;
+    const nav = host.querySelector('.lumeo-mobile-nav-tabs');
+    const pages = host.querySelector('.lumeo-mobile-nav-pages');
+    if (!nav || !pages) return;
+
+    const tabs = Array.from(nav.querySelectorAll('.lumeo-mobile-nav-tab'));
+    const sections = Array.from(pages.querySelectorAll('.lumeo-mobile-nav-page'));
+
+    function setActive(idx) {
+        tabs.forEach(function (b, i) {
+            const on = i === idx;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+    }
+
+    tabs.forEach(function (btn, i) {
+        btn.addEventListener('click', function () {
+            sections[i].scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+            setActive(i);
+        });
+    });
+
+    let scrollTimer = null;
+    pages.addEventListener('scroll', function () {
+        if (scrollTimer) clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(function () {
+            const w = pages.clientWidth || 1;
+            const idx = Math.round(pages.scrollLeft / w);
+            setActive(Math.max(0, Math.min(idx, sections.length - 1)));
+        }, 90);
+    });
+
+    setActive(0);
+};
