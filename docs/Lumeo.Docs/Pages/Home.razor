@@ -1,7 +1,8 @@
 @page "/"
 @using Lumeo.Services
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <PageTitle>Lumeo — The Blazor component library you'd actually want to ship</PageTitle>
 
@@ -1388,6 +1389,21 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     // Chart cycling — hover pauses.
     private bool _chartHovered;
 
+    // Page-visibility gate. When the user switches to another tab, all timer
+    // callbacks short-circuit so we don't queue work that bursts on return
+    // (was: dozens of stale toasts + rapid chart reshuffles when refocusing).
+    // The flag is flipped from JS via the `visibilitychange` listener wired
+    // up in OnAfterRenderAsync.
+    private bool _pageVisible = true;
+    private IJSObjectReference? _visibilityHandle;
+    private DotNetObjectReference<Home>? _selfRef;
+
+    [JSInvokable]
+    public void SetPageVisibility(bool visible)
+    {
+        _pageVisible = visible;
+    }
+
     // Toast bank — cycled every 11s. Realistic dev-experience copy so the demo feels
     // like a working app, not a test harness.
     private int _toastIndex;
@@ -1408,7 +1424,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         // 2. Tabs — fixed 3s rotation.
         _timers.Add(new System.Threading.Timer(_ =>
         {
-            if (_tabsHovered) return;
+            if (_tabsHovered || !_pageVisible) return;
             var nextIx = (Array.IndexOf(_tabsValues, _tabsActive) + 1) % _tabsValues.Length;
             _tabsActive = _tabsValues[nextIx];
             InvokeAsync(StateHasChanged);
@@ -1417,7 +1433,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         // 3. Steps — 2.5s rotation, wraps 0→3→0.
         _timers.Add(new System.Threading.Timer(_ =>
         {
-            if (_stepsHovered) return;
+            if (_stepsHovered || !_pageVisible) return;
             _stepIndex = (_stepIndex + 1) % 4;
             InvokeAsync(StateHasChanged);
         }, null, 2500, 2500));
@@ -1427,7 +1443,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         //    chart types stay fixed (user wanted no Pie/Donut, no cycling).
         _timers.Add(new System.Threading.Timer(_ =>
         {
-            if (_chartHovered) return;
+            if (_chartHovered || !_pageVisible) return;
             _chartSnapshot = (_chartSnapshot + 1) % _chartSnapshots.Length;
             var snap = _chartSnapshots[_chartSnapshot];
             InvokeAsync(() =>
@@ -1448,9 +1464,11 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 
         // 5. Toasts — fire every 11s with short Duration so they come and go cleanly.
         // No hover guard: toasts already render bottom-right via the global viewport,
-        // they're not bound to a specific tile.
+        // they're not bound to a specific tile. Page-visibility guard prevents the
+        // toast queue from spamming on tab refocus.
         _timers.Add(new System.Threading.Timer(_ =>
         {
+            if (!_pageVisible) return;
             var t = _toastBank[_toastIndex];
             _toastIndex = (_toastIndex + 1) % _toastBank.Length;
             InvokeAsync(() =>
@@ -1466,11 +1484,33 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         }, null, 6000, 11000));
     }
 
-    public void Dispose()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            _visibilityHandle = await JS.InvokeAsync<IJSObjectReference>(
+                "lumeo.onPageVisibility", _selfRef, nameof(SetPageVisibility));
+        }
+        catch (JSException) { /* SSR / bUnit / prerender — visibility hook is a nice-to-have */ }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         foreach (var t in _timers) t.Dispose();
         _timers.Clear();
+        try
+        {
+            if (_visibilityHandle is not null)
+            {
+                await _visibilityHandle.InvokeVoidAsync("dispose");
+                await _visibilityHandle.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit dropped */ }
+        catch { /* swallow on teardown */ }
+        _selfRef?.Dispose();
     }
 }
-
-@inject IJSRuntime JS
