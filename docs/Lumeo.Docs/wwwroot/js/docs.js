@@ -44,6 +44,28 @@ window.lumeo.disconnectObserver = function (io) {
     if (io && typeof io.disconnect === 'function') io.disconnect();
 };
 
+// Page-visibility hook. The docs landing page runs several timers (chart
+// reshuffle 2s, toast bank 11s, tabs/steps rotation). Background tabs keep
+// firing the timers (and HTML5 spec throttles them but doesn't pause them),
+// so when the user comes back from another tab the queued work bursts —
+// toasts spam, charts cycle in fast-forward. We pause every timer while
+// the tab is hidden by gating its callback on a single _pageVisible flag,
+// kept in sync by this listener.
+//
+// Returns a disposer the caller invokes on component dispose.
+window.lumeo.onPageVisibility = function (dotNetRef, methodName) {
+    if (typeof document === 'undefined') return null;
+    const fire = () => {
+        try { dotNetRef.invokeMethodAsync(methodName, !document.hidden); } catch (_) {}
+    };
+    document.addEventListener('visibilitychange', fire);
+    // Fire once on subscribe so the C# side has the initial state.
+    fire();
+    return {
+        dispose: () => document.removeEventListener('visibilitychange', fire)
+    };
+};
+
 window.lumeo.setupSearch = function () {
     document.addEventListener('keydown', function (e) {
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
