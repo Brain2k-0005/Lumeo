@@ -423,13 +423,11 @@
                  RowSpan=2 so the globe fills a tall tile next to the PdfViewer
                  row, and Zoom=2 so the sphere itself takes more of the canvas
                  instead of floating tiny in the middle.
-                 `hidden lg:flex` keeps the entire tile out of the DOM layout
-                 on mobile/tablet — LazyRender's IntersectionObserver never
-                 fires for display:none placeholders, so MapLibre GL JS
-                 (~250 KB) is not downloaded on phones where the globe would
-                 be unusably small anyway. -->
-            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-0 overflow-hidden hidden lg:flex">
-                <div class="flex h-full flex-col overflow-hidden">
+                 Mobile gets a clamped 320 px tile (down from desktop's ~560 px)
+                 so the globe is visible but doesn't dominate the page. The
+                 heavy MapLibre bundle still defers via LazyRender. -->
+            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-0 overflow-hidden">
+                <div class="flex flex-col overflow-hidden h-[320px] lg:h-full">
                     <div class="flex-1 min-h-0 relative overflow-hidden">
                         <LazyRender Height="100%">
                             <Map Center="(20.0, 10.0)" Zoom="2" Height="100%" TileLayer="DarkMatter" Projection="globe">
@@ -463,11 +461,12 @@
             <!-- Charts — three live ECharts stacked vertically (Bar / Line /
                  Area), datasets reshuffle every ~2s in sync. Hover pauses.
                  RowSpan=2 so each chart gets ~240px height. No Pie/Donut.
-                 Hidden on mobile: three ECharts re-rendering every 2 s pegs
-                 the main thread on phones, and at 1-col width the labels
-                 collide. Desktop visitors see the showcase intact. -->
-            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-0 overflow-hidden hidden lg:flex">
-                <div class="flex h-full flex-col overflow-hidden" @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
+                 Mobile gets a clamped 360 px tile so all three charts still
+                 fit without dominating the page. ECharts handles narrow
+                 viewports gracefully thanks to the chart container's
+                 ResizeObserver. -->
+            <BentoTile Span="2" RowSpan="2" Class="border-border/60 p-0 overflow-hidden">
+                <div class="flex flex-col overflow-hidden h-[360px] lg:h-full" @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
                     <div class="flex-1 min-h-0 grid grid-rows-3 gap-2 p-3 bg-muted/10">
                         <div class="rounded-md border border-border/40 bg-card/60 p-2 min-h-0 overflow-hidden">
                             <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
@@ -496,11 +495,11 @@
                  (not max-height) so the PdfViewer's `h-full` resolves to a real
                  number; without that, its inner `flex-1 overflow-auto` document
                  area has no upper bound and the canvas can't scroll when zoomed in.
-                 Hidden on mobile: pdf.js + its worker (~150 KB) plus the PDF
-                 download itself would crater LCP on a phone, and the viewer
-                 chrome is unusable at narrow widths. -->
-            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden hidden lg:flex">
-                <div class="flex flex-col overflow-hidden" style="height:560px">
+                 Mobile gets a tighter 380 px tile so the PDF surface is browsable
+                 without taking up two phone screens. LazyRender keeps pdf.js out
+                 of the bundle until the tile is on screen. -->
+            <BentoTile Span="2" Class="border-border/60 p-0 overflow-hidden">
+                <div class="flex flex-col overflow-hidden h-[380px] lg:h-[560px]">
                     <div class="flex-1 min-h-0 overflow-hidden">
                         <LazyRender Height="100%">
                             <PdfViewer Src="https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf"

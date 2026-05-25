@@ -38,20 +38,23 @@
     {
         get
         {
-            // grid-auto-rows: 1fr keeps every row the same height so short-content tiles don't
-            // shrink and tall-content tiles don't overlap their neighbors when row spans differ.
-            var baseStyle = "grid-auto-rows: minmax(0, 1fr);";
+            // Non-standard column count — fall back to inline grid-template-columns
+            // without responsive breakpoints. (Inline styles can't carry media queries.)
             if (string.IsNullOrEmpty(ColumnsClass))
             {
-                // Non-standard column count — fall back to inline grid-template-columns
-                // without responsive breakpoints. (Inline styles can't carry media queries.)
-                baseStyle += $" grid-template-columns: repeat({Columns}, minmax(0, 1fr));";
+                return $"grid-template-columns: repeat({Columns}, minmax(0, 1fr));";
             }
-            return baseStyle;
+            return string.Empty;
         }
     }
 
-    private string RootClasses => $"grid {ColumnsClass} {GapClass} {Class}".Trim();
+    // `lg:auto-rows-fr` is what keeps mixed-RowSpan tiles aligned on desktop —
+    // every row resolves to the same fr unit so a Span=2 RowSpan=2 tile is
+    // exactly twice as tall as a single tile. On mobile we deliberately let
+    // rows size to content (`auto-rows-auto`); otherwise a stack of short
+    // KPI cards inherits the height of the tallest possible row and every
+    // stat turns into a full-screen monster on a phone.
+    private string RootClasses => $"grid {ColumnsClass} {GapClass} auto-rows-auto lg:auto-rows-fr {Class}".Trim();
 
     public enum BentoGap { Sm, Md, Lg }
 }
