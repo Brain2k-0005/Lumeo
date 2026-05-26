@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "3.2.4",
-  "generated": "2026-05-26T07:35:42.9340301Z",
+  "generated": "2026-05-26T09:23:46.5962313Z",
   "stats": {
-    "componentCount": 154,
-    "totalParameters": 3748,
-    "totalEnums": 65,
+    "componentCount": 155,
+    "totalParameters": 3767,
+    "totalEnums": 66,
     "totalRecords": 63,
     "thinFallbacks": []
   },
@@ -22447,6 +22447,226 @@
           "code": "<FileUpload\n    Multiple=\"true\"\n    Label=\"Upload files\"\n    OnUpload=\"@SimulateUpload\"\n    OnFileUploaded=\"@(item => _uploadedCount++)\"\n    OnAllUploaded=\"@(items => _allDoneMsg = $\"All {items.Count} file(s) done!\")\"  />\n\n@code {\n    private async Task<string?> SimulateUpload(\n        FileUpload.FileUploadItem item,\n        IProgress<int> progress,\n        CancellationToken ct)\n    {\n        for (int pct = 0; pct <= 100; pct += 10)\n        {\n            ct.ThrowIfCancellationRequested();\n            progress.Report(pct);\n            await Task.Delay(50, ct);\n        }\n        return $\"https://cdn.example.com/{item.Name}\";\n    }\n}"
         }
       ],
+      "subComponents": {},
+      "parseFailed": false,
+      "parseError": null
+    },
+    "FileViewer": {
+      "name": "FileViewer",
+      "category": "Data Display",
+      "subcategory": null,
+      "description": "Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.",
+      "nugetPackage": "Lumeo",
+      "files": [
+        "UI/FileViewer/FileKind.cs",
+        "UI/FileViewer/FileTypeDetector.cs",
+        "UI/FileViewer/FileViewer.razor",
+        "UI/FileViewer/FileViewerRenderContext.cs"
+      ],
+      "namespace": "Lumeo",
+      "inheritsFrom": null,
+      "implements": [
+        "IAsyncDisposable"
+      ],
+      "parameters": [
+        {
+          "name": "Src",
+          "type": "string?",
+          "default": null,
+          "description": null,
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "Kind",
+          "type": "FileKind",
+          "default": "FileKind.Auto",
+          "description": "Override detection with an explicit kind. Default Auto.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "MimeType",
+          "type": "string?",
+          "default": null,
+          "description": "Explicit MIME type from your backend (e.g. \"application/pdf\"). Wins over HEAD and extension detection but loses to an explicit Kind override.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "FileName",
+          "type": "string?",
+          "default": null,
+          "description": "Human-readable file name. Used for the toolbar label, the download attribute, and the aria-label. Falls back to the last URL path segment when not provided.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "AutoHead",
+          "type": "bool",
+          "default": null,
+          "description": "Issue a HEAD request to inspect Content-Type when neither Kind nor MimeType is set. Off by default because many CDNs and signed URLs reject HEAD with 405 / 403.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "MaxBytes",
+          "type": "long",
+          "default": "10L * 1024 * 1024",
+          "description": "Cap on the number of bytes fetched for text-based kinds (Markdown, Code, JSON, CSV, Text). Default 10 MB. Excess content is truncated and a one-line notice is appended.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "MaxCsvRows",
+          "type": "int",
+          "default": "1000",
+          "description": "Cap on the number of CSV rows rendered. Default 1000.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "ShowToolbar",
+          "type": "bool",
+          "default": "true",
+          "description": "Show the top toolbar (file name + download). Default true.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "ShowDownload",
+          "type": "bool",
+          "default": "true",
+          "description": "Show the download button in the toolbar. Default true.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "ShowFileName",
+          "type": "bool",
+          "default": "true",
+          "description": "Show the file name in the toolbar. Default true.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "HttpClient",
+          "type": "HttpClient?",
+          "default": null,
+          "description": "Plug a custom HttpClient for the text fetches. Use this to attach a pre-configured Authorization handler instead of mutating the default client. Wins over ConfigureRequest.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "ConfigureRequest",
+          "type": "Func<HttpRequestMessage, Task>?",
+          "default": null,
+          "description": "Hook to mutate the outgoing HttpRequestMessage before it's sent — typical use is adding an Authorization header for signed-but-not-presigned URLs.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "CustomRenderers",
+          "type": "IReadOnlyDictionary<FileKind, RenderFragment<FileViewerRenderContext>>?",
+          "default": null,
+          "description": "Per-kind renderer overrides. The fragment receives a FileViewerRenderContext with the resolved URL, kind, the fetched text (when applicable) and the display name. When provided for a given kind, the built-in renderer is bypassed for that kind.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "LoadingTemplate",
+          "type": "RenderFragment?",
+          "default": null,
+          "description": "Custom loading view. Default is a centered Spinner.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "OnKindDetected",
+          "type": "EventCallback<FileKind>",
+          "default": null,
+          "description": "Fires once detection settles, with the resolved kind.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "OnLoaded",
+          "type": "EventCallback",
+          "default": null,
+          "description": "Fires when the file is fully rendered (text fetched, if any).",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "OnError",
+          "type": "EventCallback<string>",
+          "default": null,
+          "description": "Fires on any detection or fetch error, with a message.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "description": null,
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "AdditionalAttributes",
+          "type": "Dictionary<string, object>?",
+          "default": null,
+          "description": null,
+          "isCascading": false,
+          "captureUnmatched": true
+        }
+      ],
+      "events": [
+        {
+          "name": "OnKindDetected",
+          "type": "EventCallback<FileKind>",
+          "description": "Fires once detection settles, with the resolved kind."
+        },
+        {
+          "name": "OnLoaded",
+          "type": "EventCallback",
+          "description": "Fires when the file is fully rendered (text fetched, if any)."
+        },
+        {
+          "name": "OnError",
+          "type": "EventCallback<string>",
+          "description": "Fires on any detection or fetch error, with a message."
+        }
+      ],
+      "enums": [
+        {
+          "name": "ViewState",
+          "values": [
+            "Detecting",
+            "Fetching",
+            "Loaded",
+            "Error"
+          ],
+          "description": null
+        }
+      ],
+      "records": [],
+      "cssVars": [
+        "--color-accent",
+        "--color-accent-foreground",
+        "--color-background",
+        "--color-border",
+        "--color-card",
+        "--color-foreground",
+        "--color-muted",
+        "--color-muted-foreground",
+        "--color-primary",
+        "--color-primary-foreground",
+        "--color-ring",
+        "--radius"
+      ],
+      "examples": [],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
