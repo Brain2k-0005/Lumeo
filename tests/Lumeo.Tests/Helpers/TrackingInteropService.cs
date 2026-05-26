@@ -125,6 +125,22 @@ public sealed class TrackingInteropService : IComponentInteropService
         _columnResizeUnregistrations.Add(handleId);
         return ValueTask.CompletedTask;
     }
+
+    private readonly List<string> _captureColumnRectsCalls = new();
+    private readonly List<(string gridId, int durationMs)> _animateColumnReorderCalls = new();
+    public IReadOnlyList<string> CaptureColumnRectsGridIds => _captureColumnRectsCalls;
+    public IReadOnlyList<(string gridId, int durationMs)> AnimateColumnReorderCalls => _animateColumnReorderCalls;
+    public ValueTask CaptureColumnRects(string gridId)
+    {
+        _captureColumnRectsCalls.Add(gridId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask AnimateColumnReorder(string gridId, int durationMs)
+    {
+        _animateColumnReorderCalls.Add((gridId, durationMs));
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
     public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterAffix(string elementId) => ValueTask.CompletedTask;
