@@ -149,6 +149,11 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler);
     ValueTask UnregisterColumnResize(string handleId);
 
+    // DataGrid Column Reorder FLIP — capture column rects before reorder,
+    // animate from old → new positions after Blazor's re-render.
+    ValueTask CaptureColumnRects(string gridId);
+    ValueTask AnimateColumnReorder(string gridId, int durationMs);
+
     // Tour
     ValueTask<ElementRect?> GetElementRectBySelector(string selector);
 

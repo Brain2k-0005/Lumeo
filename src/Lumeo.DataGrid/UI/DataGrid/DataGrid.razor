@@ -93,7 +93,7 @@
 }
 
 @{
-    RenderFragment gridRoot = @<div data-slot="datagrid" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
+    RenderFragment gridRoot = @<div data-slot="datagrid" data-grid-id="@_gridId" class="@RootCssClass" style="@HeightStyle" @attributes="AdditionalAttributes">
 
         @* Declarative column definitions *@
         <div class="hidden">@ChildContent</div>
@@ -889,6 +889,12 @@
     private bool _lastIsExpandedParam;
     private bool _fullscreenNeedsFocus;
     private ElementReference _fullscreenRef;
+
+    // FLIP-reorder: set by HandleColumnReorder after the column model has
+    // been mutated; OnAfterRenderAsync sees it set, invokes the JS animator,
+    // and clears it. Kept private — consumers don't need to influence it.
+    private bool _pendingReorderAnimation;
+    private const int ColumnReorderAnimationMs = 220;
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -1245,6 +1251,19 @@
         {
             _fullscreenNeedsFocus = false;
             try { await _fullscreenRef.FocusAsync(); } catch { /* element may not be ready */ }
+        }
+
+        // FLIP-animate the columns that just moved. HandleColumnReorder
+        // captured their pre-reorder rects before mutating _orderedColumns;
+        // now that the new layout has rendered, JS computes deltas and
+        // slides each column from its old to new position. Best-effort —
+        // a failed JS call must never wedge subsequent reorders, so it's
+        // wrapped in a try/catch and the flag is cleared unconditionally.
+        if (_pendingReorderAnimation)
+        {
+            _pendingReorderAnimation = false;
+            try { await Interop.AnimateColumnReorder(_gridId, ColumnReorderAnimationMs); }
+            catch (JSDisconnectedException) { }
         }
     }
 
@@ -2423,10 +2442,21 @@
         if (args.OldIndex < 0 || args.NewIndex < 0 || args.OldIndex >= _orderedColumns.Count || args.NewIndex >= _orderedColumns.Count)
             return;
 
+        // FLIP "First": snapshot each header's viewport rect BEFORE we
+        // mutate the column order. Reordering is followed by a Blazor
+        // re-render that snaps columns to their new positions; the
+        // matching AnimateColumnReorder call in OnAfterRenderAsync reads
+        // the new positions, computes deltas, and slides each column
+        // (header + its body cells, captured by index at snapshot time)
+        // from its old visual position to its new one.
+        try { await Interop.CaptureColumnRects(_gridId); }
+        catch (JSDisconnectedException) { }
+
         var col = _orderedColumns[args.OldIndex];
         _orderedColumns.RemoveAt(args.OldIndex);
         _orderedColumns.Insert(args.NewIndex, col);
         RefreshVisibleColumns();
+        _pendingReorderAnimation = true;
 
         // Await consumer handler so async handlers complete before we re-render.
         // Previously the returned Task was discarded which let the next
