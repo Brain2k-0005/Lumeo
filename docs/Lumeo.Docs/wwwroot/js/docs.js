@@ -14,11 +14,22 @@ window.lumeo.signalBlazorReady = function () {
 // and browser-share produce a deep link like /components/datagrid#full-featured-datagrid
 // instead of the bare route. replaceState (not pushState) keeps the back
 // button focused on real route changes rather than TOC scrolls.
+//
+// IMPORTANT: build the URL absolutely, not as bare '#id'. index.html sets
+// <base href="/">, and per the HTML spec the third argument to replaceState
+// is parsed against the document's *API base URL* (which reflects <base>),
+// so passing '#id' resolves to '/#id' — dropping users on the bare domain
+// when they later copied the URL out of a component page. Issue #41
+// reported this. Concatenating pathname + search + '#id' bypasses the
+// base-href resolution and writes the URL the comment above promises.
 window.lumeo.navScrollActiveIntoView = function (id) {
     var el = document.getElementById(id);
     if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        try { history.replaceState(null, '', '#' + id); } catch (_) { /* SSR / sandboxed */ }
+        try {
+            var pathQuery = (window.location.pathname || '/') + (window.location.search || '');
+            history.replaceState(null, '', pathQuery + '#' + id);
+        } catch (_) { /* SSR / sandboxed */ }
     }
 };
 
