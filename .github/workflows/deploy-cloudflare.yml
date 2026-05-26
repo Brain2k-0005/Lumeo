@@ -60,15 +60,16 @@ jobs:
           npm ci --no-audit --no-fund
           node run-all.mjs
 
-      - name: Publish Blazor WASM (AOT)
-        # RunAOTCompilation is enabled here (not in the csproj) so `dotnet build`
-        # in CI / E2E / dev — which don't have the wasm-tools workload installed —
-        # never sees the property and never trips the workload-required check.
-        # WasmStripILAfterAOT drops the original IL bytecode after native
-        # compilation, recovering ~30% of the AOT size cost. Trade-off: any
-        # System.Reflection.Emit usage will throw at runtime; we don't use
-        # Emit in Lumeo or its docs deps as of this commit.
-        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release -p:RunAOTCompilation=true -p:WasmStripILAfterAOT=true
+      - name: Publish Blazor WASM
+        # AOT was tried in #60 and reverted: AOT-compiled output produced a
+        # dotnet.native.wasm of ~30+ MB, which exceeds Cloudflare Pages'
+        # 25 MB per-file upload limit. Lazy-loading (#50) and the Puppeteer
+        # prerender step further down already cover the perf wins that
+        # mattered most; AOT was only a runtime accelerator on top of those.
+        # If we ever revisit AOT, the path is to either (a) wait for
+        # Cloudflare to raise the per-file limit, or (b) split the AOT'd
+        # output across multiple files via the per-assembly AOT options.
+        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
 
       - name: Rebuild Tailwind bundles into release
         # Overwrites the stale CSS that dotnet publish's static-web-asset pipeline
