@@ -170,6 +170,8 @@ public class ResponsiveServiceTests
         public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
         public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
         public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
+        public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
+        public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
         public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
         public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => ValueTask.CompletedTask;
         public ValueTask UnregisterAffix(string elementId) => ValueTask.CompletedTask;

@@ -117,6 +117,10 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
 
+    // DataGrid Column Reorder FLIP
+    public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
+    public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
+
     // Tour
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
 

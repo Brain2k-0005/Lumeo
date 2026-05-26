@@ -5,6 +5,7 @@
 
 <th data-slot="datagrid-header-cell" class="@CssClass" style="@StyleString"
     id="@CellId"
+    data-col-id="@Column.Id"
     role="columnheader"
     aria-colindex="@AriaColIndex"
     aria-sort="@AriaSort"
@@ -12,6 +13,7 @@
     @onkeydown="HandleKeyDown"
     draggable="@(IsDraggable ? "true" : "false")"
     @ondragstart="HandleDragStart"
+    @ondragend="HandleDragEnd"
     @ondragover="HandleDragOver"
     @ondragover:preventDefault="true"
     @ondrop="HandleDrop"
@@ -111,8 +113,14 @@
 
     @if (_isDragOver && EffectiveReorderable && _dropSide is not null)
     {
-        <div class="lumeo-datagrid-drop-indicator absolute top-0 bottom-0 w-0.5 bg-primary pointer-events-none"
-             style="@(_dropSide == "left" ? "left: 0;" : "right: 0;")"></div>
+        @* Drop indicator: a 4px vertical bar with primary glow that
+           materializes between the dragged column and its prospective
+           neighbour. Centred over the gap (translate -50%) so the bar
+           sits ON the seam, not flush with the column edge — much
+           easier for users to read as a slot marker than the older
+           0.5px hairline. *@
+        <div class="lumeo-datagrid-drop-indicator absolute top-0 bottom-0 w-1 bg-primary rounded-full pointer-events-none shadow-[0_0_8px_color-mix(in_oklab,var(--primary)_70%,transparent)]"
+             style="@(_dropSide == "left" ? "left: 0; transform: translateX(-50%);" : "right: 0; transform: translateX(50%);") z-index: 10;"></div>
     }
 </th>
 
@@ -201,6 +209,12 @@
     /// </summary>
     private bool EffectiveReorderable => Reorderable && Column.Reorderable;
 
+    /// <summary>True when this header is the source of an in-flight column
+    /// drag (the dragstart fired here and dragend / drop hasn't yet). Used
+    /// to dim the source th so the user can see which column is moving.</summary>
+    private bool IsDragSource =>
+        DragState?.SourceColumnId is { } src && src == Column.Id;
+
     /// <summary>True when this header is HTML5-draggable. Two reasons to drag a
     /// header: reorder columns (Reorderable, drop on another header) or add the
     /// column as a new grouping level (Groupable, drop on the group panel —
@@ -230,6 +244,10 @@
                 // leaving Groupable-only columns with the default arrow cursor that hid
                 // the drag-into-panel UX from users (2.2.2).
                 IsDraggable ? "cursor-grab" : null,
+                // Dim the dragged source header so users see at a glance which
+                // column is moving. Pairs with the drop indicator on the target
+                // to make the gesture's two endpoints visually distinct.
+                IsDragSource ? "opacity-40 transition-opacity" : null,
                 Column.HeaderCssClass,
                 Class
             }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -374,6 +392,21 @@
         // decided at the drop site.
         if (!IsDraggable || DragState is null) return;
         DragState.StartColumnDrag(ColumnIndex, Column.Id);
+    }
+
+    private void HandleDragEnd(DragEventArgs e)
+    {
+        // Fires on the SOURCE element regardless of whether the drop
+        // succeeded (drop target → ResetColumn already called) or was
+        // cancelled (Esc, drop outside any target). The handler itself is
+        // intentionally a no-op when there's no leftover state — but its
+        // presence triggers a Blazor re-render of the source cell, which
+        // clears the opacity-40 source-dim that IsDragSource toggled on.
+        // Defensive ResetColumn covers the cancel path where no drop ran.
+        if (DragState is not null && DragState.SourceColumnId == Column.Id)
+        {
+            DragState.ResetColumn();
+        }
     }
 
     private void HandleDragOver(DragEventArgs e)

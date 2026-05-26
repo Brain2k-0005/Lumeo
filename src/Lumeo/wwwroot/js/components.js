@@ -1541,6 +1541,13 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     let currentWidth = 0;
     let isDragging = false;
     let colBodyCells = [];
+    // rAF throttle: coalesce successive pointermoves into one DOM mutation
+    // per frame. Without this, a high-frequency pointer (120-240 Hz on modern
+    // touch/trackpad) triggers a full table reflow per event — visible as
+    // micro-stuttering on wide grids. One write per frame matches the
+    // refresh rate and lets the browser batch layout/paint naturally.
+    let rafId = 0;
+    let pendingWidth = 0;
 
     const min = Math.max(1, Number(minWidth) || 50);
     const max = Number(maxWidth) > 0 ? Number(maxWidth) : Number.POSITIVE_INFINITY;
@@ -1590,6 +1597,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         startX = e.clientX;
         startWidth = th.getBoundingClientRect().width;
         currentWidth = startWidth;
+        pendingWidth = startWidth;
         colBodyCells = gatherBodyCells();
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
@@ -1599,21 +1607,37 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         e.preventDefault();
         e.stopPropagation();
     };
+    const flushPendingWidth = () => {
+        rafId = 0;
+        if (!isDragging) return;
+        currentWidth = pendingWidth;
+        applyWidth(pendingWidth);
+    };
     const onPointerMove = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
         const delta = e.clientX - startX;
         let w = startWidth + delta;
         if (w < min) w = min;
         else if (w > max) w = max;
-        if (w === currentWidth) return;
-        currentWidth = w;
-        applyWidth(w);
+        if (w === pendingWidth) {
+            if (e.cancelable) e.preventDefault();
+            return;
+        }
+        pendingWidth = w;
+        if (!rafId) rafId = requestAnimationFrame(flushPendingWidth);
         // Block scroll on touch devices while actively dragging.
         if (e.cancelable) e.preventDefault();
     };
     const onPointerUp = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
         isDragging = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        // Apply any pending frame synchronously so the committed width
+        // matches what the user released on (no half-frame visual snap).
+        if (pendingWidth !== currentWidth) {
+            currentWidth = pendingWidth;
+            applyWidth(pendingWidth);
+        }
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
@@ -1623,6 +1647,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     const onPointerCancel = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
         isDragging = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
@@ -1649,6 +1674,116 @@ export function unregisterColumnResize(handleId) {
         }
         columnResizeHandlers.delete(handleId);
     }
+}
+
+// --- DataGrid Column Reorder FLIP Animation ---
+//
+// FLIP (First-Last-Invert-Play): the technique for animating layout changes
+// that the browser can't smooth on its own. Blazor rerenders the table after
+// a reorder and the columns just snap to their new positions; with this in
+// place, the consumer can capture the old positions BEFORE the rerender and
+// animate from old → new AFTER, so users see neighbour columns smoothly slide
+// into place rather than the destination just appearing.
+//
+// Stable identity for each column is the `data-col-id` attribute on the <th>
+// (the DOM `id` is index-based and changes on reorder, so it's unusable here).
+// We also pick up body cells in the same visual column by their index in the
+// header row at capture time, so they tag along with the header's animation.
+
+const columnReorderSnapshots = new Map(); // gridId -> { colId: { left, cells: [el,...] } }
+const columnReorderInFlight = new Map();  // gridId -> Set<HTMLElement> (cells with inline FLIP styles)
+
+function clearFlipStyles(cell) {
+    cell.style.transition = '';
+    cell.style.transform = '';
+    cell.style.willChange = '';
+}
+
+export function captureColumnRects(gridId) {
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    // If a previous FLIP for this grid is still mid-flight, force its
+    // cells back to identity BEFORE measuring — otherwise the rects we
+    // capture include the in-flight translateX and the next animation
+    // starts from a wrong "First". Reorders triggered faster than the
+    // animation duration are uncommon but possible (rapid drag).
+    const inFlight = columnReorderInFlight.get(gridId);
+    if (inFlight) {
+        for (const cell of inFlight) clearFlipStyles(cell);
+        columnReorderInFlight.delete(gridId);
+    }
+    const headers = grid.querySelectorAll('th[data-col-id]');
+    if (!headers.length) return;
+    const headerRow = headers[0].parentElement;
+    const tbody = grid.querySelector('table tbody');
+    const snapshot = {};
+    headers.forEach((th) => {
+        const colId = th.dataset.colId;
+        if (!colId) return;
+        const colIdx = Array.prototype.indexOf.call(headerRow.children, th);
+        const cells = [th];
+        if (tbody && colIdx >= 0) {
+            for (const row of tbody.rows) {
+                if (row.children[colIdx]) cells.push(row.children[colIdx]);
+            }
+        }
+        snapshot[colId] = { left: th.getBoundingClientRect().left, cells };
+    });
+    columnReorderSnapshots.set(gridId, snapshot);
+}
+
+export function animateColumnReorder(gridId, durationMs) {
+    const snapshot = columnReorderSnapshots.get(gridId);
+    columnReorderSnapshots.delete(gridId);
+    if (!snapshot) return;
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    const duration = Number(durationMs) > 0 ? Number(durationMs) : 200;
+
+    const headers = grid.querySelectorAll('th[data-col-id]');
+    const inFlight = new Set();
+    headers.forEach((th) => {
+        const colId = th.dataset.colId;
+        const snap = snapshot[colId];
+        if (!snap) return;
+        const newLeft = th.getBoundingClientRect().left;
+        const delta = snap.left - newLeft;
+        if (Math.abs(delta) < 1) return;
+
+        // Inverse-translate header + cached body cells to their previous
+        // visual position, then animate transform back to 0 on the next
+        // frame. The cells array was captured at snapshot time, so it
+        // refers to the SAME DOM nodes — the column's body cells move with
+        // their header even though the DOM order under tbody changed.
+        for (const cell of snap.cells) {
+            cell.style.transition = 'none';
+            cell.style.transform = `translateX(${delta}px)`;
+            cell.style.willChange = 'transform';
+            inFlight.add(cell);
+        }
+        // Force layout flush so the inverse transform is registered before
+        // we kick off the transition. Reading offsetWidth from any one cell
+        // is enough — it's a synchronous reflow trigger.
+        // eslint-disable-next-line no-unused-expressions
+        th.offsetWidth;
+        for (const cell of snap.cells) {
+            cell.style.transition = `transform ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+            cell.style.transform = '';
+        }
+    });
+    if (inFlight.size === 0) return;
+    columnReorderInFlight.set(gridId, inFlight);
+    // Clear inline styles after the transition so they don't leak into
+    // the next reorder. setTimeout (not transitionend) keeps the cleanup
+    // O(1) listeners regardless of cell count.
+    window.setTimeout(() => {
+        // Only clear cells we still own — captureColumnRects may have
+        // pre-emptively cleared them already if a new reorder kicked in.
+        const owned = columnReorderInFlight.get(gridId);
+        if (owned !== inFlight) return;
+        for (const cell of inFlight) clearFlipStyles(cell);
+        columnReorderInFlight.delete(gridId);
+    }, duration + 50);
 }
 
 // --- File Download ---

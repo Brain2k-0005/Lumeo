@@ -593,6 +593,20 @@ public sealed class ComponentInteropService : IComponentInteropService
     [JSInvokable]
     public async Task OnColumnResizeCommit(string handleId, double finalWidth) => await _resize.OnColumnResizeCommit(handleId, finalWidth);
 
+    // --- DataGrid Column Reorder FLIP Animation ---
+
+    public async ValueTask CaptureColumnRects(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("captureColumnRects", gridId);
+    }
+
+    public async ValueTask AnimateColumnReorder(string gridId, int durationMs)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("animateColumnReorder", gridId, durationMs);
+    }
+
     // --- Tour: Element Rect By Selector ---
 
     public async ValueTask<ElementRect?> GetElementRectBySelector(string selector)
