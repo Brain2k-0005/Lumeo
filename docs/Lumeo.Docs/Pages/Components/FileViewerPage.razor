@@ -1,0 +1,297 @@
+@page "/components/file-viewer"
+
+<PageTitle>File Viewer — Lumeo</PageTitle>
+
+<PageHeader Title="File Viewer"
+            Description="Universal preview surface — detects the file type from MIME / extension and renders inline: PDF, images, video, audio, Markdown, source code, JSON, CSV, and plain text. Unknown types fall back to a download CTA. One component replaces a stack of bespoke per-type renderers." />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Satellite package.</strong> The FileViewer lives in
+        <Code>Lumeo.FileViewer</Code> — install it alongside the core <Code>Lumeo</Code>
+        package. It transitively pulls <Code>Lumeo.PdfViewer</Code>
+        (for the PDF kind) and <Code>Lumeo.CodeEditor</Code> (for the Code / JSON
+        kinds), so a single install covers every supported preview.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Document or attachment lists where each row links to a heterogeneous file (PDF report, screenshot, CSV export, README)</li>
+        <li>File managers / DMS surfaces that need a quick preview pane next to the tree</li>
+        <li>Audit / compliance flows where the user has to inspect the actual content before approving an action</li>
+        <li>Ticketing systems where customers attach mixed-format evidence</li>
+        <li>Anywhere consumers would otherwise build a switch over Pdf / Image / Video / Markdown viewers by hand</li>
+    </ul>
+</div>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="how-detection-works" Level="2" Class="scroll-mt-20">How Detection Works</Heading>
+    <p class="text-sm text-muted-foreground">
+        Resolution runs in this order — each step wins over the next:
+    </p>
+    <ol class="list-decimal list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Explicit <Code>Kind</Code> parameter (anything other than <Code>Auto</Code> short-circuits)</li>
+        <li>Explicit <Code>MimeType</Code> parameter (most reliable for blob URLs / signed URLs where the extension is hidden)</li>
+        <li>Optional <Code>HEAD</Code> request <Code>Content-Type</Code> — off by default (<Code>AutoHead="true"</Code> to enable) because many CDNs reject HEAD with 405</li>
+        <li>URL extension — the last-resort guess from the path segment</li>
+    </ol>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+
+    <ComponentDemo Title="Auto-detection" Code="@_autoCode">
+        <Stack Gap="4">
+            <div>
+                <p class="text-xs text-muted-foreground mb-2">PDF — extension <Code>.pdf</Code></p>
+                <FileViewer Src="@SamplePdfUrl" Class="h-[420px]" />
+            </div>
+            <div>
+                <p class="text-xs text-muted-foreground mb-2">Image — extension <Code>.png</Code></p>
+                <FileViewer Src="@SampleImageUrl" Class="h-[320px]" />
+            </div>
+            <div>
+                <p class="text-xs text-muted-foreground mb-2">Markdown — extension <Code>.md</Code></p>
+                <FileViewer Src="@SampleMarkdownUrl" Class="h-[420px]" />
+            </div>
+            <div>
+                <p class="text-xs text-muted-foreground mb-2">CSV — extension <Code>.csv</Code></p>
+                <FileViewer Src="@SampleCsvUrl" Class="h-[360px]" />
+            </div>
+            <div>
+                <p class="text-xs text-muted-foreground mb-2">Source code — extension <Code>.cs</Code></p>
+                <FileViewer Src="@SampleCodeUrl" FileName="Program.cs" Class="h-[360px]" />
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Explicit Kind override" Code="@_kindOverrideCode">
+        <Stack Gap="3">
+            <p class="text-xs text-muted-foreground">
+                Force a kind when the URL has no extension (typical for blob / signed URLs).
+            </p>
+            <FileViewer Src="@SamplePdfUrl"
+                        Kind="FileKind.Pdf"
+                        FileName="report.pdf"
+                        Class="h-[400px]" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Explicit MimeType" Code="@_mimeOverrideCode">
+        <Stack Gap="3">
+            <p class="text-xs text-muted-foreground">
+                Provide MIME from your backend metadata response — most reliable for opaque URLs.
+            </p>
+            <FileViewer Src="@SampleImageUrl"
+                        MimeType="image/png"
+                        FileName="screenshot.png"
+                        Class="h-[320px]" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Kind detected callback" Code="@_kindCallbackCode">
+        <Stack Gap="3">
+            <FileViewer Src="@_callbackSrc"
+                        OnKindDetected="HandleKindDetected"
+                        Class="h-[320px]" />
+            @if (_lastDetectedKind is not null)
+            {
+                <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true">
+                    <ChildContent>
+                        Detected kind: <Code>FileKind.@_lastDetectedKind</Code>
+                    </ChildContent>
+                </Alert>
+            }
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Unknown type falls back to download" Code="@_unknownCode">
+        <FileViewer Src="https://example.com/archive.zip"
+                    FileName="archive.zip"
+                    Class="h-[320px]" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Error handling" Code="@_errorCode">
+        <Stack Gap="3">
+            <FileViewer Src="https://lumeo.invalid/does-not-exist.csv"
+                        OnError="HandleError"
+                        Class="h-[280px]" />
+            @if (_errorMessage is not null)
+            {
+                <Alert Variant="Alert.AlertVariant.Destructive" ShowIcon="true">
+                    <ChildContent>
+                        <div class="font-medium">Error caught by parent</div>
+                        <div class="text-xs opacity-80 mt-1 font-mono break-all line-clamp-2">@TruncateError(_errorMessage)</div>
+                    </ChildContent>
+                </Alert>
+            }
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Chromeless embed (toolbar hidden)" Code="@_chromelessCode">
+        <FileViewer Src="@SampleImageUrl"
+                    ShowToolbar="false"
+                    Class="h-[320px]" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom renderer for a kind" Code="@_customRendererCode">
+        <FileViewer Src="@SampleImageUrl"
+                    CustomRenderers="_imageRenderer"
+                    Class="h-[320px]" />
+    </ComponentDemo>
+
+</Stack>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="auth-and-fetch" Level="2" Class="scroll-mt-20">Auth-Aware Fetching</Heading>
+    <p class="text-sm text-muted-foreground">
+        Text-based kinds (Markdown, Code, JSON, CSV, Text) are fetched via <Code>HttpClient</Code>.
+        For signed-but-not-presigned URLs you have three knobs:
+    </p>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li><Code>HttpClient="..."</Code> — pass a pre-configured client (with handlers attached) directly</li>
+        <li><Code>ConfigureRequest="..."</Code> — mutate the outgoing <Code>HttpRequestMessage</Code> per call (typical for <Code>Authorization</Code> headers)</li>
+        <li>Register <Code>HttpClient</Code> in DI — picked up automatically (the standard Blazor WASM pattern)</li>
+    </ul>
+
+    <Heading Id="safety-limits" Level="2" Class="scroll-mt-20 mt-8">Safety Limits</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li><Code>MaxBytes</Code> (default 10 MB) — refused upfront via <Code>Content-Length</Code> when known, truncated mid-stream otherwise. No 100 MB OOMs.</li>
+        <li><Code>MaxCsvRows</Code> (default 1000) — CSV parser stops after this many rows and adds a truncation notice.</li>
+        <li>Markdown is rendered with <Code>.DisableHtml()</Code> — raw <Code>&lt;script&gt;</Code> / <Code>&lt;iframe&gt;</Code> in user-supplied <Code>.md</Code> never reach the DOM.</li>
+        <li>SVG renders via <Code>&lt;img&gt;</Code> (not inline) — embedded scripts in SVG can't execute.</li>
+        <li>In-flight fetches are cancelled via <Code>CancellationToken</Code> when <Code>Src</Code> changes.</li>
+    </ul>
+
+    <Heading Id="accessibility" Level="2" Class="scroll-mt-20 mt-8">Accessibility</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Body region wears <Code>role="document"</Code> with an <Code>aria-label</Code> derived from the file name or kind.</li>
+        <li>Loading + error states announce via the default <Code>Spinner</Code> / <Code>EmptyState</Code> components (both come pre-wired with <Code>aria-live</Code>).</li>
+        <li>Video / audio kinds use native browser controls with their built-in keyboard handling.</li>
+        <li>The download anchor is keyboard-reachable with a visible focus ring on the toolbar.</li>
+    </ul>
+</div>
+
+@code {
+    // CORS-friendly samples; small enough to keep the demo page snappy.
+    private const string SamplePdfUrl = "https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf";
+    private const string SampleImageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/400px-PNG_transparency_demonstration_1.png";
+    private const string SampleMarkdownUrl = "https://raw.githubusercontent.com/octocat/Hello-World/master/README";
+    private const string SampleCsvUrl = "https://raw.githubusercontent.com/datasets/population/master/data/population.csv";
+    private const string SampleCodeUrl = "https://raw.githubusercontent.com/dotnet/runtime/main/src/libraries/System.Linq/src/System/Linq/Enumerable.cs";
+
+    private string _callbackSrc = SamplePdfUrl;
+    private FileKind? _lastDetectedKind;
+    private string? _errorMessage;
+
+    private void HandleKindDetected(FileKind kind) => _lastDetectedKind = kind;
+    private void HandleError(string msg) => _errorMessage = msg;
+
+    private static string TruncateError(string msg)
+    {
+        var firstLine = msg.Split('\n')[0];
+        var idx = firstLine.IndexOf(" at ", StringComparison.Ordinal);
+        if (idx > 0) firstLine = firstLine[..idx];
+        return firstLine.Length > 140 ? firstLine[..140] + "…" : firstLine;
+    }
+
+    // Per-kind override: render images inside a styled frame instead of the
+    // built-in plain <img>. Keys are FileKind, values are RenderFragment<ctx>.
+    private readonly IReadOnlyDictionary<FileKind, RenderFragment<FileViewerRenderContext>> _imageRenderer =
+        new Dictionary<FileKind, RenderFragment<FileViewerRenderContext>>
+        {
+            [FileKind.Image] = ctx => __builder =>
+            {
+                __builder.OpenElement(0, "div");
+                __builder.AddAttribute(1, "class", "flex h-full items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10 p-6");
+                __builder.OpenElement(2, "img");
+                __builder.AddAttribute(3, "src", ctx.Src);
+                __builder.AddAttribute(4, "alt", ctx.FileName ?? "image");
+                __builder.AddAttribute(5, "class", "max-h-full max-w-full rounded-lg shadow-2xl ring-1 ring-border");
+                __builder.CloseElement();
+                __builder.CloseElement();
+            },
+        };
+
+    private const string _autoCode = """
+@* Detection from URL extension *@
+<FileViewer Src="https://example.com/report.pdf"     Class="h-[420px]" />
+<FileViewer Src="https://example.com/photo.png"      Class="h-[320px]" />
+<FileViewer Src="https://example.com/README.md"      Class="h-[420px]" />
+<FileViewer Src="https://example.com/data.csv"       Class="h-[360px]" />
+<FileViewer Src="https://example.com/Program.cs"     FileName="Program.cs" Class="h-[360px]" />
+""";
+
+    private const string _kindOverrideCode = """
+@* Blob URL has no extension — force the kind explicitly *@
+<FileViewer Src="@_blobUrl"
+            Kind="FileKind.Pdf"
+            FileName="report.pdf"
+            Class="h-[400px]" />
+""";
+
+    private const string _mimeOverrideCode = """
+@* Backend already knows the MIME; pass it to skip extension detection *@
+<FileViewer Src="@_url"
+            MimeType="image/png"
+            FileName="screenshot.png"
+            Class="h-[320px]" />
+""";
+
+    private const string _kindCallbackCode = """
+<FileViewer Src="@_url"
+            OnKindDetected="HandleKindDetected"
+            Class="h-[320px]" />
+
+@code {
+    private FileKind? _detected;
+    private void HandleKindDetected(FileKind kind) => _detected = kind;
+}
+""";
+
+    private const string _unknownCode = """
+@* ZIPs aren't previewable — falls back to a Download CTA *@
+<FileViewer Src="https://example.com/archive.zip"
+            FileName="archive.zip"
+            Class="h-[320px]" />
+""";
+
+    private const string _errorCode = """
+<FileViewer Src="https://lumeo.invalid/does-not-exist.csv"
+            OnError="HandleError"
+            Class="h-[280px]" />
+
+@code {
+    private string? _errorMessage;
+    private void HandleError(string msg) => _errorMessage = msg;
+}
+""";
+
+    private const string _chromelessCode = """
+<FileViewer Src="@_imageUrl"
+            ShowToolbar="false"
+            Class="h-[320px]" />
+""";
+
+    private const string _customRendererCode = """
+<FileViewer Src="@_imageUrl"
+            CustomRenderers="_renderers"
+            Class="h-[320px]" />
+
+@code {
+    // Override the Image kind with a styled frame; built-in renderers stay
+    // active for every other kind.
+    private readonly Dictionary<FileKind, RenderFragment<FileViewerRenderContext>> _renderers = new()
+    {
+        [FileKind.Image] = ctx =>
+            @<div class="flex h-full items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10 p-6">
+                <img src="@ctx.Src"
+                     alt="@(ctx.FileName ?? "image")"
+                     class="max-h-full max-w-full rounded-lg shadow-2xl ring-1 ring-border" />
+            </div>,
+    };
+}
+""";
+
+}
