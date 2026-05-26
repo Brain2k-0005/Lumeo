@@ -12,7 +12,13 @@
                  style="scrollbar-width: thin;">
                 @foreach (var h in _headings)
                 {
-                    <a href="@($"#{h.Id}")"
+                    @* href must embed the current path. With <base href="/">, a bare
+                       "#id" resolves against the base URL — i.e. right-click → "Copy
+                       Link Address" shows "/#id" instead of "/components/datagrid#id".
+                       Click-time scroll still goes through @onclick (preventDefault),
+                       so the visible href is only used by the browser's copy-link
+                       affordance and crawlers. *@
+                    <a href="@($"{LocalPath}#{h.Id}")"
                        @onclick:preventDefault
                        @onclick="() => ScrollTo(h.Id)"
                        class="@LinkClass(h)"
@@ -37,6 +43,27 @@
     private CancellationTokenSource? _scanCts;
 
     [Inject] NavigationManager Nav { get; set; } = default!;
+
+    // Absolute-from-origin path of the current document — used to build the
+    // TOC anchor hrefs explicitly so the browser's "Copy Link Address" gives
+    // the deep link instead of the base-resolved "/#section" form (see #41).
+    private string LocalPath
+    {
+        get
+        {
+            try
+            {
+                var uri = new Uri(Nav.Uri);
+                var path = uri.AbsolutePath;
+                if (string.IsNullOrEmpty(path)) path = "/";
+                return path + uri.Query;
+            }
+            catch
+            {
+                return "/";
+            }
+        }
+    }
 
     protected override void OnInitialized()
     {
