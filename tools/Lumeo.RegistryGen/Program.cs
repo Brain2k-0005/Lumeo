@@ -15,24 +15,36 @@ var repoRoot = FindRepoRoot(Environment.CurrentDirectory)
 // stale rc.NN label across releases — read it instead so they can't.
 var lumeoVersion = ReadLockstepVersion(repoRoot);
 
-// Scan core + every satellite package's UI directory. The 2.0-rc.15 split
-// moved Chart/DataGrid/RichTextEditor/Scheduler/Gantt out of src/Lumeo/UI/
-// into their own satellite folders — without including those, the
-// registry would silently miss 7 components and `lumeo add chart` would
-// fail with a 404.
-var uiRoots = new[]
+// Scan core + every satellite package's UI directory. Discovery is automatic:
+// any directory matching src/Lumeo*/UI is included, so adding a new satellite
+// (e.g. Lumeo.FileViewer) doesn't need a hand-edit here. Before auto-discovery
+// the list was hardcoded — when src/Lumeo.PdfViewer was added without
+// updating this array, its component silently disappeared from the registry
+// and `lumeo add pdf-viewer` returned 404 for two patch versions.
+//
+// Excludes: SourceGenerators (no UI), test/template/tooling projects.
+var srcDir = Path.Combine(repoRoot, "src");
+var uiRoots = Directory
+    .EnumerateDirectories(srcDir, "Lumeo*", SearchOption.TopDirectoryOnly)
+    .Where(d =>
+    {
+        var name = Path.GetFileName(d);
+        if (string.Equals(name, "Lumeo.SourceGenerators", StringComparison.OrdinalIgnoreCase)) return false;
+        return Directory.Exists(Path.Combine(d, "UI"));
+    })
+    .Select(d => Path.Combine(d, "UI"))
+    // Stable ordering: core first, then satellites alphabetically. Keeps
+    // registry diffs reviewable across runs.
+    .OrderBy(p => Path.GetFileName(Path.GetDirectoryName(p)!) == "Lumeo" ? 0 : 1)
+    .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+
+if (uiRoots.Length == 0)
 {
-    Path.Combine(repoRoot, "src", "Lumeo", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.Charts", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.CodeEditor", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.DataGrid", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.Editor", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.Scheduler", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.Gantt", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.Motion", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.PdfViewer", "UI"),
-    Path.Combine(repoRoot, "src", "Lumeo.Maps", "UI"),
-};
+    Console.Error.WriteLine($"No UI roots discovered under {srcDir}.");
+    return 1;
+}
+Console.WriteLine($"Discovered {uiRoots.Length} UI root(s): {string.Join(", ", uiRoots.Select(r => Path.GetRelativePath(repoRoot, r)))}");
 
 var outputDir = Path.Combine(repoRoot, "src", "Lumeo", "registry");
 var outputPath = Path.Combine(outputDir, "registry.json");
@@ -228,6 +240,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Highlighter"] = "Typography",
     ["FileManager"] = "Data Display",
     ["PdfViewer"] = "Data Display",
+    ["FileViewer"] = "Data Display",
     ["QueryBuilder"] = "Forms",
     // Navigation
     ["Tabs"] = "Navigation",
@@ -317,6 +330,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Highlighter"] = "Wraps occurrences of one or more search terms in the text with highlight marks.",
     ["FileManager"] = "Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.",
     ["PdfViewer"] = "Inline PDF document viewer powered by pdf.js — page navigation, zoom controls, optional text search, and download.",
+    ["FileViewer"] = "Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.",
     ["QueryBuilder"] = "Visual AND/OR predicate-tree builder; serializes to JSON or a LINQ predicate.",
     ["Toolbar"] = "Horizontal toolbar container with separator, spacer, and group sub-components.",
     ["AppBar"] = "Top application bar with start, center, and end slots; sticky and elevated variants.",
@@ -553,6 +567,26 @@ var componentDirs = uiRoots
     .ToArray();
 var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+// Validation: surface orphan entries in the hand-maintained maps. The Motion
+// satellite once had 30+ entries in componentToPackage for components whose
+// UI dirs hadn't been added to src/Lumeo.Motion/UI/ yet — those entries
+// looked like real components in code review but produced no registry rows.
+// Mapping a non-existent name is usually a typo or a stale aspirational
+// entry; warn (don't fail) so the developer can fix or remove it.
+var orphans = componentToPackage.Keys
+    .Concat(categoryMap.Keys)
+    .Concat(descriptions.Keys)
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .Where(name => !knownComponentNames.Contains(name))
+    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+if (orphans.Length > 0)
+{
+    Console.Error.WriteLine($"[registry-gen] WARNING: {orphans.Length} hand-maintained map entries point at names with no UI directory:");
+    foreach (var o in orphans) Console.Error.WriteLine($"  - {o}");
+    Console.Error.WriteLine("[registry-gen] Either add the component dir under the satellite's UI/ folder, or remove the stale entry from Program.cs.");
+}
+
 var components = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
 foreach (var dir in componentDirs)
@@ -644,7 +678,17 @@ foreach (var dir in componentDirs)
         ["description"] = description,
         ["thumbnail"] = $"/preview-cards/{ToKebabCase(name)}.png",
         ["hasDocsPage"] = hasDocsPage,
-        ["nugetPackage"] = componentToPackage.TryGetValue(name, out var pkg) ? pkg : "Lumeo",
+        // Resolution order:
+        //   1. Explicit componentToPackage override (legacy / cross-cutting cases).
+        //   2. Derived from the satellite folder name — anything under
+        //      src/Lumeo.Foo/UI/ maps to "Lumeo.Foo" automatically, so adding a
+        //      new satellite needs no edit here.
+        //   3. Fallback "Lumeo" (core).
+        ["nugetPackage"] = componentToPackage.TryGetValue(name, out var pkg)
+            ? pkg
+            : (Path.GetFileName(packageSrcRoot) is { Length: > 0 } folder && folder.StartsWith("Lumeo.", StringComparison.Ordinal)
+                ? folder
+                : "Lumeo"),
         ["files"] = files,
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
         ["packageDependencies"] = packageDeps.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
