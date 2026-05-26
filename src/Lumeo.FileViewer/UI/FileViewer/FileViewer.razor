@@ -1,0 +1,715 @@
+@namespace Lumeo
+@using System.Globalization
+@using System.Net.Http
+@using System.Net.Http.Headers
+@using System.Text
+@using System.Text.Json
+@using System.Threading
+@using Markdig
+@implements IAsyncDisposable
+
+@*
+    FileViewer — universal preview component.
+
+    Resolution order for FileKind:
+      1. Explicit Kind parameter (anything other than Auto wins immediately).
+      2. Explicit MimeType parameter (consumer's authoritative MIME, typically
+         from a backend metadata response — most reliable for signed URLs and
+         blob URLs where the extension is hidden).
+      3. HEAD request Content-Type (only when AutoHead=true; off by default
+         because many CDNs and signed URLs reject HEAD with 405).
+      4. URL extension (last-resort guess from the path segment).
+
+    Rendering is by kind:
+      - Pdf      → Lumeo.PdfViewer (full toolbar inside; ShowToolbar=false on this wrapper)
+      - Image    → <img> with object-contain; SVG also via <img> (NOT inline,
+                   to avoid XSS through embedded <script>).
+      - Video    → <video controls>
+      - Audio    → <audio controls>
+      - Markdown → Markdig render with HTML disabled (no raw <script>/<iframe>)
+      - Code     → Lumeo.CodeEditor read-only with detected language
+      - Json     → CodeEditor read-only, pretty-printed when valid
+      - Csv      → simple parsed <table> (caps at MaxCsvRows for safety)
+      - Text     → <pre> with the raw content
+      - Unknown  → EmptyState + Download CTA
+
+    Text-based kinds (Markdown/Code/Json/Csv/Text) fetch via HttpClient. The
+    consumer can:
+      - Pass a custom HttpClient via HttpClient= (most explicit)
+      - Hook ConfigureRequest= to add auth headers on the default client
+      - Register HttpClient / IHttpClientFactory in DI (standard Blazor)
+
+    All fetches honour MaxBytes (default 10 MB) so a misconfigured signed URL
+    can't OOM the browser. Switching Src cancels any in-flight fetch.
+*@
+
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    @if (ShowToolbar && _resolvedKind != FileKind.Pdf)
+    {
+        @* PDF kind delegates to PdfViewer which has its own toolbar.
+           Suppressing this one prevents a double-toolbar stack. *@
+        <div class="flex items-center justify-between gap-2 border-b border-border/40 bg-background/60 px-3 py-2">
+            <div class="flex min-w-0 items-center gap-2">
+                <span class="shrink-0 text-muted-foreground" aria-hidden="true">
+                    <Blazicon Svg="@KindIcon" class="h-4 w-4" />
+                </span>
+                @if (ShowFileName && !string.IsNullOrEmpty(DisplayName))
+                {
+                    <span class="truncate text-sm text-foreground" title="@DisplayName">@DisplayName</span>
+                }
+                else
+                {
+                    <span class="text-sm text-muted-foreground">@KindLabel</span>
+                }
+            </div>
+            <div class="flex items-center gap-1">
+                @if (ShowDownload && !string.IsNullOrEmpty(Src))
+                {
+                    <a href="@Src"
+                       download="@DisplayName"
+                       target="_blank"
+                       rel="noopener"
+                       class="@NavBtnClass"
+                       aria-label="Download file">
+                        <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
+                    </a>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="@BodyClass" role="document" aria-label="@(DisplayName ?? KindLabel)">
+        @if (string.IsNullOrWhiteSpace(Src))
+        {
+            <EmptyState Class="py-12"
+                        Title="No file"
+                        Description="Set the Src parameter to a file URL to display its contents.">
+                <IconContent>
+                    <Blazicon Svg="Lucide.File" class="h-10 w-10" />
+                </IconContent>
+            </EmptyState>
+        }
+        else if (_state == ViewState.Detecting || _state == ViewState.Fetching)
+        {
+            @if (LoadingTemplate is not null)
+            {
+                @LoadingTemplate
+            }
+            else
+            {
+                <div class="flex min-h-[200px] items-center justify-center">
+                    <Spinner />
+                </div>
+            }
+        }
+        else if (_state == ViewState.Error)
+        {
+            <EmptyState Class="py-12"
+                        Title="Could not display file"
+                        Description="@_errorMessage">
+                <IconContent>
+                    <Blazicon Svg="Lucide.FileX" class="h-10 w-10" />
+                </IconContent>
+            </EmptyState>
+        }
+        else if (CustomRenderers is not null && CustomRenderers.TryGetValue(_resolvedKind, out var custom))
+        {
+            @custom(new FileViewerRenderContext(Src!, _resolvedKind, _fetchedText, DisplayName))
+        }
+        else
+        {
+            @switch (_resolvedKind)
+            {
+                case FileKind.Pdf:
+                    <PdfViewer Src="@Src"
+                               ShowToolbar="@ShowToolbar"
+                               ShowDownload="@ShowDownload"
+                               OnError="HandleChildError"
+                               Class="h-full border-0 rounded-none" />
+                    break;
+                case FileKind.Image:
+                    <div class="flex h-full min-h-[200px] items-center justify-center p-4">
+                        <img src="@Src"
+                             alt="@(DisplayName ?? "Image")"
+                             class="max-h-full max-w-full object-contain"
+                             @onerror="HandleImageError" />
+                    </div>
+                    break;
+                case FileKind.Video:
+                    <div class="flex h-full min-h-[200px] items-center justify-center bg-black/90 p-2">
+                        <video src="@Src"
+                               controls
+                               preload="metadata"
+                               class="max-h-full max-w-full"
+                               aria-label="@(DisplayName ?? "Video")">
+                            Your browser does not support video playback.
+                        </video>
+                    </div>
+                    break;
+                case FileKind.Audio:
+                    <div class="flex h-full min-h-[120px] items-center justify-center p-6">
+                        <audio src="@Src"
+                               controls
+                               preload="metadata"
+                               class="w-full max-w-md"
+                               aria-label="@(DisplayName ?? "Audio")">
+                            Your browser does not support audio playback.
+                        </audio>
+                    </div>
+                    break;
+                case FileKind.Markdown:
+                    @* lumeo-markdown wrapper picks up the typography rules in
+                       _content/Lumeo.FileViewer/css/file-viewer.css. Without
+                       that stylesheet the content still renders via the user-
+                       agent stylesheet (headings + spacing) — readable, just
+                       less polished. *@
+                    <div class="lumeo-markdown px-6 py-4 text-sm text-foreground">
+                        @((MarkupString)(_renderedMarkdown ?? string.Empty))
+                    </div>
+                    break;
+                case FileKind.Code:
+                case FileKind.Json:
+                    <CodeEditor Value="@_fetchedText"
+                                Language="@_codeLanguage"
+                                ReadOnly="true"
+                                LineNumbers="true"
+                                Height="100%"
+                                Class="h-full border-0 rounded-none" />
+                    break;
+                case FileKind.Csv:
+                    @RenderCsv()
+                    break;
+                case FileKind.Text:
+                    <pre class="h-full overflow-auto whitespace-pre-wrap break-words bg-background px-4 py-3 text-xs text-foreground">@_fetchedText</pre>
+                    break;
+                default:
+                    <EmptyState Class="py-12"
+                                Title="Preview unavailable"
+                                Description="This file type cannot be previewed inline.">
+                        <IconContent>
+                            <Blazicon Svg="Lucide.File" class="h-10 w-10" />
+                        </IconContent>
+                        <Action>
+                            @if (!string.IsNullOrEmpty(Src))
+                            {
+                                <a href="@Src"
+                                   download="@DisplayName"
+                                   target="_blank"
+                                   rel="noopener"
+                                   class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring">
+                                    <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
+                                    <span>Download</span>
+                                </a>
+                            }
+                        </Action>
+                    </EmptyState>
+                    break;
+            }
+        }
+    </div>
+</div>
+
+@inject IServiceProvider Services
+@inject IJSRuntime JS
+
+@code {
+    [Parameter, EditorRequired] public string? Src { get; set; }
+
+    /// <summary>Override detection with an explicit kind. Default <see cref="FileKind.Auto"/>.</summary>
+    [Parameter] public FileKind Kind { get; set; } = FileKind.Auto;
+
+    /// <summary>
+    /// Explicit MIME type from your backend (e.g. <c>"application/pdf"</c>).
+    /// Wins over HEAD and extension detection but loses to an explicit
+    /// <see cref="Kind"/> override.
+    /// </summary>
+    [Parameter] public string? MimeType { get; set; }
+
+    /// <summary>
+    /// Human-readable file name. Used for the toolbar label, the download
+    /// attribute, and the <c>aria-label</c>. Falls back to the last URL path
+    /// segment when not provided.
+    /// </summary>
+    [Parameter] public string? FileName { get; set; }
+
+    /// <summary>
+    /// Issue a HEAD request to inspect <c>Content-Type</c> when neither
+    /// <see cref="Kind"/> nor <see cref="MimeType"/> is set. Off by default
+    /// because many CDNs and signed URLs reject HEAD with 405 / 403.
+    /// </summary>
+    [Parameter] public bool AutoHead { get; set; }
+
+    /// <summary>
+    /// Cap on the number of bytes fetched for text-based kinds (Markdown,
+    /// Code, JSON, CSV, Text). Default 10 MB. Excess content is truncated and
+    /// a one-line notice is appended.
+    /// </summary>
+    [Parameter] public long MaxBytes { get; set; } = 10L * 1024 * 1024;
+
+    /// <summary>Cap on the number of CSV rows rendered. Default 1000.</summary>
+    [Parameter] public int MaxCsvRows { get; set; } = 1000;
+
+    /// <summary>Show the top toolbar (file name + download). Default true.</summary>
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+
+    /// <summary>Show the download button in the toolbar. Default true.</summary>
+    [Parameter] public bool ShowDownload { get; set; } = true;
+
+    /// <summary>Show the file name in the toolbar. Default true.</summary>
+    [Parameter] public bool ShowFileName { get; set; } = true;
+
+    /// <summary>
+    /// Plug a custom <see cref="HttpClient"/> for the text fetches. Use this
+    /// to attach a pre-configured Authorization handler instead of mutating
+    /// the default client. Wins over <see cref="ConfigureRequest"/>.
+    /// </summary>
+    [Parameter] public HttpClient? HttpClient { get; set; }
+
+    /// <summary>
+    /// Hook to mutate the outgoing <see cref="HttpRequestMessage"/> before
+    /// it's sent — typical use is adding an <c>Authorization</c> header for
+    /// signed-but-not-presigned URLs.
+    /// </summary>
+    [Parameter] public Func<HttpRequestMessage, Task>? ConfigureRequest { get; set; }
+
+    /// <summary>
+    /// Per-kind renderer overrides. The fragment receives a
+    /// <see cref="FileViewerRenderContext"/> with the resolved URL, kind, the
+    /// fetched text (when applicable) and the display name. When provided for
+    /// a given kind, the built-in renderer is bypassed for that kind.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<FileKind, RenderFragment<FileViewerRenderContext>>? CustomRenderers { get; set; }
+
+    /// <summary>Custom loading view. Default is a centered Spinner.</summary>
+    [Parameter] public RenderFragment? LoadingTemplate { get; set; }
+
+    /// <summary>Fires once detection settles, with the resolved kind.</summary>
+    [Parameter] public EventCallback<FileKind> OnKindDetected { get; set; }
+
+    /// <summary>Fires when the file is fully rendered (text fetched, if any).</summary>
+    [Parameter] public EventCallback OnLoaded { get; set; }
+
+    /// <summary>Fires on any detection or fetch error, with a message.</summary>
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private enum ViewState { Detecting, Fetching, Loaded, Error }
+
+    private ViewState _state = ViewState.Detecting;
+    private FileKind _resolvedKind = FileKind.Auto;
+    private string? _fetchedText;
+    private string? _renderedMarkdown;
+    private string? _codeLanguage = "plaintext";
+    private string? _errorMessage;
+    private List<List<string>>? _csvRows;
+    private bool _csvTruncated;
+
+    private string? _lastSrc;
+    private FileKind _lastKindParam = FileKind.Auto;
+    private string? _lastMime;
+
+    private CancellationTokenSource? _cts;
+
+    private string RootClass
+        => $"flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden min-h-[400px] {Class}".Trim();
+
+    private string BodyClass
+        => "relative flex-1 overflow-auto bg-muted/30";
+
+    private string NavBtnClass
+        => "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-ring transition-colors";
+
+    // Display name precedence: explicit FileName > last segment of URL.
+    private string? DisplayName
+        => !string.IsNullOrWhiteSpace(FileName) ? FileName : LastSegment(Src);
+
+    private static string? LastSegment(string? src)
+    {
+        if (string.IsNullOrWhiteSpace(src)) return null;
+        var s = src;
+        var q = s.IndexOfAny(new[] { '?', '#' });
+        if (q >= 0) s = s[..q];
+        s = s.TrimEnd('/');
+        var slash = s.LastIndexOf('/');
+        return slash >= 0 ? s[(slash + 1)..] : s;
+    }
+
+    // Pipeline is shared across all instances; built once. .DisableHtml()
+    // strips raw <script>/<iframe>/etc. from user-supplied markdown — without
+    // it, a malicious .md served from a same-origin bucket becomes a stored
+    // XSS vector once we MarkupString the output.
+    private static readonly MarkdownPipeline _markdownPipeline =
+        new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .DisableHtml()
+            .Build();
+
+    private string KindLabel => _resolvedKind switch
+    {
+        FileKind.Pdf => "PDF document",
+        FileKind.Image => "Image",
+        FileKind.Video => "Video",
+        FileKind.Audio => "Audio",
+        FileKind.Markdown => "Markdown",
+        FileKind.Code => "Source code",
+        FileKind.Json => "JSON",
+        FileKind.Csv => "CSV",
+        FileKind.Text => "Text file",
+        _ => "File",
+    };
+
+    private SvgIcon KindIcon => _resolvedKind switch
+    {
+        FileKind.Pdf => Lucide.FileText,
+        FileKind.Image => Lucide.Image,
+        FileKind.Video => Lucide.Film,
+        FileKind.Audio => Lucide.Music,
+        FileKind.Markdown => Lucide.FileText,
+        FileKind.Code => Lucide.Code,
+        FileKind.Json => Lucide.Braces,
+        FileKind.Csv => Lucide.Table,
+        FileKind.Text => Lucide.FileText,
+        _ => Lucide.File,
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var srcChanged = !string.Equals(_lastSrc, Src, StringComparison.Ordinal);
+        var kindChanged = _lastKindParam != Kind;
+        var mimeChanged = !string.Equals(_lastMime, MimeType, StringComparison.OrdinalIgnoreCase);
+
+        if (!srcChanged && !kindChanged && !mimeChanged) return;
+
+        _lastSrc = Src;
+        _lastKindParam = Kind;
+        _lastMime = MimeType;
+
+        // Cancel any in-flight work from a previous Src.
+        try { _cts?.Cancel(); } catch { /* swallow */ }
+        _cts?.Dispose();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+
+        _fetchedText = null;
+        _renderedMarkdown = null;
+        _errorMessage = null;
+        _csvRows = null;
+        _csvTruncated = false;
+
+        if (string.IsNullOrWhiteSpace(Src))
+        {
+            _resolvedKind = FileKind.Unknown;
+            _state = ViewState.Loaded;
+            return;
+        }
+
+        _state = ViewState.Detecting;
+        StateHasChanged();
+
+        await ResolveAndPrepareAsync(token);
+    }
+
+    private async Task ResolveAndPrepareAsync(CancellationToken token)
+    {
+        try
+        {
+            _resolvedKind = await ResolveKindAsync(token);
+            _codeLanguage = _resolvedKind == FileKind.Json
+                ? "json"
+                : _resolvedKind == FileKind.Code
+                    ? FileTypeDetector.CodeLanguageFor(Src)
+                    : "plaintext";
+
+            if (OnKindDetected.HasDelegate)
+                await OnKindDetected.InvokeAsync(_resolvedKind);
+
+            if (RequiresTextFetch(_resolvedKind))
+            {
+                _state = ViewState.Fetching;
+                StateHasChanged();
+
+                var text = await FetchTextAsync(Src!, token);
+                _fetchedText = text;
+
+                if (_resolvedKind == FileKind.Markdown)
+                {
+                    _renderedMarkdown = Markdown.ToHtml(text ?? string.Empty, _markdownPipeline);
+                }
+                else if (_resolvedKind == FileKind.Json)
+                {
+                    _fetchedText = TryPrettyPrintJson(text);
+                }
+                else if (_resolvedKind == FileKind.Csv)
+                {
+                    (_csvRows, _csvTruncated) = ParseCsv(text ?? string.Empty, MaxCsvRows);
+                }
+            }
+
+            _state = ViewState.Loaded;
+            if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Src changed mid-fetch; the new pass will drive the next render.
+            return;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            _state = ViewState.Error;
+            if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
+        }
+        StateHasChanged();
+    }
+
+    private async Task<FileKind> ResolveKindAsync(CancellationToken token)
+    {
+        if (Kind != FileKind.Auto) return Kind;
+
+        var byMime = FileTypeDetector.DetectFromMime(MimeType);
+        if (byMime != FileKind.Unknown) return byMime;
+
+        if (AutoHead && !string.IsNullOrWhiteSpace(Src))
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Head, Src);
+                if (ConfigureRequest is not null) await ConfigureRequest(req);
+                using var client = GetHttpClient();
+                using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var ct = resp.Content.Headers.ContentType?.ToString();
+                    var kindFromHead = FileTypeDetector.DetectFromMime(ct);
+                    if (kindFromHead != FileKind.Unknown) return kindFromHead;
+                }
+            }
+            catch
+            {
+                // HEAD failures fall through to extension-based detection.
+            }
+        }
+
+        return FileTypeDetector.DetectFromExtension(Src);
+    }
+
+    private static bool RequiresTextFetch(FileKind k) => k switch
+    {
+        FileKind.Markdown or FileKind.Code or FileKind.Json or FileKind.Csv or FileKind.Text => true,
+        _ => false,
+    };
+
+    private HttpClient GetHttpClient()
+    {
+        if (HttpClient is not null) return HttpClient;
+        var fromDi = Services.GetService(typeof(HttpClient)) as HttpClient;
+        if (fromDi is not null) return fromDi;
+        var factory = Services.GetService(typeof(IHttpClientFactory)) as IHttpClientFactory;
+        if (factory is not null) return factory.CreateClient("Lumeo.FileViewer");
+        // Last-resort: a transient client. Anti-pattern at scale, but a viewer
+        // that throws on missing DI is worse UX than a single allocation.
+        return new HttpClient();
+    }
+
+    private async Task<string> FetchTextAsync(string src, CancellationToken token)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, src);
+        if (ConfigureRequest is not null) await ConfigureRequest(req);
+        var client = GetHttpClient();
+        using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
+        resp.EnsureSuccessStatusCode();
+
+        var contentLength = resp.Content.Headers.ContentLength;
+        if (contentLength is long cl && cl > MaxBytes)
+        {
+            // Refuse upfront — better than streaming half a giant file into memory.
+            throw new InvalidOperationException($"File exceeds MaxBytes ({cl:N0} > {MaxBytes:N0}).");
+        }
+
+        await using var stream = await resp.Content.ReadAsStreamAsync(token);
+        using var ms = new MemoryStream();
+        var buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = await stream.ReadAsync(buffer, token)) > 0)
+        {
+            total += read;
+            if (total > MaxBytes)
+            {
+                ms.Write(buffer, 0, (int)Math.Max(0, read - (total - MaxBytes)));
+                var truncated = Encoding.UTF8.GetString(ms.ToArray());
+                return truncated + Environment.NewLine + $"… (truncated at {MaxBytes:N0} bytes)";
+            }
+            ms.Write(buffer, 0, read);
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    // Re-serialize valid JSON with indentation. Invalid JSON is shown verbatim
+    // so consumers can spot syntax errors in their data — silently swallowing
+    // the parse failure would hide the real problem.
+    private static string TryPrettyPrintJson(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return text;
+        }
+    }
+
+    // RFC 4180-ish CSV parser: handles quoted fields, embedded commas, escaped
+    // double-quotes (""), and bare LF / CRLF line endings. Comma is fixed;
+    // tab-separated values are detected by the first row containing a tab and
+    // no comma. Truncates at maxRows to keep huge logs renderable.
+    internal static (List<List<string>> rows, bool truncated) ParseCsv(string text, int maxRows)
+    {
+        var rows = new List<List<string>>();
+        if (string.IsNullOrEmpty(text)) return (rows, false);
+
+        char delim = ',';
+        // Cheap delimiter sniff: scan first newline.
+        var firstNl = text.IndexOfAny(new[] { '\r', '\n' });
+        var firstLine = firstNl >= 0 ? text[..firstNl] : text;
+        if (firstLine.Contains('\t') && !firstLine.Contains(',')) delim = '\t';
+
+        var field = new StringBuilder();
+        var row = new List<string>();
+        bool inQuotes = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < text.Length && text[i + 1] == '"') { field.Append('"'); i++; }
+                    else inQuotes = false;
+                }
+                else field.Append(c);
+            }
+            else
+            {
+                if (c == '"') inQuotes = true;
+                else if (c == delim) { row.Add(field.ToString()); field.Clear(); }
+                else if (c == '\r')
+                {
+                    if (i + 1 < text.Length && text[i + 1] == '\n') i++;
+                    row.Add(field.ToString()); field.Clear();
+                    rows.Add(row); row = new List<string>();
+                    if (rows.Count >= maxRows) return (rows, i + 1 < text.Length);
+                }
+                else if (c == '\n')
+                {
+                    row.Add(field.ToString()); field.Clear();
+                    rows.Add(row); row = new List<string>();
+                    if (rows.Count >= maxRows) return (rows, i + 1 < text.Length);
+                }
+                else field.Append(c);
+            }
+        }
+        if (field.Length > 0 || row.Count > 0)
+        {
+            row.Add(field.ToString());
+            rows.Add(row);
+        }
+        return (rows, false);
+    }
+
+    private RenderFragment RenderCsv() => builder =>
+    {
+        if (_csvRows is null || _csvRows.Count == 0)
+        {
+            builder.OpenComponent<EmptyState>(0);
+            builder.AddAttribute(1, "Class", "py-12");
+            builder.AddAttribute(2, "Title", "Empty CSV");
+            builder.AddAttribute(3, "Description", "The file contains no rows.");
+            builder.CloseComponent();
+            return;
+        }
+        var maxCols = 0;
+        foreach (var r in _csvRows) if (r.Count > maxCols) maxCols = r.Count;
+        var header = _csvRows[0];
+        var dataStart = 1;
+        // Heuristic: if the first row looks like header (all non-numeric, all
+        // shortish), use it as <thead>. Otherwise treat row 0 as data.
+        bool firstLooksLikeHeader = header.All(c => c.Length <= 64 && !double.TryParse(c, NumberStyles.Any, CultureInfo.InvariantCulture, out _));
+        if (!firstLooksLikeHeader) dataStart = 0;
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "overflow-auto");
+
+        builder.OpenElement(2, "table");
+        builder.AddAttribute(3, "class", "min-w-full text-sm");
+
+        if (firstLooksLikeHeader)
+        {
+            builder.OpenElement(10, "thead");
+            builder.AddAttribute(11, "class", "sticky top-0 bg-background");
+            builder.OpenElement(12, "tr");
+            for (int c = 0; c < maxCols; c++)
+            {
+                builder.OpenElement(13, "th");
+                builder.AddAttribute(14, "class", "border-b border-border/60 px-3 py-2 text-left font-medium text-foreground");
+                builder.AddContent(15, c < header.Count ? header[c] : "");
+                builder.CloseElement();
+            }
+            builder.CloseElement(); // tr
+            builder.CloseElement(); // thead
+        }
+
+        builder.OpenElement(20, "tbody");
+        for (int r = dataStart; r < _csvRows.Count; r++)
+        {
+            var row = _csvRows[r];
+            builder.OpenElement(21, "tr");
+            builder.AddAttribute(22, "class", "border-b border-border/30 hover:bg-muted/40");
+            for (int c = 0; c < maxCols; c++)
+            {
+                builder.OpenElement(23, "td");
+                builder.AddAttribute(24, "class", "px-3 py-1.5 align-top text-foreground/90");
+                builder.AddContent(25, c < row.Count ? row[c] : "");
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
+        builder.CloseElement(); // tbody
+
+        builder.CloseElement(); // table
+
+        if (_csvTruncated)
+        {
+            builder.OpenElement(30, "div");
+            builder.AddAttribute(31, "class", "border-t border-border/40 bg-background/60 px-3 py-2 text-xs text-muted-foreground");
+            builder.AddContent(32, $"Truncated at {MaxCsvRows:N0} rows.");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement(); // outer div
+    };
+
+    private Task HandleImageError() => HandleChildError("Image failed to load.");
+
+    private async Task HandleChildError(string message)
+    {
+        _errorMessage = message;
+        _state = ViewState.Error;
+        if (OnError.HasDelegate) await OnError.InvokeAsync(message);
+        StateHasChanged();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        try { _cts?.Cancel(); } catch { /* swallow */ }
+        _cts?.Dispose();
+        _cts = null;
+        return ValueTask.CompletedTask;
+    }
+}
