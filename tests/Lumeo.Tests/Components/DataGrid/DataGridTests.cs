@@ -313,6 +313,32 @@ public class DataGridTests : IAsyncLifetime
         Assert.Equal("Alice", capturedSelection![0].Name);
     }
 
+    [Fact]
+    public void DataGrid_Multiple_Mode_Checkbox_Click_Toggles_Selection_Without_Double_Fire()
+    {
+        // Regression: clicking the row's selection checkbox in Multiple mode used to
+        // double-toggle (checkbox OnCheckChanged toggled, then the click bubbled to
+        // <tr> HandleClick which toggled again → net no-op). The selection cell's <td>
+        // now stops propagation; this test locks that in.
+        IReadOnlyList<TestItem>? capturedSelection = null;
+
+        var cut = _ctx.Render<DataGrid<TestItem>>(p => p
+            .Add(x => x.Items, GetTestData())
+            .Add(x => x.Columns, GetColumns())
+            .Add(x => x.SelectionMode, DataGridSelectionMode.Multiple)
+            .Add(x => x.SelectedItemsChanged, EventCallback.Factory.Create<IReadOnlyList<TestItem>>(
+                this, list => capturedSelection = list)));
+
+        // First <button role="checkbox"> in the body is the first data row's selector
+        // (header select-all sits in <thead> and isn't matched here).
+        var checkbox = cut.FindAll("tbody [role='checkbox']")[0];
+        checkbox.Click();
+
+        Assert.NotNull(capturedSelection);
+        Assert.Single(capturedSelection);
+        Assert.Equal("Alice", capturedSelection![0].Name);
+    }
+
     // ===========================================================================
     // LOADING STATE
     // ===========================================================================
