@@ -139,6 +139,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Auto Resize
     ValueTask SetupAutoResize(string elementId, int maxRows);
+    ValueTask UnregisterAutoResize(string elementId);
 
     // OTP Paste
     ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler);
