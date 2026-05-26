@@ -16,6 +16,11 @@ public static class DocsTestContextExtensions
         ctx.Services.AddSingleton<NavConfigService>();
         ctx.Services.AddSingleton<RegistryService>();
         ctx.Services.AddSingleton<IconService>();
+        // Catalog page injects Lumeo.Services.OverlayService for the mobile
+        // filter sheet. Tests never open the sheet, but bUnit's DI fails fast
+        // if the dependency isn't registered. Singleton is fine here — the
+        // OverlayService itself is just an event broker, no per-scope state.
+        ctx.Services.AddSingleton<OverlayService>();
     }
 }
 
