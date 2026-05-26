@@ -41,6 +41,11 @@ internal sealed class UtilityInterop
         await module.InvokeVoidAsync("setupAutoResize", elementId, maxRows);
     }
 
+    public async ValueTask UnregisterAutoResize(IJSObjectReference module, string elementId)
+    {
+        await module.InvokeVoidAsync("unregisterAutoResize", elementId);
+    }
+
     // --- File Download ---
 
     public async ValueTask DownloadFile(

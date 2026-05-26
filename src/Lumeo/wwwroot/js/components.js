@@ -166,10 +166,15 @@ export function focusElementById(id) {
 
 let scrollLockCount = 0;
 
+// Setting overflow:hidden on <body> alone is insufficient on iOS Safari and
+// some Firefox configurations — the page still scrolls because the scroll
+// chain reaches <html>. We lock both elements together (and restore both on
+// unlock) so the modal/sheet/overlay actually traps scroll across browsers.
 export function lockScroll() {
     scrollLockCount++;
     if (scrollLockCount === 1) {
         document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
     }
 }
 
@@ -177,6 +182,7 @@ export function unlockScroll() {
     scrollLockCount = Math.max(0, scrollLockCount - 1);
     if (scrollLockCount === 0) {
         document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
     }
 }
 
@@ -1422,9 +1428,20 @@ export function registerToastSwipe(elementId, toastId, dotnetRef) {
 
 // --- Auto Resize ---
 
+// elementId -> input-listener function reference. Stored so
+// unregisterAutoResize can pass the exact callback to removeEventListener
+// (anonymous closures can't be removed) and so a repeat setupAutoResize call
+// on the same element doesn't stack handlers.
+const autoResizeHandlers = new Map();
+
 export function setupAutoResize(elementId, maxRows) {
     const el = document.getElementById(elementId);
     if (!el) return;
+
+    // De-dupe: tear down any prior listener before installing a fresh one.
+    const existing = autoResizeHandlers.get(elementId);
+    if (existing) el.removeEventListener('input', existing);
+
     el.style.overflow = 'hidden';
     el.style.resize = 'none';
     const lineHeight = parseInt(window.getComputedStyle(el).lineHeight) || 20;
@@ -1441,7 +1458,16 @@ export function setupAutoResize(elementId, maxRows) {
     };
 
     el.addEventListener('input', resize);
+    autoResizeHandlers.set(elementId, resize);
     resize(); // initial
+}
+
+export function unregisterAutoResize(elementId) {
+    const handler = autoResizeHandlers.get(elementId);
+    if (!handler) return;
+    const el = document.getElementById(elementId);
+    if (el) el.removeEventListener('input', handler);
+    autoResizeHandlers.delete(elementId);
 }
 
 export function unregisterToastSwipe(elementId) {

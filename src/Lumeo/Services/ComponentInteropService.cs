@@ -553,6 +553,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _utility.SetupAutoResize(module, elementId, maxRows);
     }
 
+    public async ValueTask UnregisterAutoResize(string elementId)
+    {
+        var module = await GetModuleAsync();
+        await _utility.UnregisterAutoResize(module, elementId);
+    }
+
     // --- OTP Paste ---
 
     public async ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)
