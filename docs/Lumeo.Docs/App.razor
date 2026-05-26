@@ -1,6 +1,86 @@
-﻿<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+﻿@using System.Reflection
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.WebAssembly.Services
+@inject LazyAssemblyLoader LazyLoader
+
+<Router AppAssembly="@typeof(App).Assembly" OnNavigateAsync="OnNavigateAsync" NotFoundPage="typeof(Pages.NotFound)" AdditionalAssemblies="_loadedAssemblies">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    // Tracks lazy assemblies already pulled across the wire so we don't
+    // re-fetch on every navigation. The Router also reads this list so
+    // route resolution can find page types declared inside lazy DLLs.
+    private readonly List<Assembly> _loadedAssemblies = new();
+    private readonly HashSet<string> _loadedNames = new(StringComparer.OrdinalIgnoreCase);
+
+    // Route-prefix → DLL list. Each entry maps a navigation path PREFIX
+    // (matched with StartsWith / ordinal-ignore-case) to the set of lazy
+    // assemblies required to render that route. Keep in sync with the
+    // BlazorWebAssemblyLazyLoad items in Lumeo.Docs.csproj — when a new
+    // satellite is split out, both lists need updating.
+    //
+    // The 8 Blazicons packs are bundled together under one /components/icon
+    // entry: the icon showcase page references types from all of them via
+    // static field access (Blazicons.BootstrapIcon.Archive, …), so loading
+    // them as a group is correct.
+    private static readonly (string PathPrefix, string[] Assemblies)[] _lazyMap = new[]
+    {
+        ("/components/icon", new[]
+        {
+            "Blazicons.Bootstrap.dll",
+            "Blazicons.Devicon.dll",
+            "Blazicons.FlagIcons.dll",
+            "Blazicons.FluentUI.dll",
+            "Blazicons.FontAwesome.dll",
+            "Blazicons.GoogleMaterialDesign.dll",
+            "Blazicons.Ionicons.dll",
+            "Blazicons.MaterialDesignIcons.dll",
+        }),
+        ("/components/code-editor",      new[] { "Lumeo.CodeEditor.dll" }),
+        ("/components/rich-text-editor", new[] { "Lumeo.Editor.dll" }),
+        ("/components/file-viewer",      new[] { "Lumeo.FileViewer.dll" }),
+        ("/components/gantt",            new[] { "Lumeo.Gantt.dll" }),
+        ("/components/pdf-viewer",       new[] { "Lumeo.PdfViewer.dll" }),
+        ("/components/scheduler",        new[] { "Lumeo.Scheduler.dll" }),
+    };
+
+    private async Task OnNavigateAsync(NavigationContext context)
+    {
+        // context.Path is the path component of the URL (no scheme/host/query).
+        // Blazor normalises it without a leading slash; prepend one so our
+        // _lazyMap prefixes (which DO start with "/") match.
+        var path = "/" + (context.Path ?? string.Empty).TrimStart('/');
+
+        // Collect the DLLs needed for this route, filtering out ones already
+        // loaded so subsequent visits are zero-cost.
+        var needed = new List<string>();
+        foreach (var (prefix, dlls) in _lazyMap)
+        {
+            if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (var dll in dlls)
+            {
+                if (_loadedNames.Add(dll)) needed.Add(dll);
+            }
+        }
+        if (needed.Count == 0) return;
+
+        try
+        {
+            var assemblies = await LazyLoader.LoadAssembliesAsync(needed);
+            _loadedAssemblies.AddRange(assemblies);
+        }
+        catch
+        {
+            // Best-effort: a failed fetch leaves the assemblies un-marked so
+            // the next navigation tries again. We intentionally swallow here
+            // rather than crash the router — the page itself will surface a
+            // meaningful error when its types can't resolve.
+            foreach (var dll in needed) _loadedNames.Remove(dll);
+            throw;
+        }
+    }
+}
