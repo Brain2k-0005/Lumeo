@@ -10,9 +10,16 @@ window.lumeo.signalBlazorReady = function () {
 
 // Scroll a heading into view from the OnThisPage sidebar. Using a dedicated
 // function instead of eval() avoids CSP issues and keeps interop auditable.
+// Also reflects the section into the URL hash so right-click "copy link"
+// and browser-share produce a deep link like /components/datagrid#full-featured-datagrid
+// instead of the bare route. replaceState (not pushState) keeps the back
+// button focused on real route changes rather than TOC scrolls.
 window.lumeo.navScrollActiveIntoView = function (id) {
     var el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try { history.replaceState(null, '', '#' + id); } catch (_) { /* SSR / sandboxed */ }
+    }
 };
 
 // Reset the scrollTop of an element by id. Avoids `eval()` for CSP compatibility.

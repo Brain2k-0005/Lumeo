@@ -32,7 +32,12 @@
            left:0 so it stays visible during horizontal scroll and doesn't slide
            behind the pinned data column. Matches the z-index of DataGridHeaderCell
            pinned headers (z-20 on thead, z-10 on body cells). *@
-        <td role="gridcell" class="@(Context.HasPinnedLeft ? "px-3 py-2 w-10 sticky left-0 z-10 group-hover/row:bg-muted/50" : "px-3 py-2 w-10")" style="@SelectionPinStyle">
+        @* stopPropagation is required: without it, clicking the checkbox toggles
+           selection (via OnCheckChanged) AND the click bubbles to <tr>'s HandleClick
+           which toggles selection again — net no-op. The single-select cell below
+           already does this on its <button>. *@
+        <td role="gridcell" class="@(Context.HasPinnedLeft ? "px-3 py-2 w-10 sticky left-0 z-10 group-hover/row:bg-muted/50" : "px-3 py-2 w-10")" style="@SelectionPinStyle"
+            @onclick:stopPropagation="true">
             <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" />
         </td>
     }
