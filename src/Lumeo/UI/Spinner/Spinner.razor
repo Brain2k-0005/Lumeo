@@ -2,8 +2,8 @@
 
 @if (Variant == SpinnerVariant.Ring)
 {
-    <div class="@WrapperClass" @attributes="AdditionalAttributes">
-        <svg class="@RingCssClass" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <div class="@WrapperClass" role="status" aria-live="polite" aria-busy="true" aria-label="@AriaLabelOrDefault" @attributes="AdditionalAttributes">
+        <svg class="@RingCssClass" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
@@ -15,8 +15,8 @@
 }
 else if (Variant == SpinnerVariant.Dots)
 {
-    <div class="@WrapperClass" @attributes="AdditionalAttributes">
-        <div class="@DotsContainerClass">
+    <div class="@WrapperClass" role="status" aria-live="polite" aria-busy="true" aria-label="@AriaLabelOrDefault" @attributes="AdditionalAttributes">
+        <div class="@DotsContainerClass" aria-hidden="true">
             <div class="@DotClass" style="animation-delay: 0ms"></div>
             <div class="@DotClass" style="animation-delay: 150ms"></div>
             <div class="@DotClass" style="animation-delay: 300ms"></div>
@@ -29,8 +29,8 @@ else if (Variant == SpinnerVariant.Dots)
 }
 else if (Variant == SpinnerVariant.Bars)
 {
-    <div class="@WrapperClass" @attributes="AdditionalAttributes">
-        <div class="@BarsContainerClass">
+    <div class="@WrapperClass" role="status" aria-live="polite" aria-busy="true" aria-label="@AriaLabelOrDefault" @attributes="AdditionalAttributes">
+        <div class="@BarsContainerClass" aria-hidden="true">
             <div class="@BarClass" style="height: 60%; animation-delay: 0ms"></div>
             <div class="@BarClass" style="height: 100%; animation-delay: 150ms"></div>
             <div class="@BarClass" style="height: 60%; animation-delay: 300ms"></div>
@@ -51,6 +51,12 @@ else if (Variant == SpinnerVariant.Bars)
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string WrapperClass => Cx.Join("inline-flex items-center gap-2", Color, Class);
+
+    // Always advertise an accessible name to AT. Falls back to the visible
+    // Label when present, otherwise "Loading" — the SVG/Dots/Bars are marked
+    // aria-hidden because their shapes carry no semantic meaning by
+    // themselves, so without this the spinner is invisible to screen readers.
+    private string AriaLabelOrDefault => string.IsNullOrEmpty(Label) ? "Loading" : Label!;
 
     private string RingCssClass => Cx.Join("animate-spin", SizeClasses);
 
