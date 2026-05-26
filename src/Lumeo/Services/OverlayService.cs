@@ -197,6 +197,23 @@ public sealed record OverlayOptions
     /// Null = use <see cref="SwipeToClose"/> at all sizes. Typical pattern:
     /// off on desktop, on for mobile bottom-sheet pull-down.</summary>
     public bool? MobileSwipeToClose { get; init; }
+
+    /// <summary>
+    /// Wrap the rendered component in a scrollable body region inside the
+    /// overlay's chrome (Sheet only — Dialog and Drawer manage their own
+    /// scroll). Default <c>true</c> so consumers can pass a long form to
+    /// <see cref="OverlayService.ShowSheetAsync{T}"/> without rolling their
+    /// own <c>overflow-y-auto</c> wrapper — and without hitting the focus-
+    /// ring clip that bare <c>overflow-y: auto</c> introduces (per spec,
+    /// <c>overflow-y: auto</c> promotes <c>overflow-x</c> to <c>auto</c> too,
+    /// which clips inputs' box-shadow focus rings at the left/right edge).
+    /// The built-in wrapper uses the <c>px-1 -mx-1</c> trick to give focus
+    /// rings 4px breathing room without shifting the visual padding. Set to
+    /// <c>false</c> for sheets whose content sets its own scrolling strategy
+    /// (e.g. an embedded <c>PdfViewer</c> that already paints inside a fixed
+    /// canvas).
+    /// </summary>
+    public bool ScrollableBody { get; init; } = true;
 }
 
 public sealed record AlertDialogOptions
