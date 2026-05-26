@@ -98,12 +98,15 @@
 
     @if (Column.Resizable)
     {
+        @* No Blazor pointerdown binding here — the JS listener attached via
+           RegisterColumnResize() in OnAfterRenderAsync owns this event end to
+           end (capture, move tracking via setPointerCapture, prevent the page
+           from initiating a touch-scroll, commit on pointerup). Wiring a
+           Blazor handler too would double-fire the pointerdown handling and
+           recreate the lazy-register race from before. *@
         <div id="@_resizeHandleId"
              class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
-             style="touch-action: none;"
-             @onpointerdown="OnResizeStart"
-             @onpointerdown:stopPropagation="true"
-             @onpointerdown:preventDefault="true"></div>
+             style="touch-action: none;"></div>
     }
 
     @if (_isDragOver && EffectiveReorderable && _dropSide is not null)
@@ -117,7 +120,11 @@
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
     [CascadingParameter] private DataGridDragState? DragState { get; set; }
-    [Inject] private ComponentInteropService Interop { get; set; } = default!;
+    @* Inject the interface, not the concrete service, so tests can substitute
+       a TrackingInteropService for the interop surface — every method used by
+       this component (PositionFixed, RegisterClickOutside, RegisterColumnResize,
+       …) is on the interface, so the switch is a pure DI tidy-up. *@
+    [Inject] private IComponentInteropService Interop { get; set; } = default!;
 
     [Parameter] public DataGridColumn<TItem> Column { get; set; } = default!;
     [Parameter] public int ColumnIndex { get; set; }
@@ -269,6 +276,25 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Resize: register the JS pointer listeners ON the resize handle the
+        // moment it's in the DOM. Lazy-registering inside OnResizeStart meant
+        // the FIRST pointerdown ran the Blazor handler (which then asked JS to
+        // wire up its own pointerdown listener) — but that listener wasn't
+        // attached yet at the time of the originating event, so the first
+        // drag attempt was a no-op. Users had to release and press again
+        // before resize actually started. Registering on firstRender flips
+        // that: by the time the user's first pointerdown lands, the JS
+        // handler is already listening.
+        // Re-check on every render — not just firstRender — so columns whose
+        // Resizable flag flips on after mount (e.g. parent unlocks edit mode)
+        // still pick up the listener. _resizeRegistered short-circuits when
+        // the handler is already attached, so the cost is one bool check per
+        // render.
+        if (Column.Resizable && !_resizeRegistered)
+        {
+            await EnsureResizeRegistered();
+        }
+
         if (!Column.Filterable) return;
 
         if (IsFilterOpen && !_filterPositionRegistered)
@@ -309,26 +335,26 @@
         await OnFilterApply.InvokeAsync(args);
     }
 
-    private async Task OnResizeStart(PointerEventArgs e)
+    // Register-once helper. Called from OnAfterRenderAsync(firstRender) so the
+    // JS pointerdown listener is live before the user's first drag attempt.
+    // The previous lazy-on-first-pointerdown path is gone — that handler's
+    // sole job was registration, and it lost the originating pointerdown.
+    private async Task EnsureResizeRegistered()
     {
-        if (!Column.Resizable) return;
-
-        if (!_resizeRegistered)
-        {
-            // Register once, pass the column's min/max constraints up-front. JS drags the
-            // header + body cells in the DOM directly (smooth, no Blazor round-trips per
-            // pixel) and invokes the commit callback with the final width on mouseup.
-            await Interop.RegisterColumnResize(
-                _resizeHandleId,
-                Column.MinWidth ?? 50,
-                Column.MaxWidth,
-                async finalWidth =>
-                {
-                    ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth);
-                    await InvokeAsync(StateHasChanged);
-                });
-            _resizeRegistered = true;
-        }
+        if (_resizeRegistered) return;
+        // JS drags the header + body cells in the DOM directly (smooth, no
+        // Blazor round-trips per pixel) and invokes the commit callback with
+        // the final width on pointerup.
+        await Interop.RegisterColumnResize(
+            _resizeHandleId,
+            Column.MinWidth ?? 50,
+            Column.MaxWidth,
+            async finalWidth =>
+            {
+                ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth);
+                await InvokeAsync(StateHasChanged);
+            });
+        _resizeRegistered = true;
     }
 
     // --- Column Drag & Drop Reordering ---

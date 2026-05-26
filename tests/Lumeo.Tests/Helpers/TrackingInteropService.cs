@@ -106,8 +106,25 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
-    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
+    // Column resize tracking — used to assert that the JS pointerdown listener
+    // is wired during the first render, not lazily on the first pointerdown
+    // (the lazy path lost the originating event so the first drag was a no-op).
+    private readonly List<string> _columnResizeRegistrations = new();
+    private readonly List<string> _columnResizeUnregistrations = new();
+    public int RegisterColumnResizeCallCount => _columnResizeRegistrations.Count;
+    public IReadOnlyList<string> RegisterColumnResizeHandleIds => _columnResizeRegistrations;
+    public int UnregisterColumnResizeCallCount => _columnResizeUnregistrations.Count;
+
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
+    {
+        _columnResizeRegistrations.Add(handleId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterColumnResize(string handleId)
+    {
+        _columnResizeUnregistrations.Add(handleId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
     public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterAffix(string elementId) => ValueTask.CompletedTask;
