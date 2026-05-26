@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <SupportedPlatform>browser</SupportedPlatform>
+    <!-- RootNamespace must be "Lumeo" (matching @namespace in .razor files), NOT "Lumeo.FileViewer"
+         (which would be the SDK default derived from the project name). Diverging the two
+         causes the Razor SDK source generator to emit duplicate types (CS0101). -->
+    <RootNamespace>Lumeo</RootNamespace>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)GeneratedFiles</CompilerGeneratedFilesOutputPath>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>Lumeo.FileViewer</PackageId>
+    <!-- Version is inherited from /Directory.Build.props (lockstep with all Lumeo packages) -->
+    <Title>Lumeo.FileViewer</Title>
+    <Authors>nativ.sh</Authors>
+    <Description>Universal file viewer for Lumeo — detects file type from MIME / extension and renders inline: PDF (via Lumeo.PdfViewer), images, video, audio, Markdown, JSON, CSV, source code (via Lumeo.CodeEditor) and plain text. Pluggable renderer registry; auth-aware via configurable HttpClient. Unknown types fall back to a Download CTA.</Description>
+    <PackageTags>blazor;components;ui;file-viewer;preview;document-viewer;markdown;csv;lumeo</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Brain2k-0005/Lumeo</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Brain2k-0005/Lumeo</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- NuGet health -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Expose internal CSV parser to the test project for direct coverage
+         without promoting it to the public API surface. -->
+    <InternalsVisibleTo Include="Lumeo.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Blazicons.Lucide" Version="2.1.3" />
+    <PackageReference Include="Markdig" Version="0.37.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.6" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core for shared types (ComponentInteropService, theme primitives, Spinner / EmptyState),
+         PdfViewer for the PDF kind, CodeEditor for the Code kind. Both satellites are
+         hard dependencies — consumers who want only a subset of kinds still pay the
+         transitive package size, but the alternative (reflection-based soft-dep) is too
+         fragile for an enterprise viewer. -->
+    <ProjectReference Include="..\Lumeo\Lumeo.csproj" />
+    <ProjectReference Include="..\Lumeo.PdfViewer\Lumeo.PdfViewer.csproj" />
+    <ProjectReference Include="..\Lumeo.CodeEditor\Lumeo.CodeEditor.csproj" />
+  </ItemGroup>
+
+</Project>
