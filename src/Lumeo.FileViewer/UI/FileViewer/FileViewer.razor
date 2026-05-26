@@ -37,7 +37,7 @@
     consumer can:
       - Pass a custom HttpClient via HttpClient= (most explicit)
       - Hook ConfigureRequest= to add auth headers on the default client
-      - Register HttpClient / IHttpClientFactory in DI (standard Blazor)
+      - Register HttpClient in DI (the standard Blazor WASM pattern)
 
     All fetches honour MaxBytes (default 10 MB) so a misconfigured signed URL
     can't OOM the browser. Switching Src cancels any in-flight fetch.
@@ -502,13 +502,17 @@
         _ => false,
     };
 
+    // Why no IHttpClientFactory fallback: it lives in the Microsoft.Extensions.Http
+    // package, which the standard Blazor WASM template does NOT pull in by default
+    // (templates register a single HttpClient via builder.Services.AddScoped). Taking
+    // that dep just to support `factory.CreateClient(...)` adds weight that 95% of
+    // consumers wouldn't use. Server / WebApp consumers who want a named client can
+    // pre-create it and pass via the HttpClient parameter.
     private HttpClient GetHttpClient()
     {
         if (HttpClient is not null) return HttpClient;
         var fromDi = Services.GetService(typeof(HttpClient)) as HttpClient;
         if (fromDi is not null) return fromDi;
-        var factory = Services.GetService(typeof(IHttpClientFactory)) as IHttpClientFactory;
-        if (factory is not null) return factory.CreateClient("Lumeo.FileViewer");
         // Last-resort: a transient client. Anti-pattern at scale, but a viewer
         // that throws on missing DI is worse UX than a single allocation.
         return new HttpClient();
