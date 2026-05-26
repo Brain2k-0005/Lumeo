@@ -127,6 +127,58 @@ public class OverlayProviderTests : IAsyncLifetime
         Assert.Null(options.MobileSwipeToClose);
     }
 
+    // --- Scrollable body wrapper (3.2.6) -----------------------------------
+    //
+    // Sheets opened via OverlayService now wrap the rendered component in a
+    // flex-1 min-h-0 overflow-y-auto -mx-1 px-1 div so consumers don't roll
+    // their own scrollable form wrappers (which trip the box-shadow focus-
+    // ring clip the report flagged). Default ScrollableBody=true; opt-out
+    // via OverlayOptions { ScrollableBody = false } for sheets whose content
+    // sets its own scrolling strategy (e.g. an embedded PdfViewer).
+
+    [Fact]
+    public void OverlayOptions_ScrollableBody_Default_Is_True()
+    {
+        var options = new OverlayOptions();
+        Assert.True(options.ScrollableBody);
+    }
+
+    [Fact]
+    public void ShowSheet_With_ScrollableBody_True_Wraps_Body_In_Overflow_Container()
+    {
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowSheetAsync<DummyOverlayBody>(
+            title: "Form sheet",
+            options: new OverlayOptions { ScrollableBody = true });
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        // The wrapper carries flex-1 + overflow-y-auto and the -mx-1 px-1
+        // breathing room. Asserting the class string is enough — a typo
+        // here would silently lose the focus-ring fix.
+        Assert.Contains("flex-1 min-h-0 overflow-y-auto -mx-1 px-1", cut.Markup);
+    }
+
+    [Fact]
+    public void ShowSheet_With_ScrollableBody_False_Renders_Without_Overflow_Wrapper()
+    {
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowSheetAsync<DummyOverlayBody>(
+            title: "PDF preview sheet",
+            options: new OverlayOptions { ScrollableBody = false });
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        // Opt-out path: the body still renders, just without the auto-scroll
+        // chrome — consumer's component handles its own layout.
+        Assert.DoesNotContain("flex-1 min-h-0 overflow-y-auto -mx-1 px-1", cut.Markup);
+        Assert.Contains("BODY", cut.Markup);
+    }
+
     [Fact]
     public void OverlayOptions_With_Null_MobileBreakpoint_Disables_Responsive_Switch()
     {

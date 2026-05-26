@@ -33,11 +33,32 @@
                             <SheetTitle>@overlay.Title</SheetTitle>
                         </SheetHeader>
                     }
-                    <CascadingValue Value="@(new OverlayShellMarker(overlay.Id))" IsFixed="true">
-                        <CascadingValue Value="@GetOrCreateReference(overlay)" IsFixed="true">
-                            <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
+                    @* Scrollable body wrapper. flex-1 + min-h-0 lets it take
+                       the remaining height of SheetContent's flex column and
+                       scroll independently of the header. The -mx-1 / px-1
+                       trick gives Inputs' box-shadow focus rings 4px of
+                       breathing room before the overflow:auto clip — without
+                       it, edge-touching inputs lose ~2px of their ring on the
+                       left/right edges (CSS spec: overflow-y:auto promotes
+                       overflow-x:auto, which clips outer box-shadows). *@
+                    @if (overlay.Options.ScrollableBody)
+                    {
+                        <div class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+                            <CascadingValue Value="@(new OverlayShellMarker(overlay.Id))" IsFixed="true">
+                                <CascadingValue Value="@GetOrCreateReference(overlay)" IsFixed="true">
+                                    <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
+                                </CascadingValue>
+                            </CascadingValue>
+                        </div>
+                    }
+                    else
+                    {
+                        <CascadingValue Value="@(new OverlayShellMarker(overlay.Id))" IsFixed="true">
+                            <CascadingValue Value="@GetOrCreateReference(overlay)" IsFixed="true">
+                                <DynamicComponent Type="@GetComponentType(overlay)" Parameters="@GetParameters(overlay)" />
+                            </CascadingValue>
                         </CascadingValue>
-                    </CascadingValue>
+                    }
                 </SheetContent>
             </Sheet>
             break;
