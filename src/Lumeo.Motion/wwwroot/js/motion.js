@@ -349,6 +349,15 @@ export const motion = {
         let canvas = document.getElementById(elementId + '-canvas');
         if (!canvas) return;
 
+        // Cancel any in-flight rAF loop for this confetti before starting a
+        // fresh one. Repeated Fire() calls otherwise stack parallel loops
+        // that each run until their particles fade — each loop costs CPU
+        // until then, and the loops keep running even after the component
+        // is disposed (only this tracker is consulted by disposeConfetti).
+        const tickerKey = elementId + '-confetti';
+        const prev = motionTickers.get(tickerKey);
+        if (prev) cancelAnimationFrame(prev);
+
         const particleCount = (options && options.particleCount) || 80;
         const spread = (options && options.spread) || 70;
         const colors = (options && options.colors) || ['#ff595e','#ffca3a','#6a4c93','#1982c4','#8ac926'];
@@ -416,16 +425,28 @@ export const motion = {
             }
             if (alive) {
                 rafId = requestAnimationFrame(animate);
+                motionTickers.set(tickerKey, rafId);
             } else {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                motionTickers.delete(tickerKey);
             }
         };
         rafId = requestAnimationFrame(animate);
+        motionTickers.set(tickerKey, rafId);
     },
 
     disposeConfetti(elementId) {
-        const ref = motionObservers.get(elementId + '-confetti');
-        if (ref) { ref.disconnect(); motionObservers.delete(elementId + '-confetti'); }
+        // Cancel any in-flight burst before tearing down the observer record.
+        // Without this, a Confetti.Fire() call that's still mid-animation
+        // would keep its rAF loop running after the component dispose, and
+        // the loop would only stop when the last particle's alpha drops to 0.
+        const tickerKey = elementId + '-confetti';
+        const id = motionTickers.get(tickerKey);
+        if (id) cancelAnimationFrame(id);
+        motionTickers.delete(tickerKey);
+
+        const ref = motionObservers.get(tickerKey);
+        if (ref) { ref.disconnect(); motionObservers.delete(tickerKey); }
     },
 
 };

@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
 @if (Label is not null && !InsideFormField)
 {
@@ -89,6 +90,13 @@
             await Interop.SetupAutoResize(_elementId, MaxRows);
             _autoResizeSetup = true;
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_autoResizeSetup) return;
+        try { await Interop.UnregisterAutoResize(_elementId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
     private async Task HandleInput(ChangeEventArgs e)

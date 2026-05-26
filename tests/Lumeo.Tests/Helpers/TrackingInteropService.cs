@@ -104,6 +104,7 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterToastSwipe(string toastId, string elementId) => ValueTask.CompletedTask;
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
+    public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
     // Column resize tracking — used to assert that the JS pointerdown listener

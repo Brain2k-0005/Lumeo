@@ -108,6 +108,7 @@ internal sealed class NoopInteropService : IComponentInteropService
 
     // Auto Resize
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
+    public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
 
     // OTP Paste
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
