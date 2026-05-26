@@ -60,8 +60,15 @@ jobs:
           npm ci --no-audit --no-fund
           node run-all.mjs
 
-      - name: Publish Blazor WASM
-        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
+      - name: Publish Blazor WASM (AOT)
+        # RunAOTCompilation is enabled here (not in the csproj) so `dotnet build`
+        # in CI / E2E / dev — which don't have the wasm-tools workload installed —
+        # never sees the property and never trips the workload-required check.
+        # WasmStripILAfterAOT drops the original IL bytecode after native
+        # compilation, recovering ~30% of the AOT size cost. Trade-off: any
+        # System.Reflection.Emit usage will throw at runtime; we don't use
+        # Emit in Lumeo or its docs deps as of this commit.
+        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release -p:RunAOTCompilation=true -p:WasmStripILAfterAOT=true
 
       - name: Rebuild Tailwind bundles into release
         # Overwrites the stale CSS that dotnet publish's static-web-asset pipeline
