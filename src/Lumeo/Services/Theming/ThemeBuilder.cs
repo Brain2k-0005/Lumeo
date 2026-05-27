@@ -53,8 +53,12 @@ public sealed class ThemeBuilder
     public ThemeBuilder WithBorderRadius(double rem) => Set("--radius", rem.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "rem");
 
     /// <summary>Override the root font family. Pass the full CSS
-    /// font-family stack including quotes / fallbacks.</summary>
-    public ThemeBuilder WithFontFamily(string fontStack) => Set("--font-family", fontStack);
+    /// font-family stack including quotes / fallbacks. Writes the
+    /// <c>font-family</c> declaration directly on <c>:root</c> — Lumeo's
+    /// theme CSS doesn't consume a <c>--font-family</c> custom property,
+    /// so emitting the raw declaration is what actually takes effect
+    /// (matching the path used by <c>ThemeService.SetFont</c>).</summary>
+    public ThemeBuilder WithFontFamily(string fontStack) => Set("font-family", fontStack);
 
     /// <summary>Set an arbitrary CSS custom property. Use this for tokens
     /// that don't have a typed setter yet (e.g. component-scoped vars).</summary>
