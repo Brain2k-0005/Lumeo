@@ -164,6 +164,22 @@ window.themeManager = {
         } else {
             applyLumeoFont(lumeoDefault(defaults, 'font'), lumeoDefault(defaults, 'fontLocalPath'));
         }
+
+        // Multi-tab theme sync. Without this, toggling dark mode (or
+        // changing scheme / radius / direction) in one tab leaves other
+        // tabs of the same app on the stale theme — they only re-read
+        // localStorage on page load. The 'storage' event fires in every
+        // OTHER tab when a tab writes a key, so we just re-run the init
+        // pipeline to pick up the new value. Self-tab writes don't fire
+        // the event, so this can't loop. Idempotent — re-applying the
+        // same theme is a no-op.
+        if (!window.themeManager._storageHandlerInstalled) {
+            window.addEventListener('storage', function (e) {
+                if (!e.key || !e.key.startsWith('theme-') && e.key !== 'lumeo.direction') return;
+                try { window.themeManager.init(); } catch (_) {}
+            });
+            window.themeManager._storageHandlerInstalled = true;
+        }
     },
     setMode: function (mode) {
         if (mode === 'system') {
