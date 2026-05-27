@@ -626,6 +626,19 @@
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<TItem>> SelectedItemsChanged { get; set; }
 
+    /// <summary>
+    /// Optional key projector that identifies items across re-fetches. In
+    /// server-mode where <c>Items</c> is a fresh instance per page-load,
+    /// the default reference-based stale-selection cleanup wipes selections
+    /// that survived a page. When this selector is set, the grid identifies
+    /// stale-vs-still-selected rows by comparing keys instead of references —
+    /// so a selection on page 1 stays applied after a page-2 fetch returns
+    /// a fresh wrapper for the same logical row. Returning <c>null</c> from
+    /// the selector for any item falls back to reference equality for that
+    /// row.
+    /// </summary>
+    [Parameter] public Func<TItem, object?>? SelectionKeySelector { get; set; }
+
     // --- Standard ---
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -740,7 +753,11 @@
                 await MoveFocusAsync(row + KeyboardPageStep, col);
                 break;
             case "PageUp":
-                await MoveFocusAsync(Math.Max(0, row - KeyboardPageStep), col);
+                // Clamp to -1 (header band) instead of 0, so PageUp on row 0
+                // moves focus up to the column-header row instead of being a
+                // no-op. MoveFocusAsync already understands row=-1 as the
+                // header (line 684).
+                await MoveFocusAsync(Math.Max(-1, row - KeyboardPageStep), col);
                 break;
             case " ":
             case "Spacebar":
@@ -1369,11 +1386,31 @@
             return;
         }
 
-        // Clean stale selections that reference items no longer in the data source
+        // Clean stale selections that reference items no longer in the data source.
+        // When SelectionKeySelector is set, compare by key so server-mode fetches
+        // (which produce fresh TItem instances per page) don't wipe selections.
         if (_selectedItems.Count > 0)
         {
-            var currentItems = new HashSet<TItem>(Items);
-            var staleCount = _selectedItems.RemoveAll(item => !currentItems.Contains(item));
+            int staleCount;
+            if (SelectionKeySelector is not null)
+            {
+                var currentKeys = new HashSet<object>();
+                foreach (var it in Items)
+                {
+                    var k = SelectionKeySelector(it);
+                    if (k is not null) currentKeys.Add(k);
+                }
+                staleCount = _selectedItems.RemoveAll(item =>
+                {
+                    var k = SelectionKeySelector(item);
+                    return k is null || !currentKeys.Contains(k);
+                });
+            }
+            else
+            {
+                var currentItems = new HashSet<TItem>(Items);
+                staleCount = _selectedItems.RemoveAll(item => !currentItems.Contains(item));
+            }
             if (staleCount > 0)
             {
                 _selectedSet = new HashSet<TItem>(_selectedItems);
@@ -2177,7 +2214,22 @@
         // Handled by ToggleSelection
     }
 
-    private bool IsRowSelected(TItem item) => _selectedSet.Contains(item);
+    private bool IsRowSelected(TItem item)
+    {
+        if (_selectedSet.Contains(item)) return true;
+        // Server-mode parity: a freshly-fetched item is a different reference
+        // than the one originally clicked, so reference-based Contains misses.
+        // When SelectionKeySelector is set, fall back to a key scan.
+        if (SelectionKeySelector is null || _selectedItems.Count == 0) return false;
+        var key = SelectionKeySelector(item);
+        if (key is null) return false;
+        foreach (var sel in _selectedItems)
+        {
+            var k = SelectionKeySelector(sel);
+            if (k is not null && key.Equals(k)) return true;
+        }
+        return false;
+    }
 
     private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
 

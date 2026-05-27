@@ -46,6 +46,20 @@ public record DataGridFilterTemplateContext(
     Func<FilterDescriptor?, Task> Apply
 );
 
+/// <summary>
+/// Issued by the grid when it needs a page of server-side data.
+///
+/// <para>
+/// <b>Cancellation contract:</b> <see cref="CancellationToken"/> is bumped on
+/// every new request — pass it down to your HTTP client / repository call
+/// (<c>HttpClient.GetAsync(url, request.CancellationToken)</c>) so that
+/// out-of-order completions are dropped. If you ignore the token and the
+/// older response resolves after a newer one, the older payload will
+/// overwrite the visible page (the grid only guards its own
+/// <c>IsLoading</c> flag against the same race, not the data you assign
+/// to <c>Items</c>).
+/// </para>
+/// </summary>
 public record DataGridServerRequest(
     int Page,
     int PageSize,
