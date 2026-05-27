@@ -19,6 +19,12 @@ namespace Lumeo;
 /// </remarks>
 public enum Size
 {
+    /// <summary>Double extra small. For dense-mode <c>Avatar</c> / <c>Chip</c>
+    /// where a smaller indicator is needed (e.g. inline-with-text presence
+    /// dot, stacked-avatar list previews). Replaces consumer-side
+    /// <c>text-[10px]</c> / <c>h-5 w-5</c> arbitrary-value Tailwind escape
+    /// hatches with a first-class token.</summary>
+    Xxs,
     /// <summary>Extra small. Used by <c>Icon</c>.</summary>
     Xs,
     /// <summary>Small. Used by most sized components (Avatar, Chip, Input, etc.).</summary>
