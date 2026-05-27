@@ -198,6 +198,17 @@ public sealed record OverlayOptions
     /// off on desktop, on for mobile bottom-sheet pull-down.</summary>
     public bool? MobileSwipeToClose { get; init; }
 
+    /// <summary>When true and the viewport width is below
+    /// <see cref="MobileBreakpoint"/>, the overlay is forced full-screen
+    /// (full width + full height, no corner radius). Works across Dialog,
+    /// Sheet and Drawer overlays — replaces the consumer-side
+    /// <c>max-md:!h-full max-md:!w-full max-md:!max-w-full</c> Tailwind
+    /// override chain that was previously the only way to get a
+    /// full-screen Dialog on mobile. For Sheets, this is equivalent to
+    /// setting <see cref="MobileSheetSize"/> to <see cref="SheetSize.Full"/>
+    /// but composes more naturally for the Sheet+Dialog mixed case.</summary>
+    public bool MobileFullscreen { get; init; }
+
     /// <summary>
     /// Wrap the rendered component in a scrollable body region inside the
     /// overlay's chrome (Sheet only — Dialog and Drawer manage their own
