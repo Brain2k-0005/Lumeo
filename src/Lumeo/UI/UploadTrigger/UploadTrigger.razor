@@ -1,0 +1,108 @@
+@namespace Lumeo
+@using Microsoft.AspNetCore.Components.Forms
+
+@*
+    UploadTrigger — Button-styled <InputFile> trigger for file-pick-only flows.
+
+    Use when the consumer wants the visual + UX of a Lumeo Button that opens
+    the native file picker, but doesn't want FileUpload's inner pending /
+    progress chip list. Common cases:
+      - "Replace document" action in a metadata sidebar (the file list lives
+        elsewhere, this is just the pick affordance).
+      - Settings page "Upload logo" button.
+      - Composer toolbars adding attachments inline.
+
+    For full upload UI with progress, file list, drag-drop and validation,
+    use FileUpload. UploadTrigger is intentionally the minimal pick-trigger
+    primitive.
+*@
+
+<label class="@LabelClass">
+    @if (Icon is not null)
+    {
+        @Icon
+    }
+    else
+    {
+        <Blazicon Svg="Lucide.Upload" class="h-4 w-4" />
+    }
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+    else
+    {
+        <span>@(Text ?? L["UploadTrigger.PickFile"])</span>
+    }
+    <InputFile class="sr-only"
+               OnChange="HandleChange"
+               multiple="@Multiple"
+               accept="@Accept"
+               disabled="@Disabled"
+               @attributes="AdditionalAttributes" />
+</label>
+
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@code {
+    /// <summary>Files chosen in the picker. Fires once per picker confirmation;
+    /// the consumer is responsible for any subsequent state / upload logic.</summary>
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
+
+    /// <summary>Allow multiple files. Maps to the native picker's multi-select.</summary>
+    [Parameter] public bool Multiple { get; set; }
+
+    /// <summary>MIME-type / extension filter passed to <c>accept=</c>.
+    /// E.g. <c>"image/*"</c>, <c>".pdf,.docx"</c>. Null = no filter.</summary>
+    [Parameter] public string? Accept { get; set; }
+
+    /// <summary>Disables the trigger.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Visual variant. Matches the corresponding <see cref="Button"/>
+    /// variant so the trigger composes visually with surrounding buttons.</summary>
+    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;
+
+    /// <summary>Size. Matches the corresponding <see cref="Button"/> size.</summary>
+    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;
+
+    /// <summary>Trigger label. Falls back to localized "Pick a file" when null.
+    /// Ignored if <see cref="ChildContent"/> is provided.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>Custom label content. Overrides <see cref="Text"/>.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Custom leading icon. Defaults to <c>Lucide.Upload</c>.</summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Mirrors Button's variant + size class composition so the trigger
+    // matches surrounding Lumeo buttons pixel-for-pixel. Keep these
+    // switches in sync if Button's mapping ever changes.
+    private string VariantClass => Variant switch
+    {
+        Button.ButtonVariant.Destructive => "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+        Button.ButtonVariant.Outline => "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Secondary => "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        Button.ButtonVariant.Ghost => "hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Link => "text-primary underline-offset-4 hover:underline",
+        _ => "bg-primary text-primary-foreground shadow hover:bg-primary/90"
+    };
+
+    private string SizeClass => Size switch
+    {
+        Button.ButtonSize.Sm => "h-8 rounded-md px-3 text-xs gap-1.5",
+        Button.ButtonSize.Lg => "h-10 rounded-md px-8 gap-2",
+        _ => "h-9 px-4 py-2 gap-2"
+    };
+
+    private string LabelClass => $"inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-within:outline-none focus-within:ring-[1.5px] focus-within:ring-ring whitespace-nowrap {SizeClass} {VariantClass} {(Disabled ? "pointer-events-none opacity-50 cursor-not-allowed" : "cursor-pointer")} {Class}".Trim();
+
+    private async Task HandleChange(InputFileChangeEventArgs e)
+    {
+        await OnFilesSelected.InvokeAsync(e);
+    }
+}
