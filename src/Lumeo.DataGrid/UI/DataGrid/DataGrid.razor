@@ -1264,6 +1264,15 @@
             _pendingReorderAnimation = false;
             try { await Interop.AnimateColumnReorder(_gridId, ColumnReorderAnimationMs); }
             catch (JSDisconnectedException) { }
+            catch (Exception ex)
+            {
+                // Non-disconnect JS / runtime failures shouldn't throw out of
+                // OnAfterRenderAsync (Blazor would log unhandled-task) — route
+                // through OnError so consumers can react, but keep the flag
+                // cleared so a future render isn't blocked on a stale
+                // pending-animation state (Codex review on #48).
+                if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
+            }
         }
     }
 
@@ -2451,6 +2460,14 @@
         // from its old visual position to its new one.
         try { await Interop.CaptureColumnRects(_gridId); }
         catch (JSDisconnectedException) { }
+        catch (Exception captureEx)
+        {
+            // Non-disconnect failures (DOM gone, malformed rects) shouldn't
+            // abort the column-order mutation that follows — the FLIP
+            // animation is a visual nice-to-have. Surface to OnError and
+            // continue so the data reorder still applies (Codex review #48).
+            if (OnError.HasDelegate) await OnError.InvokeAsync(captureEx);
+        }
 
         var col = _orderedColumns[args.OldIndex];
         _orderedColumns.RemoveAt(args.OldIndex);
