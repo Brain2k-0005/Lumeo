@@ -34,10 +34,12 @@
             var isCompleted = step.Completed || idx < ActiveStep;
             var isError = !step.IsStepValid() && idx < ActiveStep;
             <button type="button"
+                    id="@StepTabId(idx)"
                     role="tab"
                     aria-selected="@isActive.ToString().ToLower()"
                     aria-current="@(isActive ? "step" : null)"
                     aria-disabled="@(CanClickStep(idx) ? null : "true")"
+                    aria-controls="@_panelId"
                     tabindex="@(isActive ? 0 : -1)"
                     class="@GetStepIndicatorClass(idx, isActive, isCompleted, isError)"
                     @ref="_stepButtonRefs[idx]"
@@ -116,7 +118,11 @@
     }
 
     @* Step body panel *@
-    <div role="tabpanel" class="mt-4">
+    @* aria-labelledby points at the active step's tab id so AT announces
+       'panel — Step N: Title' when the panel receives focus. The
+       relationship is dynamic (active step changes), so we read the
+       currently-active step's id directly each render. *@
+    <div id="@_panelId" role="tabpanel" aria-labelledby="@(ActiveStep >= 0 && ActiveStep < _steps.Count ? StepTabId(ActiveStep) : null)" class="mt-4">
         @if (ActiveStep >= 0 && ActiveStep < _steps.Count)
         {
             var activeStep = _steps[ActiveStep];
@@ -178,6 +184,14 @@
     // ElementReferences for each step indicator button — sized in OnParametersSet
     // so @ref bindings in the render loop always find a valid slot.
     private ElementReference[] _stepButtonRefs = Array.Empty<ElementReference>();
+
+    // Stable IDs for the tabpanel and per-step tab buttons so the panel
+    // can reference the active step via aria-labelledby. Without these,
+    // AT announces the tabpanel without context (just "tab panel" instead
+    // of "Step 2: Billing details, tab panel").
+    private readonly string _panelId = LumeoIds.New("stepper-panel");
+    private readonly string _tabIdPrefix = LumeoIds.New("stepper-tab");
+    private string StepTabId(int idx) => $"{_tabIdPrefix}-{idx}";
 
     internal void RegisterStep(StepperStep.StepRegistration step)
     {

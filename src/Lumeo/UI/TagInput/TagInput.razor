@@ -54,6 +54,9 @@
                name="@(Name ?? FormField?.Name)"
                aria-required="@(Required ? "true" : "false")"
                aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+               aria-haspopup="listbox"
+               aria-expanded="@(_showSuggestions && FilteredSuggestions.Count > 0 ? "true" : "false")"
+               aria-controls="@_suggestionsId"
                @oninput="OnInput"
                @onkeydown="OnKeyDown"
                @onfocus="() => _showSuggestions = FilteredSuggestions.Count > 0"
@@ -62,10 +65,12 @@
 
         @if (_showSuggestions && FilteredSuggestions.Count > 0)
         {
-            <div id="@_suggestionsId" class="fixed z-50 min-w-[150px] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in">
-                @foreach (var suggestion in FilteredSuggestions)
+            <div id="@_suggestionsId" role="listbox" class="fixed z-50 min-w-[150px] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in">
+                @foreach (var (suggestion, index) in FilteredSuggestions.Select((s, i) => (s, i)))
                 {
                     <button type="button"
+                            role="option"
+                            aria-selected="false"
                             class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none cursor-pointer transition-colors"
                             @onclick="() => SelectSuggestion(suggestion)">
                         @if (SuggestionTemplate is not null)
