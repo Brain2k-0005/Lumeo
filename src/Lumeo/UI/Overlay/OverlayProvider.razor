@@ -8,7 +8,7 @@
     {
         case OverlayType.Dialog:
             <Dialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DialogContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                <DialogContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
                         <DialogHeader>
@@ -26,7 +26,7 @@
 
         case OverlayType.Sheet:
             <Sheet @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <SheetContent ZIndex="@overlay.ZIndex" Side="@EffectiveSheetSide(overlay.Options)" Size="@EffectiveSheetSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@EffectiveSwipeToClose(overlay.Options)" Class="@overlay.Options.Class">
+                <SheetContent ZIndex="@overlay.ZIndex" Side="@EffectiveSheetSide(overlay.Options)" Size="@EffectiveSheetSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@EffectiveSwipeToClose(overlay.Options)" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
                         <SheetHeader>
@@ -65,7 +65,7 @@
 
         case OverlayType.Drawer:
             <Drawer @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DrawerContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@overlay.Options.Class">
+                <DrawerContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
                         <DrawerHeader>
@@ -152,7 +152,8 @@
         opts.MobileBreakpoint is not null
         && (opts.MobileSheetSide is not null
             || opts.MobileSheetSize is not null
-            || opts.MobileSwipeToClose is not null);
+            || opts.MobileSwipeToClose is not null
+            || opts.MobileFullscreen);
 
     // Effective Side/Size/SwipeToClose helpers — picked at each render so a
     // viewport crossing flips them automatically via HandleViewportChanged.
@@ -173,6 +174,22 @@
 
     private bool EffectiveSwipeToClose(OverlayOptions opts) =>
         IsMobile(opts) && opts.MobileSwipeToClose is bool m ? m : opts.SwipeToClose;
+
+    // Composes the Class string passed to the inner Dialog/Sheet/Drawer
+    // content. When MobileFullscreen + viewport is below MobileBreakpoint,
+    // appends the override classes that previously consumers had to ship
+    // themselves (max-md:!h-full max-md:!w-full max-md:!max-w-full
+    // max-md:!rounded-none). We don't need the max-md: prefix because the
+    // provider already knows it's mobile via IsMobile() — the classes
+    // apply unconditionally at the moment of render. Order matters: the
+    // consumer's own Class wins for unrelated tokens, the fullscreen
+    // tokens are appended after so they override the component's defaults.
+    private string? EffectiveClass(OverlayOptions opts)
+    {
+        if (!IsMobile(opts) || !opts.MobileFullscreen) return opts.Class;
+        const string fs = "h-full w-full max-w-full max-h-full rounded-none";
+        return string.IsNullOrEmpty(opts.Class) ? fs : $"{opts.Class} {fs}";
+    }
 
     private void HandleShow(OverlayInstance instance)
     {
