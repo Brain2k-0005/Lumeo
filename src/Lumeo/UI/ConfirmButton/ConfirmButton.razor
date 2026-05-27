@@ -1,0 +1,91 @@
+@namespace Lumeo
+@inject Lumeo.Services.IOverlayService Overlay
+
+@*
+    ConfirmButton — a Button that opens an AlertDialog before firing OnConfirm.
+
+    Replaces the ~15-line boilerplate of wiring a Button + AlertDialog manually
+    for the destructive-action / commit-changes flow. Internally delegates to
+    OverlayService.ShowAlertDialogAsync, so the dialog renders through the
+    existing OverlayProvider — no extra DOM in the consumer's tree.
+
+    The button itself accepts the same Variant / Size / Disabled / IsLoading
+    parameters as <Button>, so it composes pixel-for-pixel with surrounding
+    buttons.
+*@
+
+<Button Variant="@Variant"
+        Size="@Size"
+        Disabled="@Disabled"
+        IsLoading="@IsLoading"
+        Class="@Class"
+        OnClick="HandleClick"
+        @attributes="AdditionalAttributes">
+    @ChildContent
+</Button>
+
+@code {
+    /// <summary>Button content (the visible label or icon).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Title shown at the top of the confirm dialog.
+    /// Defaults to the AlertDialog default ("Are you sure?").</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Optional descriptive body text under the title.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Label for the confirm action button. Defaults to "Continue".</summary>
+    [Parameter] public string? ConfirmText { get; set; }
+
+    /// <summary>Label for the cancel action button. Defaults to "Cancel".</summary>
+    [Parameter] public string? CancelText { get; set; }
+
+    /// <summary>When true, the confirm button is styled as destructive
+    /// (red) — for delete / remove / discard actions.</summary>
+    [Parameter] public bool IsDestructive { get; set; }
+
+    /// <summary>Fires after the user confirms. Does NOT fire on cancel —
+    /// listen to <see cref="OnCancel"/> for that path if needed.</summary>
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    /// <summary>Fires when the user cancels (or closes the dialog without
+    /// confirming). Optional — most consumers only care about OnConfirm.</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>Visual variant of the trigger button. Defaults to
+    /// <see cref="Button.ButtonVariant.Default"/>; commonly set to
+    /// <see cref="Button.ButtonVariant.Destructive"/> for delete actions
+    /// so the button itself is red even before the dialog opens.</summary>
+    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;
+
+    /// <summary>Size of the trigger button.</summary>
+    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;
+
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task HandleClick()
+    {
+        var opts = new Lumeo.Services.AlertDialogOptions
+        {
+            Title = Title ?? "Are you sure?",
+            Description = Description,
+            ConfirmText = ConfirmText ?? "Continue",
+            CancelText = CancelText ?? "Cancel",
+            IsDestructive = IsDestructive,
+        };
+
+        var result = await Overlay.ShowAlertDialogAsync(opts);
+        if (result.Cancelled)
+        {
+            if (OnCancel.HasDelegate) await OnCancel.InvokeAsync();
+        }
+        else
+        {
+            if (OnConfirm.HasDelegate) await OnConfirm.InvokeAsync();
+        }
+    }
+}
