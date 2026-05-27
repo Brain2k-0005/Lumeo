@@ -82,7 +82,11 @@
             break;
 
         case OverlayType.AlertDialog:
-            <AlertDialog @key="overlay.Id" Open="true">
+            @* OpenChanged wires Escape / overlay-click dismissals back to
+               OverlayService.Cancel so ShowAlertDialogAsync resolves. Without
+               it, the AlertDialog flips its local Open=false but the awaiting
+               caller (e.g. ConfirmButton) blocks forever. *@
+            <AlertDialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <AlertDialogContent ZIndex="@overlay.ZIndex">
                     <AlertDialogHeader>
                         <AlertDialogTitle>@(overlay.AlertOptions?.Title ?? "Are you sure?")</AlertDialogTitle>
