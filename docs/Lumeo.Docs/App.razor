@@ -42,11 +42,25 @@
         }),
         ("/components/code-editor",      new[] { "Lumeo.CodeEditor.dll" }),
         ("/components/rich-text-editor", new[] { "Lumeo.Editor.dll" }),
-        ("/components/file-viewer",      new[] { "Lumeo.FileViewer.dll" }),
+        // FileViewer renders Code-kind files via CodeEditor and PDF-kind
+        // files via PdfViewer (see Lumeo.FileViewer/UI/FileViewer/
+        // FileViewer.razor switch on _resolvedKind). Without the two
+        // satellite DLLs in this route's lazy set, navigating directly to
+        // /components/file-viewer threw missing-assembly errors as soon as
+        // the demo file table tried to render one of those kinds. Pull
+        // them in alongside Lumeo.FileViewer.dll (Codex #50 review).
+        ("/components/file-viewer",      new[] { "Lumeo.FileViewer.dll", "Lumeo.CodeEditor.dll", "Lumeo.PdfViewer.dll" }),
         ("/components/gantt",            new[] { "Lumeo.Gantt.dll" }),
         ("/components/pdf-viewer",       new[] { "Lumeo.PdfViewer.dll" }),
         ("/components/scheduler",        new[] { "Lumeo.Scheduler.dll" }),
     };
+
+    // Note: the eight non-Lucide Blazicons packs are also preloaded by
+    // CustomizerSidebar on first render (Codex #50 review) so the
+    // customizer's icon-library picker works on every docs page, not
+    // just /components/icon. That loader lives next to the consumer in
+    // CustomizerSidebar.razor rather than here, so the App-level lazy
+    // map stays strictly route-prefix → DLL.
 
     private async Task OnNavigateAsync(NavigationContext context)
     {
@@ -75,10 +89,11 @@
         }
         catch
         {
-            // Best-effort: a failed fetch leaves the assemblies un-marked so
-            // the next navigation tries again. We intentionally swallow here
-            // rather than crash the router — the page itself will surface a
-            // meaningful error when its types can't resolve.
+            // Un-mark the names so the next navigation gets a fresh chance
+            // to fetch them, then rethrow so the router / error boundary
+            // surfaces the failure to the user instead of letting it sink
+            // into the unobserved-task pool (a previous comment here read
+            // as if the throw was a swallow — fixed per Codex review).
             foreach (var dll in needed) _loadedNames.Remove(dll);
             throw;
         }

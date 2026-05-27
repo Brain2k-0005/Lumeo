@@ -112,6 +112,50 @@ function safeInvoke(dotNetRef, name, ...args) {
     }
 }
 
+// Tracks which dotNetRefs have a working canonical OnUpdate handler so the
+// rich-text content-update path doesn't probe twice per keystroke. Filled
+// the first time invokeContentUpdate sees a NotFound rejection for OnUpdate
+// on a given ref. Bounded — entries live for the lifetime of the dotNetRef,
+// which the .NET side disposes when the component disposes.
+const _noCanonicalOnUpdate = new WeakSet();
+
+// Calls the .NET-side content-update handler. The bundled RichTextEditor
+// implements both OnUpdate (canonical) and OnContentUpdate (legacy alias),
+// where the alias forwards to the canonical — so firing BOTH would run
+// every keystroke's ValueChanged twice (Codex review on #97). External
+// consumers that wired RichTextInitAsync<T> with their own
+// DotNetObjectReference may implement only the legacy OnContentUpdate.
+// Strategy: invoke OnUpdate first. If the .NET runtime rejects with
+// 'method not found', remember this ref and fall back to OnContentUpdate
+// for it (and every subsequent call) so we don't pay the failed-probe
+// cost per keystroke.
+function invokeContentUpdate(dotNetRef, html) {
+    if (_noCanonicalOnUpdate.has(dotNetRef)) {
+        safeInvoke(dotNetRef, 'OnContentUpdate', html);
+        return;
+    }
+    try {
+        const p = dotNetRef.invokeMethodAsync('OnUpdate', html);
+        if (p && typeof p.catch === 'function') {
+            p.catch((err) => {
+                const msg = err && err.message ? err.message : String(err || '');
+                // Blazor's missing-invokable message contains the method name
+                // plus "was not found". Other failures (network, throw in the
+                // consumer handler) should NOT trigger the fallback — those
+                // mean the canonical IS wired, it just failed once.
+                if (msg.indexOf("'OnUpdate'") !== -1 && msg.indexOf('not found') !== -1) {
+                    _noCanonicalOnUpdate.add(dotNetRef);
+                    safeInvoke(dotNetRef, 'OnContentUpdate', html);
+                }
+            });
+        }
+    } catch (_) {
+        // Synchronous throw on invokeMethodAsync (very rare; dotNetRef
+        // disposed mid-call). Best-effort fallback.
+        safeInvoke(dotNetRef, 'OnContentUpdate', html);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Suggestion-list popup (used by mentions, slash commands, custom triggers).
 // Renders a styled floating list near the trigger caret. Keyboard nav is
@@ -927,12 +971,15 @@ export const rte = {
                             // Soft cap — emit the overflow but consumers can trim.
                         }
                     }
-                    // Single round-trip per keystroke. OnUpdate is the
-                    // canonical name; .NET-side OnContentUpdate is a legacy
-                    // alias that forwards to the same handler, so firing
-                    // both here would double the .NET round-trip cost on
-                    // every keystroke.
-                    safeInvoke(dotNetRef, 'OnUpdate', html);
+                    // Single round-trip per keystroke via invokeContentUpdate:
+                    // tries OnUpdate (canonical) first, falls back to the
+                    // legacy OnContentUpdate only when the .NET ref doesn't
+                    // implement OnUpdate (external RichTextInitAsync<T>
+                    // consumers). Built-in RichTextEditor has OnUpdate so
+                    // OnContentUpdate (its alias) is NOT called a second
+                    // time — fixes the duplicate ValueChanged per keystroke
+                    // Codex review flagged on #97.
+                    invokeContentUpdate(dotNetRef, html);
                 },
                 onSelectionUpdate: () => {
                     safeInvoke(dotNetRef, 'OnSelectionUpdate');

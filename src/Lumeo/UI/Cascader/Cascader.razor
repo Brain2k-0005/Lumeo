@@ -129,6 +129,15 @@
     // OnParametersSet doesn't rebuild the trail on every parent re-render —
     // it should only respond when Value actually changes from outside.
     private List<string>? _lastSyncedValue;
+    // Tracks the Options reference last synced. When async-loaded options
+    // arrive after the Value parameter was already set, the value-based
+    // guard alone would skip the rebuild and leave _selectedPath /
+    // _activePanels empty — the trigger label would update via
+    // SelectedLabels but opening the picker would land on the root with
+    // no drill-down trail. Tracking Options separately lets us re-resolve
+    // the trail once the options it refers to actually exist (Codex #81
+    // review).
+    private IReadOnlyList<CascaderOption>? _lastSyncedOptions;
     private readonly string _wrapperId = LumeoIds.New("cascader");
     private readonly string _triggerId = LumeoIds.New("cascader-trigger");
     private readonly string _contentId = LumeoIds.New("cascader-content");
@@ -158,13 +167,21 @@
 
     protected override void OnParametersSet()
     {
-        // Skip rebuilds when Value didn't change since last sync. Without
-        // this guard, any parent re-render (an unrelated sibling typing in
-        // a search box, a parent route change, etc.) would collapse the
-        // user's in-progress drill-down back to the Value-mandated path
-        // even though Value itself wasn't touched.
-        if (ValueEquals(_lastSyncedValue, Value)) return;
+        // Skip rebuilds when neither Value NOR Options changed since the
+        // last sync. Without this guard, any parent re-render (unrelated
+        // sibling typing in a search box, parent route change, etc.) would
+        // collapse the user's in-progress drill-down back to the
+        // Value-mandated path even though nothing relevant changed.
+        // Tracking Options separately matters because async-loaded
+        // option trees often arrive AFTER Value has already been set —
+        // without the Options check the rebuild gets skipped on that
+        // arrival, and opening the picker still uses the empty panel
+        // trail until Value changes again (Codex #81 review).
+        var valueChanged = !ValueEquals(_lastSyncedValue, Value);
+        var optionsChanged = !ReferenceEquals(_lastSyncedOptions, Options);
+        if (!valueChanged && !optionsChanged) return;
         _lastSyncedValue = Value is null ? null : new List<string>(Value);
+        _lastSyncedOptions = Options;
 
         if (Value is { Count: > 0 })
         {
