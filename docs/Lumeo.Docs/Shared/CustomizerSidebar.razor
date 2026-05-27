@@ -5,6 +5,7 @@
 @inject IconService _iconService
 @inject Lumeo.Services.ThemeService ThemeService
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
+@inject Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader LazyLoader
 @implements IAsyncDisposable
 
 
@@ -613,10 +614,39 @@
         await JS.InvokeVoidAsync("themeManager.setMenuAccent", accent);
     }
 
+    private static readonly string[] _iconPackDlls =
+    {
+        "Blazicons.Bootstrap.dll",
+        "Blazicons.Devicon.dll",
+        "Blazicons.FlagIcons.dll",
+        "Blazicons.FluentUI.dll",
+        "Blazicons.FontAwesome.dll",
+        "Blazicons.GoogleMaterialDesign.dll",
+        "Blazicons.Ionicons.dll",
+        "Blazicons.MaterialDesignIcons.dll",
+    };
+    private bool _iconPacksLoaded;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // Lazy-fetch the eight non-Lucide icon packs that the customizer's
+            // icon-library picker enumerates. App.razor only loads them on the
+            // /components/icon route, but the customizer is mounted by
+            // MainLayout on every docs page, and IconPreview references the
+            // pack types when the user opens the picker. Without this preload
+            // the picker hit unresolved-assembly errors on /components/button,
+            // /components/avatar, etc. (Codex #50 review). Fire-and-forget;
+            // failures are bounded by safeInvoke-style behaviour on the
+            // consumer side of the loader.
+            if (!_iconPacksLoaded)
+            {
+                _iconPacksLoaded = true;
+                try { await LazyLoader.LoadAssembliesAsync(_iconPackDlls); }
+                catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            }
+
             await ThemeService.InitializeAsync();
             _darkMode = ThemeService.IsDark;
             ThemeService.OnThemeChanged += OnThemeServiceChanged;

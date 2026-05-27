@@ -348,11 +348,66 @@
         if (_registered) await Cleanup();
     }
 
-    private void SyncStateFromHex(string hex)
+    // Parses both hex (#RGB / #RRGGBB / #RRGGBBAA) and rgba(r,g,b[,a]) into
+    // the component's r/g/b/h/s/v/alpha state. Without rgba() handling, a
+    // saved Value emitted by the alpha slider (which writes 'rgba(...)' when
+    // ShowAlpha + alpha<100) couldn't round-trip on remount — the trigger
+    // text showed the rgba string while the internal state fell back to
+    // black/100%, so the preview and the next slider edit corrupted the
+    // saved color (Codex #78 review).
+    private void SyncStateFromHex(string value)
     {
-        if (!TryParseHex(hex, out var r, out var g, out var b)) return;
-        _r = r; _g = g; _b = b;
-        (_h, _s, _v) = RgbToHsv(r, g, b);
+        if (TryParseHex(value, out var hr, out var hg, out var hb))
+        {
+            _r = hr; _g = hg; _b = hb;
+            (_h, _s, _v) = RgbToHsv(_r, _g, _b);
+            // Hex with alpha pair (#RRGGBBAA) updates alpha; plain hex
+            // leaves the existing _alpha untouched so a consumer toggling
+            // between hex strings doesn't reset the slider.
+            if (value.Length == 9 && int.TryParse(value.AsSpan(7, 2), System.Globalization.NumberStyles.HexNumber, null, out var ah))
+            {
+                _alpha = (int)Math.Round(ah / 255.0 * 100.0);
+            }
+            return;
+        }
+
+        if (TryParseRgba(value, out var rr, out var rg, out var rb, out var ra))
+        {
+            _r = rr; _g = rg; _b = rb;
+            (_h, _s, _v) = RgbToHsv(_r, _g, _b);
+            _alpha = ra;
+        }
+    }
+
+    // Accepts 'rgba(r,g,b[,a])' / 'rgb(r,g,b)' with whitespace tolerance.
+    // Alpha is the 0.0–1.0 CSS form; we convert to 0–100 to match the
+    // component's internal scale.
+    private static bool TryParseRgba(string value, out int r, out int g, out int b, out int alphaPct)
+    {
+        r = g = b = 0;
+        alphaPct = 100;
+        if (string.IsNullOrEmpty(value)) return false;
+        var open = value.IndexOf('(');
+        var close = value.IndexOf(')');
+        if (open <= 0 || close <= open) return false;
+        var prefix = value[..open].Trim().ToLowerInvariant();
+        if (prefix != "rgb" && prefix != "rgba") return false;
+
+        var parts = value[(open + 1)..close].Split(',');
+        if (parts.Length < 3 || parts.Length > 4) return false;
+
+        if (!int.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out r)) return false;
+        if (!int.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out g)) return false;
+        if (!int.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out b)) return false;
+        r = Math.Clamp(r, 0, 255);
+        g = Math.Clamp(g, 0, 255);
+        b = Math.Clamp(b, 0, 255);
+
+        if (parts.Length == 4 && double.TryParse(parts[3].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var a))
+        {
+            alphaPct = (int)Math.Round(Math.Clamp(a, 0.0, 1.0) * 100.0);
+        }
+        return true;
     }
 
     private static bool IsValidHex(string hex)
