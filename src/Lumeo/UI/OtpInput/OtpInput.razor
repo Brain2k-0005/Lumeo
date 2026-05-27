@@ -77,8 +77,17 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Focuses the first OTP digit input on first render. Useful
+    /// for the typical OTP flow where the field appears right after a
+    /// "code sent" screen and the user should be typing immediately.
+    /// See <c>Input.AutoFocus</c> for why the HTML <c>autofocus</c>
+    /// attribute doesn't work in Blazor WASM.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Programmatically move focus to the first digit input.</summary>
+    public ValueTask FocusAsync() => Interop.FocusElement($"{_baseId}-0");
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
@@ -134,6 +143,10 @@
         try
         {
             await Interop.RegisterOtpPaste(_baseId, Length, HandlePaste);
+            if (AutoFocus)
+            {
+                await Interop.FocusElement($"{_baseId}-0");
+            }
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }

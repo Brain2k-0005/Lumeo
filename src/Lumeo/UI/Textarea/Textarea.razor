@@ -13,7 +13,8 @@
 }
 
 <div>
-    <textarea id="@_elementId"
+    <textarea @ref="_textareaRef"
+              id="@_elementId"
               name="@Name"
               aria-required="@Required.ToString().ToLowerInvariant()"
               aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
@@ -59,11 +60,23 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Focuses the underlying &lt;textarea&gt; on first render. See
+    /// Input.AutoFocus — the HTML autofocus attribute doesn't work in Blazor
+    /// WASM because parse-time has already passed by the time the runtime
+    /// adds the element to the DOM.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _elementId = LumeoIds.New("textarea");
     private bool _autoResizeSetup;
+    private ElementReference _textareaRef;
+
+    /// <summary>The underlying &lt;textarea&gt; element.</summary>
+    public ElementReference Element => _textareaRef;
+
+    /// <summary>Programmatically move focus to the textarea.</summary>
+    public ValueTask FocusAsync() => _textareaRef.FocusAsync();
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
@@ -89,6 +102,11 @@
         {
             await Interop.SetupAutoResize(_elementId, MaxRows);
             _autoResizeSetup = true;
+        }
+        if (firstRender && AutoFocus)
+        {
+            try { await _textareaRef.FocusAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }
 
