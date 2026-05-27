@@ -254,6 +254,42 @@
         }
     }
 
+    // ARIA: trees that allow multiple selection should expose aria-checked
+    // (with a "mixed" tristate when some descendants are selected) rather
+    // than aria-selected, per WAI-ARIA tree pattern §3.40. Single-select
+    // trees continue to use aria-selected.
+    //
+    // The tristate is descendant-aware: a parent with hasChildren reports
+    // "true" when every leaf under it is selected, "false" when none, and
+    // "mixed" when some are. Without this, screen-reader users only hear
+    // the parent's own selection state — which the component never sets,
+    // because in Multiple mode only leaves are selectable.
+    private string? GetAriaCheckedString(TreeSelectItem item, bool hasChildren)
+    {
+        if (!Multiple) return null;
+        if (!hasChildren) return IsSelected(item.Value) ? "true" : "false";
+
+        int selected = 0, total = 0;
+        CountLeafSelection(item, ref selected, ref total);
+        if (total == 0) return "false";
+        if (selected == 0) return "false";
+        if (selected == total) return "true";
+        return "mixed";
+    }
+
+    private void CountLeafSelection(TreeSelectItem item, ref int selected, ref int total)
+    {
+        if (item.Children is { Count: > 0 })
+        {
+            foreach (var child in item.Children) CountLeafSelection(child, ref selected, ref total);
+        }
+        else
+        {
+            total++;
+            if (IsSelected(item.Value)) selected++;
+        }
+    }
+
     private RenderFragment RenderTreeItem(TreeSelectItem item, int depth) => __builder =>
     {
         if (!IsVisible(item)) return;
@@ -264,7 +300,11 @@
         var isLeaf = !hasChildren;
         var paddingLeft = depth * 16 + 8;
 
-        <div role="treeitem" aria-selected="@isSelected" aria-expanded="@(hasChildren ? isExpanded : null)">
+        <div role="treeitem"
+             aria-selected="@(Multiple ? null : isSelected.ToString().ToLowerInvariant())"
+             aria-checked="@GetAriaCheckedString(item, hasChildren)"
+             aria-expanded="@(hasChildren ? isExpanded : null)"
+             aria-level="@(depth + 1)">
             <div class="@GetItemClass(isSelected, item.Disabled, isLeaf)"
                  style="padding-left: @(paddingLeft)px"
                  @onclick="() => HandleItemClick(item, hasChildren)"
