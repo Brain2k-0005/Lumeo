@@ -40,24 +40,57 @@
     // pane just before this divider in the Context.Children list. This matches
     // how ResizeNeighbors mutates `before.Size` on drag/keypress, so the value
     // an assistive tech reads tracks the same number the user is steering.
-    private Splitter.SplitterPaneHandle? LeadingPane
+    //
+    // The reported min/max must account for BOTH neighbours, not just the
+    // leading pane's own constraints: ResizeNeighbors rejects a move when
+    // either neighbour would violate its limits, so a 20/55/25 layout caps
+    // the first divider at 65% (trailing pane must stay ≥10%), not the
+    // leading pane's own MaxSize of 90.
+    private (Splitter.SplitterPaneHandle? leading, Splitter.SplitterPaneHandle? trailing) Neighbours
     {
         get
         {
-            if (Context is null) return null;
+            if (Context is null) return (null, null);
             var idx = Context.Children.IndexOf(_token);
-            if (idx < 0) return null;
+            if (idx < 0) return (null, null);
+            Splitter.SplitterPaneHandle? lead = null, trail = null;
             for (var i = idx - 1; i >= 0; i--)
-            {
-                if (Context.Children[i] is Splitter.SplitterPaneHandle p) return p;
-            }
-            return null;
+                if (Context.Children[i] is Splitter.SplitterPaneHandle p) { lead = p; break; }
+            for (var i = idx + 1; i < Context.Children.Count; i++)
+                if (Context.Children[i] is Splitter.SplitterPaneHandle p) { trail = p; break; }
+            return (lead, trail);
         }
     }
 
-    private int LeadingPaneValue => (int)Math.Round(LeadingPane?.Size ?? 0);
-    private int LeadingPaneMin => (int)Math.Round(LeadingPane?.MinSize ?? 0);
-    private int LeadingPaneMax => (int)Math.Round(LeadingPane?.MaxSize ?? 100);
+    private int LeadingPaneValue => (int)Math.Round(Neighbours.leading?.Size ?? 0);
+
+    private int LeadingPaneMin
+    {
+        get
+        {
+            var (l, t) = Neighbours;
+            if (l is null) return 0;
+            var ownMin = l.MinSize;
+            if (t is null) return (int)Math.Round(ownMin);
+            // Leading can't shrink past the point where trailing would exceed its MaxSize.
+            var pairMin = (l.Size + t.Size) - t.MaxSize;
+            return (int)Math.Round(Math.Max(ownMin, pairMin));
+        }
+    }
+
+    private int LeadingPaneMax
+    {
+        get
+        {
+            var (l, t) = Neighbours;
+            if (l is null) return 100;
+            var ownMax = l.MaxSize;
+            if (t is null) return (int)Math.Round(ownMax);
+            // Leading can't grow past the point where trailing would drop below its MinSize.
+            var pairMax = (l.Size + t.Size) - t.MinSize;
+            return (int)Math.Round(Math.Min(ownMax, pairMax));
+        }
+    }
 
     private string CssClass =>
         IsHorizontal
