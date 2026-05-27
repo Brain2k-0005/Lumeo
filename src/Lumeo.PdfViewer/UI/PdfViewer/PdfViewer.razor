@@ -210,6 +210,12 @@
     private string? _lastSrc;
     private int _lastPage;
     private double _lastZoom;
+    // Track FitMode explicitly so we can detect Custom↔FitWidth/FitPage
+    // transitions in the OnParametersSet dirty check. The previous design
+    // used double.NaN as a sentinel on _lastZoom, but Math.Abs(zoom - NaN) > ε
+    // is always false (NaN comparisons), so a parent rerender after a fit
+    // render never re-triggered a refit even when the container had resized.
+    private PdfFitMode _lastFitMode = PdfFitMode.Custom;
     private int _totalPages;
     private bool _loading = true;
     private string? _loadError;
@@ -264,6 +270,11 @@
         var cp = Math.Clamp(Page, 1, Math.Max(1, _totalPages == 0 ? int.MaxValue : _totalPages));
         var cz = Math.Clamp(Zoom, MinZoom, MaxZoom);
         if (cp != _lastPage || Math.Abs(cz - _lastZoom) > 0.0001) _dirty = true;
+        // Custom↔Fit transition forces a refit. Staying in a fit mode also
+        // refits on every parent rerender because container size can change
+        // without any tracked param moving — JS recomputes the ratio.
+        if (FitMode != _lastFitMode) _dirty = true;
+        else if (FitMode != PdfFitMode.Custom) _dirty = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -334,17 +345,18 @@
                 // FitMode wins over the numeric Zoom: when set, the JS side
                 // computes the actual ratio from the scroll-parent's
                 // clientWidth / clientHeight against the page's natural
-                // dimensions. _lastZoom is sentinel-bumped per render so a
-                // FitMode value forces a re-render every time
-                // OnParametersSet fires (the container size can change
-                // without Zoom changing).
+                // dimensions. _lastFitMode tracks the active mode so
+                // OnParametersSet can correctly mark dirty across Custom↔Fit
+                // transitions and on every parent rerender while in a fit mode.
                 var useFit = FitMode != PdfFitMode.Custom;
-                if (useFit || clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
+                var fitChanged = FitMode != _lastFitMode;
+                if (useFit || fitChanged || clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
                 {
                     var targetPage = clampedPage;
                     var targetZoom = clampedZoom;
                     _lastPage = targetPage;
-                    _lastZoom = useFit ? double.NaN : targetZoom;
+                    _lastZoom = targetZoom;
+                    _lastFitMode = FitMode;
                     _loading = true;
                     StateHasChanged();
 
