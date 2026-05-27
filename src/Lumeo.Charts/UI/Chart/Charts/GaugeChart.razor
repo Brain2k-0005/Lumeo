@@ -68,11 +68,15 @@
 
         if (Ranges is { Count: > 0 })
         {
-            // Build axis line color stops from ranges
+            // Build axis line color stops from ranges. Guard the
+            // normalisation against Max == Min — division by zero produces
+            // NaN/Infinity in the color-stops payload and ECharts renders
+            // a broken gauge. Collapse to position 0 in that case.
+            var span = Max - Min;
             var colorStops = new List<object>();
             foreach (var range in Ranges.OrderBy(r => r.Threshold))
             {
-                var normalizedPos = (range.Threshold - Min) / (Max - Min);
+                var normalizedPos = span == 0 ? 0 : (range.Threshold - Min) / span;
                 colorStops.Add(new object[] { normalizedPos, range.Color });
             }
             // Ensure we reach 1.0
