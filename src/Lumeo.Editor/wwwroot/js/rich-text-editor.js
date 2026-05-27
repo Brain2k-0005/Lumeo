@@ -927,12 +927,21 @@ export const rte = {
                             // Soft cap — emit the overflow but consumers can trim.
                         }
                     }
-                    // Single round-trip per keystroke. OnUpdate is the
-                    // canonical name; .NET-side OnContentUpdate is a legacy
-                    // alias that forwards to the same handler, so firing
-                    // both here would double the .NET round-trip cost on
-                    // every keystroke.
+                    // Fire BOTH OnUpdate (canonical) and OnContentUpdate
+                    // (legacy alias). The built-in RichTextEditor maps
+                    // OnUpdate → OnContentUpdate internally so the second
+                    // call is technically redundant for the bundled
+                    // component — BUT consumers using the public
+                    // RichTextInitAsync<T> surface with their own
+                    // DotNetObjectReference<T> may only implement
+                    // [JSInvokable] OnContentUpdate (the older name).
+                    // Firing only OnUpdate broke those external integrations
+                    // silently because safeInvoke catches the missing-method
+                    // error and swallows it (Codex #92 review). Keep both
+                    // until the alias can be officially deprecated with a
+                    // migration release note.
                     safeInvoke(dotNetRef, 'OnUpdate', html);
+                    safeInvoke(dotNetRef, 'OnContentUpdate', html);
                 },
                 onSelectionUpdate: () => {
                     safeInvoke(dotNetRef, 'OnSelectionUpdate');

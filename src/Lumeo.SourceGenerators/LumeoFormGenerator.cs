@@ -301,7 +301,15 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         // (string?, MyClass?) and nullable value types (int?, double?). For
         // value types we additionally accept Nullable<T> in case the property
         // is declared with the full generic name rather than the ? shorthand.
-        var isNullable = type.NullableAnnotation == NullableAnnotation.Annotated
+        //
+        // NullableAnnotation.None — oblivious context (file/project compiled
+        // without <Nullable>enable</Nullable>) — must also be treated as
+        // nullable. In oblivious code, `string` is legally null and consumer
+        // models commonly use null as the "cleared" sentinel; coalescing to
+        // "" would change that on every input clear and break legacy data
+        // models (Codex #83 review). Only treat as non-nullable when the
+        // compiler explicitly says NotAnnotated.
+        var isNullable = type.NullableAnnotation != NullableAnnotation.NotAnnotated
             || (type is INamedTypeSymbol nt && nt.IsGenericType
                 && nt.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T);
 

@@ -13,7 +13,16 @@
 
 @if (Prefix != null || Suffix != null || Variant == InputVariant.Search || (Clearable && !string.IsNullOrEmpty(Value)))
 {
-    <div class="@WrapperClass" @attributes="AdditionalAttributes">
+    @* AdditionalAttributes splat goes on the <input>, not the wrapper div,
+       so consumer-passed placeholder / id / autocomplete / aria-label
+       reach the actual focusable element. The wrapper has no
+       @attributes binding — anything wrapper-targeted (z-index, data-*
+       for the visual container) belongs in Class instead. Without this
+       routing the Search variant — which forces this wrapper branch
+       even for plain `<Input Variant=Search Placeholder="…" />` —
+       silently dropped Placeholder onto the div where it has no
+       effect (Codex #95 review). *@
+    <div class="@WrapperClass">
         @if (Variant == InputVariant.Search && Prefix == null)
         {
             <div class="flex items-center ps-3 pe-1 text-muted-foreground">
@@ -29,7 +38,7 @@
                type="@(Variant == InputVariant.Search ? "search" : null)"
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-               class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" />
+               class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
         @if (Clearable && !string.IsNullOrEmpty(Value))
         {
             <button type="button" class="flex items-center px-2 text-muted-foreground hover:text-foreground transition-colors" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">

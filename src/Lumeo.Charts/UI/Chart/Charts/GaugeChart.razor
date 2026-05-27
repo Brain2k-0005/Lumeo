@@ -71,13 +71,29 @@
             // Build axis line color stops from ranges. Guard the
             // normalisation against Max == Min — division by zero produces
             // NaN/Infinity in the color-stops payload and ECharts renders
-            // a broken gauge. Collapse to position 0 in that case.
+            // a broken gauge.
+            //
+            // In ECharts, axisLine.lineStyle.color entries are END positions
+            // along the arc (each stop covers from the previous stop to
+            // its own position). Collapsing every stop to 0 means nothing
+            // covers the arc — the gauge renders empty. For the zero-span
+            // case we emit a single terminal stop at 1.0 using the first
+            // range's color so the whole arc renders as one solid band, the
+            // sensible degenerate output for a placeholder-style gauge.
             var span = Max - Min;
             var colorStops = new List<object>();
-            foreach (var range in Ranges.OrderBy(r => r.Threshold))
+            if (span == 0)
             {
-                var normalizedPos = span == 0 ? 0 : (range.Threshold - Min) / span;
-                colorStops.Add(new object[] { normalizedPos, range.Color });
+                var firstColor = Ranges.OrderBy(r => r.Threshold).First().Color;
+                colorStops.Add(new object[] { 1.0, firstColor });
+            }
+            else
+            {
+                foreach (var range in Ranges.OrderBy(r => r.Threshold))
+                {
+                    var normalizedPos = (range.Threshold - Min) / span;
+                    colorStops.Add(new object[] { normalizedPos, range.Color });
+                }
             }
             // Ensure we reach 1.0
             var maxThreshold = Ranges.Max(r => r.Threshold);

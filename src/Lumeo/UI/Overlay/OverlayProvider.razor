@@ -177,18 +177,32 @@
 
     // Composes the Class string passed to the inner Dialog/Sheet/Drawer
     // content. When MobileFullscreen + viewport is below MobileBreakpoint,
-    // appends the override classes that previously consumers had to ship
-    // themselves (max-md:!h-full max-md:!w-full max-md:!max-w-full
-    // max-md:!rounded-none). We don't need the max-md: prefix because the
-    // provider already knows it's mobile via IsMobile() — the classes
-    // apply unconditionally at the moment of render. Order matters: the
-    // consumer's own Class wins for unrelated tokens, the fullscreen
-    // tokens are appended after so they override the component's defaults.
+    // appends the override classes that consumers previously shipped
+    // themselves (max-md:!h-full max-md:!w-full …).
+    //
+    // We don't need the max-md: prefix because the provider already gates
+    // by viewport via IsMobile(); the classes apply unconditionally at
+    // render time and flip out when the breakpoint crosses. BUT we DO
+    // need Tailwind's `!important` variant on every token: Tailwind
+    // utility precedence comes from the generated stylesheet order, not
+    // the class-attribute order. In the shipped lumeo-utilities.css,
+    // SheetContent's `sm:max-w-sm` / `max-w-lg` and side-specific
+    // rounded utilities are emitted *after* `.max-w-full` and
+    // `.rounded-none`, so the non-important fullscreen tokens lose
+    // against the defaults in the 640–767px range — dialogs stayed
+    // capped at max-w-lg, sheets at sm:max-w-sm, corners stayed
+    // rounded. The `!` prefix makes Tailwind emit the rule as
+    // !important, restoring the override-chain behaviour consumers got
+    // from their hand-rolled `max-md:!…` classes (Codex #91 review).
+    //
+    // Trim()s the final string so an opts.Class with trailing/leading
+    // whitespace doesn't end up with double spaces in the rendered
+    // class attribute.
     private string? EffectiveClass(OverlayOptions opts)
     {
         if (!IsMobile(opts) || !opts.MobileFullscreen) return opts.Class;
-        const string fs = "h-full w-full max-w-full max-h-full rounded-none";
-        return string.IsNullOrEmpty(opts.Class) ? fs : $"{opts.Class} {fs}";
+        const string fs = "!h-full !w-full !max-w-full !max-h-full !rounded-none";
+        return (string.IsNullOrEmpty(opts.Class) ? fs : $"{opts.Class} {fs}").Trim();
     }
 
     private void HandleShow(OverlayInstance instance)
