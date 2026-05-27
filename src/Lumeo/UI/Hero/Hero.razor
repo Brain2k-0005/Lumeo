@@ -1,0 +1,78 @@
+@namespace Lumeo
+
+@*
+    Hero — landing-page hero band. Part of the 3.4 Splash Kit. Provides
+    a centered, max-width content rail with an optional Eyebrow chip,
+    Title, Subtitle, Actions slot, and a Media slot for the side
+    illustration. Layout collapses to a single column under sm:.
+*@
+
+<section class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="@($"mx-auto max-w-6xl px-6 py-16 sm:py-24 {GridClass}")">
+        <div class="@($"flex flex-col {AlignClass}")">
+            @if (Eyebrow is not null)
+            {
+                <div class="mb-4">
+                    @Eyebrow
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground">@Title</h1>
+            }
+            @TitleSlot
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <p class="mt-4 text-lg text-muted-foreground max-w-2xl">@Subtitle</p>
+            }
+            @SubtitleSlot
+            @if (Actions is not null)
+            {
+                <div class="mt-8 flex flex-wrap gap-3 @ActionsAlignClass">
+                    @Actions
+                </div>
+            }
+        </div>
+        @if (Media is not null)
+        {
+            <div class="flex items-center justify-center">
+                @Media
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public RenderFragment? TitleSlot { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? SubtitleSlot { get; set; }
+    [Parameter] public RenderFragment? Eyebrow { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? Media { get; set; }
+    [Parameter] public HeroAlignment Alignment { get; set; } = HeroAlignment.Start;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => $"w-full {Class}".Trim();
+
+    private string GridClass => Media is not null
+        ? "grid gap-10 lg:grid-cols-2 items-center"
+        : "";
+
+    private string AlignClass => Alignment switch
+    {
+        HeroAlignment.Center => "items-center text-center",
+        HeroAlignment.End => "items-end text-end",
+        _ => "items-start text-start"
+    };
+
+    private string ActionsAlignClass => Alignment switch
+    {
+        HeroAlignment.Center => "justify-center",
+        HeroAlignment.End => "justify-end",
+        _ => "justify-start"
+    };
+
+    public enum HeroAlignment { Start, Center, End }
+}

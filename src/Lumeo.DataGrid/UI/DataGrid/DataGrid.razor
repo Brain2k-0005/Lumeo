@@ -626,6 +626,19 @@
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<TItem>> SelectedItemsChanged { get; set; }
 
+    /// <summary>
+    /// Optional key projector that identifies items across re-fetches. In
+    /// server-mode where <c>Items</c> is a fresh instance per page-load,
+    /// the default reference-based stale-selection cleanup wipes selections
+    /// that survived a page. When this selector is set, the grid identifies
+    /// stale-vs-still-selected rows by comparing keys instead of references —
+    /// so a selection on page 1 stays applied after a page-2 fetch returns
+    /// a fresh wrapper for the same logical row. Returning <c>null</c> from
+    /// the selector for any item falls back to reference equality for that
+    /// row.
+    /// </summary>
+    [Parameter] public Func<TItem, object?>? SelectionKeySelector { get; set; }
+
     // --- Standard ---
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -740,7 +753,11 @@
                 await MoveFocusAsync(row + KeyboardPageStep, col);
                 break;
             case "PageUp":
-                await MoveFocusAsync(Math.Max(0, row - KeyboardPageStep), col);
+                // Clamp to -1 (header band) instead of 0, so PageUp on row 0
+                // moves focus up to the column-header row instead of being a
+                // no-op. MoveFocusAsync already understands row=-1 as the
+                // header (line 684).
+                await MoveFocusAsync(Math.Max(-1, row - KeyboardPageStep), col);
                 break;
             case " ":
             case "Spacebar":
@@ -1369,11 +1386,37 @@
             return;
         }
 
-        // Clean stale selections that reference items no longer in the data source
+        // Clean stale selections that reference items no longer in the data source.
+        // When SelectionKeySelector is set, compare by key so server-mode fetches
+        // (which produce fresh TItem instances per page) don't wipe selections.
+        // null-key selections fall back to reference equality so mixed
+        // keyed/unkeyed scenarios don't silently lose the unkeyed rows.
         if (_selectedItems.Count > 0)
         {
-            var currentItems = new HashSet<TItem>(Items);
-            var staleCount = _selectedItems.RemoveAll(item => !currentItems.Contains(item));
+            int staleCount;
+            if (SelectionKeySelector is not null)
+            {
+                var currentKeys = new HashSet<object>();
+                var currentRefs = new HashSet<TItem>();
+                foreach (var it in Items)
+                {
+                    var k = SelectionKeySelector(it);
+                    if (k is not null) currentKeys.Add(k);
+                    else currentRefs.Add(it);
+                }
+                staleCount = _selectedItems.RemoveAll(item =>
+                {
+                    var k = SelectionKeySelector(item);
+                    return k is null
+                        ? !currentRefs.Contains(item)
+                        : !currentKeys.Contains(k);
+                });
+            }
+            else
+            {
+                var currentItems = new HashSet<TItem>(Items);
+                staleCount = _selectedItems.RemoveAll(item => !currentItems.Contains(item));
+            }
             if (staleCount > 0)
             {
                 _selectedSet = new HashSet<TItem>(_selectedItems);
@@ -2177,7 +2220,32 @@
         // Handled by ToggleSelection
     }
 
-    private bool IsRowSelected(TItem item) => _selectedSet.Contains(item);
+    private bool IsRowSelected(TItem item) => FindSelectionMatch(item).found;
+
+    // Returns whether `item` is selected and, if so, the stored TItem
+    // instance to mutate when toggling. Bool-flagged because TItem is
+    // unconstrained — a `TItem?` sentinel would be non-null for value-type
+    // rows (e.g. `int`) and every unselected row would falsely report
+    // selected. Ref-match wins; key-match is only consulted when
+    // SelectionKeySelector is set AND the item's key is non-null
+    // (preserves the documented null-key → reference-equality fallback).
+    private (bool found, TItem stored) FindSelectionMatch(TItem item)
+    {
+        if (_selectedSet.Contains(item)) return (true, item);
+
+        if (SelectionKeySelector is null || _selectedItems.Count == 0)
+            return (false, item);
+
+        var key = SelectionKeySelector(item);
+        if (key is null) return (false, item);
+
+        foreach (var sel in _selectedItems)
+        {
+            var k = SelectionKeySelector(sel);
+            if (k is not null && key.Equals(k)) return (true, sel);
+        }
+        return (false, item);
+    }
 
     private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
 
@@ -2185,9 +2253,13 @@
 
     private void ToggleSelection(TItem item)
     {
+        // Capture both ref-membership and key-membership BEFORE mutating, so a
+        // fresh server-mode wrapper (different ref, same key) is correctly
+        // recognised as already-selected and deselects instead of doubling.
+        var (wasSelected, stored) = FindSelectionMatch(item);
+
         if (SelectionMode == DataGridSelectionMode.Single)
         {
-            var wasSelected = _selectedSet.Contains(item);
             _selectedSet.Clear();
             _selectedItems.Clear();
 
@@ -2199,10 +2271,12 @@
         }
         else if (SelectionMode == DataGridSelectionMode.Multiple)
         {
-            if (_selectedSet.Contains(item))
+            if (wasSelected)
             {
-                _selectedSet.Remove(item);
-                _selectedItems.Remove(item);
+                // Use the stored instance (ref-match wins; otherwise the
+                // key-matched stale wrapper) so we don't strand a duplicate.
+                _selectedSet.Remove(stored);
+                _selectedItems.Remove(stored);
             }
             else
             {
@@ -2217,16 +2291,54 @@
 
     private void SelectAll()
     {
-        _selectedItems = _displayedItems.ToList();
-        _selectedSet = new HashSet<TItem>(_selectedItems);
+        // With SelectionKeySelector + server mode, SelectAll must MERGE the
+        // current page into _selectedItems instead of replacing — otherwise
+        // tapping the header checkbox on page 2 silently drops every
+        // selection made on page 1. Without a key selector the previous
+        // page-replace behaviour is correct (single in-memory list).
+        if (SelectionKeySelector is not null)
+        {
+            foreach (var item in _displayedItems)
+            {
+                if (!IsRowSelected(item))
+                {
+                    _selectedItems.Add(item);
+                    _selectedSet.Add(item);
+                }
+            }
+        }
+        else
+        {
+            _selectedItems = _displayedItems.ToList();
+            _selectedSet = new HashSet<TItem>(_selectedItems);
+        }
         NotifySelectionChanged();
         StateHasChanged();
     }
 
     private void ClearSelection()
     {
-        _selectedItems.Clear();
-        _selectedSet.Clear();
+        // Symmetric to SelectAll above: under SelectionKeySelector the
+        // header checkbox represents the current page only, so clearing
+        // must remove just the visible rows (not every other page's
+        // selections).
+        if (SelectionKeySelector is not null)
+        {
+            foreach (var item in _displayedItems)
+            {
+                var (found, stored) = FindSelectionMatch(item);
+                if (found)
+                {
+                    _selectedItems.Remove(stored);
+                    _selectedSet.Remove(stored);
+                }
+            }
+        }
+        else
+        {
+            _selectedItems.Clear();
+            _selectedSet.Clear();
+        }
         NotifySelectionChanged();
         StateHasChanged();
     }
