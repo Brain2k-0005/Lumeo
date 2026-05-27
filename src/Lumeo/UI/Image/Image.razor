@@ -91,7 +91,16 @@
         : null;
 
     private string ContainerClass => Cx.Join("relative inline-block overflow-hidden", Class);
-    private string ImageClass => Cx.Join("object-cover", Cx.When(Preview, "cursor-pointer"));
+    // When the consumer sized the wrapper via Class (e.g. "h-14 w-auto") but
+    // didn't pass explicit Width / Height params, the <img> had no size
+    // hints and collapsed to its natural dimensions inside an
+    // inline-block parent — net visual: empty container. Default the
+    // image to fill its parent in that case; explicit Width/Height still
+    // win because they become attributes on the <img> directly.
+    private string ImageClass => Cx.Join(
+        "object-cover",
+        Cx.When(Width is null && Height is null, "h-full w-full"),
+        Cx.When(Preview, "cursor-pointer"));
     private string FallbackClass => "flex items-center justify-center bg-muted rounded-md";
     private string FallbackStyle
     {
