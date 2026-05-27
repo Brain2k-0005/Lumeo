@@ -367,6 +367,26 @@ window.themeManager = {
 themeManager.init();
 
 
+// Custom-theme bridge for ThemeBuilder (3.4+). Replaces a single managed
+// <style id="lumeo-custom-theme"> block on each call so consumers can
+// fluently override design tokens without writing CSS files.
+window.lumeoThemeCustom = {
+    apply: function (cssText) {
+        var el = document.getElementById('lumeo-custom-theme');
+        if (!el) {
+            el = document.createElement('style');
+            el.id = 'lumeo-custom-theme';
+            document.head.appendChild(el);
+        }
+        el.textContent = cssText || '';
+    },
+    clear: function () {
+        var el = document.getElementById('lumeo-custom-theme');
+        if (el) el.remove();
+    }
+};
+
+
 // Consent FOUC class helper — keeps the html.lumeo-consent-decided class in
 // sync with localStorage at runtime. The class is also set synchronously in
 // index.html's <head> before Blazor boots so the banner doesn't flash on

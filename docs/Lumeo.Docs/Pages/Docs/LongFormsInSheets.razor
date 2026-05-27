@@ -1,0 +1,239 @@
+@page "/docs/long-forms-in-sheets"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Long Forms in Sheets — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Long Forms in Sheets</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Sheets are the canonical place to host non-trivial forms: edit a record, configure a resource,
+            or run a multi-step wizard without leaving the current page. The pattern works well up to several
+            hundred fields, but only if you handle scroll, header/footer stickiness, validation surfacing,
+            unsaved-change protection, and submission state correctly. This guide walks through the layout
+            primitives Lumeo provides and the wiring that keeps long forms usable.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Why Sheets, not Dialogs</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <a class="text-primary hover:underline" href="components/dialog">Dialog</a> caps at the viewport
+            and centers its content — it cannot scroll a 40-field form gracefully. Sheets slide in from an
+            edge, occupy a fixed width (typically <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">md</code>
+            or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">lg</code>) and own the full
+            viewport height. That gives you a dedicated scroll container, a sticky header for the title /
+            close button, and a sticky footer for the primary action — exactly the chrome a form needs.
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>Forms under ~10 fields with no grouping — use Dialog.</li>
+            <li>Forms with sections, repeating rows, or steps — use Sheet.</li>
+            <li>Forms that need full-page real estate (DataGrid editor, rich-text body) — use a dedicated route.</li>
+        </ul>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Canonical layout</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Wrap the form body in a scroll region and pin the action row to the bottom. The header stays
+            at the top via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">SheetHeader</code>;
+            the footer pins via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">SheetFooter</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_canonicalCode</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">flex-1 overflow-y-auto</code>
+            wrapper is the scroll viewport. Without it, long content pushes the footer off-screen and the
+            sheet itself starts scrolling, which loses the sticky-action affordance.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Grouping with sections</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Past about a dozen fields, flat lists become hard to scan. Group related fields with
+            <a class="text-primary hover:underline" href="components/separator">Separator</a> + a section
+            heading, or with an <a class="text-primary hover:underline" href="components/accordion">Accordion</a>
+            for optional / advanced sections that should collapse by default.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_sectionsCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Validation that respects scroll</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            When <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnInvalidSubmit</code> fires
+            with a field below the fold, the user sees no change and assumes the button is broken. Scroll
+            the first invalid field into view and focus it. Lumeo's
+            <a class="text-primary hover:underline" href="docs/edit-form">EditForm wiring</a> exposes the
+            failing fields through <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditContext.GetValidationMessages()</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_scrollToInvalidCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Dirty-state confirmation on close</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Users hit <Kbd>Escape</Kbd> or click the backdrop reflexively. If the form has unsaved edits,
+            pop a confirmation. Track dirty state with
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">EditContext.OnFieldChanged</code>
+            and intercept <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OpenChanged</code>
+            on the Sheet.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_dirtyGuardCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Submission state</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Block double-submits with a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">bool _saving</code>
+            flag bound to the submit button's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Loading</code>
+            parameter. Also disable the close button while saving, and surface API errors via
+            <a class="text-primary hover:underline" href="components/alert">Alert</a> inside the sheet
+            instead of toasts — toasts disappear; the sheet is still open and the user expects feedback
+            in context.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_submitStateCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="components/sheet">Sheet</a> — the underlying component</li>
+            <li><a class="text-primary hover:underline" href="docs/service-vs-markup-overlays">Service vs markup overlays</a> — when to await an OverlayService call instead</li>
+            <li><a class="text-primary hover:underline" href="docs/mobile-sheet-patterns">Mobile sheet patterns</a> — bottom sheets, snap points, swipe-to-close</li>
+            <li><a class="text-primary hover:underline" href="docs/edit-form">EditForm + Lumeo Validation</a> — validation wiring</li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _canonicalCode = @"<Sheet @bind-Open=""_open"" Side=""Sheet.SheetSide.Right"" Size=""Sheet.SheetSize.Lg"">
+    <SheetHeader>
+        <SheetTitle>Edit project</SheetTitle>
+        <SheetDescription>Update the project metadata and visibility.</SheetDescription>
+    </SheetHeader>
+
+    <EditForm Model=""@_form"" OnValidSubmit=""SaveAsync"" class=""flex flex-col flex-1 min-h-0"">
+        <DataAnnotationsValidator />
+
+        <div class=""flex-1 overflow-y-auto px-6 py-4"">
+            <Stack Gap=""5"">
+                <FormField Label=""Name""><Input @bind-Value=""_form.Name"" /></FormField>
+                <FormField Label=""Slug""><Input @bind-Value=""_form.Slug"" /></FormField>
+                <FormField Label=""Description""><Textarea @bind-Value=""_form.Description"" Rows=""6"" /></FormField>
+                @* ... more fields ... *@
+            </Stack>
+        </div>
+
+        <SheetFooter>
+            <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""() => _open = false"">Cancel</Button>
+            <Button type=""submit"" Loading=""@_saving"">Save</Button>
+        </SheetFooter>
+    </EditForm>
+</Sheet>";
+
+    private const string _sectionsCode = @"<Stack Gap=""8"">
+    <Stack Gap=""4"">
+        <Heading Level=""3"" Size=""sm"">Identity</Heading>
+        <FormField Label=""Name""><Input @bind-Value=""_form.Name"" /></FormField>
+        <FormField Label=""Slug""><Input @bind-Value=""_form.Slug"" /></FormField>
+    </Stack>
+
+    <Separator />
+
+    <Stack Gap=""4"">
+        <Heading Level=""3"" Size=""sm"">Visibility</Heading>
+        <FormField Label=""Public""><Switch @bind-Value=""_form.IsPublic"" /></FormField>
+        <FormField Label=""Audience""><Select @bind-Value=""_form.Audience"">...</Select></FormField>
+    </Stack>
+
+    <Accordion>
+        <AccordionItem Value=""advanced"" Title=""Advanced"">
+            <Stack Gap=""4"">
+                <FormField Label=""Webhook URL""><Input @bind-Value=""_form.WebhookUrl"" /></FormField>
+                <FormField Label=""Custom headers""><Textarea @bind-Value=""_form.Headers"" /></FormField>
+            </Stack>
+        </AccordionItem>
+    </Accordion>
+</Stack>";
+
+    private const string _scrollToInvalidCode = @"private async Task OnInvalidSubmit(EditContext ctx)
+{
+    var firstBadField = ctx.GetValidationMessages()
+        .Select(m => m)
+        .FirstOrDefault();
+    if (firstBadField is null) return;
+
+    // Inputs include data-field-name; query and scroll into view.
+    await Interop.InvokeVoidAsync(""lumeoScrollFieldIntoView"", _formRef);
+}";
+
+    private const string _dirtyGuardCode = @"[CascadingParameter] private EditContext? _editContext { get; set; }
+private bool _dirty;
+private bool _open;
+
+protected override void OnAfterRender(bool firstRender)
+{
+    if (firstRender && _editContext is not null)
+        _editContext.OnFieldChanged += (_, _) => { _dirty = true; StateHasChanged(); };
+}
+
+private async Task OnOpenChanged(bool next)
+{
+    if (next || !_dirty) { _open = next; return; }
+
+    var confirmed = await Overlays.ShowAlertDialogAsync(new()
+    {
+        Title = ""Discard changes?"",
+        Description = ""You have unsaved edits. Closing will lose them."",
+        ConfirmText = ""Discard"",
+        DestructiveConfirm = true,
+    });
+    if (confirmed.IsConfirmed) { _open = false; _dirty = false; }
+}
+
+<Sheet Open=""@_open"" OpenChanged=""OnOpenChanged"" ...>";
+
+    private const string _submitStateCode = @"private bool _saving;
+private string? _serverError;
+
+private async Task SaveAsync()
+{
+    _saving = true;
+    _serverError = null;
+    try
+    {
+        await Api.SaveAsync(_form);
+        _open = false;
+    }
+    catch (ApiException ex)
+    {
+        _serverError = ex.Message;
+    }
+    finally { _saving = false; }
+}
+
+<!-- inside the scroll viewport, above the form body: -->
+@if (_serverError is not null)
+{
+    <Alert Variant=""Alert.AlertVariant.Destructive"" Title=""Save failed"">@_serverError</Alert>
+}";
+}

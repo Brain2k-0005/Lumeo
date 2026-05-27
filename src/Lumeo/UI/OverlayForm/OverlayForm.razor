@@ -1,0 +1,86 @@
+@namespace Lumeo
+@using Microsoft.AspNetCore.Components.Forms
+
+@*
+    OverlayForm — opinionated EditForm wrapper for service-driven overlays.
+
+    Solves the recurring papercut from #87.4: an EditForm with a submit
+    button placed inside a SheetContent / DialogContent loses the
+    flex-col + min-h-0 + sticky-footer shape, so the body doesn't scroll
+    independently and the submit button drifts mid-content instead of
+    pinning to the bottom edge. The required structure is small but
+    easy to forget; this component bakes it in.
+
+    Usage inside a service-driven overlay:
+
+        <OverlayForm Model="@_model" OnValidSubmit="HandleSave">
+            <Body>
+                <FormField For="() => Model.Name"> ... </FormField>
+                ... many fields ...
+            </Body>
+            <Footer>
+                <Button Variant="Outline" OnClick="Cancel">Cancel</Button>
+                <Button Type="submit">Save</Button>
+            </Footer>
+        </OverlayForm>
+*@
+
+<EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AdditionalAttributes">
+    @if (Validator is not null)
+    {
+        @Validator
+    }
+    else
+    {
+        <DataAnnotationsFormValidator />
+    }
+
+    @if (Header is not null)
+    {
+        <div class="shrink-0 mb-3">
+            @Header
+        </div>
+    }
+
+    <div class="flex-1 min-h-0 overflow-y-auto pe-1">
+        @Body
+    </div>
+
+    @if (Footer is not null)
+    {
+        <div class="shrink-0 mt-3 pt-3 border-t border-border/40 flex items-center justify-end gap-2">
+            @Footer
+        </div>
+    }
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public object Model { get; set; } = default!;
+    [Parameter] public EventCallback<EditContext> OnValidSubmit { get; set; }
+    [Parameter] public EventCallback<EditContext> OnInvalidSubmit { get; set; }
+
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? Body { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    /// <summary>Override the default <see cref="DataAnnotationsFormValidator"/>
+    /// with a custom validator (e.g. <c>FluentValidationValidator</c>).</summary>
+    [Parameter] public RenderFragment? Validator { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private EditContext? _editContext;
+    private object? _lastModel;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_lastModel, Model))
+        {
+            _editContext = new EditContext(Model);
+            _lastModel = Model;
+        }
+    }
+
+    private string CssClass => $"flex flex-col h-full min-h-0 {Class}".Trim();
+}

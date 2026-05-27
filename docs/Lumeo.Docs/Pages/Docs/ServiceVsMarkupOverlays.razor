@@ -1,0 +1,237 @@
+@page "/docs/service-vs-markup-overlays"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Service vs Markup Overlays — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Service vs Markup Overlays</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo lets you open Dialog, Sheet, Drawer, and Alert Dialog two ways: declare them in markup
+            with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;Sheet @bind-Open&gt;</code>,
+            or call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OverlayService.ShowSheetAsync(...)</code>
+            and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">await</code> a result. Both
+            paths render into the same <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OverlayProvider</code>
+            and look identical to the user. The difference is who owns the lifecycle and where the result lives.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">TL;DR</Heading>
+        <div class="overflow-x-auto rounded-lg border border-border/40">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-44">Use</TableHead>
+                        <TableHead>When</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell Class="font-medium">Markup <code class="text-xs font-mono">&lt;Sheet&gt;</code></TableCell>
+                        <TableCell>The overlay belongs to a specific page or component and shares its state (e.g. an edit form bound to the selected row in a table).</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium"><code class="text-xs font-mono">OverlayService</code></TableCell>
+                        <TableCell>You want to <code class="text-xs font-mono">await</code> a result from procedural code (event handler, command, service), or open the same overlay from many call sites.</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">The markup pattern</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            You declare the overlay alongside the trigger and bind <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Open</code>
+            to a field. The overlay's content has direct access to the component's state, services, and
+            cascading values — no parameter plumbing.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_markupCode</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Best for: edit forms tied to a selected row, inspect panels, contextual previews. Worst for:
+            anything you'd want to call from a static helper or a service.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">The service pattern</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Inject <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OverlayService</code>,
+            pass a content component type plus parameters, and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">await</code>
+            the result. The content component closes itself via the cascading
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OverlayReference</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_serviceCode</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Best for: confirmations (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ShowAlertDialogAsync</code>),
+            quick-create forms, picker dialogs, anything reused across pages. Worst for: forms that need to
+            stay in sync with surrounding page state on every render — the content component is isolated.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Tradeoffs side by side</Heading>
+        <div class="overflow-x-auto rounded-lg border border-border/40">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-44">Concern</TableHead>
+                        <TableHead>Markup</TableHead>
+                        <TableHead>Service</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell Class="font-medium">Lifecycle owner</TableCell>
+                        <TableCell>Parent component (renders on every parent render)</TableCell>
+                        <TableCell><code class="text-xs font-mono">OverlayProvider</code> (independent)</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Returning a value</TableCell>
+                        <TableCell>EventCallback or shared field</TableCell>
+                        <TableCell><code class="text-xs font-mono">await</code> returns <code class="text-xs font-mono">OverlayResult</code></TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Access to parent state</TableCell>
+                        <TableCell>Direct (closures over fields)</TableCell>
+                        <TableCell>Via parameters or services only</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Reuse across pages</TableCell>
+                        <TableCell>Copy the markup</TableCell>
+                        <TableCell>One call site</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Disposal on navigation</TableCell>
+                        <TableCell>Closes when parent disposes</TableCell>
+                        <TableCell>Survives navigation unless you close it</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Cascading values</TableCell>
+                        <TableCell>Inherited from parent</TableCell>
+                        <TableCell>Inherited from <code class="text-xs font-mono">OverlayProvider</code> only</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Stacking</TableCell>
+                        <TableCell>Manual</TableCell>
+                        <TableCell>Native — each <code class="text-xs font-mono">await</code> stacks above the previous</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Picking the right tool by scenario</Heading>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li><strong class="text-foreground">Confirm a destructive action</strong> — service. Pure await/result fit; never tied to one trigger.</li>
+            <li><strong class="text-foreground">Edit the currently selected DataGrid row</strong> — markup. The form binds directly to the row record and re-renders with the table.</li>
+            <li><strong class="text-foreground">Quick-create a tag from inside a Combobox</strong> — service. Triggered from arbitrary call sites, returns the new tag id.</li>
+            <li><strong class="text-foreground">Filter sheet for a catalog page</strong> — markup. Filter state lives on the page; the sheet just exposes it.</li>
+            <li><strong class="text-foreground">App-wide "what's new" dialog after sign-in</strong> — service. Opened from a service, not a page.</li>
+        </ul>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Mixing the two</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            It is fine — and common — to use both. A page might own an edit sheet in markup and still
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">await Overlays.ShowAlertDialogAsync(...)</code>
+            from inside that sheet's save handler to confirm a destructive sub-action. Both paths render
+            into the same provider and stack correctly.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="docs/services/overlay">Overlay Service</a> — full API reference</li>
+            <li><a class="text-primary hover:underline" href="components/sheet">Sheet</a> — markup component</li>
+            <li><a class="text-primary hover:underline" href="components/dialog">Dialog</a></li>
+            <li><a class="text-primary hover:underline" href="docs/long-forms-in-sheets">Long forms in Sheets</a></li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _markupCode = @"@inject ProjectService Projects
+
+<Button OnClick=""() => _editOpen = true"">Edit project</Button>
+
+<Sheet @bind-Open=""_editOpen"" Size=""Sheet.SheetSize.Md"">
+    <SheetHeader><SheetTitle>Edit @_project.Name</SheetTitle></SheetHeader>
+    <div class=""flex-1 overflow-y-auto p-6"">
+        <EditForm Model=""@_project"" OnValidSubmit=""SaveAsync"">
+            <Input @bind-Value=""_project.Name"" />
+            @* binds directly to the parent's _project field *@
+        </EditForm>
+    </div>
+</Sheet>
+
+@code {
+    [Parameter] public Project _project { get; set; } = default!;
+    private bool _editOpen;
+
+    private async Task SaveAsync()
+    {
+        await Projects.SaveAsync(_project);
+        _editOpen = false;
+    }
+}";
+
+    private const string _serviceCode = @"@inject OverlayService Overlays
+
+<Button OnClick=""CreateAsync"">New project</Button>
+
+@code {
+    private async Task CreateAsync()
+    {
+        var result = await Overlays.ShowSheetAsync<NewProjectForm>(new SheetOptions
+        {
+            Title = ""New project"",
+            Side = Sheet.SheetSide.Right,
+            Size = Sheet.SheetSize.Md,
+        });
+
+        if (result.IsConfirmed && result.Data is Project p)
+        {
+            // navigate, refresh list, etc.
+        }
+    }
+}
+
+@* NewProjectForm.razor *@
+<Stack Gap=""4"">
+    <Input @bind-Value=""_name"" Placeholder=""Project name"" />
+    <Flex Justify=""end"" Gap=""2"">
+        <Button Variant=""Button.ButtonVariant.Outline""
+                OnClick=""() => Overlay.Cancel()"">Cancel</Button>
+        <Button OnClick=""Submit"">Create</Button>
+    </Flex>
+</Stack>
+
+@code {
+    [CascadingParameter] public OverlayReference Overlay { get; set; } = default!;
+    private string _name = """";
+    private void Submit() => Overlay.Close(new Project { Name = _name });
+}";
+}
