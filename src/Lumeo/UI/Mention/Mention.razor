@@ -22,6 +22,10 @@
               name="@(Name ?? FormField?.Name)"
               aria-required="@(Required ? "true" : "false")"
               aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+              aria-haspopup="listbox"
+              aria-expanded="@(_showDropdown ? "true" : "false")"
+              aria-controls="@_dropdownId"
+              aria-activedescendant="@(_showDropdown ? OptionElementId(_activeIndex) : null)"
               @ref="_textareaRef"
               @oninput="HandleInput"
               @onkeydown="HandleKeyDown"
@@ -30,12 +34,16 @@
 
     @if (_showDropdown && FilteredOptions.Any())
     {
-        <div id="@_dropdownId" class="@DropdownCssClass"
+        <div id="@_dropdownId" class="@DropdownCssClass" role="listbox"
              style="position: fixed; left: @(_caretLeft)px; top: @(_caretTop + 20)px;">
             @foreach (var (option, index) in FilteredOptions.Select((o, i) => (o, i)))
             {
                 var isActive = index == _activeIndex;
-                <button @key="option.Value" type="button"
+                <button @key="option.Value"
+                        id="@OptionElementId(index)"
+                        role="option"
+                        aria-selected="@(isActive ? "true" : "false")"
+                        type="button"
                         class="@OptionCssClass(isActive)"
                         @onpointerdown:preventDefault
                         @onclick="() => SelectOption(option)">
@@ -94,6 +102,12 @@
     private bool InsideFormField => FormField is not null;
 
     private readonly string _textareaId = LumeoIds.New("mention");
+
+    // ARIA option ID generator. The textarea's aria-activedescendant
+    // points at OptionElementId(_activeIndex); each option button renders
+    // the same id. Lets AT track the highlighted option while focus stays
+    // on the textarea — the combobox pattern.
+    private string OptionElementId(int index) => $"{_dropdownId}-opt-{index}";
     private readonly string _dropdownId = LumeoIds.New("mention-dd");
     private ElementReference _textareaRef;
     private bool _showDropdown;
