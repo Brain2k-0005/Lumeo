@@ -98,6 +98,22 @@ function getCanvas(canvasId) {
     return el;
 }
 
+// Walk up from el to find the first ancestor with overflow:auto / scroll /
+// overlay, so fit-* zoom can size against the actual scroll viewport instead
+// of the canvas's immediate parent (which is typically a flex/grid wrapper
+// without overflow control). Returns null if nothing qualifying is found
+// before <html>.
+function findScrollParent(el) {
+    let node = el && el.parentElement;
+    while (node && node !== document.documentElement) {
+        const cs = getComputedStyle(node);
+        const overflow = cs.overflow + cs.overflowX + cs.overflowY;
+        if (/(auto|scroll|overlay)/.test(overflow)) return node;
+        node = node.parentElement;
+    }
+    return null;
+}
+
 export async function load(canvasId, src) {
     if (!src) throw new Error('Lumeo.PdfViewer: Src is required');
     if (!canvasId) throw new Error('Lumeo.PdfViewer: canvasId is required');
@@ -139,7 +155,38 @@ async function doRenderPage(inst, canvasId, pageNum, zoom) {
 
     // Clamp page index to [1, totalPages].
     const safePage = Math.max(1, Math.min(pageNum | 0, inst.doc.numPages));
-    const safeZoom = typeof zoom === 'number' && isFinite(zoom) && zoom > 0 ? zoom : 1.0;
+
+    // Fit-mode support: when zoom is the string 'fit-width' or 'fit-page',
+    // compute a numeric ratio against the canvas's scroll-parent dimensions.
+    // Saves consumers from having to measure the container themselves and
+    // recompute on every resize. pdf.js getViewport({ scale: 1 }) returns
+    // the page's natural CSS-px dimensions; the ratio against the container
+    // is the zoom value we need.
+    let safeZoom;
+    if (typeof zoom === 'string' && (zoom === 'fit-width' || zoom === 'fit-page')) {
+        const page = await inst.doc.getPage(safePage);
+        const natural = page.getViewport({ scale: 1 });
+        // The scroll parent (closest ancestor with overflow:auto/scroll) is
+        // what limits the rendered area. Walking up from the canvas until
+        // we hit one finds the right reference container in both the bare
+        // PdfViewer demo and a Sheet/Dialog host.
+        const container = findScrollParent(canvas) || canvas.parentElement;
+        const padding = 32; // breathing room so fit-width doesn't kiss the scrollbar
+        const cw = container ? container.clientWidth - padding : natural.width;
+        const ch = container ? container.clientHeight - padding : natural.height;
+        if (zoom === 'fit-width') {
+            safeZoom = cw > 0 ? cw / natural.width : 1.0;
+        } else {
+            const wRatio = cw > 0 ? cw / natural.width : 1.0;
+            const hRatio = ch > 0 ? ch / natural.height : 1.0;
+            safeZoom = Math.min(wRatio, hRatio);
+        }
+        // Clamp into a sane range so an unusually small container doesn't
+        // crash the renderer with a ~0 scale.
+        safeZoom = Math.max(0.1, Math.min(safeZoom, 10));
+    } else {
+        safeZoom = typeof zoom === 'number' && isFinite(zoom) && zoom > 0 ? zoom : 1.0;
+    }
 
     // Cancel any in-flight render so rapid zoom/page changes don't pile up.
     if (inst.renderTask) {
