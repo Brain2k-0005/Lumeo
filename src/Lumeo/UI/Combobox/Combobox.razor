@@ -1,5 +1,6 @@
 @namespace Lumeo
 @implements IDisposable
+@inject IComponentInteropService Interop
 
 @{
     var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
@@ -9,7 +10,7 @@
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
+        _wrapperId, _contentId, _inputId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
         RegisterItem, UnregisterItem, _items.Count, EffectiveInvalid, Required,
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemTemplate, Virtualize, ItemSize);
@@ -90,6 +91,23 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Focuses the combobox text input on first render. See
+    /// <c>Input.AutoFocus</c> — the HTML autofocus attribute doesn't work
+    /// in Blazor WASM, this parameter uses <c>FocusElement</c> after the
+    /// component has mounted.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>Programmatically focus the combobox text input.</summary>
+    public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus)
+        {
+            try { await Interop.FocusElement(_inputId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 
     // --- Data-bound mode (non-generic, purely additive) ---
     /// <summary>Optional data source. When set, <see cref="ComboboxContent"/> renders options from this list instead of ChildContent.</summary>
@@ -114,6 +132,7 @@
 
     private readonly string _wrapperId = LumeoIds.New("combobox");
     private readonly string _contentId = LumeoIds.New("combobox-content");
+    private readonly string _inputId = LumeoIds.New("combobox-input");
     private string SearchText { get; set; } = "";
     private readonly DelayedDispatch _dispatch = new();
     private int _focusedIndex = -1;
@@ -218,7 +237,7 @@
         string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading, bool Creatable,
         EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,
         EventCallback<string> OnCreateItem,
-        string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
+        string WrapperId, string ContentId, string InputId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
         Action<string, string> RegisterItem, Action<string> UnregisterItem, int ItemCount,
         bool Invalid, bool Required,

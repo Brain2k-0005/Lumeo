@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @{
     var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
@@ -9,7 +10,7 @@
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create(this, OnClear),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId, _contentId, _focusedIndex, focusedItemId, focusedItemValue,
+        _wrapperId, _contentId, _triggerId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
         RegisterItem, UnregisterItem, EffectiveInvalid, Required,
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemTemplate, Virtualize, ItemSize);
@@ -83,7 +84,23 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Focuses the select's trigger button on first render. See
+    /// <c>Input.AutoFocus</c> — the HTML autofocus attribute doesn't work in
+    /// Blazor WASM, this parameter uses <c>FocusElement</c> after mount.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Programmatically focus the trigger button.</summary>
+    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus)
+        {
+            try { await Interop.FocusElement(_triggerId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 
     // --- Data-bound mode (non-generic, purely additive) ---
     /// <summary>Optional data source. When set, <see cref="SelectContent"/> renders options from this list instead of ChildContent.</summary>
@@ -108,6 +125,7 @@
 
     private readonly string _wrapperId = LumeoIds.New("select");
     private readonly string _contentId = LumeoIds.New("select-content");
+    private readonly string _triggerId = LumeoIds.New("select-trigger");
     private string SearchText { get; set; } = "";
     private int _focusedIndex = -1;
     private readonly List<(string Id, string Value)> _items = new();
@@ -216,7 +234,7 @@
         bool Multiple, List<string>? Values, bool IsLoading, bool Disabled, bool Clearable, bool Creatable, int MaxDisplayTags,
         EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,
         EventCallback OnClear, EventCallback<string> OnCreateItem,
-        string WrapperId, string ContentId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
+        string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
         Action<string, string> RegisterItem, Action<string> UnregisterItem,
         bool Invalid, bool Required,
