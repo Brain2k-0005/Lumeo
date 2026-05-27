@@ -24,7 +24,10 @@ public sealed class ThemeBuilder
     private readonly IJSRuntime _js;
     private readonly Dictionary<string, string> _vars = new(StringComparer.Ordinal);
 
-    internal ThemeBuilder(IJSRuntime js) { _js = js; }
+    internal ThemeBuilder(IJSRuntime js)
+    {
+        _js = js ?? throw new ArgumentNullException(nameof(js));
+    }
 
     /// <summary>Override <c>--color-primary</c>. Accepts any CSS color
     /// string (hex, rgb(), hsl(), oklch(), CSS named color).</summary>
@@ -110,5 +113,6 @@ public sealed class ThemeBuilder
 /// <summary>Entry point for the fluent <see cref="ThemeBuilder"/>.</summary>
 public static class Theme
 {
-    public static ThemeBuilder Customize(IJSRuntime js) => new(js);
+    public static ThemeBuilder Customize(IJSRuntime js) =>
+        new(js ?? throw new ArgumentNullException(nameof(js)));
 }

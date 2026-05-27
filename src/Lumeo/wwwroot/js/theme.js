@@ -379,10 +379,15 @@ window.lumeoThemeCustom = {
             document.head.appendChild(el);
         }
         el.textContent = cssText || '';
+        // Fire the same lumeo:theme-changed event the preset path emits, so
+        // chart modules / theme consumers re-read CSS variables and repaint
+        // after a ThemeBuilder.ApplyAsync.
+        try { document.dispatchEvent(new CustomEvent('lumeo:theme-changed')); } catch (_) { }
     },
     clear: function () {
         var el = document.getElementById('lumeo-custom-theme');
         if (el) el.remove();
+        try { document.dispatchEvent(new CustomEvent('lumeo:theme-changed')); } catch (_) { }
     }
 };
 
