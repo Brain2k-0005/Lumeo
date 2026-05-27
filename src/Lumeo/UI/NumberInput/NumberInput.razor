@@ -24,7 +24,8 @@
         {
             <span class="pl-2 text-sm text-muted-foreground select-none">@Prefix</span>
         }
-        <input type="number"
+        <input @ref="_inputRef"
+               type="number"
                name="@Name"
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
@@ -98,8 +99,29 @@
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Focuses the underlying number &lt;input&gt; on first render.
+    /// See <c>Input.AutoFocus</c> for why the HTML <c>autofocus</c> attribute
+    /// doesn't work in Blazor WASM.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private ElementReference _inputRef;
+
+    /// <summary>The underlying number &lt;input&gt; element.</summary>
+    public ElementReference Element => _inputRef;
+
+    /// <summary>Programmatically move focus to the input.</summary>
+    public ValueTask FocusAsync() => _inputRef.FocusAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus)
+        {
+            try { await _inputRef.FocusAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
