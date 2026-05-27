@@ -217,11 +217,16 @@
     private async Task MoveToTarget(List<TItem> toMove)
     {
         if (toMove.Count == 0) return;
-        foreach (var i in toMove)
-        {
-            _sourceItems.Remove(i);
-            if (!_targetItems.Contains(i)) _targetItems.Add(i);
-        }
+        // Build fresh lists rather than mutating in place. The filter caches
+        // (FilteredSourceItems / FilteredTargetItems) key on
+        // ReferenceEquals against the source / target lists; in-place
+        // Remove/Add would keep the same reference and let the cache hit
+        // stale after every move — items disappearing from the wrong pane
+        // or failing to appear in the other until the user retypes the
+        // search (Codex review on #100).
+        var moveSet = new HashSet<TItem>(toMove);
+        _sourceItems = _sourceItems.Where(i => !moveSet.Contains(i)).ToList();
+        _targetItems = _targetItems.Concat(toMove.Where(i => !_targetItems.Contains(i))).ToList();
         _sourceSelected.Clear();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
@@ -229,11 +234,9 @@
     private async Task MoveToSource(List<TItem> toMove)
     {
         if (toMove.Count == 0) return;
-        foreach (var i in toMove)
-        {
-            _targetItems.Remove(i);
-            if (!_sourceItems.Contains(i)) _sourceItems.Add(i);
-        }
+        var moveSet = new HashSet<TItem>(toMove);
+        _targetItems = _targetItems.Where(i => !moveSet.Contains(i)).ToList();
+        _sourceItems = _sourceItems.Concat(toMove.Where(i => !_sourceItems.Contains(i))).ToList();
         _targetSelected.Clear();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
