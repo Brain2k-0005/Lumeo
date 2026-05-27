@@ -171,6 +171,18 @@
     [Parameter] public EventCallback<int> PageChanged { get; set; }
     [Parameter] public double Zoom { get; set; } = 1.0;
     [Parameter] public EventCallback<double> ZoomChanged { get; set; }
+    /// <summary>Fit-to-container mode that overrides <see cref="Zoom"/> when
+    /// set to a non-Custom value. <c>FitWidth</c> scales the page so its
+    /// width matches the scroll-parent's <c>clientWidth</c> (minus a 16px
+    /// padding for breathing room before the scrollbar). <c>FitPage</c>
+    /// scales so the whole page fits within the scroll-parent's box. JS
+    /// computes the ratio on each render, so a container resize that
+    /// triggers <c>OnParametersSet</c> re-renders the page at the new fit.
+    /// Set back to <c>Custom</c> to return control to the numeric
+    /// <see cref="Zoom"/> value.</summary>
+    [Parameter] public PdfFitMode FitMode { get; set; } = PdfFitMode.Custom;
+
+    public enum PdfFitMode { Custom, FitWidth, FitPage }
     [Parameter] public bool ShowToolbar { get; set; } = true;
     [Parameter] public bool ShowPageNav { get; set; } = true;
     [Parameter] public bool ShowZoomControls { get; set; } = true;
@@ -198,6 +210,12 @@
     private string? _lastSrc;
     private int _lastPage;
     private double _lastZoom;
+    // Track FitMode explicitly so we can detect Custom↔FitWidth/FitPage
+    // transitions in the OnParametersSet dirty check. The previous design
+    // used double.NaN as a sentinel on _lastZoom, but Math.Abs(zoom - NaN) > ε
+    // is always false (NaN comparisons), so a parent rerender after a fit
+    // render never re-triggered a refit even when the container had resized.
+    private PdfFitMode _lastFitMode = PdfFitMode.Custom;
     private int _totalPages;
     private bool _loading = true;
     private string? _loadError;
@@ -252,6 +270,11 @@
         var cp = Math.Clamp(Page, 1, Math.Max(1, _totalPages == 0 ? int.MaxValue : _totalPages));
         var cz = Math.Clamp(Zoom, MinZoom, MaxZoom);
         if (cp != _lastPage || Math.Abs(cz - _lastZoom) > 0.0001) _dirty = true;
+        // Custom↔Fit transition forces a refit. Staying in a fit mode also
+        // refits on every parent rerender because container size can change
+        // without any tracked param moving — JS recomputes the ratio.
+        if (FitMode != _lastFitMode) _dirty = true;
+        else if (FitMode != PdfFitMode.Custom) _dirty = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -319,16 +342,31 @@
                 var clampedPage = Math.Clamp(Page, 1, Math.Max(1, _totalPages));
                 var clampedZoom = Math.Clamp(Zoom, MinZoom, MaxZoom);
 
-                if (clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
+                // FitMode wins over the numeric Zoom: when set, the JS side
+                // computes the actual ratio from the scroll-parent's
+                // clientWidth / clientHeight against the page's natural
+                // dimensions. _lastFitMode tracks the active mode so
+                // OnParametersSet can correctly mark dirty across Custom↔Fit
+                // transitions and on every parent rerender while in a fit mode.
+                var useFit = FitMode != PdfFitMode.Custom;
+                var fitChanged = FitMode != _lastFitMode;
+                if (useFit || fitChanged || clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
                 {
                     var targetPage = clampedPage;
                     var targetZoom = clampedZoom;
                     _lastPage = targetPage;
                     _lastZoom = targetZoom;
+                    _lastFitMode = FitMode;
                     _loading = true;
                     StateHasChanged();
 
-                    await _module.InvokeVoidAsync("renderPage", _canvasId, targetPage, targetZoom);
+                    object zoomArg = FitMode switch
+                    {
+                        PdfFitMode.FitWidth => "fit-width",
+                        PdfFitMode.FitPage => "fit-page",
+                        _ => (object)targetZoom
+                    };
+                    await _module.InvokeVoidAsync("renderPage", _canvasId, targetPage, zoomArg);
 
                     _loading = false;
                     await RefreshHighlightsAsync();
