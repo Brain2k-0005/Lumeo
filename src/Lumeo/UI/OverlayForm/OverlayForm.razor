@@ -24,37 +24,47 @@
         </OverlayForm>
 *@
 
-<EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AdditionalAttributes">
-    @if (Validator is not null)
-    {
-        @Validator
-    }
-    else
-    {
-        <DataAnnotationsValidator />
-    }
+@if (_editContext is null)
+{
+    @* No Model supplied yet — render an empty shell rather than crashing
+       the EditForm. This is the path the lib-wide ComponentContractTests
+       hit when they instantiate every component with default parameters. *@
+    <div class="@CssClass" @attributes="AdditionalAttributes"></div>
+}
+else
+{
+    <EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AdditionalAttributes">
+        @if (Validator is not null)
+        {
+            @Validator
+        }
+        else
+        {
+            <DataAnnotationsValidator />
+        }
 
-    @if (Header is not null)
-    {
-        <div class="shrink-0 mb-3">
-            @Header
+        @if (Header is not null)
+        {
+            <div class="shrink-0 mb-3">
+                @Header
+            </div>
+        }
+
+        <div class="flex-1 min-h-0 overflow-y-auto pe-1">
+            @Body
         </div>
-    }
 
-    <div class="flex-1 min-h-0 overflow-y-auto pe-1">
-        @Body
-    </div>
-
-    @if (Footer is not null)
-    {
-        <div class="shrink-0 mt-3 pt-3 border-t border-border/40 flex items-center justify-end gap-2">
-            @Footer
-        </div>
-    }
-</EditForm>
+        @if (Footer is not null)
+        {
+            <div class="shrink-0 mt-3 pt-3 border-t border-border/40 flex items-center justify-end gap-2">
+                @Footer
+            </div>
+        }
+    </EditForm>
+}
 
 @code {
-    [Parameter, EditorRequired] public object Model { get; set; } = default!;
+    [Parameter, EditorRequired] public object? Model { get; set; }
     [Parameter] public EventCallback<EditContext> OnValidSubmit { get; set; }
     [Parameter] public EventCallback<EditContext> OnInvalidSubmit { get; set; }
 
@@ -74,6 +84,15 @@
 
     protected override void OnParametersSet()
     {
+        // Defer the EditContext until a Model is actually supplied —
+        // EditForm crashes hard on a null Model + null EditContext, and
+        // the contract-test path renders every component with no params.
+        if (Model is null)
+        {
+            _editContext = null;
+            _lastModel = null;
+            return;
+        }
         if (!ReferenceEquals(_lastModel, Model))
         {
             _editContext = new EditContext(Model);
