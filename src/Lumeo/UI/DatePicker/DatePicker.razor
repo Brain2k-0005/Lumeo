@@ -35,6 +35,7 @@
         <Popover @bind-Open="_isOpen">
             <PopoverTrigger>
                 <button type="button"
+                        id="@_triggerId"
                         name="@Name"
                         aria-required="@Required.ToString().ToLower()"
                         aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -150,7 +151,8 @@ else
             {
                 <div class="@CssClass" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
                     <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
-                    <input type="text"
+                    <input id="@_triggerId"
+                           type="text"
                            name="@Name"
                            value="@_inputBuffer"
                            placeholder="@EffectivePlaceholder"
@@ -182,6 +184,7 @@ else
             else
             {
             <button type="button"
+                    id="@_triggerId"
                     name="@Name"
                     aria-required="@Required.ToString().ToLower()"
                     aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -334,6 +337,7 @@ else
 }
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @code {
     public enum DatePickerMode { Single, Range, Month, Year }
@@ -470,7 +474,26 @@ else
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
+    /// <summary>Focuses the date-picker trigger on first render. Whichever
+    /// trigger element is rendered (button / range-button / masked input)
+    /// receives the focus via its shared id. See <c>Input.AutoFocus</c> for
+    /// the rationale.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _triggerId = LumeoIds.New("date-picker-trigger");
+
+    /// <summary>Programmatically focus the trigger.</summary>
+    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus)
+        {
+            try { await Interop.FocusElement(_triggerId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 
     // Controlled-mode bridge: when Open is non-null, the parent owns the state and
     // we never write to _internalOpen — every "set" just raises OpenChanged so the
