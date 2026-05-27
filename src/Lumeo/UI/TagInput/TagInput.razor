@@ -165,17 +165,48 @@
             : GetTagText is not null ? GetTagText(item)
             : (item?.ToString() ?? "");
 
+    // Memoised filter list. Recomputed when any of (Suggestions ref,
+    // Tags ref, _inputValue, AllowDuplicates) changes. Property getter
+    // previously recomputed on every access — focus / blur / render
+    // each touched FilteredSuggestions multiple times so the LINQ ran
+    // ~3-5× per keystroke against the full Suggestions list. Cache
+    // collapses that to one recompute per actual input change.
+    private List<TItem> _filteredSuggestionsCache = [];
+    private object? _filterCacheSuggestionsRef;
+    private object? _filterCacheTagsRef;
+    private string? _filterCacheInputValue;
+    private bool _filterCacheAllowDup;
+
     private List<TItem> FilteredSuggestions
     {
         get
         {
-            if (Suggestions is null || string.IsNullOrWhiteSpace(_inputValue)) return [];
+            if (ReferenceEquals(_filterCacheSuggestionsRef, Suggestions)
+                && ReferenceEquals(_filterCacheTagsRef, Tags)
+                && string.Equals(_filterCacheInputValue, _inputValue, StringComparison.Ordinal)
+                && _filterCacheAllowDup == AllowDuplicates)
+            {
+                return _filteredSuggestionsCache;
+            }
+
+            _filterCacheSuggestionsRef = Suggestions;
+            _filterCacheTagsRef = Tags;
+            _filterCacheInputValue = _inputValue;
+            _filterCacheAllowDup = AllowDuplicates;
+
+            if (Suggestions is null || string.IsNullOrWhiteSpace(_inputValue))
+            {
+                _filteredSuggestionsCache = [];
+                return _filteredSuggestionsCache;
+            }
+
             var tags = Tags ?? [];
-            return Suggestions
+            _filteredSuggestionsCache = Suggestions
                 .Where(s => GetSuggestionTextSafe(s).Contains(_inputValue, StringComparison.OrdinalIgnoreCase)
                             && (AllowDuplicates || !tags.Any(t => EqualityComparer<TItem>.Default.Equals(t, s))))
                 .Take(8)
                 .ToList();
+            return _filteredSuggestionsCache;
         }
     }
 

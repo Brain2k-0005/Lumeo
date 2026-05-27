@@ -149,15 +149,52 @@
         _targetSelected.RemoveWhere(i => !_targetItems.Contains(i));
     }
 
-    private List<TItem> FilteredSourceItems =>
-        string.IsNullOrWhiteSpace(_sourceSearch)
-            ? _sourceItems
-            : _sourceItems.Where(i => (i?.ToString() ?? "").Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+    // Memoised filter lists. Re-run only when the source/target item list
+    // reference OR the corresponding search string changes — instead of
+    // every render. The dual-list layout reads both Filtered* properties
+    // per render, plus they're touched again inside CountClass / Move*
+    // handlers, so the previous getter-based filter was running 4-8×
+    // per parent re-render.
+    private List<TItem> _sourceFilterCache = [];
+    private List<TItem> _sourceFilterCacheBase = [];
+    private string _sourceFilterCacheTerm = "";
+    private List<TItem> _targetFilterCache = [];
+    private List<TItem> _targetFilterCacheBase = [];
+    private string _targetFilterCacheTerm = "";
 
-    private List<TItem> FilteredTargetItems =>
-        string.IsNullOrWhiteSpace(_targetSearch)
-            ? _targetItems
-            : _targetItems.Where(i => (i?.ToString() ?? "").Contains(_targetSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+    private List<TItem> FilteredSourceItems
+    {
+        get
+        {
+            if (!ReferenceEquals(_sourceFilterCacheBase, _sourceItems)
+                || _sourceFilterCacheTerm != _sourceSearch)
+            {
+                _sourceFilterCacheBase = _sourceItems;
+                _sourceFilterCacheTerm = _sourceSearch;
+                _sourceFilterCache = string.IsNullOrWhiteSpace(_sourceSearch)
+                    ? _sourceItems
+                    : _sourceItems.Where(i => (i?.ToString() ?? "").Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            return _sourceFilterCache;
+        }
+    }
+
+    private List<TItem> FilteredTargetItems
+    {
+        get
+        {
+            if (!ReferenceEquals(_targetFilterCacheBase, _targetItems)
+                || _targetFilterCacheTerm != _targetSearch)
+            {
+                _targetFilterCacheBase = _targetItems;
+                _targetFilterCacheTerm = _targetSearch;
+                _targetFilterCache = string.IsNullOrWhiteSpace(_targetSearch)
+                    ? _targetItems
+                    : _targetItems.Where(i => (i?.ToString() ?? "").Contains(_targetSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            return _targetFilterCache;
+        }
+    }
 
     private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? "";
     private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? "";
