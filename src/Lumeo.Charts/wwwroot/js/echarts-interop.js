@@ -426,9 +426,20 @@ export function refreshAllCharts() {
         const el = document.getElementById(id);
         if (!el) continue;
         const opts = chart.getOption();
+        // Tear down the old ResizeObserver before disposing the chart. The
+        // initChart path stores it on chart._lumeoObserver; without this
+        // disconnect it kept observing the (still-mounted) element and
+        // firing resize() calls into a disposed chart instance, leaving
+        // both the observer and the dead instance attached to the DOM.
+        if (chart._lumeoObserver) chart._lumeoObserver.disconnect();
         chart.dispose();
         const newChart = window.echarts.init(el, 'lumeo', { renderer: 'canvas' });
         newChart.setOption(opts);
+        // Re-attach a fresh observer so the new chart still auto-resizes;
+        // disposeChart and the original initChart use the same pattern.
+        const observer = new ResizeObserver(() => { newChart.resize(); });
+        observer.observe(el);
+        newChart._lumeoObserver = observer;
         charts.set(id, newChart);
     }
 }
