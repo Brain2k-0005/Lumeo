@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new CollapsibleContext(Open, EventCallback.Factory.Create(this, Toggle));
+    var context = new CollapsibleContext(Open, EventCallback.Factory.Create(this, Toggle), _triggerId, _contentId);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -24,6 +24,12 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Stable per-instance IDs so the trigger can render
+    // aria-controls=ContentId and the content can render
+    // aria-labelledby=TriggerId. Same pattern as Accordion.
+    private readonly string _triggerId = LumeoIds.New("collapsible-trigger");
+    private readonly string _contentId = LumeoIds.New("collapsible-content");
+
     private string CssClass => $"{Class}".Trim();
 
     private async Task Toggle()
@@ -32,5 +38,5 @@
         await OpenChanged.InvokeAsync(Open);
     }
 
-    public record CollapsibleContext(bool IsOpen, EventCallback Toggle);
+    public record CollapsibleContext(bool IsOpen, EventCallback Toggle, string TriggerId, string ContentId);
 }

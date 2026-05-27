@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var itemContext = new AccordionItemContext(Value, Disabled);
+    var itemContext = new AccordionItemContext(Value, Disabled, _triggerId, _contentId);
 }
 
 <CascadingValue Value="itemContext" IsFixed="false">
@@ -17,10 +17,18 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Stable IDs per item so AccordionTrigger can render aria-controls
+    // pointing at the AccordionContent it discloses, and the content can
+    // reflect aria-labelledby back at the trigger. Required by the
+    // disclosure pattern; without this pair the screen reader can't
+    // announce the relationship.
+    private readonly string _triggerId = LumeoIds.New("accordion-trigger");
+    private readonly string _contentId = LumeoIds.New("accordion-content");
+
     private string CssClass => Cx.Join(
         "border-b border-border/40",
         Cx.When(Disabled, "opacity-50"),
         Class);
 
-    public record AccordionItemContext(string Value, bool Disabled);
+    public record AccordionItemContext(string Value, bool Disabled, string TriggerId, string ContentId);
 }

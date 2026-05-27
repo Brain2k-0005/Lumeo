@@ -1,6 +1,11 @@
 @namespace Lumeo
 
-@switch (Level)
+@* Level is clamped to [1..6] so an accidental Level=0 / Level=42 still
+   renders a real <h*> instead of dropping into the default <h6> tag
+   silently. The clamp drives both the rendered tag AND the visual size
+   below, so the two stay consistent (a Level=0 input doesn't render as
+   an h6 with h1 sizing). *@
+@switch (ClampedLevel)
 {
     case 1:
         <h1 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h1>
@@ -31,7 +36,9 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string ResolvedSize => Size ?? Level switch
+    private int ClampedLevel => Math.Clamp(Level, 1, 6);
+
+    private string ResolvedSize => Size ?? ClampedLevel switch
     {
         1 => "4xl",
         2 => "3xl",
@@ -41,14 +48,14 @@
         _ => "base"
     };
 
-    private string ResolvedWeight => Weight ?? Level switch
+    private string ResolvedWeight => Weight ?? ClampedLevel switch
     {
         1 or 2 => "bold",
         3 or 4 => "semibold",
         _ => "medium"
     };
 
-    private string? ResolvedTracking => Tracking ?? Level switch
+    private string? ResolvedTracking => Tracking ?? ClampedLevel switch
     {
         1 or 2 => "tight",
         _ => null
