@@ -1,0 +1,211 @@
+@page "/docs/mobile-sheet-patterns"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Mobile Sheet Patterns — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Mobile Sheet Patterns</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            On mobile, a side sheet looks wrong — it crowds the viewport and forces horizontal eye
+            movement. The native pattern is the bottom sheet: a panel that slides up from the bottom
+            edge, sits at a comfortable height, can be dragged to taller or shorter snap points, and
+            dismisses with a downward swipe. Lumeo's <a class="text-primary hover:underline" href="components/sheet">Sheet</a>
+            and <a class="text-primary hover:underline" href="components/drawer">Drawer</a> components
+            support all three: bottom-edge presentation, snap points, and swipe-to-close.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">When bottom, when side</Heading>
+        <div class="overflow-x-auto rounded-lg border border-border/40">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-40">Side</TableHead>
+                        <TableHead>Use for</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell Class="font-medium">Bottom</TableCell>
+                        <TableCell>Action sheets, filter panels, quick pickers, anything triggered by a thumb-reachable button. Default for mobile.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Right / Left</TableCell>
+                        <TableCell>Desktop and tablet. On phones, only for full-height navigation drawers triggered by a hamburger.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Top</TableCell>
+                        <TableCell>Rare — notification trays, search overlays. Avoid for forms (keyboard pushes the sheet off-screen).</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Responsive side switching</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            One overlay, two presentations. Decide the side from a viewport query so the same component
+            renders as a right-side sheet on desktop and a bottom sheet on phone. Avoid duplicating the
+            content — switch <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Side</code> only.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_responsiveSideCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Snap points</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            A snap point is a discrete height the sheet rests at. The canonical set is three:
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">peek</code> (just the handle +
+            primary action visible), <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">half</code>
+            (about 50 % of viewport), and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">full</code>
+            (near top, leaves status bar). Pass the points to the sheet and control the active one with
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">@@bind-ActiveSnapPoint</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_snapPointsCode</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Snap points apply only when <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Side="Sheet.SheetSide.Bottom"</code>.
+            On other sides they are ignored.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Swipe-to-close</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Bottom sheets close when the user drags the drag handle (or the header area) downward past a
+            velocity / distance threshold. The behaviour is on by default; opt out with
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">SwipeToClose="false"</code>
+            for sheets that must be dismissed explicitly (destructive confirmations, in-flight forms).
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_swipeCode</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            The swipe gesture and the scroll gesture inside the body can fight each other. The sheet
+            already handles this: when the inner scroll container is at <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">scrollTop = 0</code>
+            and the user pulls down, the gesture is treated as a drag; otherwise it scrolls. Do not nest
+            another scroll container without setting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">overscroll-behavior: contain</code>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Safe areas and the keyboard</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Bottom sheets must respect the home indicator on iOS and the navigation pill on Android. Wrap
+            the footer in <a class="text-primary hover:underline" href="components/safe-area">SafeArea</a>
+            with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Edges="bottom"</code> so
+            the primary action stays tappable. When the soft keyboard appears, the sheet's
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">flex</code> layout keeps the
+            footer above the keyboard — but only if the body uses
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">flex-1 overflow-y-auto</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_safeAreaCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Drag handle</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            A 36 x 4 px pill at the top of a bottom sheet is the universal "draggable" affordance. Lumeo
+            renders one automatically when <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Side=Bottom</code>
+            unless you pass <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ShowDragHandle="false"</code>.
+            Hide it only for non-dismissible flows.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="components/sheet">Sheet</a></li>
+            <li><a class="text-primary hover:underline" href="components/drawer">Drawer</a> — non-modal mobile drawer</li>
+            <li><a class="text-primary hover:underline" href="components/safe-area">Safe Area</a></li>
+            <li><a class="text-primary hover:underline" href="components/swipe-actions">Swipe Actions</a></li>
+            <li><a class="text-primary hover:underline" href="docs/mobile">Mobile Playground</a></li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _responsiveSideCode = @"<Sheet @bind-Open=""_open""
+       Side=""@(_isPhone ? Sheet.SheetSide.Bottom : Sheet.SheetSide.Right)""
+       Size=""Sheet.SheetSize.Md"">
+    <SheetHeader><SheetTitle>Filters</SheetTitle></SheetHeader>
+    <div class=""flex-1 overflow-y-auto p-6"">
+        @* filter UI *@
+    </div>
+</Sheet>
+
+@code {
+    private bool _isPhone;
+    private bool _open;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isPhone = await Interop.MatchesMediaAsync(""(max-width: 640px)"");
+            StateHasChanged();
+        }
+    }
+}";
+
+    private const string _snapPointsCode = @"<Sheet @bind-Open=""_open""
+       Side=""Sheet.SheetSide.Bottom""
+       SnapPoints=""@(new[] { 0.25, 0.5, 0.95 })""
+       @bind-ActiveSnapPoint=""_snap"">
+    <SheetHeader>
+        <SheetTitle>Trip details</SheetTitle>
+    </SheetHeader>
+    <div class=""flex-1 overflow-y-auto p-6"">
+        @* always-visible summary at the top, more detail revealed as the user drags up *@
+    </div>
+</Sheet>
+
+@code {
+    private bool _open;
+    private double _snap = 0.5;
+}";
+
+    private const string _swipeCode = @"<!-- form sheet: prevent accidental dismiss while typing -->
+<Sheet @bind-Open=""_open""
+       Side=""Sheet.SheetSide.Bottom""
+       SwipeToClose=""false""
+       DismissOnBackdropClick=""false"">
+    @* user must use the explicit Cancel or Save buttons *@
+</Sheet>";
+
+    private const string _safeAreaCode = @"<Sheet @bind-Open=""_open"" Side=""Sheet.SheetSide.Bottom"">
+    <div class=""flex flex-col flex-1 min-h-0"">
+        <SheetHeader><SheetTitle>New message</SheetTitle></SheetHeader>
+
+        <div class=""flex-1 overflow-y-auto px-4 py-3"">
+            <Textarea @bind-Value=""_body"" Rows=""8"" />
+        </div>
+
+        <SafeArea Edges=""bottom"">
+            <SheetFooter>
+                <Button Variant=""Button.ButtonVariant.Outline""
+                        OnClick=""() => _open = false"">Cancel</Button>
+                <Button OnClick=""SendAsync"">Send</Button>
+            </SheetFooter>
+        </SafeArea>
+    </div>
+</Sheet>";
+}
