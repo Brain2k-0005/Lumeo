@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @{
@@ -19,6 +20,11 @@
     [Parameter] public int? Total { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly object _token = new();
+
+    protected override void OnInitialized() => Context?.RegisterItem(_token);
+    public void Dispose() => Context?.UnregisterItem(_token);
 
     private string? SlideLabel => Index.HasValue && Total.HasValue
         ? L["Carousel.SlideXofY", Index.Value, Total.Value]

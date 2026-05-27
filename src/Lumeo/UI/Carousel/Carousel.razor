@@ -1,5 +1,6 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @{
     var context = new CarouselContext(
@@ -8,7 +9,9 @@
         _canScrollPrev && !Disabled,
         _canScrollNext && !Disabled,
         EventCallback.Factory.Create(this, ScrollPrev),
-        EventCallback.Factory.Create(this, ScrollNext)
+        EventCallback.Factory.Create(this, ScrollNext),
+        RegisterItem,
+        UnregisterItem
     );
 }
 
@@ -16,6 +19,10 @@
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
+    @* Visually-hidden live region announces slide changes to assistive
+       tech. Auto-play decks or programmatic ScrollTo would otherwise be
+       silent. Polite (not assertive) so it doesn't interrupt other speech. *@
+    <span aria-live="polite" aria-atomic="true" class="sr-only">@SlideAnnouncement</span>
 </div>
 
 @inject IComponentInteropService Interop
@@ -34,8 +41,24 @@
     private bool _canScrollPrev;
     private bool _canScrollNext = true;
     private readonly string _contentId = LumeoIds.New("carousel");
+    // Item tokens registered by child CarouselItems so the live-region can
+    // emit "Slide N of M". The count is the only thing we read from this
+    // list — the token objects exist purely so Register/Unregister can be
+    // idempotent across re-renders without using indices.
+    private readonly List<object> _items = new();
 
     private string CssClass => $"relative {Class}".Trim();
+
+    private string SlideAnnouncement => _items.Count > 0
+        ? L["Carousel.SlideXofY", _currentIndex + 1, _items.Count]
+        : string.Empty;
+
+    private void RegisterItem(object token)
+    {
+        if (!_items.Contains(token)) _items.Add(token);
+    }
+
+    private void UnregisterItem(object token) => _items.Remove(token);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -68,13 +91,18 @@
     {
         var prevP = _canScrollPrev;
         var prevN = _canScrollNext;
+        var prevIndex = _currentIndex;
         _canScrollPrev = scrollPos > 0;
         _canScrollNext = scrollPos < maxScroll - 1;
         // Sync _currentIndex from the scroll position so button navigation
         // (ScrollNext/ScrollPrev) stays accurate after touch-swipe.
         if (nearestIndex >= 0)
             _currentIndex = nearestIndex;
-        if (prevP != _canScrollPrev || prevN != _canScrollNext)
+        // Also re-render when the index changes for a middle-to-middle swipe
+        // — without this the SlideAnnouncement live region stays stale and
+        // screen readers don't hear the slide change because prev/next
+        // flags remained true on both sides.
+        if (prevP != _canScrollPrev || prevN != _canScrollNext || prevIndex != _currentIndex)
             StateHasChanged();
         return Task.CompletedTask;
     }
@@ -147,6 +175,8 @@
         bool CanScrollPrev,
         bool CanScrollNext,
         EventCallback ScrollPrev,
-        EventCallback ScrollNext
+        EventCallback ScrollNext,
+        Action<object> RegisterItem,
+        Action<object> UnregisterItem
     );
 }
