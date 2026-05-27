@@ -84,6 +84,8 @@ else
     [Parameter] public RenderFragment? Prefix { get; set; }
     [Parameter] public RenderFragment? Suffix { get; set; }
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public bool Clearable { get; set; }
     [Parameter] public EventCallback OnClear { get; set; }
     [Parameter] public bool Required { get; set; }
@@ -127,18 +129,32 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
-    private string SizeClasses => Size switch
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    private string SizeClasses => (Size, EffectiveDensity) switch
     {
-        Lumeo.Size.Sm => "h-8 text-xs px-2.5",
-        Lumeo.Size.Lg => "h-11 text-base px-4",
-        _ => "h-9 text-sm px-3"
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-xs px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-xs px-3",
+        (Lumeo.Size.Sm, _)                      => "h-8 text-xs px-2.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-10 text-base px-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 text-base px-5",
+        (Lumeo.Size.Lg, _)                      => "h-11 text-base px-4",
+        (_, Lumeo.Density.Compact)              => "h-8 text-sm px-2.5",
+        (_, Lumeo.Density.Spacious)             => "h-10 text-sm px-4",
+        _                                       => "h-9 text-sm px-3"
     };
 
-    private string WrapperSizeClasses => Size switch
+    private string WrapperSizeClasses => (Size, EffectiveDensity) switch
     {
-        Lumeo.Size.Sm => "h-8 text-xs",
-        Lumeo.Size.Lg => "h-11 text-base",
-        _ => "h-9 text-sm"
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-xs",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-xs",
+        (Lumeo.Size.Sm, _)                      => "h-8 text-xs",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-10 text-base",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 text-base",
+        (Lumeo.Size.Lg, _)                      => "h-11 text-base",
+        (_, Lumeo.Density.Compact)              => "h-8 text-sm",
+        (_, Lumeo.Density.Spacious)             => "h-10 text-sm",
+        _                                       => "h-9 text-sm"
     };
 
     private string WrappedInputSizeClasses => Size switch

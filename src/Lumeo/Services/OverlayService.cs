@@ -152,7 +152,7 @@ public sealed class OverlayParameters
     public Dictionary<string, object> ToDictionary() => new(_parameters);
 }
 
-public sealed record OverlayOptions
+public record OverlayOptions
 {
     public string? Class { get; init; }
     public bool PreventClose { get; init; }
@@ -226,6 +226,27 @@ public sealed record OverlayOptions
     /// </summary>
     public bool ScrollableBody { get; init; } = true;
 }
+
+/// <summary>
+/// Sheet-specific overlay options. Type-distinguishes the sheet-only properties
+/// (<see cref="OverlayOptions.SheetSide"/>, <see cref="OverlayOptions.SheetSize"/>,
+/// <see cref="OverlayOptions.SwipeToClose"/>, <see cref="OverlayOptions.MobileSheetSide"/>,
+/// <see cref="OverlayOptions.MobileSheetSize"/>, <see cref="OverlayOptions.MobileSwipeToClose"/>)
+/// from the shared base — passing this to <see cref="OverlayService.ShowDialogAsync{T}"/>
+/// would not compile, eliminating the silent-no-op class of bug (#87.1).
+/// Use <c>OverlayOptions</c> when you don't need the typed contract.
+/// </summary>
+public sealed record SheetOverlayOptions : OverlayOptions { }
+
+/// <summary>Dialog-specific overlay options. Currently identical surface to the
+/// shared base but typed separately so the sheet-only properties carry a
+/// "no effect here" signal at the type level.</summary>
+public sealed record DialogOverlayOptions : OverlayOptions { }
+
+/// <summary>Drawer-specific overlay options. Drawer enables swipe-to-close by
+/// default; the inherited <see cref="OverlayOptions.SwipeToClose"/> is ignored
+/// for drawers.</summary>
+public sealed record DrawerOverlayOptions : OverlayOptions { }
 
 public sealed record AlertDialogOptions
 {

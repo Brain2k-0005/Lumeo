@@ -123,6 +123,42 @@ Overlay components (modals, drawers, popovers, etc.) must:
 - Implement `IAsyncDisposable` for cleanup.
 - Handle `JSDisconnectedException` in cleanup methods.
 
+### `@bind-Value` convention (#87.3)
+
+Every two-way-bindable input MUST expose the `Value` + `ValueChanged`
+pair so consumers can write `<MyInput @bind-Value="_model.Field" />`
+without learning per-input variations. Concretely:
+
+- Parameter name: `Value` (not `Text`, `Selection`, `Number`).
+- Event callback: `EventCallback<T> ValueChanged` typed to the same `T`.
+- Fire `ValueChanged` on the SAME edit boundary the user expects:
+  - **Text-like inputs** (Input, Textarea, NumberInput): on every keystroke
+    so live validation works. If debouncing is desirable, expose a
+    `DebounceMs` parameter rather than swallowing keystrokes.
+  - **Picker inputs** (Select, Combobox, DatePicker, ColorPicker): on
+    selection commit (item click, date pick, color confirm) — NOT on
+    intermediate hover/keyboard navigation.
+  - **Toggle inputs** (Checkbox, Switch, RadioGroup): on the change event.
+- If a non-string value needs a converter, expose the convention via an
+  analyzer-friendly parameter (e.g. `Format` / `Culture`); never silently
+  parse with the invariant culture.
+- Internal field that holds the in-flight buffer (before commit) is
+  named `_pending` or `_buffer`, never `Value` itself — `Value` is the
+  consumer's source of truth.
+
+### Per-component "gotchas" metadata (#87.5)
+
+When a component has non-obvious default behaviour, surface it in the
+MCP / skill registry so AI-assisted consumers don't trip over it:
+
+- Add a `gotchas` array on the component's registry entry
+  (`tools/Lumeo.RegistryGen/`) listing one-line callouts (e.g.
+  `"SheetContent has no inner scroll container by default — wrap a
+  long form's body in flex-1 overflow-y-auto"`).
+- `Lumeo.RegistryGen` picks these up automatically from
+  `<gotcha>...</gotcha>` XML doc comments on the component class, so
+  the source of truth stays in the `.razor` file.
+
 ## Pull Request Guidelines
 
 - Keep PRs focused — one feature or fix per PR.

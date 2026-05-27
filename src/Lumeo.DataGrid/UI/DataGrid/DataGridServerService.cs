@@ -44,6 +44,13 @@ internal sealed class DataGridServerService : IDisposable
             try
             {
                 await onServerRequest.InvokeAsync(request);
+                // Generation guard: if a newer request was issued while the
+                // consumer's callback was running, the older response would
+                // race the newer one to update Items. Cancel the old token
+                // so the consumer's "honour CancellationToken" path drops
+                // the stale response.
+                if (generation != _requestGeneration)
+                    return;
             }
             catch (OperationCanceledException)
             {
