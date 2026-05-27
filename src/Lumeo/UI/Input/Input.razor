@@ -11,15 +11,22 @@
     </label>
 }
 
-@if (Prefix != null || Suffix != null || (Clearable && !string.IsNullOrEmpty(Value)))
+@if (Prefix != null || Suffix != null || Variant == InputVariant.Search || (Clearable && !string.IsNullOrEmpty(Value)))
 {
     <div class="@WrapperClass" @attributes="AdditionalAttributes">
-        @if (Prefix != null)
+        @if (Variant == InputVariant.Search && Prefix == null)
+        {
+            <div class="flex items-center ps-3 pe-1 text-muted-foreground">
+                <Blazicon Svg="Lucide.Search" class="h-4 w-4" />
+            </div>
+        }
+        else if (Prefix != null)
         {
             <div class="flex items-center px-3 text-muted-foreground">@Prefix</div>
         }
         <input @ref="_inputRef"
                name="@Name"
+               type="@(Variant == InputVariant.Search ? "search" : null)"
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" />
@@ -85,8 +92,18 @@ else
     /// in OnAfterRenderAsync(firstRender) which is the canonical workaround.
     /// </summary>
     [Parameter] public bool AutoFocus { get; set; }
+    /// <summary>Visual / semantic input variant. <c>Default</c> is the
+    /// plain text input. <c>Search</c> auto-renders a search icon prefix,
+    /// sets <c>type="search"</c> (gives platforms a clear-button + IME
+    /// hints), and applies a search-friendly minimum width so the field
+    /// doesn't collapse in narrow flex containers — replaces the
+    /// <c>min-w-[180px] max-w-md</c> + manual icon prefix consumers
+    /// previously shipped at every search field call-site.</summary>
+    [Parameter] public InputVariant Variant { get; set; } = InputVariant.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    public enum InputVariant { Default, Search }
 
     private ElementReference _inputRef;
 
@@ -124,7 +141,14 @@ else
 
     private string CssClass => $"flex {SizeClasses} w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent py-1 transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] {(EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
-    private string WrapperClass => $"flex {WrapperSizeClasses} w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent transition-colors {(EffectiveInvalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : "focus-within:ring-[1.5px] focus-within:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    // Search variant adds a min-width floor so the field doesn't collapse
+    // in narrow flex containers (the historical consumer fix was
+    // `min-w-[180px] max-w-md` per call-site). The min-w-0 default on
+    // flex children would otherwise let the wrapper shrink to ~40px when
+    // squeezed by siblings.
+    private string SearchSizeClass => Variant == InputVariant.Search ? "min-w-[180px] max-w-md" : "";
+
+    private string WrapperClass => $"flex {WrapperSizeClasses} {SearchSizeClass} w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent transition-colors {(EffectiveInvalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : "focus-within:ring-[1.5px] focus-within:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed".Trim();
 
