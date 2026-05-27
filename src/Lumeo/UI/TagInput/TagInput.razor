@@ -123,6 +123,10 @@
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>Focuses the inner text &lt;input&gt; on first render. See
+    /// <c>Input.AutoFocus</c> for why the HTML <c>autofocus</c> attribute
+    /// doesn't work in Blazor WASM.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter] public string? MaxTagsHelperText { get; set; }
 
     [Parameter] public Func<TItem, string>? GetTagText { get; set; }
@@ -143,6 +147,9 @@
     private bool _showSuggestions;
     private string? _validationError;
     private readonly string _inputId = LumeoIds.New("taginput");
+
+    /// <summary>Programmatically move focus to the inner text input.</summary>
+    public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
     private readonly string _suggestionsId = LumeoIds.New("taginput-suggestions");
     private bool _suggestionsRegistered;
 
@@ -314,6 +321,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && AutoFocus)
+        {
+            try { await Interop.FocusElement(_inputId); }
+            catch (JSDisconnectedException) { }
+        }
         if (_showSuggestions && !_suggestionsRegistered)
         {
             try
