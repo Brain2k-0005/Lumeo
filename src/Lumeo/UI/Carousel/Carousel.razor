@@ -91,13 +91,18 @@
     {
         var prevP = _canScrollPrev;
         var prevN = _canScrollNext;
+        var prevIndex = _currentIndex;
         _canScrollPrev = scrollPos > 0;
         _canScrollNext = scrollPos < maxScroll - 1;
         // Sync _currentIndex from the scroll position so button navigation
         // (ScrollNext/ScrollPrev) stays accurate after touch-swipe.
         if (nearestIndex >= 0)
             _currentIndex = nearestIndex;
-        if (prevP != _canScrollPrev || prevN != _canScrollNext)
+        // Also re-render when the index changes for a middle-to-middle swipe
+        // — without this the SlideAnnouncement live region stays stale and
+        // screen readers don't hear the slide change because prev/next
+        // flags remained true on both sides.
+        if (prevP != _canScrollPrev || prevN != _canScrollNext || prevIndex != _currentIndex)
             StateHasChanged();
         return Task.CompletedTask;
     }
