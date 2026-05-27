@@ -106,31 +106,48 @@ window.themeManager = {
         } else {
             document.documentElement.classList.remove('dark');
         }
-        // Color scheme — localStorage wins; else JSON default.
+        // Color scheme — localStorage wins; else JSON default. Pattern
+        // throughout this block: explicitly REMOVE the attribute/style/class
+        // when the value is at its default before conditionally setting it.
+        // Without the remove step, init() being called a second time after
+        // a default-reset (typical: storage handler in another tab, or
+        // setScheme('zinc') in this tab) leaves the previous non-default
+        // DOM state stuck — the inverse change isn't applied because the
+        // setAttribute branch is skipped (Codex #101 review).
         const scheme = localStorage.getItem('theme-scheme') || lumeoDefault(defaults, 'theme');
         if (scheme && scheme !== 'zinc' && scheme !== '') {
             document.documentElement.setAttribute('data-theme', scheme);
+        } else {
+            document.documentElement.removeAttribute('data-theme');
         }
         // Radius
         var radius = localStorage.getItem('theme-radius');
         if (radius === null) radius = lumeoDefault(defaults, 'radius');
         if (radius !== null) {
             document.documentElement.style.setProperty('--radius', radius + 'rem');
+        } else {
+            document.documentElement.style.removeProperty('--radius');
         }
         // Style
         const style = localStorage.getItem('theme-style') || lumeoDefault(defaults, 'style');
         if (style === 'new-york') {
             document.documentElement.classList.add('style-new-york');
+        } else {
+            document.documentElement.classList.remove('style-new-york');
         }
         // Base color
         const baseColor = localStorage.getItem('theme-base-color') || lumeoDefault(defaults, 'baseColor');
         if (baseColor && baseColor !== 'slate') {
             document.documentElement.setAttribute('data-base-color', baseColor);
+        } else {
+            document.documentElement.removeAttribute('data-base-color');
         }
         // Menu accent
         const menuAccent = localStorage.getItem('theme-menu-accent') || lumeoDefault(defaults, 'menuAccent');
         if (menuAccent && menuAccent !== 'subtle') {
             document.documentElement.setAttribute('data-menu-accent', menuAccent);
+        } else {
+            document.documentElement.removeAttribute('data-menu-accent');
         }
         // Menu color
         const menuColor = localStorage.getItem('theme-menu-color') || lumeoDefault(defaults, 'menuColor');
@@ -140,6 +157,9 @@ window.themeManager = {
         } else if (menuColor === 'light') {
             document.documentElement.style.setProperty('--color-sidebar', 'hsl(0 0% 100%)');
             document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)');
+        } else {
+            document.documentElement.style.removeProperty('--color-sidebar');
+            document.documentElement.style.removeProperty('--color-sidebar-foreground');
         }
         // Direction (RTL / LTR). Applied early so first paint is correct and
         // browser-native logical properties flip with no visible reflow.
@@ -163,22 +183,6 @@ window.themeManager = {
             el.textContent = fontCss;
         } else {
             applyLumeoFont(lumeoDefault(defaults, 'font'), lumeoDefault(defaults, 'fontLocalPath'));
-        }
-
-        // Multi-tab theme sync. Without this, toggling dark mode (or
-        // changing scheme / radius / direction) in one tab leaves other
-        // tabs of the same app on the stale theme — they only re-read
-        // localStorage on page load. The 'storage' event fires in every
-        // OTHER tab when a tab writes a key, so we just re-run the init
-        // pipeline to pick up the new value. Self-tab writes don't fire
-        // the event, so this can't loop. Idempotent — re-applying the
-        // same theme is a no-op.
-        if (!window.themeManager._storageHandlerInstalled) {
-            window.addEventListener('storage', function (e) {
-                if (!e.key || !e.key.startsWith('theme-') && e.key !== 'lumeo.direction') return;
-                try { window.themeManager.init(); } catch (_) {}
-            });
-            window.themeManager._storageHandlerInstalled = true;
         }
     },
     setMode: function (mode) {
