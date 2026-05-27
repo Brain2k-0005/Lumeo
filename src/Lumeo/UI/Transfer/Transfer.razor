@@ -104,15 +104,56 @@
 
     private const string ButtonClass = "inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
 
-    private List<TransferItem> FilteredSourceItems =>
-        string.IsNullOrWhiteSpace(_sourceSearch)
-            ? SourceItems ?? []
-            : (SourceItems ?? []).Where(i => i.Label.Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+    // Memoised filter lists. Same shape as PickList — re-run only when
+    // the input list reference OR the search term changes. The dual-list
+    // layout reads both Filtered* properties per render plus they're
+    // touched from selection-state computations, so the previous getter
+    // ran 4-8× per parent re-render. Cache collapses that to once per
+    // actual input change.
+    private List<TransferItem> _sourceFilterCache = [];
+    private List<TransferItem>? _sourceFilterCacheBase;
+    private string _sourceFilterCacheTerm = "";
+    private List<TransferItem> _targetFilterCache = [];
+    private List<TransferItem>? _targetFilterCacheBase;
+    private string _targetFilterCacheTerm = "";
 
-    private List<TransferItem> FilteredTargetItems =>
-        string.IsNullOrWhiteSpace(_targetSearch)
-            ? TargetItems ?? []
-            : (TargetItems ?? []).Where(i => i.Label.Contains(_targetSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+    private List<TransferItem> FilteredSourceItems
+    {
+        get
+        {
+            if (!ReferenceEquals(_sourceFilterCacheBase, SourceItems)
+                || _sourceFilterCacheTerm != _sourceSearch)
+            {
+                _sourceFilterCacheBase = SourceItems;
+                _sourceFilterCacheTerm = _sourceSearch;
+                _sourceFilterCache = string.IsNullOrWhiteSpace(_sourceSearch)
+                    ? SourceItems ?? new List<TransferItem>()
+                    : (SourceItems ?? new List<TransferItem>())
+                        .Where(i => i.Label.Contains(_sourceSearch, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+            }
+            return _sourceFilterCache;
+        }
+    }
+
+    private List<TransferItem> FilteredTargetItems
+    {
+        get
+        {
+            if (!ReferenceEquals(_targetFilterCacheBase, TargetItems)
+                || _targetFilterCacheTerm != _targetSearch)
+            {
+                _targetFilterCacheBase = TargetItems;
+                _targetFilterCacheTerm = _targetSearch;
+                _targetFilterCache = string.IsNullOrWhiteSpace(_targetSearch)
+                    ? TargetItems ?? new List<TransferItem>()
+                    : (TargetItems ?? new List<TransferItem>())
+                        .Where(i => i.Label.Contains(_targetSearch, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+            }
+            return _targetFilterCache;
+        }
+    }
 
     private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? "";
     private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? "";
