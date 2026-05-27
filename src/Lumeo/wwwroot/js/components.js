@@ -547,17 +547,26 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side) {
 
     const cleanup = () => {
         cancelAnimationFrame(rafId);
-        window.removeEventListener('scroll', onScrollOrResize, { capture: true });
-        window.removeEventListener('resize', onScrollOrResize);
+        // Wrap removeEventListener in try/catch — the window object can
+        // throw in detached / cross-realm scenarios (worker hosts, MAUI
+        // Hybrid teardown), and we don't want a failure to remove one
+        // listener to skip the rest of the cleanup or the
+        // positionCleanups.delete below.
+        try { window.removeEventListener('scroll', onScrollOrResize, { capture: true }); } catch (_) {}
+        try { window.removeEventListener('resize', onScrollOrResize); } catch (_) {}
         positionCleanups.delete(contentId);
     };
     positionCleanups.set(contentId, cleanup);
 }
 
 export function unpositionFixed(contentId) {
-    if (positionCleanups.has(contentId)) {
-        positionCleanups.get(contentId)();
-    }
+    const fn = positionCleanups.get(contentId);
+    if (!fn) return;
+    // Even though cleanup() itself is now defensive, a stray exception
+    // mustn't leave the cleanup half-done — guard the call site too so
+    // a future change to the cleanup body can't take the registry into
+    // an inconsistent state.
+    try { fn(); } catch (_) { positionCleanups.delete(contentId); }
 }
 
 // --- Viewport Size ---
@@ -2297,14 +2306,24 @@ export const ai = {
         const el = document.getElementById(elementId);
         if (!el) return;
 
-        // Dispose any previous observer on the same id
+        // Tear down any previous registration on the same id — both the
+        // MutationObserver and the scroll listener.
         const prev = aiListObservers.get(elementId);
-        if (prev) prev.disconnect();
+        if (prev) {
+            prev.observer.disconnect();
+            if (prev.scrollTarget && prev.onScroll) {
+                prev.scrollTarget.removeEventListener('scroll', prev.onScroll);
+            }
+        }
 
         const isNearBottom = () => (el.scrollHeight - el.scrollTop - el.clientHeight) < 96;
         let stick = true;
 
-        el.addEventListener('scroll', () => { stick = isNearBottom(); }, { passive: true });
+        // Named handler so disposeAutoScroll can pass the same reference to
+        // removeEventListener — anonymous handlers can't be removed and
+        // would otherwise leak per element across component remounts.
+        const onScroll = () => { stick = isNearBottom(); };
+        el.addEventListener('scroll', onScroll, { passive: true });
 
         const scrollToBottom = () => {
             el.scrollTop = el.scrollHeight;
@@ -2317,15 +2336,17 @@ export const ai = {
             if (stick) scrollToBottom();
         });
         observer.observe(el, { childList: true, subtree: true, characterData: true });
-        aiListObservers.set(elementId, observer);
+        aiListObservers.set(elementId, { observer, scrollTarget: el, onScroll });
     },
 
     disposeAutoScroll(elementId) {
-        const obs = aiListObservers.get(elementId);
-        if (obs) {
-            obs.disconnect();
-            aiListObservers.delete(elementId);
+        const entry = aiListObservers.get(elementId);
+        if (!entry) return;
+        entry.observer.disconnect();
+        if (entry.scrollTarget && entry.onScroll) {
+            entry.scrollTarget.removeEventListener('scroll', entry.onScroll);
         }
+        aiListObservers.delete(elementId);
     },
 
     /* ---------- Scroll helper used by StreamingText / message list ---------- */
