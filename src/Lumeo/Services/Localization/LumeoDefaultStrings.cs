@@ -147,6 +147,9 @@ internal static partial class LumeoDefaultStrings
         ["FileUpload.Retry"] = "Retry",
         ["FileUpload.TooLarge"] = "File too large",
         ["FileUpload.TypeNotAllowed"] = "File type not allowed",
+
+        // ── UploadTrigger ───────────────────────────────────────────
+        ["UploadTrigger.PickFile"] = "Pick a file",
         ["FileUpload.ChooseFile"] = "Choose file",
         ["FileUpload.ClickToUpload"] = "Click to upload or drag and drop",
 
@@ -581,6 +584,9 @@ internal static partial class LumeoDefaultStrings
         ["FileUpload.TypeNotAllowed"] = "Dateityp nicht erlaubt",
         ["FileUpload.ChooseFile"] = "Datei auswählen",
         ["FileUpload.ClickToUpload"] = "Zum Hochladen klicken oder hierher ziehen",
+
+        // ── UploadTrigger ───────────────────────────────────────────
+        ["UploadTrigger.PickFile"] = "Datei auswählen",
 
         // ── Overlays & dialogs ──────────────────────────────────────
         ["Dialog.Close"] = "Schließen",
