@@ -1750,7 +1750,17 @@ export function captureColumnRects(gridId) {
         const cells = [th];
         if (tbody && colIdx >= 0) {
             for (const row of tbody.rows) {
-                if (row.children[colIdx]) cells.push(row.children[colIdx]);
+                const cell = row.children[colIdx];
+                if (!cell) continue;
+                // Skip non-data rows: grouped grids render DataGridGroupRow
+                // as a single <td colspan="N"> that spans every column.
+                // Capturing it under the reorder-column index would later
+                // FLIP-translate the entire group header sideways when only
+                // a single data column moved — visible jitter (Codex
+                // review on #48). colSpan > 1 is the cheapest way to
+                // identify span cells; data cells always have colSpan 1.
+                if (cell.colSpan && cell.colSpan > 1) continue;
+                cells.push(cell);
             }
         }
         snapshot[colId] = { left: th.getBoundingClientRect().left, cells };

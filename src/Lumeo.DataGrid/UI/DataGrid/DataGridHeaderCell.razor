@@ -312,6 +312,20 @@
         {
             await EnsureResizeRegistered();
         }
+        else if (!Column.Resizable && _resizeRegistered)
+        {
+            // Column flipped Resizable true → false. The resize-handle div is
+            // gone from the DOM (the @if (Column.Resizable) gate above) but
+            // the JS pointer listener it was tied to stays attached to a
+            // detached element until we unregister it. More importantly,
+            // _resizeRegistered would otherwise stay true and a later
+            // false → true flip wouldn't re-call EnsureResizeRegistered —
+            // the newly-rendered handle would never receive a listener and
+            // resizing would silently stop working (Codex review on #46).
+            try { await Interop.UnregisterColumnResize(_resizeHandleId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _resizeRegistered = false;
+        }
 
         if (!Column.Filterable) return;
 
