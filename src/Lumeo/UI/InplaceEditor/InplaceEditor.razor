@@ -18,7 +18,8 @@
             <div class="flex-1 min-w-0">
                 @if (EditMode == InplaceEditMode.Textarea)
                 {
-                    <textarea class="@EditInputClass"
+                    <textarea @ref="_editFieldRef"
+                              class="@EditInputClass"
                               rows="3"
                               value="@_editValue"
                               name="@(Name ?? FormField?.Name)"
@@ -30,7 +31,8 @@
                 }
                 else if (EditMode == InplaceEditMode.Select && SelectOptions is not null)
                 {
-                    <select class="w-full rounded border border-border/40 bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    <select @ref="_editFieldRef"
+                            class="w-full rounded border border-border/40 bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                             value="@_editValue"
                             name="@(Name ?? FormField?.Name)"
                             aria-required="@(Required ? "true" : "false")"
@@ -45,7 +47,8 @@
                 }
                 else
                 {
-                    <input type="text"
+                    <input @ref="_editFieldRef"
+                           type="text"
                            class="@EditInputClass"
                            value="@_editValue"
                            name="@(Name ?? FormField?.Name)"
@@ -76,7 +79,7 @@
     }
     else
     {
-        <div class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
+        <div @ref="_displayRef" class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
             <div class="flex-1 min-w-0">
                 @if (ChildContent is not null)
                 {
@@ -143,6 +146,35 @@
     private bool _editing;
     private string? _editValue;
 
+    private ElementReference _editFieldRef;
+    private ElementReference _displayRef;
+    // Set when the user enters edit mode so the next render moves focus to
+    // the input/textarea/select — without this, the user clicks to edit and
+    // still has to click again to actually type. Cleared after focus is
+    // moved so subsequent re-renders (e.g. typing into the field) don't
+    // steal focus back from where the caret has moved.
+    private bool _focusEditOnRender;
+    // Same idea for the reverse transition: Save/Cancel should return focus
+    // to the trigger so a keyboard-only user doesn't end up with focus on
+    // <body> after committing.
+    private bool _focusDisplayOnRender;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusEditOnRender)
+        {
+            _focusEditOnRender = false;
+            try { await _editFieldRef.FocusAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (_focusDisplayOnRender)
+        {
+            _focusDisplayOnRender = false;
+            try { await _displayRef.FocusAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
     private string CssClass => $"group w-full {Class}".Trim();
     private string EditInputClass => $"w-full rounded border {(EffectiveInvalid ? "border-destructive focus:ring-destructive/20" : "border-border/40 focus:ring-ring")} bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1";
 
@@ -157,6 +189,7 @@
         if (Disabled) return;
         _editValue = Value;
         _editing = true;
+        _focusEditOnRender = true;
     }
 
     private void HandleDisplayKeyDown(KeyboardEventArgs e)
@@ -198,6 +231,7 @@
     private async Task Save()
     {
         _editing = false;
+        _focusDisplayOnRender = true;
         var saved = _editValue ?? "";
         await ValueChanged.InvokeAsync(saved);
         await OnSave.InvokeAsync(saved);
@@ -206,6 +240,7 @@
     private async Task Cancel()
     {
         _editing = false;
+        _focusDisplayOnRender = true;
         _editValue = Value;
         await OnCancel.InvokeAsync();
     }
