@@ -110,6 +110,12 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     {
         public string PropertyName { get; set; } = "";
         public string PropertyTypeFq { get; set; } = ""; // fully-qualified C# type
+        /// <summary>True when the property type is nullable
+        /// (<c>string?</c>, <c>int?</c>, <c>MyClass?</c>). Drives whether the
+        /// generated <c>ValueChanged</c> writeback null-coalesces — without
+        /// this flag the previous emitter used <c>__v!</c> across the board,
+        /// silently assigning null into non-nullable string properties.</summary>
+        public bool IsNullable { get; set; }
         public string Label { get; set; } = "";
         public string? HelpText { get; set; }
         public bool Required { get; set; }
@@ -291,10 +297,19 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         var type = prop.Type;
         var fqType = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
+        // NullableAnnotation.Annotated catches both nullable reference types
+        // (string?, MyClass?) and nullable value types (int?, double?). For
+        // value types we additionally accept Nullable<T> in case the property
+        // is declared with the full generic name rather than the ? shorthand.
+        var isNullable = type.NullableAnnotation == NullableAnnotation.Annotated
+            || (type is INamedTypeSymbol nt && nt.IsGenericType
+                && nt.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T);
+
         var f = new FieldModel
         {
             PropertyName = prop.Name,
             PropertyTypeFq = fqType,
+            IsNullable = isNullable,
             Label = SplitPascal(prop.Name),
         };
 
@@ -550,9 +565,16 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
             sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"type\", \"email\");");
 
         sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", model.").Append(f.PropertyName).AppendLine(");");
+        // Writeback: nullable string? properties get the value as-is; the
+        // null-forgiving `__v!` the previous emitter used was a code smell —
+        // it suppressed the analyzer warning but silently assigned null into
+        // non-nullable string properties when the input was cleared.
+        // Non-nullable string properties now coalesce to string.Empty so a
+        // cleared input writes "" instead of null.
+        var writeback = f.IsNullable ? "__v" : "__v ?? string.Empty";
         sb.Append("                    __field.AddAttribute(").Append(next())
           .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<string?>(model, __v => model.")
-          .Append(f.PropertyName).AppendLine(" = __v!));");
+          .Append(f.PropertyName).Append(" = ").Append(writeback).AppendLine("));");
         sb.AppendLine("                    __field.CloseComponent();");
     }
 
