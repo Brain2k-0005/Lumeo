@@ -2220,32 +2220,31 @@
         // Handled by ToggleSelection
     }
 
-    private bool IsRowSelected(TItem item)
-    {
-        var (refHit, keyHit) = FindSelectionMatch(item);
-        return refHit is not null || keyHit is not null;
-    }
+    private bool IsRowSelected(TItem item) => FindSelectionMatch(item).found;
 
-    // Returns the stored selected item that matches `item` either by reference
-    // (always tried first) or by key (only when SelectionKeySelector is set
-    // AND the item's key is non-null). null/null = not selected.
-    private (TItem? refMatch, TItem? keyMatch) FindSelectionMatch(TItem item)
+    // Returns whether `item` is selected and, if so, the stored TItem
+    // instance to mutate when toggling. Bool-flagged because TItem is
+    // unconstrained — a `TItem?` sentinel would be non-null for value-type
+    // rows (e.g. `int`) and every unselected row would falsely report
+    // selected. Ref-match wins; key-match is only consulted when
+    // SelectionKeySelector is set AND the item's key is non-null
+    // (preserves the documented null-key → reference-equality fallback).
+    private (bool found, TItem stored) FindSelectionMatch(TItem item)
     {
-        TItem? refMatch = _selectedSet.Contains(item) ? item : default;
-        if (refMatch is not null) return (refMatch, default);
+        if (_selectedSet.Contains(item)) return (true, item);
 
         if (SelectionKeySelector is null || _selectedItems.Count == 0)
-            return (default, default);
+            return (false, item);
 
         var key = SelectionKeySelector(item);
-        if (key is null) return (default, default);
+        if (key is null) return (false, item);
 
         foreach (var sel in _selectedItems)
         {
             var k = SelectionKeySelector(sel);
-            if (k is not null && key.Equals(k)) return (default, sel);
+            if (k is not null && key.Equals(k)) return (true, sel);
         }
-        return (default, default);
+        return (false, item);
     }
 
     private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
@@ -2257,8 +2256,7 @@
         // Capture both ref-membership and key-membership BEFORE mutating, so a
         // fresh server-mode wrapper (different ref, same key) is correctly
         // recognised as already-selected and deselects instead of doubling.
-        var (refHit, keyHit) = FindSelectionMatch(item);
-        var wasSelected = refHit is not null || keyHit is not null;
+        var (wasSelected, stored) = FindSelectionMatch(item);
 
         if (SelectionMode == DataGridSelectionMode.Single)
         {
@@ -2275,9 +2273,8 @@
         {
             if (wasSelected)
             {
-                // Remove the stored instance (ref-match wins; otherwise the
+                // Use the stored instance (ref-match wins; otherwise the
                 // key-matched stale wrapper) so we don't strand a duplicate.
-                var stored = refHit ?? keyHit!;
                 _selectedSet.Remove(stored);
                 _selectedItems.Remove(stored);
             }

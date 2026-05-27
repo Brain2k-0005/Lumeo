@@ -60,12 +60,18 @@ public sealed class ThemeBuilder
     /// (matching the path used by <c>ThemeService.SetFont</c>).</summary>
     public ThemeBuilder WithFontFamily(string fontStack) => Set("font-family", fontStack);
 
-    /// <summary>Set an arbitrary CSS custom property. Use this for tokens
-    /// that don't have a typed setter yet (e.g. component-scoped vars).</summary>
+    /// <summary>Set an arbitrary CSS custom property. Pass the full token
+    /// name as it appears in <c>lumeo.css</c> — typically prefixed with
+    /// <c>--color-</c> for color tokens (e.g. <c>--color-primary</c>,
+    /// <c>--color-ring</c>) and <c>--radius</c> / <c>--shadow-*</c> for
+    /// others. A leading <c>--</c> is added if you omit it, but no
+    /// shorthand-to-color-token inference happens — passing
+    /// <c>"primary"</c> emits <c>--primary</c>, which the bundled CSS
+    /// does NOT consume. Use the typed <see cref="WithPrimary"/> /
+    /// <see cref="WithRing"/> setters for the common cases instead.</summary>
     public ThemeBuilder WithVariable(string name, string value)
     {
         if (string.IsNullOrEmpty(name)) return this;
-        // Normalize: accept "primary" → "--color-primary", "--ring" → "--ring".
         var key = name.StartsWith("--", StringComparison.Ordinal) ? name : "--" + name;
         return Set(key, value);
     }
