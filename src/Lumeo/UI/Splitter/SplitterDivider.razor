@@ -4,6 +4,9 @@
 <div id="@_dividerId"
      role="separator"
      aria-orientation="@(IsHorizontal ? "vertical" : "horizontal")"
+     aria-valuenow="@LeadingPaneValue"
+     aria-valuemin="@LeadingPaneMin"
+     aria-valuemax="@LeadingPaneMax"
      tabindex="0"
      class="@CssClass"
      @onpointerdown="OnPointerDown"
@@ -32,6 +35,29 @@
     private double _lastY;
 
     private bool IsHorizontal => Context?.Orientation == Lumeo.Orientation.Horizontal;
+
+    // aria-valuenow/min/max describe the LEADING pane's percentage size — the
+    // pane just before this divider in the Context.Children list. This matches
+    // how ResizeNeighbors mutates `before.Size` on drag/keypress, so the value
+    // an assistive tech reads tracks the same number the user is steering.
+    private Splitter.SplitterPaneHandle? LeadingPane
+    {
+        get
+        {
+            if (Context is null) return null;
+            var idx = Context.Children.IndexOf(_token);
+            if (idx < 0) return null;
+            for (var i = idx - 1; i >= 0; i--)
+            {
+                if (Context.Children[i] is Splitter.SplitterPaneHandle p) return p;
+            }
+            return null;
+        }
+    }
+
+    private int LeadingPaneValue => (int)Math.Round(LeadingPane?.Size ?? 0);
+    private int LeadingPaneMin => (int)Math.Round(LeadingPane?.MinSize ?? 0);
+    private int LeadingPaneMax => (int)Math.Round(LeadingPane?.MaxSize ?? 100);
 
     private string CssClass =>
         IsHorizontal
