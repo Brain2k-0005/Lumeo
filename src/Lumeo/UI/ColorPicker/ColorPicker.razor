@@ -252,27 +252,45 @@
         }
     }
 
-    private void OnAlphaChanged(ChangeEventArgs e)
+    private async Task OnAlphaChanged(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var a)) _alpha = Math.Clamp(a, 0, 100);
+        if (!int.TryParse(e.Value?.ToString(), out var a)) return;
+        _alpha = Math.Clamp(a, 0, 100);
+        await ApplyAlpha();
     }
 
     private async Task OnRChanged(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var n)) { _r = Math.Clamp(n, 0, 255); await ApplyRgb(); } }
     private async Task OnGChanged(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var n)) { _g = Math.Clamp(n, 0, 255); await ApplyRgb(); } }
     private async Task OnBChanged(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var n)) { _b = Math.Clamp(n, 0, 255); await ApplyRgb(); } }
 
+    // Single point of truth for the bound Value string. When alpha is at
+    // 100 % (or alpha is disabled), emit the compact hex form so existing
+    // consumers that only handle hex keep working. Below 100 %, emit
+    // rgba() so the alpha is actually round-trippable to CSS.
+    private string ComposeCurrentValue() =>
+        ShowAlpha && _alpha < 100
+            ? $"rgba({_r}, {_g}, {_b}, {(_alpha / 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)})"
+            : $"#{_r:X2}{_g:X2}{_b:X2}";
+
     private async Task ApplyHsv()
     {
         (_r, _g, _b) = HsvToRgb(_h, _s, _v);
-        Value = $"#{_r:X2}{_g:X2}{_b:X2}";
+        Value = ComposeCurrentValue();
         _lastSyncedValue = Value;
         await ValueChanged.InvokeAsync(Value);
     }
 
     private async Task ApplyRgb()
     {
-        Value = $"#{_r:X2}{_g:X2}{_b:X2}";
+        Value = ComposeCurrentValue();
         (_h, _s, _v) = RgbToHsv(_r, _g, _b);
+        _lastSyncedValue = Value;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task ApplyAlpha()
+    {
+        Value = ComposeCurrentValue();
         _lastSyncedValue = Value;
         await ValueChanged.InvokeAsync(Value);
     }
