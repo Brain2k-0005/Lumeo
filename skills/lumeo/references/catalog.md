@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 154 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 155 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -35,6 +35,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **DataTable** **[DataGrid]** — Table with sorting, pagination, and row selection built in. _(sub-components: DataTableSortableHeader)_
 - **Descriptions** — Key-value pair list for read-only entity details. _(sub-components: DescriptionsItem)_
 - **FileManager** — Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.
+- **FileViewer** — Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.
 - **Filter** **[DataGrid]** — Composable faceted filter builder with chips. _(sub-components: FilterPill)_
 - **Gantt** **[Gantt]** — Gantt component.
 - **Gauge** — Single-value gauge with radial, arc, and linear variants and threshold colour bands.
