@@ -99,7 +99,8 @@
                         @onclick="RejectAll">
                     @RejectLabel
                 </button>
-                <button type="button"
+                <button @ref="_prefSaveButtonRef"
+                        type="button"
                         class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                         @onclick="SavePreferences">
                     @SaveLabel
@@ -146,6 +147,14 @@
 
     private bool _ready;
     private bool _preferencesOpen;
+    private ElementReference _prefSaveButtonRef;
+    // Set when OpenPreferences flips _preferencesOpen → true. OnAfterRender
+    // consumes it once the dialog is in the DOM and focuses the Save
+    // button. Without this, opening the preferences dialog left focus on
+    // the underlying page so keyboard-only users had to Tab through
+    // background content to reach the dialog — failing the modal-focus
+    // expectation set by aria-modal="true" on the wrapper.
+    private bool _shouldFocusPrefsOnRender;
     private Dictionary<string, bool> _draft = new(StringComparer.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
@@ -162,15 +171,25 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        try
+        if (firstRender)
         {
-            await Consent.EnsureLoadedAsync();
-            _ready = true;
-            StateHasChanged();
+            try
+            {
+                await Consent.EnsureLoadedAsync();
+                _ready = true;
+                StateHasChanged();
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
         }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
+
+        if (_shouldFocusPrefsOnRender)
+        {
+            _shouldFocusPrefsOnRender = false;
+            try { await _prefSaveButtonRef.FocusAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { /* ref not yet bound — preferences dialog wasn't rendered this pass */ }
+        }
     }
 
     private void HandleConsentChange() => InvokeAsync(StateHasChanged);
@@ -192,6 +211,7 @@
         // Seed the draft from current consent so the toggles reflect reality.
         _draft = Categories.ToDictionary(c => c.Key, c => c.Required || Consent.HasConsent(c.Key), StringComparer.OrdinalIgnoreCase);
         _preferencesOpen = true;
+        _shouldFocusPrefsOnRender = true;
     }
 
     /// <summary>Public entry point so a "Manage cookie preferences" link anywhere in the layout can reopen the dialog.</summary>

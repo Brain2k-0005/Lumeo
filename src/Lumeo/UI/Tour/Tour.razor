@@ -162,20 +162,29 @@
         }
     }
 
+    // Sequence stamp for UpdateTargetRect calls. Bumped on every entry;
+    // the awaited fetch checks the stamp on resolve to drop stale results.
+    private int _rectFetchSeq;
+
     private async Task UpdateTargetRect()
     {
         var selector = _currentStepConfig?.TargetSelector;
         if (selector == _currentTargetSelector) return; // Already positioned for this step
         _currentTargetSelector = selector;
-        if (selector is not null)
-        {
-            _targetRect = await Interop.GetElementRectBySelector(selector);
-        }
-        else
-        {
-            _targetRect = null;
-        }
-        StateHasChanged(); // Safe: only fires when selector changes, not on every render
+        // Race fix: if a second UpdateTargetRect fires while this call is
+        // awaiting GetElementRectBySelector (parent advances CurrentStep
+        // mid-flight, or HandleNext / HandlePrevious overlap), the later
+        // call bumps _rectFetchSeq and wins. Without this guard the
+        // earlier resolution overwrote _targetRect with the previous
+        // step's rect AFTER the later call had already committed the
+        // right rect — spotlight stuck on the wrong target for a render.
+        var stamp = ++_rectFetchSeq;
+        var newRect = selector is not null
+            ? await Interop.GetElementRectBySelector(selector)
+            : null;
+        if (stamp != _rectFetchSeq) return; // Newer call already committed.
+        _targetRect = newRect;
+        StateHasChanged();
     }
 
     private async Task HandleNext()
