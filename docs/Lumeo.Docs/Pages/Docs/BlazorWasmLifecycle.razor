@@ -1,0 +1,292 @@
+@page "/docs/blazor-wasm-lifecycle"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Blazor WASM Lifecycle — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Blazor WASM Lifecycle</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Most Lumeo bugs that look like the library's fault — a component that flashes empty, a focus
+            trap that fails to attach, a value that doesn't show until the user clicks something — are
+            actually lifecycle mistakes in the consuming app. This page collects the rules: which
+            lifecycle hook runs when, when the DOM is ready, when JS interop is safe, and how to keep
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">StateHasChanged</code> from
+            either silently dropping updates or rendering forever.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">The hooks, in order</Heading>
+        <div class="overflow-x-auto rounded-lg border border-border/40">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-56">Hook</TableHead>
+                        <TableHead>When</TableHead>
+                        <TableHead>Safe to do</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell Class="font-medium"><code class="text-xs font-mono">SetParametersAsync</code></TableCell>
+                        <TableCell>Each render the parent triggers, before parameter assignment.</TableCell>
+                        <TableCell>Intercept parameter changes (rarely needed).</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium"><code class="text-xs font-mono">OnInitializedAsync</code></TableCell>
+                        <TableCell>Once per component instance, before the first render.</TableCell>
+                        <TableCell>Fetch initial data, subscribe to services. <strong class="text-foreground">No DOM, no JS interop on WASM prerender.</strong></TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium"><code class="text-xs font-mono">OnParametersSetAsync</code></TableCell>
+                        <TableCell>After parameters are set, every render.</TableCell>
+                        <TableCell>React to parameter changes. Guard against re-running fetches needlessly.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium"><code class="text-xs font-mono">OnAfterRenderAsync(firstRender)</code></TableCell>
+                        <TableCell>After every render, on the UI thread, with the DOM populated.</TableCell>
+                        <TableCell>JS interop, <code class="text-xs font-mono">ElementReference</code> access, focus management, third-party widget init.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium"><code class="text-xs font-mono">Dispose</code> / <code class="text-xs font-mono">DisposeAsync</code></TableCell>
+                        <TableCell>When the component is removed from the render tree.</TableCell>
+                        <TableCell>Unsubscribe, dispose JS modules, release focus traps. Catch <code class="text-xs font-mono">JSDisconnectedException</code>.</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">OnInitializedAsync vs OnAfterRenderAsync</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The dividing line is the DOM. Anything that touches an
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ElementReference</code>, calls
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">IJSRuntime</code> with module
+            interop, or reads layout (sizes, scroll positions) belongs in
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnAfterRenderAsync</code>.
+            Everything else — fetching the data that the component will render — belongs in
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnInitializedAsync</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_hooksCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Prerender quirks</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            If your WASM app is hosted in an ASP.NET Core endpoint with prerendering enabled,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnInitializedAsync</code> runs
+            twice: once on the server during prerender, and again in the browser after the WASM payload
+            boots. JS interop in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnInitializedAsync</code>
+            fails on the server pass with
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">InvalidOperationException: JavaScript interop calls cannot be issued at this time</code>.
+            Stick to data-only work there.
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OperatingSystem.IsBrowser()</code> to branch when needed.</li>
+            <li>Use <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">PersistentComponentState</code> to avoid double-fetching across prerender + WASM boot.</li>
+            <li>Anything DOM-bound (a sheet's focus trap, scroll position) won't run on the server pass anyway — it lives in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnAfterRenderAsync</code>.</li>
+        </ul>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_prerenderCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">StateHasChanged hygiene</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Blazor calls <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">StateHasChanged</code>
+            for you after every event handler and every awaited lifecycle method. You need to call it
+            manually only when the change happens outside those flows: a service event you subscribe to,
+            a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">System.Timers.Timer</code>
+            tick, a JS-to-.NET callback, a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Task.Run</code>.
+        </Lumeo.Text>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>Calls from non-UI threads must go through <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">InvokeAsync(StateHasChanged)</code>.</li>
+            <li>Do not call <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">StateHasChanged</code> inside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnAfterRender</code> unconditionally — it causes an infinite render loop.</li>
+            <li>If you must trigger a second render from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnAfterRender</code> (e.g. after measuring the DOM), gate it on a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">bool _needsRemeasure</code> flag and flip the flag.</li>
+        </ul>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_stateHasChangedCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">JS interop timing</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo overlay components (Sheet, Dialog, Drawer, Popover, Tooltip) call into
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ComponentInteropService</code>
+            from <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">OnAfterRenderAsync</code>
+            because they need the element to exist in the DOM. If you build your own interop wrappers,
+            follow the same rule and remember to clean up on dispose.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_interopCode</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">JSDisconnectedException</code>
+            is thrown when the circuit closes (page unload, browser tab close) before your dispose
+            finishes. It is not a bug — swallow it in dispose paths so the disposal can complete.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Common symptoms and their causes</Heading>
+        <div class="overflow-x-auto rounded-lg border border-border/40">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-72">Symptom</TableHead>
+                        <TableHead>Likely cause</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell>Data appears one render late</TableCell>
+                        <TableCell>Awaiting inside <code class="text-xs font-mono">OnAfterRender</code> without flipping a flag + calling <code class="text-xs font-mono">StateHasChanged</code>.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell>Component renders forever, CPU at 100 %</TableCell>
+                        <TableCell>Unconditional <code class="text-xs font-mono">StateHasChanged</code> in <code class="text-xs font-mono">OnAfterRender</code>.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell><code class="text-xs font-mono">JavaScript interop calls cannot be issued at this time</code></TableCell>
+                        <TableCell>JS call during prerender or before <code class="text-xs font-mono">OnAfterRender</code>.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell><code class="text-xs font-mono">JSDisconnectedException</code> in logs</TableCell>
+                        <TableCell>Cleanup running after circuit close. Catch and ignore inside dispose.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell>UI doesn't update after a service event</TableCell>
+                        <TableCell>Missing <code class="text-xs font-mono">InvokeAsync(StateHasChanged)</code> from the event handler.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell>Sheet opens but focus trap doesn't attach</TableCell>
+                        <TableCell>Custom code setting <code class="text-xs font-mono">Open</code> in <code class="text-xs font-mono">OnInitializedAsync</code> before the DOM exists.</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="docs/services/component-interop">Component Interop Service</a></li>
+            <li><a class="text-primary hover:underline" href="docs/accessibility">Accessibility</a> — focus trap and scroll lock setup</li>
+            <li><a class="text-primary hover:underline" href="docs/theme-overrides">Theme overrides</a></li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _hooksCode = @"@inject IDataService Data
+@inject ComponentInteropService Interop
+
+<div @ref=""_root"">
+    @if (_items is null) { <Spinner /> }
+    else { @* render items *@ }
+</div>
+
+@code {
+    private ElementReference _root;
+    private List<Item>? _items;
+    private IDisposable? _outsideClick;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Data only. No DOM. No JS.
+        _items = await Data.LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // DOM exists now — safe to set up interop.
+        _outsideClick = await Interop.RegisterClickOutside(_root, OnClickedOutside);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { _outsideClick?.Dispose(); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private void OnClickedOutside() { /* ... */ }
+}";
+
+    private const string _prerenderCode = @"protected override async Task OnInitializedAsync()
+{
+    if (OperatingSystem.IsBrowser())
+    {
+        _items = await Data.LoadAsync();
+    }
+    // On the server prerender pass, leave _items null — we render a skeleton.
+    // After WASM boots, this method runs again on the client and fetches.
+}";
+
+    private const string _stateHasChangedCode = @"// 1. Service event from background — non-UI thread.
+protected override void OnInitialized()
+{
+    _hub.NotificationReceived += OnNotification;
+}
+
+private void OnNotification(Notification n)
+{
+    _notifications.Add(n);
+    InvokeAsync(StateHasChanged);
+}
+
+// 2. Measure-then-render — guarded with a flag.
+private bool _measured;
+private double _height;
+
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (firstRender && !_measured)
+    {
+        _height = await Interop.GetElementHeightAsync(_root);
+        _measured = true;
+        StateHasChanged(); // safe: guarded by _measured
+    }
+}";
+
+    private const string _interopCode = @"private IJSObjectReference? _module;
+
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (firstRender)
+    {
+        _module = await JS.InvokeAsync<IJSObjectReference>(
+            ""import"", ""./_content/MyLib/widget.js"");
+        await _module.InvokeVoidAsync(""init"", _hostRef);
+    }
+}
+
+public async ValueTask DisposeAsync()
+{
+    try
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync(""dispose"");
+            await _module.DisposeAsync();
+        }
+    }
+    catch (JSDisconnectedException) { /* circuit gone; nothing to clean up */ }
+}";
+}
