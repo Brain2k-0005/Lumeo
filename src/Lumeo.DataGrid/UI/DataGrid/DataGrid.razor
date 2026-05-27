@@ -1389,21 +1389,27 @@
         // Clean stale selections that reference items no longer in the data source.
         // When SelectionKeySelector is set, compare by key so server-mode fetches
         // (which produce fresh TItem instances per page) don't wipe selections.
+        // null-key selections fall back to reference equality so mixed
+        // keyed/unkeyed scenarios don't silently lose the unkeyed rows.
         if (_selectedItems.Count > 0)
         {
             int staleCount;
             if (SelectionKeySelector is not null)
             {
                 var currentKeys = new HashSet<object>();
+                var currentRefs = new HashSet<TItem>();
                 foreach (var it in Items)
                 {
                     var k = SelectionKeySelector(it);
                     if (k is not null) currentKeys.Add(k);
+                    else currentRefs.Add(it);
                 }
                 staleCount = _selectedItems.RemoveAll(item =>
                 {
                     var k = SelectionKeySelector(item);
-                    return k is null || !currentKeys.Contains(k);
+                    return k is null
+                        ? !currentRefs.Contains(item)
+                        : !currentKeys.Contains(k);
                 });
             }
             else
@@ -2216,19 +2222,30 @@
 
     private bool IsRowSelected(TItem item)
     {
-        if (_selectedSet.Contains(item)) return true;
-        // Server-mode parity: a freshly-fetched item is a different reference
-        // than the one originally clicked, so reference-based Contains misses.
-        // When SelectionKeySelector is set, fall back to a key scan.
-        if (SelectionKeySelector is null || _selectedItems.Count == 0) return false;
+        var (refHit, keyHit) = FindSelectionMatch(item);
+        return refHit is not null || keyHit is not null;
+    }
+
+    // Returns the stored selected item that matches `item` either by reference
+    // (always tried first) or by key (only when SelectionKeySelector is set
+    // AND the item's key is non-null). null/null = not selected.
+    private (TItem? refMatch, TItem? keyMatch) FindSelectionMatch(TItem item)
+    {
+        TItem? refMatch = _selectedSet.Contains(item) ? item : default;
+        if (refMatch is not null) return (refMatch, default);
+
+        if (SelectionKeySelector is null || _selectedItems.Count == 0)
+            return (default, default);
+
         var key = SelectionKeySelector(item);
-        if (key is null) return false;
+        if (key is null) return (default, default);
+
         foreach (var sel in _selectedItems)
         {
             var k = SelectionKeySelector(sel);
-            if (k is not null && key.Equals(k)) return true;
+            if (k is not null && key.Equals(k)) return (default, sel);
         }
-        return false;
+        return (default, default);
     }
 
     private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
@@ -2237,9 +2254,14 @@
 
     private void ToggleSelection(TItem item)
     {
+        // Capture both ref-membership and key-membership BEFORE mutating, so a
+        // fresh server-mode wrapper (different ref, same key) is correctly
+        // recognised as already-selected and deselects instead of doubling.
+        var (refHit, keyHit) = FindSelectionMatch(item);
+        var wasSelected = refHit is not null || keyHit is not null;
+
         if (SelectionMode == DataGridSelectionMode.Single)
         {
-            var wasSelected = _selectedSet.Contains(item);
             _selectedSet.Clear();
             _selectedItems.Clear();
 
@@ -2251,10 +2273,13 @@
         }
         else if (SelectionMode == DataGridSelectionMode.Multiple)
         {
-            if (_selectedSet.Contains(item))
+            if (wasSelected)
             {
-                _selectedSet.Remove(item);
-                _selectedItems.Remove(item);
+                // Remove the stored instance (ref-match wins; otherwise the
+                // key-matched stale wrapper) so we don't strand a duplicate.
+                var stored = refHit ?? keyHit!;
+                _selectedSet.Remove(stored);
+                _selectedItems.Remove(stored);
             }
             else
             {
