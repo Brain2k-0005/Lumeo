@@ -927,7 +927,11 @@ export const rte = {
                             // Soft cap — emit the overflow but consumers can trim.
                         }
                     }
-                    safeInvoke(dotNetRef, 'OnContentUpdate', html);
+                    // Single round-trip per keystroke. OnUpdate is the
+                    // canonical name; .NET-side OnContentUpdate is a legacy
+                    // alias that forwards to the same handler, so firing
+                    // both here would double the .NET round-trip cost on
+                    // every keystroke.
                     safeInvoke(dotNetRef, 'OnUpdate', html);
                 },
                 onSelectionUpdate: () => {

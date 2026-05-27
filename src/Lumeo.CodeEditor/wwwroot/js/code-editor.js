@@ -337,6 +337,15 @@ export async function setReadOnly(elementId, readOnly) {
 export async function destroy(elementId) {
     const inst = _instances.get(elementId);
     if (!inst) return;
+    // Cancel any pending debounced OnEditorChange round-trip before tearing
+    // down the editor. Without this, a setTimeout scheduled within the
+    // last 60 ms before destroy still fires, invokes the (about-to-be-)
+    // disposed dotNetRef and lands in the catch — harmless but wastes a
+    // round-trip and leaves a timer hanging until it resolves.
+    try {
+        const pending = inst.debounceTimer?.();
+        if (pending) clearTimeout(pending);
+    } catch {}
     try { inst.themeObserver?.disconnect(); } catch {}
     try { inst.view.destroy(); } catch {}
     _instances.delete(elementId);
