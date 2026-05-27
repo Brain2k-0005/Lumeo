@@ -2,7 +2,7 @@
 
 @if (string.IsNullOrEmpty(Size))
 {
-    <div class="@($"flex-1 {Class}".Trim())" @attributes="AdditionalAttributes"></div>
+    <div class="@($"{GrowClass} {Class}".Trim())" @attributes="AdditionalAttributes"></div>
 }
 else
 {
@@ -10,7 +10,22 @@ else
 }
 
 @code {
+    /// <summary>Tailwind size token (e.g. <c>"4"</c>, <c>"px"</c>). When set,
+    /// renders a fixed-size square spacer. When unset, renders a flex-grow
+    /// spacer that fills available space along the parent flex axis.</summary>
     [Parameter] public string? Size { get; set; }
+
+    /// <summary>Hints which axis the parent flex container uses so the
+    /// grow-spacer collapses to zero on the cross-axis instead of
+    /// expanding it. Default <see cref="Orientation.Horizontal"/> keeps
+    /// the historical behaviour (flex-1 inside a row). Switch to
+    /// <see cref="Orientation.Vertical"/> when the parent is a column
+    /// stack — without it, the spacer's <c>flex-1</c> took width from
+    /// the column instead of pushing siblings to opposite ends.</summary>
+    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GrowClass => Orientation == Lumeo.Orientation.Vertical ? "flex-1 w-0" : "flex-1 h-0";
 }
