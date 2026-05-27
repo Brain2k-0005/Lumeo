@@ -197,15 +197,13 @@
     private const string _hooksCode = @"@inject IDataService Data
 @inject ComponentInteropService Interop
 
-<div @ref=""_root"">
+<div id=""my-panel"">
     @if (_items is null) { <Spinner /> }
     else { @* render items *@ }
 </div>
 
 @code {
-    private ElementReference _root;
     private List<Item>? _items;
-    private IDisposable? _outsideClick;
 
     protected override async Task OnInitializedAsync()
     {
@@ -216,17 +214,12 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        // DOM exists now — safe to set up interop.
-        _outsideClick = await Interop.RegisterClickOutside(_root, OnClickedOutside);
+        // DOM exists now — safe to set up interop. RegisterClickOutside takes
+        // the element id, an optional trigger id, and an async handler.
+        await Interop.RegisterClickOutside(""my-panel"", triggerElementId: null, OnClickedOutsideAsync);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        try { _outsideClick?.Dispose(); }
-        catch (JSDisconnectedException) { }
-    }
-
-    private void OnClickedOutside() { /* ... */ }
+    private Task OnClickedOutsideAsync() { /* ... */ return Task.CompletedTask; }
 }";
 
     private const string _prerenderCode = @"protected override async Task OnInitializedAsync()

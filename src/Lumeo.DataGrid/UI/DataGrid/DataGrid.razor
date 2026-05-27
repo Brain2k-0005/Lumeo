@@ -2291,16 +2291,54 @@
 
     private void SelectAll()
     {
-        _selectedItems = _displayedItems.ToList();
-        _selectedSet = new HashSet<TItem>(_selectedItems);
+        // With SelectionKeySelector + server mode, SelectAll must MERGE the
+        // current page into _selectedItems instead of replacing — otherwise
+        // tapping the header checkbox on page 2 silently drops every
+        // selection made on page 1. Without a key selector the previous
+        // page-replace behaviour is correct (single in-memory list).
+        if (SelectionKeySelector is not null)
+        {
+            foreach (var item in _displayedItems)
+            {
+                if (!IsRowSelected(item))
+                {
+                    _selectedItems.Add(item);
+                    _selectedSet.Add(item);
+                }
+            }
+        }
+        else
+        {
+            _selectedItems = _displayedItems.ToList();
+            _selectedSet = new HashSet<TItem>(_selectedItems);
+        }
         NotifySelectionChanged();
         StateHasChanged();
     }
 
     private void ClearSelection()
     {
-        _selectedItems.Clear();
-        _selectedSet.Clear();
+        // Symmetric to SelectAll above: under SelectionKeySelector the
+        // header checkbox represents the current page only, so clearing
+        // must remove just the visible rows (not every other page's
+        // selections).
+        if (SelectionKeySelector is not null)
+        {
+            foreach (var item in _displayedItems)
+            {
+                var (found, stored) = FindSelectionMatch(item);
+                if (found)
+                {
+                    _selectedItems.Remove(stored);
+                    _selectedSet.Remove(stored);
+                }
+            }
+        }
+        else
+        {
+            _selectedItems.Clear();
+            _selectedSet.Clear();
+        }
         NotifySelectionChanged();
         StateHasChanged();
     }
