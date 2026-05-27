@@ -95,15 +95,37 @@
         }
     }
 
-    private bool AllSelected =>
-        Context is not null &&
-        Context.DisplayedItems.Count > 0 &&
-        Context.SelectedItems.Count >= Context.DisplayedItems.Count;
+    // Count-based comparison breaks under SelectionKeySelector + server-mode:
+    // _selectedItems may carry rows from other pages, so a single visible row
+    // with one cross-page selection would falsely report all-selected. Probe
+    // each DisplayedItem via Context.IsRowSelected — that's also how individual
+    // row checkboxes decide their state, so the header now matches them.
+    private bool AllSelected
+    {
+        get
+        {
+            if (Context is null || Context.DisplayedItems.Count == 0) return false;
+            foreach (var item in Context.DisplayedItems)
+                if (!Context.IsRowSelected(item)) return false;
+            return true;
+        }
+    }
 
-    private bool SomeSelected =>
-        Context is not null &&
-        Context.SelectedItems.Count > 0 &&
-        Context.SelectedItems.Count < Context.DisplayedItems.Count;
+    private bool SomeSelected
+    {
+        get
+        {
+            if (Context is null || Context.DisplayedItems.Count == 0) return false;
+            bool anySelected = false, anyUnselected = false;
+            foreach (var item in Context.DisplayedItems)
+            {
+                if (Context.IsRowSelected(item)) anySelected = true;
+                else anyUnselected = true;
+                if (anySelected && anyUnselected) return true;
+            }
+            return false;
+        }
+    }
 
     private SortDirection GetSortDirection(DataGridColumn<TItem> column)
     {

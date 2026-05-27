@@ -60,20 +60,25 @@ public sealed class ThemeBuilder
     /// (matching the path used by <c>ThemeService.SetFont</c>).</summary>
     public ThemeBuilder WithFontFamily(string fontStack) => Set("font-family", fontStack);
 
-    /// <summary>Set an arbitrary CSS custom property. Pass the full token
-    /// name as it appears in <c>lumeo.css</c> — typically prefixed with
-    /// <c>--color-</c> for color tokens (e.g. <c>--color-primary</c>,
-    /// <c>--color-ring</c>) and <c>--radius</c> / <c>--shadow-*</c> for
-    /// others. A leading <c>--</c> is added if you omit it, but no
-    /// shorthand-to-color-token inference happens — passing
-    /// <c>"primary"</c> emits <c>--primary</c>, which the bundled CSS
-    /// does NOT consume. Use the typed <see cref="WithPrimary"/> /
-    /// <see cref="WithRing"/> setters for the common cases instead.</summary>
+    /// <summary>Set an arbitrary CSS custom property. The name MUST start
+    /// with <c>--</c> and must match a token the bundled
+    /// <c>lumeo.css</c> actually reads. Color tokens are prefixed with
+    /// <c>--color-</c> (e.g. <c>--color-primary</c>, <c>--color-ring</c>);
+    /// non-color tokens are bare (<c>--radius</c>, <c>--shadow-sm</c>).
+    /// Throws <see cref="ArgumentException"/> when the name does not
+    /// start with <c>--</c> so a shorthand typo (<c>"primary"</c>) fails
+    /// loud instead of emitting a silently-unused <c>--primary</c>.</summary>
     public ThemeBuilder WithVariable(string name, string value)
     {
-        if (string.IsNullOrEmpty(name)) return this;
-        var key = name.StartsWith("--", StringComparison.Ordinal) ? name : "--" + name;
-        return Set(key, value);
+        if (string.IsNullOrEmpty(name))
+            throw new ArgumentException("Variable name must not be empty.", nameof(name));
+        if (!name.StartsWith("--", StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"Variable name must start with '--' (got '{name}'). " +
+                "Color tokens use the '--color-' prefix (e.g. '--color-primary'). " +
+                "Use the typed WithPrimary / WithRing / WithBackground setters for the common cases.",
+                nameof(name));
+        return Set(name, value);
     }
 
     /// <summary>Write the accumulated overrides to a managed
