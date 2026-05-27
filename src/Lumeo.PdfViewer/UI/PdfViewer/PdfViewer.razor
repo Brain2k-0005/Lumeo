@@ -171,6 +171,18 @@
     [Parameter] public EventCallback<int> PageChanged { get; set; }
     [Parameter] public double Zoom { get; set; } = 1.0;
     [Parameter] public EventCallback<double> ZoomChanged { get; set; }
+    /// <summary>Fit-to-container mode that overrides <see cref="Zoom"/> when
+    /// set to a non-Custom value. <c>FitWidth</c> scales the page so its
+    /// width matches the scroll-parent's <c>clientWidth</c> (minus a 16px
+    /// padding for breathing room before the scrollbar). <c>FitPage</c>
+    /// scales so the whole page fits within the scroll-parent's box. JS
+    /// computes the ratio on each render, so a container resize that
+    /// triggers <c>OnParametersSet</c> re-renders the page at the new fit.
+    /// Set back to <c>Custom</c> to return control to the numeric
+    /// <see cref="Zoom"/> value.</summary>
+    [Parameter] public PdfFitMode FitMode { get; set; } = PdfFitMode.Custom;
+
+    public enum PdfFitMode { Custom, FitWidth, FitPage }
     [Parameter] public bool ShowToolbar { get; set; } = true;
     [Parameter] public bool ShowPageNav { get; set; } = true;
     [Parameter] public bool ShowZoomControls { get; set; } = true;
@@ -319,16 +331,30 @@
                 var clampedPage = Math.Clamp(Page, 1, Math.Max(1, _totalPages));
                 var clampedZoom = Math.Clamp(Zoom, MinZoom, MaxZoom);
 
-                if (clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
+                // FitMode wins over the numeric Zoom: when set, the JS side
+                // computes the actual ratio from the scroll-parent's
+                // clientWidth / clientHeight against the page's natural
+                // dimensions. _lastZoom is sentinel-bumped per render so a
+                // FitMode value forces a re-render every time
+                // OnParametersSet fires (the container size can change
+                // without Zoom changing).
+                var useFit = FitMode != PdfFitMode.Custom;
+                if (useFit || clampedPage != _lastPage || Math.Abs(clampedZoom - _lastZoom) > 0.0001)
                 {
                     var targetPage = clampedPage;
                     var targetZoom = clampedZoom;
                     _lastPage = targetPage;
-                    _lastZoom = targetZoom;
+                    _lastZoom = useFit ? double.NaN : targetZoom;
                     _loading = true;
                     StateHasChanged();
 
-                    await _module.InvokeVoidAsync("renderPage", _canvasId, targetPage, targetZoom);
+                    object zoomArg = FitMode switch
+                    {
+                        PdfFitMode.FitWidth => "fit-width",
+                        PdfFitMode.FitPage => "fit-page",
+                        _ => (object)targetZoom
+                    };
+                    await _module.InvokeVoidAsync("renderPage", _canvasId, targetPage, zoomArg);
 
                     _loading = false;
                     await RefreshHighlightsAsync();
