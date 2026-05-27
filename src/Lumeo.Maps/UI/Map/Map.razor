@@ -201,6 +201,19 @@
                 await SyncStandalonePopupsAsync();
             }
             catch (JSDisconnectedException) { }
+            catch (Exception ex)
+            {
+                // Without this branch, a non-disconnect failure inside init
+                // (module load error, Leaflet runtime exception, misconfigured
+                // tile layer) propagated out of OnAfterRender and Blazor
+                // logged it once, but _initialized stayed false forever —
+                // every subsequent render skipped the init branch
+                // (firstRender is true exactly once), so the component
+                // became permanently inert with no visible error. Surface
+                // the failure on Console.Error so consumers can see what
+                // broke during dev instead of staring at a silent dead map.
+                Console.Error.WriteLine($"[Lumeo Map] init failed: {ex.Message}");
+            }
             return;
         }
 
