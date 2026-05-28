@@ -205,6 +205,13 @@ internal static class TailwindMerge
         if (body == "rounded" || Is(body, "rounded"))
             return Super("rnd", "rnd-t", "rnd-r", "rnd-b", "rnd-l", "rnd-tl", "rnd-tr", "rnd-br", "rnd-bl");
 
+        // --- Border style (solid/dashed/dotted/double/hidden/none) is its own
+        //     group, distinct from border width and border color so consumers can
+        //     layer e.g. `border border-border/40` + `border-dashed`. ---
+        if (body is "border-solid" or "border-dashed" or "border-dotted"
+            or "border-double" or "border-hidden" or "border-none")
+            return One("border-style");
+
         // --- Border width (per-side) vs border color. The bare `border` token and
         //     numeric/arbitrary `border-2`, `border-x`, etc. are widths; named
         //     colors like `border-red-500` are colors. We disambiguate by value. ---
@@ -224,9 +231,12 @@ internal static class TailwindMerge
             return LooksLikeWidth(v) ? One("bw") : One("border-color");
         }
 
-        // --- Background color / image / etc. We only model bg-color which is what
-        //     Lumeo emits; bg-<position>/size/repeat are left as unknown (kept). ---
-        if (Is(body, "bg")) return One("bg-color");
+        // --- Background: distinct CSS properties live in distinct groups so a
+        //     later `bg-cover` does not delete an earlier `bg-red-500` (and vice
+        //     versa). Mirrors tailwind-merge's bg-color / bg-image / bg-size /
+        //     bg-position / bg-repeat / bg-origin / bg-clip / bg-blend /
+        //     bg-attachment split. ---
+        if (Is(body, "bg")) return One(BackgroundGroup(ValueOf(body, "bg")));
 
         // --- Text: size vs color must coexist (different groups). ---
         if (Is(body, "text"))
@@ -266,6 +276,9 @@ internal static class TailwindMerge
         }
         if (body == "ring" || Is(body, "ring"))
         {
+            // ring-inset is a style flag, not a color or width — its own group so
+            // it coexists with both `ring-2` and `ring-ring`.
+            if (body == "ring-inset") return One("ring-inset");
             if (Is(body, "ring-offset"))
             {
                 var ov = ValueOf(body, "ring-offset");
@@ -291,10 +304,17 @@ internal static class TailwindMerge
         if (Is(body, "order")) return One("order");
         if (Is(body, "grid-cols")) return One("grid-cols");
         if (Is(body, "grid-rows")) return One("grid-rows");
-        if (Is(body, "col-span") || Is(body, "col-start") || Is(body, "col-end") || Is(body, "col"))
-            return One("grid-col");
-        if (Is(body, "row-span") || Is(body, "row-start") || Is(body, "row-end") || Is(body, "row"))
-            return One("grid-row");
+        // Grid column/row span vs start vs end set different sub-properties and are
+        // commonly combined; keep them in separate groups. A bare `col-*`
+        // (`col-auto`, `col-[..]`) maps to the span group, like tailwind-merge.
+        if (Is(body, "col-span")) return One("grid-col-span");
+        if (Is(body, "col-start")) return One("grid-col-start");
+        if (Is(body, "col-end")) return One("grid-col-end");
+        if (Is(body, "col")) return One("grid-col-span");
+        if (Is(body, "row-span")) return One("grid-row-span");
+        if (Is(body, "row-start")) return One("grid-row-start");
+        if (Is(body, "row-end")) return One("grid-row-end");
+        if (Is(body, "row")) return One("grid-row-span");
 
         // --- Alignment ---
         if (Is(body, "items")) return One("align-items");
@@ -399,6 +419,60 @@ internal static class TailwindMerge
         => v.Contains('#') || v.Contains("rgb", StringComparison.Ordinal)
            || v.Contains("hsl", StringComparison.Ordinal) || v.Contains("oklch", StringComparison.Ordinal)
            || v.StartsWith("[#", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Resolves a <c>bg-*</c> value into its tailwind-merge background sub-group.
+    /// Distinct CSS properties (color, image, size, position, repeat, origin, clip,
+    /// blend, attachment) get distinct groups so they coexist.
+    /// </summary>
+    private static string BackgroundGroup(string v)
+    {
+        if (v.Length == 0) return "bg-color"; // bare `bg` is not real; keep safe
+
+        // bg-image: none / gradient / url(...) arbitrary.
+        if (v == "none" || v.StartsWith("gradient-", StringComparison.Ordinal)
+            || v == "linear" || v == "radial" || v == "conic"
+            || v.StartsWith("linear-", StringComparison.Ordinal)
+            || v.StartsWith("radial-", StringComparison.Ordinal)
+            || v.StartsWith("conic-", StringComparison.Ordinal)
+            || (v.StartsWith('[') && v.Contains("url(", StringComparison.Ordinal))
+            || (v.StartsWith('[') && (v.Contains("gradient", StringComparison.Ordinal)
+                || v.Contains("image:", StringComparison.Ordinal))))
+            return "bg-image";
+
+        // bg-size: auto / cover / contain / [length:..].
+        if (v is "auto" or "cover" or "contain"
+            || (v.StartsWith('[') && (v.Contains("length:", StringComparison.Ordinal)
+                || v.Contains("size:", StringComparison.Ordinal))))
+            return "bg-size";
+
+        // bg-position: keywords + corners + [position:..].
+        if (v is "center" or "top" or "bottom" or "left" or "right"
+            or "left-top" or "left-bottom" or "right-top" or "right-bottom"
+            or "top-left" or "top-right" or "bottom-left" or "bottom-right"
+            || (v.StartsWith('[') && v.Contains("position:", StringComparison.Ordinal)))
+            return "bg-position";
+
+        // bg-repeat: repeat / no-repeat / repeat-x / repeat-y / repeat-round / repeat-space.
+        if (v is "repeat" or "no-repeat" or "repeat-x" or "repeat-y"
+            or "repeat-round" or "repeat-space")
+            return "bg-repeat";
+
+        // bg-attachment.
+        if (v is "fixed" or "local" or "scroll") return "bg-attachment";
+
+        // bg-origin.
+        if (v is "origin-border" or "origin-padding" or "origin-content") return "bg-origin";
+
+        // bg-clip.
+        if (v is "clip-border" or "clip-padding" or "clip-content" or "clip-text") return "bg-clip";
+
+        // bg-blend.
+        if (v.StartsWith("blend-", StringComparison.Ordinal)) return "bg-blend";
+
+        // Default: a color (palette, transparent/current/inherit, arbitrary [#..]).
+        return "bg-color";
+    }
 
     private static bool IsTextSize(string v)
         => v is "xs" or "sm" or "base" or "lg" or "xl" or "2xl" or "3xl" or "4xl" or "5xl"

@@ -233,6 +233,45 @@ public class CxMergeTests
     public void Merge_BareBorder_IsWidth()
         => Assert.Equal("border-0", Cx.Merge("border", "border-0"));
 
+    // --- Background: color / image / size are distinct groups ---
+
+    [Fact]
+    public void Merge_BgColorAndSize_Coexist()
+        => Assert.Equal("bg-red-500 bg-cover", Cx.Merge("bg-red-500", "bg-cover"));
+
+    [Fact]
+    public void Merge_BgColor_LastWins()
+        => Assert.Equal("bg-blue-500", Cx.Merge("bg-red-500", "bg-blue-500"));
+
+    [Fact]
+    public void Merge_BgImageAndColor_Coexist()
+        => Assert.Equal("bg-gradient-to-r bg-red-500", Cx.Merge("bg-gradient-to-r", "bg-red-500"));
+
+    // --- Border style is distinct from width and color ---
+
+    [Fact]
+    public void Merge_BorderWidthColorStyle_AllCoexist()
+        => Assert.Equal("border border-border/40 border-dashed",
+            Cx.Merge("border border-border/40", "border-dashed"));
+
+    // --- Grid col span / start / end are distinct groups ---
+
+    [Fact]
+    public void Merge_GridColSpanStartEnd_CoexistAndSpanLastWins()
+        => Assert.Equal("col-start-1 col-end-3 col-span-4",
+            Cx.Merge("col-span-2 col-start-1 col-end-3", "col-span-4"));
+
+    // --- ring-inset coexists with ring width and color ---
+
+    [Fact]
+    public void Merge_RingInset_CoexistsWithWidthAndColor()
+        => Assert.Equal("ring-ring ring-2 ring-inset",
+            Cx.Merge("ring-ring ring-2", "ring-inset"));
+
+    [Fact]
+    public void Merge_RingColor_LastWins()
+        => Assert.Equal("ring-blue-500", Cx.Merge("ring-red-500", "ring-blue-500"));
+
     // --- Gap ---
 
     [Fact]
