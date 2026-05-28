@@ -269,4 +269,25 @@ public class OverlayProviderTests : IAsyncLifetime
         // Right side + Lg maps to sm:max-w-lg (see SheetContent size switch).
         Assert.Contains("sm:max-w-lg", cls);
     }
+
+    [Fact]
+    public void ShowSheet_Honors_OverlayOptions_Size_When_Size_Param_Omitted()
+    {
+        // Regression: the unified options.Size must drive sheets too. With the
+        // legacy `size` parameter omitted (defaulting to SheetSize.Default), the
+        // caller's options.Size must NOT be overwritten back to Default.
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowSheetAsync<DummyOverlayBody>(
+            title: "Unified-size sheet",
+            options: new OverlayOptions { Size = OverlaySize.Xl });
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+        // Right side + Xl maps to sm:max-w-xl (see SheetContent size switch).
+        Assert.Contains("sm:max-w-xl", cls);
+    }
 }

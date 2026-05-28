@@ -36,7 +36,12 @@ public sealed class OverlayService : IOverlayService
         OverlayOptions? options = null) where TComponent : IComponent
     {
         options ??= new OverlayOptions();
-        options = options with { SheetSide = side, Size = OverlaySizeConvert.FromSheet(size) };
+        // Precedence: the legacy `size` parameter wins only when explicitly set
+        // to a non-default value; otherwise defer to the unified options.Size so
+        // ShowSheetAsync(options: new() { Size = OverlaySize.Xl }) takes effect
+        // instead of being overwritten back to Default by the omitted parameter.
+        var effectiveSize = size != SheetSize.Default ? OverlaySizeConvert.FromSheet(size) : options.Size;
+        options = options with { SheetSide = side, Size = effectiveSize };
         return ShowAsync(OverlayType.Sheet, typeof(TComponent), title, parameters, options);
     }
 
