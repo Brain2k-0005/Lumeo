@@ -67,6 +67,27 @@ public class CxMergeTests
     public void Merge_Margin_Superset()
         => Assert.Equal("m-0", Cx.Merge("mx-4 my-2", "m-0"));
 
+    // --- Logical inset padding (ps/pe) vs physical/superset gutters ---
+
+    [Fact]
+    public void Merge_Px_OverridesPs()
+        // px writes inline-start+end, so it supersedes the logical ps.
+        => Assert.Equal("px-0", Cx.Merge("ps-4", "px-0"));
+
+    [Fact]
+    public void Merge_P_OverridesPs()
+        => Assert.Equal("p-0", Cx.Merge("ps-4", "p-0"));
+
+    [Fact]
+    public void Merge_PsPe_Independent()
+        // inline-start and inline-end are distinct properties.
+        => Assert.Equal("ps-4 pe-2", Cx.Merge("ps-4", "pe-2"));
+
+    [Fact]
+    public void Merge_PlAndPs_BothKept()
+        // physical (pl) and logical (ps) are different CSS properties; both survive.
+        => Assert.Equal("pl-2 ps-4", Cx.Merge("pl-2", "ps-4"));
+
     // --- Width / height / size ---
 
     [Fact]
@@ -140,8 +161,10 @@ public class CxMergeTests
         => Assert.Equal("!p-0", Cx.Merge("p-6", "!p-0"));
 
     [Fact]
-    public void Merge_PlainOverridesImportant_LastWins()
-        => Assert.Equal("p-0", Cx.Merge("!p-6", "p-0"));
+    public void Merge_ImportantBeatsLaterPlain_InSameGroup()
+        // An !important rule wins its conflict group regardless of source order:
+        // a later plain token cannot evict it (CSS specificity keeps !important on top).
+        => Assert.Equal("!p-6", Cx.Merge("!p-6", "p-0"));
 
     [Fact]
     public void Merge_TrailingImportant_V4Form()
@@ -150,6 +173,25 @@ public class CxMergeTests
     [Fact]
     public void Merge_ImportantWithVariant()
         => Assert.Equal("hover:!p-0", Cx.Merge("hover:p-6", "hover:!p-0"));
+
+    // important wins over a later plain token (leading-! form, both orders)
+    [Fact]
+    public void Merge_ImportantFirst_BeatsLaterPlain()
+        => Assert.Equal("!p-0", Cx.Merge("!p-0", "p-2"));
+
+    [Fact]
+    public void Merge_PlainFirst_LosesToLaterImportant()
+        => Assert.Equal("!p-0", Cx.Merge("p-2", "!p-0"));
+
+    // important vs important in the same group: last wins (unchanged rule).
+    [Fact]
+    public void Merge_ImportantVsImportant_LastWins()
+        => Assert.Equal("!p-0", Cx.Merge("!p-2", "!p-0"));
+
+    // important wins over later plain even under a shared variant chain.
+    [Fact]
+    public void Merge_ImportantWithVariant_BeatsLaterPlain()
+        => Assert.Equal("hover:!p-0", Cx.Merge("hover:!p-0", "hover:p-2"));
 
     // --- Arbitrary values ---
 

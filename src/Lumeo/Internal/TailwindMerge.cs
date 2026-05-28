@@ -22,15 +22,30 @@ internal static class TailwindMerge
         for (var i = 0; i < tokens.Count; i++)
             infos[i] = Classify(tokens[i]);
 
-        // groupKey -> index of the last token that occupies that group.
+        // groupKey -> index of the current owner of that group.
         var lastByGroup = new Dictionary<string, int>(StringComparer.Ordinal);
-        // Walk forwards; for each token, the groups it invalidates take ownership.
+        // Walk forwards; for each token, the groups it invalidates take ownership
+        // — UNLESS the current owner is an `!important` token and the incoming
+        // token is plain. CSS specificity keeps an `!important` declaration above
+        // any later non-important one in the same conflict group regardless of
+        // source order, so a plain token must not evict an important owner.
+        // (important > plain; otherwise last wins, including important > important.)
         for (var i = 0; i < infos.Length; i++)
         {
             var info = infos[i];
             if (info.Groups is null) continue; // unknown class, always kept
             foreach (var g in info.Invalidates!)
-                lastByGroup[info.Variant + "\0" + g] = i;
+            {
+                var key = info.Variant + "\0" + g;
+                if (!info.Important
+                    && lastByGroup.TryGetValue(key, out var ownerIdx)
+                    && infos[ownerIdx].Important)
+                {
+                    // Plain token cannot evict an existing important owner.
+                    continue;
+                }
+                lastByGroup[key] = i;
+            }
         }
 
         // A classified token is kept iff, for every group it occupies, it is the
@@ -71,6 +86,8 @@ internal static class TailwindMerge
         public string[]? Groups { get; init; }
         /// <summary>Groups this token invalidates (occupied groups + subordinates).</summary>
         public string[]? Invalidates { get; init; }
+        /// <summary>True when the token carries an <c>!important</c> flag (leading or trailing <c>!</c>).</summary>
+        public bool Important { get; init; }
     }
 
     private static ClassInfo Classify(string token)
@@ -82,9 +99,10 @@ internal static class TailwindMerge
         var body = token[variantEnd..];
 
         // 2. Strip the important flag (leading '!' or trailing '!') — not part of
-        //    the conflict group.
-        if (body.StartsWith('!')) body = body[1..];
-        if (body.EndsWith('!')) body = body[..^1];
+        //    the conflict group, but recorded so it can win same-group conflicts.
+        var important = false;
+        if (body.StartsWith('!')) { body = body[1..]; important = true; }
+        if (body.EndsWith('!')) { body = body[..^1]; important = true; }
 
         // 3. Strip a single leading negative sign for classification purposes.
         var negative = body.StartsWith('-');
@@ -94,10 +112,10 @@ internal static class TailwindMerge
         if (groups is null)
         {
             // Unknown — give it a per-index unique identity so it is never merged.
-            return new ClassInfo { Variant = variant, Groups = null, Invalidates = null };
+            return new ClassInfo { Variant = variant, Groups = null, Invalidates = null, Important = important };
         }
 
-        return new ClassInfo { Variant = variant, Groups = groups, Invalidates = invalidates };
+        return new ClassInfo { Variant = variant, Groups = groups, Invalidates = invalidates, Important = important };
     }
 
     private static int FindVariantBoundary(string token)
@@ -142,7 +160,10 @@ internal static class TailwindMerge
 
         // --- Padding (superset: p clears px/py/pt/pr/pb/pl/ps/pe) ---
         if (Is(body, "p")) return Super("pad", "pad-x", "pad-y", "pad-t", "pad-r", "pad-b", "pad-l", "pad-s", "pad-e");
-        if (Is(body, "px")) return SuperOf("pad-x", "pad-l", "pad-r");
+        // px writes both inline-start and inline-end, so it also clears the logical
+        // ps/pe groups (mirrors tailwind-merge's paddingX superset). pl/pr are
+        // physical and stay distinct from the logical ps/pe.
+        if (Is(body, "px")) return SuperOf("pad-x", "pad-l", "pad-r", "pad-s", "pad-e");
         if (Is(body, "py")) return SuperOf("pad-y", "pad-t", "pad-b");
         if (Is(body, "pt")) return One("pad-t");
         if (Is(body, "pr")) return One("pad-r");
@@ -153,7 +174,8 @@ internal static class TailwindMerge
 
         // --- Margin (same shape as padding) ---
         if (Is(body, "m")) return Super("mar", "mar-x", "mar-y", "mar-t", "mar-r", "mar-b", "mar-l", "mar-s", "mar-e");
-        if (Is(body, "mx")) return SuperOf("mar-x", "mar-l", "mar-r");
+        // mx clears the logical ms/me groups as well (same shape as px).
+        if (Is(body, "mx")) return SuperOf("mar-x", "mar-l", "mar-r", "mar-s", "mar-e");
         if (Is(body, "my")) return SuperOf("mar-y", "mar-t", "mar-b");
         if (Is(body, "mt")) return One("mar-t");
         if (Is(body, "mr")) return One("mar-r");
