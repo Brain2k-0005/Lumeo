@@ -36,7 +36,7 @@ public sealed class OverlayService : IOverlayService
         OverlayOptions? options = null) where TComponent : IComponent
     {
         options ??= new OverlayOptions();
-        options = options with { SheetSide = side, SheetSize = size };
+        options = options with { SheetSide = side, Size = OverlaySizeConvert.FromSheet(size) };
         return ShowAsync(OverlayType.Sheet, typeof(TComponent), title, parameters, options);
     }
 
@@ -119,11 +119,50 @@ public sealed class OverlayService : IOverlayService
 
 public enum OverlayType { Dialog, Sheet, Drawer, AlertDialog }
 
+/// <summary>Unified overlay content size as exposed through
+/// <see cref="OverlayService"/>. Drives both <c>DialogContent.DialogSize</c>
+/// and <c>SheetContent.SheetSize</c> from a single <see cref="OverlayOptions.Size"/>
+/// value, so the same options record can size a Dialog or a Sheet. Kept in the
+/// service layer (not the UI namespace) so consumers don't take a hard UI
+/// dependency. <c>Full</c> is layout-intent (entire viewport).</summary>
+public enum OverlaySize { Sm, Default, Lg, Xl, Full }
+
 /// <summary>Sheet size as exposed through <see cref="OverlayService"/>. Mirrors
 /// <c>SheetContent.SheetSize</c> — kept distinct so the service layer doesn't
 /// take a hard dependency on the UI namespace. <c>Full</c> is layout-intent
-/// (entire viewport) and intentionally NOT folded into <see cref="Lumeo.Size"/>.</summary>
+/// (entire viewport) and intentionally NOT folded into <see cref="Lumeo.Size"/>.
+/// <para>Retained as the parameter type of
+/// <see cref="OverlayService.ShowSheetAsync{T}"/> and as the backing type of the
+/// obsolete <see cref="OverlayOptions.SheetSize"/> alias; new code should prefer
+/// <see cref="OverlaySize"/>.</para></summary>
 public enum SheetSize { Sm, Default, Lg, Xl, Full }
+
+/// <summary>1:1 conversions between the legacy <see cref="SheetSize"/> and the
+/// unified <see cref="OverlaySize"/>. The member sets are identical, so the maps
+/// are total and lossless — they exist only to bridge the obsolete
+/// <see cref="OverlayOptions.SheetSize"/> alias and the
+/// <see cref="OverlayService.ShowSheetAsync{T}"/> parameter onto the canonical
+/// <see cref="OverlayOptions.Size"/>.</summary>
+internal static class OverlaySizeConvert
+{
+    public static OverlaySize FromSheet(SheetSize s) => s switch
+    {
+        SheetSize.Sm => OverlaySize.Sm,
+        SheetSize.Lg => OverlaySize.Lg,
+        SheetSize.Xl => OverlaySize.Xl,
+        SheetSize.Full => OverlaySize.Full,
+        _ => OverlaySize.Default,
+    };
+
+    public static SheetSize ToSheet(OverlaySize s) => s switch
+    {
+        OverlaySize.Sm => SheetSize.Sm,
+        OverlaySize.Lg => SheetSize.Lg,
+        OverlaySize.Xl => SheetSize.Xl,
+        OverlaySize.Full => SheetSize.Full,
+        _ => SheetSize.Default,
+    };
+}
 
 public sealed record OverlayResult
 {
@@ -152,18 +191,50 @@ public sealed class OverlayParameters
     public Dictionary<string, object> ToDictionary() => new(_parameters);
 }
 
+// CS0618 is disabled across this record because the synthesized record members
+// (Equals / GetHashCode / PrintMembers) enumerate every public property,
+// including the obsolete SheetSize / MobileSheetSize aliases below — that
+// generated reference would otherwise trip -warnaserror. The aliases stay fully
+// usable by consumers; only the in-record generated access is suppressed.
+#pragma warning disable CS0618
 public record OverlayOptions
 {
+    /// <summary>Extra CSS classes merged onto the overlay's content element.
+    /// <b>Applies to:</b> Dialog, Sheet, Drawer.</summary>
     public string? Class { get; init; }
+
+    /// <summary>Suppress dismissal via backdrop click / Escape.
+    /// <b>Applies to:</b> Dialog, Sheet, Drawer.</summary>
     public bool PreventClose { get; init; }
+
+    /// <summary>Edge the sheet slides in from. <b>Applies to:</b> Sheet.</summary>
     public Lumeo.Side SheetSide { get; init; } = Lumeo.Side.Right;
-    public SheetSize SheetSize { get; init; } = SheetSize.Default;
+
+    /// <summary>Overlay content size. <b>Applies to:</b> Dialog, Sheet.
+    /// (Drawer sizes to its content and ignores this.) For a Dialog it maps to
+    /// the <c>max-w-*</c> preset (<c>Sm</c>→<c>max-w-sm</c> … <c>Xl</c>→<c>max-w-4xl</c>,
+    /// <c>Full</c>→near-viewport); for a Sheet it maps to the side-appropriate
+    /// width (Left/Right) or height (Top/Bottom). Replaces the Sheet-only
+    /// <see cref="SheetSize"/> as the single size knob for service overlays.</summary>
+    public OverlaySize Size { get; init; } = OverlaySize.Default;
+
+    /// <summary>Legacy Sheet-only size alias. <b>Applies to:</b> Sheet.
+    /// Reads/writes <see cref="Size"/> via a 1:1 mapping; setting either sets the
+    /// same backing value. Kept for source compatibility with pre-3.6 callers.</summary>
+    [Obsolete("Use Size instead — the unified size property now drives both Dialog and Sheet. SheetSize remains as a 1:1 mapping alias onto Size and may be removed in a future major version.")]
+    public SheetSize SheetSize
+    {
+        get => OverlaySizeConvert.ToSheet(Size);
+        init => Size = OverlaySizeConvert.FromSheet(value);
+    }
+
     /// <summary>
     /// When true, a Sheet opened via <see cref="OverlayService.ShowSheetAsync{T}"/>
     /// can be dismissed by swiping in the direction opposite to its
     /// <see cref="SheetSide"/> (e.g. swipe-down on a Bottom sheet). Ignored for
     /// non-Sheet overlay types. Drawers already enable swipe by default.
     /// Default false to preserve the existing programmatic-open behaviour.
+    /// <b>Applies to:</b> Sheet.
     /// </summary>
     public bool SwipeToClose { get; init; }
 
@@ -178,24 +249,39 @@ public record OverlayOptions
     /// <summary>Viewport width threshold (CSS pixels) below which the
     /// <c>Mobile*</c> overrides apply. Default 768 (Tailwind <c>md</c>).
     /// Set to null to disable responsive switching even if the
-    /// <c>Mobile*</c> fields are populated.</summary>
+    /// <c>Mobile*</c> fields are populated.
+    /// <b>Applies to:</b> Dialog, Sheet, Drawer (gates every <c>Mobile*</c> override).</summary>
     public int? MobileBreakpoint { get; init; } = 768;
 
     /// <summary>Sheet side to use when the viewport is below
     /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSide"/> at all
     /// sizes. Typical pattern: <c>Lumeo.Side.Right</c> on desktop,
-    /// <c>Lumeo.Side.Bottom</c> on mobile.</summary>
+    /// <c>Lumeo.Side.Bottom</c> on mobile.
+    /// <b>Applies to:</b> Sheet.</summary>
     public Lumeo.Side? MobileSheetSide { get; init; }
 
-    /// <summary>Sheet size to use when the viewport is below
-    /// <see cref="MobileBreakpoint"/>. Null = use <see cref="SheetSize"/> at all
-    /// sizes. Typical pattern: <c>SheetSize.Default</c> on desktop,
-    /// <c>SheetSize.Full</c> on mobile.</summary>
-    public SheetSize? MobileSheetSize { get; init; }
+    /// <summary>Overlay size to use when the viewport is below
+    /// <see cref="MobileBreakpoint"/>. Null = use <see cref="Size"/> at all
+    /// sizes. Typical pattern: <c>OverlaySize.Default</c> on desktop,
+    /// <c>OverlaySize.Full</c> on mobile.
+    /// <b>Applies to:</b> Dialog, Sheet.</summary>
+    public OverlaySize? MobileSize { get; init; }
+
+    /// <summary>Legacy Sheet-only alias for <see cref="MobileSize"/>.
+    /// <b>Applies to:</b> Sheet. Reads/writes <see cref="MobileSize"/> via a 1:1
+    /// mapping (null round-trips to null). Kept for source compatibility with
+    /// pre-3.6 callers.</summary>
+    [Obsolete("Use MobileSize instead — it drives both Dialog and Sheet below MobileBreakpoint. MobileSheetSize remains as a 1:1 mapping alias onto MobileSize and may be removed in a future major version.")]
+    public SheetSize? MobileSheetSize
+    {
+        get => MobileSize is { } s ? OverlaySizeConvert.ToSheet(s) : null;
+        init => MobileSize = value is { } v ? OverlaySizeConvert.FromSheet(v) : null;
+    }
 
     /// <summary>SwipeToClose override below <see cref="MobileBreakpoint"/>.
     /// Null = use <see cref="SwipeToClose"/> at all sizes. Typical pattern:
-    /// off on desktop, on for mobile bottom-sheet pull-down.</summary>
+    /// off on desktop, on for mobile bottom-sheet pull-down.
+    /// <b>Applies to:</b> Sheet.</summary>
     public bool? MobileSwipeToClose { get; init; }
 
     /// <summary>When true and the viewport width is below
@@ -205,8 +291,9 @@ public record OverlayOptions
     /// <c>max-md:!h-full max-md:!w-full max-md:!max-w-full</c> Tailwind
     /// override chain that was previously the only way to get a
     /// full-screen Dialog on mobile. For Sheets, this is equivalent to
-    /// setting <see cref="MobileSheetSize"/> to <see cref="SheetSize.Full"/>
-    /// but composes more naturally for the Sheet+Dialog mixed case.</summary>
+    /// setting <see cref="MobileSize"/> to <see cref="OverlaySize.Full"/>
+    /// but composes more naturally for the Sheet+Dialog mixed case.
+    /// <b>Applies to:</b> Dialog, Sheet, Drawer.</summary>
     public bool MobileFullscreen { get; init; }
 
     /// <summary>
@@ -223,9 +310,11 @@ public record OverlayOptions
     /// <c>false</c> for sheets whose content sets its own scrolling strategy
     /// (e.g. an embedded <c>PdfViewer</c> that already paints inside a fixed
     /// canvas).
+    /// <b>Applies to:</b> Sheet.
     /// </summary>
     public bool ScrollableBody { get; init; } = true;
 }
+#pragma warning restore CS0618
 
 /// <summary>
 /// Sheet-shaped overlay options. <b>Semantic</b> marker — at the call site
