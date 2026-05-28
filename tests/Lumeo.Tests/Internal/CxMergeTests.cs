@@ -193,7 +193,9 @@ public class CxMergeTests
 
     [Fact]
     public void Merge_UnknownClasses_KeptAlongsideMerged()
-        => Assert.Equal("group p-0 sr-only", Cx.Merge("group p-6 sr-only", "p-0"));
+        // tailwind-merge drops the earlier conflict (p-6) and keeps the last
+        // occurrence (p-0) in its own position; unknown classes keep order.
+        => Assert.Equal("group sr-only p-0", Cx.Merge("group p-6 sr-only", "p-0"));
 
     [Fact]
     public void Merge_DuplicateUnknown_NotDeduped()

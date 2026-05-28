@@ -92,7 +92,8 @@ public class OverlayProviderTests : IAsyncLifetime
         // on OnAfterRender. The class assertion proves the size/side option
         // round-trip; the SwipeToClose hook can only be observed via JS
         // interop, which bUnit does not exercise.
-        Assert.Contains("bottom-0", cls);
+        // inset-y-0 supersedes the redundant bottom-0 under Cx.Merge.
+        Assert.Contains("inset-y-0", cls);
         Assert.Contains("h-full", cls);
         Assert.Contains("max-h-full", cls);
     }
