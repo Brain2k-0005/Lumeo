@@ -63,6 +63,19 @@ const components: ApiComponent[] = Object.values(api.components).sort((a, b) =>
 const byName = new Map<string, ApiComponent>(
   components.map((c) => [c.name.toLowerCase(), c]),
 );
+// Sub-component → parent map. Sub-components (SheetContent, SelectTrigger,
+// CardHeader, DialogContent, TabsTrigger, AccordionItem, …) are real,
+// usable elements but only exist nested under their parent in the schema.
+// Without this, an agent looking one up by name got "not found" even
+// though the element exists. Resolving to the parent surfaces the full
+// composition (the parent payload lists all its sub-components).
+const bySubName = new Map<string, ApiComponent>();
+for (const c of components) {
+  for (const s of Object.values(c.subComponents)) {
+    const key = s.componentName.toLowerCase();
+    if (!byName.has(key) && !bySubName.has(key)) bySubName.set(key, c);
+  }
+}
 const CATEGORIES: string[] = Array.from(new Set(components.map((c) => c.category))).sort();
 const themeTokens: ApiThemeToken[] = api.themeTokens ?? [];
 const patterns: ApiPattern[] = api.patterns ?? [];
@@ -80,7 +93,9 @@ const curatedExampleByName = new Map<string, string>(
 // ───────────────── Helpers ─────────────────
 
 function findComponent(name: string): ApiComponent | undefined {
-  return byName.get(name.toLowerCase());
+  // Top-level match first; fall back to the parent of a matching sub-component
+  // so e.g. "SheetContent" / "CardHeader" / "SelectTrigger" resolve.
+  return byName.get(name.toLowerCase()) ?? bySubName.get(name.toLowerCase());
 }
 
 function score(c: ApiComponent, q: string): number {
@@ -92,6 +107,13 @@ function score(c: ApiComponent, q: string): number {
   if (c.name.toLowerCase().includes(needle)) s += 25;
   if (c.category.toLowerCase().includes(needle)) s += 10;
   if (c.description.toLowerCase().includes(needle)) s += 5;
+  // Sub-component name matches surface the parent — so searching a nested
+  // element ("SheetContent", "TabsTrigger") finds the component that owns it.
+  for (const sub of Object.values(c.subComponents)) {
+    const sn = sub.componentName.toLowerCase();
+    if (sn === needle) { s += 80; break; }
+    if (sn.includes(needle)) { s += 20; break; }
+  }
   return s;
 }
 
