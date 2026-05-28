@@ -55,6 +55,12 @@ public static class ServiceApiScanner
         /// or null when none / framework-only. Used to merge inherited members
         /// from another scanned type within the same batch. Not serialized.</summary>
         public string? BaseTypeName { get; init; }
+
+        /// <summary>Enclosing type name when this is a nested public type (e.g.
+        /// "ViewportInfo" for ViewportInfo.Breakpoints), else null. Lets
+        /// ScanFiles admit a nested type when its parent is allow-listed.
+        /// Not serialized.</summary>
+        public string? ParentName { get; init; }
     }
 
     /// <summary>
@@ -97,15 +103,17 @@ public static class ServiceApiScanner
 
         foreach (var decl in root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
         {
-            // Only top-level (or namespace-scoped) public types — nested types
-            // are exposed through their parent and skipped here to keep the
-            // service catalog flat and consumer-focused.
+            // Top-level public types AND nested public types (the latter are
+            // part of the consumer-facing surface — e.g. ViewportInfo.Breakpoints
+            // constants, ComponentInteropService.TextareaCaretInfo return types).
+            // Nested types carry ParentName so ScanFiles can admit them when the
+            // parent is allow-listed.
             if (!IsPublic(decl)) continue;
-            if (IsNestedType(decl)) continue;
 
             var name = decl.Identifier.Text;
             if (!seen.Add(name)) continue;
 
+            var parentName = (decl.Parent as BaseTypeDeclarationSyntax)?.Identifier.Text;
             var ns = ResolveNamespace(decl);
             var summary = ExtractXmlSummary(decl.GetLeadingTrivia());
 
@@ -165,6 +173,11 @@ public static class ServiceApiScanner
                     { BaseTypeName = ResolveBaseTypeName(cls) });
                     break;
             }
+
+            // Tag the just-added type with its enclosing type (if nested) so
+            // ScanFiles can admit it under an allow-listed parent.
+            if (parentName is not null && results.Count > 0)
+                results[^1] = results[^1] with { ParentName = parentName };
         }
 
         return results;
@@ -198,7 +211,13 @@ public static class ServiceApiScanner
 
             foreach (var t in types)
             {
-                if (allow is not null && !allow.Contains(t.Name)) continue;
+                // Admit a type when its own name is allow-listed, OR it's a
+                // nested public type whose parent is allow-listed (so listing
+                // "ViewportInfo" pulls in ViewportInfo.Breakpoints, etc.).
+                if (allow is not null
+                    && !allow.Contains(t.Name)
+                    && !(t.ParentName is not null && allow.Contains(t.ParentName)))
+                    continue;
                 if (!seen.Add(t.Name)) continue; // first declaration wins; dedupe across files
                 all.Add(t);
             }
@@ -403,9 +422,6 @@ public static class ServiceApiScanner
 
     private static bool IsPublic(MemberDeclarationSyntax m) =>
         m.Modifiers.Any(mod => mod.IsKind(SyntaxKind.PublicKeyword));
-
-    private static bool IsNestedType(BaseTypeDeclarationSyntax decl) =>
-        decl.Parent is TypeDeclarationSyntax;
 
     private static string? ResolveNamespace(SyntaxNode node)
     {

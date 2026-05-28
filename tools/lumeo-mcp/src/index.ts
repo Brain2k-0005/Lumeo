@@ -290,6 +290,13 @@ function searchServices(query: string): ApiService[] {
       // Events too — so an event-only query (ViewportChanged, OnThemeChanged,
       // OnShow, OnClose) surfaces the owning service/interface.
       if (s.events.some((e) => e.name.toLowerCase() === needle)) score += 10;
+      // Substring (fuzzy) member matching so partial queries discover the
+      // service: "scrollable" → OverlayOptions.ScrollableBody, "showdialog" →
+      // OverlayService.ShowDialogAsync, "mobile" → MobileFullscreen, etc.
+      if (s.properties.some((p) => p.name.toLowerCase().includes(needle))) score += 6;
+      if (s.methods.some((m) => m.name.toLowerCase().includes(needle))) score += 6;
+      if (s.events.some((e) => e.name.toLowerCase().includes(needle))) score += 6;
+      if (s.enumValues.some((e) => e.name.toLowerCase().includes(needle))) score += 6;
       return { s, score };
     })
     .filter((x) => x.score > 0)
