@@ -11,13 +11,23 @@
 </button>
 
 @code {
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground {Class}".Trim();
+    // Row vertical padding tracks the ambient DensityScope; Comfortable
+    // reproduces the historical `py-1.5`.
+    private string PadYClass => Density switch
+    {
+        Lumeo.Density.Compact => "py-1",
+        Lumeo.Density.Spacious => "py-2.5",
+        _ => "py-1.5"
+    };
+
+    private string CssClass => $"relative flex w-full cursor-default select-none items-center gap-2 rounded-sm {PadYClass} pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground {Class}".Trim();
 
     private async Task Toggle()
     {

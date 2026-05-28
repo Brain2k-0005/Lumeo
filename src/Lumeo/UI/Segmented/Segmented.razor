@@ -45,10 +45,34 @@
     /// Ignored when <see cref="Options"/> is set.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool Block { get; set; }
+    /// <summary>Per-control density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only the track + item padding
+    /// shift between values.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private SegmentedContext _context = default!;
+
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Track padding tracks density; Comfortable reproduces the historical p-1.
+    private string TrackPadClass => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "p-0.5",
+        Lumeo.Density.Spacious => "p-1.5",
+        _ => "p-1"
+    };
+
+    // Item padding tracks density; Comfortable reproduces the historical px-3 py-1.5.
+    private string ItemPadClass => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "px-2 py-1",
+        Lumeo.Density.Spacious => "px-4 py-2",
+        _ => "px-3 py-1.5"
+    };
 
     protected override void OnParametersSet()
     {
@@ -59,16 +83,19 @@
     }
 
     private string CssClass => Cx.Join(
-        "inline-flex items-center rounded-lg bg-muted p-1",
+        "inline-flex items-center rounded-lg bg-muted",
+        TrackPadClass,
         Cx.When(Block, "w-full"),
         Class);
 
     private string GetItemClasses(bool isActive) => isActive
         ? Cx.Join(
-            "inline-flex items-center justify-center rounded-md bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm transition-all focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1",
+            "inline-flex items-center justify-center rounded-md bg-background text-sm font-medium text-foreground shadow-sm transition-all focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1",
+            ItemPadClass,
             Cx.When(Block, "flex-1"))
         : Cx.Join(
-            "inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50",
+            "inline-flex items-center justify-center rounded-md text-sm text-muted-foreground transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50",
+            ItemPadClass,
             Cx.When(Block, "flex-1"));
 
     private async Task SelectOption(string value)

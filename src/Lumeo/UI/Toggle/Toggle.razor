@@ -10,6 +10,12 @@
     [Parameter] public EventCallback<bool> PressedChanged { get; set; }
     [Parameter] public ToggleVariant Variant { get; set; } = ToggleVariant.Default;
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+    /// <summary>Per-toggle density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only height + horizontal
+    /// padding shift — text size + radius stay governed by <see cref="Size"/>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public bool Disabled { get; set; }
     /// <summary>
     /// Accessible name exposed via <c>aria-label</c>. Required when
@@ -33,11 +39,21 @@
         _ => ""
     };
 
-    private string SizeClasses => Size switch
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Height + horizontal padding track Size x Density; Comfortable
+    // reproduces the historical per-Size values verbatim.
+    private string SizeClasses => (Size, EffectiveDensity) switch
     {
-        Lumeo.Size.Sm => "h-8 px-2",
-        Lumeo.Size.Lg => "h-10 px-4",
-        _ => "h-9 px-3"
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 px-1.5",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 px-3",
+        (Lumeo.Size.Sm, _)                      => "h-8 px-2",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-9 px-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 px-5",
+        (Lumeo.Size.Lg, _)                      => "h-10 px-4",
+        (_, Lumeo.Density.Compact)              => "h-8 px-2",
+        (_, Lumeo.Density.Spacious)             => "h-11 px-4",
+        _                                       => "h-9 px-3"
     };
 
     private async Task HandleToggle()

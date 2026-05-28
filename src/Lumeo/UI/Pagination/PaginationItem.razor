@@ -10,8 +10,19 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool IsActive { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 h-11 w-11 sm:h-9 sm:w-9 {(IsActive ? "border border-input bg-background shadow-sm" : "hover:bg-accent hover:text-accent-foreground")} {Class}".Trim();
+    // Desktop cell size tracks the ambient DensityScope; the mobile touch
+    // floor (h-11 w-11) is kept so pages stay tappable. Comfortable
+    // reproduces the historical `sm:h-9 sm:w-9`.
+    private string SizeClass => Density switch
+    {
+        Lumeo.Density.Compact => "h-11 w-11 sm:h-8 sm:w-8",
+        Lumeo.Density.Spacious => "h-11 w-11 sm:h-10 sm:w-10",
+        _ => "h-11 w-11 sm:h-9 sm:w-9"
+    };
+
+    private string CssClass => $"inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {SizeClass} {(IsActive ? "border border-input bg-background shadow-sm" : "hover:bg-accent hover:text-accent-foreground")} {Class}".Trim();
 }

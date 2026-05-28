@@ -56,10 +56,20 @@
 
 @code {
     [CascadingParameter] public Select.SelectContext Context { get; set; } = default!;
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Height + body padding track the ambient DensityScope; Comfortable
+    // reproduces the historical `h-9 px-3 py-2`.
+    private string SizeClasses => Density switch
+    {
+        Lumeo.Density.Compact => "h-8 px-2.5 py-1.5",
+        Lumeo.Density.Spacious => "h-10 px-4 py-2.5",
+        _ => "h-9 px-3 py-2"
+    };
 
     // _triggerId moved up to parent Select (Context.TriggerId) so the parent
     // can target it for AutoFocus / public FocusAsync without exposing the
@@ -69,7 +79,7 @@
         ? Context.Values != null && Context.Values.Count > 0
         : !string.IsNullOrEmpty(Context.Value);
 
-    private string CssClass => $"flex h-9 w-full cursor-pointer items-center justify-between whitespace-nowrap rounded-md border {(Context.Invalid ? "border-destructive" : "border-input")} bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 {(Context.Invalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    private string CssClass => $"flex {SizeClasses} w-full cursor-pointer items-center justify-between whitespace-nowrap rounded-md border {(Context.Invalid ? "border-destructive" : "border-input")} bg-transparent text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 {(Context.Invalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);
 

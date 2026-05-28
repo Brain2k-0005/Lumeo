@@ -57,13 +57,29 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? AriaLabelledBy { get; set; }
+    /// <summary>Per-group density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only the inter-option row gap
+    /// shifts between values.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly List<string> _itemValues = new();
     private readonly Dictionary<string, string> _itemIds = new();
 
-    private string CssClass => $"grid gap-2 {(EffectiveInvalid ? "text-destructive" : "")} {Class}".Trim();
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Inter-option gap tracks density; Comfortable reproduces the historical gap-2.
+    private string GapClass => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "gap-1",
+        Lumeo.Density.Spacious => "gap-3",
+        _ => "gap-2"
+    };
+
+    private string CssClass => $"grid {GapClass} {(EffectiveInvalid ? "text-destructive" : "")} {Class}".Trim();
 
     private async Task OnValueSelected(string value)
     {
