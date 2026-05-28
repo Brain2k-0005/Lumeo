@@ -124,7 +124,7 @@ public class OverlayProviderTests : IAsyncLifetime
         Assert.Equal(768, options.MobileBreakpoint);
         // Mobile* override fields default to null = "no responsive switch".
         Assert.Null(options.MobileSheetSide);
-        Assert.Null(options.MobileSheetSize);
+        Assert.Null(options.MobileSize);
         Assert.Null(options.MobileSwipeToClose);
     }
 
@@ -186,15 +186,108 @@ public class OverlayProviderTests : IAsyncLifetime
         var options = new OverlayOptions
         {
             MobileBreakpoint = null,
-            MobileSheetSize = SheetSize.Full
+            MobileSize = OverlaySize.Full
         };
 
         // MobileBreakpoint=null is the documented opt-out: even though
-        // MobileSheetSize is set, the provider must keep the desktop SheetSize
+        // MobileSize is set, the provider must keep the desktop Size
         // at every viewport. We can't drive the provider end-to-end here
         // without mocking IResponsiveService AND inspecting SheetContent
         // class output, so this test guards the record values only.
         Assert.Null(options.MobileBreakpoint);
-        Assert.Equal(SheetSize.Full, options.MobileSheetSize);
+        Assert.Equal(OverlaySize.Full, options.MobileSize);
+    }
+
+    // --- Unified Size (3.6.0) ----------------------------------------------
+    //
+    // OverlayOptions.Size now drives both Dialog and Sheet. The legacy
+    // SheetSize / MobileSheetSize properties are obsolete 1:1 aliases that
+    // read/write the same backing Size / MobileSize value.
+
+    [Fact]
+    public void OverlayOptions_Size_Default_Is_Default()
+    {
+        var options = new OverlayOptions();
+        Assert.Equal(OverlaySize.Default, options.Size);
+        Assert.Null(options.MobileSize);
+    }
+
+    [Fact]
+    public void OverlayOptions_SheetSize_Alias_RoundTrips_Through_Size()
+    {
+#pragma warning disable CS0618 // exercising the obsolete alias on purpose
+        // Writing the legacy alias sets the canonical Size.
+        var viaAlias = new OverlayOptions { SheetSize = SheetSize.Xl };
+        Assert.Equal(OverlaySize.Xl, viaAlias.Size);
+        Assert.Equal(SheetSize.Xl, viaAlias.SheetSize);
+
+        // Writing Size reflects back through the alias getter.
+        var viaSize = new OverlayOptions { Size = OverlaySize.Lg };
+        Assert.Equal(SheetSize.Lg, viaSize.SheetSize);
+
+        // Mobile alias round-trips too, including the null case.
+        var mobile = new OverlayOptions { MobileSheetSize = SheetSize.Full };
+        Assert.Equal(OverlaySize.Full, mobile.MobileSize);
+        Assert.Equal(SheetSize.Full, mobile.MobileSheetSize);
+        Assert.Null(new OverlayOptions().MobileSheetSize);
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void ShowDialog_With_Size_Lg_Emits_DialogSize_MaxWidth()
+    {
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowDialogAsync<DummyOverlayBody>(
+            title: "Wide dialog",
+            options: new OverlayOptions { Size = OverlaySize.Lg });
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+        // DialogSize.Lg maps to max-w-2xl (see DialogContent.SizeClass).
+        Assert.Contains("max-w-2xl", cls);
+    }
+
+    [Fact]
+    public void ShowSheet_Size_Param_Routes_Through_To_SheetContent()
+    {
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowSheetAsync<DummyOverlayBody>(
+            title: "Large sheet",
+            side: Lumeo.Side.Right,
+            size: SheetSize.Lg);
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+        // Right side + Lg maps to sm:max-w-lg (see SheetContent size switch).
+        Assert.Contains("sm:max-w-lg", cls);
+    }
+
+    [Fact]
+    public void ShowSheet_Honors_OverlayOptions_Size_When_Size_Param_Omitted()
+    {
+        // Regression: the unified options.Size must drive sheets too. With the
+        // legacy `size` parameter omitted (defaulting to SheetSize.Default), the
+        // caller's options.Size must NOT be overwritten back to Default.
+        var service = _ctx.Services.GetRequiredService<OverlayService>();
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = service.ShowSheetAsync<DummyOverlayBody>(
+            title: "Unified-size sheet",
+            options: new OverlayOptions { Size = OverlaySize.Xl });
+
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        var dialog = cut.Find("[role='dialog']");
+        var cls = dialog.GetAttribute("class") ?? "";
+        // Right side + Xl maps to sm:max-w-xl (see SheetContent size switch).
+        Assert.Contains("sm:max-w-xl", cls);
     }
 }

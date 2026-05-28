@@ -8,7 +8,7 @@
     {
         case OverlayType.Dialog:
             <Dialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DialogContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
+                <DialogContent ZIndex="@overlay.ZIndex" Size="@EffectiveDialogSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
                         <DialogHeader>
@@ -155,7 +155,7 @@
     private static bool HasMobileOverrides(OverlayOptions opts) =>
         opts.MobileBreakpoint is not null
         && (opts.MobileSheetSide is not null
-            || opts.MobileSheetSize is not null
+            || opts.MobileSize is not null
             || opts.MobileSwipeToClose is not null
             || opts.MobileFullscreen);
 
@@ -170,11 +170,14 @@
     private Lumeo.Side EffectiveSheetSide(OverlayOptions opts) =>
         IsMobile(opts) && opts.MobileSheetSide is { } ms ? ms : opts.SheetSide;
 
-    private SheetContent.SheetSize EffectiveSheetSize(OverlayOptions opts)
-    {
-        var size = IsMobile(opts) && opts.MobileSheetSize is { } ms ? ms : opts.SheetSize;
-        return MapSheetSize(size);
-    }
+    private OverlaySize EffectiveSize(OverlayOptions opts) =>
+        IsMobile(opts) && opts.MobileSize is { } ms ? ms : opts.Size;
+
+    private SheetContent.SheetSize EffectiveSheetSize(OverlayOptions opts) =>
+        MapSheetSize(EffectiveSize(opts));
+
+    private DialogContent.DialogSize EffectiveDialogSize(OverlayOptions opts) =>
+        MapDialogSize(EffectiveSize(opts));
 
     private bool EffectiveSwipeToClose(OverlayOptions opts) =>
         IsMobile(opts) && opts.MobileSwipeToClose is bool m ? m : opts.SwipeToClose;
@@ -276,13 +279,22 @@
         return reference;
     }
 
-    private static SheetContent.SheetSize MapSheetSize(SheetSize size) => size switch
+    private static SheetContent.SheetSize MapSheetSize(OverlaySize size) => size switch
     {
-        SheetSize.Sm => SheetContent.SheetSize.Sm,
-        SheetSize.Lg => SheetContent.SheetSize.Lg,
-        SheetSize.Xl => SheetContent.SheetSize.Xl,
-        SheetSize.Full => SheetContent.SheetSize.Full,
+        OverlaySize.Sm => SheetContent.SheetSize.Sm,
+        OverlaySize.Lg => SheetContent.SheetSize.Lg,
+        OverlaySize.Xl => SheetContent.SheetSize.Xl,
+        OverlaySize.Full => SheetContent.SheetSize.Full,
         _ => SheetContent.SheetSize.Default
+    };
+
+    private static DialogContent.DialogSize MapDialogSize(OverlaySize size) => size switch
+    {
+        OverlaySize.Sm => DialogContent.DialogSize.Sm,
+        OverlaySize.Lg => DialogContent.DialogSize.Lg,
+        OverlaySize.Xl => DialogContent.DialogSize.Xl,
+        OverlaySize.Full => DialogContent.DialogSize.Full,
+        _ => DialogContent.DialogSize.Default
     };
 
     public async ValueTask DisposeAsync()

@@ -263,10 +263,16 @@
                             <td class="p-3 text-muted-foreground">Which side the sheet slides in from.</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">SheetSize</td>
+                            <td class="p-3 font-mono text-xs text-primary">Size</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">OverlaySize</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
+                            <td class="p-3 text-muted-foreground"><strong>Dialog &amp; Sheet</strong> (3.6.0). Unified size knob. For a <strong>Dialog</strong> it maps to a <code>max-w-*</code> preset (<code>Sm</code>→<code>max-w-sm</code>, <code>Default</code>→<code>max-w-lg</code>, <code>Lg</code>→<code>max-w-2xl</code>, <code>Xl</code>→<code>max-w-4xl</code>, <code>Full</code>→near-viewport) — so you can enlarge a service Dialog without a <code>Class</code> override. For a <strong>Sheet</strong> it controls width on <code>Left</code>/<code>Right</code> or height on <code>Top</code>/<code>Bottom</code>; <code>Full</code> on <code>Bottom</code> + <code>SwipeToClose=true</code> gives the mobile-fullscreen sheet.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">SheetSize <span class="text-[10px] uppercase tracking-wide text-amber-600">deprecated</span></td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">SheetSize</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
-                            <td class="p-3 text-muted-foreground">Sheet dimension. On <code>Left</code>/<code>Right</code> controls width; on <code>Top</code>/<code>Bottom</code> controls height (2.1.1). <code>Full</code> on <code>Bottom</code> + <code>SwipeToClose=true</code> gives the mobile-fullscreen sheet pattern.</td>
+                            <td class="p-3 text-muted-foreground">Legacy Sheet-only alias for <code>Size</code> (1:1 mapping). Kept for source compatibility — prefer <code>Size</code> in new code.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">SwipeToClose</td>
@@ -287,10 +293,16 @@
                             <td class="p-3 text-muted-foreground">Sheet-only (2.1.3). Side override used when the viewport is below <code>MobileBreakpoint</code>. Typical pattern: <code>Lumeo.Side.Right</code> on desktop, <code>Lumeo.Side.Bottom</code> on mobile. <code>null</code> keeps <code>SheetSide</code> at every size.</td>
                         </tr>
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary">MobileSheetSize</td>
+                            <td class="p-3 font-mono text-xs text-primary">MobileSize</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">OverlaySize?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground"><strong>Dialog &amp; Sheet</strong> (3.6.0). Size override used below <code>MobileBreakpoint</code>. Pair with <code>MobileSheetSide=Bottom</code> + <code>MobileSize=Full</code> for the mobile-fullscreen bottom-sheet pattern. <code>null</code> keeps <code>Size</code> at every viewport.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">MobileSheetSize <span class="text-[10px] uppercase tracking-wide text-amber-600">deprecated</span></td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">SheetSize?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                            <td class="p-3 text-muted-foreground">Sheet-only (2.1.3). Size override used below <code>MobileBreakpoint</code>. Pair with <code>MobileSheetSide=Bottom</code> + <code>MobileSheetSize=Full</code> for the mobile-fullscreen bottom-sheet pattern.</td>
+                            <td class="p-3 text-muted-foreground">Legacy alias for <code>MobileSize</code> (1:1 mapping, null round-trips). Prefer <code>MobileSize</code>.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">MobileSwipeToClose</td>
@@ -301,6 +313,20 @@
                     </tbody>
                 </table>
             </Stack>
+        </Stack>
+
+        <Stack>
+            <Heading Id="sizing-overlays" Level="3" Class="mb-3">Sizing overlays (3.6.0)</Heading>
+            <Lumeo.Text Size="sm" Color="muted" Class="mb-3">
+                <code>OverlayOptions.Size</code> is a single, unified knob that sizes both Dialogs and Sheets — no <code>Class</code> override needed. To make a service-opened Dialog larger, just pass a <code>Size</code>:
+            </Lumeo.Text>
+            <pre class="rounded-md border border-border/40 bg-muted/30 p-3 text-xs overflow-x-auto"><code>// A wide dialog — Lg → max-w-2xl, Xl → max-w-4xl, Full → near-viewport
+await Overlay.ShowDialogAsync&lt;MyForm&gt;(
+    title: "Edit user",
+    options: new OverlayOptions { Size = OverlaySize.Lg });</code></pre>
+            <Lumeo.Text Size="sm" Color="muted" Class="mt-3 mb-3">
+                The same <code>Size</code> drives Sheets (width on Left/Right, height on Top/Bottom). The old Sheet-only <code>SheetSize</code> property still works as a 1:1 alias but is deprecated — prefer <code>Size</code>.
+            </Lumeo.Text>
         </Stack>
 
         <Stack>
@@ -321,7 +347,7 @@ private async Task ShowResponsive()
         {
             // Below 768px, switch to a fullscreen bottom sheet with swipe-down dismiss
             MobileSheetSide    = Lumeo.Side.Bottom,
-            MobileSheetSize    = SheetSize.Full,
+            MobileSize         = OverlaySize.Full,   // unified Size — drives Dialog &amp; Sheet
             MobileSwipeToClose = true,
             // MobileBreakpoint defaults to 768 (md) — set to null to disable
         });
