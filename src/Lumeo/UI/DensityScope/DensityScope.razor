@@ -5,26 +5,22 @@
     descendant. Use at the page / panel level to flip every Lumeo
     component inside it without per-component edits.
 
-    Components that consume this read [CascadingParameter] Density,
+    Renders NO wrapper element — just the cascading value around its
+    ChildContent — so it is valid inside <tbody> / <tr> / <ul> and any
+    other context that only permits specific children. (An earlier
+    version wrapped a <div class="contents">, which is invalid DOM
+    inside those parents and triggered browser reparenting.)
+
+    Components that consume this read [CascadingParameter] Density?,
     fall back to Density.Comfortable when none is present, and let an
     explicit [Parameter] Density override the cascading value.
 *@
 
-@* Cascading type is Density? (nullable) to match the consumers' parameter
-   declaration — Blazor matches cascading values by exact type, so a
-   non-nullable Lumeo.Density provider would not satisfy a [CascadingParameter]
-   Density? consumer and every descendant would fall back to its default. *@
 <CascadingValue TValue="Lumeo.Density?" Value="Value" IsFixed="false">
-    <div class="@CssClass" @attributes="AdditionalAttributes">
-        @ChildContent
-    </div>
+    @ChildContent
 </CascadingValue>
 
 @code {
     [Parameter] public Lumeo.Density Value { get; set; } = Lumeo.Density.Comfortable;
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public string? Class { get; set; }
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private string CssClass => $"contents {Class}".Trim();
 }

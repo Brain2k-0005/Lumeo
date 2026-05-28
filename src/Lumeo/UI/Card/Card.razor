@@ -3,21 +3,25 @@
 
 @if (OnClick.HasDelegate)
 {
-    <div @ref="_el"
-         class="@CssClass"
-         role="button"
-         tabindex="0"
-         @onclick="OnClick"
-         @onkeydown="HandleKeyDown"
-         @attributes="AdditionalAttributes">
-        @ChildContent
-    </div>
+    <CascadingValue TValue="Lumeo.Density?" Value="EffectiveDensity" IsFixed="false">
+        <div @ref="_el"
+             class="@CssClass"
+             role="button"
+             tabindex="0"
+             @onclick="OnClick"
+             @onkeydown="HandleKeyDown"
+             @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    </CascadingValue>
 }
 else
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
-        @ChildContent
-    </div>
+    <CascadingValue TValue="Lumeo.Density?" Value="EffectiveDensity" IsFixed="false">
+        <div class="@CssClass" @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    </CascadingValue>
 }
 
 @code {
@@ -59,22 +63,10 @@ else
         _ => null
     };
 
-    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
-
-    // Density controls the implicit gap rhythm inside the card via a
-    // descendant-only space-y selector — leaf CardHeader / CardContent /
-    // CardFooter components keep their own padding, so this gives a
-    // visible tightness shift without coupling Card to its children.
-    private string GapClass => EffectiveDensity switch
-    {
-        Lumeo.Density.Compact => "[&>*+*]:mt-2",
-        Lumeo.Density.Spacious => "[&>*+*]:mt-6",
-        _ => ""
-    };
+    private Lumeo.Density? EffectiveDensity => Density ?? InheritedDensity;
 
     private string CssClass => Cx.Join(
         "rounded-lg border border-border/40 bg-card text-card-foreground",
-        GapClass,
         Cx.When(IsInteractive, "cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:bg-accent/30"),
         IsInteractive ? PressEffectClass : null,
         Class);
