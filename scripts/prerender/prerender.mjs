@@ -81,6 +81,30 @@ try {
                     // not a failure, so SSG keeps shipping.
                     degraded = true;
                 }
+
+                // Step-scroll to the bottom and back so IntersectionObserver-gated
+                // content renders into the captured HTML. Several below-the-fold
+                // pieces (the landing-page component constellation, LazyRender-
+                // wrapped Map/charts) only mount/init once their section nears the
+                // viewport; without this they'd be empty placeholders in the static
+                // HTML. Time-bounded and best-effort — never fails the capture.
+                try {
+                    await page.evaluate(async () => {
+                        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+                        const step = Math.max(window.innerHeight, 400);
+                        for (let y = 0; y < document.body.scrollHeight; y += step) {
+                            window.scrollTo(0, y);
+                            await sleep(60);
+                        }
+                        window.scrollTo(0, document.body.scrollHeight);
+                        // Deferred inits round-trip JS->Blazor->JS (e.g. constellation
+                        // OnVisible -> lumeoConstellation.init), so give them margin.
+                        await sleep(500);
+                        window.scrollTo(0, 0);
+                        await sleep(60);
+                    });
+                } catch { /* scroll is an enhancement; capture whatever rendered */ }
+
                 // Strip Blazor render-boundary markers (`<!--!-->`). HTML parsers
                 // treat <title>...</title> as raw text, so embedded comments are
                 // displayed literally in the browser tab. Safe to remove — the

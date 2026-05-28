@@ -1089,6 +1089,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     private string _constellationFilter = "";
     private ElementReference _constellationRoot;
     private bool _constellationInitialized;
+    private IJSObjectReference? _constellationObserver;
 
     // Timers / visibility
     private bool _pageVisible = true;
@@ -1136,31 +1137,53 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             catch (JSDisconnectedException) { }
         }
 
-        // Initialize the JS-driven constellation once nodes are ready.
-        if (!_constellationInitialized && _constellationNodes.Count > 0)
+        // Defer the JS-driven constellation init until its section scrolls near
+        // the viewport. It lays out 154 nodes and is well below the fold, so
+        // running it on first render just to (usually) never be seen wastes main-
+        // thread time during the critical load. observeVisibility fires OnVisible
+        // once the section is within 300px of the viewport; its no-IO fallback
+        // (SSR / bUnit) fires immediately, preserving the previous behaviour.
+        if (firstRender && _selfRef is not null && _constellationNodes.Count > 0)
         {
-            _constellationInitialized = true;
             try
             {
-                var nodesPayload = _constellationNodes.Select(n => new
-                {
-                    id = n.Id,
-                    title = n.Title,
-                    summary = n.Summary,
-                    category = n.Category,
-                    url = n.Url,
-                    x = n.X,
-                    y = n.Y
-                });
-                var clustersPayload = _clusterCenters.ToDictionary(
-                    kv => kv.Key,
-                    kv => new { cx = kv.Value.Cx, cy = kv.Value.Cy, r = kv.Value.R });
-                await JS.InvokeVoidAsync("lumeoConstellation.init",
-                    _constellationRoot, nodesPayload, clustersPayload, _categoryColors);
+                _constellationObserver = await JS.InvokeAsync<IJSObjectReference?>(
+                    "lumeo.observeVisibility", _constellationRoot, _selfRef, 300);
             }
-            catch (JSException) { _constellationInitialized = false; }
+            catch (JSException) { /* SSR / prerender — init on next interactive render */ }
             catch (JSDisconnectedException) { }
         }
+    }
+
+    /// <summary>
+    /// Invoked by lumeo.observeVisibility when the constellation section nears
+    /// the viewport (or immediately when IntersectionObserver is unavailable).
+    /// </summary>
+    [JSInvokable]
+    public async Task OnVisible()
+    {
+        if (_constellationInitialized || _constellationNodes.Count == 0) return;
+        _constellationInitialized = true;
+        try
+        {
+            var nodesPayload = _constellationNodes.Select(n => new
+            {
+                id = n.Id,
+                title = n.Title,
+                summary = n.Summary,
+                category = n.Category,
+                url = n.Url,
+                x = n.X,
+                y = n.Y
+            });
+            var clustersPayload = _clusterCenters.ToDictionary(
+                kv => kv.Key,
+                kv => new { cx = kv.Value.Cx, cy = kv.Value.Cy, r = kv.Value.R });
+            await JS.InvokeVoidAsync("lumeoConstellation.init",
+                _constellationRoot, nodesPayload, clustersPayload, _categoryColors);
+        }
+        catch (JSException) { _constellationInitialized = false; }
+        catch (JSDisconnectedException) { }
     }
 
     private void BuildConstellation()
@@ -1383,6 +1406,11 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             {
                 await _visibilityHandle.InvokeVoidAsync("dispose");
                 await _visibilityHandle.DisposeAsync();
+            }
+            if (_constellationObserver is not null)
+            {
+                await JS.InvokeVoidAsync("lumeo.disconnectObserver", _constellationObserver);
+                await _constellationObserver.DisposeAsync();
             }
         }
         catch (JSDisconnectedException) { }
