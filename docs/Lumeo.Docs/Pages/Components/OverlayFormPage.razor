@@ -1,0 +1,202 @@
+@page "/components/overlay-form"
+@using System.ComponentModel.DataAnnotations
+
+<PageTitle>Overlay Form — Lumeo</PageTitle>
+
+<PageHeader Title="Overlay Form" Description="An opinionated EditForm wrapper for service-driven overlays. It bakes in the flex-column, scrolling-body, sticky-footer shape that an EditForm inside a Sheet or Dialog otherwise loses." />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>An edit or create form rendered inside a Sheet, Drawer, or Dialog opened via the Overlay Service</li>
+        <li>Long forms where the body should scroll independently while the submit/cancel buttons stay pinned to the bottom</li>
+        <li>Anywhere you would otherwise re-create the flex-col + min-h-0 + sticky-footer layout by hand</li>
+    </ul>
+</div>
+
+<Alert Class="mt-6" Variant="Alert.AlertVariant.Warning" Title="Renders an empty shell until Model is set" ShowIcon="true">
+    The EditContext is deferred until a non-null <code class="text-xs font-mono">Model</code> is supplied — EditForm crashes on a null model, so OverlayForm renders nothing visible rather than throwing. If your form looks empty, check that Model is assigned before the overlay renders.
+</Alert>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic Overlay Form" Code="@_basicCode" OverflowVisible="true">
+        <div class="h-[360px] rounded-lg border border-border/40 p-4">
+            <OverlayForm Model="@_model" OnValidSubmit="HandleSave">
+                <Header>
+                    <Heading Level="3" Class="text-base font-semibold">Edit contact</Heading>
+                </Header>
+                <Body>
+                    <Stack Gap="4">
+                        <Stack Gap="1.5">
+                            <Label>Name</Label>
+                            <Input @bind-Value="_model.Name" Placeholder="Jane Doe" />
+                        </Stack>
+                        <Stack Gap="1.5">
+                            <Label>Email</Label>
+                            <Input @bind-Value="_model.Email" Placeholder="jane@example.com" />
+                        </Stack>
+                        <Stack Gap="1.5">
+                            <Label>Notes</Label>
+                            <Textarea @bind-Value="_model.Notes" Placeholder="Anything else…" />
+                        </Stack>
+                    </Stack>
+                </Body>
+                <Footer>
+                    <Button Variant="Button.ButtonVariant.Outline" Type="Button.ButtonType.Button">Cancel</Button>
+                    <Button Type="Button.ButtonType.Submit">Save</Button>
+                </Footer>
+            </OverlayForm>
+        </div>
+        @if (!string.IsNullOrEmpty(_result))
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-3">@_result</Lumeo.Text>
+        }
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-12 space-y-3">
+    <Heading Id="inside-an-overlay" Level="2" Class="scroll-mt-20">Inside a service-driven overlay</Heading>
+    <Lumeo.Text Class="text-sm text-muted-foreground">
+        The common case is a content component shown via <Lumeo.Link Href="/components/overlay-service" Class="text-primary hover:underline">OverlayService</Lumeo.Link>.
+        Because OverlayForm fills its container with <code class="text-xs font-mono">flex flex-col h-full min-h-0</code>, the body scrolls and the footer pins to the bottom edge of the sheet automatically.
+    </Lumeo.Text>
+    <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_overlayUsage</pre>
+</div>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+    <Stack Gap="8" Class="mt-8">
+        <Stack>
+            <Heading Level="3" Class="mb-3">OverlayForm</Heading>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[600px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Model</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">object?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">The form model. Required — until set, the component renders an empty shell.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnValidSubmit</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;EditContext&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fires when the form is submitted and validation passes.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">OnInvalidSubmit</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;EditContext&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fires when the form is submitted but validation fails.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Header</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Optional non-scrolling header region above the body.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Body</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">The scrollable form fields region.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Footer</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Optional sticky footer for submit / cancel actions.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Validator</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">DataAnnotationsValidator</td>
+                            <td class="p-3 text-muted-foreground">Override the default validator (e.g. a FluentValidationValidator).</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Class</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Additional CSS classes appended to the form's flex container.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/overlay-service" class="text-primary hover:underline">Overlay Service</a> — Shows components like this inside a Sheet, Drawer, or Dialog</li>
+        <li><a href="/docs/long-forms-in-sheets" class="text-primary hover:underline">Long Forms in Sheets</a> — The layout pattern OverlayForm encapsulates</li>
+        <li><a href="/components/form" class="text-primary hover:underline">Form</a> — General form composition outside of overlays</li>
+        <li><a href="/docs/edit-form" class="text-primary hover:underline">EditForm + Lumeo</a> — Using Blazor's EditForm with Lumeo inputs</li>
+    </ul>
+</div>
+
+@code {
+    private sealed class ContactModel
+    {
+        [Required] public string? Name { get; set; }
+        [EmailAddress] public string? Email { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    private readonly ContactModel _model = new();
+    private string _result = "";
+
+    private void HandleSave(EditContext ctx)
+    {
+        _result = $"Saved {_model.Name}.";
+    }
+
+    private string _basicCode = @"<OverlayForm Model=""@_model"" OnValidSubmit=""HandleSave"">
+    <Header>
+        <Heading Level=""3"" Class=""text-base font-semibold"">Edit contact</Heading>
+    </Header>
+    <Body>
+        <Stack Gap=""4"">
+            <Label>Name</Label>
+            <Input @bind-Value=""_model.Name"" Placeholder=""Jane Doe"" />
+            <Label>Email</Label>
+            <Input @bind-Value=""_model.Email"" Placeholder=""jane@example.com"" />
+            <Label>Notes</Label>
+            <Textarea @bind-Value=""_model.Notes"" />
+        </Stack>
+    </Body>
+    <Footer>
+        <Button Variant=""Button.ButtonVariant.Outline"">Cancel</Button>
+        <Button Type=""Button.ButtonType.Submit"">Save</Button>
+    </Footer>
+</OverlayForm>
+
+@code {
+    private ContactModel _model = new();
+    private void HandleSave(EditContext ctx) { /* persist _model */ }
+}";
+
+    private string _overlayUsage = @"// Open the content component as a sheet:
+await Overlay.ShowSheetAsync<EditContactSheet>(title: ""Edit contact"");
+
+// EditContactSheet.razor
+<OverlayForm Model=""@_model"" OnValidSubmit=""HandleSave"">
+    <Body>
+        @* ...fields... *@
+    </Body>
+    <Footer>
+        <Button Variant=""Button.ButtonVariant.Outline"" OnClick=""Cancel"">Cancel</Button>
+        <Button Type=""Button.ButtonType.Submit"">Save</Button>
+    </Footer>
+</OverlayForm>";
+}
