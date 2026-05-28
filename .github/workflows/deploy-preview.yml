@@ -1,0 +1,201 @@
+name: Deploy Docs Preview
+
+# Per-PR Cloudflare Pages PREVIEW deploy. Production deploys still come only
+# from deploy-cloudflare.yml on master push — this workflow is intentionally a
+# SEPARATE file so it can never alter the production path. It mirrors the prod
+# build steps but deploys to a per-branch preview (cloudflare/pages-action with
+# branch != master => preview URL) and posts that URL back on the PR, so a docs
+# change can be visually + Lighthouse-verified before it ever reaches master.
+#
+# Uses the same repo secrets as deploy-cloudflare.yml
+# (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, ALGOLIA_APP_ID, ALGOLIA_SEARCH_KEY).
+# PRs in this repo come from same-repo branches (claude/*), so secrets are
+# available; forked-PR runs (no secrets) are skipped via the secret guard below.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/Lumeo.Docs/**'
+      - 'src/Lumeo/**'
+      - 'scripts/prerender/**'
+      - '.github/workflows/deploy-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+concurrency:
+  # One in-flight preview per PR; a new push supersedes the previous build.
+  group: cloudflare-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    # Skip on forked PRs where secrets aren't exposed (CF token would be empty).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
+      - name: Install npm deps
+        run: |
+          npm install --no-audit --no-fund
+          (cd docs/Lumeo.Docs && npm install --no-audit --no-fund)
+
+      - name: Generate catalog thumbnails
+        working-directory: scripts/prerender
+        run: |
+          npm ci --no-audit --no-fund
+          node run-all.mjs
+
+      - name: Publish Blazor WASM
+        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
+
+      - name: Rebuild Tailwind bundles into release
+        run: |
+          npx @tailwindcss/cli \
+            -i ./src/Lumeo/Styles/lumeo-utilities.src.css \
+            -o ./release/wwwroot/_content/Lumeo/css/lumeo-utilities.css \
+            --minify
+          npx @tailwindcss/cli \
+            -i ./docs/Lumeo.Docs/Styles/tailwind.css \
+            -o ./release/wwwroot/css/tailwind.out.css \
+            --minify
+
+      - name: Drop pre-compressed copies
+        run: |
+          find release/wwwroot -name "*.br" -delete
+          find release/wwwroot -name "*.gz" -delete
+
+      - name: Stamp CSS cache-busters with commit SHA
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          sed -i "s/__LUMEO_BUILD__/${SHORT_SHA}/g" release/wwwroot/index.html
+
+      - name: Inject Algolia keys into index.html
+        run: |
+          sed -i "s|__ALGOLIA_APP_ID__|${{ secrets.ALGOLIA_APP_ID }}|g" release/wwwroot/index.html
+          sed -i "s|__ALGOLIA_SEARCH_KEY__|${{ secrets.ALGOLIA_SEARCH_KEY }}|g" release/wwwroot/index.html
+
+      - name: Copy index.html to 404.html
+        run: cp release/wwwroot/index.html release/wwwroot/404.html
+
+      - name: Generate sitemap.xml from @page directives
+        # prerender.mjs reads release/wwwroot/sitemap.xml to learn which routes to
+        # visit, so this must run before the prerender step. Mirrors the prod
+        # deploy; the production origin in <loc> is irrelevant to the preview
+        # crawl, which is path-based.
+        run: |
+          SITE="https://lumeo.nativ.sh"
+          TODAY=$(date -u +%Y-%m-%d)
+          SITEMAP=release/wwwroot/sitemap.xml
+
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            echo "  <url><loc>${SITE}/</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>"
+
+            find docs/Lumeo.Docs/Pages/ -name "*.razor" -exec sed -E 's/^\xEF\xBB\xBF//' {} + \
+              | grep -hE '^@page\s+"[^"]+"' \
+              | sed -E 's|^@page\s+"([^"]+)"|\1|' \
+              | grep -v '^/$' \
+              | sort -u \
+              | while read -r route; do
+                  case "$route" in
+                    /components/*)  PRIORITY=0.8; FREQ=monthly ;;
+                    /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
+                    /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
+                    /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
+                    *)              PRIORITY=0.5; FREQ=monthly ;;
+                  esac
+                  echo "  <url><loc>${SITE}${route}</loc><lastmod>${TODAY}</lastmod><changefreq>${FREQ}</changefreq><priority>${PRIORITY}</priority></url>"
+                done
+            echo '</urlset>'
+          } > "${SITEMAP}"
+
+          echo "Generated $(grep -c '<url>' ${SITEMAP}) URLs in sitemap.xml"
+
+      - name: Copy registry + raw source for CLI consumers
+        run: |
+          mkdir -p release/wwwroot/registry
+          cp -r docs/Lumeo.Docs/wwwroot/registry/* release/wwwroot/registry/ || true
+          mkdir -p release/wwwroot/raw
+          rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' \
+                src/Lumeo/ release/wwwroot/raw/
+
+      - name: Install Chromium deps for Puppeteer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+            libxrandr2 libgbm1 libasound2t64
+
+      - name: Prerender routes
+        working-directory: scripts/prerender
+        run: |
+          npm ci --no-audit --no-fund
+          node prerender.mjs ../../release
+
+      - name: Drop compressed variants of prerendered HTML
+        run: |
+          find release/wwwroot -name 'index.html.br' -delete
+          find release/wwwroot -name 'index.html.gz' -delete
+
+      - name: Deploy preview to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: lumeo
+          directory: release/wwwroot
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # Non-master branch => Cloudflare creates a PREVIEW deployment with
+          # its own URL; production (branch: master) is untouched.
+          branch: ${{ github.head_ref || github.ref_name }}
+
+      - name: Publish preview URL to job summary
+        run: |
+          {
+            echo "### Cloudflare Pages preview"
+            echo ""
+            echo "Preview URL: ${{ steps.deploy.outputs.url }}"
+            echo ""
+            echo "_Branch: \`${{ github.head_ref || github.ref_name }}\` · commit \`${GITHUB_SHA:0:7}\`_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment preview URL on PR
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const sha = context.sha.substring(0, 7);
+            const marker = '<!-- lumeo-preview-deploy -->';
+            const body = `${marker}\n### 🔎 Docs preview deployed\n\n**${url}**\n\n_Branch \`${{ github.head_ref }}\` · commit \`${sha}\` · updates on every push._`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.data.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
