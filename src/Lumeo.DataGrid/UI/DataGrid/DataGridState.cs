@@ -68,7 +68,20 @@ public record DataGridServerRequest(
     string? GlobalSearch,
     string? GroupBy = null,
     CancellationToken CancellationToken = default
-);
+)
+{
+    /// <summary>True while this is still the grid's most recent request.
+    /// Becomes false once a newer request supersedes it. Check this (or
+    /// <see cref="CancellationToken"/>) immediately before assigning the
+    /// fetched rows to your bound <c>Items</c> so an out-of-order completion
+    /// can't overwrite a newer page:
+    /// <code>
+    /// var data = await Api.QueryAsync(req.Page, req.CancellationToken);
+    /// if (req.IsCurrent) Items = data.Rows;
+    /// </code>
+    /// </summary>
+    public bool IsCurrent => !CancellationToken.IsCancellationRequested;
+}
 
 public record DataGridServerResponse<TItem>(
     IEnumerable<TItem> Items,

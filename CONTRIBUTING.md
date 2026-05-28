@@ -146,18 +146,24 @@ without learning per-input variations. Concretely:
   named `_pending` or `_buffer`, never `Value` itself — `Value` is the
   consumer's source of truth.
 
-### Per-component "gotchas" metadata (#87.5)
+### Per-component "gotchas" metadata (#87.5, proposed)
 
-When a component has non-obvious default behaviour, surface it in the
-MCP / skill registry so AI-assisted consumers don't trip over it:
+> **Status: proposed convention — extraction not yet wired into
+> `Lumeo.RegistryGen`.** Don't rely on `<gotcha>` comments surfacing in
+> MCP / skill metadata until the generator support lands.
 
-- Add a `gotchas` array on the component's registry entry
-  (`tools/Lumeo.RegistryGen/`) listing one-line callouts (e.g.
-  `"SheetContent has no inner scroll container by default — wrap a
-  long form's body in flex-1 overflow-y-auto"`).
-- `Lumeo.RegistryGen` picks these up automatically from
-  `<gotcha>...</gotcha>` XML doc comments on the component class, so
-  the source of truth stays in the `.razor` file.
+When a component has non-obvious default behaviour, the goal is to surface
+it in the MCP / skill registry so AI-assisted consumers don't trip over it.
+The intended convention:
+
+- Author one-line callouts as `<gotcha>…</gotcha>` XML doc comments on the
+  component class (e.g. `<gotcha>SheetContent has no inner scroll container
+  by default — wrap a long form's body in flex-1 overflow-y-auto</gotcha>`),
+  keeping the source of truth in the `.razor` file.
+- A future `Lumeo.RegistryGen` pass will lift them into a `gotchas` array on
+  each component's registry entry.
+
+Until then, document non-obvious defaults in the component's docs page.
 
 ## Pull Request Guidelines
 

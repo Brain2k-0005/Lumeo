@@ -44,6 +44,15 @@ internal sealed class DataGridServerService : IDisposable
             try
             {
                 await onServerRequest.InvokeAsync(request);
+                // Success-path stale guard: a newer request may have been
+                // issued while this callback awaited. The service can't undo
+                // a stale Items assignment the consumer already made — that's
+                // why DataGridServerRequest.CancellationToken exists and the
+                // consumer MUST check request.IsCurrent (or the token) before
+                // assigning. What we CAN do here is stop a stale request from
+                // clearing Error / resetting IsLoading for the newer one.
+                if (generation != _requestGeneration)
+                    return;
             }
             catch (OperationCanceledException)
             {
