@@ -48,9 +48,14 @@ public class ToastPositioningTests : IAsyncLifetime
         var cut = _ctx.Render<L.ToastProvider>(p => p
             .Add(b => b.MaxVisible, 2));
 
-        toastService!.Show("Toast One");
-        toastService!.Show("Toast Two");
-        toastService!.Show("Toast Three");
+        // Long Duration keeps the toasts evictable (eviction only targets
+        // Duration != 0 toasts) while preventing the DefaultDuration (5000 ms)
+        // auto-dismiss from firing inside the 5 s WaitForState window — that
+        // race was the source of intermittent "Actual: 1" failures: a surviving
+        // toast timed out mid-wait, dropping the count below 2.
+        toastService!.Show(new ToastOptions { Title = "Toast One", Duration = 60000 });
+        toastService!.Show(new ToastOptions { Title = "Toast Two", Duration = 60000 });
+        toastService!.Show(new ToastOptions { Title = "Toast Three", Duration = 60000 });
 
         // Wait until eviction settles to exactly 2 (exit animation is 220 ms).
         cut.WaitForState(
