@@ -230,6 +230,15 @@ internal static class TailwindMerge
         if (body == "rounded" || Is(body, "rounded"))
             return Super("rnd", "rnd-t", "rnd-r", "rnd-b", "rnd-l", "rnd-tl", "rnd-tr", "rnd-br", "rnd-bl");
 
+        // --- Table border utilities. border-collapse / border-separate set the
+        //     `border-collapse` property; border-spacing-* set `border-spacing`.
+        //     These are NOT border width/color and must not fall into that catch-all. ---
+        if (body is "border-collapse" or "border-separate") return One("border-collapse");
+        if (Is(body, "border-spacing-x")) return One("border-spacing-x");
+        if (Is(body, "border-spacing-y")) return One("border-spacing-y");
+        if (Is(body, "border-spacing"))
+            return Super("border-spacing", "border-spacing-x", "border-spacing-y");
+
         // --- Border style (solid/dashed/dotted/double/hidden/none) is its own
         //     group, distinct from border width and border color so consumers can
         //     layer e.g. `border border-border/40` + `border-dashed`. ---
@@ -280,8 +289,14 @@ internal static class TailwindMerge
         {
             var v = ValueOf(body, "text");
             if (IsTextWrap(v)) return One("text-wrap");
-            if (IsTextSize(v)) return One("font-size");
+            if (IsTextOverflow(v)) return One("text-overflow");
             if (IsAlign(v)) return One("text-align");
+            if (v.StartsWith("opacity-", StringComparison.Ordinal)) return One("text-opacity");
+            // Typed arbitrary disambiguates: text-[length:..] is size, text-[color:..]
+            // is color. Otherwise fall back to keyword/size heuristics.
+            if (v.StartsWith('['))
+                return One(ArbitraryIsColor(v) ? "text-color" : "font-size");
+            if (IsTextSize(v)) return One("font-size");
             return One("text-color");
         }
 
@@ -309,11 +324,16 @@ internal static class TailwindMerge
         if (body == "shadow" || Is(body, "shadow"))
         {
             // Box-shadow SIZE is a small closed keyword set (bare `shadow` plus
-            // sm/md/lg/xl/2xl/inner/none). ANY other `shadow-<x>` — a named theme
-            // color (shadow-primary / shadow-destructive), a palette color with or
-            // without /<opacity> (shadow-black, shadow-primary/10), or an arbitrary
-            // [#..] — is a shadow COLOR. Size and color live in distinct groups so
-            // they coexist; size-vs-size and color-vs-color each last-win.
+            // sm/md/lg/xl/2xl/inner/none) PLUS any arbitrary value that carries
+            // length/offset tokens (e.g. shadow-[0_0_8px_black]). ANY other
+            // `shadow-<x>` — a named theme color (shadow-primary), a palette color
+            // with or without /<opacity> (shadow-black, shadow-primary/10), or a
+            // whole-value arbitrary color (shadow-[#..], shadow-[rgb(..)],
+            // shadow-[color:..]) — is a shadow COLOR. Size and color live in
+            // distinct groups so they coexist; each last-wins within its group.
+            var sv = ValueOf(body, "shadow");
+            if (sv.StartsWith('['))
+                return One(ArbitraryIsColor(sv) ? "shadow-color" : "shadow");
             return IsShadowSize(body) ? One("shadow") : One("shadow-color");
         }
         if (body == "ring" || Is(body, "ring"))
@@ -329,6 +349,59 @@ internal static class TailwindMerge
             var v = ValueOf(body, "ring");
             return LooksLikeWidth(v) ? One("ring-w") : One("ring-color");
         }
+
+        // --- Outline: style (none/dashed/...) vs width (numeric/[length]) vs color
+        //     vs offset. Each is a distinct CSS property and must coexist. ---
+        if (body == "outline" || Is(body, "outline"))
+        {
+            if (body is "outline-none" or "outline-solid" or "outline-dashed"
+                or "outline-dotted" or "outline-double" or "outline-hidden")
+                return One("outline-style");
+            if (Is(body, "outline-offset")) return One("outline-offset");
+            var v = ValueOf(body, "outline");
+            // bare `outline` is the style/preset, not a width — keep as style.
+            if (v.Length == 0) return One("outline-style");
+            return LooksLikeWidth(v) ? One("outline-w") : One("outline-color");
+        }
+
+        // --- Text decoration line/style/thickness/color all set different
+        //     properties; only thickness-vs-thickness, etc. conflict. ---
+        if (body == "underline" || body == "overline" || body == "line-through"
+            || body == "no-underline")
+            return One("decoration-line");
+        if (Is(body, "decoration"))
+        {
+            if (body is "decoration-solid" or "decoration-double" or "decoration-dotted"
+                or "decoration-dashed" or "decoration-wavy")
+                return One("decoration-style");
+            var v = ValueOf(body, "decoration");
+            if (v is "auto" or "from-font" || IsDecorationThickness(v))
+                return One("decoration-thickness");
+            if (v.StartsWith('['))
+                return One(ArbitraryIsColor(v) ? "decoration-color" : "decoration-thickness");
+            return One("decoration-color");
+        }
+
+        // --- Divide: width (x/y), reverse flag, style, and color are all distinct.
+        //     divide-x-reverse sets --tw-divide-x-reverse, not the width. ---
+        if (body is "divide-x-reverse") return One("divide-x-reverse");
+        if (body is "divide-y-reverse") return One("divide-y-reverse");
+        if (body is "divide-solid" or "divide-dashed" or "divide-dotted"
+            or "divide-double" or "divide-none")
+            return One("divide-style");
+        if (Is(body, "divide-x")) return One("divide-x");
+        if (Is(body, "divide-y")) return One("divide-y");
+        if (Is(body, "divide"))
+        {
+            // remaining divide-<x> tokens are colors (divide-red-500, divide-border).
+            return One("divide-color");
+        }
+
+        // --- Gradient color stops: from/via/to carry either a color or a position
+        //     (from-10%, via-[20%]); keep color and position in distinct groups. ---
+        if (Is(body, "from")) return One(GradientStopGroup(ValueOf(body, "from"), "from"));
+        if (Is(body, "via")) return One(GradientStopGroup(ValueOf(body, "via"), "via"));
+        if (Is(body, "to")) return One(GradientStopGroup(ValueOf(body, "to"), "to"));
 
         // --- Flex / grid basics ---
         if (Is(body, "basis")) return One("basis");
@@ -372,6 +445,10 @@ internal static class TailwindMerge
         // --- Space-between (space-x / space-y). The negative sign was already
         //     stripped before classification, so -space-x-* lands here too. Each
         //     axis is its own group; they never merge with each other. ---
+        // *-reverse sets a different custom property (--tw-space-*-reverse) than the
+        // gutter value, so it lives in its own group and coexists with space-x-<n>.
+        if (body is "space-x-reverse") return One("space-x-reverse");
+        if (body is "space-y-reverse") return One("space-y-reverse");
         if (Is(body, "space-x")) return One("space-x");
         if (Is(body, "space-y")) return One("space-y");
 
@@ -457,10 +534,15 @@ internal static class TailwindMerge
     private static bool LooksLikeWidth(string v)
     {
         if (v.Length == 0) return true; // bare `border` etc.
-        if (v.StartsWith('[') && !v.Contains(' '))
+        if (v.StartsWith('['))
         {
-            // Arbitrary: width if it looks like a length, not a color.
-            return !LooksLikeColorLiteral(v);
+            // Arbitrary: a width unless it is clearly a color. Explicit type hints
+            // win ([color:..] ⇒ not width; [length:..]/[size:..] ⇒ width).
+            if (HasColorTypeHint(v)) return false;
+            if (HasLengthTypeHint(v)) return true;
+            // An offset/length token list (e.g. a shadow value) is a size/value.
+            if (HasOffsetTokens(v)) return true;
+            return !LooksLikeColorLiteral(v) && !v.StartsWith("[var(", StringComparison.Ordinal);
         }
         // All-numeric => width (border-2, border-4).
         return int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
@@ -484,6 +566,62 @@ internal static class TailwindMerge
         => v.Contains('#') || v.Contains("rgb", StringComparison.Ordinal)
            || v.Contains("hsl", StringComparison.Ordinal) || v.Contains("oklch", StringComparison.Ordinal)
            || v.StartsWith("[#", StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when an arbitrary value carries an explicit <c>[color:..]</c> type hint
+    /// (Tailwind's typed-arbitrary syntax), e.g. <c>[color:var(--brand)]</c>.
+    /// </summary>
+    private static bool HasColorTypeHint(string v)
+        => v.StartsWith("[color:", StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when an arbitrary value carries an explicit length/size type hint, e.g.
+    /// <c>[length:2px]</c> or <c>[size:..]</c> — explicitly NOT a color.
+    /// </summary>
+    private static bool HasLengthTypeHint(string v)
+        => v.StartsWith("[length:", StringComparison.Ordinal)
+           || v.StartsWith("[size:", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Decides whether an arbitrary value (<c>[...]</c>) for a color-or-size family
+    /// is a COLOR. Honours explicit type hints first (<c>[color:..]</c> ⇒ color,
+    /// <c>[length:..]</c>/<c>[size:..]</c> ⇒ not color), then falls back to a literal
+    /// scan. A bracketed value that contains length/offset tokens (spaces, px/rem
+    /// offsets) is treated as a size/value, not a color — so e.g. a multi-part
+    /// box-shadow value is NOT a color, while a whole-value <c>[rgb(..)]</c> is.
+    /// </summary>
+    private static bool ArbitraryIsColor(string v)
+    {
+        if (HasColorTypeHint(v)) return true;
+        if (HasLengthTypeHint(v)) return false;
+        // A multi-token value (offsets / lengths separated by '_' or ' ', as in a
+        // box-shadow value [0_0_8px_rgb(..)]) is a size/value list, NOT a color —
+        // even if it embeds an rgb()/#hex color part somewhere inside.
+        if (HasOffsetTokens(v)) return false;
+        // Otherwise a whole-value color literal reads as a color: [#fff],
+        // [rgb(0,0,0)], [hsl(...)]. A bare var() is ambiguous; treat it as a color
+        // since consumers use it for theme colors.
+        return LooksLikeColorLiteral(v)
+            || v.StartsWith("[var(", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// True when an arbitrary value contains multiple space/offset-separated tokens
+    /// (Tailwind encodes spaces as '_'), which marks it as a length/offset value
+    /// list (e.g. a box-shadow) rather than a single color literal. Underscores
+    /// inside a function call's parens (e.g. rgb(0_0_0)) are ignored.
+    /// </summary>
+    private static bool HasOffsetTokens(string v)
+    {
+        var depth = 0;
+        foreach (var c in v)
+        {
+            if (c == '(') depth++;
+            else if (c == ')') { if (depth > 0) depth--; }
+            else if ((c == '_' || c == ' ') && depth == 0) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// Resolves a <c>bg-*</c> value into its tailwind-merge background sub-group.
@@ -551,6 +689,10 @@ internal static class TailwindMerge
     private static bool IsTextWrap(string v)
         => v is "wrap" or "nowrap" or "balance" or "pretty";
 
+    /// <summary>text-overflow utilities (ellipsis / clip) — a distinct CSS property.</summary>
+    private static bool IsTextOverflow(string v)
+        => v is "ellipsis" or "clip";
+
     private static bool IsTextSize(string v)
     {
         // Tailwind allows a font-size token to carry a line-height suffix, e.g.
@@ -567,6 +709,31 @@ internal static class TailwindMerge
 
     private static bool IsAlign(string v)
         => v is "left" or "center" or "right" or "justify" or "start" or "end";
+
+    /// <summary>
+    /// text-decoration-thickness keyword set (numeric values + the 'from-font'/'auto'
+    /// keywords are handled by the caller). Numeric thickness like decoration-2.
+    /// </summary>
+    private static bool IsDecorationThickness(string v)
+        => v.Length > 0 && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+
+    /// <summary>
+    /// Classifies a gradient color-stop value (<c>from-*</c>/<c>via-*</c>/<c>to-*</c>)
+    /// as either a color stop or a stop position (percentage / numeric / arbitrary
+    /// length). Color and position set different properties, so they coexist.
+    /// </summary>
+    private static string GradientStopGroup(string v, string prefix)
+    {
+        // Positions: a trailing '%', a bare number, or an arbitrary [..%]/[length].
+        if (v.EndsWith('%') && IsNumericLike(v[..^1])) return prefix + "-pos";
+        if (IsNumericLike(v)) return prefix + "-pos";
+        if (v.StartsWith('[') && !ArbitraryIsColor(v)) return prefix + "-pos";
+        return prefix + "-color";
+    }
+
+    private static bool IsNumericLike(string v)
+        => v.Length > 0 && (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            || double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _));
 
     private static bool IsFontWeight(string body)
         => body is "font-thin" or "font-extralight" or "font-light" or "font-normal"

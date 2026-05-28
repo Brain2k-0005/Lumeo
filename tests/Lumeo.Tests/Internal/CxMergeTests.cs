@@ -553,4 +553,191 @@ public class CxMergeTests
     public void Merge_RealisticButtonOverride()
         => Assert.Equal("inline-flex items-center rounded-md text-sm font-medium h-8 px-2",
             Cx.Merge("inline-flex items-center rounded-md text-sm font-medium h-9 px-4", "h-8 px-2"));
+
+    // ===================================================================
+    // Regression: misclassification bugs (keyword/property utilities being
+    // swallowed into a color/size catch-all group).
+    // ===================================================================
+
+    // --- Bug 1: typed-arbitrary colors ([color:..]) are colors, not width/size ---
+
+    [Fact]
+    public void Merge_BorderTypedArbitraryColor_OverridesNamedColor()
+        // border-[color:var(--x)] is a color: it replaces border-red-500, and does
+        // NOT clear the border width.
+        => Assert.Equal("border-2 border-[color:var(--x)]",
+            Cx.Merge("border-2 border-red-500", "border-[color:var(--x)]"));
+
+    [Fact]
+    public void Merge_BorderTypedArbitraryColorAndWidth_Coexist()
+        => Assert.Equal("border-[color:var(--x)] border-2",
+            Cx.Merge("border-[color:var(--x)]", "border-2"));
+
+    [Fact]
+    public void Merge_BorderTypedArbitraryLength_IsWidth()
+        // border-[length:2px] is a WIDTH and conflicts with border-2, not the color.
+        => Assert.Equal("border-red-500 border-[length:2px]",
+            Cx.Merge("border-2 border-red-500", "border-[length:2px]"));
+
+    [Fact]
+    public void Merge_TextTypedArbitraryColor_OverridesNamedColor()
+        => Assert.Equal("text-sm text-[color:var(--brand)]",
+            Cx.Merge("text-sm text-red-500", "text-[color:var(--brand)]"));
+
+    [Fact]
+    public void Merge_TextTypedArbitraryLength_IsSize()
+        // text-[length:14px] is a font-size; it coexists with a text color.
+        => Assert.Equal("text-red-500 text-[length:14px]",
+            Cx.Merge("text-sm text-red-500", "text-[length:14px]"));
+
+    [Fact]
+    public void Merge_BgTypedArbitraryColor_LastWins()
+        => Assert.Equal("bg-[color:var(--x)]",
+            Cx.Merge("bg-red-500", "bg-[color:var(--x)]"));
+
+    [Fact]
+    public void Merge_RingTypedArbitraryColor_CoexistsWithWidth()
+        => Assert.Equal("ring-2 ring-[color:var(--x)]",
+            Cx.Merge("ring-2 ring-blue-500", "ring-[color:var(--x)]"));
+
+    // --- Bug 2: space-x-reverse / space-y-reverse are a different property ---
+
+    [Fact]
+    public void Merge_SpaceXAndReverse_Coexist()
+        => Assert.Equal("space-x-2 space-x-reverse", Cx.Merge("space-x-2", "space-x-reverse"));
+
+    [Fact]
+    public void Merge_SpaceYAndReverse_Coexist()
+        => Assert.Equal("space-y-2 space-y-reverse", Cx.Merge("space-y-2", "space-y-reverse"));
+
+    [Fact]
+    public void Merge_SpaceXReverse_LastWins()
+        => Assert.Equal("space-x-reverse", Cx.Merge("space-x-reverse", "space-x-reverse"));
+
+    // --- Bug 3: text-ellipsis / text-clip control text-overflow, not color ---
+
+    [Fact]
+    public void Merge_TextEllipsisAndColor_Coexist()
+        => Assert.Equal("text-red-500 text-ellipsis", Cx.Merge("text-red-500", "text-ellipsis"));
+
+    [Fact]
+    public void Merge_TextEllipsisThenClip_LastWins()
+        => Assert.Equal("text-clip", Cx.Merge("text-ellipsis", "text-clip"));
+
+    [Fact]
+    public void Merge_TextEllipsisAndSize_Coexist()
+        => Assert.Equal("text-sm text-ellipsis", Cx.Merge("text-sm", "text-ellipsis"));
+
+    // --- Bug 4: arbitrary box-shadow values are a SIZE, not a color ---
+
+    [Fact]
+    public void Merge_ShadowArbitraryValueAndColor_Coexist()
+        => Assert.Equal("shadow-[0_0_8px_black] shadow-red-500",
+            Cx.Merge("shadow-[0_0_8px_black]", "shadow-red-500"));
+
+    [Fact]
+    public void Merge_ShadowArbitraryValue_OverridesSize()
+        => Assert.Equal("shadow-[0_0_8px_rgb(0,0,0)]",
+            Cx.Merge("shadow-md", "shadow-[0_0_8px_rgb(0,0,0)]"));
+
+    [Fact]
+    public void Merge_ShadowArbitraryWholeColor_IsColor()
+        // a whole-value color literal arbitrary IS a shadow color.
+        => Assert.Equal("shadow-md shadow-[#00f]",
+            Cx.Merge("shadow-md", "shadow-[#00f]"));
+
+    // --- Bug 5: table border utilities are their own properties ---
+
+    [Fact]
+    public void Merge_BorderCollapseAndColor_Coexist()
+        => Assert.Equal("border-red-500 border-collapse",
+            Cx.Merge("border-red-500", "border-collapse"));
+
+    [Fact]
+    public void Merge_BorderCollapseThenSeparate_LastWins()
+        => Assert.Equal("border-separate", Cx.Merge("border-collapse", "border-separate"));
+
+    [Fact]
+    public void Merge_BorderSpacingAndColor_Coexist()
+        => Assert.Equal("border-red-500 border-spacing-2",
+            Cx.Merge("border-red-500", "border-spacing-2"));
+
+    [Fact]
+    public void Merge_BorderSpacingSuperset_OverridesAxis()
+        => Assert.Equal("border-spacing-0",
+            Cx.Merge("border-spacing-x-2 border-spacing-y-4", "border-spacing-0"));
+
+    [Fact]
+    public void Merge_BorderSpacingXY_Independent()
+        => Assert.Equal("border-spacing-x-2 border-spacing-y-4",
+            Cx.Merge("border-spacing-x-2", "border-spacing-y-4"));
+
+    // --- Audit: outline style / width / color / offset are distinct ---
+
+    [Fact]
+    public void Merge_OutlineWidthStyleColor_AllCoexist()
+        => Assert.Equal("outline-2 outline-dashed outline-red-500",
+            Cx.Merge("outline-2 outline-dashed", "outline-red-500"));
+
+    [Fact]
+    public void Merge_OutlineColor_LastWins()
+        => Assert.Equal("outline-blue-500", Cx.Merge("outline-red-500", "outline-blue-500"));
+
+    [Fact]
+    public void Merge_OutlineOffset_DistinctFromWidth()
+        => Assert.Equal("outline-2 outline-offset-2",
+            Cx.Merge("outline-2", "outline-offset-2"));
+
+    // --- Audit: text-decoration line / style / thickness / color are distinct ---
+
+    [Fact]
+    public void Merge_DecorationThicknessAndColor_Coexist()
+        => Assert.Equal("decoration-2 decoration-red-500",
+            Cx.Merge("decoration-2", "decoration-red-500"));
+
+    [Fact]
+    public void Merge_DecorationStyleAndColor_Coexist()
+        => Assert.Equal("decoration-wavy decoration-red-500",
+            Cx.Merge("decoration-wavy", "decoration-red-500"));
+
+    [Fact]
+    public void Merge_UnderlineAndDecorationColor_Coexist()
+        => Assert.Equal("underline decoration-red-500",
+            Cx.Merge("underline", "decoration-red-500"));
+
+    [Fact]
+    public void Merge_DecorationColor_LastWins()
+        => Assert.Equal("decoration-blue-500",
+            Cx.Merge("decoration-red-500", "decoration-blue-500"));
+
+    // --- Audit: divide width / reverse / style / color are distinct ---
+
+    [Fact]
+    public void Merge_DivideXAndReverse_Coexist()
+        => Assert.Equal("divide-x-2 divide-x-reverse",
+            Cx.Merge("divide-x-2", "divide-x-reverse"));
+
+    [Fact]
+    public void Merge_DivideStyleAndColor_Coexist()
+        => Assert.Equal("divide-dashed divide-red-500",
+            Cx.Merge("divide-dashed", "divide-red-500"));
+
+    [Fact]
+    public void Merge_DivideWidth_LastWins()
+        => Assert.Equal("divide-x-4", Cx.Merge("divide-x-2", "divide-x-4"));
+
+    [Fact]
+    public void Merge_DivideColorAndWidth_Coexist()
+        => Assert.Equal("divide-x-2 divide-red-500",
+            Cx.Merge("divide-x-2", "divide-red-500"));
+
+    // --- Audit: gradient stop color vs position are distinct ---
+
+    [Fact]
+    public void Merge_FromColorAndPosition_Coexist()
+        => Assert.Equal("from-red-500 from-10%", Cx.Merge("from-red-500", "from-10%"));
+
+    [Fact]
+    public void Merge_FromColor_LastWins()
+        => Assert.Equal("from-blue-500", Cx.Merge("from-red-500", "from-blue-500"));
 }
