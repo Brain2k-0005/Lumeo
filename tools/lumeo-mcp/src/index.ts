@@ -203,6 +203,7 @@ function toGetPayload(c: ApiComponent) {
     events: s.events,
     enums: s.enums,
     records: s.records,
+    gotchas: s.gotchas ?? [],
   }));
   return {
     name: c.name,
@@ -218,6 +219,7 @@ function toGetPayload(c: ApiComponent) {
     enums: c.enums,
     records: c.records,
     cssVars: c.cssVars,
+    gotchas: c.gotchas ?? [],
     files: c.files,
     subComponents,
     examples: c.examples ?? [],

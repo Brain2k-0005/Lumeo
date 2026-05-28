@@ -49,6 +49,7 @@ export interface ApiSubComponent {
   events: ApiEvent[];
   enums: ApiEnum[];
   records: ApiRecord[];
+  gotchas?: string[];
   parseFailed: boolean;
   parseError: string | null;
 }
@@ -73,6 +74,7 @@ export interface ApiComponent {
   enums: ApiEnum[];
   records: ApiRecord[];
   cssVars: string[];
+  gotchas?: string[];
   examples?: ApiExample[];
   subComponents: Record<string, ApiSubComponent>;
   parseFailed: boolean;
