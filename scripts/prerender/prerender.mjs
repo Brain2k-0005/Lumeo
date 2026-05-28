@@ -28,6 +28,19 @@ const wwwroot = resolve(publishDir, 'wwwroot');
 
 console.log(`[prerender] wwwroot = ${wwwroot}`);
 
+// Registry JSON inlined into the catalog's prerendered HTML so RegistryService
+// can read it synchronously on hydration (no async fetch -> no skeleton flash ->
+// no layout shift). `<` is escaped to < so the payload can't break out of
+// the <script> tag. Best-effort: if the file is missing, the catalog falls back
+// to fetching /registry.json as before.
+let registryInlineScript = '';
+try {
+    const registryJson = readFileSync(join(wwwroot, 'registry.json'), 'utf8').replace(/</g, '\\u003c');
+    registryInlineScript = `<script id="lumeo-registry-data" type="application/json">${registryJson}</script>`;
+} catch {
+    console.warn('[prerender] registry.json not found — catalog will fetch it client-side.');
+}
+
 const server = await startServer(wwwroot);
 console.log(`[prerender] local server at ${server.url}`);
 
@@ -57,6 +70,14 @@ try {
     async function worker(id) {
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 800 });
+        // Flag the prerender context BEFORE any app script runs. Components that
+        // lazy-mount below-the-fold content via IntersectionObserver (which never
+        // fires in this non-scrolling headless crawl) check this flag and render
+        // eagerly instead, so their output is baked into the static HTML. Real
+        // users (no flag) keep the lazy behaviour.
+        await page.evaluateOnNewDocument(() => {
+            window.__LUMEO_PRERENDER__ = true;
+        });
         while (queue.length) {
             const route = queue.shift();
             const t0 = Date.now();
@@ -81,15 +102,34 @@ try {
                     // not a failure, so SSG keeps shipping.
                     degraded = true;
                 }
+
+                // The catalog grid hydrates from an async registry.json fetch that
+                // can resolve after blazorReady, leaving a skeleton in the captured
+                // HTML (huge LCP + CLS for real users, who then re-render it client
+                // side). Wait (bounded) for the actual cards so they're baked in.
+                if (route === '/components') {
+                    await page
+                        .waitForFunction(
+                            () => document.querySelector('main img[src*="/preview-cards/"]') !== null,
+                            { timeout: 10000 },
+                        )
+                        .catch(() => {});
+                }
+
                 // Strip Blazor render-boundary markers (`<!--!-->`). HTML parsers
                 // treat <title>...</title> as raw text, so embedded comments are
                 // displayed literally in the browser tab. Safe to remove — the
                 // WASM app re-renders from scratch on hydration and doesn't rely
                 // on these markers.
-                const html = await page.evaluate(() => {
+                let html = await page.evaluate(() => {
                     const raw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
                     return raw.replace(/<!--!-->/g, '');
                 });
+
+                // Inline the registry into the catalog so hydration is skeleton-free.
+                if (route === '/components' && registryInlineScript) {
+                    html = html.replace('</head>', `${registryInlineScript}</head>`);
+                }
 
                 // Root "/" writes to wwwroot/index.html (overwrite the stock
                 // shell); everything else writes to wwwroot/<path>/index.html.

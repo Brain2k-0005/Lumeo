@@ -700,7 +700,7 @@ foreach (var dir in componentDirs)
         ["category"] = category,
         ["subcategory"] = subcategory,
         ["description"] = description,
-        ["thumbnail"] = $"/preview-cards/{ToKebabCase(name)}.png",
+        ["thumbnail"] = $"/preview-cards/{ToKebabCase(name)}.webp",
         ["hasDocsPage"] = hasDocsPage,
         // Resolution order:
         //   1. Explicit componentToPackage override (legacy / cross-cutting cases).

@@ -60,9 +60,11 @@ else
 
                         @* Mobile: large vertical App-Store-style cards. Desktop: same grid as before. *@
                         <div class="hidden lg:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            @foreach (var component in items)
+                            @foreach (var (component, idx) in items.Select((c, i) => (c, i)))
                             {
-                                <CatalogCard Component="@component" />
+                                @* Eager-load the first row of the first category (above the
+                                   fold) so the LCP thumbnail isn't lazy-deprioritised. *@
+                                <CatalogCard Component="@component" Eager="@(_firstCategory == cat && idx < 3)" />
                             }
                         </div>
                         <div class="lg:hidden flex flex-col divide-y divide-border/30 rounded-xl border border-border/40 bg-card overflow-hidden">
@@ -112,12 +114,14 @@ else
     private Dictionary<string, List<RegistryComponent>>? _groups;
     private IReadOnlyList<string> _categoryNames = [];
     private int _total;
+    private string? _firstCategory;
     private HashSet<string> _filters = new(StringComparer.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
         _groups = await Registry.GroupsByCategoryAsync();
         _categoryNames = _groups.Keys.ToList();
+        _firstCategory = _categoryNames.FirstOrDefault();
         _total = _groups.Sum(g => g.Value.Count);
     }
 
