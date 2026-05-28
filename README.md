@@ -1,6 +1,6 @@
 # Lumeo
 
-**149 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
+**163 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
 **163 components · 2,500+ tests** · 14 locales · mobile-first · MIT · .NET 10
 
@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 3.5.0 is on NuGet — Density scale, Splash Kit (Hero / FeatureGrid / CTASection), Theme.Customize builder, OverlayForm**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (all 3.x releases require no migration).
+> **Lumeo 3.5.0 is on NuGet — Density scale, Splash Kit (Hero / FeatureGrid / CTASection), Theme.Customize builder, OverlayForm**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (the 3.0 enum unification is the only breaking change; 3.x → 3.x patches require no migration).
 
 ## What's new in 3.0
 

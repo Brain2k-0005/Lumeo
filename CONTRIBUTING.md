@@ -53,10 +53,15 @@ dotnet build src/Lumeo.Gantt/Lumeo.Gantt.csproj
 # Pack all packages (lockstep — all share one version from Directory.Build.props)
 dotnet pack src/Lumeo/Lumeo.csproj -o ./nupkg
 dotnet pack src/Lumeo.Charts/Lumeo.Charts.csproj -o ./nupkg
+dotnet pack src/Lumeo.CodeEditor/Lumeo.CodeEditor.csproj -o ./nupkg
 dotnet pack src/Lumeo.DataGrid/Lumeo.DataGrid.csproj -o ./nupkg
 dotnet pack src/Lumeo.Editor/Lumeo.Editor.csproj -o ./nupkg
+dotnet pack src/Lumeo.FileViewer/Lumeo.FileViewer.csproj -o ./nupkg
 dotnet pack src/Lumeo.Scheduler/Lumeo.Scheduler.csproj -o ./nupkg
 dotnet pack src/Lumeo.Gantt/Lumeo.Gantt.csproj -o ./nupkg
+dotnet pack src/Lumeo.Motion/Lumeo.Motion.csproj -o ./nupkg
+dotnet pack src/Lumeo.PdfViewer/Lumeo.PdfViewer.csproj -o ./nupkg
+dotnet pack src/Lumeo.Maps/Lumeo.Maps.csproj -o ./nupkg
 
 # Run the docs site
 dotnet run --project docs/Lumeo.Docs/Lumeo.Docs.csproj
