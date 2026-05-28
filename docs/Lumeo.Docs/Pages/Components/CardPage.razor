@@ -107,6 +107,28 @@
             </Card>
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Flat variant" Code="@_flatCode">
+        <Container MaxWidth="sm" Center="false" Padding="">
+            <Stack Gap="2">
+                <Lumeo.Text Size="sm" Color="muted">A borderless, background-free surface. Paired with <code class="font-mono">OnClick</code> it is the natural primitive for clickable list rows — replacing the old <code class="font-mono">Ghost button + p-0</code> workaround.</Lumeo.Text>
+                <Stack Gap="0">
+                    @foreach (var item in _flatRows)
+                    {
+                        <Card Variant="Card.CardVariant.Flat" OnClick="@(() => _flatSelected = item)" Class="p-3">
+                            <Flex Align="center" Justify="between">
+                                <Lumeo.Text Size="sm" Weight="medium">@item</Lumeo.Text>
+                                @if (_flatSelected == item)
+                                {
+                                    <DynamicIcon Name="Check" Class="h-4 w-4 text-primary" />
+                                }
+                            </Flex>
+                        </Card>
+                    }
+                </Stack>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12">
@@ -120,11 +142,12 @@
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <TableRow><TableCell><Kbd>Tab</Kbd></TableCell><TableCell>Move focus to the next interactive element inside the card</TableCell></TableRow>
+                <TableRow><TableCell><Kbd>Tab</Kbd></TableCell><TableCell>Move focus to the next interactive element inside the card (or, for an interactive card, to the card itself)</TableCell></TableRow>
+                <TableRow><TableCell><Kbd>Enter</Kbd> / <Kbd>Space</Kbd></TableCell><TableCell>Activate the card when <code class="font-mono">OnClick</code> is set (the card renders with <code class="font-mono">role="button"</code> and <code class="font-mono">tabindex="0"</code>)</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
-    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">Card is a container component with no built-in keyboard interactions. Focus management depends on the interactive elements placed inside.</Lumeo.Text>
+    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">By default a Card is a plain container with no built-in keyboard interactions — focus management depends on the interactive elements placed inside. When <code class="font-mono">OnClick</code> is set, the Card itself becomes focusable (button role) and responds to Enter/Space.</Lumeo.Text>
 </div>
 
 <!-- API Reference -->
@@ -146,7 +169,10 @@
                     </thead>
                     <tbody class="divide-y divide-border/40">
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary italic text-muted-foreground" colspan="4">No additional parameters beyond Class and AdditionalAttributes. Use sub-components to structure content.</td>
+                            <td class="p-3 font-mono text-xs text-primary">Variant</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Card.CardVariant</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Default</td>
+                            <td class="p-3 text-muted-foreground">Surface style. <code>Default</code> = bordered card with background; <code>Flat</code> = borderless, background-free content surface (pair with <code>OnClick</code> for clickable list rows).</td>
                         </tr>
                                             <tr>
                             <td class="p-3 font-mono text-xs text-primary">OnClick</td>
@@ -240,6 +266,27 @@
 </div>
 
 @code {
+    private List<string> _flatRows = new() { "Profile", "Billing", "Notifications" };
+    private string? _flatSelected = "Billing";
+
+    private string _flatCode = @"@foreach (var item in _rows)
+{
+    <Card Variant=""Card.CardVariant.Flat"" OnClick=""@(() => _selected = item)"" Class=""p-3"">
+        <Flex Align=""center"" Justify=""between"">
+            <Lumeo.Text Size=""sm"" Weight=""medium"">@item</Lumeo.Text>
+            @if (_selected == item)
+            {
+                <Blazicon Svg=""Lucide.Check"" class=""h-4 w-4 text-primary"" />
+            }
+        </Flex>
+    </Card>
+}
+
+@code {
+    private List<string> _rows = new() { ""Profile"", ""Billing"", ""Notifications"" };
+    private string? _selected = ""Billing"";
+}";
+
     private string _defaultCode = @"<Card>
     <CardHeader>
         <Heading Level=""3"" Size=""lg"" Class=""leading-none tracking-tight"">Notifications</Heading>
