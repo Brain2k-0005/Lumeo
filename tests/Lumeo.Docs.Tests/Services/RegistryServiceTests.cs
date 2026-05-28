@@ -22,7 +22,9 @@ public class RegistryServiceTests
         }
         """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://test/") };
-        var svc = new RegistryService(http);
+        // Non-in-process JS runtime: RegistryService skips the inline-registry
+        // path and exercises the HTTP fetch path under test.
+        var svc = new RegistryService(http, new StubJsRuntime());
 
         var groups = await svc.GroupsByCategoryAsync();
 
@@ -38,5 +40,13 @@ public class RegistryServiceTests
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
+    }
+
+    // Minimal IJSRuntime that is NOT IJSInProcessRuntime, so RegistryService's
+    // synchronous inline-registry read is skipped and the fetch path is tested.
+    private sealed class StubJsRuntime : Microsoft.JSInterop.IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => default;
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => default;
     }
 }

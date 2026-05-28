@@ -1,11 +1,15 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.JSInterop;
 
 namespace Lumeo.Docs.Services;
 
-public sealed class RegistryService(HttpClient http)
+public sealed class RegistryService(HttpClient http, IJSRuntime js)
 {
+    private static readonly JsonSerializerOptions JsonOpts =
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     private Registry? _cached;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -15,17 +19,49 @@ public sealed class RegistryService(HttpClient http)
         await _gate.WaitAsync();
         try
         {
-            _cached ??= await http.GetFromJsonAsync<Registry>(
-                "registry.json",
-                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+            if (_cached is not null) return _cached;
+
+            // Prefer registry data inlined into the prerendered catalog HTML.
+            // It's available synchronously, so on hydration the catalog renders
+            // populated on its first pass instead of flashing a skeleton — which
+            // otherwise caused a large layout shift (CLS) when the grid was
+            // replaced and re-rendered. Falls back to fetching /registry.json.
+            _cached = ReadInline();
+            if (_cached is not null) return _cached;
+
+            _cached = await http.GetFromJsonAsync<Registry>("registry.json", JsonOpts)
                 ?? throw new InvalidOperationException("registry.json failed to deserialize.");
-            foreach (var (key, comp) in _cached.Components)
-            {
-                comp.Slug = key;
-            }
+            Hydrate(_cached);
             return _cached;
         }
         finally { _gate.Release(); }
+    }
+
+    private Registry? ReadInline()
+    {
+        try
+        {
+            if (js is not IJSInProcessRuntime ip) return null;
+            var json = ip.Invoke<string?>("lumeo.readInlineRegistry");
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            var registry = JsonSerializer.Deserialize<Registry>(json, JsonOpts);
+            if (registry is null || registry.Components.Count == 0) return null;
+            Hydrate(registry);
+            return registry;
+        }
+        catch
+        {
+            // Any interop/parse failure: fall back to the HTTP fetch path.
+            return null;
+        }
+    }
+
+    private static void Hydrate(Registry registry)
+    {
+        foreach (var (key, comp) in registry.Components)
+        {
+            comp.Slug = key;
+        }
     }
 
     public async Task<Dictionary<string, List<RegistryComponent>>> GroupsByCategoryAsync()

@@ -28,6 +28,19 @@ const wwwroot = resolve(publishDir, 'wwwroot');
 
 console.log(`[prerender] wwwroot = ${wwwroot}`);
 
+// Registry JSON inlined into the catalog's prerendered HTML so RegistryService
+// can read it synchronously on hydration (no async fetch -> no skeleton flash ->
+// no layout shift). `<` is escaped to < so the payload can't break out of
+// the <script> tag. Best-effort: if the file is missing, the catalog falls back
+// to fetching /registry.json as before.
+let registryInlineScript = '';
+try {
+    const registryJson = readFileSync(join(wwwroot, 'registry.json'), 'utf8').replace(/</g, '\\u003c');
+    registryInlineScript = `<script id="lumeo-registry-data" type="application/json">${registryJson}</script>`;
+} catch {
+    console.warn('[prerender] registry.json not found — catalog will fetch it client-side.');
+}
+
 const server = await startServer(wwwroot);
 console.log(`[prerender] local server at ${server.url}`);
 
@@ -108,10 +121,15 @@ try {
                 // displayed literally in the browser tab. Safe to remove — the
                 // WASM app re-renders from scratch on hydration and doesn't rely
                 // on these markers.
-                const html = await page.evaluate(() => {
+                let html = await page.evaluate(() => {
                     const raw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
                     return raw.replace(/<!--!-->/g, '');
                 });
+
+                // Inline the registry into the catalog so hydration is skeleton-free.
+                if (route === '/components' && registryInlineScript) {
+                    html = html.replace('</head>', `${registryInlineScript}</head>`);
+                }
 
                 // Root "/" writes to wwwroot/index.html (overwrite the stock
                 // shell); everything else writes to wwwroot/<path>/index.html.
