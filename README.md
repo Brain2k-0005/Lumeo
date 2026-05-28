@@ -2,7 +2,7 @@
 
 **149 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-**149 components · 2,500+ tests** · 14 locales · mobile-first · MIT · .NET 10
+**163 components · 2,500+ tests** · 14 locales · mobile-first · MIT · .NET 10
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 3.1.0 is on NuGet — AudioPlayer + SignaturePad + PdfViewer + Maps + CodeEditor satellites**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (3.0.x and 3.1.x patches require no migration).
+> **Lumeo 3.5.0 is on NuGet — Density scale, Splash Kit (Hero / FeatureGrid / CTASection), Theme.Customize builder, OverlayForm**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (all 3.x releases require no migration).
 
 ## What's new in 3.0
 
@@ -32,7 +32,7 @@
 
 ## Feature overview
 
-- **149 components** — accessible UI primitives, Blazor WASM & Server
+- **163 components** — accessible UI primitives, Blazor WASM & Server
 - **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`
 - **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`, `Sparkline`
 - **Dashboard tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`, `PickList<T>`
@@ -91,17 +91,18 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="3.1.0" />
+  <PackageReference Include="Lumeo"            Version="3.5.0" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="3.1.0" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="3.1.0" />
-  <PackageReference Include="Lumeo.Editor"    Version="3.1.0" />
-  <PackageReference Include="Lumeo.Scheduler" Version="3.1.0" />
-  <PackageReference Include="Lumeo.Gantt"     Version="3.1.0" />
-  <PackageReference Include="Lumeo.Motion"    Version="3.1.0" />
-  <PackageReference Include="Lumeo.PdfViewer" Version="3.1.0" />
-  <PackageReference Include="Lumeo.Maps"      Version="3.1.0" />
-  <PackageReference Include="Lumeo.CodeEditor" Version="3.1.0" />
+  <PackageReference Include="Lumeo.Charts"    Version="3.5.0" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="3.5.0" />
+  <PackageReference Include="Lumeo.Editor"    Version="3.5.0" />
+  <PackageReference Include="Lumeo.Scheduler" Version="3.5.0" />
+  <PackageReference Include="Lumeo.Gantt"     Version="3.5.0" />
+  <PackageReference Include="Lumeo.Motion"    Version="3.5.0" />
+  <PackageReference Include="Lumeo.PdfViewer" Version="3.5.0" />
+  <PackageReference Include="Lumeo.Maps"      Version="3.5.0" />
+  <PackageReference Include="Lumeo.CodeEditor" Version="3.5.0" />
+  <PackageReference Include="Lumeo.FileViewer" Version="3.5.0" />
 </ItemGroup>
 ```
 

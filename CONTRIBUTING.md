@@ -62,10 +62,12 @@ dotnet pack src/Lumeo.Gantt/Lumeo.Gantt.csproj -o ./nupkg
 dotnet run --project docs/Lumeo.Docs/Lumeo.Docs.csproj
 ```
 
-> **Release model:** All 6 packages (`Lumeo`, `Lumeo.Charts`, `Lumeo.DataGrid`, `Lumeo.Editor`,
-> `Lumeo.Scheduler`, `Lumeo.Gantt`) are versioned and released in lockstep — the canonical
-> version lives in `Directory.Build.props`. The CI publish workflow packs and pushes all 6 in a
-> single job when a GitHub release is published.
+> **Release model:** All NuGet packages (`Lumeo`, `Lumeo.Charts`, `Lumeo.CodeEditor`,
+> `Lumeo.DataGrid`, `Lumeo.Editor`, `Lumeo.FileViewer`, `Lumeo.Scheduler`, `Lumeo.Gantt`,
+> `Lumeo.Motion`, `Lumeo.PdfViewer`, `Lumeo.Maps`) plus the `Lumeo.Cli` / `Lumeo.Templates`
+> tooling and the `@lumeo-ui/mcp-server` npm package are versioned and released in lockstep —
+> the canonical version lives in `Directory.Build.props`. The CI publish workflow packs and
+> pushes them all when a GitHub release is published.
 
 ## Running Tests
 
