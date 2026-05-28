@@ -193,10 +193,13 @@ internal static class TailwindMerge
         if (Is(body, "min-h")) return One("min-h");
         if (Is(body, "max-h")) return One("max-h");
 
-        // --- Inset (superset: inset clears x/y/t/r/b/l; inset-x/y clear sides) ---
-        if (Is(body, "inset-x")) return SuperOf("inset-x", "inset-l", "inset-r");
+        // --- Inset (superset: inset clears x/y/t/r/b/l + logical s/e; inset-x
+        //     clears physical l/r AND logical start/end — mirrors the px → ps/pe
+        //     superset for padding; inset-y clears t/b). Physical left/right stay
+        //     distinct from logical start/end; only inset-x / inset bridge them. ---
+        if (Is(body, "inset-x")) return SuperOf("inset-x", "inset-l", "inset-r", "inset-s", "inset-e");
         if (Is(body, "inset-y")) return SuperOf("inset-y", "inset-t", "inset-b");
-        if (Is(body, "inset")) return Super("inset", "inset-x", "inset-y", "inset-t", "inset-r", "inset-b", "inset-l");
+        if (Is(body, "inset")) return Super("inset", "inset-x", "inset-y", "inset-t", "inset-r", "inset-b", "inset-l", "inset-s", "inset-e");
         if (Is(body, "top")) return One("inset-t");
         if (Is(body, "right")) return One("inset-r");
         if (Is(body, "bottom")) return One("inset-b");
@@ -235,9 +238,14 @@ internal static class TailwindMerge
             return One("border-style");
 
         // --- Border width (per-side) vs border color. The bare `border` token and
-        //     numeric/arbitrary `border-2`, `border-x`, etc. are widths; named
-        //     colors like `border-red-500` are colors. We disambiguate by value. ---
-        if (body == "border") return One("bw");
+        //     numeric/arbitrary `border-2`, `border-[3px]` are ALL-SIDES widths and
+        //     act as a superset: they invalidate every per-side width group
+        //     (bw-x/y/t/r/b/l/s/e). `border-x`/`border-y` are mid-level supersets
+        //     over their two physical sides. Per-side `border-<side>` tokens are
+        //     width unless the value looks like a color (border-b-red-500), in which
+        //     case they map to a distinct per-side color group. Border STYLE and the
+        //     all-sides COLOR (border-red-500) stay in their own groups so width,
+        //     style and color can coexist. We disambiguate width vs color by value. ---
         if (Is(body, "border-x")) return BorderEdge(body, "bw-x", "bw-l", "bw-r", isSuper: true);
         if (Is(body, "border-y")) return BorderEdge(body, "bw-y", "bw-t", "bw-b", isSuper: true);
         if (Is(body, "border-t")) return BorderEdge(body, "bw-t");
@@ -246,11 +254,14 @@ internal static class TailwindMerge
         if (Is(body, "border-l")) return BorderEdge(body, "bw-l");
         if (Is(body, "border-s")) return BorderEdge(body, "bw-s");
         if (Is(body, "border-e")) return BorderEdge(body, "bw-e");
-        if (Is(body, "border"))
+        if (body == "border" || Is(body, "border"))
         {
-            // border-2 / border-[3px] => width; border-red-500 / border-current => color
+            // border / border-2 / border-[3px] => all-sides width (superset);
+            // border-red-500 / border-current / border-[#fff] => all-sides color.
             var v = ValueOf(body, "border");
-            return LooksLikeWidth(v) ? One("bw") : One("border-color");
+            return LooksLikeWidth(v)
+                ? Super("bw", "bw-x", "bw-y", "bw-t", "bw-r", "bw-b", "bw-l", "bw-s", "bw-e")
+                : One("border-color");
         }
 
         // --- Background: distinct CSS properties live in distinct groups so a
@@ -260,10 +271,15 @@ internal static class TailwindMerge
         //     bg-attachment split. ---
         if (Is(body, "bg")) return One(BackgroundGroup(ValueOf(body, "bg")));
 
-        // --- Text: size vs color must coexist (different groups). ---
+        // --- Text: size / color / align / wrap are distinct CSS concerns and must
+        //     coexist (different groups). text-wrap|nowrap|balance|pretty control
+        //     text-wrap; text-sm and the line-height-suffixed text-sm/6 are font
+        //     size; text-left|center|... is alignment; everything else (named/
+        //     arbitrary colors, text-foreground) is the text color. ---
         if (Is(body, "text"))
         {
             var v = ValueOf(body, "text");
+            if (IsTextWrap(v)) return One("text-wrap");
             if (IsTextSize(v)) return One("font-size");
             if (IsAlign(v)) return One("text-align");
             return One("text-color");
@@ -293,8 +309,11 @@ internal static class TailwindMerge
         if (body == "shadow" || Is(body, "shadow"))
         {
             var v = ValueOf(body, "shadow");
-            // shadow color (e.g. shadow-red-500) vs box-shadow size.
-            return LooksLikeColor(v) ? One("shadow-color") : One("shadow");
+            // shadow color (shadow-red-500, shadow-primary/10, shadow-black/50,
+            // shadow-[#fff]/20) vs box-shadow size (shadow / -sm / -md / -lg / -none).
+            // A color may carry an optional /<opacity> suffix; strip it before the
+            // color test (and an arbitrary [#..] is always a color).
+            return LooksLikeColorWithOpacity(v) ? One("shadow-color") : One("shadow");
         }
         if (body == "ring" || Is(body, "ring"))
         {
@@ -426,6 +445,38 @@ internal static class TailwindMerge
         return int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
     }
 
+    /// <summary>
+    /// Like <see cref="LooksLikeColor"/> but tolerates a trailing <c>/&lt;opacity&gt;</c>
+    /// suffix (e.g. <c>primary/10</c>, <c>black/50</c>, <c>[#fff]/20</c>). The '/' is
+    /// only treated as an opacity separator when it sits OUTSIDE any arbitrary
+    /// <c>[...]</c> bracket so slashes inside e.g. <c>[rgb(0_0_0/.5)]</c> aren't split.
+    /// </summary>
+    private static bool LooksLikeColorWithOpacity(string v)
+    {
+        if (v.Length == 0) return false;
+        var slash = TopLevelSlash(v);
+        if (slash >= 0)
+            // A bare token followed by an /<opacity> suffix is the color-with-alpha
+            // form (shadow-primary/10, shadow-black/50) — the suffix only attaches
+            // to colors in Tailwind, so its presence alone marks this as a color.
+            return true;
+        return LooksLikeColor(v);
+    }
+
+    /// <summary>Index of the first '/' not enclosed in <c>[...]</c>, or -1.</summary>
+    private static int TopLevelSlash(string v)
+    {
+        var depth = 0;
+        for (var i = 0; i < v.Length; i++)
+        {
+            var c = v[i];
+            if (c == '[') depth++;
+            else if (c == ']') { if (depth > 0) depth--; }
+            else if (c == '/' && depth == 0) return i;
+        }
+        return -1;
+    }
+
     private static bool LooksLikeColor(string v)
     {
         if (v.Length == 0) return false;
@@ -496,12 +547,22 @@ internal static class TailwindMerge
         return "bg-color";
     }
 
+    private static bool IsTextWrap(string v)
+        => v is "wrap" or "nowrap" or "balance" or "pretty";
+
     private static bool IsTextSize(string v)
-        => v is "xs" or "sm" or "base" or "lg" or "xl" or "2xl" or "3xl" or "4xl" or "5xl"
+    {
+        // Tailwind allows a font-size token to carry a line-height suffix, e.g.
+        // `text-sm/6` or `text-[10px]/7`. Strip the top-level /<lineheight> before
+        // testing the size keyword so it still classifies as the font-size group.
+        var slash = TopLevelSlash(v);
+        if (slash >= 0) v = v[..slash];
+        return v is "xs" or "sm" or "base" or "lg" or "xl" or "2xl" or "3xl" or "4xl" or "5xl"
             or "6xl" or "7xl" or "8xl" or "9xl"
            || (v.StartsWith('[') && (v.Contains("rem", StringComparison.Ordinal)
                 || v.Contains("px", StringComparison.Ordinal) || v.Contains("em", StringComparison.Ordinal)
                 || v.Contains("length:", StringComparison.Ordinal)));
+    }
 
     private static bool IsAlign(string v)
         => v is "left" or "center" or "right" or "justify" or "start" or "end";

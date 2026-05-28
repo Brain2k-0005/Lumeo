@@ -116,6 +116,26 @@ public class CxMergeTests
     public void Merge_TextSize_LastWins()
         => Assert.Equal("text-lg", Cx.Merge("text-sm", "text-lg"));
 
+    // text-wrap is its own group: it coexists with font size and with text color.
+    [Fact]
+    public void Merge_TextSizeAndWrap_Coexist()
+        => Assert.Equal("text-sm text-wrap", Cx.Merge("text-sm", "text-wrap"));
+
+    [Fact]
+    public void Merge_TextColorAndWrap_Coexist()
+        => Assert.Equal("text-red-500 text-wrap", Cx.Merge("text-red-500", "text-wrap"));
+
+    // text-sm/6 (font-size with line-height suffix) is the font-size group, so it
+    // conflicts with text-sm — not with text color.
+    [Fact]
+    public void Merge_TextSizeWithLineHeight_LastWins()
+        => Assert.Equal("text-sm/6", Cx.Merge("text-sm", "text-sm/6"));
+
+    // size vs color stay independent: only the size token is replaced.
+    [Fact]
+    public void Merge_TextSizeReplaced_ColorKept()
+        => Assert.Equal("text-red-500 text-lg", Cx.Merge("text-sm text-red-500", "text-lg"));
+
     // --- Variant prefixes are part of the key ---
 
     [Fact]
@@ -275,6 +295,23 @@ public class CxMergeTests
     public void Merge_BareBorder_IsWidth()
         => Assert.Equal("border-0", Cx.Merge("border", "border-0"));
 
+    // bare border-0 sets all sides' width, so it clears a per-side width token.
+    [Fact]
+    public void Merge_BorderSideWidth_ClearedByAllSides()
+        => Assert.Equal("border-0", Cx.Merge("border-b", "border-0"));
+
+    // border-0 invalidates only width: the per-side color and style survive.
+    [Fact]
+    public void Merge_AllSidesWidth_KeepsColorAndStyle()
+        => Assert.Equal("border-border/40 border-dashed border-0",
+            Cx.Merge("border border-border/40 border-dashed", "border-0"));
+
+    // a later subordinate (border-l-4) refines the border-x superset; both kept
+    // (tailwind-merge: a later subordinate does NOT clear an earlier superset).
+    [Fact]
+    public void Merge_BorderXSuperset_RefinedByLaterSide_BothKept()
+        => Assert.Equal("border-x-2 border-l-4", Cx.Merge("border-x-2", "border-l-4"));
+
     // --- Background: color / image / size are distinct groups ---
 
     [Fact]
@@ -361,6 +398,22 @@ public class CxMergeTests
     public void Merge_Shadow_LastWins()
         => Assert.Equal("shadow-none", Cx.Merge("shadow-lg", "shadow-none"));
 
+    // shadow size (shadow-sm/lg) stays its own group; last wins.
+    [Fact]
+    public void Merge_ShadowSize_LastWins()
+        => Assert.Equal("shadow-lg", Cx.Merge("shadow-sm", "shadow-lg"));
+
+    // a shadow color with /<opacity> suffix is a color, not a size — it coexists
+    // with the box-shadow size group.
+    [Fact]
+    public void Merge_ShadowSizeAndColorWithOpacity_Coexist()
+        => Assert.Equal("shadow-md shadow-primary/10", Cx.Merge("shadow-md", "shadow-primary/10"));
+
+    // two shadow colors conflict; last wins.
+    [Fact]
+    public void Merge_ShadowColor_LastWins()
+        => Assert.Equal("shadow-white/50", Cx.Merge("shadow-black/50", "shadow-white/50"));
+
     [Fact]
     public void Merge_RingWidth_LastWins()
         => Assert.Equal("ring-4", Cx.Merge("ring-2", "ring-4"));
@@ -401,6 +454,21 @@ public class CxMergeTests
     [Fact]
     public void Merge_InsetX_OverridesLeftRight()
         => Assert.Equal("inset-x-0", Cx.Merge("left-2 right-4", "inset-x-0"));
+
+    // inset-x writes inline-start+end, so it supersedes the logical end-* token.
+    [Fact]
+    public void Merge_InsetX_OverridesLogicalEnd()
+        => Assert.Equal("inset-x-0", Cx.Merge("-end-12", "inset-x-0"));
+
+    // inset clears every side including logical start/end.
+    [Fact]
+    public void Merge_Inset_OverridesLogicalStartEnd()
+        => Assert.Equal("inset-0", Cx.Merge("start-2 end-2", "inset-0"));
+
+    // physical left and logical start are different CSS properties; both survive.
+    [Fact]
+    public void Merge_LeftAndStart_BothKept()
+        => Assert.Equal("left-2 start-4", Cx.Merge("left-2", "start-4"));
 
     // --- idempotence / no-conflict ordering ---
 
