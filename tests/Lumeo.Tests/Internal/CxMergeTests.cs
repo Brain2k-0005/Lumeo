@@ -485,6 +485,68 @@ public class CxMergeTests
         Assert.Equal(once, twice);
     }
 
+    // --- Space-between (space-x / space-y) ---
+
+    // DialogHeader uses space-y-1.5; a consumer space-y-0 must win.
+    [Fact]
+    public void Merge_SpaceY_LastWins()
+        => Assert.Equal("space-y-0", Cx.Merge("space-y-1.5", "space-y-0"));
+
+    // space-x and space-y are distinct axes; both survive.
+    [Fact]
+    public void Merge_SpaceXY_Independent()
+        => Assert.Equal("space-x-2 space-y-3", Cx.Merge("space-x-2", "space-y-3"));
+
+    // negative space-x shares the axis group with the positive form.
+    [Fact]
+    public void Merge_NegativeSpaceX_ConflictsWithPositive()
+        => Assert.Equal("space-x-0", Cx.Merge("-space-x-4", "space-x-0"));
+
+    // --- Transforms (translate / scale / rotate / skew) ---
+
+    // ConsentBanner uses -translate-x-1/2; a consumer translate-x-0 must win.
+    [Fact]
+    public void Merge_TranslateX_LastWins()
+        => Assert.Equal("translate-x-0", Cx.Merge("-translate-x-1/2", "translate-x-0"));
+
+    // translate-x and translate-y are distinct axes; both survive.
+    [Fact]
+    public void Merge_TranslateXY_Independent()
+        => Assert.Equal("translate-x-2 translate-y-2", Cx.Merge("translate-x-2", "translate-y-2"));
+
+    [Fact]
+    public void Merge_Scale_LastWins()
+        => Assert.Equal("scale-100", Cx.Merge("scale-95", "scale-100"));
+
+    // both-axes scale is a separate group from per-axis scale-x / scale-y.
+    [Fact]
+    public void Merge_ScaleAndScaleX_Independent()
+        => Assert.Equal("scale-95 scale-x-50", Cx.Merge("scale-95", "scale-x-50"));
+
+    [Fact]
+    public void Merge_Rotate_LastWins()
+        => Assert.Equal("rotate-0", Cx.Merge("rotate-45", "rotate-0"));
+
+    [Fact]
+    public void Merge_SkewXY_Independent()
+        => Assert.Equal("skew-x-3 skew-y-6", Cx.Merge("skew-x-3", "skew-y-6"));
+
+    // --- Shadow: named color (no opacity) is a color, not a size ---
+
+    // Badge default `shadow` + consumer named color: size and color coexist.
+    [Fact]
+    public void Merge_ShadowSizeAndNamedColor_Coexist()
+        => Assert.Equal("shadow-md shadow-primary", Cx.Merge("shadow-md", "shadow-primary"));
+
+    [Fact]
+    public void Merge_BareShadowAndNamedColor_Coexist()
+        => Assert.Equal("shadow shadow-destructive", Cx.Merge("shadow", "shadow-destructive"));
+
+    // two named shadow colors conflict; last wins.
+    [Fact]
+    public void Merge_ShadowNamedColor_LastWins()
+        => Assert.Equal("shadow-black", Cx.Merge("shadow-primary", "shadow-black"));
+
     // --- realistic Lumeo-style usage ---
 
     [Fact]

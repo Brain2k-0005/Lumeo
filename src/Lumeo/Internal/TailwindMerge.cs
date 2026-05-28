@@ -308,12 +308,13 @@ internal static class TailwindMerge
         if (Is(body, "opacity")) return One("opacity");
         if (body == "shadow" || Is(body, "shadow"))
         {
-            var v = ValueOf(body, "shadow");
-            // shadow color (shadow-red-500, shadow-primary/10, shadow-black/50,
-            // shadow-[#fff]/20) vs box-shadow size (shadow / -sm / -md / -lg / -none).
-            // A color may carry an optional /<opacity> suffix; strip it before the
-            // color test (and an arbitrary [#..] is always a color).
-            return LooksLikeColorWithOpacity(v) ? One("shadow-color") : One("shadow");
+            // Box-shadow SIZE is a small closed keyword set (bare `shadow` plus
+            // sm/md/lg/xl/2xl/inner/none). ANY other `shadow-<x>` — a named theme
+            // color (shadow-primary / shadow-destructive), a palette color with or
+            // without /<opacity> (shadow-black, shadow-primary/10), or an arbitrary
+            // [#..] — is a shadow COLOR. Size and color live in distinct groups so
+            // they coexist; size-vs-size and color-vs-color each last-win.
+            return IsShadowSize(body) ? One("shadow") : One("shadow-color");
         }
         if (body == "ring" || Is(body, "ring"))
         {
@@ -367,6 +368,26 @@ internal static class TailwindMerge
         if (Is(body, "place-items")) return One("place-items");
         if (Is(body, "place-content")) return One("place-content");
         if (Is(body, "place-self")) return One("place-self");
+
+        // --- Space-between (space-x / space-y). The negative sign was already
+        //     stripped before classification, so -space-x-* lands here too. Each
+        //     axis is its own group; they never merge with each other. ---
+        if (Is(body, "space-x")) return One("space-x");
+        if (Is(body, "space-y")) return One("space-y");
+
+        // --- Transforms. Each axis/kind is an independent group, matching
+        //     tailwind-merge granularity: translate-x ≠ translate-y; `scale` (both
+        //     axes) is separate from scale-x / scale-y; rotate; skew-x / skew-y.
+        //     Negative signs were stripped above so -translate-* / -rotate-* land
+        //     in the same groups as their positive counterparts. ---
+        if (Is(body, "translate-x")) return One("translate-x");
+        if (Is(body, "translate-y")) return One("translate-y");
+        if (Is(body, "scale-x")) return One("scale-x");
+        if (Is(body, "scale-y")) return One("scale-y");
+        if (Is(body, "scale")) return One("scale");
+        if (Is(body, "rotate")) return One("rotate");
+        if (Is(body, "skew-x")) return One("skew-x");
+        if (Is(body, "skew-y")) return One("skew-y");
 
         return (null, null);
     }
@@ -445,24 +466,6 @@ internal static class TailwindMerge
         return int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
     }
 
-    /// <summary>
-    /// Like <see cref="LooksLikeColor"/> but tolerates a trailing <c>/&lt;opacity&gt;</c>
-    /// suffix (e.g. <c>primary/10</c>, <c>black/50</c>, <c>[#fff]/20</c>). The '/' is
-    /// only treated as an opacity separator when it sits OUTSIDE any arbitrary
-    /// <c>[...]</c> bracket so slashes inside e.g. <c>[rgb(0_0_0/.5)]</c> aren't split.
-    /// </summary>
-    private static bool LooksLikeColorWithOpacity(string v)
-    {
-        if (v.Length == 0) return false;
-        var slash = TopLevelSlash(v);
-        if (slash >= 0)
-            // A bare token followed by an /<opacity> suffix is the color-with-alpha
-            // form (shadow-primary/10, shadow-black/50) — the suffix only attaches
-            // to colors in Tailwind, so its presence alone marks this as a color.
-            return true;
-        return LooksLikeColor(v);
-    }
-
     /// <summary>Index of the first '/' not enclosed in <c>[...]</c>, or -1.</summary>
     private static int TopLevelSlash(string v)
     {
@@ -475,17 +478,6 @@ internal static class TailwindMerge
             else if (c == '/' && depth == 0) return i;
         }
         return -1;
-    }
-
-    private static bool LooksLikeColor(string v)
-    {
-        if (v.Length == 0) return false;
-        if (LooksLikeColorLiteral(v)) return true;
-        // Named palette: word optionally followed by -<number>, or keywords.
-        if (v is "current" or "transparent" or "inherit" or "white" or "black") return true;
-        var dash = v.IndexOf('-');
-        if (dash > 0 && int.TryParse(v[(dash + 1)..], out _)) return true;
-        return false;
     }
 
     private static bool LooksLikeColorLiteral(string v)
@@ -546,6 +538,15 @@ internal static class TailwindMerge
         // Default: a color (palette, transparent/current/inherit, arbitrary [#..]).
         return "bg-color";
     }
+
+    /// <summary>
+    /// True when a <c>shadow-*</c> body names a box-shadow SIZE (the closed
+    /// keyword set). Everything else (named/palette/arbitrary color, with or
+    /// without an <c>/&lt;opacity&gt;</c> suffix) is a shadow color.
+    /// </summary>
+    private static bool IsShadowSize(string body)
+        => body is "shadow" or "shadow-sm" or "shadow-md" or "shadow-lg"
+            or "shadow-xl" or "shadow-2xl" or "shadow-inner" or "shadow-none";
 
     private static bool IsTextWrap(string v)
         => v is "wrap" or "nowrap" or "balance" or "pretty";
