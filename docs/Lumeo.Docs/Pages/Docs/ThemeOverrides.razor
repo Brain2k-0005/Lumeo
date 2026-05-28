@@ -156,6 +156,32 @@
     <Separator Class="my-4" />
 
     <Stack Gap="4">
+        <Heading Level="2">Overriding component classes</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo composes a component's final class list through a tailwind-merge resolver
+            (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Cx.Merge</code>), not a naive
+            string concat. When a utility you pass via
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Class</code> conflicts with one of
+            the component's base utilities, <em>your class wins</em> — and you no longer need
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">!important</code> to make it stick.
+            So <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;Card Class="p-0"&gt;</code> or
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;Button Class="h-12"&gt;</code>
+            just work; the old <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">!p-0</code> /
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">!h-12</code> workarounds are obsolete.
+        </Lumeo.Text>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Conflicts are resolved per utility group — padding, margin, sizing, colors, border-radius, and so
+            on — so overriding <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">p-0</code> replaces
+            only the padding and leaves the component's other base utilities intact. Unknown or custom classes
+            (your own non-Tailwind class names, arbitrary values) are never dropped — they're always kept and
+            appended after the merged set.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_classMergeCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
         <Heading Level="2">Picking the right layer</Heading>
         <div class="overflow-x-auto rounded-lg border border-border/40">
             <Table>
@@ -259,6 +285,16 @@
         </Stack>
     </Card>
 </div>";
+
+    private const string _classMergeCode = @"<!-- Class wins the Tailwind conflict — no ! needed -->
+<Card Class=""p-0"">...</Card>        <!-- removes the card's default padding -->
+<Button Class=""h-12"">Tall</Button>   <!-- replaces the button's default height -->
+
+<!-- per-group: only padding is replaced, sizing/colors stay -->
+<Badge Class=""px-4"">Wide</Badge>
+
+<!-- custom / unknown classes are always kept -->
+<Card Class=""p-0 my-analytics-card"">...</Card>";
 
     private const string _perComponentCode = @"<!-- good: theme-aware utilities -->
 <Button Class=""bg-success text-success-foreground hover:bg-success/90"">Mark complete</Button>
