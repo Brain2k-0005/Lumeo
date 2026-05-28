@@ -9,7 +9,8 @@
         {
             <div class="aspect-[16/9] w-full bg-muted/30 overflow-hidden">
                 <img src="@Component.Thumbnail" alt="@Component.Name preview"
-                     loading="lazy" decoding="async" width="480" height="270"
+                     loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
+                     decoding="async" width="480" height="270"
                      class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
             </div>
         }
@@ -72,6 +73,14 @@ else
 
 @code {
     [Parameter, EditorRequired] public RegistryComponent Component { get; set; } = null!;
+
+    /// <summary>
+    /// Set on the first row of cards (above the fold). Loads the thumbnail
+    /// eagerly with high fetch priority so it isn't deprioritised as the LCP
+    /// element — lazy-loading the LCP image is a known anti-pattern. All other
+    /// cards stay lazy.
+    /// </summary>
+    [Parameter] public bool Eager { get; set; }
 
     /// <summary>
     /// True when the component ships from a satellite package and has a docs page.

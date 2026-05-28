@@ -90,6 +90,19 @@ try {
                     degraded = true;
                 }
 
+                // The catalog grid hydrates from an async registry.json fetch that
+                // can resolve after blazorReady, leaving a skeleton in the captured
+                // HTML (huge LCP + CLS for real users, who then re-render it client
+                // side). Wait (bounded) for the actual cards so they're baked in.
+                if (route === '/components') {
+                    await page
+                        .waitForFunction(
+                            () => document.querySelector('main img[src*="/preview-cards/"]') !== null,
+                            { timeout: 10000 },
+                        )
+                        .catch(() => {});
+                }
+
                 // Strip Blazor render-boundary markers (`<!--!-->`). HTML parsers
                 // treat <title>...</title> as raw text, so embedded comments are
                 // displayed literally in the browser tab. Safe to remove — the
