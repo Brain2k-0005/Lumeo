@@ -71,6 +71,19 @@ window.lumeo.disconnectObserver = function (io) {
     if (io && typeof io.disconnect === 'function') io.disconnect();
 };
 
+// Invoke a .NET method on the next idle period. Used by LazyRender's
+// DeferUntilIdle so heavy, immediately-visible content (the landing-page WebGL
+// map) mounts after the page reaches interactive instead of blocking it.
+// Falls back to a short timeout where requestIdleCallback is unavailable.
+window.lumeo.onIdle = function (dotNetRef, methodName) {
+    const run = () => { try { dotNetRef.invokeMethodAsync(methodName); } catch (_) {} };
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 2000 });
+    } else {
+        setTimeout(run, 200);
+    }
+};
+
 // Page-visibility hook. The docs landing page runs several timers (chart
 // reshuffle 2s, toast bank 11s, tabs/steps rotation). Background tabs keep
 // firing the timers (and HTML5 spec throttles them but doesn't pause them),
