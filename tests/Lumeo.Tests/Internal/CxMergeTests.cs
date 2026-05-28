@@ -740,4 +740,107 @@ public class CxMergeTests
     [Fact]
     public void Merge_FromColor_LastWins()
         => Assert.Equal("from-blue-500", Cx.Merge("from-red-500", "from-blue-500"));
+
+    // ===================================================================
+    // Codex review pass 2: missing groups + classification refinements.
+    // ===================================================================
+
+    // --- Item 1: object-fit vs object-position are distinct groups ---
+
+    // AvatarImage base object-cover + consumer object-contain: last wins (same group).
+    [Fact]
+    public void Merge_ObjectFit_LastWins()
+        => Assert.Equal("object-contain", Cx.Merge("object-cover", "object-contain"));
+
+    // object-fit and object-position are different CSS properties; both survive.
+    [Fact]
+    public void Merge_ObjectFitAndPosition_Coexist()
+        => Assert.Equal("object-cover object-top", Cx.Merge("object-cover", "object-top"));
+
+    [Fact]
+    public void Merge_ObjectPosition_LastWins()
+        => Assert.Equal("object-bottom", Cx.Merge("object-center", "object-bottom"));
+
+    // --- Item 2: whitespace is a single group ---
+
+    // StreamingText base whitespace-pre-wrap + consumer whitespace-nowrap: last wins.
+    [Fact]
+    public void Merge_Whitespace_LastWins()
+        => Assert.Equal("whitespace-nowrap", Cx.Merge("whitespace-pre-wrap", "whitespace-nowrap"));
+
+    [Fact]
+    public void Merge_WhitespaceNormal_OverridesPre()
+        => Assert.Equal("whitespace-normal", Cx.Merge("whitespace-pre", "whitespace-normal"));
+
+    // --- Item 3: shadow-xs / shadow-2xs are SIZE keywords ---
+
+    // base shadow-xs + consumer shadow-none resolve as size (last wins), not as color.
+    [Fact]
+    public void Merge_ShadowXs_AndNone_LastWins()
+        => Assert.Equal("shadow-none", Cx.Merge("shadow-xs", "shadow-none"));
+
+    [Fact]
+    public void Merge_Shadow2xs_AndLg_LastWins()
+        => Assert.Equal("shadow-lg", Cx.Merge("shadow-2xs", "shadow-lg"));
+
+    // shadow-xs (size) still coexists with a shadow color.
+    [Fact]
+    public void Merge_ShadowXsAndColor_Coexist()
+        => Assert.Equal("shadow-xs shadow-primary", Cx.Merge("shadow-xs", "shadow-primary"));
+
+    // --- Item 4: all-side border color supersedes per-side colors ---
+
+    [Fact]
+    public void Merge_AllSideBorderColor_OverridesSideColor()
+        => Assert.Equal("border-blue-500", Cx.Merge("border-l-red-500", "border-blue-500"));
+
+    // but a later side color refines an earlier all-side color; both kept.
+    [Fact]
+    public void Merge_SideColor_RefinesAllSideColor_BothKept()
+        => Assert.Equal("border-blue-500 border-l-red-500",
+            Cx.Merge("border-blue-500", "border-l-red-500"));
+
+    // --- Item 5: all-axis scale resets per-axis scale ---
+
+    [Fact]
+    public void Merge_Scale_OverridesScaleX()
+        => Assert.Equal("scale-100", Cx.Merge("scale-x-50", "scale-100"));
+
+    // a later per-axis scale refines an earlier all-axis scale; both kept.
+    [Fact]
+    public void Merge_ScaleX_RefinesScale_BothKept()
+        => Assert.Equal("scale-100 scale-x-50", Cx.Merge("scale-100", "scale-x-50"));
+
+    // --- Item 6: all-corner reset clears logical radius ---
+
+    [Fact]
+    public void Merge_RoundedNone_OverridesLogicalCorner()
+        => Assert.Equal("rounded-none", Cx.Merge("rounded-s-lg", "rounded-none"));
+
+    [Fact]
+    public void Merge_RoundedNone_OverridesLogicalSubCorner()
+        => Assert.Equal("rounded-none", Cx.Merge("rounded-ss-lg", "rounded-none"));
+
+    // a later logical corner refines an earlier all-corner radius; both kept.
+    [Fact]
+    public void Merge_LogicalCorner_RefinesRounded_BothKept()
+        => Assert.Equal("rounded-md rounded-s-lg", Cx.Merge("rounded-md", "rounded-s-lg"));
+
+    // --- Item 7: shadow-[var(..)] is a box-shadow VALUE, overrides size ---
+
+    [Fact]
+    public void Merge_ShadowArbitraryVar_OverridesSize()
+        => Assert.Equal("shadow-[var(--elevation)]",
+            Cx.Merge("shadow-md", "shadow-[var(--elevation)]"));
+
+    // an explicit [color:..] arbitrary on shadow is still a color (coexists w/ size).
+    [Fact]
+    public void Merge_ShadowArbitraryTypedColor_Coexist()
+        => Assert.Equal("shadow-md shadow-[color:var(--c)]",
+            Cx.Merge("shadow-md", "shadow-[color:var(--c)]"));
+
+    // for COLOR-typed families a bare [var(..)] stays a color (contrast with shadow).
+    [Fact]
+    public void Merge_BgArbitraryVar_IsColor()
+        => Assert.Equal("bg-[var(--c)]", Cx.Merge("bg-red-500", "bg-[var(--c)]"));
 }
