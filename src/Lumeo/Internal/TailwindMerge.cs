@@ -228,7 +228,11 @@ internal static class TailwindMerge
         if (Is(body, "rounded-ee")) return One("rnd-ee");
         if (Is(body, "rounded-es")) return One("rnd-es");
         if (body == "rounded" || Is(body, "rounded"))
-            return Super("rnd", "rnd-t", "rnd-r", "rnd-b", "rnd-l", "rnd-tl", "rnd-tr", "rnd-br", "rnd-bl");
+            // The all-corner reset must clear logical corners (rnd-s/e, rnd-ss/se/ee/es)
+            // in addition to the physical sides/corners.
+            return Super("rnd", "rnd-t", "rnd-r", "rnd-b", "rnd-l",
+                "rnd-tl", "rnd-tr", "rnd-br", "rnd-bl",
+                "rnd-s", "rnd-e", "rnd-ss", "rnd-se", "rnd-ee", "rnd-es");
 
         // --- Table border utilities. border-collapse / border-separate set the
         //     `border-collapse` property; border-spacing-* set `border-spacing`.
@@ -268,9 +272,12 @@ internal static class TailwindMerge
             // border / border-2 / border-[3px] => all-sides width (superset);
             // border-red-500 / border-current / border-[#fff] => all-sides color.
             var v = ValueOf(body, "border");
+            // All-sides color supersedes the per-side color groups (mirrors how the
+            // all-sides width invalidates the per-side width groups).
             return LooksLikeWidth(v)
                 ? Super("bw", "bw-x", "bw-y", "bw-t", "bw-r", "bw-b", "bw-l", "bw-s", "bw-e")
-                : One("border-color");
+                : Super("border-color", "bw-x-color", "bw-y-color", "bw-t-color",
+                    "bw-r-color", "bw-b-color", "bw-l-color", "bw-s-color", "bw-e-color");
         }
 
         // --- Background: distinct CSS properties live in distinct groups so a
@@ -307,6 +314,19 @@ internal static class TailwindMerge
         if (Is(body, "leading")) return One("leading");
         if (Is(body, "tracking")) return One("tracking");
 
+        // --- Object fit vs object position (distinct CSS properties). object-fit
+        //     is a small keyword set; everything else under object-* is a position. ---
+        if (Is(body, "object"))
+        {
+            var v = ValueOf(body, "object");
+            return One(v is "contain" or "cover" or "fill" or "none" or "scale-down"
+                ? "object-fit"
+                : "object-position");
+        }
+
+        // --- Whitespace ---
+        if (Is(body, "whitespace")) return One("whitespace");
+
         // --- Display ---
         if (IsDisplay(body)) return One("display");
 
@@ -333,7 +353,7 @@ internal static class TailwindMerge
             // distinct groups so they coexist; each last-wins within its group.
             var sv = ValueOf(body, "shadow");
             if (sv.StartsWith('['))
-                return One(ArbitraryIsColor(sv) ? "shadow-color" : "shadow");
+                return One(ShadowArbitraryIsColor(sv) ? "shadow-color" : "shadow");
             return IsShadowSize(body) ? One("shadow") : One("shadow-color");
         }
         if (body == "ring" || Is(body, "ring"))
@@ -461,7 +481,8 @@ internal static class TailwindMerge
         if (Is(body, "translate-y")) return One("translate-y");
         if (Is(body, "scale-x")) return One("scale-x");
         if (Is(body, "scale-y")) return One("scale-y");
-        if (Is(body, "scale")) return One("scale");
+        // all-axis scale resets per-axis scale (superset), like px → pl/pr.
+        if (Is(body, "scale")) return Super("scale", "scale-x", "scale-y");
         if (Is(body, "rotate")) return One("rotate");
         if (Is(body, "skew-x")) return One("skew-x");
         if (Is(body, "skew-y")) return One("skew-y");
@@ -606,6 +627,25 @@ internal static class TailwindMerge
     }
 
     /// <summary>
+    /// Decides whether an arbitrary value (<c>[...]</c>) attached to <c>shadow-*</c>
+    /// is a COLOR. Unlike color-typed families (bg/text/border), shadow's arbitrary
+    /// defaults to a box-shadow VALUE: a bare <c>[var(..)]</c> is an elevation value,
+    /// NOT a color. Only an explicit <c>[color:..]</c> hint or a clear color literal
+    /// (<c>[#..]</c>/<c>[rgb(..)]</c>/...) without offset tokens reads as a color.
+    /// </summary>
+    private static bool ShadowArbitraryIsColor(string v)
+    {
+        if (HasColorTypeHint(v)) return true;
+        if (HasLengthTypeHint(v)) return false;
+        // Multi-token (offsets/lengths) value list => a box-shadow value, not a color.
+        if (HasOffsetTokens(v)) return false;
+        // A bare var() is treated as a box-shadow value here (the shadow-specific
+        // difference from ArbitraryIsColor). A whole-value color literal is a color.
+        if (v.StartsWith("[var(", StringComparison.Ordinal)) return false;
+        return LooksLikeColorLiteral(v);
+    }
+
+    /// <summary>
     /// True when an arbitrary value contains multiple space/offset-separated tokens
     /// (Tailwind encodes spaces as '_'), which marks it as a length/offset value
     /// list (e.g. a box-shadow) rather than a single color literal. Underscores
@@ -683,8 +723,8 @@ internal static class TailwindMerge
     /// without an <c>/&lt;opacity&gt;</c> suffix) is a shadow color.
     /// </summary>
     private static bool IsShadowSize(string body)
-        => body is "shadow" or "shadow-sm" or "shadow-md" or "shadow-lg"
-            or "shadow-xl" or "shadow-2xl" or "shadow-inner" or "shadow-none";
+        => body is "shadow" or "shadow-2xs" or "shadow-xs" or "shadow-sm" or "shadow-md"
+            or "shadow-lg" or "shadow-xl" or "shadow-2xl" or "shadow-inner" or "shadow-none";
 
     private static bool IsTextWrap(string v)
         => v is "wrap" or "nowrap" or "balance" or "pretty";
