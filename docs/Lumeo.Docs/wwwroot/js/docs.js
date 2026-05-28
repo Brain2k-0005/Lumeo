@@ -8,6 +8,15 @@ window.lumeo.signalBlazorReady = function () {
     document.documentElement.dataset.blazorReady = 'true';
 };
 
+// True only inside the prerender crawler (set via evaluateOnNewDocument in
+// scripts/prerender/prerender.mjs). Components use this to render below-the-fold,
+// IntersectionObserver-gated content eagerly during prerender — the headless
+// crawler doesn't scroll, so those observers never fire — while keeping the lazy
+// path for real users. Always false at runtime.
+window.lumeo.isPrerender = function () {
+    return !!window.__LUMEO_PRERENDER__;
+};
+
 // Scroll a heading into view from the OnThisPage sidebar. Using a dedicated
 // function instead of eval() avoids CSP issues and keeps interop auditable.
 // Also reflects the section into the URL hash so right-click "copy link"

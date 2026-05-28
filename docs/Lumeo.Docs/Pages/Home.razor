@@ -1137,20 +1137,29 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             catch (JSDisconnectedException) { }
         }
 
-        // Defer the JS-driven constellation init until its section scrolls near
-        // the viewport. It lays out 154 nodes and is well below the fold, so
-        // running it on first render just to (usually) never be seen wastes main-
-        // thread time during the critical load. observeVisibility fires OnVisible
-        // once the section is within 300px of the viewport; its no-IO fallback
-        // (SSR / bUnit) fires immediately, preserving the previous behaviour.
-        if (firstRender && _selfRef is not null && _constellationNodes.Count > 0)
+        // The constellation lays out 154 nodes via JS and sits well below the
+        // fold, so for real users we defer init until its section nears the
+        // viewport — running it on first render just to (usually) never be seen
+        // wastes main-thread time during the critical load.
+        //
+        // Exception: the prerender crawler doesn't scroll, so the
+        // IntersectionObserver would never fire and the constellation would be
+        // missing from the static HTML. There we init eagerly so it's baked in.
+        if (firstRender && _constellationNodes.Count > 0)
         {
             try
             {
-                _constellationObserver = await JS.InvokeAsync<IJSObjectReference?>(
-                    "lumeo.observeVisibility", _constellationRoot, _selfRef, 300);
+                if (await JS.InvokeAsync<bool>("lumeo.isPrerender"))
+                {
+                    await OnVisible();
+                }
+                else if (_selfRef is not null)
+                {
+                    _constellationObserver = await JS.InvokeAsync<IJSObjectReference?>(
+                        "lumeo.observeVisibility", _constellationRoot, _selfRef, 300);
+                }
             }
-            catch (JSException) { /* SSR / prerender — init on next interactive render */ }
+            catch (JSException) { /* SSR — init on next interactive render */ }
             catch (JSDisconnectedException) { }
         }
     }
