@@ -1,0 +1,58 @@
+name: Docs build check
+
+# The docs site (docs/Lumeo.Docs) is NOT in Lumeo.slnx, so the main `ci.yml`
+# build only compiles it transitively via Lumeo.Docs.Tests' ProjectReference.
+# That catches type errors but not the full WASM publish path (static-web-asset
+# pipeline, the GenerateLocalSearchIndex node target, lazy-load manifest, etc.).
+# This workflow runs the real `dotnet publish` so a docs-only change that breaks
+# the published output is caught in the PR instead of only at deploy time.
+#
+# Mirrors the proven setup steps from deploy-cloudflare.yml (dotnet 10 +
+# wasm-tools, node 22, npm installs) but stops at publish — no Puppeteer
+# prerender / OG cards (those belong to the deploy job, not a build gate).
+
+on:
+  pull_request:
+    paths:
+      - 'docs/Lumeo.Docs/**'
+      - 'src/Lumeo/**'
+      - '.github/workflows/docs-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
+      - name: Install npm deps
+        # Root deps power the Tailwind build; docs deps power the
+        # GenerateLocalSearchIndex MSBuild target that runs during publish.
+        run: |
+          npm install --no-audit --no-fund
+          (cd docs/Lumeo.Docs && npm install --no-audit --no-fund)
+
+      - name: Publish Blazor WASM (build verification)
+        run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
