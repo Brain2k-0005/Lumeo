@@ -82,7 +82,7 @@ try {
                     degraded = true;
                 }
 
-                // Step-scroll to the bottom and back so IntersectionObserver-gated
+                // Step-scroll through the page so IntersectionObserver-gated
                 // content renders into the captured HTML. Several below-the-fold
                 // pieces (the landing-page component constellation, LazyRender-
                 // wrapped Map/charts) only mount/init once their section nears the
@@ -92,18 +92,36 @@ try {
                     await page.evaluate(async () => {
                         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                         const step = Math.max(window.innerHeight, 400);
+                        // Walk down so every section crosses the observer threshold.
                         for (let y = 0; y < document.body.scrollHeight; y += step) {
                             window.scrollTo(0, y);
-                            await sleep(60);
+                            await sleep(80);
                         }
+                        // Explicitly bring known lazy hosts into view to be sure their
+                        // observers fire (fast scroll loops can coalesce entries).
+                        document.querySelectorAll(
+                            '.lumeo-constellation-host, [data-lumeo-lazy], .lumeo-map'
+                        ).forEach((el) => el.scrollIntoView({ block: 'center' }));
                         window.scrollTo(0, document.body.scrollHeight);
-                        // Deferred inits round-trip JS->Blazor->JS (e.g. constellation
-                        // OnVisible -> lumeoConstellation.init), so give them margin.
-                        await sleep(500);
-                        window.scrollTo(0, 0);
-                        await sleep(60);
                     });
+
+                    // Wait (bounded) for the constellation to actually populate, rather
+                    // than guessing a fixed delay — its init is a JS->Blazor->JS round
+                    // trip. If it never fires (e.g. no host on this route) the timeout
+                    // is harmless and we capture whatever rendered.
+                    await page
+                        .waitForFunction(
+                            () => {
+                                const host = document.querySelector('.lumeo-constellation-host');
+                                return !host || host.querySelector('svg, canvas');
+                            },
+                            { timeout: 4000 },
+                        )
+                        .catch(() => {});
+
+                    await page.evaluate(() => window.scrollTo(0, 0));
                 } catch { /* scroll is an enhancement; capture whatever rendered */ }
+
 
                 // Strip Blazor render-boundary markers (`<!--!-->`). HTML parsers
                 // treat <title>...</title> as raw text, so embedded comments are
