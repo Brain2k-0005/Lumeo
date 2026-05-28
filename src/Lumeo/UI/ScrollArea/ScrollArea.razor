@@ -6,8 +6,21 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Adds a 4px inline gutter (<c>-mx-1 px-1</c>, net-zero layout)
+    /// so a focusable control's focus ring isn't clipped at the left/right
+    /// edge. Per CSS spec <c>overflow-auto</c> on one axis promotes the other
+    /// to <c>auto</c> too, so a full-width <c>&lt;Input&gt;</c> flush against
+    /// the scroll box loses its box-shadow ring on that edge. Opt-in (default
+    /// false) because the negative margin makes the element 4px wider per side
+    /// — only enable when the scroll area holds focusable controls (forms,
+    /// menus), not when it wraps edge-aligned content like a table.</summary>
+    [Parameter] public bool FocusRingGutter { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("relative overflow-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30", Class);
+    private const string Base = "relative overflow-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30";
+
+    private string CssClass => Cx.Merge(Base, Cx.When(FocusRingGutter, "-mx-1 px-1"), Class);
 }
