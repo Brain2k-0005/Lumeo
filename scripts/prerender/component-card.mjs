@@ -33,7 +33,9 @@ export async function renderCard(browser, { name, category, description }, outPa
     const page = await browser.newPage();
     await page.setViewport({ width: 480, height: 270, deviceScaleFactor: 2 });
     await page.setContent(cardHtml({ name, category, description }), { waitUntil: 'load' });
-    const buf = await page.screenshot({ type: 'png', omitBackground: false });
+    // WebP at q82 is ~6-8x smaller than the equivalent PNG for these flat,
+    // gradient-heavy cards with no perceptible loss at catalog display size.
+    const buf = await page.screenshot({ type: 'webp', quality: 82, omitBackground: false });
     writeFileSync(outPath, buf);
     await page.close();
 }

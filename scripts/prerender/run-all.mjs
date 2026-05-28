@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reads src/Lumeo/registry/registry.json, renders one PNG per component into
+// Reads src/Lumeo/registry/registry.json, renders one WebP per component into
 // docs/Lumeo.Docs/wwwroot/preview-cards/. Parallelizes 4–8 at a time
 // (env-overridable via PRERENDER_CONCURRENCY).
 import puppeteer from 'puppeteer';
@@ -34,7 +34,7 @@ let done = 0;
 
 async function worker(slice) {
     for (const [slug, comp] of slice) {
-        const outPath = join(outDir, `${slug}.png`);
+        const outPath = join(outDir, `${slug}.webp`);
         try {
             await renderCard(browser, {
                 name: comp.name,

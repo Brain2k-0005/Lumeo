@@ -8,6 +8,25 @@ window.lumeo.signalBlazorReady = function () {
     document.documentElement.dataset.blazorReady = 'true';
 };
 
+// True only inside the prerender crawler (set via evaluateOnNewDocument in
+// scripts/prerender/prerender.mjs). Components use this to render below-the-fold,
+// IntersectionObserver-gated content eagerly during prerender — the headless
+// crawler doesn't scroll, so those observers never fire — while keeping the lazy
+// path for real users. Always false at runtime.
+window.lumeo.isPrerender = function () {
+    return !!window.__LUMEO_PRERENDER__;
+};
+
+// Returns the registry JSON inlined into the catalog's prerendered HTML
+// (<script id="lumeo-registry-data">), or null. RegistryService reads this
+// synchronously on hydration so the catalog renders populated on its first
+// pass — no skeleton swap, no layout shift. Null on client-side navigation
+// (the script only exists in the prerendered /components document).
+window.lumeo.readInlineRegistry = function () {
+    var el = document.getElementById('lumeo-registry-data');
+    return el ? el.textContent : null;
+};
+
 // Scroll a heading into view from the OnThisPage sidebar. Using a dedicated
 // function instead of eval() avoids CSP issues and keeps interop auditable.
 // Also reflects the section into the URL hash so right-click "copy link"
