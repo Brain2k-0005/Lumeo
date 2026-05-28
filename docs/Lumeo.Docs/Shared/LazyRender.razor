@@ -40,16 +40,6 @@ else
     /// <summary>How far outside the viewport (px) to begin mounting. Default 200.</summary>
     [Parameter] public int RootMarginPx { get; set; } = 200;
 
-    /// <summary>
-    /// When true, mounting is additionally deferred to the next idle period
-    /// (requestIdleCallback) after the element becomes visible. Use for heavy,
-    /// above-the-fold content (e.g. a WebGL map) whose observer fires immediately
-    /// on load: it keeps the expensive mount work out of the critical load window
-    /// so the page reaches interactive first. Has no effect once visible if the
-    /// browser is already idle.
-    /// </summary>
-    [Parameter] public bool DeferUntilIdle { get; set; }
-
     [Parameter] public string? Class { get; set; }
 
     private ElementReference _placeholder;
@@ -79,33 +69,6 @@ else
 
     [JSInvokable]
     public void OnVisible()
-    {
-        if (DeferUntilIdle)
-        {
-            // Hand off to an idle callback so the heavy mount doesn't run in the
-            // critical load window. Fire-and-forget; OnIdleMount does the mount.
-            _ = ScheduleIdleMountAsync();
-            return;
-        }
-        _mounted = true;
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ScheduleIdleMountAsync()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("lumeo.onIdle", _selfRef, nameof(OnIdleMount));
-        }
-        catch
-        {
-            // No idle helper (older shell) — mount now rather than never.
-            await InvokeAsync(() => { _mounted = true; StateHasChanged(); });
-        }
-    }
-
-    [JSInvokable]
-    public void OnIdleMount()
     {
         _mounted = true;
         _ = InvokeAsync(StateHasChanged);
