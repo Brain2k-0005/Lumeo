@@ -156,6 +156,9 @@ function toComponentMarkdown(c: ApiComponent): string {
   ];
   if (c.enums.length) sections.push("## Enums", "", enumRows, "");
   if (c.events.length) sections.push("## Events", "", eventRows, "");
+  if (c.gotchas?.length) {
+    sections.push("## Gotchas", "", c.gotchas.map((g) => `- ${g}`).join("\n"), "");
+  }
   if (Object.keys(c.subComponents).length) sections.push("## Sub-components", "", subRows, "");
   if (example) sections.push("## Example", "", "```razor", example, "```", "");
   if (filesBlock) sections.push("## Source files", "", filesBlock, "");
