@@ -38,6 +38,13 @@
     [Parameter] public RenderFragment? RightIcon { get; set; }
     [Parameter] public ButtonVariant Variant { get; set; } = ButtonVariant.Default;
     [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Default;
+    /// <summary>Per-button density override. When null, the button inherits
+    /// from any ancestor <see cref="DensityScope"/>; if neither is set,
+    /// behaviour matches the historical <c>Comfortable</c> default. Only
+    /// padding / row-height shifts between values — text size + radius
+    /// are governed by <see cref="Size"/>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public bool FullWidth { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
@@ -109,14 +116,35 @@
         _ => ""
     };
 
-    private string SizeClasses => Size switch
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    private string SizeClasses
     {
-        ButtonSize.Default => "h-9 px-4 py-2",
-        ButtonSize.Sm => "h-8 rounded-md px-3 text-xs",
-        ButtonSize.Lg => "h-10 rounded-md px-8",
-        ButtonSize.Icon => "h-9 w-9",
-        _ => ""
-    };
+        get
+        {
+            var (height, pad, padIcon) = (Size, EffectiveDensity) switch
+            {
+                (ButtonSize.Sm, Lumeo.Density.Compact)    => ("h-7",  "px-2.5",  "h-7 w-7"),
+                (ButtonSize.Sm, Lumeo.Density.Spacious)   => ("h-9",  "px-4",    "h-9 w-9"),
+                (ButtonSize.Sm, _)                        => ("h-8",  "px-3",    "h-8 w-8"),
+                (ButtonSize.Lg, Lumeo.Density.Compact)    => ("h-9",  "px-6",    "h-9 w-9"),
+                (ButtonSize.Lg, Lumeo.Density.Spacious)   => ("h-12", "px-10",   "h-12 w-12"),
+                (ButtonSize.Lg, _)                        => ("h-10", "px-8",    "h-10 w-10"),
+                (ButtonSize.Default, Lumeo.Density.Compact)  => ("h-8",  "px-3",  "h-8 w-8"),
+                (ButtonSize.Default, Lumeo.Density.Spacious) => ("h-11", "px-6 py-2.5", "h-11 w-11"),
+                (ButtonSize.Default, _)                      => ("h-9",  "px-4 py-2",   "h-9 w-9"),
+                (ButtonSize.Icon, Lumeo.Density.Compact)  => ("h-8",  "",       "h-8 w-8"),
+                (ButtonSize.Icon, Lumeo.Density.Spacious) => ("h-11", "",       "h-11 w-11"),
+                (ButtonSize.Icon, _)                      => ("h-9",  "",       "h-9 w-9"),
+                _ => ("", "", "")
+            };
+            var textClass = Size == ButtonSize.Sm ? " text-xs" : "";
+            var radiusClass = Size is ButtonSize.Sm or ButtonSize.Lg ? " rounded-md" : "";
+            return Size == ButtonSize.Icon
+                ? padIcon + radiusClass
+                : $"{height} {pad}{textClass}{radiusClass}";
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

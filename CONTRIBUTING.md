@@ -123,6 +123,48 @@ Overlay components (modals, drawers, popovers, etc.) must:
 - Implement `IAsyncDisposable` for cleanup.
 - Handle `JSDisconnectedException` in cleanup methods.
 
+### `@bind-Value` convention (#87.3)
+
+Every two-way-bindable input MUST expose the `Value` + `ValueChanged`
+pair so consumers can write `<MyInput @bind-Value="_model.Field" />`
+without learning per-input variations. Concretely:
+
+- Parameter name: `Value` (not `Text`, `Selection`, `Number`).
+- Event callback: `EventCallback<T> ValueChanged` typed to the same `T`.
+- Fire `ValueChanged` on the SAME edit boundary the user expects:
+  - **Text-like inputs** (Input, Textarea, NumberInput): on every keystroke
+    so live validation works. If debouncing is desirable, expose a
+    `DebounceMs` parameter rather than swallowing keystrokes.
+  - **Picker inputs** (Select, Combobox, DatePicker, ColorPicker): on
+    selection commit (item click, date pick, color confirm) — NOT on
+    intermediate hover/keyboard navigation.
+  - **Toggle inputs** (Checkbox, Switch, RadioGroup): on the change event.
+- If a non-string value needs a converter, expose the convention via an
+  analyzer-friendly parameter (e.g. `Format` / `Culture`); never silently
+  parse with the invariant culture.
+- Internal field that holds the in-flight buffer (before commit) is
+  named `_pending` or `_buffer`, never `Value` itself — `Value` is the
+  consumer's source of truth.
+
+### Per-component "gotchas" metadata (#87.5)
+
+When a component has non-obvious default behaviour, surface it in the MCP /
+skill registry so AI-assisted consumers don't trip over it. This is a live,
+supported convention — `Lumeo.RegistryGen` extracts it automatically.
+
+- Author one-line callouts as `<gotcha>…</gotcha>` anywhere in the `.razor`
+  file — typically inside the leading `@* … *@` comment block (e.g.
+  `<gotcha>SheetContent has no inner scroll container by default — wrap a
+  long body in flex-1 overflow-y-auto, or use OverlayForm.</gotcha>`),
+  keeping the source of truth in the `.razor` file.
+- Match the line `<gotcha>...</gotcha>` exactly; the inner text is extracted
+  and trimmed. Content may span multiple lines (the matcher is singleline).
+- `Lumeo.RegistryGen` lifts every gotcha into a `gotchas[]` array on the
+  component's `registry.json` entry and its `components-api.json` entry
+  (empty array when a component declares none). The
+  `sync-mcp-registry.yml` workflow regenerates both on push to `master`, so
+  don't hand-edit the JSON — just author the `<gotcha>` comment.
+
 ## Pull Request Guidelines
 
 - Keep PRs focused — one feature or fix per PR.

@@ -2,7 +2,10 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div class="relative">
-    <Blazicon Svg="Lucide.Search" class="absolute start-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+    @* top-1/2 + -translate-y-1/2 keeps the icon centred across all density
+       heights (h-8 / h-9 / h-10) instead of the fixed top-2.5 that only
+       centred the historical 36px comfortable input. *@
+    <Blazicon Svg="Lucide.Search" class="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
     <input id="@Context.InputId"
            type="text"
            role="combobox"
@@ -22,11 +25,21 @@
 
 @code {
     [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"flex h-9 w-full rounded-md border {(Context.Invalid ? "border-destructive" : "border-input")} bg-transparent py-2 ps-8 pe-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none {(Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : "")} {Class}".Trim();
+    // Height + vertical padding track the ambient DensityScope; Comfortable
+    // reproduces the historical `h-9 py-2`.
+    private string SizeClasses => Density switch
+    {
+        Lumeo.Density.Compact => "h-8 py-1.5",
+        Lumeo.Density.Spacious => "h-10 py-2.5",
+        _ => "h-9 py-2"
+    };
+
+    private string CssClass => $"flex {SizeClasses} w-full rounded-md border {(Context.Invalid ? "border-destructive" : "border-input")} bg-transparent ps-8 pe-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none {(Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : "")} {Class}".Trim();
 
     private async Task HandleInput(ChangeEventArgs e)
     {

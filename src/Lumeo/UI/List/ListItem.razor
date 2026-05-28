@@ -1,11 +1,19 @@
 @namespace Lumeo
 
 @{
-    var paddingClass = Context?.Size switch
+    // Row padding keyed on List Size x ambient DensityScope; Comfortable
+    // reproduces the historical per-Size padding verbatim.
+    var paddingClass = (Context?.Size ?? Lumeo.Size.Md, Density ?? Lumeo.Density.Comfortable) switch
     {
-        Lumeo.Size.Sm => "px-3 py-2",
-        Lumeo.Size.Lg => "px-5 py-4",
-        _ => "px-4 py-3"
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "px-2.5 py-1.5",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "px-4 py-3",
+        (Lumeo.Size.Sm, _)                      => "px-3 py-2",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "px-4 py-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "px-6 py-5",
+        (Lumeo.Size.Lg, _)                      => "px-5 py-4",
+        (_, Lumeo.Density.Compact)              => "px-3 py-2",
+        (_, Lumeo.Density.Spacious)             => "px-5 py-4",
+        _                                       => "px-4 py-3"
     };
     var hoverClass = Context?.Hoverable == true ? "hover:bg-accent/50 transition-colors" : "";
     var clickableClass = (OnClick.HasDelegate || !string.IsNullOrEmpty(Href)) ? "cursor-pointer" : "";
@@ -71,6 +79,7 @@ else
 
 @code {
     [CascadingParameter] public List.ListContext? Context { get; set; }
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Leading { get; set; }

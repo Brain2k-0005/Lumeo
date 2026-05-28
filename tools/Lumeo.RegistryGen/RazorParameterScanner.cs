@@ -47,6 +47,7 @@ public static class RazorParameterScanner
         EventInfo[] Events,
         EnumInfo[] Enums,
         RecordInfo[] Records,
+        string[] Gotchas,
         bool ParseFailed,
         string? ParseError);
 
@@ -65,6 +66,13 @@ public static class RazorParameterScanner
     private static readonly Regex ImplementsRegex = new(
         @"^\s*@implements\s+([^\r\n]+)",
         RegexOptions.Compiled | RegexOptions.Multiline);
+
+    // Per-component "gotcha" callouts (#87.5): any <gotcha>...</gotcha> in the
+    // .razor file (typically inside the leading @* ... *@ comment block).
+    // Singleline so multi-word / wrapped content matches across newlines.
+    private static readonly Regex GotchaRegex = new(
+        @"<gotcha>(.*?)</gotcha>",
+        RegexOptions.Compiled | RegexOptions.Singleline);
 
     /// <summary>
     /// Parse a single .razor file. Always returns a schema (with ParseFailed=true on failure).
@@ -86,6 +94,7 @@ public static class RazorParameterScanner
                 Events: Array.Empty<EventInfo>(),
                 Enums: Array.Empty<EnumInfo>(),
                 Records: Array.Empty<RecordInfo>(),
+                Gotchas: Array.Empty<string>(),
                 ParseFailed: true,
                 ParseError: $"read failed: {ex.Message}");
         }
@@ -96,6 +105,11 @@ public static class RazorParameterScanner
             .Select(m => m.Groups[1].Value.Trim())
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var gotchas = GotchaRegex.Matches(text)
+            .Select(m => m.Groups[1].Value.Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
             .ToArray();
 
         var codeBlocks = ExtractCodeBlocks(text);
@@ -112,6 +126,7 @@ public static class RazorParameterScanner
                 Events: Array.Empty<EventInfo>(),
                 Enums: Array.Empty<EnumInfo>(),
                 Records: Array.Empty<RecordInfo>(),
+                Gotchas: gotchas,
                 ParseFailed: false,
                 ParseError: null);
         }
@@ -218,7 +233,7 @@ public static class RazorParameterScanner
 
         if (!anyClassRecovered)
         {
-            return Failed(razorPath, componentName, ns, inherits, implementsList,
+            return Failed(razorPath, componentName, ns, inherits, implementsList, gotchas,
                 "no class declaration recovered from any @code block");
         }
 
@@ -232,11 +247,12 @@ public static class RazorParameterScanner
             Events: events.ToArray(),
             Enums: enums.ToArray(),
             Records: records.ToArray(),
+            Gotchas: gotchas,
             ParseFailed: false,
             ParseError: null);
     }
 
-    private static RazorFileSchema Failed(string razorPath, string componentName, string? ns, string? inherits, string[] implementsList, string error)
+    private static RazorFileSchema Failed(string razorPath, string componentName, string? ns, string? inherits, string[] implementsList, string[] gotchas, string error)
         => new(
             FileName: Path.GetFileName(razorPath),
             ComponentName: componentName,
@@ -247,6 +263,7 @@ public static class RazorParameterScanner
             Events: Array.Empty<EventInfo>(),
             Enums: Array.Empty<EnumInfo>(),
             Records: Array.Empty<RecordInfo>(),
+            Gotchas: gotchas,
             ParseFailed: true,
             ParseError: error);
 

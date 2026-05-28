@@ -178,12 +178,29 @@ else
 
     private string EffectivePlaceholder => Placeholder ?? L["TimePicker.Placeholder"];
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Per-picker density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only the trigger height +
+    /// horizontal padding shift between values.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
 
-    private string CssClass => $"group flex h-9 items-center rounded-md border {(EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input")} bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Trigger height + horizontal padding track density; Comfortable
+    // reproduces the historical `h-9 px-3`.
+    private string SizeClasses => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "h-8 px-2.5 py-1",
+        Lumeo.Density.Spacious => "h-10 px-4 py-2.5",
+        _ => "h-9 px-3 py-2"
+    };
+
+    private string CssClass => $"group flex {SizeClasses} items-center rounded-md border {(EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input")} bg-transparent text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 {Class}".Trim();
 
     private string FormatTime(TimeSpan time)
     {

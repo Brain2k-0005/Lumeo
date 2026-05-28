@@ -31,6 +31,12 @@
     [Parameter] public ChipVariant Variant { get; set; } = ChipVariant.Default;
     [Parameter] public string? Color { get; set; }
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+    /// <summary>Per-chip density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only the padding shifts — text
+    /// size + radius stay governed by <see cref="Size"/>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public bool Closable { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public bool Clickable { get; set; }
@@ -68,12 +74,32 @@
         Cx.When(Disabled, "opacity-50 pointer-events-none cursor-not-allowed"),
         Class);
 
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Text + radius stay keyed on Size; only the padding varies with density.
+    // Comfortable reproduces the historical per-Size padding verbatim.
     private string SizeClass => Size switch
     {
-        Lumeo.Size.Xxs => "text-[10px] px-1.5 py-0 rounded",
-        Lumeo.Size.Sm => "text-xs px-2 py-0.5 rounded-md",
-        Lumeo.Size.Lg => "text-sm px-3 py-1 rounded-lg",
-        _ => "text-sm px-2.5 py-0.5 rounded-md"
+        Lumeo.Size.Xxs => $"text-[10px] {PadClass} rounded",
+        Lumeo.Size.Sm => $"text-xs {PadClass} rounded-md",
+        Lumeo.Size.Lg => $"text-sm {PadClass} rounded-lg",
+        _ => $"text-sm {PadClass} rounded-md"
+    };
+
+    private string PadClass => (Size, EffectiveDensity) switch
+    {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-1 py-0",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-2 py-0.5",
+        (Lumeo.Size.Xxs, _)                      => "px-1.5 py-0",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "px-1.5 py-0",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "px-2.5 py-1",
+        (Lumeo.Size.Sm, _)                       => "px-2 py-0.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "px-2.5 py-0.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "px-4 py-1.5",
+        (Lumeo.Size.Lg, _)                       => "px-3 py-1",
+        (_, Lumeo.Density.Compact)               => "px-2 py-0",
+        (_, Lumeo.Density.Spacious)              => "px-3 py-1",
+        _                                        => "px-2.5 py-0.5"
     };
 
     private string VariantClass => Variant switch

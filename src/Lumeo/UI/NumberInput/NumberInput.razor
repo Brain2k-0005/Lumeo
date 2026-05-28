@@ -13,13 +13,13 @@
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     <button type="button"
-            class="@($"inline-flex h-9 w-9 items-center justify-center rounded-l-md border border-r-0 {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
+            class="@($"inline-flex {ControlSizeClass} items-center justify-center rounded-l-md border border-r-0 {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
             disabled="@(Disabled || IsAtMin)"
             @onclick="Decrement"
             aria-label="@L["NumberInput.Decrease"]">
         <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
     </button>
-    <div class="@($"relative inline-flex items-center h-9 border {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-background")">
+    <div class="@($"relative inline-flex items-center {HeightClass} border {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-background")">
         @if (!string.IsNullOrEmpty(Prefix))
         {
             <span class="pl-2 text-sm text-muted-foreground select-none">@Prefix</span>
@@ -30,7 +30,7 @@
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                aria-label="@EffectiveAriaLabel"
-               class="h-9 w-20 bg-transparent @(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1") text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+               class="@($"{HeightClass} w-20 bg-transparent {(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1")} text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none")"
                value="@DisplayValue"
                disabled="@Disabled"
                min="@Min"
@@ -46,7 +46,7 @@
         }
     </div>
     <button type="button"
-            class="@($"inline-flex h-9 w-9 items-center justify-center rounded-r-md border border-l-0 {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
+            class="@($"inline-flex {ControlSizeClass} items-center justify-center rounded-r-md border border-l-0 {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
             disabled="@(Disabled || IsAtMax)"
             @onclick="Increment"
             aria-label="@L["NumberInput.Increase"]">
@@ -103,10 +103,34 @@
     /// See <c>Input.AutoFocus</c> for why the HTML <c>autofocus</c> attribute
     /// doesn't work in Blazor WASM.</summary>
     [Parameter] public bool AutoFocus { get; set; }
+    /// <summary>Per-control density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only the control height shifts
+    /// between values.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private ElementReference _inputRef;
+
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Height tracks density; Comfortable reproduces the historical h-9.
+    private string HeightClass => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "h-8",
+        Lumeo.Density.Spacious => "h-10",
+        _ => "h-9"
+    };
+
+    // Stepper buttons stay square so the +/- glyphs remain centred.
+    private string ControlSizeClass => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "h-8 w-8",
+        Lumeo.Density.Spacious => "h-10 w-10",
+        _ => "h-9 w-9"
+    };
 
     /// <summary>The underlying number &lt;input&gt; element.</summary>
     public ElementReference Element => _inputRef;
