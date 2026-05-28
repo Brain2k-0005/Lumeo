@@ -129,6 +129,19 @@ public static class ComponentsApiEmitter
             components[name] = entry;
         }
 
+        // Service-layer API — the public consumer-facing surface that lives in
+        // plain C# (OverlayService, ThemeBuilder, IResponsiveService, global
+        // enums, …). Indexed so AI agents can discover it the same way they
+        // discover .razor components. Only when we know where the repo is.
+        object[] services = Array.Empty<object>();
+        int serviceCount = 0;
+        if (repoRoot is not null)
+        {
+            var serviceTypes = ScanServices(repoRoot, logger);
+            serviceCount = serviceTypes.Count;
+            services = serviceTypes.Select(SerializeService).ToArray();
+        }
+
         // Theme tokens + patterns — only when we know where the repo is.
         object[] themeTokens = Array.Empty<object>();
         object[] patterns = Array.Empty<object>();
@@ -159,10 +172,12 @@ public static class ComponentsApiEmitter
                 ["totalParameters"] = totalParams,
                 ["totalEnums"] = totalEnums,
                 ["totalRecords"] = totalRecords,
+                ["serviceCount"] = serviceCount,
                 ["thinFallbacks"] = thinFallbacks.Select(t => new { name = t.Name, reason = t.Reason }).ToArray(),
             },
             ["themeTokens"] = themeTokens,
             ["patterns"] = patterns,
+            ["services"] = services,
             ["components"] = components,
         };
 
@@ -175,9 +190,92 @@ public static class ComponentsApiEmitter
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllText(outputPath, json, new UTF8Encoding(false));
 
-        logger.WriteLine($"[components-api] Wrote {components.Count} components, {totalParams} params, {totalEnums} enums, {totalRecords} records, {thinFallbacks.Count} thin fallbacks → {outputPath}");
+        logger.WriteLine($"[components-api] Wrote {components.Count} components, {totalParams} params, {totalEnums} enums, {totalRecords} records, {serviceCount} services, {thinFallbacks.Count} thin fallbacks → {outputPath}");
         return components.Count;
     }
+
+    /// <summary>
+    /// Scan the curated set of service-layer C# source files for their public,
+    /// consumer-facing API. The file → allowed-type-name map is hand-maintained
+    /// here because these live outside the auto-discovered UI directories. A
+    /// missing file or a parse failure is logged and skipped (fail-soft), never
+    /// fatal — matching the Razor-scan contract.
+    /// </summary>
+    private static IReadOnlyList<ServiceApiScanner.ServiceType> ScanServices(string repoRoot, TextWriter logger)
+    {
+        string Core(params string[] parts) => Path.Combine(new[] { repoRoot, "src", "Lumeo" }.Concat(parts).ToArray());
+
+        // Each entry: (relative C# file, allowed type names | null = all public types).
+        var sources = new (string Path, string[]? TypeFilter)[]
+        {
+            (Core("Services", "OverlayService.cs"), new[]
+            {
+                "OverlayService", "IOverlayService", "OverlayOptions", "SheetOverlayOptions",
+                "DialogOverlayOptions", "DrawerOverlayOptions", "AlertDialogOptions",
+                "OverlayResult", "OverlayParameters", "OverlayType", "SheetSize",
+            }),
+            (Core("Services", "IResponsiveService.cs"), new[]
+            {
+                "IResponsiveService", "Breakpoint", "ViewportInfo",
+            }),
+            (Core("Services", "ThemeService.cs"), new[]
+            {
+                "ThemeService", "ThemeMode", "ThemeSchemeInfo",
+            }),
+            (Core("Services", "IThemeService.cs"), new[]
+            {
+                "IThemeService", "LayoutDirection",
+            }),
+            (Core("Services", "Theming", "ThemeBuilder.cs"), new[]
+            {
+                "ThemeBuilder", "Theme",
+            }),
+            (Core("Services", "ComponentInteropService.cs"), new[]
+            {
+                "ComponentInteropService",
+            }),
+            (Core("Services", "IComponentInteropService.cs"), new[]
+            {
+                "IComponentInteropService",
+            }),
+            // Root global enums (each in its own src/Lumeo/*.cs).
+            (Core("Size.cs"), new[] { "Size" }),
+            (Core("Density.cs"), new[] { "Density" }),
+            (Core("Side.cs"), new[] { "Side" }),
+            (Core("Align.cs"), new[] { "Align" }),
+            (Core("Orientation.cs"), new[] { "Orientation" }),
+        };
+
+        return ServiceApiScanner.ScanFiles(sources, logger);
+    }
+
+    private static Dictionary<string, object?> SerializeService(ServiceApiScanner.ServiceType s)
+        => new()
+        {
+            ["name"] = s.Name,
+            ["kind"] = s.Kind,
+            ["namespace"] = s.Namespace,
+            ["summary"] = s.Summary,
+            ["properties"] = s.Properties.Select(p => (object)new
+            {
+                name = p.Name,
+                type = p.Type,
+                @default = p.Default,
+                summary = p.Summary,
+            }).ToArray(),
+            ["methods"] = s.Methods.Select(m => (object)new
+            {
+                name = m.Name,
+                returnType = m.ReturnType,
+                signature = m.Signature,
+                summary = m.Summary,
+            }).ToArray(),
+            ["enumValues"] = s.EnumValues.Select(e => (object)new
+            {
+                name = e.Name,
+                summary = e.Summary,
+            }).ToArray(),
+        };
 
     private static Dictionary<string, object?> SerializeSchema(RazorParameterScanner.RazorFileSchema s)
         => new()

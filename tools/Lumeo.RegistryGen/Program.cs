@@ -317,6 +317,16 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Label"] = "Utility",
     ["ThemeSwitcher"] = "Utility",
     ["ThemeToggle"] = "Utility",
+    ["DensityScope"] = "Utility",
+    // Forms / actions (3.3–3.5 additions)
+    ["ConfirmButton"] = "Forms",
+    ["UploadTrigger"] = "Forms",
+    ["OverlayForm"] = "Forms",
+    // Marketing / landing-page primitives (3.4 Splash Kit)
+    ["Hero"] = "Marketing",
+    ["FeatureGrid"] = "Marketing",
+    ["FeatureItem"] = "Marketing",
+    ["CTASection"] = "Marketing",
 };
 
 // One-line descriptions (hand-written-ish, name-based).

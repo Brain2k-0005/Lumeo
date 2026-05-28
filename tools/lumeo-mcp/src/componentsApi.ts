@@ -81,6 +81,40 @@ export interface ApiComponent {
   parseError: string | null;
 }
 
+export interface ApiServiceProperty {
+  name: string;
+  type: string;
+  default: string | null;
+  summary: string | null;
+}
+
+export interface ApiServiceMethod {
+  name: string;
+  returnType: string;
+  signature: string;
+  summary: string | null;
+}
+
+export interface ApiServiceEnumValue {
+  name: string;
+  summary: string | null;
+}
+
+/**
+ * A public, consumer-facing service-layer type: a service class, options
+ * record, interface, global enum, or static entry-point class. Mirrors the
+ * shape emitted by `ServiceApiScanner` in `tools/Lumeo.RegistryGen`.
+ */
+export interface ApiService {
+  name: string;
+  kind: "class" | "record" | "interface" | "enum" | "staticClass";
+  namespace: string | null;
+  summary: string | null;
+  properties: ApiServiceProperty[];
+  methods: ApiServiceMethod[];
+  enumValues: ApiServiceEnumValue[];
+}
+
 export interface ApiThemeToken {
   token: string;
   cssVar: string;
@@ -101,10 +135,12 @@ export interface ApiDocument {
     totalParameters: number;
     totalEnums: number;
     totalRecords: number;
+    serviceCount?: number;
     thinFallbacks: { name: string; reason: string }[];
   };
   themeTokens?: ApiThemeToken[];
   patterns?: ApiPattern[];
+  services?: ApiService[];
   components: Record<string, ApiComponent>;
 }
 
