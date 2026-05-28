@@ -287,6 +287,9 @@ function searchServices(query: string): ApiService[] {
       if (s.enumValues.some((e) => e.name.toLowerCase() === needle)) score += 20;
       if (s.properties.some((p) => p.name.toLowerCase() === needle)) score += 10;
       if (s.methods.some((m) => m.name.toLowerCase() === needle)) score += 10;
+      // Events too — so an event-only query (ViewportChanged, OnThemeChanged,
+      // OnShow, OnClose) surfaces the owning service/interface.
+      if (s.events.some((e) => e.name.toLowerCase() === needle)) score += 10;
       return { s, score };
     })
     .filter((x) => x.score > 0)
