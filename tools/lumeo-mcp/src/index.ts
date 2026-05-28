@@ -156,8 +156,16 @@ function toComponentMarkdown(c: ApiComponent): string {
   ];
   if (c.enums.length) sections.push("## Enums", "", enumRows, "");
   if (c.events.length) sections.push("## Events", "", eventRows, "");
-  if (c.gotchas?.length) {
-    sections.push("## Gotchas", "", c.gotchas.map((g) => `- ${g}`).join("\n"), "");
+  // Aggregate gotchas from the root component AND its sub-components — a
+  // gotcha is often declared on a sub-component (e.g. SheetContent carries
+  // the Sheet gotcha), so the root resource must surface those too.
+  const gotchaLines = [
+    ...(c.gotchas ?? []).map((g) => `- ${g}`),
+    ...Object.values(c.subComponents).flatMap((s) =>
+      (s.gotchas ?? []).map((g) => `- **${s.componentName}**: ${g}`)),
+  ];
+  if (gotchaLines.length) {
+    sections.push("## Gotchas", "", gotchaLines.join("\n"), "");
   }
   if (Object.keys(c.subComponents).length) sections.push("## Sub-components", "", subRows, "");
   if (example) sections.push("## Example", "", "```razor", example, "```", "");
