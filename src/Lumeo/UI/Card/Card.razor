@@ -42,6 +42,12 @@ else
     /// </summary>
     [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;
 
+    /// <summary>Surface style. <c>Default</c> is the bordered, shadowed card.
+    /// <c>Flat</c> drops the border + card background — a content-only surface
+    /// that (with <see cref="OnClick"/>) is the natural primitive for clickable
+    /// list rows, replacing the <c>Ghost button + !p-0</c> workaround.</summary>
+    [Parameter] public CardVariant Variant { get; set; } = CardVariant.Default;
+
     /// <summary>Per-card density override. Tightens internal padding when
     /// rendered inside dense layouts (DataGrid row, dashboard tile grid).
     /// Falls back to ancestor <see cref="DensityScope"/> or
@@ -65,8 +71,16 @@ else
 
     private Lumeo.Density? EffectiveDensity => Density ?? InheritedDensity;
 
-    private string CssClass => Cx.Join(
-        "rounded-lg border border-border/40 bg-card text-card-foreground",
+    private string SurfaceClass => Variant switch
+    {
+        // Flat: no border / card bg / shadow — a content-only surface. Keeps
+        // the rounded corners so the hover/focus ring still reads as a row.
+        CardVariant.Flat => "rounded-lg text-card-foreground",
+        _ => "rounded-lg border border-border/40 bg-card text-card-foreground",
+    };
+
+    private string CssClass => Cx.Merge(
+        SurfaceClass,
         Cx.When(IsInteractive, "cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:bg-accent/30"),
         IsInteractive ? PressEffectClass : null,
         Class);
@@ -91,4 +105,6 @@ else
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }
+
+    public enum CardVariant { Default, Flat }
 }
