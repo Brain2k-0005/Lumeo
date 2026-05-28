@@ -429,7 +429,10 @@ public class SheetTests : IAsyncLifetime
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
 
-        Assert.Contains("bottom-0", cls);
+        // inset-y-0 sets both top:0 and bottom:0, so it supersedes the
+        // redundant bottom-0 (Cx.Merge drops it). Assert inset-y-0, which is
+        // what actually anchors the full-screen sheet.
+        Assert.Contains("inset-y-0", cls);
         Assert.Contains("h-full", cls);
         Assert.Contains("max-h-full", cls);
     }
@@ -441,7 +444,8 @@ public class SheetTests : IAsyncLifetime
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
 
-        Assert.Contains("top-0", cls);
+        // inset-y-0 supersedes the redundant top-0 (see Bottom test).
+        Assert.Contains("inset-y-0", cls);
         Assert.Contains("h-full", cls);
         Assert.Contains("max-h-full", cls);
     }
