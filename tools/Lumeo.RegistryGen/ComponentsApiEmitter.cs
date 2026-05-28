@@ -210,9 +210,14 @@ public static class ComponentsApiEmitter
         {
             (Core("Services", "OverlayService.cs"), new[]
             {
-                "OverlayService", "IOverlayService", "OverlayOptions", "SheetOverlayOptions",
+                "OverlayService", "OverlayOptions", "SheetOverlayOptions",
                 "DialogOverlayOptions", "DrawerOverlayOptions", "AlertDialogOptions",
                 "OverlayResult", "OverlayParameters", "OverlayType", "SheetSize",
+            }),
+            // IOverlayService lives in its own file, not OverlayService.cs.
+            (Core("Services", "IOverlayService.cs"), new[]
+            {
+                "IOverlayService",
             }),
             (Core("Services", "IResponsiveService.cs"), new[]
             {
@@ -269,6 +274,12 @@ public static class ComponentsApiEmitter
                 returnType = m.ReturnType,
                 signature = m.Signature,
                 summary = m.Summary,
+            }).ToArray(),
+            ["events"] = s.Events.Select(e => (object)new
+            {
+                name = e.Name,
+                type = e.Type,
+                summary = e.Summary,
             }).ToArray(),
             ["enumValues"] = s.EnumValues.Select(e => (object)new
             {

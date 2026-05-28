@@ -242,6 +242,9 @@ function toServiceMarkdown(s: ApiService): string {
   const enumRows = s.enumValues
     .map((e) => `- **${e.name}**${e.summary ? ` — ${e.summary}` : ""}`)
     .join("\n");
+  const eventRows = s.events
+    .map((e) => `- **${e.name}** \`${e.type}\`${e.summary ? ` — ${e.summary}` : ""}`)
+    .join("\n");
 
   const sections = [
     `# ${s.name}`,
@@ -264,6 +267,7 @@ function toServiceMarkdown(s: ApiService): string {
     );
   }
   if (s.methods.length) sections.push("## Methods", "", methodRows, "");
+  if (s.events.length) sections.push("## Events", "", eventRows, "");
   return sections.join("\n");
 }
 
@@ -692,12 +696,19 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     }
     case "lumeo_search": {
       const query = typeof a.query === "string" ? a.query : "";
-      const componentResults = searchCatalog(query).map((c) => ({ resultType: "component", ...toListPayload(c) }));
-      const serviceResults = searchServices(query).map((s) => ({ resultType: "service", ...toServiceListPayload(s) }));
+      // Flat array (the original lumeo_search shape) so existing clients that
+      // iterate the result list keep working. Component matches come first;
+      // service matches are appended. Each item carries a `resultType`
+      // discriminator ("component" | "service") for clients that want to
+      // distinguish — a harmless extra field for those that don't.
+      const results = [
+        ...searchCatalog(query).map((c) => ({ resultType: "component", ...toListPayload(c) })),
+        ...searchServices(query).map((s) => ({ resultType: "service", ...toServiceListPayload(s) })),
+      ];
       return {
         content: [{
           type: "text",
-          text: JSON.stringify({ components: componentResults, services: serviceResults }, null, 2),
+          text: JSON.stringify(results, null, 2),
         }],
       };
     }

@@ -100,6 +100,12 @@ export interface ApiServiceEnumValue {
   summary: string | null;
 }
 
+export interface ApiServiceEvent {
+  name: string;
+  type: string;
+  summary: string | null;
+}
+
 /**
  * A public, consumer-facing service-layer type: a service class, options
  * record, interface, global enum, or static entry-point class. Mirrors the
@@ -112,6 +118,7 @@ export interface ApiService {
   summary: string | null;
   properties: ApiServiceProperty[];
   methods: ApiServiceMethod[];
+  events: ApiServiceEvent[];
   enumValues: ApiServiceEnumValue[];
 }
 

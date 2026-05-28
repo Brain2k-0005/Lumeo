@@ -36,6 +36,11 @@ public static class ServiceApiScanner
         string Name,
         string? Summary);
 
+    public sealed record ServiceEvent(
+        string Name,
+        string Type,
+        string? Summary);
+
     public sealed record ServiceType(
         string Name,
         string Kind, // class | record | interface | enum | staticClass
@@ -43,7 +48,14 @@ public static class ServiceApiScanner
         string? Summary,
         ServiceProperty[] Properties,
         ServiceMethod[] Methods,
-        ServiceEnumValue[] EnumValues);
+        ServiceEvent[] Events,
+        ServiceEnumValue[] EnumValues)
+    {
+        /// <summary>Base type name as written in source (e.g. "OverlayOptions"),
+        /// or null when none / framework-only. Used to merge inherited members
+        /// from another scanned type within the same batch. Not serialized.</summary>
+        public string? BaseTypeName { get; init; }
+    }
 
     /// <summary>
     /// Parse a single C# source file and return every public type declared in
@@ -107,6 +119,7 @@ public static class ServiceApiScanner
                         Summary: summary,
                         Properties: Array.Empty<ServiceProperty>(),
                         Methods: Array.Empty<ServiceMethod>(),
+                        Events: Array.Empty<ServiceEvent>(),
                         EnumValues: en.Members
                             .Select(m => new ServiceEnumValue(m.Identifier.Text, ExtractXmlSummary(m.GetLeadingTrivia())))
                             .ToArray()));
@@ -120,7 +133,9 @@ public static class ServiceApiScanner
                         Summary: summary,
                         Properties: CollectProperties(rec).ToArray(),
                         Methods: CollectMethods(rec).ToArray(),
-                        EnumValues: Array.Empty<ServiceEnumValue>()));
+                        Events: CollectEvents(rec).ToArray(),
+                        EnumValues: Array.Empty<ServiceEnumValue>())
+                    { BaseTypeName = ResolveBaseTypeName(rec) });
                     break;
 
                 case InterfaceDeclarationSyntax iface:
@@ -131,7 +146,9 @@ public static class ServiceApiScanner
                         Summary: summary,
                         Properties: CollectProperties(iface).ToArray(),
                         Methods: CollectMethods(iface).ToArray(),
-                        EnumValues: Array.Empty<ServiceEnumValue>()));
+                        Events: CollectEvents(iface).ToArray(),
+                        EnumValues: Array.Empty<ServiceEnumValue>())
+                    { BaseTypeName = ResolveBaseTypeName(iface) });
                     break;
 
                 case ClassDeclarationSyntax cls:
@@ -143,7 +160,9 @@ public static class ServiceApiScanner
                         Summary: summary,
                         Properties: CollectProperties(cls).ToArray(),
                         Methods: CollectMethods(cls).ToArray(),
-                        EnumValues: Array.Empty<ServiceEnumValue>()));
+                        Events: CollectEvents(cls).ToArray(),
+                        EnumValues: Array.Empty<ServiceEnumValue>())
+                    { BaseTypeName = ResolveBaseTypeName(cls) });
                     break;
             }
         }
@@ -185,7 +204,55 @@ public static class ServiceApiScanner
             }
         }
 
-        return all.OrderBy(t => t.Name, StringComparer.Ordinal).ToArray();
+        // Merge inherited members: a derived options record (e.g.
+        // SheetOverlayOptions : OverlayOptions) declares no members of its own,
+        // so resolve its base chain within THIS scanned batch and fold the
+        // base's properties + events in (base-first, then own; dedupe by name).
+        // Only types present in the scan are resolved — framework bases are
+        // left untouched.
+        var byName = all.ToDictionary(t => t.Name, StringComparer.Ordinal);
+        var merged = all.Select(t => MergeInherited(t, byName)).ToList();
+
+        return merged.OrderBy(t => t.Name, StringComparer.Ordinal).ToArray();
+    }
+
+    /// <summary>
+    /// Walk <paramref name="type"/>'s base chain (limited to types present in
+    /// <paramref name="byName"/>) and prepend each base's properties and events,
+    /// most-derived overriding less-derived by name. A small visited set guards
+    /// against cyclic or self-referential base lists.
+    /// </summary>
+    private static ServiceType MergeInherited(
+        ServiceType type,
+        IReadOnlyDictionary<string, ServiceType> byName)
+    {
+        if (type.BaseTypeName is null) return type;
+
+        var props = new List<ServiceProperty>(type.Properties);
+        var events = new List<ServiceEvent>(type.Events);
+        var ownPropNames = new HashSet<string>(type.Properties.Select(p => p.Name), StringComparer.Ordinal);
+        var ownEventNames = new HashSet<string>(type.Events.Select(e => e.Name), StringComparer.Ordinal);
+        var visited = new HashSet<string>(StringComparer.Ordinal) { type.Name };
+
+        var baseName = type.BaseTypeName;
+        while (baseName is not null
+            && visited.Add(baseName)
+            && byName.TryGetValue(baseName, out var baseType))
+        {
+            // Base members come first; skip any already provided by a more
+            // derived type so overrides win.
+            foreach (var p in baseType.Properties)
+            {
+                if (ownPropNames.Add(p.Name)) props.Insert(0, p);
+            }
+            foreach (var e in baseType.Events)
+            {
+                if (ownEventNames.Add(e.Name)) events.Insert(0, e);
+            }
+            baseName = baseType.BaseTypeName;
+        }
+
+        return type with { Properties = props.ToArray(), Events = events.ToArray() };
     }
 
     // --- Member collection ------------------------------------------------
@@ -193,6 +260,10 @@ public static class ServiceApiScanner
     private static IEnumerable<ServiceProperty> CollectProperties(TypeDeclarationSyntax type)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        // Interface members carry no explicit accessibility modifier and are
+        // public by default; class/record members must be explicitly public.
+        var isInterface = type is InterfaceDeclarationSyntax;
 
         // Positional record parameters surface as properties.
         if (type is RecordDeclarationSyntax { ParameterList: { } pl })
@@ -211,7 +282,7 @@ public static class ServiceApiScanner
 
         foreach (var prop in type.Members.OfType<PropertyDeclarationSyntax>())
         {
-            if (!IsPublic(prop)) continue;
+            if (!isInterface && !IsPublic(prop)) continue;
             var pname = prop.Identifier.Text;
             if (!seen.Add(pname)) continue;
             yield return new ServiceProperty(
@@ -225,7 +296,7 @@ public static class ServiceApiScanner
         // (e.g. OverlayService.BaseZIndex / Step) — surface them as properties.
         foreach (var field in type.Members.OfType<FieldDeclarationSyntax>())
         {
-            if (!IsPublic(field)) continue;
+            if (!isInterface && !IsPublic(field)) continue;
             foreach (var v in field.Declaration.Variables)
             {
                 var fname = v.Identifier.Text;
@@ -265,6 +336,59 @@ public static class ServiceApiScanner
                 Signature: signature,
                 Summary: ExtractXmlSummary(method.GetLeadingTrivia()));
         }
+    }
+
+    private static IEnumerable<ServiceEvent> CollectEvents(TypeDeclarationSyntax type)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        // Interface members are public by default; class/record events must be
+        // explicitly public to count as consumer-facing API.
+        var isInterface = type is InterfaceDeclarationSyntax;
+
+        // `event Action? OnShow;` — one declaration may hold several names.
+        foreach (var evt in type.Members.OfType<EventFieldDeclarationSyntax>())
+        {
+            if (!isInterface && !IsPublic(evt)) continue;
+            var typeName = evt.Declaration.Type.ToString();
+            var summary = ExtractXmlSummary(evt.GetLeadingTrivia());
+            foreach (var v in evt.Declaration.Variables)
+            {
+                var ename = v.Identifier.Text;
+                if (!seen.Add(ename)) continue;
+                yield return new ServiceEvent(ename, typeName, summary);
+            }
+        }
+
+        // `event Action OnShow { add { } remove { } }` — explicit accessors.
+        foreach (var evt in type.Members.OfType<EventDeclarationSyntax>())
+        {
+            if (!isInterface && !IsPublic(evt)) continue;
+            var ename = evt.Identifier.Text;
+            if (!seen.Add(ename)) continue;
+            yield return new ServiceEvent(
+                ename,
+                evt.Type.ToString(),
+                ExtractXmlSummary(evt.GetLeadingTrivia()));
+        }
+    }
+
+    /// <summary>
+    /// First base type listed in a declaration's base list, stripped of any
+    /// generic argument list. Returns null when there is no base list. The
+    /// caller decides whether the name matches another scanned type before
+    /// merging inherited members — implemented interfaces are listed here too,
+    /// but those simply won't resolve to a scanned <em>base record/class</em>.
+    /// </summary>
+    private static string? ResolveBaseTypeName(TypeDeclarationSyntax type)
+    {
+        var first = type.BaseList?.Types.FirstOrDefault()?.Type;
+        return first switch
+        {
+            SimpleNameSyntax simple => simple.Identifier.Text,
+            QualifiedNameSyntax qualified => qualified.Right.Identifier.Text,
+            _ => null,
+        };
     }
 
     private static string FormatParameter(ParameterSyntax p)
