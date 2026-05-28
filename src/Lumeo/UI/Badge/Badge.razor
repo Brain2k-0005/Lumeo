@@ -39,6 +39,14 @@
     [Parameter] public RenderFragment? IconContent { get; set; }
 
     [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Default;
+    /// <summary>Badge size — drives text size + padding. <c>Md</c> (default)
+    /// reproduces the historical badge metrics. Use <c>Sm</c> for dense
+    /// inline tags / counts and <c>Lg</c> for prominent status chips — avoids
+    /// consumer-side <c>!px-*</c> / <c>!h-*</c> / <c>!text-*</c> overrides.</summary>
+    [Parameter] public BadgeSize Size { get; set; } = BadgeSize.Md;
+    /// <summary>Pill shape (<c>rounded-full</c>) instead of the default
+    /// <c>rounded-md</c> — for count/quota chips.</summary>
+    [Parameter] public bool Pill { get; set; }
     [Parameter] public bool IsDot { get; set; }
     [Parameter] public bool Pulse { get; set; }
     [Parameter] public bool IsRemovable { get; set; }
@@ -69,21 +77,36 @@
         get
         {
             var animatedClass = Animated ? "lumeo-badge-animated" : null;
+            var shape = Pill ? "rounded-full" : "rounded-md";
             return IsDot
                 ? Cx.Join("inline-flex h-2 w-2 rounded-full p-0", VariantClasses, animatedClass, Class)
-                : Cx.Join(BaseClasses, PadClass, VariantClasses, animatedClass, Class);
+                : Cx.Join(BaseClasses, shape, TextClass, PadClass, VariantClasses, animatedClass, Class);
         }
     }
 
-    // Padding tracks density; Comfortable reproduces the historical px-2.5 py-0.5.
-    private string PadClass => EffectiveDensity switch
+    private string TextClass => Size switch
     {
-        Lumeo.Density.Compact => "px-2 py-0.5",
-        Lumeo.Density.Spacious => "px-3 py-1",
-        _ => "px-2.5 py-0.5"
+        BadgeSize.Sm => "text-[10px]",
+        BadgeSize.Lg => "text-sm",
+        _ => "text-xs"
     };
 
-    private const string BaseClasses = "inline-flex items-center rounded-md border text-xs font-semibold transition-colors focus:outline-none";
+    // Padding tracks Size first, then Density nudges within the size.
+    // (Md, Comfortable) reproduces the historical px-2.5 py-0.5.
+    private string PadClass => (Size, EffectiveDensity) switch
+    {
+        (BadgeSize.Sm, Lumeo.Density.Compact)  => "px-1.5 py-0",
+        (BadgeSize.Sm, Lumeo.Density.Spacious) => "px-2.5 py-0.5",
+        (BadgeSize.Sm, _)                      => "px-2 py-0",
+        (BadgeSize.Lg, Lumeo.Density.Compact)  => "px-2.5 py-0.5",
+        (BadgeSize.Lg, Lumeo.Density.Spacious) => "px-4 py-1.5",
+        (BadgeSize.Lg, _)                      => "px-3 py-1",
+        (_, Lumeo.Density.Compact)             => "px-2 py-0.5",
+        (_, Lumeo.Density.Spacious)            => "px-3 py-1",
+        _                                      => "px-2.5 py-0.5"
+    };
+
+    private const string BaseClasses = "inline-flex items-center border font-semibold transition-colors focus:outline-none";
 
     private string DotClasses => VariantClasses;
 
@@ -116,4 +139,5 @@
     }
 
     public enum BadgeVariant { Default, Secondary, Destructive, Outline, Success, Warning }
+    public enum BadgeSize { Sm, Md, Lg }
 }
