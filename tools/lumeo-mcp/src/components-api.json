@@ -1,12 +1,13 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
-  "version": "3.5.0",
-  "generated": "2026-05-28T07:32:29.8999902Z",
+  "version": "3.5.1",
+  "generated": "2026-05-28T09:52:44.6043798Z",
   "stats": {
     "componentCount": 163,
     "totalParameters": 3892,
     "totalEnums": 69,
     "totalRecords": 63,
+    "serviceCount": 32,
     "thinFallbacks": []
   },
   "themeTokens": [
@@ -422,6 +423,3088 @@
           "code": "<!-- Task Tracker — Lumeo pattern -->\n<div class=\"flex flex-col rounded-[var(--radius-lg)] border border-border/40 overflow-hidden\" style=\"min-height:640px;\">\n\n  <!-- Top bar: breadcrumb, view tabs, search, filter, new issue -->\n  <div class=\"flex items-center gap-3 px-4 py-3 border-b border-border/40\">\n    <Lumeo.Text Class=\"font-semibold text-foreground\">Lumeo</Lumeo.Text>\n    <DynamicIcon Name=\"ChevronRight\" Class=\"h-3.5 w-3.5 text-muted-foreground\" />\n    <Lumeo.Text Class=\"text-muted-foreground\">Q2 Sprint</Lumeo.Text>\n\n    <Tabs ActiveValue=\"@_activeView\" ActiveValueChanged=\"@(v => _activeView = v)\" Class=\"flex-1\">\n      <TabsList Class=\"h-8\">\n        <TabsTrigger Value=\"all\">All</TabsTrigger>\n        <TabsTrigger Value=\"mine\">My Issues</TabsTrigger>\n        <TabsTrigger Value=\"active\">Active</TabsTrigger>\n        <TabsTrigger Value=\"backlog\">Backlog</TabsTrigger>\n        <TabsTrigger Value=\"done\">Done</TabsTrigger>\n      </TabsList>\n    </Tabs>\n\n    <Input placeholder=\"Search issues…\" Class=\"h-8 w-44\" />\n    <Button Size=\"Button.ButtonSize.Sm\" Class=\"h-8\"><DynamicIcon Name=\"Plus\" Class=\"h-4 w-4\" /> New issue</Button>\n  </div>\n\n  <!-- Body: nav rail + task list -->\n  <div class=\"flex flex-1 overflow-hidden\">\n\n    <!-- Left nav rail w-56 -->\n    <div class=\"w-56 shrink-0 border-r border-border/40 bg-muted/10 flex flex-col p-2 gap-0.5\">\n      @foreach (var n in _navRail) {\n        <button class=\"flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent/40\">\n          <DynamicIcon Name=\"@n.Icon\" Class=\"h-4 w-4 shrink-0\" /> @n.Label\n          @if (n.Count > 0) { <span class=\"ml-auto text-xs\">@n.Count</span> }\n        </button>\n      }\n    </div>\n\n    <!-- Task list, grouped by Status -->\n    <div class=\"flex-1 overflow-auto\">\n      @foreach (var group in VisibleTasks.GroupBy(t => t.Status).OrderBy(g => StatusOrder(g.Key))) {\n        <!-- Group header with collapse toggle -->\n        <div class=\"flex items-center gap-2.5 px-4 py-2.5 border-b bg-muted/20 sticky top-0\">\n          <DynamicIcon Name=\"ChevronDown\" Class=\"h-3.5 w-3.5 text-muted-foreground\" />\n          <DynamicIcon Name=\"@StatusIcon(group.Key)\" Class=\"h-4 w-4\" />\n          <Lumeo.Text Class=\"text-sm font-semibold\">@group.Key</Lumeo.Text>\n          <Badge Variant=\"Badge.BadgeVariant.Secondary\">@group.Count()</Badge>\n        </div>\n        <!-- Task rows -->\n        @foreach (var t in group) {\n          <div class=\"group flex items-center gap-3 px-4 py-2.5 border-b hover:bg-accent/30 transition-colors cursor-pointer\">\n            <Checkbox Class=\"opacity-0 group-hover:opacity-100\" />\n            <DynamicIcon Name=\"@PriorityIcon(t.Priority)\" Class=\"@PriorityColor(t.Priority)\" />\n            <Lumeo.Text Class=\"text-xs text-muted-foreground font-mono w-16\">@t.Id</Lumeo.Text>\n            <Lumeo.Text Class=\"flex-1 text-sm font-medium truncate\">@t.Title</Lumeo.Text>\n            @foreach (var label in t.Labels.Take(3)) { <Badge Variant=\"Badge.BadgeVariant.Secondary\">@label</Badge> }\n            <Avatar Size=\"Lumeo.Size.Sm\"><AvatarFallback>@t.AssigneeInitials</AvatarFallback></Avatar>\n            <Lumeo.Text Class=\"text-xs text-muted-foreground\">@t.DueDate.ToString(\"MMM d\")</Lumeo.Text>\n          </div>\n        }\n      }\n    </div>\n  </div>\n\n  <!-- Bulk action bar (shown when _selectedTasks.Count > 0) -->\n  @if (_selectedTasks.Count > 0) {\n    <div class=\"flex items-center gap-3 px-4 py-3 border-t border-border/40 bg-accent/20\">\n      <Lumeo.Text Class=\"text-sm font-medium\">@_selectedTasks.Count selected</Lumeo.Text>\n      <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\" @onclick=\"@(() => _selectedTasks.Clear())\">Deselect</Button>\n      <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\">Assign to</Button>\n      <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\">Set priority</Button>\n      <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\" Class=\"text-destructive ml-auto\">Delete</Button>\n    </div>\n  }\n</div>"
         }
       ]
+    }
+  ],
+  "services": [
+    {
+      "name": "AlertDialogOptions",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "Title",
+          "type": "string",
+          "default": "\"Are you sure?\"",
+          "summary": null
+        },
+        {
+          "name": "Description",
+          "type": "string?",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "ConfirmText",
+          "type": "string",
+          "default": "\"Continue\"",
+          "summary": null
+        },
+        {
+          "name": "CancelText",
+          "type": "string",
+          "default": "\"Cancel\"",
+          "summary": null
+        },
+        {
+          "name": "IsDestructive",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "Align",
+      "kind": "enum",
+      "namespace": "Lumeo",
+      "summary": "Alignment along an axis (e.g. how a popover content aligns relative to its trigger along the perpendicular axis). Replaces the per-component *Align enums (PopoverAlign, DropdownMenuAlign, HoverCardAlign) in 3.0 (BREAKING).",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Start",
+          "summary": "Align to the start (left in LTR, top vertically)."
+        },
+        {
+          "name": "Center",
+          "summary": "Center."
+        },
+        {
+          "name": "End",
+          "summary": "Align to the end (right in LTR, bottom vertically)."
+        }
+      ]
+    },
+    {
+      "name": "Breakpoint",
+      "kind": "enum",
+      "namespace": "Lumeo.Services",
+      "summary": "Tailwind v4–aligned breakpoint name.",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Xs",
+          "summary": "Width &lt; 640px — the mobile-first floor."
+        },
+        {
+          "name": "Sm",
+          "summary": "Width in [640, 768) — large phones / small tablets in portrait."
+        },
+        {
+          "name": "Md",
+          "summary": "Width in [768, 1024) — tablets, phones in landscape."
+        },
+        {
+          "name": "Lg",
+          "summary": "Width in [1024, 1280) — laptops, narrow desktops."
+        },
+        {
+          "name": "Xl",
+          "summary": "Width in [1280, 1536) — typical desktop monitors."
+        },
+        {
+          "name": "Xxl",
+          "summary": "Width >= 1536px — wide desktop monitors."
+        }
+      ]
+    },
+    {
+      "name": "Breakpoints",
+      "kind": "staticClass",
+      "namespace": "Lumeo.Services",
+      "summary": "Tailwind breakpoint pixel values, exposed as constants so call sites don't repeat the magic numbers. Aligned with Tailwind v4 defaults.",
+      "properties": [
+        {
+          "name": "Sm",
+          "type": "int",
+          "default": "640",
+          "summary": null
+        },
+        {
+          "name": "Md",
+          "type": "int",
+          "default": "768",
+          "summary": null
+        },
+        {
+          "name": "Lg",
+          "type": "int",
+          "default": "1024",
+          "summary": null
+        },
+        {
+          "name": "Xl",
+          "type": "int",
+          "default": "1280",
+          "summary": null
+        },
+        {
+          "name": "Xxl",
+          "type": "int",
+          "default": "1536",
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "ComponentInteropService",
+      "kind": "class",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [],
+      "methods": [
+        {
+          "name": "RegisterClickOutside",
+          "returnType": "ValueTask",
+          "signature": "RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterClickOutside",
+          "returnType": "ValueTask",
+          "signature": "UnregisterClickOutside(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnClickOutside",
+          "returnType": "Task",
+          "signature": "OnClickOutside(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "FocusElement",
+          "returnType": "ValueTask",
+          "signature": "FocusElement(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "FocusMenuItemByIndex",
+          "returnType": "ValueTask",
+          "signature": "FocusMenuItemByIndex(string containerId, int index)",
+          "summary": null
+        },
+        {
+          "name": "GetMenuItemCount",
+          "returnType": "ValueTask<int>",
+          "signature": "GetMenuItemCount(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "LockScroll",
+          "returnType": "ValueTask",
+          "signature": "LockScroll()",
+          "summary": null
+        },
+        {
+          "name": "AttachOverlaySlideEnd",
+          "returnType": "ValueTask",
+          "signature": "AttachOverlaySlideEnd(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "UnlockScroll",
+          "returnType": "ValueTask",
+          "signature": "UnlockScroll()",
+          "summary": null
+        },
+        {
+          "name": "SetHtmlClass",
+          "returnType": "ValueTask",
+          "signature": "SetHtmlClass(string className, bool active)",
+          "summary": null
+        },
+        {
+          "name": "SetupFocusTrap",
+          "returnType": "ValueTask",
+          "signature": "SetupFocusTrap(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RemoveFocusTrap",
+          "returnType": "ValueTask",
+          "signature": "RemoveFocusTrap(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterSvDrag",
+          "returnType": "ValueTask",
+          "signature": "RegisterSvDrag(string elementId, Func<double, double, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterSvDrag",
+          "returnType": "ValueTask",
+          "signature": "UnregisterSvDrag(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnSvDrag",
+          "returnType": "Task",
+          "signature": "OnSvDrag(string elementId, double s, double v)",
+          "summary": null
+        },
+        {
+          "name": "RegisterPinchZoom",
+          "returnType": "ValueTask",
+          "signature": "RegisterPinchZoom(string elementId, Func<double, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterPinchZoom",
+          "returnType": "ValueTask",
+          "signature": "UnregisterPinchZoom(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnPinchZoom",
+          "returnType": "Task",
+          "signature": "OnPinchZoom(string elementId, double scaleDelta)",
+          "summary": null
+        },
+        {
+          "name": "GetViewportSize",
+          "returnType": "ValueTask<ViewportSize>",
+          "signature": "GetViewportSize()",
+          "summary": null
+        },
+        {
+          "name": "RegisterViewportListener",
+          "returnType": "ValueTask<ViewportSize?>",
+          "signature": "RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterViewportListener",
+          "returnType": "ValueTask",
+          "signature": "UnregisterViewportListener()",
+          "summary": null
+        },
+        {
+          "name": "PositionFixed",
+          "returnType": "ValueTask",
+          "signature": "PositionFixed(string contentId, string referenceId, string align = \"start\", bool matchWidth = false, string side = \"bottom\")",
+          "summary": null
+        },
+        {
+          "name": "UnpositionFixed",
+          "returnType": "ValueTask",
+          "signature": "UnpositionFixed(string contentId)",
+          "summary": null
+        },
+        {
+          "name": "GetElementRect",
+          "returnType": "ValueTask<ElementRect?>",
+          "signature": "GetElementRect(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "GetElementDimension",
+          "returnType": "ValueTask<double>",
+          "signature": "GetElementDimension(string elementId, string dimension)",
+          "summary": null
+        },
+        {
+          "name": "GetScrollTop",
+          "returnType": "ValueTask<double>",
+          "signature": "GetScrollTop(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "WheelScrollTop",
+          "returnType": "ValueTask<double>",
+          "signature": "WheelScrollTop(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "WheelScrollTo",
+          "returnType": "ValueTask",
+          "signature": "WheelScrollTo(Microsoft.AspNetCore.Components.ElementReference element, double top)",
+          "summary": null
+        },
+        {
+          "name": "SetPointerCaptureOnElement",
+          "returnType": "ValueTask",
+          "signature": "SetPointerCaptureOnElement(string elementId, long pointerId)",
+          "summary": null
+        },
+        {
+          "name": "ReleasePointerCaptureOnElement",
+          "returnType": "ValueTask",
+          "signature": "ReleasePointerCaptureOnElement(string elementId, long pointerId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, Func<Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterDrawerSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnSwipeDismiss",
+          "returnType": "Task",
+          "signature": "OnSwipeDismiss(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterSortableTouch",
+          "returnType": "ValueTask",
+          "signature": "RegisterSortableTouch(string containerId, Func<int, int, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterSortableTouch",
+          "returnType": "ValueTask",
+          "signature": "UnregisterSortableTouch(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "OnSortableTouchDrop",
+          "returnType": "Task",
+          "signature": "OnSortableTouchDrop(string containerId, int source, int target)",
+          "summary": null
+        },
+        {
+          "name": "RegisterCarouselSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterCarouselSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterCarouselSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterCarouselSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterHorizontalSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterHorizontalSwipe(string elementId, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterHorizontalSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterHorizontalSwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterHorizontalSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterHorizontalSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnCalendarSwipe",
+          "returnType": "Task",
+          "signature": "OnCalendarSwipe(string elementId, string direction)",
+          "summary": null
+        },
+        {
+          "name": "RegisterGallerySwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterGallerySwipe(string elementId, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterGallerySwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterGallerySwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterGallerySwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterGallerySwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnGallerySwipe",
+          "returnType": "Task",
+          "signature": "OnGallerySwipe(string elementId, string direction)",
+          "summary": null
+        },
+        {
+          "name": "RegisterTabSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterTabSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterTabSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterTabSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnTabSwipe",
+          "returnType": "Task",
+          "signature": "OnTabSwipe(string elementId, string direction)",
+          "summary": null
+        },
+        {
+          "name": "CarouselScrollTo",
+          "returnType": "ValueTask",
+          "signature": "CarouselScrollTo(string elementId, int index, string behavior = \"smooth\")",
+          "summary": null
+        },
+        {
+          "name": "OnSwipe",
+          "returnType": "Task",
+          "signature": "OnSwipe(string elementId, string direction)",
+          "summary": null
+        },
+        {
+          "name": "OnScrollPosition",
+          "returnType": "Task",
+          "signature": "OnScrollPosition(string elementId, double scrollPos, double maxScroll, int nearestIndex = -1)",
+          "summary": null
+        },
+        {
+          "name": "RegisterResizeHandle",
+          "returnType": "ValueTask",
+          "signature": "RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterResizeHandle",
+          "returnType": "ValueTask",
+          "signature": "UnregisterResizeHandle(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnResize",
+          "returnType": "Task",
+          "signature": "OnResize(string elementId, double delta)",
+          "summary": null
+        },
+        {
+          "name": "OnResizeEnd",
+          "returnType": "Task",
+          "signature": "OnResizeEnd(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterScrollspy",
+          "returnType": "ValueTask",
+          "signature": "RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterScrollspy",
+          "returnType": "ValueTask",
+          "signature": "UnregisterScrollspy(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "ScrollspyScrollTo",
+          "returnType": "ValueTask",
+          "signature": "ScrollspyScrollTo(string containerId, string sectionId, bool smooth)",
+          "summary": null
+        },
+        {
+          "name": "OnScrollspyUpdate",
+          "returnType": "Task",
+          "signature": "OnScrollspyUpdate(string containerId, string? activeId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterToastSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterToastSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterToastSwipe(string toastId, string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnToastSwipeDismiss",
+          "returnType": "Task",
+          "signature": "OnToastSwipeDismiss(string toastId)",
+          "summary": null
+        },
+        {
+          "name": "SetupAutoResize",
+          "returnType": "ValueTask",
+          "signature": "SetupAutoResize(string elementId, int maxRows)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterAutoResize",
+          "returnType": "ValueTask",
+          "signature": "UnregisterAutoResize(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterOtpPaste",
+          "returnType": "ValueTask",
+          "signature": "RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterOtpPaste",
+          "returnType": "ValueTask",
+          "signature": "UnregisterOtpPaste(string baseId, int length)",
+          "summary": null
+        },
+        {
+          "name": "OnOtpPaste",
+          "returnType": "Task",
+          "signature": "OnOtpPaste(string baseId, string digits)",
+          "summary": null
+        },
+        {
+          "name": "RegisterColumnResize",
+          "returnType": "ValueTask",
+          "signature": "RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterColumnResize",
+          "returnType": "ValueTask",
+          "signature": "UnregisterColumnResize(string handleId)",
+          "summary": null
+        },
+        {
+          "name": "OnColumnResize",
+          "returnType": "Task",
+          "signature": "OnColumnResize(string handleId, double delta)",
+          "summary": null
+        },
+        {
+          "name": "OnColumnResizeEnd",
+          "returnType": "Task",
+          "signature": "OnColumnResizeEnd(string handleId)",
+          "summary": null
+        },
+        {
+          "name": "OnColumnResizeCommit",
+          "returnType": "Task",
+          "signature": "OnColumnResizeCommit(string handleId, double finalWidth)",
+          "summary": null
+        },
+        {
+          "name": "CaptureColumnRects",
+          "returnType": "ValueTask",
+          "signature": "CaptureColumnRects(string gridId)",
+          "summary": null
+        },
+        {
+          "name": "AnimateColumnReorder",
+          "returnType": "ValueTask",
+          "signature": "AnimateColumnReorder(string gridId, int durationMs)",
+          "summary": null
+        },
+        {
+          "name": "GetElementRectBySelector",
+          "returnType": "ValueTask<ElementRect?>",
+          "signature": "GetElementRectBySelector(string selector)",
+          "summary": null
+        },
+        {
+          "name": "RegisterAffix",
+          "returnType": "ValueTask",
+          "signature": "RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterAffix",
+          "returnType": "ValueTask",
+          "signature": "UnregisterAffix(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnAffixChanged",
+          "returnType": "Task",
+          "signature": "OnAffixChanged(string elementId, bool isFixed)",
+          "summary": null
+        },
+        {
+          "name": "GetTextareaCaretPosition",
+          "returnType": "ValueTask<TextareaCaretInfo>",
+          "signature": "GetTextareaCaretPosition(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterBackToTop",
+          "returnType": "ValueTask",
+          "signature": "RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterBackToTop",
+          "returnType": "ValueTask",
+          "signature": "UnregisterBackToTop(string id)",
+          "summary": null
+        },
+        {
+          "name": "ScrollToTop",
+          "returnType": "ValueTask",
+          "signature": "ScrollToTop()",
+          "summary": null
+        },
+        {
+          "name": "OnScrollVisibilityChanged",
+          "returnType": "Task",
+          "signature": "OnScrollVisibilityChanged(string id, bool visible)",
+          "summary": null
+        },
+        {
+          "name": "DownloadFile",
+          "returnType": "ValueTask",
+          "signature": "DownloadFile(string fileName, string contentBase64, string mimeType = \"application/octet-stream\")",
+          "summary": null
+        },
+        {
+          "name": "CopyToClipboard",
+          "returnType": "ValueTask",
+          "signature": "CopyToClipboard(string text)",
+          "summary": null
+        },
+        {
+          "name": "RippleAttachAsync",
+          "returnType": "ValueTask",
+          "signature": "RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "RippleDetachAsync",
+          "returnType": "ValueTask",
+          "signature": "RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "PlayMedia",
+          "returnType": "ValueTask",
+          "signature": "PlayMedia(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "PauseMedia",
+          "returnType": "ValueTask",
+          "signature": "PauseMedia(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "SetMediaVolume",
+          "returnType": "ValueTask",
+          "signature": "SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted)",
+          "summary": null
+        },
+        {
+          "name": "SeekMedia",
+          "returnType": "ValueTask",
+          "signature": "SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds)",
+          "summary": null
+        },
+        {
+          "name": "GetMediaState",
+          "returnType": "ValueTask<MediaState>",
+          "signature": "GetMediaState(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "Vibrate",
+          "returnType": "ValueTask",
+          "signature": "Vibrate(int milliseconds)",
+          "summary": null
+        },
+        {
+          "name": "SaveToLocalStorage",
+          "returnType": "ValueTask",
+          "signature": "SaveToLocalStorage(string key, string value)",
+          "summary": null
+        },
+        {
+          "name": "LoadFromLocalStorage",
+          "returnType": "ValueTask<string?>",
+          "signature": "LoadFromLocalStorage(string key)",
+          "summary": null
+        },
+        {
+          "name": "RemoveFromLocalStorage",
+          "returnType": "ValueTask",
+          "signature": "RemoveFromLocalStorage(string key)",
+          "summary": null
+        },
+        {
+          "name": "MotionTickNumber",
+          "returnType": "ValueTask",
+          "signature": "MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = \",\")",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeTicker",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeTicker(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionRevealText",
+          "returnType": "ValueTask",
+          "signature": "MotionRevealText(string elementId, int staggerMs, double threshold)",
+          "summary": null
+        },
+        {
+          "name": "MotionBlurFade",
+          "returnType": "ValueTask",
+          "signature": "MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeObserver",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeObserver(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionAnimatedBeam",
+          "returnType": "ValueTask",
+          "signature": "MotionAnimatedBeam(string elementId, string fromId, string toId, object options)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeAnimatedBeam",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeAnimatedBeam(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionDock",
+          "returnType": "ValueTask",
+          "signature": "MotionDock(string elementId, object options)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeDock",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeDock(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionConfettiInit",
+          "returnType": "ValueTask",
+          "signature": "MotionConfettiInit(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionConfettiFire",
+          "returnType": "ValueTask",
+          "signature": "MotionConfettiFire(string elementId, object options)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeConfetti",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeConfetti(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "TabsMeasure",
+          "returnType": "ValueTask<TabMeasurement?>",
+          "signature": "TabsMeasure(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AiAutosize",
+          "returnType": "ValueTask",
+          "signature": "AiAutosize(string elementId, int maxPx)",
+          "summary": null
+        },
+        {
+          "name": "AiObserveAutoScroll",
+          "returnType": "ValueTask",
+          "signature": "AiObserveAutoScroll(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AiDisposeAutoScroll",
+          "returnType": "ValueTask",
+          "signature": "AiDisposeAutoScroll(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AiScrollToBottom",
+          "returnType": "ValueTask",
+          "signature": "AiScrollToBottom(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "ImportModuleAsync",
+          "returnType": "ValueTask<IJSObjectReference>",
+          "signature": "ImportModuleAsync(string moduleUrl)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerInitAsync",
+          "returnType": "Task<string>",
+          "signature": "SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerSetEventsAsync",
+          "returnType": "Task",
+          "signature": "SchedulerSetEventsAsync(string id, IEnumerable<object> events)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerChangeViewAsync",
+          "returnType": "Task",
+          "signature": "SchedulerChangeViewAsync(string id, string view)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerGotoDateAsync",
+          "returnType": "Task",
+          "signature": "SchedulerGotoDateAsync(string id, string dateIso)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerPrevAsync",
+          "returnType": "Task",
+          "signature": "SchedulerPrevAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerNextAsync",
+          "returnType": "Task",
+          "signature": "SchedulerNextAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerTodayAsync",
+          "returnType": "Task",
+          "signature": "SchedulerTodayAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerGetTitleAsync",
+          "returnType": "Task<string>",
+          "signature": "SchedulerGetTitleAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerDestroyAsync",
+          "returnType": "Task",
+          "signature": "SchedulerDestroyAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "GanttInitAsync",
+          "returnType": "Task<string>",
+          "signature": "GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "GanttSetTasksAsync",
+          "returnType": "Task",
+          "signature": "GanttSetTasksAsync(string id, IEnumerable<object> tasks)",
+          "summary": null
+        },
+        {
+          "name": "GanttChangeViewModeAsync",
+          "returnType": "Task",
+          "signature": "GanttChangeViewModeAsync(string id, string mode)",
+          "summary": null
+        },
+        {
+          "name": "GanttDestroyAsync",
+          "returnType": "Task",
+          "signature": "GanttDestroyAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "RegisterToolbarOverflow",
+          "returnType": "ValueTask",
+          "signature": "RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterToolbarOverflow",
+          "returnType": "ValueTask",
+          "signature": "UnregisterToolbarOverflow(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnToolbarOverflowMeasured",
+          "returnType": "Task",
+          "signature": "OnToolbarOverflowMeasured(string elementId, int fittingCount, int totalCount)",
+          "summary": null
+        },
+        {
+          "name": "RichTextInitAsync",
+          "returnType": "ValueTask<string>",
+          "signature": "RichTextInitAsync<T>(Microsoft.AspNetCore.Components.ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "RichTextSetContentAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextSetContentAsync(string id, string? html)",
+          "summary": null
+        },
+        {
+          "name": "RichTextCommandAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextCommandAsync(string id, string name, params object?[]? args)",
+          "summary": null
+        },
+        {
+          "name": "RichTextGetActiveAsync",
+          "returnType": "ValueTask<Interop.RichTextActiveState?>",
+          "signature": "RichTextGetActiveAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "RichTextSetDisabledAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextSetDisabledAsync(string id, bool disabled)",
+          "summary": null
+        },
+        {
+          "name": "RichTextDestroyAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextDestroyAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "RichTextPromptLinkAsync",
+          "returnType": "ValueTask<string?>",
+          "signature": "RichTextPromptLinkAsync(string? initial)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadInit",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadClear",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadClear(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadDataUrl",
+          "returnType": "ValueTask<string?>",
+          "signature": "SignaturePadDataUrl(string elementId, string mimeType)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadSetStrokeStyle",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadSetStrokeStyle(string elementId, string color, double width)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadSetDisabled",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadSetDisabled(string elementId, bool disabled)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadLoadDataUrl",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadLoadDataUrl(string elementId, string? dataUrl)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadDestroy",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadDestroy(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "Dispose",
+          "returnType": "void",
+          "signature": "Dispose()",
+          "summary": null
+        },
+        {
+          "name": "DisposeAsync",
+          "returnType": "ValueTask",
+          "signature": "DisposeAsync()",
+          "summary": null
+        }
+      ],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "Density",
+      "kind": "enum",
+      "namespace": "Lumeo",
+      "summary": "Orthogonal \"tightness\" axis applied across sized components. Sits next to the size scale (Size) rather than replacing it: a Size.Md button can render at Density.Compact for a dense admin grid or Density.Spacious for a marketing hero, without scaling the type ramp itself.",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Compact",
+          "summary": "Minimum padding. For data grids, dense admin tables, sidebar pickers. Visual hit area is ~24-28px."
+        },
+        {
+          "name": "Comfortable",
+          "summary": "Default. Standard app density. Hit area ~36-40px."
+        },
+        {
+          "name": "Spacious",
+          "summary": "Generous padding. Marketing pages, onboarding wizards, thumb-first mobile UIs. Hit area ~44-48px (Apple HIG minimum)."
+        }
+      ]
+    },
+    {
+      "name": "DialogOverlayOptions",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": "Dialog-shaped overlay options. Semantic marker (same caveat as SheetOverlayOptions) — typed for documentation and IDE auto-complete, not enforced at the service overload boundary.",
+      "properties": [
+        {
+          "name": "ScrollableBody",
+          "type": "bool",
+          "default": "true",
+          "summary": "Wrap the rendered component in a scrollable body region inside the overlay's chrome (Sheet only — Dialog and Drawer manage their own scroll). Default true so consumers can pass a long form to OverlayService.ShowSheetAsync{T} without rolling their own overflow-y-auto wrapper — and without hitting the focus- ring clip that bare overflow-y: auto introduces (per spec, overflow-y: auto promotes overflow-x to auto too, which clips inputs' box-shadow focus rings at the left/right edge). The built-in wrapper uses the px-1 -mx-1 trick to give focus rings 4px breathing room without shifting the visual padding. Set to false for sheets whose content sets its own scrolling strategy (e.g. an embedded PdfViewer that already paints inside a fixed canvas)."
+        },
+        {
+          "name": "MobileFullscreen",
+          "type": "bool",
+          "default": null,
+          "summary": "When true and the viewport width is below MobileBreakpoint, the overlay is forced full-screen (full width + full height, no corner radius). Works across Dialog, Sheet and Drawer overlays — replaces the consumer-side max-md:!h-full max-md:!w-full max-md:!max-w-full Tailwind override chain that was previously the only way to get a full-screen Dialog on mobile. For Sheets, this is equivalent to setting MobileSheetSize to Full but composes more naturally for the Sheet+Dialog mixed case."
+        },
+        {
+          "name": "MobileSwipeToClose",
+          "type": "bool?",
+          "default": null,
+          "summary": "SwipeToClose override below MobileBreakpoint. Null = use SwipeToClose at all sizes. Typical pattern: off on desktop, on for mobile bottom-sheet pull-down."
+        },
+        {
+          "name": "MobileSheetSize",
+          "type": "SheetSize?",
+          "default": null,
+          "summary": "Sheet size to use when the viewport is below MobileBreakpoint. Null = use SheetSize at all sizes. Typical pattern: SheetSize.Default on desktop, SheetSize.Full on mobile."
+        },
+        {
+          "name": "MobileSheetSide",
+          "type": "Lumeo.Side?",
+          "default": null,
+          "summary": "Sheet side to use when the viewport is below MobileBreakpoint. Null = use SheetSide at all sizes. Typical pattern: Lumeo.Side.Right on desktop, Lumeo.Side.Bottom on mobile."
+        },
+        {
+          "name": "MobileBreakpoint",
+          "type": "int?",
+          "default": "768",
+          "summary": "Viewport width threshold (CSS pixels) below which the Mobile* overrides apply. Default 768 (Tailwind md). Set to null to disable responsive switching even if the Mobile* fields are populated."
+        },
+        {
+          "name": "SwipeToClose",
+          "type": "bool",
+          "default": null,
+          "summary": "When true, a Sheet opened via OverlayService.ShowSheetAsync{T} can be dismissed by swiping in the direction opposite to its SheetSide (e.g. swipe-down on a Bottom sheet). Ignored for non-Sheet overlay types. Drawers already enable swipe by default. Default false to preserve the existing programmatic-open behaviour."
+        },
+        {
+          "name": "SheetSize",
+          "type": "SheetSize",
+          "default": "SheetSize.Default",
+          "summary": null
+        },
+        {
+          "name": "SheetSide",
+          "type": "Lumeo.Side",
+          "default": "Lumeo.Side.Right",
+          "summary": null
+        },
+        {
+          "name": "PreventClose",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "DrawerOverlayOptions",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": "Drawer-shaped overlay options. Drawer enables swipe-to-close by default; the inherited SwipeToClose is ignored for drawers. Semantic marker (see SheetOverlayOptions for the enforcement caveat).",
+      "properties": [
+        {
+          "name": "ScrollableBody",
+          "type": "bool",
+          "default": "true",
+          "summary": "Wrap the rendered component in a scrollable body region inside the overlay's chrome (Sheet only — Dialog and Drawer manage their own scroll). Default true so consumers can pass a long form to OverlayService.ShowSheetAsync{T} without rolling their own overflow-y-auto wrapper — and without hitting the focus- ring clip that bare overflow-y: auto introduces (per spec, overflow-y: auto promotes overflow-x to auto too, which clips inputs' box-shadow focus rings at the left/right edge). The built-in wrapper uses the px-1 -mx-1 trick to give focus rings 4px breathing room without shifting the visual padding. Set to false for sheets whose content sets its own scrolling strategy (e.g. an embedded PdfViewer that already paints inside a fixed canvas)."
+        },
+        {
+          "name": "MobileFullscreen",
+          "type": "bool",
+          "default": null,
+          "summary": "When true and the viewport width is below MobileBreakpoint, the overlay is forced full-screen (full width + full height, no corner radius). Works across Dialog, Sheet and Drawer overlays — replaces the consumer-side max-md:!h-full max-md:!w-full max-md:!max-w-full Tailwind override chain that was previously the only way to get a full-screen Dialog on mobile. For Sheets, this is equivalent to setting MobileSheetSize to Full but composes more naturally for the Sheet+Dialog mixed case."
+        },
+        {
+          "name": "MobileSwipeToClose",
+          "type": "bool?",
+          "default": null,
+          "summary": "SwipeToClose override below MobileBreakpoint. Null = use SwipeToClose at all sizes. Typical pattern: off on desktop, on for mobile bottom-sheet pull-down."
+        },
+        {
+          "name": "MobileSheetSize",
+          "type": "SheetSize?",
+          "default": null,
+          "summary": "Sheet size to use when the viewport is below MobileBreakpoint. Null = use SheetSize at all sizes. Typical pattern: SheetSize.Default on desktop, SheetSize.Full on mobile."
+        },
+        {
+          "name": "MobileSheetSide",
+          "type": "Lumeo.Side?",
+          "default": null,
+          "summary": "Sheet side to use when the viewport is below MobileBreakpoint. Null = use SheetSide at all sizes. Typical pattern: Lumeo.Side.Right on desktop, Lumeo.Side.Bottom on mobile."
+        },
+        {
+          "name": "MobileBreakpoint",
+          "type": "int?",
+          "default": "768",
+          "summary": "Viewport width threshold (CSS pixels) below which the Mobile* overrides apply. Default 768 (Tailwind md). Set to null to disable responsive switching even if the Mobile* fields are populated."
+        },
+        {
+          "name": "SwipeToClose",
+          "type": "bool",
+          "default": null,
+          "summary": "When true, a Sheet opened via OverlayService.ShowSheetAsync{T} can be dismissed by swiping in the direction opposite to its SheetSide (e.g. swipe-down on a Bottom sheet). Ignored for non-Sheet overlay types. Drawers already enable swipe by default. Default false to preserve the existing programmatic-open behaviour."
+        },
+        {
+          "name": "SheetSize",
+          "type": "SheetSize",
+          "default": "SheetSize.Default",
+          "summary": null
+        },
+        {
+          "name": "SheetSide",
+          "type": "Lumeo.Side",
+          "default": "Lumeo.Side.Right",
+          "summary": null
+        },
+        {
+          "name": "PreventClose",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "IComponentInteropService",
+      "kind": "interface",
+      "namespace": "Lumeo.Services",
+      "summary": "Provides JS interop helpers for Lumeo components (click-outside, focus traps, floating positioning, swipe gestures, scroll utilities, etc.). Inject this interface in consumers to enable mocking in tests.",
+      "properties": [],
+      "methods": [
+        {
+          "name": "RegisterClickOutside",
+          "returnType": "ValueTask",
+          "signature": "RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterClickOutside",
+          "returnType": "ValueTask",
+          "signature": "UnregisterClickOutside(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "FocusElement",
+          "returnType": "ValueTask",
+          "signature": "FocusElement(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "FocusMenuItemByIndex",
+          "returnType": "ValueTask",
+          "signature": "FocusMenuItemByIndex(string containerId, int index)",
+          "summary": null
+        },
+        {
+          "name": "GetMenuItemCount",
+          "returnType": "ValueTask<int>",
+          "signature": "GetMenuItemCount(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "LockScroll",
+          "returnType": "ValueTask",
+          "signature": "LockScroll()",
+          "summary": null
+        },
+        {
+          "name": "UnlockScroll",
+          "returnType": "ValueTask",
+          "signature": "UnlockScroll()",
+          "summary": null
+        },
+        {
+          "name": "SetHtmlClass",
+          "returnType": "ValueTask",
+          "signature": "SetHtmlClass(string className, bool active)",
+          "summary": "Toggles a class on document.documentElement. Useful for global modes (e.g. hiding floating chrome while a DataGrid is fullscreen)."
+        },
+        {
+          "name": "SetupFocusTrap",
+          "returnType": "ValueTask",
+          "signature": "SetupFocusTrap(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RemoveFocusTrap",
+          "returnType": "ValueTask",
+          "signature": "RemoveFocusTrap(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AttachOverlaySlideEnd",
+          "returnType": "ValueTask",
+          "signature": "AttachOverlaySlideEnd(string elementId)",
+          "summary": "Registers a native animationend listener that filters strictly on the slide-in animation name and, on completion, sets the element's inline transform: none. Bypasses Blazor's event roundtrip so the cleanup runs synchronously from the browser's animation pipeline. Used by Sheet, Drawer and any future slide-in overlay to defeat the animation-fill-mode: both identity-matrix transform trap that would otherwise establish a containing block for fixed-positioned descendants (Select / DatePicker / Combobox popovers)."
+        },
+        {
+          "name": "RegisterSvDrag",
+          "returnType": "ValueTask",
+          "signature": "RegisterSvDrag(string elementId, Func<double, double, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterSvDrag",
+          "returnType": "ValueTask",
+          "signature": "UnregisterSvDrag(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterPinchZoom",
+          "returnType": "ValueTask",
+          "signature": "RegisterPinchZoom(string elementId, Func<double, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterPinchZoom",
+          "returnType": "ValueTask",
+          "signature": "UnregisterPinchZoom(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "GetViewportSize",
+          "returnType": "ValueTask<ViewportSize>",
+          "signature": "GetViewportSize()",
+          "summary": null
+        },
+        {
+          "name": "RegisterViewportListener",
+          "returnType": "ValueTask<ViewportSize?>",
+          "signature": "RegisterViewportListener(Microsoft.JSInterop.DotNetObjectReference<ResponsiveService> dotnetRef)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterViewportListener",
+          "returnType": "ValueTask",
+          "signature": "UnregisterViewportListener()",
+          "summary": null
+        },
+        {
+          "name": "PositionFixed",
+          "returnType": "ValueTask",
+          "signature": "PositionFixed(string contentId, string referenceId, string align = \"start\", bool matchWidth = false, string side = \"bottom\")",
+          "summary": null
+        },
+        {
+          "name": "UnpositionFixed",
+          "returnType": "ValueTask",
+          "signature": "UnpositionFixed(string contentId)",
+          "summary": null
+        },
+        {
+          "name": "GetElementRect",
+          "returnType": "ValueTask<ElementRect?>",
+          "signature": "GetElementRect(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "GetElementDimension",
+          "returnType": "ValueTask<double>",
+          "signature": "GetElementDimension(string elementId, string dimension)",
+          "summary": null
+        },
+        {
+          "name": "GetScrollTop",
+          "returnType": "ValueTask<double>",
+          "signature": "GetScrollTop(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "WheelScrollTop",
+          "returnType": "ValueTask<double>",
+          "signature": "WheelScrollTop(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "WheelScrollTo",
+          "returnType": "ValueTask",
+          "signature": "WheelScrollTo(Microsoft.AspNetCore.Components.ElementReference element, double top)",
+          "summary": null
+        },
+        {
+          "name": "SetPointerCaptureOnElement",
+          "returnType": "ValueTask",
+          "signature": "SetPointerCaptureOnElement(string elementId, long pointerId)",
+          "summary": null
+        },
+        {
+          "name": "ReleasePointerCaptureOnElement",
+          "returnType": "ValueTask",
+          "signature": "ReleasePointerCaptureOnElement(string elementId, long pointerId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, Func<Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx)",
+          "summary": "3.0.1 — extended overload that accepts swipe-to-close thresholds. Both parameters are optional; passing null falls back to the JS hardcoded defaults so existing callers keep working unchanged. Mirrors the LumeoGestureOptions bag."
+        },
+        {
+          "name": "UnregisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterDrawerSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterTabSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterTabSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": "3.0.1 — extended overload that accepts horizontal swipe and vertical dead-zone thresholds. Passing null falls back to the JS hardcoded defaults so existing callers keep working unchanged."
+        },
+        {
+          "name": "UnregisterTabSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterTabSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterSortableTouch",
+          "returnType": "ValueTask",
+          "signature": "RegisterSortableTouch(string containerId, Func<int, int, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterSortableTouch",
+          "returnType": "ValueTask",
+          "signature": "UnregisterSortableTouch(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterCarouselSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterCarouselSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": "3.0.1 — overload with explicit swipe / vertical dead-zone thresholds (Carousel)."
+        },
+        {
+          "name": "UnregisterCarouselSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterCarouselSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "CarouselScrollTo",
+          "returnType": "ValueTask",
+          "signature": "CarouselScrollTo(string elementId, int index, string behavior = \"smooth\")",
+          "summary": null
+        },
+        {
+          "name": "RegisterHorizontalSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterHorizontalSwipe(string elementId, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterHorizontalSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterHorizontalSwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": "3.0.1 — overload with explicit swipe / vertical dead-zone thresholds (Calendar)."
+        },
+        {
+          "name": "UnregisterHorizontalSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterHorizontalSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterGallerySwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterGallerySwipe(string elementId, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "RegisterGallerySwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterGallerySwipe(string elementId, Func<string, Task> handler, int? swipeThresholdPx, int? verticalDeadZonePx)",
+          "summary": "3.0.1 — overload with explicit swipe / vertical dead-zone thresholds (ImageGallery)."
+        },
+        {
+          "name": "UnregisterGallerySwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterGallerySwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterResizeHandle",
+          "returnType": "ValueTask",
+          "signature": "RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterResizeHandle",
+          "returnType": "ValueTask",
+          "signature": "UnregisterResizeHandle(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterScrollspy",
+          "returnType": "ValueTask",
+          "signature": "RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterScrollspy",
+          "returnType": "ValueTask",
+          "signature": "UnregisterScrollspy(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "ScrollspyScrollTo",
+          "returnType": "ValueTask",
+          "signature": "ScrollspyScrollTo(string containerId, string sectionId, bool smooth)",
+          "summary": null
+        },
+        {
+          "name": "RegisterToastSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterToastSwipe",
+          "returnType": "ValueTask",
+          "signature": "UnregisterToastSwipe(string toastId, string elementId)",
+          "summary": null
+        },
+        {
+          "name": "SetupAutoResize",
+          "returnType": "ValueTask",
+          "signature": "SetupAutoResize(string elementId, int maxRows)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterAutoResize",
+          "returnType": "ValueTask",
+          "signature": "UnregisterAutoResize(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterOtpPaste",
+          "returnType": "ValueTask",
+          "signature": "RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterOtpPaste",
+          "returnType": "ValueTask",
+          "signature": "UnregisterOtpPaste(string baseId, int length)",
+          "summary": null
+        },
+        {
+          "name": "RegisterColumnResize",
+          "returnType": "ValueTask",
+          "signature": "RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterColumnResize",
+          "returnType": "ValueTask",
+          "signature": "UnregisterColumnResize(string handleId)",
+          "summary": null
+        },
+        {
+          "name": "CaptureColumnRects",
+          "returnType": "ValueTask",
+          "signature": "CaptureColumnRects(string gridId)",
+          "summary": null
+        },
+        {
+          "name": "AnimateColumnReorder",
+          "returnType": "ValueTask",
+          "signature": "AnimateColumnReorder(string gridId, int durationMs)",
+          "summary": null
+        },
+        {
+          "name": "GetElementRectBySelector",
+          "returnType": "ValueTask<ElementRect?>",
+          "signature": "GetElementRectBySelector(string selector)",
+          "summary": null
+        },
+        {
+          "name": "RegisterAffix",
+          "returnType": "ValueTask",
+          "signature": "RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterAffix",
+          "returnType": "ValueTask",
+          "signature": "UnregisterAffix(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "GetTextareaCaretPosition",
+          "returnType": "ValueTask<ComponentInteropService.TextareaCaretInfo>",
+          "signature": "GetTextareaCaretPosition(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "TabsMeasure",
+          "returnType": "ValueTask<ComponentInteropService.TabMeasurement?>",
+          "signature": "TabsMeasure(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterBackToTop",
+          "returnType": "ValueTask",
+          "signature": "RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterBackToTop",
+          "returnType": "ValueTask",
+          "signature": "UnregisterBackToTop(string id)",
+          "summary": null
+        },
+        {
+          "name": "ScrollToTop",
+          "returnType": "ValueTask",
+          "signature": "ScrollToTop()",
+          "summary": null
+        },
+        {
+          "name": "DownloadFile",
+          "returnType": "ValueTask",
+          "signature": "DownloadFile(string fileName, string contentBase64, string mimeType = \"application/octet-stream\")",
+          "summary": null
+        },
+        {
+          "name": "CopyToClipboard",
+          "returnType": "ValueTask",
+          "signature": "CopyToClipboard(string text)",
+          "summary": null
+        },
+        {
+          "name": "RippleAttachAsync",
+          "returnType": "ValueTask",
+          "signature": "RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "RippleDetachAsync",
+          "returnType": "ValueTask",
+          "signature": "RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "PlayMedia",
+          "returnType": "ValueTask",
+          "signature": "PlayMedia(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "PauseMedia",
+          "returnType": "ValueTask",
+          "signature": "PauseMedia(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": null
+        },
+        {
+          "name": "SetMediaVolume",
+          "returnType": "ValueTask",
+          "signature": "SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted)",
+          "summary": null
+        },
+        {
+          "name": "SeekMedia",
+          "returnType": "ValueTask",
+          "signature": "SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds)",
+          "summary": null
+        },
+        {
+          "name": "GetMediaState",
+          "returnType": "ValueTask<MediaState>",
+          "signature": "GetMediaState(Microsoft.AspNetCore.Components.ElementReference element)",
+          "summary": "Reads the live duration and currentTime off an HTMLMediaElement. Required because Blazor's media event args don't expose these — they're properties of the element itself."
+        },
+        {
+          "name": "Vibrate",
+          "returnType": "ValueTask",
+          "signature": "Vibrate(int milliseconds)",
+          "summary": null
+        },
+        {
+          "name": "SaveToLocalStorage",
+          "returnType": "ValueTask",
+          "signature": "SaveToLocalStorage(string key, string value)",
+          "summary": null
+        },
+        {
+          "name": "LoadFromLocalStorage",
+          "returnType": "ValueTask<string?>",
+          "signature": "LoadFromLocalStorage(string key)",
+          "summary": null
+        },
+        {
+          "name": "RemoveFromLocalStorage",
+          "returnType": "ValueTask",
+          "signature": "RemoveFromLocalStorage(string key)",
+          "summary": null
+        },
+        {
+          "name": "MotionTickNumber",
+          "returnType": "ValueTask",
+          "signature": "MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = \",\")",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeTicker",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeTicker(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionRevealText",
+          "returnType": "ValueTask",
+          "signature": "MotionRevealText(string elementId, int staggerMs, double threshold)",
+          "summary": null
+        },
+        {
+          "name": "MotionBlurFade",
+          "returnType": "ValueTask",
+          "signature": "MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeObserver",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeObserver(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionAnimatedBeam",
+          "returnType": "ValueTask",
+          "signature": "MotionAnimatedBeam(string elementId, string fromId, string toId, object options)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeAnimatedBeam",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeAnimatedBeam(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionDock",
+          "returnType": "ValueTask",
+          "signature": "MotionDock(string elementId, object options)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeDock",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeDock(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionConfettiInit",
+          "returnType": "ValueTask",
+          "signature": "MotionConfettiInit(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "MotionConfettiFire",
+          "returnType": "ValueTask",
+          "signature": "MotionConfettiFire(string elementId, object options)",
+          "summary": null
+        },
+        {
+          "name": "MotionDisposeConfetti",
+          "returnType": "ValueTask",
+          "signature": "MotionDisposeConfetti(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AiAutosize",
+          "returnType": "ValueTask",
+          "signature": "AiAutosize(string elementId, int maxPx)",
+          "summary": null
+        },
+        {
+          "name": "AiObserveAutoScroll",
+          "returnType": "ValueTask",
+          "signature": "AiObserveAutoScroll(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AiDisposeAutoScroll",
+          "returnType": "ValueTask",
+          "signature": "AiDisposeAutoScroll(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "AiScrollToBottom",
+          "returnType": "ValueTask",
+          "signature": "AiScrollToBottom(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerInitAsync",
+          "returnType": "Task<string>",
+          "signature": "SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerSetEventsAsync",
+          "returnType": "Task",
+          "signature": "SchedulerSetEventsAsync(string id, IEnumerable<object> events)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerChangeViewAsync",
+          "returnType": "Task",
+          "signature": "SchedulerChangeViewAsync(string id, string view)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerGotoDateAsync",
+          "returnType": "Task",
+          "signature": "SchedulerGotoDateAsync(string id, string dateIso)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerPrevAsync",
+          "returnType": "Task",
+          "signature": "SchedulerPrevAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerNextAsync",
+          "returnType": "Task",
+          "signature": "SchedulerNextAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerTodayAsync",
+          "returnType": "Task",
+          "signature": "SchedulerTodayAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerGetTitleAsync",
+          "returnType": "Task<string>",
+          "signature": "SchedulerGetTitleAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "SchedulerDestroyAsync",
+          "returnType": "Task",
+          "signature": "SchedulerDestroyAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "GanttInitAsync",
+          "returnType": "Task<string>",
+          "signature": "GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "GanttSetTasksAsync",
+          "returnType": "Task",
+          "signature": "GanttSetTasksAsync(string id, IEnumerable<object> tasks)",
+          "summary": null
+        },
+        {
+          "name": "GanttChangeViewModeAsync",
+          "returnType": "Task",
+          "signature": "GanttChangeViewModeAsync(string id, string mode)",
+          "summary": null
+        },
+        {
+          "name": "GanttDestroyAsync",
+          "returnType": "Task",
+          "signature": "GanttDestroyAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "RegisterToolbarOverflow",
+          "returnType": "ValueTask",
+          "signature": "RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterToolbarOverflow",
+          "returnType": "ValueTask",
+          "signature": "UnregisterToolbarOverflow(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RichTextInitAsync",
+          "returnType": "ValueTask<string>",
+          "signature": "RichTextInitAsync<T>(Microsoft.AspNetCore.Components.ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "RichTextSetContentAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextSetContentAsync(string id, string? html)",
+          "summary": null
+        },
+        {
+          "name": "RichTextCommandAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextCommandAsync(string id, string name, params object?[]? args)",
+          "summary": null
+        },
+        {
+          "name": "RichTextGetActiveAsync",
+          "returnType": "ValueTask<Interop.RichTextActiveState?>",
+          "signature": "RichTextGetActiveAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "RichTextSetDisabledAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextSetDisabledAsync(string id, bool disabled)",
+          "summary": null
+        },
+        {
+          "name": "RichTextDestroyAsync",
+          "returnType": "ValueTask",
+          "signature": "RichTextDestroyAsync(string id)",
+          "summary": null
+        },
+        {
+          "name": "RichTextPromptLinkAsync",
+          "returnType": "ValueTask<string?>",
+          "signature": "RichTextPromptLinkAsync(string? initial)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadInit",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadClear",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadClear(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadDataUrl",
+          "returnType": "ValueTask<string?>",
+          "signature": "SignaturePadDataUrl(string elementId, string mimeType)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadSetStrokeStyle",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadSetStrokeStyle(string elementId, string color, double width)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadSetDisabled",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadSetDisabled(string elementId, bool disabled)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadLoadDataUrl",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadLoadDataUrl(string elementId, string? dataUrl)",
+          "summary": null
+        },
+        {
+          "name": "SignaturePadDestroy",
+          "returnType": "ValueTask",
+          "signature": "SignaturePadDestroy(string elementId)",
+          "summary": null
+        }
+      ],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "IOverlayService",
+      "kind": "interface",
+      "namespace": "Lumeo.Services",
+      "summary": "Provides methods to show and close overlay components (Dialog, Sheet, Drawer, AlertDialog). Inject this interface in consumers to enable mocking in tests.",
+      "properties": [],
+      "methods": [
+        {
+          "name": "ShowDialogAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowDialogAsync<TComponent>(string? title = null, OverlayParameters? parameters = null, OverlayOptions? options = null)",
+          "summary": null
+        },
+        {
+          "name": "ShowSheetAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowSheetAsync<TComponent>(string? title = null, Lumeo.Side side = Lumeo.Side.Right, SheetSize size = SheetSize.Default, OverlayParameters? parameters = null, OverlayOptions? options = null)",
+          "summary": null
+        },
+        {
+          "name": "ShowDrawerAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowDrawerAsync<TComponent>(string? title = null, OverlayParameters? parameters = null, OverlayOptions? options = null)",
+          "summary": null
+        },
+        {
+          "name": "ShowAlertDialogAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowAlertDialogAsync(AlertDialogOptions alertOptions)",
+          "summary": null
+        },
+        {
+          "name": "Close",
+          "returnType": "void",
+          "signature": "Close(string overlayId, object? result = null)",
+          "summary": null
+        },
+        {
+          "name": "Cancel",
+          "returnType": "void",
+          "signature": "Cancel(string overlayId)",
+          "summary": null
+        }
+      ],
+      "events": [
+        {
+          "name": "OnShow",
+          "type": "Action<OverlayInstance>?",
+          "summary": null
+        },
+        {
+          "name": "OnClose",
+          "type": "Action<string, object?, bool>?",
+          "summary": null
+        }
+      ],
+      "enumValues": []
+    },
+    {
+      "name": "IResponsiveService",
+      "kind": "interface",
+      "namespace": "Lumeo.Services",
+      "summary": "Reactive viewport/breakpoint information. Use this to make components respond to viewport size changes (e.g. switching a Sheet from side panel on desktop to fullscreen on mobile, or hiding sidebars below md). Subscribe to ViewportChanged to react to live resize / orientation change.",
+      "properties": [
+        {
+          "name": "Width",
+          "type": "double",
+          "default": null,
+          "summary": "Current viewport width in CSS pixels (window.innerWidth). 0 until the first interop sync — read inside OnAfterRenderAsync or subscribe to ViewportChanged to get the populated value."
+        },
+        {
+          "name": "Height",
+          "type": "double",
+          "default": null,
+          "summary": "Current viewport height in CSS pixels (window.innerHeight). 0 until first interop sync. See Width for the timing caveat."
+        },
+        {
+          "name": "Current",
+          "type": "Breakpoint",
+          "default": null,
+          "summary": "Current Tailwind-aligned breakpoint based on Width. Maps to the same boundaries Tailwind v4 uses: Sm=640, Md=768, Lg=1024, Xl=1280, Xxl=1536. Use the convenience flags below for the common case."
+        },
+        {
+          "name": "IsMobile",
+          "type": "bool",
+          "default": null,
+          "summary": "True when Width is below Md (768px) — the conventional mobile boundary. Same value the OverlayOptions.MobileBreakpoint default checks against."
+        },
+        {
+          "name": "IsTablet",
+          "type": "bool",
+          "default": null,
+          "summary": "True when Width is in [Md, Lg) — 768-1023px. Tablets in portrait, large phones in landscape."
+        },
+        {
+          "name": "IsDesktop",
+          "type": "bool",
+          "default": null,
+          "summary": "True when Width is >= Lg (1024px). Includes typical laptop / desktop layouts."
+        }
+      ],
+      "methods": [
+        {
+          "name": "EnsureInitialisedAsync",
+          "returnType": "ValueTask",
+          "signature": "EnsureInitialisedAsync()",
+          "summary": "Lazily registers the JS resize listener and pulls the initial viewport size. Called automatically the first time a property is read, but consumers can call it eagerly from OnAfterRenderAsync(firstRender: true) to avoid the first-render zero-value read."
+        }
+      ],
+      "events": [
+        {
+          "name": "ViewportChanged",
+          "type": "Action<ViewportInfo>?",
+          "summary": "Fires whenever the viewport size crosses a meaningful boundary. Implementations debounce raw resize events (~100ms) so frequent listeners don't fire per scroll-bar nudge. The event arg carries the new width, height, and breakpoint."
+        }
+      ],
+      "enumValues": []
+    },
+    {
+      "name": "IThemeService",
+      "kind": "interface",
+      "namespace": "Lumeo.Services",
+      "summary": "Provides theme mode and scheme management (dark/light/system, color schemes, layout direction). Inject this interface in consumers to enable mocking in tests.",
+      "properties": [
+        {
+          "name": "CurrentMode",
+          "type": "ThemeMode",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "CurrentScheme",
+          "type": "string",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "IsDark",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "CurrentDirection",
+          "type": "LayoutDirection",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [
+        {
+          "name": "InitializeAsync",
+          "returnType": "Task",
+          "signature": "InitializeAsync()",
+          "summary": null
+        },
+        {
+          "name": "SetModeAsync",
+          "returnType": "Task",
+          "signature": "SetModeAsync(ThemeMode mode)",
+          "summary": null
+        },
+        {
+          "name": "SetSchemeAsync",
+          "returnType": "Task",
+          "signature": "SetSchemeAsync(string scheme)",
+          "summary": null
+        },
+        {
+          "name": "ToggleModeAsync",
+          "returnType": "Task",
+          "signature": "ToggleModeAsync()",
+          "summary": null
+        },
+        {
+          "name": "SetDirectionAsync",
+          "returnType": "Task",
+          "signature": "SetDirectionAsync(LayoutDirection direction)",
+          "summary": "Set the page layout direction (LTR / RTL). Persisted to localStorage."
+        },
+        {
+          "name": "GetDirectionAsync",
+          "returnType": "Task<LayoutDirection>",
+          "signature": "GetDirectionAsync()",
+          "summary": "Read the current direction (reads from document.documentElement.dir)."
+        }
+      ],
+      "events": [
+        {
+          "name": "OnThemeChanged",
+          "type": "Action?",
+          "summary": null
+        }
+      ],
+      "enumValues": []
+    },
+    {
+      "name": "LayoutDirection",
+      "kind": "enum",
+      "namespace": "Lumeo.Services",
+      "summary": "Layout direction. Mirrors the dir attribute on &lt;html&gt;.",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Ltr",
+          "summary": "Left-to-right (default, e.g. English, German, Spanish)."
+        },
+        {
+          "name": "Rtl",
+          "summary": "Right-to-left (e.g. Arabic, Hebrew, Persian)."
+        }
+      ]
+    },
+    {
+      "name": "Orientation",
+      "kind": "enum",
+      "namespace": "Lumeo",
+      "summary": "Layout axis for components that can lay their content out either left-to-right or top-to-bottom (Tabs, Separator, Carousel, Stepper, Timeline, Splitter, MegaMenu, ButtonGroup, ImageCompare, FormField, Steps, ToggleGroup, etc.). Replaces per-component *Orientation / *Direction enums in 3.0 (BREAKING).",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Horizontal",
+          "summary": "Lay out content horizontally (left-to-right)."
+        },
+        {
+          "name": "Vertical",
+          "summary": "Lay out content vertically (top-to-bottom)."
+        }
+      ]
+    },
+    {
+      "name": "OverlayInstance",
+      "kind": "class",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "Id",
+          "type": "string",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Type",
+          "type": "OverlayType",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "ComponentType",
+          "type": "Type?",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Title",
+          "type": "string?",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Parameters",
+          "type": "OverlayParameters?",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Options",
+          "type": "OverlayOptions",
+          "default": "new()",
+          "summary": null
+        },
+        {
+          "name": "AlertOptions",
+          "type": "AlertDialogOptions?",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "ZIndex",
+          "type": "int",
+          "default": "OverlayService.BaseZIndex",
+          "summary": "Backdrop z-index for this overlay. Content sits at ZIndex + 1 so a nested overlay's backdrop (allocated later with a strictly larger value) lands above the parent's content. Assigned by OverlayService at registration time."
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "OverlayOptions",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "PreventClose",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "SheetSide",
+          "type": "Lumeo.Side",
+          "default": "Lumeo.Side.Right",
+          "summary": null
+        },
+        {
+          "name": "SheetSize",
+          "type": "SheetSize",
+          "default": "SheetSize.Default",
+          "summary": null
+        },
+        {
+          "name": "SwipeToClose",
+          "type": "bool",
+          "default": null,
+          "summary": "When true, a Sheet opened via OverlayService.ShowSheetAsync{T} can be dismissed by swiping in the direction opposite to its SheetSide (e.g. swipe-down on a Bottom sheet). Ignored for non-Sheet overlay types. Drawers already enable swipe by default. Default false to preserve the existing programmatic-open behaviour."
+        },
+        {
+          "name": "MobileBreakpoint",
+          "type": "int?",
+          "default": "768",
+          "summary": "Viewport width threshold (CSS pixels) below which the Mobile* overrides apply. Default 768 (Tailwind md). Set to null to disable responsive switching even if the Mobile* fields are populated."
+        },
+        {
+          "name": "MobileSheetSide",
+          "type": "Lumeo.Side?",
+          "default": null,
+          "summary": "Sheet side to use when the viewport is below MobileBreakpoint. Null = use SheetSide at all sizes. Typical pattern: Lumeo.Side.Right on desktop, Lumeo.Side.Bottom on mobile."
+        },
+        {
+          "name": "MobileSheetSize",
+          "type": "SheetSize?",
+          "default": null,
+          "summary": "Sheet size to use when the viewport is below MobileBreakpoint. Null = use SheetSize at all sizes. Typical pattern: SheetSize.Default on desktop, SheetSize.Full on mobile."
+        },
+        {
+          "name": "MobileSwipeToClose",
+          "type": "bool?",
+          "default": null,
+          "summary": "SwipeToClose override below MobileBreakpoint. Null = use SwipeToClose at all sizes. Typical pattern: off on desktop, on for mobile bottom-sheet pull-down."
+        },
+        {
+          "name": "MobileFullscreen",
+          "type": "bool",
+          "default": null,
+          "summary": "When true and the viewport width is below MobileBreakpoint, the overlay is forced full-screen (full width + full height, no corner radius). Works across Dialog, Sheet and Drawer overlays — replaces the consumer-side max-md:!h-full max-md:!w-full max-md:!max-w-full Tailwind override chain that was previously the only way to get a full-screen Dialog on mobile. For Sheets, this is equivalent to setting MobileSheetSize to Full but composes more naturally for the Sheet+Dialog mixed case."
+        },
+        {
+          "name": "ScrollableBody",
+          "type": "bool",
+          "default": "true",
+          "summary": "Wrap the rendered component in a scrollable body region inside the overlay's chrome (Sheet only — Dialog and Drawer manage their own scroll). Default true so consumers can pass a long form to OverlayService.ShowSheetAsync{T} without rolling their own overflow-y-auto wrapper — and without hitting the focus- ring clip that bare overflow-y: auto introduces (per spec, overflow-y: auto promotes overflow-x to auto too, which clips inputs' box-shadow focus rings at the left/right edge). The built-in wrapper uses the px-1 -mx-1 trick to give focus rings 4px breathing room without shifting the visual padding. Set to false for sheets whose content sets its own scrolling strategy (e.g. an embedded PdfViewer that already paints inside a fixed canvas)."
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "OverlayParameters",
+      "kind": "class",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [],
+      "methods": [
+        {
+          "name": "Add",
+          "returnType": "OverlayParameters",
+          "signature": "Add(string name, object value)",
+          "summary": null
+        },
+        {
+          "name": "Get",
+          "returnType": "T?",
+          "signature": "Get<T>(string name)",
+          "summary": null
+        },
+        {
+          "name": "ToDictionary",
+          "returnType": "Dictionary<string, object>",
+          "signature": "ToDictionary()",
+          "summary": null
+        }
+      ],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "OverlayResult",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "Cancelled",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Data",
+          "type": "object?",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [
+        {
+          "name": "GetData",
+          "returnType": "T?",
+          "signature": "GetData<T>()",
+          "summary": null
+        },
+        {
+          "name": "Ok",
+          "returnType": "OverlayResult",
+          "signature": "Ok(object? data = null)",
+          "summary": null
+        },
+        {
+          "name": "CancelResult",
+          "returnType": "OverlayResult",
+          "signature": "CancelResult()",
+          "summary": null
+        }
+      ],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "OverlayService",
+      "kind": "class",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "BaseZIndex",
+          "type": "int",
+          "default": "50",
+          "summary": "Base z-index assigned to the first overlay. Subsequent overlays stack at BaseZIndex + n * Step. The backdrop sits at the assigned value; the content sits one tier above (Z + 1) so a nested overlay's backdrop always lands above the parent's content."
+        },
+        {
+          "name": "Step",
+          "type": "int",
+          "default": "10",
+          "summary": "Distance between consecutive overlay tiers. Step = 10 leaves room for backdrop (Z) + content (Z+1) without colliding with the next overlay's backdrop."
+        }
+      ],
+      "methods": [
+        {
+          "name": "ShowDialogAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowDialogAsync<TComponent>(string? title = null, OverlayParameters? parameters = null, OverlayOptions? options = null)",
+          "summary": null
+        },
+        {
+          "name": "ShowSheetAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowSheetAsync<TComponent>(string? title = null, Lumeo.Side side = Lumeo.Side.Right, SheetSize size = SheetSize.Default, OverlayParameters? parameters = null, OverlayOptions? options = null)",
+          "summary": null
+        },
+        {
+          "name": "ShowDrawerAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowDrawerAsync<TComponent>(string? title = null, OverlayParameters? parameters = null, OverlayOptions? options = null)",
+          "summary": null
+        },
+        {
+          "name": "ShowAlertDialogAsync",
+          "returnType": "Task<OverlayResult>",
+          "signature": "ShowAlertDialogAsync(AlertDialogOptions alertOptions)",
+          "summary": null
+        },
+        {
+          "name": "Close",
+          "returnType": "void",
+          "signature": "Close(string overlayId, object? result = null)",
+          "summary": null
+        },
+        {
+          "name": "Cancel",
+          "returnType": "void",
+          "signature": "Cancel(string overlayId)",
+          "summary": null
+        }
+      ],
+      "events": [
+        {
+          "name": "OnShow",
+          "type": "Action<OverlayInstance>?",
+          "summary": null
+        },
+        {
+          "name": "OnClose",
+          "type": "Action<string, object?, bool>?",
+          "summary": null
+        }
+      ],
+      "enumValues": []
+    },
+    {
+      "name": "OverlayType",
+      "kind": "enum",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Dialog",
+          "summary": null
+        },
+        {
+          "name": "Sheet",
+          "summary": null
+        },
+        {
+          "name": "Drawer",
+          "summary": null
+        },
+        {
+          "name": "AlertDialog",
+          "summary": null
+        }
+      ]
+    },
+    {
+      "name": "SheetOverlayOptions",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": "Sheet-shaped overlay options. Semantic marker — at the call site you get clearer intent (\"this configures a Sheet\") and IDE navigation, but the existing OverlayService.ShowDialogAsync{T} / OverlayService.ShowDrawerAsync{T} still accept any OverlayOptions via standard subtype polymorphism, so nothing prevents passing this record to the wrong service overload — the unused sheet-only properties stay silent no-ops there. Compile-time enforcement requires narrowing the service-method signatures to the typed record (planned for 4.0 as a breaking change).",
+      "properties": [
+        {
+          "name": "ScrollableBody",
+          "type": "bool",
+          "default": "true",
+          "summary": "Wrap the rendered component in a scrollable body region inside the overlay's chrome (Sheet only — Dialog and Drawer manage their own scroll). Default true so consumers can pass a long form to OverlayService.ShowSheetAsync{T} without rolling their own overflow-y-auto wrapper — and without hitting the focus- ring clip that bare overflow-y: auto introduces (per spec, overflow-y: auto promotes overflow-x to auto too, which clips inputs' box-shadow focus rings at the left/right edge). The built-in wrapper uses the px-1 -mx-1 trick to give focus rings 4px breathing room without shifting the visual padding. Set to false for sheets whose content sets its own scrolling strategy (e.g. an embedded PdfViewer that already paints inside a fixed canvas)."
+        },
+        {
+          "name": "MobileFullscreen",
+          "type": "bool",
+          "default": null,
+          "summary": "When true and the viewport width is below MobileBreakpoint, the overlay is forced full-screen (full width + full height, no corner radius). Works across Dialog, Sheet and Drawer overlays — replaces the consumer-side max-md:!h-full max-md:!w-full max-md:!max-w-full Tailwind override chain that was previously the only way to get a full-screen Dialog on mobile. For Sheets, this is equivalent to setting MobileSheetSize to Full but composes more naturally for the Sheet+Dialog mixed case."
+        },
+        {
+          "name": "MobileSwipeToClose",
+          "type": "bool?",
+          "default": null,
+          "summary": "SwipeToClose override below MobileBreakpoint. Null = use SwipeToClose at all sizes. Typical pattern: off on desktop, on for mobile bottom-sheet pull-down."
+        },
+        {
+          "name": "MobileSheetSize",
+          "type": "SheetSize?",
+          "default": null,
+          "summary": "Sheet size to use when the viewport is below MobileBreakpoint. Null = use SheetSize at all sizes. Typical pattern: SheetSize.Default on desktop, SheetSize.Full on mobile."
+        },
+        {
+          "name": "MobileSheetSide",
+          "type": "Lumeo.Side?",
+          "default": null,
+          "summary": "Sheet side to use when the viewport is below MobileBreakpoint. Null = use SheetSide at all sizes. Typical pattern: Lumeo.Side.Right on desktop, Lumeo.Side.Bottom on mobile."
+        },
+        {
+          "name": "MobileBreakpoint",
+          "type": "int?",
+          "default": "768",
+          "summary": "Viewport width threshold (CSS pixels) below which the Mobile* overrides apply. Default 768 (Tailwind md). Set to null to disable responsive switching even if the Mobile* fields are populated."
+        },
+        {
+          "name": "SwipeToClose",
+          "type": "bool",
+          "default": null,
+          "summary": "When true, a Sheet opened via OverlayService.ShowSheetAsync{T} can be dismissed by swiping in the direction opposite to its SheetSide (e.g. swipe-down on a Bottom sheet). Ignored for non-Sheet overlay types. Drawers already enable swipe by default. Default false to preserve the existing programmatic-open behaviour."
+        },
+        {
+          "name": "SheetSize",
+          "type": "SheetSize",
+          "default": "SheetSize.Default",
+          "summary": null
+        },
+        {
+          "name": "SheetSide",
+          "type": "Lumeo.Side",
+          "default": "Lumeo.Side.Right",
+          "summary": null
+        },
+        {
+          "name": "PreventClose",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "SheetSize",
+      "kind": "enum",
+      "namespace": "Lumeo.Services",
+      "summary": "Sheet size as exposed through OverlayService. Mirrors SheetContent.SheetSize — kept distinct so the service layer doesn't take a hard dependency on the UI namespace. Full is layout-intent (entire viewport) and intentionally NOT folded into Size.",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Sm",
+          "summary": null
+        },
+        {
+          "name": "Default",
+          "summary": null
+        },
+        {
+          "name": "Lg",
+          "summary": null
+        },
+        {
+          "name": "Xl",
+          "summary": null
+        },
+        {
+          "name": "Full",
+          "summary": null
+        }
+      ]
+    },
+    {
+      "name": "Side",
+      "kind": "enum",
+      "namespace": "Lumeo",
+      "summary": "Cardinal side used for overlay placement and edge anchoring. Replaces the per-component *Side enums (PopoverSide, TooltipSide, DropdownMenuSide, HoverCardSide, DrawerSide, SheetSide, SidebarSide, TourPlacement) in 3.0 (BREAKING).",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Top",
+          "summary": "The top edge."
+        },
+        {
+          "name": "Right",
+          "summary": "The right edge."
+        },
+        {
+          "name": "Bottom",
+          "summary": "The bottom edge."
+        },
+        {
+          "name": "Left",
+          "summary": "The left edge."
+        }
+      ]
+    },
+    {
+      "name": "Size",
+      "kind": "enum",
+      "namespace": "Lumeo",
+      "summary": "Unified size scale used across Lumeo components. Replaces the per-component *Size enums in 3.0 (BREAKING).",
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "Xs",
+          "summary": "Extra small. Used by Icon."
+        },
+        {
+          "name": "Sm",
+          "summary": "Small. Used by most sized components (Avatar, Chip, Input, etc.)."
+        },
+        {
+          "name": "Md",
+          "summary": "Medium / default. The neutral middle value for every sized component."
+        },
+        {
+          "name": "Lg",
+          "summary": "Large. Used by most sized components."
+        },
+        {
+          "name": "Xl",
+          "summary": "Extra large. Used by Avatar, Icon."
+        },
+        {
+          "name": "Xxl",
+          "summary": "2x extra large. Reserved for future use."
+        },
+        {
+          "name": "Xxs",
+          "summary": "Double extra small. For dense-mode Avatar / Chip where a smaller indicator is needed (e.g. inline-with-text presence dot, stacked-avatar list previews). Replaces consumer-side text-[10px] / h-5 w-5 arbitrary-value Tailwind escape hatches with a first-class token. Added in 3.3; appended at value 6 instead of inserted before Xs so existing serialised ints (Sm=1, Md=2, …) still resolve to the same enum member."
+        }
+      ]
+    },
+    {
+      "name": "TabMeasurement",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "X",
+          "type": "double",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Width",
+          "type": "double",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "TextareaCaretInfo",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "Top",
+          "type": "double",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Left",
+          "type": "double",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "SelectionStart",
+          "type": "int",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "Theme",
+      "kind": "staticClass",
+      "namespace": "Lumeo",
+      "summary": "Entry point for the fluent ThemeBuilder.",
+      "properties": [],
+      "methods": [
+        {
+          "name": "Customize",
+          "returnType": "ThemeBuilder",
+          "signature": "Customize(IJSRuntime js)",
+          "summary": null
+        }
+      ],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "ThemeBuilder",
+      "kind": "class",
+      "namespace": "Lumeo",
+      "summary": "Fluent builder that emits a custom CSS-variable override block on top of a Lumeo base scheme (zinc / slate / stone / …). Lets consumers tweak design tokens without writing a CSS file or forking a scheme. await Theme.Customize(Js) .WithPrimary(\"#3b82f6\") .WithBorderRadius(0.5) .WithFontFamily(\"'Inter', system-ui, sans-serif\") .ApplyAsync(); Calls are idempotent — each ApplyAsync replaces the previous `&lt;style id=\"lumeo-custom-theme\"&gt;` block, so consumers can rebuild on every settings change without leaking stale rules.",
+      "properties": [],
+      "methods": [
+        {
+          "name": "WithPrimary",
+          "returnType": "ThemeBuilder",
+          "signature": "WithPrimary(string color)",
+          "summary": "Override --color-primary. Accepts any CSS color string (hex, rgb(), hsl(), oklch(), CSS named color)."
+        },
+        {
+          "name": "WithPrimaryForeground",
+          "returnType": "ThemeBuilder",
+          "signature": "WithPrimaryForeground(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithSecondary",
+          "returnType": "ThemeBuilder",
+          "signature": "WithSecondary(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithSecondaryForeground",
+          "returnType": "ThemeBuilder",
+          "signature": "WithSecondaryForeground(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithAccent",
+          "returnType": "ThemeBuilder",
+          "signature": "WithAccent(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithAccentForeground",
+          "returnType": "ThemeBuilder",
+          "signature": "WithAccentForeground(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithBackground",
+          "returnType": "ThemeBuilder",
+          "signature": "WithBackground(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithForeground",
+          "returnType": "ThemeBuilder",
+          "signature": "WithForeground(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithMuted",
+          "returnType": "ThemeBuilder",
+          "signature": "WithMuted(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithMutedForeground",
+          "returnType": "ThemeBuilder",
+          "signature": "WithMutedForeground(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithBorder",
+          "returnType": "ThemeBuilder",
+          "signature": "WithBorder(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithRing",
+          "returnType": "ThemeBuilder",
+          "signature": "WithRing(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithDestructive",
+          "returnType": "ThemeBuilder",
+          "signature": "WithDestructive(string color)",
+          "summary": null
+        },
+        {
+          "name": "WithBorderRadius",
+          "returnType": "ThemeBuilder",
+          "signature": "WithBorderRadius(double rem)",
+          "summary": "Override the global border-radius scale. Accepts a rem value — Lumeo uses 0.5 by default. Components derive from calc(var(--radius) - 2px) / calc(var(--radius) + 4px)."
+        },
+        {
+          "name": "WithFontFamily",
+          "returnType": "ThemeBuilder",
+          "signature": "WithFontFamily(string fontStack)",
+          "summary": "Override the root font family. Pass the full CSS font-family stack including quotes / fallbacks. Writes the font-family declaration directly on :root — Lumeo's theme CSS doesn't consume a --font-family custom property, so emitting the raw declaration is what actually takes effect (matching the path used by ThemeService.SetFont)."
+        },
+        {
+          "name": "WithVariable",
+          "returnType": "ThemeBuilder",
+          "signature": "WithVariable(string name, string value)",
+          "summary": "Set an arbitrary CSS custom property. The name MUST start with -- and must match a token the bundled lumeo.css actually reads. Color tokens are prefixed with --color- (e.g. --color-primary, --color-ring); non-color tokens are bare (--radius, --shadow-sm). Throws ArgumentException when the name does not start with -- so a shorthand typo (\"primary\") fails loud instead of emitting a silently-unused --primary."
+        },
+        {
+          "name": "ApplyAsync",
+          "returnType": "ValueTask",
+          "signature": "ApplyAsync()",
+          "summary": "Write the accumulated overrides to a managed &lt;style id=\"lumeo-custom-theme\"&gt; block. Replaces the previous block on each call, so successive Apply calls don't leak."
+        },
+        {
+          "name": "ClearAsync",
+          "returnType": "ValueTask",
+          "signature": "ClearAsync()",
+          "summary": "Remove the custom-theme block, reverting to the base scheme."
+        }
+      ],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "ThemeMode",
+      "kind": "enum",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [],
+      "methods": [],
+      "events": [],
+      "enumValues": [
+        {
+          "name": "System",
+          "summary": null
+        },
+        {
+          "name": "Light",
+          "summary": null
+        },
+        {
+          "name": "Dark",
+          "summary": null
+        }
+      ]
+    },
+    {
+      "name": "ThemeSchemeInfo",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "Id",
+          "type": "string",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "PreviewColor",
+          "type": "string",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [],
+      "events": [],
+      "enumValues": []
+    },
+    {
+      "name": "ThemeService",
+      "kind": "class",
+      "namespace": "Lumeo.Services",
+      "summary": null,
+      "properties": [
+        {
+          "name": "CurrentMode",
+          "type": "ThemeMode",
+          "default": "ThemeMode.System",
+          "summary": null
+        },
+        {
+          "name": "CurrentScheme",
+          "type": "string",
+          "default": "\"zinc\"",
+          "summary": null
+        },
+        {
+          "name": "IsDark",
+          "type": "bool",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "CurrentDirection",
+          "type": "LayoutDirection",
+          "default": "LayoutDirection.Ltr",
+          "summary": null
+        },
+        {
+          "name": "AvailableSchemes",
+          "type": "IReadOnlyList<ThemeSchemeInfo>",
+          "default": "[\n        new(\"zinc\", \"Zinc\", \"hsl(240 5.9% 10%)\"),\n        new(\"blue\", \"Blue\", \"hsl(221 83% 53%)\"),\n        new(\"green\", \"Green\", \"hsl(142 71% 45%)\"),\n        new(\"rose\", \"Rose\", \"hsl(347 77% 50%)\"),\n        new(\"orange\", \"Orange\", \"hsl(14 70% 50%)\"),\n        new(\"violet\", \"Violet\", \"hsl(263 70% 50%)\"),\n        new(\"amber\", \"Amber\", \"hsl(38 92% 50%)\"),\n        new(\"teal\", \"Teal\", \"hsl(173 80% 40%)\"),\n    ]",
+          "summary": null
+        }
+      ],
+      "methods": [
+        {
+          "name": "InitializeAsync",
+          "returnType": "Task",
+          "signature": "InitializeAsync()",
+          "summary": null
+        },
+        {
+          "name": "SetModeAsync",
+          "returnType": "Task",
+          "signature": "SetModeAsync(ThemeMode mode)",
+          "summary": null
+        },
+        {
+          "name": "SetSchemeAsync",
+          "returnType": "Task",
+          "signature": "SetSchemeAsync(string scheme)",
+          "summary": null
+        },
+        {
+          "name": "ToggleModeAsync",
+          "returnType": "Task",
+          "signature": "ToggleModeAsync()",
+          "summary": null
+        },
+        {
+          "name": "SetDirectionAsync",
+          "returnType": "Task",
+          "signature": "SetDirectionAsync(LayoutDirection direction)",
+          "summary": null
+        },
+        {
+          "name": "GetDirectionAsync",
+          "returnType": "Task<LayoutDirection>",
+          "signature": "GetDirectionAsync()",
+          "summary": null
+        }
+      ],
+      "events": [
+        {
+          "name": "OnThemeChanged",
+          "type": "Action?",
+          "summary": null
+        }
+      ],
+      "enumValues": []
+    },
+    {
+      "name": "ViewportInfo",
+      "kind": "record",
+      "namespace": "Lumeo.Services",
+      "summary": "Immutable snapshot of the viewport at a point in time. Passed to ViewportChanged subscribers.",
+      "properties": [
+        {
+          "name": "Width",
+          "type": "double",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Height",
+          "type": "double",
+          "default": null,
+          "summary": null
+        },
+        {
+          "name": "Current",
+          "type": "Breakpoint",
+          "default": null,
+          "summary": null
+        }
+      ],
+      "methods": [
+        {
+          "name": "FromWidth",
+          "returnType": "Breakpoint",
+          "signature": "FromWidth(double width)",
+          "summary": "Maps a width to a Breakpoint using the Tailwind thresholds. Pure function; consumers can call it directly with an arbitrary width (e.g. to pre-compute a breakpoint from a server-rendered User-Agent hint)."
+        }
+      ],
+      "events": [],
+      "enumValues": []
     }
   ],
   "components": {
@@ -15124,7 +18207,7 @@
     },
     "ConfirmButton": {
       "name": "ConfirmButton",
-      "category": "Utility",
+      "category": "Forms",
       "subcategory": null,
       "description": "Confirm Button component.",
       "nugetPackage": "Lumeo",
@@ -15266,7 +18349,24 @@
       "cssVars": [
         "--color-foreground"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic Confirm",
+          "code": "<ConfirmButton Title=\"Save changes?\"\n               Description=\"Your edits will be applied immediately.\"\n               OnConfirm=\"@HandleSave\">\n    Save\n</ConfirmButton>"
+        },
+        {
+          "title": "Destructive Action",
+          "code": "<ConfirmButton Title=\"Delete account?\"\n               Description=\"All your data will be permanently removed.\"\n               ConfirmText=\"Yes, delete\"\n               CancelText=\"Keep account\"\n               IsDestructive=\"true\"\n               Variant=\"Button.ButtonVariant.Destructive\"\n               OnConfirm=\"@HandleDelete\"\n               OnCancel=\"@HandleCancel\">\n    Delete Account\n</ConfirmButton>"
+        },
+        {
+          "title": "Variants and Sizes",
+          "code": "<ConfirmButton Variant=\"Button.ButtonVariant.Secondary\" Title=\"Archive project?\" ConfirmText=\"Archive\" OnConfirm=\"@HandleArchive\">Archive</ConfirmButton>\n<ConfirmButton Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\" Title=\"Reset form?\" OnConfirm=\"@HandleReset\">Reset</ConfirmButton>\n<ConfirmButton Variant=\"Button.ButtonVariant.Destructive\" Size=\"Button.ButtonSize.Lg\" Title=\"Remove member?\" IsDestructive=\"true\" OnConfirm=\"@HandleRemove\">Remove</ConfirmButton>"
+        },
+        {
+          "title": "Loading and Disabled",
+          "code": "<ConfirmButton IsLoading=\"true\" Title=\"Publish?\" OnConfirm=\"@HandlePublish\">Publishing…</ConfirmButton>\n<ConfirmButton Disabled=\"true\" Title=\"Publish?\" OnConfirm=\"@HandlePublish\">Disabled</ConfirmButton>"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
@@ -16277,7 +19377,7 @@
     },
     "CTASection": {
       "name": "CTASection",
-      "category": "Utility",
+      "category": "Marketing",
       "subcategory": null,
       "description": "CTASection component.",
       "nugetPackage": "Lumeo",
@@ -16347,7 +19447,20 @@
         "--color-muted",
         "--color-muted-foreground"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic CTA",
+          "code": "<CTASection Title=\"Ready to build with Lumeo?\"\n            Subtitle=\"Install the package and ship your first component in minutes.\">\n    <Actions>\n        <Button>Get started</Button>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Read the docs</Button>\n    </Actions>\n</CTASection>"
+        },
+        {
+          "title": "Single Action",
+          "code": "<CTASection Title=\"Join the newsletter\"\n            Subtitle=\"Monthly updates on new components and releases. No spam.\">\n    <Actions>\n        <Button>Subscribe</Button>\n    </Actions>\n</CTASection>"
+        },
+        {
+          "title": "Custom Title Slot",
+          "code": "<CTASection Subtitle=\"Use TitleSlot when you need custom title markup.\">\n    <TitleSlot>\n        <h2 class=\"text-3xl sm:text-4xl font-bold tracking-tight text-foreground\">\n            Start shipping <span class=\"text-primary\">today</span>\n        </h2>\n    </TitleSlot>\n    <Actions>\n        <Button>Get started</Button>\n    </Actions>\n</CTASection>"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
@@ -20317,7 +23430,20 @@
       "cssVars": [
         "--color-foreground"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Scoping a panel",
+          "code": "<DensityScope Value=\"Density.Compact\">\n    <Button>Save</Button>\n    <Button Variant=\"Button.ButtonVariant.Outline\">Cancel</Button>\n    <Input Placeholder=\"Search…\" />\n</DensityScope>\n\n<DensityScope Value=\"Density.Spacious\">\n    <Button>Save</Button>\n    <Input Placeholder=\"Search…\" />\n</DensityScope>"
+        },
+        {
+          "title": "Interactive — switch the scope",
+          "code": "<DensityScope Value=\"_density\">\n    <Button>Primary</Button>\n    <Input Placeholder=\"Type here…\" />\n</DensityScope>\n\n@code {\n    private Density _density = Density.Comfortable;\n}"
+        },
+        {
+          "title": "Per-component override",
+          "code": "<DensityScope Value=\"Density.Compact\">\n    <Button>Inherits Compact</Button>\n    <Button Density=\"Density.Spacious\">Overrides to Spacious</Button>\n</DensityScope>"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
@@ -22530,7 +25656,7 @@
     },
     "FeatureGrid": {
       "name": "FeatureGrid",
-      "category": "Utility",
+      "category": "Marketing",
       "subcategory": null,
       "description": "Feature Grid component.",
       "nugetPackage": "Lumeo",
@@ -22599,14 +25725,27 @@
         "--color-muted",
         "--color-muted-foreground"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic Feature Grid",
+          "code": "<FeatureGrid Title=\"Everything in the box\"\n             Subtitle=\"A focused set of primitives that compose into anything.\">\n    <FeatureItem Title=\"Theming\" Description=\"Every color is a CSS variable.\">\n        <Icon><Blazicon Svg=\"Lucide.Palette\" class=\"h-5 w-5\" /></Icon>\n    </FeatureItem>\n    <FeatureItem Title=\"Accessible\" Description=\"WAI-ARIA roles and keyboard navigation.\">\n        <Icon><Blazicon Svg=\"Lucide.Accessibility\" class=\"h-5 w-5\" /></Icon>\n    </FeatureItem>\n    <FeatureItem Title=\"Density\" Description=\"Flip a panel between compact and spacious.\">\n        <Icon><Blazicon Svg=\"Lucide.Rows3\" class=\"h-5 w-5\" /></Icon>\n    </FeatureItem>\n</FeatureGrid>"
+        },
+        {
+          "title": "Two Columns",
+          "code": "<FeatureGrid Columns=\"2\" Title=\"Built for Blazor\">\n    <FeatureItem Title=\"Native components\" Description=\"Pure Razor with thin interop where it counts.\" />\n    <FeatureItem Title=\"Source generators\" Description=\"The [LumeoForm] generator wires up validation and binding.\" />\n</FeatureGrid>"
+        },
+        {
+          "title": "Standalone Feature Item",
+          "code": "<FeatureItem Title=\"Fast by default\" Description=\"A small CSS bundle keeps your app lean.\">\n    <Icon><Blazicon Svg=\"Lucide.Zap\" class=\"h-5 w-5\" /></Icon>\n</FeatureItem>"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
     },
     "FeatureItem": {
       "name": "FeatureItem",
-      "category": "Utility",
+      "category": "Marketing",
       "subcategory": null,
       "description": "Feature Item component.",
       "nugetPackage": "Lumeo",
@@ -24757,7 +27896,7 @@
     },
     "Hero": {
       "name": "Hero",
-      "category": "Utility",
+      "category": "Marketing",
       "subcategory": null,
       "description": "Hero component.",
       "nugetPackage": "Lumeo",
@@ -24868,7 +28007,24 @@
         "--color-muted",
         "--color-muted-foreground"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic Hero",
+          "code": "<Hero Title=\"Build faster with Lumeo\"\n      Subtitle=\"A complete Blazor component library with theming, accessibility, and density built in.\">\n    <Actions>\n        <Button>Get started</Button>\n        <Button Variant=\"Button.ButtonVariant.Outline\">View components</Button>\n    </Actions>\n</Hero>"
+        },
+        {
+          "title": "With Eyebrow",
+          "code": "<Hero Title=\"Version 3.5 is here\"\n      Subtitle=\"Marketing blocks, density scopes, and a smaller bundle.\">\n    <Eyebrow>\n        <Badge Variant=\"Badge.BadgeVariant.Secondary\">New</Badge>\n    </Eyebrow>\n    <Actions>\n        <Button>Read the changelog</Button>\n    </Actions>\n</Hero>"
+        },
+        {
+          "title": "Centered Alignment",
+          "code": "<Hero Alignment=\"Hero.HeroAlignment.Center\"\n      Title=\"Everything you need to ship\"\n      Subtitle=\"Forms, overlays, data display, charts, and motion — all in one package.\">\n    <Actions>\n        <Button>Install</Button>\n        <Button Variant=\"Button.ButtonVariant.Ghost\">Docs</Button>\n    </Actions>\n</Hero>"
+        },
+        {
+          "title": "With Media",
+          "code": "<Hero Title=\"See it in action\"\n      Subtitle=\"A two-column layout that collapses to a single column on small screens.\">\n    <Actions>\n        <Button>Try the playground</Button>\n    </Actions>\n    <Media>\n        <img src=\"/screenshot.png\" alt=\"Product screenshot\" class=\"rounded-xl border border-border/40\" />\n    </Media>\n</Hero>"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
@@ -30737,7 +33893,7 @@
     },
     "OverlayForm": {
       "name": "OverlayForm",
-      "category": "Utility",
+      "category": "Forms",
       "subcategory": null,
       "description": "Overlay Form component.",
       "nugetPackage": "Lumeo",
@@ -30841,7 +33997,12 @@
       "cssVars": [
         "--color-border"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic Overlay Form",
+          "code": "<OverlayForm Model=\"@_model\" OnValidSubmit=\"HandleSave\">\n    <Header>\n        <Heading Level=\"3\" Class=\"text-base font-semibold\">Edit contact</Heading>\n    </Header>\n    <Body>\n        <Stack Gap=\"4\">\n            <Label>Name</Label>\n            <Input @bind-Value=\"_model.Name\" Placeholder=\"Jane Doe\" />\n            <Label>Email</Label>\n            <Input @bind-Value=\"_model.Email\" Placeholder=\"jane@example.com\" />\n            <Label>Notes</Label>\n            <Textarea @bind-Value=\"_model.Notes\" />\n        </Stack>\n    </Body>\n    <Footer>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Cancel</Button>\n        <Button Type=\"Button.ButtonType.Submit\">Save</Button>\n    </Footer>\n</OverlayForm>\n\n@code {\n    private ContactModel _model = new();\n    private void HandleSave(EditContext ctx) { /* persist _model */ }\n}"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
@@ -45293,7 +48454,7 @@
     },
     "UploadTrigger": {
       "name": "UploadTrigger",
-      "category": "Utility",
+      "category": "Forms",
       "subcategory": null,
       "description": "Upload Trigger component.",
       "nugetPackage": "Lumeo",
@@ -45417,7 +48578,24 @@
         "--color-secondary-foreground",
         "--radius"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic Trigger",
+          "code": "<UploadTrigger Text=\"Upload file\" OnFilesSelected=\"@HandleFiles\" />\n\n@code {\n    private void HandleFiles(InputFileChangeEventArgs e)\n    {\n        // read e.File / e.GetMultipleFiles() and upload\n    }\n}"
+        },
+        {
+          "title": "Variants",
+          "code": "<UploadTrigger Variant=\"Button.ButtonVariant.Default\" Text=\"Default\" OnFilesSelected=\"@HandleFiles\" />\n<UploadTrigger Variant=\"Button.ButtonVariant.Secondary\" Text=\"Secondary\" OnFilesSelected=\"@HandleFiles\" />\n<UploadTrigger Variant=\"Button.ButtonVariant.Outline\" Text=\"Outline\" OnFilesSelected=\"@HandleFiles\" />\n<UploadTrigger Variant=\"Button.ButtonVariant.Ghost\" Text=\"Ghost\" OnFilesSelected=\"@HandleFiles\" />"
+        },
+        {
+          "title": "Accept Filter and Multiple",
+          "code": "<UploadTrigger Text=\"Pick images\" Accept=\"image/*\" Multiple=\"true\" OnFilesSelected=\"@HandleFiles\" />\n<UploadTrigger Text=\"Pick a PDF\" Accept=\".pdf,.docx\" OnFilesSelected=\"@HandleFiles\" />"
+        },
+        {
+          "title": "Custom Label and Icon",
+          "code": "<UploadTrigger Variant=\"Button.ButtonVariant.Outline\" OnFilesSelected=\"@HandleFiles\">\n    <Icon>\n        <Blazicon Svg=\"Lucide.Image\" class=\"h-4 w-4\" />\n    </Icon>\n    <ChildContent>\n        <span>Replace photo</span>\n    </ChildContent>\n</UploadTrigger>\n\n<UploadTrigger Size=\"Button.ButtonSize.Icon\" Variant=\"Button.ButtonVariant.Ghost\" OnFilesSelected=\"@HandleFiles\" aria-label=\"Attach file\">\n    <Icon>\n        <Blazicon Svg=\"Lucide.Paperclip\" class=\"h-4 w-4\" />\n    </Icon>\n    @* Empty ChildContent suppresses the default text label *@\n    <ChildContent></ChildContent>\n</UploadTrigger>"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
