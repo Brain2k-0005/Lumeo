@@ -212,7 +212,7 @@ public static class ComponentsApiEmitter
             {
                 "OverlayService", "OverlayOptions", "SheetOverlayOptions",
                 "DialogOverlayOptions", "DrawerOverlayOptions", "AlertDialogOptions",
-                "OverlayResult", "OverlayParameters", "OverlayInstance", "OverlayType", "SheetSize",
+                "OverlayResult", "OverlayParameters", "OverlayInstance", "OverlayType", "OverlaySize", "SheetSize",
             }),
             // IOverlayService lives in its own file, not OverlayService.cs.
             (Core("Services", "IOverlayService.cs"), new[]
