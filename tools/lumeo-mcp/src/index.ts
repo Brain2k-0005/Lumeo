@@ -41,6 +41,7 @@ import {
   type ApiDocument,
   type ApiParameter,
   type ApiPattern,
+  type ApiService,
   type ApiThemeToken,
 } from "./componentsApi.js";
 import { components as curatedExamples } from "./components.js";
@@ -63,6 +64,30 @@ const components: ApiComponent[] = Object.values(api.components).sort((a, b) =>
 const byName = new Map<string, ApiComponent>(
   components.map((c) => [c.name.toLowerCase(), c]),
 );
+// Sub-component → parent map. Sub-components (SheetContent, SelectTrigger,
+// CardHeader, DialogContent, TabsTrigger, AccordionItem, …) are real,
+// usable elements but only exist nested under their parent in the schema.
+// Without this, an agent looking one up by name got "not found" even
+// though the element exists. Resolving to the parent surfaces the full
+// composition (the parent payload lists all its sub-components).
+const bySubName = new Map<string, ApiComponent>();
+for (const c of components) {
+  for (const s of Object.values(c.subComponents)) {
+    const key = s.componentName.toLowerCase();
+    if (!byName.has(key) && !bySubName.has(key)) bySubName.set(key, c);
+  }
+}
+// Service-layer public API (OverlayService, ThemeBuilder, IResponsiveService,
+// global enums, …). These live in plain C#, not .razor, so they were
+// previously invisible to agents. Indexed here so they're discoverable the
+// same way components are.
+const services: ApiService[] = (api.services ?? []).slice().sort((a, b) =>
+  a.name.localeCompare(b.name),
+);
+const serviceByName = new Map<string, ApiService>(
+  services.map((s) => [s.name.toLowerCase(), s]),
+);
+
 const CATEGORIES: string[] = Array.from(new Set(components.map((c) => c.category))).sort();
 const themeTokens: ApiThemeToken[] = api.themeTokens ?? [];
 const patterns: ApiPattern[] = api.patterns ?? [];
@@ -80,7 +105,9 @@ const curatedExampleByName = new Map<string, string>(
 // ───────────────── Helpers ─────────────────
 
 function findComponent(name: string): ApiComponent | undefined {
-  return byName.get(name.toLowerCase());
+  // Top-level match first; fall back to the parent of a matching sub-component
+  // so e.g. "SheetContent" / "CardHeader" / "SelectTrigger" resolve.
+  return byName.get(name.toLowerCase()) ?? bySubName.get(name.toLowerCase());
 }
 
 function score(c: ApiComponent, q: string): number {
@@ -92,6 +119,13 @@ function score(c: ApiComponent, q: string): number {
   if (c.name.toLowerCase().includes(needle)) s += 25;
   if (c.category.toLowerCase().includes(needle)) s += 10;
   if (c.description.toLowerCase().includes(needle)) s += 5;
+  // Sub-component name matches surface the parent — so searching a nested
+  // element ("SheetContent", "TabsTrigger") finds the component that owns it.
+  for (const sub of Object.values(c.subComponents)) {
+    const sn = sub.componentName.toLowerCase();
+    if (sn === needle) { s += 80; break; }
+    if (sn.includes(needle)) { s += 20; break; }
+  }
   return s;
 }
 
@@ -190,6 +224,84 @@ function toCategoryMarkdown(category: string): string {
     rows,
     "",
   ].join("\n");
+}
+
+// ───────────────── Services ─────────────────
+
+function findService(name: string): ApiService | undefined {
+  return serviceByName.get(name.toLowerCase());
+}
+
+function toServiceMarkdown(s: ApiService): string {
+  const propRows = s.properties
+    .map((p) => `| \`${p.name}\` | \`${p.type}\` | \`${p.default ?? "—"}\` | ${p.summary ?? ""} |`)
+    .join("\n");
+  const methodRows = s.methods
+    .map((m) => `- \`${m.signature}\` → \`${m.returnType}\`${m.summary ? ` — ${m.summary}` : ""}`)
+    .join("\n");
+  const enumRows = s.enumValues
+    .map((e) => `- **${e.name}**${e.summary ? ` — ${e.summary}` : ""}`)
+    .join("\n");
+  const eventRows = s.events
+    .map((e) => `- **${e.name}** \`${e.type}\`${e.summary ? ` — ${e.summary}` : ""}`)
+    .join("\n");
+
+  const sections = [
+    `# ${s.name}`,
+    "",
+    `**Kind:** ${s.kind}`,
+    `**Namespace:** \`${s.namespace ?? "Lumeo"}\``,
+    "",
+    s.summary ?? "_(no summary)_",
+    "",
+  ];
+  if (s.enumValues.length) sections.push("## Values", "", enumRows, "");
+  if (s.properties.length) {
+    sections.push(
+      "## Properties",
+      "",
+      "| Name | Type | Default | Summary |",
+      "|---|---|---|---|",
+      propRows,
+      "",
+    );
+  }
+  if (s.methods.length) sections.push("## Methods", "", methodRows, "");
+  if (s.events.length) sections.push("## Events", "", eventRows, "");
+  return sections.join("\n");
+}
+
+function toServiceListPayload(s: ApiService) {
+  return { name: s.name, kind: s.kind, summary: s.summary };
+}
+
+function searchServices(query: string): ApiService[] {
+  const needle = query.toLowerCase();
+  if (!needle) return services;
+  return services
+    .map((s) => {
+      let score = 0;
+      if (s.name.toLowerCase() === needle) score += 100;
+      if (s.name.toLowerCase().includes(needle)) score += 30;
+      if ((s.summary ?? "").toLowerCase().includes(needle)) score += 5;
+      if (s.enumValues.some((e) => e.name.toLowerCase() === needle)) score += 20;
+      if (s.properties.some((p) => p.name.toLowerCase() === needle)) score += 10;
+      if (s.methods.some((m) => m.name.toLowerCase() === needle)) score += 10;
+      // Events too — so an event-only query (ViewportChanged, OnThemeChanged,
+      // OnShow, OnClose) surfaces the owning service/interface.
+      if (s.events.some((e) => e.name.toLowerCase() === needle)) score += 10;
+      // Substring (fuzzy) member matching so partial queries discover the
+      // service: "scrollable" → OverlayOptions.ScrollableBody, "showdialog" →
+      // OverlayService.ShowDialogAsync, "mobile" → MobileFullscreen, etc.
+      if (s.properties.some((p) => p.name.toLowerCase().includes(needle))) score += 6;
+      if (s.methods.some((m) => m.name.toLowerCase().includes(needle))) score += 6;
+      if (s.events.some((e) => e.name.toLowerCase().includes(needle))) score += 6;
+      if (s.enumValues.some((e) => e.name.toLowerCase().includes(needle))) score += 6;
+      return { s, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.s);
 }
 
 function toListPayload(c: ApiComponent) {
@@ -426,9 +538,39 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "lumeo_list_services",
+      description:
+        `List all ${services.length} Lumeo SERVICE-LAYER public API types — services (OverlayService, ` +
+        "ThemeService, ComponentInteropService), options records (OverlayOptions, AlertDialogOptions), " +
+        "interfaces (IResponsiveService, IThemeService), the fluent ThemeBuilder, and global enums " +
+        "(Size, Density, Side, Align, Orientation, Breakpoint, ThemeMode, …). These live in plain C#, " +
+        "not Razor. Returns { name, kind, summary } per type. Use lumeo_get_service for the full API.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "lumeo_get_service",
+      description:
+        "Get the COMPLETE public API for a Lumeo service-layer type: its summary, public properties " +
+        "(name, type, default, XML doc), public methods (signature, return type, doc), and enum values. " +
+        "Covers OverlayService (ShowDialogAsync/ShowSheetAsync/ShowAlertDialogAsync), OverlayOptions " +
+        "(ScrollableBody, MobileFullscreen, …), ThemeBuilder, IResponsiveService, AlertDialogOptions, and " +
+        "the global enums. Sourced from the actual C# source via Roslyn.",
+      inputSchema: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: {
+            type: "string",
+            description: "Service/type name (e.g. \"OverlayService\", \"OverlayOptions\", \"ThemeBuilder\", \"Size\"). Case-insensitive.",
+          },
+        },
+      },
+    },
+    {
       name: "lumeo_search",
       description:
-        `Fuzzy search across all ${components.length} Lumeo components (name, category, description). Best matches first.`,
+        `Fuzzy search across all ${components.length} Lumeo components (name, category, description) ` +
+        `and ${services.length} service-layer types. Best matches first.`,
       inputSchema: {
         type: "object",
         required: ["query"],
@@ -544,10 +686,41 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       return { content: [{ type: "text", text: JSON.stringify(toGetPayload(c), null, 2) }] };
     }
+    case "lumeo_list_services": {
+      const results = services.map(toServiceListPayload);
+      return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+    }
+    case "lumeo_get_service": {
+      const wanted = typeof a.name === "string" ? a.name : "";
+      const s = findService(wanted);
+      if (!s) {
+        return {
+          isError: true,
+          content: [{
+            type: "text",
+            text: `Service "${wanted}" not found. Use lumeo_list_services to discover available service-layer types.`,
+          }],
+        };
+      }
+      return { content: [{ type: "text", text: JSON.stringify(s, null, 2) }] };
+    }
     case "lumeo_search": {
       const query = typeof a.query === "string" ? a.query : "";
-      const results = searchCatalog(query).map(toListPayload);
-      return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+      // Flat array (the original lumeo_search shape) so existing clients that
+      // iterate the result list keep working. Component matches come first;
+      // service matches are appended. Each item carries a `resultType`
+      // discriminator ("component" | "service") for clients that want to
+      // distinguish — a harmless extra field for those that don't.
+      const results = [
+        ...searchCatalog(query).map((c) => ({ resultType: "component", ...toListPayload(c) })),
+        ...searchServices(query).map((s) => ({ resultType: "service", ...toServiceListPayload(s) })),
+      ];
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(results, null, 2),
+        }],
+      };
     }
     case "lumeo_get_example": {
       const wanted = typeof a.name === "string" ? a.name : "";
@@ -640,6 +813,12 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
       description: `Overview of all Lumeo components in the ${cat} category.`,
       mimeType: "text/markdown",
     })),
+    ...services.map((s) => ({
+      uri: `lumeo://service/${s.name}`,
+      name: `${s.name} (Lumeo ${s.kind})`,
+      description: s.summary ?? `Lumeo service-layer ${s.kind}.`,
+      mimeType: "text/markdown",
+    })),
   ],
 }));
 
@@ -655,6 +834,12 @@ server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
       uriTemplate: "lumeo://category/{name}",
       name: "Lumeo category overview",
       description: "Markdown overview of all components in a Lumeo category.",
+      mimeType: "text/markdown",
+    },
+    {
+      uriTemplate: "lumeo://service/{name}",
+      name: "Lumeo service-layer reference",
+      description: "Markdown reference for a single Lumeo service-layer type, generated from C# source.",
       mimeType: "text/markdown",
     },
   ],
@@ -674,6 +859,13 @@ server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const cat = decodeURIComponent(categoryMatch[1]!);
     return { contents: [{ uri, mimeType: "text/markdown", text: toCategoryMarkdown(cat) }] };
   }
+  const serviceMatch = /^lumeo:\/\/service\/(.+)$/i.exec(uri);
+  if (serviceMatch) {
+    const wanted = decodeURIComponent(serviceMatch[1]!);
+    const s = findService(wanted);
+    if (!s) throw new Error(`Unknown Lumeo service: ${wanted}`);
+    return { contents: [{ uri, mimeType: "text/markdown", text: toServiceMarkdown(s) }] };
+  }
   throw new Error(`Unsupported resource URI: ${uri}`);
 });
 
@@ -683,7 +875,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
-    `[lumeo-mcp] ready — ${components.length} components, ${CATEGORIES.length} categories, ` +
+    `[lumeo-mcp] ready — ${components.length} components, ${services.length} services, ${CATEGORIES.length} categories, ` +
     `${api.stats.totalParameters} params, ${api.stats.totalEnums} enums, ` +
     `${themeTokens.length} theme tokens, ${patterns.length} patterns, ` +
     `api v${api.version}, generated ${api.generated}\n`,
