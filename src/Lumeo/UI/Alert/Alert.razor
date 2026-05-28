@@ -62,6 +62,12 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public AlertVariant Variant { get; set; } = AlertVariant.Default;
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+    /// <summary>Per-alert density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only the box padding shifts —
+    /// text/icon size stay governed by <see cref="Size"/>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public bool IsDismissible { get; set; }
     [Parameter] public EventCallback OnDismiss { get; set; }
     [Parameter] public string? Title { get; set; }
@@ -115,11 +121,21 @@
     // colored variants knock it softer since their tinted background already carries the visual weight.
     private string CssClass => $"relative w-full rounded-lg border border-border/60 {SizePaddingClass} text-sm {VariantClasses} {Class}".Trim();
 
-    private string SizePaddingClass => Size switch
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Box padding tracks Size x Density; Comfortable reproduces the historical
+    // per-Size values verbatim.
+    private string SizePaddingClass => (Size, EffectiveDensity) switch
     {
-        Lumeo.Size.Sm => "px-3 py-2",
-        Lumeo.Size.Lg => "px-5 py-4",
-        _ => "px-4 py-3"
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "px-2.5 py-1.5",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "px-4 py-3",
+        (Lumeo.Size.Sm, _)                      => "px-3 py-2",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "px-4 py-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "px-6 py-5",
+        (Lumeo.Size.Lg, _)                      => "px-5 py-4",
+        (_, Lumeo.Density.Compact)              => "px-3 py-2",
+        (_, Lumeo.Density.Spacious)             => "px-5 py-4",
+        _                                       => "px-4 py-3"
     };
 
     private string IconSizeClass => Size switch

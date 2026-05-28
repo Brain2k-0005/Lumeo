@@ -613,6 +613,11 @@ foreach (var dir in componentDirs)
     var cssVars = new HashSet<string>(StringComparer.Ordinal);
     var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     var packageDeps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    // Per-component "gotcha" callouts (#87.5): one-line non-obvious-behaviour
+    // notes authored as <gotcha>...</gotcha> anywhere in a .razor file. Order
+    // is preserved (file order, then source order) and duplicates dropped.
+    var gotchas = new List<string>();
+    var seenGotchas = new HashSet<string>(StringComparer.Ordinal);
 
     foreach (var file in files)
     {
@@ -636,6 +641,15 @@ foreach (var dir in componentDirs)
         // Dependencies: only for .razor, match `<OtherComponent` where OtherComponent is a known sibling.
         if (file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
         {
+            // Gotcha callouts (#87.5): <gotcha>...</gotcha>, inner text trimmed.
+            // Singleline so multi-word / wrapped content matches across newlines.
+            foreach (Match gm in Regex.Matches(content, @"<gotcha>(.*?)</gotcha>", RegexOptions.Singleline))
+            {
+                var note = gm.Groups[1].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(note) && seenGotchas.Add(note))
+                    gotchas.Add(note);
+            }
+
             var matches = Regex.Matches(content, @"<([A-Z][A-Za-z0-9]*)\b");
             foreach (Match m in matches)
             {
@@ -693,6 +707,7 @@ foreach (var dir in componentDirs)
         ["dependencies"] = deps.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
         ["packageDependencies"] = packageDeps.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
         ["cssVars"] = cssVars.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+        ["gotchas"] = gotchas.ToArray(),
         ["registryUrl"] = $"https://lumeo.nativ.sh/registry/{componentKey}.json",
     };
     components[componentKey] = entry;

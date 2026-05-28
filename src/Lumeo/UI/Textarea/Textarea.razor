@@ -60,6 +60,12 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Per-textarea density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Only padding / min-height
+    /// shifts between values.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     /// <summary>Focuses the underlying &lt;textarea&gt; on first render. See
     /// Input.AutoFocus — the HTML autofocus attribute doesn't work in Blazor
     /// WASM because parse-time has already passed by the time the runtime
@@ -90,7 +96,19 @@
         _ => "resize-y"
     };
 
-    private string CssClass => $"flex min-h-[60px] w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] {(EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {ResizeClass} {Class}".Trim();
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Only the min-height floor + body padding shift with density; text size
+    // and radius stay fixed (governed elsewhere). Comfortable reproduces the
+    // historical `min-h-[60px] px-3 py-2` verbatim.
+    private string SizeClasses => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "min-h-[48px] px-2.5 py-1.5",
+        Lumeo.Density.Spacious => "min-h-[80px] px-4 py-3",
+        _ => "min-h-[60px] px-3 py-2"
+    };
+
+    private string CssClass => $"flex {SizeClasses} w-full rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-transparent text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] {(EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring")} disabled:cursor-not-allowed disabled:opacity-50 {ResizeClass} {Class}".Trim();
 
     private bool IsOverLimit => MaxLength.HasValue && (Value?.Length ?? 0) > MaxLength.Value;
 

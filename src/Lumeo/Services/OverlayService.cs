@@ -152,7 +152,7 @@ public sealed class OverlayParameters
     public Dictionary<string, object> ToDictionary() => new(_parameters);
 }
 
-public sealed record OverlayOptions
+public record OverlayOptions
 {
     public string? Class { get; init; }
     public bool PreventClose { get; init; }
@@ -226,6 +226,30 @@ public sealed record OverlayOptions
     /// </summary>
     public bool ScrollableBody { get; init; } = true;
 }
+
+/// <summary>
+/// Sheet-shaped overlay options. <b>Semantic</b> marker — at the call site
+/// you get clearer intent ("this configures a Sheet") and IDE navigation,
+/// but the existing <see cref="OverlayService.ShowDialogAsync{T}"/> /
+/// <see cref="OverlayService.ShowDrawerAsync{T}"/> still accept any
+/// <see cref="OverlayOptions"/> via standard subtype polymorphism, so
+/// nothing prevents passing this record to the wrong service overload —
+/// the unused sheet-only properties stay silent no-ops there.
+/// Compile-time enforcement requires narrowing the service-method
+/// signatures to the typed record (planned for 4.0 as a breaking change).
+/// </summary>
+public sealed record SheetOverlayOptions : OverlayOptions { }
+
+/// <summary>Dialog-shaped overlay options. Semantic marker (same caveat as
+/// <see cref="SheetOverlayOptions"/>) — typed for documentation and IDE
+/// auto-complete, not enforced at the service overload boundary.</summary>
+public sealed record DialogOverlayOptions : OverlayOptions { }
+
+/// <summary>Drawer-shaped overlay options. Drawer enables swipe-to-close by
+/// default; the inherited <see cref="OverlayOptions.SwipeToClose"/> is
+/// ignored for drawers. Semantic marker (see <see cref="SheetOverlayOptions"/>
+/// for the enforcement caveat).</summary>
+public sealed record DrawerOverlayOptions : OverlayOptions { }
 
 public sealed record AlertDialogOptions
 {

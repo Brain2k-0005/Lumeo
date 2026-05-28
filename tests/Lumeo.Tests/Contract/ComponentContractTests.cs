@@ -90,6 +90,9 @@ public class ComponentContractTests : IAsyncLifetime
         "AlertDialog",
         // Accordion renders <CascadingValue> wrapping ChildContent; splat goes on children, not outer wrapper.
         "Accordion",
+        // DensityScope renders only <CascadingValue> (no DOM wrapper) so it's
+        // valid inside tbody/tr/ul; no root element to splat onto by design.
+        "DensityScope",
 
         // ── (b) Conditionally visible — render empty markup until triggered ──
         // @if (_visible && !Disabled) — invisible by default; _visible starts false (set by scroll JS event)

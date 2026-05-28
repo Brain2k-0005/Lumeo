@@ -5,9 +5,19 @@
 </th>
 
 @code {
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] {Class}".Trim();
+    // Header row height tracks the ambient DensityScope; Comfortable
+    // reproduces the historical `h-10 px-2`.
+    private string SizeClass => Density switch
+    {
+        Lumeo.Density.Compact => "h-8 px-2",
+        Lumeo.Density.Spacious => "h-12 px-4",
+        _ => "h-10 px-2"
+    };
+
+    private string CssClass => $"{SizeClass} text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] {Class}".Trim();
 }

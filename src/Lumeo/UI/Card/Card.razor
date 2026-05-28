@@ -3,21 +3,25 @@
 
 @if (OnClick.HasDelegate)
 {
-    <div @ref="_el"
-         class="@CssClass"
-         role="button"
-         tabindex="0"
-         @onclick="OnClick"
-         @onkeydown="HandleKeyDown"
-         @attributes="AdditionalAttributes">
-        @ChildContent
-    </div>
+    <CascadingValue TValue="Lumeo.Density?" Value="EffectiveDensity" IsFixed="false">
+        <div @ref="_el"
+             class="@CssClass"
+             role="button"
+             tabindex="0"
+             @onclick="OnClick"
+             @onkeydown="HandleKeyDown"
+             @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    </CascadingValue>
 }
 else
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
-        @ChildContent
-    </div>
+    <CascadingValue TValue="Lumeo.Density?" Value="EffectiveDensity" IsFixed="false">
+        <div class="@CssClass" @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    </CascadingValue>
 }
 
 @code {
@@ -38,6 +42,13 @@ else
     /// </summary>
     [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;
 
+    /// <summary>Per-card density override. Tightens internal padding when
+    /// rendered inside dense layouts (DataGrid row, dashboard tile grid).
+    /// Falls back to ancestor <see cref="DensityScope"/> or
+    /// <c>Comfortable</c>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private Microsoft.AspNetCore.Components.ElementReference _el;
@@ -51,6 +62,8 @@ else
         Button.ButtonPressEffect.Ripple => "lumeo-press-ripple",
         _ => null
     };
+
+    private Lumeo.Density? EffectiveDensity => Density ?? InheritedDensity;
 
     private string CssClass => Cx.Join(
         "rounded-lg border border-border/40 bg-card text-card-foreground",

@@ -2,6 +2,8 @@
 @using Lumeo.Services
 @implements IAsyncDisposable
 
+@* <gotcha>No inner scroll container by default — the panel is a flex-col, so a long body overflows the viewport. Wrap the scrollable region in flex-1 overflow-y-auto, or use OverlayForm which bakes that in.</gotcha> *@
+
 @if (Shell is not null)
 {
     @* OverlayProvider already rendered the SheetContent shell around our parent
@@ -38,6 +40,14 @@ else if (Context.IsOpen)
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Right;
     [Parameter] public SheetSize Size { get; set; } = SheetSize.Default;
+    /// <summary>Alternative to <see cref="Size"/> that accepts the unified
+    /// <see cref="Lumeo.Size"/> token. When set (non-null), wins over
+    /// <see cref="Size"/>. Mapping: <c>Sm→Sm</c>, <c>Md→Default</c>,
+    /// <c>Lg→Lg</c>, <c>Xl→Xl</c>. <see cref="SheetSize.Full"/> has no
+    /// <see cref="Lumeo.Size"/> equivalent (Full is a layout intent, not a
+    /// scale) — set <see cref="Size"/> directly for that case. Closes
+    /// the <c>Lumeo.Size</c> ↔ per-component-enum overlap from #87.2.</summary>
+    [Parameter] public Lumeo.Size? SizePreset { get; set; }
     /// <summary>How the sheet enters/leaves. <c>Slide</c> (default) animates
     /// from the configured <see cref="Side"/>. <c>Fade</c> uses a simple
     /// opacity tween — useful in dense forms where popovers and animations
@@ -71,8 +81,17 @@ else if (Context.IsOpen)
     // block trap for popovers (Select / DatePicker / Combobox).
     private string CssClass => $"fixed flex flex-col gap-4 bg-background p-6 shadow-lg {PositionClasses} {AnimationClass} {Class}".Trim();
 
+    private SheetSize EffectiveSize => SizePreset switch
+    {
+        Lumeo.Size.Sm => SheetSize.Sm,
+        Lumeo.Size.Md => SheetSize.Default,
+        Lumeo.Size.Lg => SheetSize.Lg,
+        Lumeo.Size.Xl => SheetSize.Xl,
+        _ => Size,
+    };
+
     private string SizeClass => Side is Lumeo.Side.Left or Lumeo.Side.Right
-        ? Size switch
+        ? EffectiveSize switch
         {
             SheetSize.Sm => "sm:max-w-xs",
             SheetSize.Lg => "sm:max-w-lg",
@@ -85,7 +104,7 @@ else if (Context.IsOpen)
         // pattern), the other sizes cap at a fraction of the viewport
         // height. Default keeps the legacy content-driven height so
         // existing layouts are unchanged.
-        : Size switch
+        : EffectiveSize switch
         {
             SheetSize.Sm => "max-h-[40vh] h-auto",
             SheetSize.Lg => "max-h-[70vh] h-auto",

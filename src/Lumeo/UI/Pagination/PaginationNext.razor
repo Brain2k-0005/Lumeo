@@ -11,8 +11,18 @@
 @code {
     [Parameter] public EventCallback OnClick { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => $"inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 h-11 sm:h-9 px-3 disabled:pointer-events-none disabled:opacity-50 {Class}".Trim();
+    // Desktop height + horizontal padding track the ambient DensityScope; the
+    // mobile touch floor (h-11) is kept. Comfortable reproduces `sm:h-9 px-3`.
+    private string SizeClass => Density switch
+    {
+        Lumeo.Density.Compact => "h-11 sm:h-8 px-2.5",
+        Lumeo.Density.Spacious => "h-11 sm:h-10 px-4",
+        _ => "h-11 sm:h-9 px-3"
+    };
+
+    private string CssClass => $"inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 {SizeClass} disabled:pointer-events-none disabled:opacity-50 {Class}".Trim();
 }

@@ -50,10 +50,19 @@
     /// </summary>
     [Parameter] public bool Animated { get; set; }
 
+    /// <summary>Per-badge density override. When null, inherits from any
+    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
+    /// historical <c>Comfortable</c> default. Adjusts padding (Spacious also
+    /// adds a touch of vertical padding); text size + radius are unchanged.
+    /// Has no effect on dot badges.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isRemoved;
+
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
     private string CssClass
     {
@@ -62,11 +71,19 @@
             var animatedClass = Animated ? "lumeo-badge-animated" : null;
             return IsDot
                 ? Cx.Join("inline-flex h-2 w-2 rounded-full p-0", VariantClasses, animatedClass, Class)
-                : Cx.Join(BaseClasses, VariantClasses, animatedClass, Class);
+                : Cx.Join(BaseClasses, PadClass, VariantClasses, animatedClass, Class);
         }
     }
 
-    private const string BaseClasses = "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none";
+    // Padding tracks density; Comfortable reproduces the historical px-2.5 py-0.5.
+    private string PadClass => EffectiveDensity switch
+    {
+        Lumeo.Density.Compact => "px-2 py-0.5",
+        Lumeo.Density.Spacious => "px-3 py-1",
+        _ => "px-2.5 py-0.5"
+    };
+
+    private const string BaseClasses = "inline-flex items-center rounded-md border text-xs font-semibold transition-colors focus:outline-none";
 
     private string DotClasses => VariantClasses;
 

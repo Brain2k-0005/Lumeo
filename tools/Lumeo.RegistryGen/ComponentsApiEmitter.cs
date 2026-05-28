@@ -118,6 +118,7 @@ public static class ComponentsApiEmitter
                 ["events"] = root?.Events.Select(SerializeEvent).ToArray() ?? Array.Empty<object>(),
                 ["enums"] = root?.Enums.Select(SerializeEnum).ToArray() ?? Array.Empty<object>(),
                 ["records"] = root?.Records.Select(SerializeRecord).ToArray() ?? Array.Empty<object>(),
+                ["gotchas"] = root?.Gotchas ?? Array.Empty<string>(),
                 ["cssVars"] = meta.CssVars,
                 ["examples"] = examples,
                 ["subComponents"] = subEntries,
@@ -190,6 +191,7 @@ public static class ComponentsApiEmitter
             ["events"] = s.Events.Select(SerializeEvent).ToArray(),
             ["enums"] = s.Enums.Select(SerializeEnum).ToArray(),
             ["records"] = s.Records.Select(SerializeRecord).ToArray(),
+            ["gotchas"] = s.Gotchas,
             ["parseFailed"] = s.ParseFailed,
             ["parseError"] = s.ParseError,
         };
