@@ -10,12 +10,19 @@
             <TabsList>
                 <TabsTrigger Value="cli">.NET CLI</TabsTrigger>
                 <TabsTrigger Value="pkg">PackageReference</TabsTrigger>
+                <TabsTrigger Value="lumeo">Lumeo CLI</TabsTrigger>
             </TabsList>
             <TabsContent Value="cli">
                 <pre class="rounded-[var(--radius-lg)] border border-border bg-muted/30 px-4 py-3 text-sm font-mono overflow-x-auto whitespace-pre m-0">@_cli</pre>
             </TabsContent>
             <TabsContent Value="pkg">
                 <pre class="rounded-[var(--radius-lg)] border border-border bg-muted/30 px-4 py-3 text-sm font-mono overflow-x-auto whitespace-pre m-0">@_pkg</pre>
+            </TabsContent>
+            <TabsContent Value="lumeo">
+                <pre class="rounded-[var(--radius-lg)] border border-border bg-muted/30 px-4 py-3 text-sm font-mono overflow-x-auto whitespace-pre m-0">@_lumeoCli</pre>
+                <Lumeo.Text Size="xs" Color="muted" Class="mt-1.5">
+                    Copies the component source straight into your project — you own the code, no package dependency. See the <Lumeo.Link Href="docs/registry">registry guide</Lumeo.Link>.
+                </Lumeo.Text>
             </TabsContent>
         </Tabs>
         <Lumeo.Text Size="sm" Color="muted">
@@ -40,8 +47,38 @@
     /// <summary>Optional custom usage snippet; defaults to the import plus the tag.</summary>
     [Parameter] public string? Usage { get; set; }
 
+    /// <summary>Registry slug for the Lumeo CLI (<c>lumeo add &lt;slug&gt;</c>).
+    /// Defaults to the kebab-cased component name, which matches the registry
+    /// for all but a couple of acronym names — override when it differs.</summary>
+    [Parameter] public string? Slug { get; set; }
+
     private const string _version = "3.6.1";
     private string _cli => $"dotnet add package {Package}";
     private string _pkg => $"<PackageReference Include=\"{Package}\" Version=\"{_version}\" />";
+    private string _lumeoCli => $"lumeo add {Slug ?? Kebab(Component)}";
     private string _usage => Usage ?? $"@using Lumeo\n\n<{Component} />";
+
+    // Acronym-aware kebab-case: a dash is inserted before an uppercase letter
+    // only when it borders a lowercase letter, so "AlertDialog" → "alert-dialog"
+    // while "QRCode" → "qr-code" and "CTASection" → "cta-section".
+    private static string Kebab(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length + 4);
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (char.IsUpper(c))
+            {
+                var prevLower = i > 0 && !char.IsUpper(s[i - 1]);
+                var nextLower = i + 1 < s.Length && char.IsLower(s[i + 1]);
+                if (i > 0 && (prevLower || nextLower)) sb.Append('-');
+                sb.Append(char.ToLowerInvariant(c));
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
+    }
 }
