@@ -1,25 +1,25 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <SupportedPlatform>browser</SupportedPlatform>
-    <!-- RootNamespace must be "Lumeo" (matching @namespace in .razor files), NOT "Lumeo.DataGrid"
-         (which would be the SDK default derived from the project name). If RootNamespace
-         differs from the @namespace directive, the Razor SDK source generator generates
-         duplicate type definitions causing CS0101. -->
     <RootNamespace>Lumeo</RootNamespace>
+    <!-- CA2255: a module initializer is exactly the right tool here — this assembly
+         self-registers its export backend with the core registry the moment it loads
+         (eagerly or via lazy loading), with no app-side wiring required. -->
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)GeneratedFiles</CompilerGeneratedFilesOutputPath>
 
     <!-- NuGet Package Metadata -->
-    <PackageId>Lumeo.DataGrid</PackageId>
+    <PackageId>Lumeo.DataGrid.Export</PackageId>
     <!-- Version is inherited from /Directory.Build.props (lockstep with all Lumeo packages) -->
-    <Title>Lumeo.DataGrid</Title>
+    <Title>Lumeo.DataGrid.Export</Title>
     <Authors>nativ.sh</Authors>
-    <Description>DataGrid package for Lumeo — install alongside Lumeo. Provides enterprise DataGrid with Excel/PDF/CSV export, DataTable, and Filter components.</Description>
-    <PackageTags>blazor;components;ui;datagrid;datatable;filter;lumeo</PackageTags>
+    <Description>Excel (ClosedXML) and PDF (QuestPDF) export backend for Lumeo.DataGrid. Ships transitively with Lumeo.DataGrid and can be lazy-loaded on demand in Blazor WebAssembly so its dependencies stay out of the initial download.</Description>
+    <PackageTags>blazor;datagrid;export;excel;pdf;closedxml;questpdf;lumeo</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Brain2k-0005/Lumeo</PackageProjectUrl>
@@ -36,18 +36,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Blazicons.Lucide" Version="2.1.3" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.6" />
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="QuestPDF" Version="2024.12.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Reference core for shared types: ComponentInteropService, theme primitives, etc. -->
+    <!-- Core supplies IDataGridExportBackend, IDataGridExportService, DataGridExportColumn. -->
     <ProjectReference Include="..\Lumeo\Lumeo.csproj" />
-    <!-- Excel/PDF export backend (ClosedXML + QuestPDF). Ships transitively so consumers
-         get export out of the box; its assemblies can be lazy-loaded on WASM (see the
-         Lumeo.DataGrid.Export README) so the ~1.6 MB of deps stay out of the initial load. -->
-    <ProjectReference Include="..\Lumeo.DataGrid.Export\Lumeo.DataGrid.Export.csproj" />
   </ItemGroup>
 
   <ItemGroup>
