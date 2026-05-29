@@ -41,6 +41,15 @@ try {
     console.warn('[prerender] registry.json not found — catalog will fetch it client-side.');
 }
 
+// Full-screen boot splash, re-injected into every snapshot. The captured DOM
+// has no splash — Blazor replaced #app while mounting and signalBlazorReady
+// already removed it — so without this the served prerendered page would show
+// the dead, non-interactive pre-hydration DOM (empty data, consent banner)
+// until WASM boots and re-renders. The overlay (styled by the inline CSS in
+// <head>, which IS captured) covers that gap; js/docs.js fades it out the
+// instant the app signals interactivity. Markup mirrors wwwroot/index.html.
+const SPLASH_HTML = `<div class="lumeo-splash" aria-hidden="true" role="presentation"><div class="lumeo-splash-inner"><div class="lumeo-splash-logo-wrap"><div class="lumeo-splash-ripple r1"></div><div class="lumeo-splash-ripple r2"></div><div class="lumeo-splash-ripple r3"></div><svg class="lumeo-splash-svg" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="2" class="lumeo-splash-ring" /><circle cx="16" cy="16" r="3" fill="currentColor" class="lumeo-splash-dot" /></svg></div><div class="lumeo-splash-texts"><span class="lumeo-splash-name">Lumeo</span><span class="lumeo-splash-tagline">Blazor Component Library</span></div></div></div>`;
+
 const server = await startServer(wwwroot);
 console.log(`[prerender] local server at ${server.url}`);
 
@@ -130,6 +139,10 @@ try {
                 if (route === '/components' && registryInlineScript) {
                     html = html.replace('</head>', `${registryInlineScript}</head>`);
                 }
+
+                // Re-inject the boot splash overlay so the static page hides the
+                // dead pre-hydration DOM until the WASM app is interactive.
+                html = html.replace(/(<body[^>]*>)/i, `$1${SPLASH_HTML}`);
 
                 // Root "/" writes to wwwroot/index.html (overwrite the stock
                 // shell); everything else writes to wwwroot/<path>/index.html.
