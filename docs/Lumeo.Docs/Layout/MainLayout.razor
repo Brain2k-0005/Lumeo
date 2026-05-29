@@ -7,9 +7,9 @@
 @inject Lumeo.Services.ConsentService Consent
 
 <div class="min-h-screen bg-background">
-    <!-- Floating Navbar (outside animation wrapper — CSS transforms break fixed positioning) -->
-    <div class="fixed top-3 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">
-        <header class="pointer-events-auto flex h-14 w-full max-w-[1400px] items-center gap-4 rounded-[var(--radius-xl)] border border-border/50 bg-background/85 backdrop-blur-md shadow-md px-4">
+    <!-- Top navbar — flat, full-width, bordered (no floating pill) -->
+    <div class="fixed top-0 inset-x-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <header class="mx-auto flex h-16 w-full max-w-[1400px] items-center gap-4 px-4 sm:px-6">
             @* Hamburger removed on mobile — BottomNav already exposes a "Menu"
                entry that opens the same drawer (_mobileNavOpen). Keeping both
                was redundant; the header now just shows the logo + actions. *@
@@ -44,7 +44,7 @@
                         Class="h-auto items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors border border-border bg-muted/50 w-52"
                         data-search-trigger="true"
                         OnClick="OpenSearch">
-                    <Blazicon Svg="Lucide.Search" class="h-3.5 w-3.5 shrink-0" />
+                    <DynamicIcon Name="Search" Class="h-3.5 w-3.5 shrink-0" />
                     <Lumeo.Text As="span" Class="block flex-1 text-left">Search docs...</Lumeo.Text>
                     <kbd class="inline-flex pointer-events-none rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
                 </Button>
@@ -54,23 +54,23 @@
             <Flex Class="items-center gap-1">
                 @if (ShowDocsLayout)
                 {
-                    <Lumeo.Link Href="create"
-                                Class="inline-flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
-                                title="Customize Lumeo (Ctrl+B)"
-                                aria-label="Open the create page">
-                        <Blazicon Svg="Lucide.SlidersHorizontal" class="h-4 w-4" />
-                    </Lumeo.Link>
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+                            OnClick="@(() => { _customizerOpen = !_customizerOpen; })"
+                            title="Toggle customizer (Ctrl+B)"
+                            aria-label="Toggle customizer">
+                        <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4" />
+                    </Button>
                 }
                 <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" OnClick="ToggleDarkMode"
                         title="Toggle dark mode (Ctrl+D)"
                         aria-label="@(_darkMode ? "Switch to light mode" : "Switch to dark mode")">
                     @if (_darkMode)
                     {
-                        <Blazicon Svg="Lucide.Sun" class="h-4 w-4" />
+                        <DynamicIcon Name="Sun" Class="h-4 w-4" />
                     }
                     else
                     {
-                        <Blazicon Svg="Lucide.Moon" class="h-4 w-4" />
+                        <DynamicIcon Name="Moon" Class="h-4 w-4" />
                     }
                 </Button>
                 <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo" Class="inline-flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
@@ -84,10 +84,10 @@
     </div>
 
     <!-- Main Content — animation wrapper here so transform doesn't break fixed nav -->
-    <div class="pt-[76px] lumeo-app-enter">
+    <div class="pt-16 lumeo-app-enter">
     @if (ShowDocsLayout)
     {
-        <Flex Class="@(IsPlaygroundRoute ? "h-[calc(100dvh-76px)] overflow-hidden" : "")">
+        <Flex Class="@(IsPlaygroundRoute ? "h-[calc(100dvh-64px)] overflow-hidden" : "")">
             @switch (SidebarSection)
             {
                 case "blocks":
@@ -108,20 +108,11 @@
             @if (IsPlaygroundRoute)
             {
                 @* Playground pages own the entire canvas — no container padding,
-                   no max-width constraint. The outer pt-[76px] is already
-                   clearing the floating navbar, so the main element gets
-                   exactly the remaining viewport height. Pages render with
-                   h-full and stay inside this box. *@
-                <main class="flex-1 min-w-0 h-[calc(100dvh-76px)] overflow-hidden">
+                   no max-width constraint. The outer pt-16 already clears the
+                   fixed navbar, so the main element gets exactly the remaining
+                   viewport height. Pages render with h-full and stay in this box. *@
+                <main class="flex-1 min-w-0 h-[calc(100dvh-64px)] overflow-hidden">
                     <div @key="@Nav.Uri" class="page-transition lg:contents h-full">@Body</div>
-                </main>
-            }
-            else if (IsCreateRoute)
-            {
-                @* /create owns the full width (app-like): the page renders its own
-                   customizer rail + preview canvas, so no container max-width here. *@
-                <main class="flex-1 min-w-0 pb-20 lg:pb-0">
-                    <div @key="@Nav.Uri" class="page-transition lg:contents">@Body</div>
                 </main>
             }
             else
@@ -136,6 +127,9 @@
             {
                 <OnThisPage />
             }
+            <div class="hidden lg:block">
+                <CustomizerSidebar IsOpen="@_customizerOpen" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
+            </div>
         </Flex>
     }
     else
@@ -200,7 +194,7 @@
 
             @* Search input row *@
             <div class="flex items-center gap-3 px-4 border-b border-border/30">
-                <Blazicon Svg="Lucide.Search" class="h-4 w-4 text-muted-foreground/60 shrink-0" />
+                <DynamicIcon Name="Search" Class="h-4 w-4 text-muted-foreground/60 shrink-0" />
                 <input class="flex-1 bg-transparent py-4 text-sm outline-none placeholder:text-muted-foreground/50 text-foreground"
                        placeholder="Search components, patterns..."
                        value="@_query"
@@ -212,7 +206,7 @@
                     <button class="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
                             aria-label="Clear search"
                             @onclick='() => { _query = string.Empty; _hits = []; }'>
-                        <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
+                        <DynamicIcon Name="X" Class="h-3.5 w-3.5" />
                     </button>
                 }
             </div>
@@ -235,7 +229,7 @@
                             <a class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group no-underline"
                                href="@($"components/{slug}")"
                                @onclick="CloseSearch">
-                                <Blazicon Svg="Lucide.Component" class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                                <DynamicIcon Name="Component" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                                 <span class="flex-1 text-foreground/90">@label</span>
                                 <span class="text-[11px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">Component</span>
                             </a>
@@ -250,7 +244,7 @@
                             <button class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left group"
                                     data-testid="@($"search-palette-result-{SlugFromUrl(hit.Url)}")"
                                     @onclick="() => NavigateToHit(hit)">
-                                <Blazicon Svg="@(IconMap.Lucide(GetSearchIcon(hit.Category)))" class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                                <DynamicIcon Name="@GetSearchIcon(hit.Category)" Class="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                                 <span class="flex-1 text-foreground/90">@hit.Title</span>
                                 <span class="text-[11px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">@hit.Category</span>
                             </button>
@@ -264,7 +258,7 @@
                 <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">↵</kbd> select</span>
                 <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Esc</kbd> close</span>
                 <span class="flex items-center gap-1.5 ml-auto"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+D</kbd> dark mode</span>
-                <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+B</kbd> create</span>
+                <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+B</kbd> sidebar</span>
                 <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+/</kbd> shortcuts</span>
             </div>
         </div>
@@ -285,7 +279,7 @@
             <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9"
                     OnClick="@(() => _mobileNavOpen = false)"
                     aria-label="Close navigation">
-                <Blazicon Svg="Lucide.X" class="h-5 w-5" />
+                <DynamicIcon Name="X" Class="h-5 w-5" />
             </Button>
         </div>
         <nav class="px-2 border-b border-border/30 shrink-0 flex gap-0 lumeo-mobile-nav-tabs"
@@ -300,6 +294,25 @@
             <div data-section="1" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><NavMenu Section="components" IsMobile="true" /></div>
             <div data-section="2" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><PatternsSidebar IsMobile="true" /></div>
             <div data-section="3" class="lumeo-mobile-nav-page min-w-full shrink-0 overflow-y-auto"><BlocksSidebar IsMobile="true" /></div>
+        </div>
+    </div>
+}
+
+<!-- Mobile Customizer Overlay — full-screen on phones. -->
+@if (_customizerOpen && ShowDocsLayout)
+{
+    <div class="fixed inset-0 z-[90] lg:hidden bg-background flex flex-col"
+         style="padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);">
+        <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
+            <Lumeo.Text Class="font-semibold text-base text-foreground">Customizer</Lumeo.Text>
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9"
+                    OnClick="@(() => _customizerOpen = false)"
+                    aria-label="Close customizer">
+                <DynamicIcon Name="X" Class="h-5 w-5" />
+            </Button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+            <CustomizerSidebar IsOpen="true" IsMobile="true" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
         </div>
     </div>
 }
@@ -324,6 +337,7 @@
     private readonly List<IAsyncDisposable> _kbdShortcuts = new();
     private ConsentBanner? _consentBanner;
     private bool _darkMode;
+    private bool _customizerOpen = false;
     private bool _mobileNavOpen;
     private bool _mobileNavTabsBound;
     private ElementReference _mobileNavDrawerRef;
@@ -354,7 +368,6 @@
             var p = CurrentPath;
             if (p == "") return "none";
             if (p.Equals("components", StringComparison.OrdinalIgnoreCase)) return "none"; // bare catalog → full width
-            if (p.Equals("create", StringComparison.OrdinalIgnoreCase)) return "none"; // customizer page owns the full width
             if (p.EndsWith("/playground", StringComparison.OrdinalIgnoreCase)) return "none"; // playground pages own the full canvas
             if (p.StartsWith("components/", StringComparison.OrdinalIgnoreCase)) return "components";
             if (p.StartsWith("docs", StringComparison.OrdinalIgnoreCase)) return "docs";
@@ -365,8 +378,6 @@
     }
 
     private bool IsPlaygroundRoute => CurrentPath.EndsWith("/playground", StringComparison.OrdinalIgnoreCase);
-
-    private bool IsCreateRoute => CurrentPath.Equals("create", StringComparison.OrdinalIgnoreCase);
 
     private bool ShowDocsLayout
     {
@@ -473,7 +484,8 @@
 
                 _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", () =>
                 {
-                    Nav.NavigateTo("create");
+                    _customizerOpen = !_customizerOpen;
+                    InvokeAsync(StateHasChanged);
                     return Task.CompletedTask;
                 }));
                 _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+d", async () =>
