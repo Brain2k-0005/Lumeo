@@ -59,50 +59,35 @@
         </div>
     }
 
-    @* Code panel *@
+    @* Code panel — copy lives as a floating action over the snippet (shadcn style) *@
     @if (_activeTab == Tab.Code && Code != null)
     {
         <div class="relative">
+            <button type="button"
+                    class="absolute right-3 top-3 z-10 inline-flex items-center justify-center h-7 w-7 rounded-[var(--radius)] border border-border/60 bg-background/80 backdrop-blur text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    @onclick="CopyCode"
+                    aria-label="Copy code"
+                    title="Copy code">
+                @if (_copied)
+                {
+                    <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-primary" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Clipboard" class="h-3.5 w-3.5" />
+                }
+            </button>
             <div class="code-block !rounded-none !border-0 max-h-[420px] overflow-auto">@Code</div>
         </div>
     }
 
-    @* Footer bar *@
-    <Flex Align="center" Justify="between" Class="border-t border-border px-4 py-2.5 bg-muted/20">
-        @if (Description != null)
-        {
+    @* Footer caption — only when a description is provided *@
+    @if (Description != null)
+    {
+        <Flex Align="center" Class="border-t border-border px-4 py-2.5 bg-muted/20">
             <Lumeo.Text Size="xs" Color="muted">@Description</Lumeo.Text>
-        }
-        else
-        {
-            <Lumeo.Text As="span"></Lumeo.Text>
-        }
-        <Flex Align="center" Gap="1.5">
-            @if (Code != null)
-            {
-                <Button Variant="Button.ButtonVariant.Ghost" Class="inline-flex items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        OnClick="CopyCode"
-                        title="Copy code">
-                    @if (_copied)
-                    {
-                        <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5 text-primary" />
-                        <Lumeo.Text As="span" Color="primary">Copied</Lumeo.Text>
-                    }
-                    else
-                    {
-                        <Blazicon Svg="Lucide.Clipboard" class="h-3.5 w-3.5" />
-                        <Lumeo.Text As="span">Copy</Lumeo.Text>
-                    }
-                </Button>
-                <Button Variant="Button.ButtonVariant.Ghost" Class="inline-flex items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        OnClick="ToggleCode"
-                        title="View source">
-                    <Blazicon Svg="Lucide.Code" class="h-3.5 w-3.5" />
-                    <Lumeo.Text As="span">@(_activeTab == Tab.Code ? "Preview" : "Code")</Lumeo.Text>
-                </Button>
-            }
         </Flex>
-    </Flex>
+    }
 </section>
 
 @code {
@@ -183,7 +168,6 @@
 
     private void ShowPreview() => _activeTab = Tab.Preview;
     private void ShowCode() => _activeTab = Tab.Code;
-    private void ToggleCode() => _activeTab = _activeTab == Tab.Code ? Tab.Preview : Tab.Code;
 
     private async Task CopyCode()
     {
