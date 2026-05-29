@@ -54,12 +54,12 @@
             <Flex Class="items-center gap-1">
                 @if (ShowDocsLayout)
                 {
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
-                            OnClick="@(() => { _customizerOpen = !_customizerOpen; })"
-                            title="Toggle customizer (Ctrl+B)"
-                            aria-label="Toggle customizer">
-                        <DynamicIcon Name="SlidersHorizontal" Class="h-4 w-4" />
-                    </Button>
+                    <Lumeo.Link Href="create"
+                                Class="inline-flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
+                                title="Customize Lumeo (Ctrl+B)"
+                                aria-label="Open the create page">
+                        <Blazicon Svg="Lucide.SlidersHorizontal" class="h-4 w-4" />
+                    </Lumeo.Link>
                 }
                 <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" OnClick="ToggleDarkMode"
                         title="Toggle dark mode (Ctrl+D)"
@@ -128,9 +128,6 @@
             {
                 <OnThisPage />
             }
-            <div class="hidden lg:block">
-                <CustomizerSidebar IsOpen="@_customizerOpen" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
-            </div>
         </Flex>
     }
     else
@@ -259,7 +256,7 @@
                 <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">↵</kbd> select</span>
                 <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Esc</kbd> close</span>
                 <span class="flex items-center gap-1.5 ml-auto"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+D</kbd> dark mode</span>
-                <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+B</kbd> sidebar</span>
+                <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+B</kbd> create</span>
                 <span class="flex items-center gap-1.5"><kbd class="rounded border border-border/40 bg-muted/50 px-1 py-0.5 text-[10px]">Ctrl+/</kbd> shortcuts</span>
             </div>
         </div>
@@ -299,25 +296,6 @@
     </div>
 }
 
-<!-- Mobile Customizer Overlay — full-screen on phones. -->
-@if (_customizerOpen && ShowDocsLayout)
-{
-    <div class="fixed inset-0 z-[90] lg:hidden bg-background flex flex-col"
-         style="padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);">
-        <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
-            <Lumeo.Text Class="font-semibold text-base text-foreground">Customizer</Lumeo.Text>
-            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-9 w-9"
-                    OnClick="@(() => _customizerOpen = false)"
-                    aria-label="Close customizer">
-                <DynamicIcon Name="X" Class="h-5 w-5" />
-            </Button>
-        </div>
-        <div class="flex-1 overflow-y-auto">
-            <CustomizerSidebar IsOpen="true" IsMobile="true" IsOpenChanged="@(v => { _customizerOpen = v; StateHasChanged(); })" />
-        </div>
-    </div>
-}
-
 @code {
     // Cloudflare Web Analytics beacon token. When non-empty AND the user has
     // consented to the "analytics" category, MainLayout injects the beacon
@@ -338,7 +316,6 @@
     private readonly List<IAsyncDisposable> _kbdShortcuts = new();
     private ConsentBanner? _consentBanner;
     private bool _darkMode;
-    private bool _customizerOpen = false;
     private bool _mobileNavOpen;
     private bool _mobileNavTabsBound;
     private ElementReference _mobileNavDrawerRef;
@@ -369,6 +346,7 @@
             var p = CurrentPath;
             if (p == "") return "none";
             if (p.Equals("components", StringComparison.OrdinalIgnoreCase)) return "none"; // bare catalog → full width
+            if (p.Equals("create", StringComparison.OrdinalIgnoreCase)) return "none"; // customizer page owns the full width
             if (p.EndsWith("/playground", StringComparison.OrdinalIgnoreCase)) return "none"; // playground pages own the full canvas
             if (p.StartsWith("components/", StringComparison.OrdinalIgnoreCase)) return "components";
             if (p.StartsWith("docs", StringComparison.OrdinalIgnoreCase)) return "docs";
@@ -485,8 +463,7 @@
 
                 _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", () =>
                 {
-                    _customizerOpen = !_customizerOpen;
-                    InvokeAsync(StateHasChanged);
+                    Nav.NavigateTo("create");
                     return Task.CompletedTask;
                 }));
                 _kbdShortcuts.Add(await Shortcuts.RegisterAsync("ctrl+d", async () =>
