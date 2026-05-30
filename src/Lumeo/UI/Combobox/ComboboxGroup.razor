@@ -16,8 +16,10 @@
                  class="@HeaderCss"
                  style="@IndentStyle"
                  role="@(Collapsible ? "button" : null)"
+                 tabindex="@(Collapsible ? "0" : null)"
                  aria-expanded="@(Collapsible ? _expanded.ToString().ToLowerInvariant() : null)"
-                 @onclick="OnHeaderClick">
+                 @onclick="OnHeaderClick"
+                 @onkeydown="OnHeaderKeyDown">
 
                 @if (Collapsible)
                 {
@@ -27,9 +29,11 @@
 
                 @if (Context.Multiple && GroupSelect)
                 {
-                    <span class="flex h-3.5 w-3.5 items-center justify-center shrink-0"
+                    <span class="flex h-3.5 w-3.5 items-center justify-center shrink-0 rounded-sm border border-input focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
                           role="checkbox" aria-checked="@GroupCheckedState"
-                          @onclick="ToggleGroupSelection" @onclick:stopPropagation="true">
+                          tabindex="0"
+                          @onclick="ToggleGroupSelection" @onclick:stopPropagation="true"
+                          @onkeydown="OnCheckboxKeyDown">
                         @if (_allSelected)
                         {
                             <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
@@ -45,10 +49,14 @@
             </div>
         }
 
-        @if (_expanded)
-        {
+        @* Always render ChildContent so descendant items register with the group even when
+           collapsed — required for GroupSelect's tri-state + select-all semantics to keep
+           working on a collapsed group. Visual hiding is CSS-only so the items stay mounted;
+           ComboboxItem drops out of Combobox's keyboard navigation when its group is
+           collapsed by setting Visible=false and unregistering from _items. *@
+        <div class="@Cx.When(!_expanded, "hidden")">
             @ChildContent
-        }
+        </div>
     </div>
 </CascadingValue>
 
@@ -97,18 +105,24 @@
 
     private string HeaderCss => Cx.Merge(
         "flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-muted-foreground",
-        Cx.When(Collapsible, "cursor-pointer select-none hover:text-foreground"),
+        Cx.When(Collapsible, "cursor-pointer select-none hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded-sm"),
         Class);
 
     protected override void OnInitialized()
     {
         _userExpanded = DefaultExpanded;
-        _groupContext = new ComboboxGroupContext(Depth, OnChildrenChanged);
+        _groupContext = new ComboboxGroupContext(Depth, OnChildrenChanged, _expanded);
         // Register ourselves with a parent group so multi-level empty-hiding bubbles up.
         ParentGroup?.RegisterChild(_groupContext);
     }
 
-    protected override void OnParametersSet() => RecomputeVisibility();
+    protected override void OnParametersSet()
+    {
+        // Keep the cascaded context's IsExpanded in sync so descendant ComboboxItems see
+        // collapse/expand transitions and re-evaluate their Visible state for kbd nav.
+        _groupContext.SetExpanded(_expanded);
+        RecomputeVisibility();
+    }
 
     // When a search is active, collapsible groups auto-expand so matches stay reachable.
     private bool HasActiveSearch => !string.IsNullOrEmpty(Context.SearchText);
@@ -117,6 +131,10 @@
     {
         RecomputeVisibility();
         InvokeAsync(StateHasChanged);
+        // Bubble up: a nested visibility change must let the parent group re-evaluate its
+        // own _isHidden too, otherwise an outer group can stay hidden after the inner one's
+        // descendants come back into view.
+        ParentGroup?.NotifyChildrenChanged();
     }
 
     // Hide the whole group only while filtering AND nothing inside it matches.
@@ -127,6 +145,22 @@
     {
         if (!Collapsible || HasActiveSearch) return;
         _userExpanded = !_userExpanded;
+        _groupContext.SetExpanded(_expanded);
+    }
+
+    private void OnHeaderKeyDown(KeyboardEventArgs e)
+    {
+        if (!Collapsible) return;
+        if (e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar")
+        {
+            OnHeaderClick();
+        }
+    }
+
+    private void OnCheckboxKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" && e.Key != " " && e.Key != "Spacebar") return;
+        _ = ToggleGroupSelection();
     }
 
     // --- Group-level selection (Multiple mode) ---
@@ -170,7 +204,9 @@
     /// <summary>
     /// Mutable context cascaded to a group's descendants. ComboboxItems report their value and
     /// current visibility here; nested groups register themselves so empty-hiding and group
-    /// selection aggregate across multiple levels.
+    /// selection aggregate across multiple levels. Exposes <see cref="IsExpanded"/> so items
+    /// can drop out of keyboard navigation while their group is collapsed without losing
+    /// their group registration (GroupSelect still sees them).
     /// </summary>
     public sealed class ComboboxGroupContext
     {
@@ -178,13 +214,26 @@
         private readonly Dictionary<string, (string Value, bool Visible)> _items = new();
         private readonly List<ComboboxGroupContext> _childGroups = new();
 
-        public ComboboxGroupContext(int depth, Action onChanged)
+        public ComboboxGroupContext(int depth, Action onChanged, bool isExpanded)
         {
             Depth = depth;
+            IsExpanded = isExpanded;
             _onChanged = onChanged;
         }
 
         public int Depth { get; }
+
+        /// <summary>True when the owning group is currently expanded. Descendants use this to
+        /// drop out of the listbox's keyboard navigation while still keeping their group
+        /// registration so GroupSelect aggregations stay correct.</summary>
+        public bool IsExpanded { get; private set; }
+
+        public void SetExpanded(bool value)
+        {
+            if (IsExpanded == value) return;
+            IsExpanded = value;
+            _onChanged();
+        }
 
         public void RegisterItem(string id, string value, bool visible)
         {
@@ -211,6 +260,10 @@
         {
             if (_childGroups.Remove(child)) _onChanged();
         }
+
+        /// <summary>Triggers the owning group's change handler. Used by child groups to bubble
+        /// visibility / aggregation changes up the chain.</summary>
+        public void NotifyChildrenChanged() => _onChanged();
 
         public int VisibleDescendantCount
             => _items.Values.Count(i => i.Visible) + _childGroups.Sum(g => g.VisibleDescendantCount);
