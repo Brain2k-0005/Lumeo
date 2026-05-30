@@ -31,10 +31,13 @@
         </Lumeo.Text>
     </div>
 
-    <div class="space-y-3">
-        <Heading Id="usage" Level="2" Size="xl" Class="scroll-mt-20">Usage</Heading>
-        <pre class="rounded-[var(--radius-lg)] border border-border bg-muted/30 px-4 py-3 text-sm font-mono overflow-x-auto whitespace-pre m-0">@_usage</pre>
-    </div>
+    @if (ShowUsage)
+    {
+        <div class="space-y-3">
+            <Heading Id="usage" Level="2" Size="xl" Class="scroll-mt-20">Usage</Heading>
+            <pre class="rounded-[var(--radius-lg)] border border-border bg-muted/30 px-4 py-3 text-sm font-mono overflow-x-auto whitespace-pre m-0">@_usage</pre>
+        </div>
+    }
 </div>
 
 @code {
@@ -47,12 +50,21 @@
     /// <summary>Optional custom usage snippet; defaults to the import plus the tag.</summary>
     [Parameter] public string? Usage { get; set; }
 
+    /// <summary>
+    /// Whether to render the Usage block. Set <c>false</c> on pages that document a service
+    /// or a family of primitives (e.g. Ai, Motion, OverlayService) where <c>&lt;{Component} /&gt;</c>
+    /// is not a real renderable tag — the Installation block still applies, but a single
+    /// auto-generated tag would be misleading.
+    /// </summary>
+    [Parameter] public bool ShowUsage { get; set; } = true;
+
     /// <summary>Registry slug for the Lumeo CLI (<c>lumeo add &lt;slug&gt;</c>).
     /// Defaults to the kebab-cased component name, which matches the registry
     /// for all but a couple of acronym names — override when it differs.</summary>
     [Parameter] public string? Slug { get; set; }
 
-    private const string _version = "3.6.1";
+    // Keep in lockstep with /Directory.Build.props <Version> on each release.
+    private const string _version = "3.7.1";
     private string _cli => $"dotnet add package {Package}";
     private string _pkg => $"<PackageReference Include=\"{Package}\" Version=\"{_version}\" />";
     private string _lumeoCli => $"lumeo add {Slug ?? Kebab(Component)}";
