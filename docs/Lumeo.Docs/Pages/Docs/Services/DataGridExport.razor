@@ -219,8 +219,8 @@ await Export.DownloadAsync(bytes, "orders.xlsx",
                 <Stack Gap="2">
                     <Heading Level="4" Size="sm" Class="font-semibold">2. Wire the loader hook</Heading>
                     <Lumeo.Text Size="sm" Color="muted">In <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Program.cs</code>:</Lumeo.Text>
-                    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">@@using Lumeo.Services;
-@@using Microsoft.AspNetCore.Components.WebAssembly.Services;
+                    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">using Lumeo.Services;
+using Microsoft.AspNetCore.Components.WebAssembly.Services;
 
 var host = builder.Build();
 var lazy = host.Services.GetRequiredService&lt;LazyAssemblyLoader&gt;();
@@ -230,12 +230,26 @@ await host.RunAsync();</Stack>
 
                 <Alert Variant="Alert.AlertVariant.Info">
                     <Lumeo.Text Size="sm">
-                        DataGrid loads the right assemblies on the first export click — Excel pulls
-                        the ClosedXML closure, PDF pulls QuestPDF. An Excel-only WASM user never
-                        downloads QuestPDF. Without this opt-in nothing breaks: the backend just
-                        loads eagerly at startup like before.
+                        The DataGrid component awaits the loader before its toolbar export, so
+                        Excel pulls the ClosedXML closure and PDF pulls QuestPDF on the first click —
+                        an Excel-only WASM user never downloads QuestPDF. If you call
+                        <code class="rounded bg-muted px-1 text-xs">IDataGridExportService.ToExcel/ToPdf</code>
+                        <strong>directly</strong> (not via the DataGrid toolbar), first await
+                        <code class="rounded bg-muted px-1 text-xs">DataGridExportLoader.EnsureExcelAssembliesAsync()</code>
+                        / <code class="rounded bg-muted px-1 text-xs">EnsurePdfAssembliesAsync()</code> —
+                        the synchronous service methods can't fetch a lazy assembly themselves.
+                        Without this opt-in nothing breaks: the backend loads eagerly at startup like before.
                     </Lumeo.Text>
                 </Alert>
+
+                <Stack Gap="2">
+                    <Heading Level="4" Size="sm" Class="font-semibold">3. Direct service calls (optional)</Heading>
+                    <Lumeo.Text Size="sm" Color="muted">When calling the service yourself on a lazy-loading WASM app, preload first:</Lumeo.Text>
+                    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">await DataGridExportLoader.EnsureExcelAssembliesAsync();
+var bytes = Export.ToExcel(rows, columns, sheetName: "Data");
+await Export.DownloadAsync(bytes, "data.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");</Stack>
+                </Stack>
             </Stack>
         </Stack>
     </Stack>
@@ -272,6 +286,9 @@ await host.RunAsync();</Stack>
 
     private async Task ExportExcel()
     {
+        // This docs site lazy-loads the export assemblies, and we call the service directly
+        // (not through a DataGrid toolbar), so preload the Excel backend before ToExcel.
+        await Lumeo.Services.DataGridExportLoader.EnsureExcelAssembliesAsync();
         var bytes = Export.ToExcel(_products, GetColumns(), sheetName: "Products");
         await Export.DownloadAsync(bytes, "products.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -282,6 +299,7 @@ await host.RunAsync();</Stack>
     {
         try
         {
+            await Lumeo.Services.DataGridExportLoader.EnsurePdfAssembliesAsync();
             var bytes = Export.ToPdf(_products, GetColumns(), title: "Product Catalogue");
             await Export.DownloadAsync(bytes, "products.pdf", "application/pdf");
             Toast.Show("Exported products.pdf", variant: ToastVariant.Success);

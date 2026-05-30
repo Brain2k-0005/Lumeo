@@ -54,11 +54,14 @@ public static class DataGridExportBackend
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Excel/PDF export requires the '{ExportAssemblyName}' assembly, which ships " +
-                "transitively with the Lumeo.DataGrid package. On Blazor WebAssembly with lazy " +
-                "loading enabled, the assembly must be loaded before exporting — wire " +
-                $"{nameof(DataGridExportLoader)}.{nameof(DataGridExportLoader.LoadAssembliesAsync)} " +
-                "in your app startup.", ex);
+                $"Excel/PDF export requires the '{ExportAssemblyName}' assembly. " +
+                "It ships inside the 'Lumeo.DataGrid' NuGet package — if your app references only " +
+                "the core 'Lumeo' package, add 'Lumeo.DataGrid' to enable Excel/PDF (CSV needs no " +
+                "extra package). On Blazor WebAssembly that lazy-loads these assemblies, also " +
+                $"await {nameof(DataGridExportLoader)}.{nameof(DataGridExportLoader.EnsureExcelAssembliesAsync)}() / " +
+                $"{nameof(DataGridExportLoader.EnsurePdfAssembliesAsync)}() before a direct service call " +
+                $"(the DataGrid component does this for you), and wire " +
+                $"{nameof(DataGridExportLoader)}.{nameof(DataGridExportLoader.LoadAssembliesAsync)} in startup.", ex);
         }
 
         return _instance ?? throw new InvalidOperationException(
@@ -73,7 +76,49 @@ public static class DataGridExportBackend
 /// first paint. When unset (server, or WASM without lazy loading) export still works because
 /// the assemblies are loaded eagerly.
 /// </summary>
+/// <remarks>
+/// The DataGrid component awaits <see cref="EnsureExcelAssembliesAsync"/> /
+/// <see cref="EnsurePdfAssembliesAsync"/> automatically before a toolbar export. If you call
+/// <see cref="IDataGridExportService"/>.<c>ToExcel</c>/<c>ToPdf</c> <em>directly</em> from your
+/// own code on a WASM app that lazy-marks these assemblies, await the matching Ensure method
+/// first — the synchronous service methods cannot fetch a lazy assembly on their own.
+/// </remarks>
 public static class DataGridExportLoader
 {
+    /// <summary>
+    /// Set by the app (WASM only) to the framework's
+    /// <c>LazyAssemblyLoader.LoadAssembliesAsync</c>. Left <c>null</c> on server / eager apps,
+    /// where the Ensure methods become no-ops because the assemblies are already loaded.
+    /// </summary>
     public static Func<IReadOnlyList<string>, Task>? LoadAssembliesAsync { get; set; }
+
+    /// <summary>The export backend assembly plus the ClosedXML closure needed for Excel.</summary>
+    public static readonly IReadOnlyList<string> ExcelAssemblies = new[]
+    {
+        "Lumeo.DataGrid.Export.dll", "ClosedXML.dll", "ClosedXML.Parser.dll",
+        "DocumentFormat.OpenXml.dll", "DocumentFormat.OpenXml.Framework.dll",
+        "ExcelNumberFormat.dll", "RBush.dll", "SixLabors.Fonts.dll", "System.IO.Packaging.dll",
+    };
+
+    /// <summary>The export backend assembly plus QuestPDF, needed for PDF.</summary>
+    public static readonly IReadOnlyList<string> PdfAssemblies = new[]
+    {
+        "Lumeo.DataGrid.Export.dll", "QuestPDF.dll",
+    };
+
+    /// <summary>
+    /// Ensures the Excel backend assemblies are loaded before a direct
+    /// <c>IDataGridExportService.ToExcel</c> call on a lazy-loading WASM app. No-op when
+    /// <see cref="LoadAssembliesAsync"/> is unset (server / eager apps).
+    /// </summary>
+    public static Task EnsureExcelAssembliesAsync()
+        => LoadAssembliesAsync is { } load ? load(ExcelAssemblies) : Task.CompletedTask;
+
+    /// <summary>
+    /// Ensures the PDF backend assemblies are loaded before a direct
+    /// <c>IDataGridExportService.ToPdf</c> call on a lazy-loading WASM app. No-op when
+    /// <see cref="LoadAssembliesAsync"/> is unset (server / eager apps).
+    /// </summary>
+    public static Task EnsurePdfAssembliesAsync()
+        => LoadAssembliesAsync is { } load ? load(PdfAssemblies) : Task.CompletedTask;
 }
