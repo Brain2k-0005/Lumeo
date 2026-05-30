@@ -33,22 +33,49 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Bundle the internal Lumeo.DataGrid.Export.dll into this nupkg's lib/<tfm>/
+         folder via a custom MSBuild target appended to TargetsForTfmSpecificBuildOutput.
+         Consumers install one NuGet package (Lumeo.DataGrid) and receive two DLLs:
+         Lumeo.DataGrid.dll (eager) + Lumeo.DataGrid.Export.dll (lazy-loadable on WASM,
+         eager elsewhere). The Export project sets IsPackable=false so it never produces
+         its own NuGet package. -->
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);BundleExportAssembly</TargetsForTfmSpecificBuildOutput>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Blazicons.Lucide" Version="2.1.3" />
+    <!-- ClosedXML + QuestPDF are runtime dependencies of the bundled Lumeo.DataGrid.Export.dll.
+         Declared here (not just in the Export project) so they appear as NuGet dependencies of
+         Lumeo.DataGrid — that way consumers' apps restore them, and the lazy-loaded Export.dll
+         can resolve its types at runtime. -->
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.6" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="QuestPDF" Version="2024.12.3" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Reference core for shared types: ComponentInteropService, theme primitives, etc. -->
     <ProjectReference Include="..\Lumeo\Lumeo.csproj" />
-    <!-- Excel/PDF export backend (ClosedXML + QuestPDF). Ships transitively so consumers
-         get export out of the box; its assemblies can be lazy-loaded on WASM (see the
-         Lumeo.DataGrid.Export README) so the ~1.6 MB of deps stay out of the initial load. -->
-    <ProjectReference Include="..\Lumeo.DataGrid.Export\Lumeo.DataGrid.Export.csproj" />
+    <!-- Internal helper project — its compiled DLL is bundled into this nupkg by the
+         BundleExportAssembly target below. PrivateAssets="All" stops NuGet from adding a
+         (non-existent) package dependency on it. NuGet package consumers therefore get
+         Lumeo.DataGrid.Export.dll inside lib/<tfm>/ with no extra dependency to restore.
+         Repo-internal apps that consume DataGrid via ProjectReference (e.g. docs) must
+         reference this project directly so the WASM publish includes the assembly for
+         lazy loading — see docs/Lumeo.Docs/Lumeo.Docs.csproj. -->
+    <ProjectReference Include="..\Lumeo.DataGrid.Export\Lumeo.DataGrid.Export.csproj"
+                      PrivateAssets="All" />
   </ItemGroup>
+
+  <Target Name="BundleExportAssembly" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(OutputPath)Lumeo.DataGrid.Export.dll" />
+      <BuildOutputInPackage Include="$(OutputPath)Lumeo.DataGrid.Export.pdb"
+                            Condition="Exists('$(OutputPath)Lumeo.DataGrid.Export.pdb')" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Lumeo.Tests" />
