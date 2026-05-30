@@ -69,7 +69,13 @@
                       PrivateAssets="All" />
   </ItemGroup>
 
-  <Target Name="BundleExportAssembly" DependsOnTargets="ResolveProjectReferences">
+  <!-- Deliberately NO DependsOnTargets="ResolveProjectReferences" here: that resolves
+       project references by building them, which conflicts with a no-build pack
+       (NoBuild=true, as the publish workflow uses) and fails with NETSDK1085. The Export
+       DLL is already in $(OutputPath) from the preceding build step, so reference it by
+       literal path. The target is invoked at pack time via TargetsForTfmSpecificBuildOutput,
+       after build outputs exist. -->
+  <Target Name="BundleExportAssembly">
     <ItemGroup>
       <BuildOutputInPackage Include="$(OutputPath)Lumeo.DataGrid.Export.dll" />
       <BuildOutputInPackage Include="$(OutputPath)Lumeo.DataGrid.Export.pdb"
