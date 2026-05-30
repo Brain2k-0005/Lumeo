@@ -6,6 +6,18 @@ window.lumeo = window.lumeo || {};
 // at runtime.
 window.lumeo.signalBlazorReady = function () {
     document.documentElement.dataset.blazorReady = 'true';
+
+    // Reveal the app. On prerendered pages a full-screen boot splash is injected
+    // into the static HTML (see scripts/prerender/prerender.mjs); it stays up
+    // while the WASM runtime downloads, boots and re-renders #app from scratch,
+    // so users never see the dead pre-hydration DOM (empty data, flashing
+    // consent banner) or the hydration re-render. We drop it here — the exact
+    // moment MainLayout's first interactive render completes.
+    var splash = document.querySelector('.lumeo-splash');
+    if (splash) {
+        splash.classList.add('lumeo-splash--hide');
+        setTimeout(function () { splash.remove(); }, 450);
+    }
 };
 
 // True only inside the prerender crawler (set via evaluateOnNewDocument in
