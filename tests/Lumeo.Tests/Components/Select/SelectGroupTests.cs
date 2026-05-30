@@ -353,6 +353,106 @@ public class SelectGroupTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Collapsed_Outer_Group_Hides_Inner_Items_Even_When_Inner_Is_Expanded()
+    {
+        // Codex finding: SelectItem must consult EffectiveIsExpanded (own + ancestors),
+        // not just the nearest group's IsExpanded — otherwise an inner expanded group
+        // inside a collapsed outer leaks navigable items the user can't see.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectGroup>(0);
+                    c.AddAttribute(1, "Label", "Outer");
+                    c.AddAttribute(2, "Collapsible", true);
+                    c.AddAttribute(3, "DefaultExpanded", false);
+                    c.AddAttribute(4, "ChildContent", (RenderFragment)(outer =>
+                    {
+                        outer.OpenComponent<L.SelectGroup>(0);
+                        outer.AddAttribute(1, "Label", "Inner");
+                        outer.AddAttribute(2, "Collapsible", true);
+                        outer.AddAttribute(3, "DefaultExpanded", true); // locally expanded
+                        outer.AddAttribute(4, "ChildContent", (RenderFragment)(inner =>
+                        {
+                            inner.OpenComponent<L.SelectItem>(0);
+                            inner.AddAttribute(1, "Value", "apple");
+                            inner.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                            inner.CloseComponent();
+                        }));
+                        outer.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Outer is collapsed → no item is navigable even though Inner is locally expanded.
+        Assert.Empty(cut.FindAll("[role='option']"));
+    }
+
+    [Fact]
+    public void GroupSelect_Toggle_Scopes_To_Search_Visible_Matches()
+    {
+        // Codex finding: when a search filter is active, GroupSelect should toggle only
+        // the visible matches — not silently select hidden items.
+        var selected = new List<string>();
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Multiple", true);
+            builder.AddAttribute(3, "Searchable", true);
+            builder.AddAttribute(4, "Values", selected);
+            builder.AddAttribute(5, "ValuesChanged",
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectGroup>(0);
+                    c.AddAttribute(1, "Label", "Fruits");
+                    c.AddAttribute(2, "GroupSelect", true);
+                    c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
+                    {
+                        g.OpenComponent<L.SelectItem>(0);
+                        g.AddAttribute(1, "Value", "apple");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                        g.CloseComponent();
+                        g.OpenComponent<L.SelectItem>(3);
+                        g.AddAttribute(1, "Value", "banana");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Banana")));
+                        g.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Type a query that only matches "apple"
+        cut.Find("input").Input("app");
+
+        // Click the group-select checkbox
+        cut.Find("[role='checkbox']").Click();
+
+        Assert.Contains("apple", selected);
+        Assert.DoesNotContain("banana", selected); // filtered out, must NOT be selected
+    }
+
+    [Fact]
     public void Nested_Groups_Render_Multi_Level()
     {
         var cut = _ctx.Render(builder =>

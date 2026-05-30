@@ -303,6 +303,99 @@ public class ComboboxGroupTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Collapsed_Outer_Group_Hides_Inner_Items_Even_When_Inner_Is_Expanded()
+    {
+        // Codex finding: ComboboxItem must consult EffectiveIsExpanded (own + ancestors),
+        // not just nearest IsExpanded — otherwise nested inner-expanded items leak into
+        // keyboard navigation when their ancestor is collapsed.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxContent>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.AddAttribute(1, "Label", "Outer");
+                    c.AddAttribute(2, "Collapsible", true);
+                    c.AddAttribute(3, "DefaultExpanded", false);
+                    c.AddAttribute(4, "ChildContent", (RenderFragment)(outer =>
+                    {
+                        outer.OpenComponent<L.ComboboxGroup>(0);
+                        outer.AddAttribute(1, "Label", "Inner");
+                        outer.AddAttribute(2, "Collapsible", true);
+                        outer.AddAttribute(3, "DefaultExpanded", true); // locally expanded
+                        outer.AddAttribute(4, "ChildContent", (RenderFragment)(inner =>
+                        {
+                            inner.OpenComponent<L.ComboboxItem>(0);
+                            inner.AddAttribute(1, "Value", "apple");
+                            inner.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                            inner.CloseComponent();
+                        }));
+                        outer.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Empty(cut.FindAll("[role='option']"));
+    }
+
+    [Fact]
+    public void GroupSelect_Toggle_Scopes_To_Search_Visible_Matches()
+    {
+        // Codex finding: with a search filter active, GroupSelect must only toggle the
+        // visible matches.
+        var selected = new HashSet<string>();
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Multiple", true);
+            builder.AddAttribute(3, "Values", selected);
+            builder.AddAttribute(4, "ValuesChanged",
+                EventCallback.Factory.Create<HashSet<string>>(this, v => selected = v));
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.ComboboxContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.AddAttribute(1, "Label", "Fruits");
+                    c.AddAttribute(2, "GroupSelect", true);
+                    c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
+                    {
+                        g.OpenComponent<L.ComboboxItem>(0);
+                        g.AddAttribute(1, "Value", "apple");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                        g.CloseComponent();
+                        g.OpenComponent<L.ComboboxItem>(3);
+                        g.AddAttribute(1, "Value", "banana");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Banana")));
+                        g.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        cut.Find("input").Input("app");
+        cut.Find("[role='checkbox']").Click();
+
+        Assert.Contains("apple", selected);
+        Assert.DoesNotContain("banana", selected);
+    }
+
+    [Fact]
     public void Nested_Groups_Render_Multi_Level()
     {
         var cut = _ctx.Render(builder =>

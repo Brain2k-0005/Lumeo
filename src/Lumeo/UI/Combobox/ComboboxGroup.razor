@@ -6,7 +6,11 @@
    hides itself when a search filters out all of its descendants, and — in Multiple mode —
    can offer a group-level select-all checkbox. *@
 
-<CascadingValue Value="_groupContext" IsFixed="true">
+@* IsFixed=false: ComboboxGroupContext is mutable (SetExpanded, RegisterItem). Fixed
+   cascades skip re-binding when the cascaded value changes — even though the instance
+   reference stays the same, descendants like ComboboxItem must re-evaluate cascaded
+   reads on mutation, so we drop the fixed optimization to keep the contract honest. *@
+<CascadingValue Value="_groupContext" IsFixed="false">
     <div role="group" aria-labelledby="@_labelId"
          class="@Cx.Join(Cx.When(_isHidden, "hidden"))" @attributes="AdditionalAttributes">
 
@@ -29,11 +33,14 @@
 
                 @if (Context.Multiple && GroupSelect)
                 {
+                    @* stopPropagation on keydown prevents Space/Enter on the focused
+                       checkbox from also firing the header's OnHeaderKeyDown (which would
+                       toggle collapse on every selection). *@
                     <span class="flex h-3.5 w-3.5 items-center justify-center shrink-0 rounded-sm border border-input focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
                           role="checkbox" aria-checked="@GroupCheckedState"
                           tabindex="0"
                           @onclick="ToggleGroupSelection" @onclick:stopPropagation="true"
-                          @onkeydown="OnCheckboxKeyDown">
+                          @onkeydown="OnCheckboxKeyDown" @onkeydown:stopPropagation="true">
                         @if (_allSelected)
                         {
                             <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
@@ -111,7 +118,7 @@
     protected override void OnInitialized()
     {
         _userExpanded = DefaultExpanded;
-        _groupContext = new ComboboxGroupContext(Depth, OnChildrenChanged, _expanded);
+        _groupContext = new ComboboxGroupContext(Depth, OnChildrenChanged, _expanded, ParentGroup);
         // Register ourselves with a parent group so multi-level empty-hiding bubbles up.
         ParentGroup?.RegisterChild(_groupContext);
     }
@@ -157,10 +164,12 @@
         }
     }
 
-    private void OnCheckboxKeyDown(KeyboardEventArgs e)
+    // async Task (not void) so ToggleGroupSelection's exceptions propagate and Blazor
+    // re-renders on completion the same way the @onclick path does.
+    private async Task OnCheckboxKeyDown(KeyboardEventArgs e)
     {
         if (e.Key != "Enter" && e.Key != " " && e.Key != "Spacebar") return;
-        _ = ToggleGroupSelection();
+        await ToggleGroupSelection();
     }
 
     // --- Group-level selection (Multiple mode) ---
@@ -172,7 +181,11 @@
 
     private async Task ToggleGroupSelection()
     {
-        var values = _groupContext.AllDescendantValues.ToList();
+        // When a search is active, scope the toggle to the visible matches only — "select
+        // all" should mean "select what the user can see right now", not the full group.
+        var values = (HasActiveSearch
+            ? _groupContext.VisibleDescendantValues
+            : _groupContext.AllDescendantValues).ToList();
         if (values.Count == 0) return;
         // If everything is already selected, clear the group; otherwise select all.
         var selectAll = !_allSelected;
@@ -188,7 +201,11 @@
     {
         // Refresh the tri-state after selection changes flow back through the cascade.
         if (!Context.Multiple || !GroupSelect) return;
-        var values = _groupContext.AllDescendantValues.ToList();
+        // Mirror ToggleGroupSelection's search-scope so the tri-state reflects "all visible
+        // matches" while filtering rather than the full unfiltered group.
+        var values = (HasActiveSearch
+            ? _groupContext.VisibleDescendantValues
+            : _groupContext.AllDescendantValues).ToList();
         var all = values.Count > 0 && values.All(v => Context.Values?.Contains(v) == true);
         var any = values.Any(v => Context.Values?.Contains(v) == true);
         if (all != _allSelected || any != _anySelected)
@@ -213,20 +230,26 @@
         private readonly Action _onChanged;
         private readonly Dictionary<string, (string Value, bool Visible)> _items = new();
         private readonly List<ComboboxGroupContext> _childGroups = new();
+        private readonly ComboboxGroupContext? _parent;
 
-        public ComboboxGroupContext(int depth, Action onChanged, bool isExpanded)
+        public ComboboxGroupContext(int depth, Action onChanged, bool isExpanded, ComboboxGroupContext? parent)
         {
             Depth = depth;
             IsExpanded = isExpanded;
+            _parent = parent;
             _onChanged = onChanged;
         }
 
         public int Depth { get; }
 
-        /// <summary>True when the owning group is currently expanded. Descendants use this to
-        /// drop out of the listbox's keyboard navigation while still keeping their group
-        /// registration so GroupSelect aggregations stay correct.</summary>
+        /// <summary>True when this group's own header is expanded.</summary>
         public bool IsExpanded { get; private set; }
+
+        /// <summary>True only when this group AND every ancestor are expanded. Items consult
+        /// this (not <see cref="IsExpanded"/>) so a collapsed outer group correctly hides
+        /// inner items even if the inner group is locally expanded — multi-level collapse
+        /// would otherwise leak nav focus into CSS-hidden subtrees.</summary>
+        public bool EffectiveIsExpanded => IsExpanded && (_parent?.EffectiveIsExpanded ?? true);
 
         public void SetExpanded(bool value)
         {
@@ -270,5 +293,11 @@
 
         public IEnumerable<string> AllDescendantValues
             => _items.Values.Select(i => i.Value).Concat(_childGroups.SelectMany(g => g.AllDescendantValues));
+
+        /// <summary>Descendants that currently pass the search filter. Used when a search is
+        /// active so "select all" targets only matches the user can see.</summary>
+        public IEnumerable<string> VisibleDescendantValues
+            => _items.Values.Where(i => i.Visible).Select(i => i.Value)
+                .Concat(_childGroups.SelectMany(g => g.VisibleDescendantValues));
     }
 }
