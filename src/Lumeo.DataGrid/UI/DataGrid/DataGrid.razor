@@ -2731,7 +2731,7 @@
                     }
                 case "excel":
                     {
-                        await EnsureExportAssembliesAsync(ExcelExportAssemblies);
+                        await Lumeo.Services.DataGridExportLoader.EnsureExcelAssembliesAsync();
                         var bytes = Export.ToExcel(items, exportColumns, sheetName: "Data", culture: culture);
                         await Export.DownloadAsync(bytes, "export.xlsx",
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -2741,7 +2741,7 @@
                     {
                         // QuestPDF isn't supported on browser-wasm — ToPdf throws PlatformNotSupportedException
                         // on that runtime. Consumers should restrict ExportFormats to exclude Pdf on WASM.
-                        await EnsureExportAssembliesAsync(PdfExportAssemblies);
+                        await Lumeo.Services.DataGridExportLoader.EnsurePdfAssembliesAsync();
                         var bytes = Export.ToPdf(items, exportColumns, title: FullscreenTitle ?? "Export", culture: culture);
                         await Export.DownloadAsync(bytes, "export.pdf", "application/pdf");
                         break;
@@ -2759,27 +2759,6 @@
             await OnError.InvokeAsync(ex);
         }
     }
-
-    // Excel needs ClosedXML + its transitive closure; PDF needs QuestPDF. These ship in the
-    // Lumeo.DataGrid.Export assembly and can be lazy-loaded on WASM. When the host wires
-    // DataGridExportLoader (see the Lumeo.DataGrid.Export README) we fetch them on first export;
-    // otherwise this is a no-op because the assemblies are already loaded eagerly.
-    private static readonly string[] ExcelExportAssemblies =
-    {
-        "Lumeo.DataGrid.Export.dll", "ClosedXML.dll", "ClosedXML.Parser.dll",
-        "DocumentFormat.OpenXml.dll", "DocumentFormat.OpenXml.Framework.dll",
-        "ExcelNumberFormat.dll", "RBush.dll", "SixLabors.Fonts.dll", "System.IO.Packaging.dll",
-    };
-
-    private static readonly string[] PdfExportAssemblies =
-    {
-        "Lumeo.DataGrid.Export.dll", "QuestPDF.dll",
-    };
-
-    private static Task EnsureExportAssembliesAsync(IReadOnlyList<string> assemblies)
-        => Lumeo.Services.DataGridExportLoader.LoadAssembliesAsync is { } load
-            ? load(assemblies)
-            : Task.CompletedTask;
 
     // --- Layout Persistence ---
 

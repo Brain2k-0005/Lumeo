@@ -25,22 +25,19 @@ internal static class ModuleInit
 /// </summary>
 internal sealed class DataGridExportBackendImpl : IDataGridExportBackend
 {
-    // QuestPDF requires a license to be set exactly once per process. We pick Community here
-    // which is free for individuals and companies below the revenue threshold defined at
-    // https://www.questpdf.com/license — commercial users should replace this with their own
-    // paid license before shipping, e.g. `QuestPDF.Settings.License = LicenseType.Professional;`
-    // in their app's startup. We guard with a flag so changing this on the consumer side wins.
+    // QuestPDF needs a license set once per process before GeneratePdf(). We default to
+    // Community (free below the revenue threshold at https://www.questpdf.com/license) ONLY if
+    // the consuming app hasn't already configured one — so a consumer who set
+    // `QuestPDF.Settings.License = LicenseType.Professional;` in startup is never overwritten.
     private static readonly object _licenseLock = new();
-    private static bool _licenseInitialized;
 
     private static void EnsureQuestPdfLicense()
     {
-        if (_licenseInitialized) return;
+        if (QuestPDF.Settings.License is not null) return;
         lock (_licenseLock)
         {
-            if (_licenseInitialized) return;
-            QuestPDF.Settings.License = LicenseType.Community;
-            _licenseInitialized = true;
+            // Re-check under lock: the app (or a prior call) may have set it meanwhile.
+            QuestPDF.Settings.License ??= LicenseType.Community;
         }
     }
 
