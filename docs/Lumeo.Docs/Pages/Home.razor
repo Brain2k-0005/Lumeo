@@ -163,12 +163,17 @@
                         </Lumeo.Link>
                     </Flex>
                     <div class="px-3 pb-3">
-                        <DataGrid TItem="Employee" Items="@_employees" PageSize="10" ShowPagination="false"
-                                  GroupBy="Department" GroupsExpandedByDefault="true">
-                            <DataGridColumnDef TItem="Employee" Title="Name"   Field="Name"   Sortable="true" />
-                            <DataGridColumnDef TItem="Employee" Title="Role"   Field="Role" />
-                            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Sum" />
-                        </DataGrid>
+                        @* RootMarginPx=0 so we only mount when the placeholder actually enters the viewport.
+                           The default 200px margin would mount during prerender (1280x800) because this block
+                           sits ~100px below the fold on the home layout — defeating the TBT deferral. *@
+                        <LazyRender Height="420px" RootMarginPx="0">
+                            <DataGrid TItem="Employee" Items="@_employees" PageSize="10" ShowPagination="false"
+                                      GroupBy="Department" GroupsExpandedByDefault="true">
+                                <DataGridColumnDef TItem="Employee" Title="Name"   Field="Name"   Sortable="true" />
+                                <DataGridColumnDef TItem="Employee" Title="Role"   Field="Role" />
+                                <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" Aggregate="AggregateType.Sum" />
+                            </DataGrid>
+                        </LazyRender>
                     </div>
                 </div>
 
@@ -183,7 +188,12 @@
                         </Lumeo.Link>
                     </Flex>
                     <div class="px-3 pb-3 overflow-x-auto">
-                        <Kanban Class="!p-0 !gap-2 min-w-[360px]">
+                        @* 200px matches the actual rendered Kanban: 3 columns (min-h-[130px]) + the row header
+                           with a few compact cards. On lg the row height is driven by the taller DataGrid cell
+                           in the same grid row, so the lower placeholder doesn't shorten the row.
+                           RootMarginPx=0 keeps it deferred during prerender — see DataGrid note above. *@
+                        <LazyRender Height="200px" RootMarginPx="0">
+                            <Kanban Class="!p-0 !gap-2 min-w-[360px]">
                             <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count"
                                           Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
                                           OnDrop="@(_ => MoveDraggingCard(_kanbanTodo))">
@@ -218,6 +228,7 @@
                                 }
                             </KanbanColumn>
                         </Kanban>
+                        </LazyRender>
                     </div>
                 </div>
             </div>
