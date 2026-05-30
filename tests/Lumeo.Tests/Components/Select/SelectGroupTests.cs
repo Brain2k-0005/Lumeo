@@ -195,6 +195,164 @@ public class SelectGroupTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Collapsible_Header_Toggles_With_Enter_Key()
+    {
+        var cut = RenderGrouped(collapsible: true, defaultExpanded: false);
+        Assert.Empty(cut.FindAll("[role='option']"));
+
+        var fruitsHeader = cut.FindAll("[role='button']").First(h => h.TextContent.Contains("Fruits"));
+        Assert.Equal("0", fruitsHeader.GetAttribute("tabindex"));
+        fruitsHeader.KeyDown("Enter");
+
+        Assert.Equal(2, cut.FindAll("[role='option']").Count);
+    }
+
+    [Fact]
+    public void GroupSelect_Checkbox_Is_Keyboard_Focusable_And_Toggles_With_Space()
+    {
+        var selected = new List<string>();
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Multiple", true);
+            builder.AddAttribute(3, "Values", selected);
+            builder.AddAttribute(4, "ValuesChanged",
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectGroup>(0);
+                    c.AddAttribute(1, "Label", "Fruits");
+                    c.AddAttribute(2, "GroupSelect", true);
+                    c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
+                    {
+                        g.OpenComponent<L.SelectItem>(0);
+                        g.AddAttribute(1, "Value", "apple");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                        g.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var checkbox = cut.Find("[role='checkbox']");
+        Assert.Equal("0", checkbox.GetAttribute("tabindex"));
+        checkbox.KeyDown(" ");
+
+        Assert.Contains("apple", selected);
+    }
+
+    [Fact]
+    public void GroupSelect_Picks_Up_Descendants_Of_Collapsed_Group()
+    {
+        // Codex finding: when Collapsible+GroupSelect+DefaultExpanded=false, descendants
+        // must still register so the group-select checkbox can toggle them while collapsed.
+        var selected = new List<string>();
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Multiple", true);
+            builder.AddAttribute(3, "Values", selected);
+            builder.AddAttribute(4, "ValuesChanged",
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectGroup>(0);
+                    c.AddAttribute(1, "Label", "Editors");
+                    c.AddAttribute(2, "Collapsible", true);
+                    c.AddAttribute(3, "DefaultExpanded", false);
+                    c.AddAttribute(4, "GroupSelect", true);
+                    c.AddAttribute(5, "ChildContent", (RenderFragment)(g =>
+                    {
+                        g.OpenComponent<L.SelectItem>(0);
+                        g.AddAttribute(1, "Value", "vscode");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "VS Code")));
+                        g.CloseComponent();
+                        g.OpenComponent<L.SelectItem>(3);
+                        g.AddAttribute(1, "Value", "rider");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Rider")));
+                        g.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Items don't appear as navigable options while collapsed...
+        Assert.Empty(cut.FindAll("[role='option']"));
+
+        // ...but the group-select checkbox still selects them.
+        cut.Find("[role='checkbox']").Click();
+        Assert.Contains("vscode", selected);
+        Assert.Contains("rider", selected);
+    }
+
+    [Fact]
+    public void GroupSelect_Skips_Disabled_Items()
+    {
+        // Codex finding: a disabled SelectItem inside a GroupSelect-enabled group must
+        // not be auto-selected by the header checkbox.
+        var selected = new List<string>();
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Multiple", true);
+            builder.AddAttribute(3, "Values", selected);
+            builder.AddAttribute(4, "ValuesChanged",
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectGroup>(0);
+                    c.AddAttribute(1, "Label", "Fruits");
+                    c.AddAttribute(2, "GroupSelect", true);
+                    c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
+                    {
+                        g.OpenComponent<L.SelectItem>(0);
+                        g.AddAttribute(1, "Value", "apple");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                        g.CloseComponent();
+                        g.OpenComponent<L.SelectItem>(3);
+                        g.AddAttribute(1, "Value", "banana");
+                        g.AddAttribute(2, "Disabled", true);
+                        g.AddAttribute(3, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Banana")));
+                        g.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        cut.Find("[role='checkbox']").Click();
+
+        Assert.Contains("apple", selected);
+        Assert.DoesNotContain("banana", selected); // disabled — skipped
+    }
+
+    [Fact]
     public void Nested_Groups_Render_Multi_Level()
     {
         var cut = _ctx.Render(builder =>
