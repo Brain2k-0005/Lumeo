@@ -116,7 +116,33 @@
                         </Badge>
                     </Flex>
                     <div class="h-56 sm:h-64 lg:h-80 px-2 pb-3">
-                        <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
+                        @* IdleMount keeps ECharts' CDN fetch + init off the first-paint critical
+                           path: a cheap CSS stacked-bar placeholder (built from the same data, so
+                           it matches the real chart's shape) shows immediately, then the live
+                           BarChart swaps in once the browser is idle. *@
+                        <IdleMount>
+                            <Placeholder>
+                                <div class="flex h-full items-end gap-1.5 sm:gap-2" aria-hidden="true">
+                                    @for (var i = 0; i < _barCategories.Count; i++)
+                                    {
+                                        var total = _barSeries.Sum(s => s.Values[i]);
+                                        var barPct = _chartMaxTotal > 0 ? total / _chartMaxTotal * 100 : 0;
+                                        <div class="flex-1 flex flex-col-reverse rounded-t-sm overflow-hidden"
+                                             style="height:@barPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%">
+                                            @for (var s = 0; s < _barSeries.Count; s++)
+                                            {
+                                                var segPct = total > 0 ? _barSeries[s].Values[i] / total * 100 : 0;
+                                                var op = (0.85 - s * 0.28).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                                                <div style="height:@segPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%;background:hsl(var(--primary) / @op)"></div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </Placeholder>
+                            <ChildContent>
+                                <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
+                            </ChildContent>
+                        </IdleMount>
                     </div>
                 </div>
 
@@ -1051,6 +1077,9 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new() { Name = "Charts",   Values = new() {  8700, 10400, 13100, 15800, 19200, 22700 } },
         new() { Name = "DataGrid", Values = new() {  4100,  6800,  9200, 11400, 14600, 18100 } },
     };
+    // Largest per-category stacked total — scales the static IdleMount placeholder bars.
+    private double _chartMaxTotal => Enumerable.Range(0, _barCategories.Count)
+        .Select(i => _barSeries.Sum(s => s.Values[i])).DefaultIfEmpty(0).Max();
     private int _chartSnapshot;
     private bool _chartHovered;
     private static readonly List<double>[][] _chartSnapshots =

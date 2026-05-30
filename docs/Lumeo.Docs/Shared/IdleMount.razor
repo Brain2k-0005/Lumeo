@@ -1,0 +1,74 @@
+@*
+    IdleMount — defer a heavy ABOVE-THE-FOLD component off the first-paint
+    critical path without hiding it behind a scroll.
+
+    Unlike LazyRender (which waits for the placeholder to scroll into view, and
+    therefore mounts immediately for content that's already visible), IdleMount
+    shows <Placeholder> right away and swaps in <ChildContent> once the browser
+    is idle — i.e. after the WASM runtime has booted and the first interactive
+    render is done. Use it for the hero chart so ECharts' CDN fetch + init runs
+    during idle time instead of inflating TBT.
+
+    During prerender the real content mounts immediately (window.lumeo.onIdle
+    short-circuits) so the static snapshot is complete. Falls back to immediate
+    mount when JS is unavailable (bUnit / SSR).
+
+    Usage:
+        <IdleMount>
+            <Placeholder><MyStaticSvg /></Placeholder>
+            <ChildContent><BarChart ... /></ChildContent>
+        </IdleMount>
+*@
+
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (_mounted)
+{
+    @ChildContent
+}
+else
+{
+    @Placeholder
+}
+
+@code {
+    /// <summary>The real (heavy) content, mounted once the browser is idle.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Cheap stand-in shown immediately during boot. Should match the
+    /// final content's box so the swap doesn't shift layout.</summary>
+    [Parameter] public RenderFragment? Placeholder { get; set; }
+
+    /// <summary>Upper bound (ms) before the swap is forced even if the browser
+    /// never reports idle. Default 2000.</summary>
+    [Parameter] public int TimeoutMs { get; set; } = 2000;
+
+    private bool _mounted;
+    private DotNetObjectReference<IdleMount>? _selfRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _mounted) return;
+        try
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("lumeo.onIdle", _selfRef, TimeoutMs);
+        }
+        catch
+        {
+            // JS unavailable (SSR / bUnit) — mount immediately.
+            _mounted = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public void OnIdle()
+    {
+        _mounted = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => _selfRef?.Dispose();
+}

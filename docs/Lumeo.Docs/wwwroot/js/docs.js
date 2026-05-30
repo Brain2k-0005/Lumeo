@@ -93,6 +93,25 @@ window.lumeo.disconnectObserver = function (io) {
     if (io && typeof io.disconnect === 'function') io.disconnect();
 };
 
+// Idle-mount hook for IdleMount.razor. Keeps a heavy above-the-fold component
+// (e.g. the hero ECharts BarChart) out of the first-paint critical path: we
+// show a cheap static placeholder immediately, then swap in the real component
+// once the browser is idle (past the WASM boot + first interactive render).
+// During prerender we fire immediately so the static snapshot has real content.
+window.lumeo.onIdle = function (dotNetRef, timeoutMs) {
+    if (window.__LUMEO_PRERENDER__) {
+        dotNetRef.invokeMethodAsync('OnIdle');
+        return;
+    }
+    var fire = function () { dotNetRef.invokeMethodAsync('OnIdle'); };
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(fire, { timeout: timeoutMs || 2000 });
+    } else {
+        // Safari/older: defer past the current paint with a small timeout.
+        setTimeout(fire, 200);
+    }
+};
+
 // Page-visibility hook. The docs landing page runs several timers (chart
 // reshuffle 2s, toast bank 11s, tabs/steps rotation). Background tabs keep
 // firing the timers (and HTML5 spec throttles them but doesn't pause them),
