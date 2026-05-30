@@ -1,16 +1,19 @@
 # Lumeo.DataGrid.Export
 
-Excel (ClosedXML) and PDF (QuestPDF) export backend for
-[`Lumeo.DataGrid`](https://www.nuget.org/packages/Lumeo.DataGrid).
+**Internal helper project — not a published NuGet package.**
 
-You normally don't reference this package directly — it ships transitively with
-`Lumeo.DataGrid`. It exists as a separate assembly so its ~1.6 MB of dependencies
-can be **lazy-loaded on demand** in Blazor WebAssembly, keeping them out of the
-initial download.
+The compiled `Lumeo.DataGrid.Export.dll` is bundled into `Lumeo.DataGrid.nupkg`
+(see `Lumeo.DataGrid.csproj` → `BundleExportAssembly` target). Consumers install
+the single `Lumeo.DataGrid` package and receive two DLLs:
 
-## Lazy loading (optional, WebAssembly)
+- `Lumeo.DataGrid.dll` — components, eager.
+- `Lumeo.DataGrid.Export.dll` — Excel (ClosedXML) + PDF (QuestPDF) backend.
+  Lazy-loadable on Blazor WebAssembly so its ~1.6 MB of dependencies stay out
+  of the initial download.
 
-Mark the export assemblies as lazy in your WASM app's `.csproj`:
+## Enabling lazy loading (Blazor WebAssembly, optional)
+
+In your WASM app's `.csproj`:
 
 ```xml
 <ItemGroup>
@@ -27,7 +30,7 @@ Mark the export assemblies as lazy in your WASM app's `.csproj`:
 </ItemGroup>
 ```
 
-Then wire the loader hook in `Program.cs`:
+In `Program.cs`:
 
 ```csharp
 using Lumeo.Services;
@@ -39,5 +42,6 @@ DataGridExportLoader.LoadAssembliesAsync = names => lazy.LoadAssembliesAsync(nam
 await host.RunAsync();
 ```
 
-The DataGrid loads the required assemblies the first time a user exports. Without
-this setup everything still works — the assemblies just load eagerly at startup.
+The DataGrid loads the required assemblies the first time a user exports.
+Without this setup everything still works — the assemblies just load eagerly
+at startup, same behaviour as before.
