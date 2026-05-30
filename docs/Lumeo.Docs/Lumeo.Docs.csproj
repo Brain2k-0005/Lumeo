@@ -48,6 +48,11 @@
     <!-- Satellite packages — needed so docs pages can render Chart, DataGrid, Scheduler, etc. -->
     <ProjectReference Include="..\..\src\Lumeo.Charts\Lumeo.Charts.csproj" />
     <ProjectReference Include="..\..\src\Lumeo.DataGrid\Lumeo.DataGrid.csproj" />
+    <!-- DataGrid's Excel/PDF export backend. DataGrid references it with PrivateAssets="All"
+         (so it bundles into the NuGet package without a phantom dependency), which means the
+         assembly does NOT flow here transitively. Reference it directly so the WASM publish
+         includes Lumeo.DataGrid.Export.dll and can lazy-load it (listed below). -->
+    <ProjectReference Include="..\..\src\Lumeo.DataGrid.Export\Lumeo.DataGrid.Export.csproj" />
     <ProjectReference Include="..\..\src\Lumeo.Editor\Lumeo.Editor.csproj" />
     <ProjectReference Include="..\..\src\Lumeo.FileViewer\Lumeo.FileViewer.csproj" />
     <ProjectReference Include="..\..\src\Lumeo.Scheduler\Lumeo.Scheduler.csproj" />
@@ -98,6 +103,22 @@
     <BlazorWebAssemblyLazyLoad Include="Lumeo.Gantt.dll" />
     <BlazorWebAssemblyLazyLoad Include="Lumeo.PdfViewer.dll" />
     <BlazorWebAssemblyLazyLoad Include="Lumeo.Scheduler.dll" />
+
+    <!-- DataGrid Excel/PDF export backend + its heavy deps (~1.6 MB brotli). The DataGrid
+         itself is eager (Home hero), but export is an on-click action, so these load only
+         when a user actually exports — wired via DataGridExportLoader in Program.cs.
+         QuestPDF (PDF) throws on browser-wasm and is fetched only on a PDF click, so an
+         Excel-only WASM user never downloads it. -->
+    <BlazorWebAssemblyLazyLoad Include="Lumeo.DataGrid.Export.dll" />
+    <BlazorWebAssemblyLazyLoad Include="ClosedXML.dll" />
+    <BlazorWebAssemblyLazyLoad Include="ClosedXML.Parser.dll" />
+    <BlazorWebAssemblyLazyLoad Include="DocumentFormat.OpenXml.dll" />
+    <BlazorWebAssemblyLazyLoad Include="DocumentFormat.OpenXml.Framework.dll" />
+    <BlazorWebAssemblyLazyLoad Include="ExcelNumberFormat.dll" />
+    <BlazorWebAssemblyLazyLoad Include="RBush.dll" />
+    <BlazorWebAssemblyLazyLoad Include="SixLabors.Fonts.dll" />
+    <BlazorWebAssemblyLazyLoad Include="System.IO.Packaging.dll" />
+    <BlazorWebAssemblyLazyLoad Include="QuestPDF.dll" />
   </ItemGroup>
 
 </Project>

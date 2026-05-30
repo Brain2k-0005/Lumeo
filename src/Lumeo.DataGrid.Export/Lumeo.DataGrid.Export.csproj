@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <SupportedPlatform>browser</SupportedPlatform>
+    <RootNamespace>Lumeo</RootNamespace>
+    <!-- CA2255: a module initializer is exactly the right tool here — this assembly
+         self-registers its export backend with the core registry the moment it loads
+         (eagerly or via lazy loading), with no app-side wiring required. -->
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+
+    <!-- Internal helper project: NOT a NuGet package. Its compiled DLL is bundled
+         into Lumeo.DataGrid.nupkg (see Lumeo.DataGrid.csproj's BuildOutputInPackage
+         target) so consumers install only Lumeo.DataGrid as before. Splitting the
+         Excel/PDF code into its own DLL is what allows Blazor WebAssembly to lazy-
+         load it on demand — Lumeo.DataGrid.dll itself stays eager. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+    <PackageReference Include="QuestPDF" Version="2024.12.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core supplies IDataGridExportBackend, IDataGridExportService, DataGridExportColumn. -->
+    <ProjectReference Include="..\Lumeo\Lumeo.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lumeo.Tests" />
+  </ItemGroup>
+
+</Project>

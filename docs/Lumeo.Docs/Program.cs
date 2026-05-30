@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.AspNetCore.Components.WebAssembly.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Lumeo;
 using Lumeo.Docs;
 using Lumeo.Docs.Services;
+using Lumeo.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -18,4 +21,12 @@ builder.Services.AddSingleton<PatternFilterService>();
 builder.Services.AddScoped<NavConfigService>();
 builder.Services.AddScoped<RegistryService>();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Lazy-load the DataGrid Excel/PDF export backend on first export instead of at first paint.
+// The DataGrid calls this hook before exporting; the assemblies are marked
+// BlazorWebAssemblyLazyLoad in this project's .csproj.
+var lazyLoader = host.Services.GetRequiredService<LazyAssemblyLoader>();
+DataGridExportLoader.LoadAssembliesAsync = names => lazyLoader.LoadAssembliesAsync(names);
+
+await host.RunAsync();

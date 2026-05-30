@@ -187,6 +187,56 @@ await Export.DownloadAsync(bytes, "orders.xlsx",
                     </table>
                 </Stack>
             </Stack>
+
+            <Stack>
+                <Heading Level="3" Class="mb-3">Lazy loading (Blazor WebAssembly) — since v3.7.0</Heading>
+                <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                    The Excel (ClosedXML) and PDF (QuestPDF) backends compile into a separate
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.DataGrid.Export.dll</code>
+                    that ships inside the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.DataGrid</code>
+                    NuGet package. On Blazor WebAssembly you can lazy-load it on demand, keeping
+                    ~1.65&nbsp;MB (brotli) of dependencies out of the initial download. Server
+                    scenarios are unaffected — the backend always loads eagerly there.
+                </Lumeo.Text>
+
+                <Stack Gap="2">
+                    <Heading Level="4" Size="sm" Class="font-semibold">1. Mark the assemblies lazy</Heading>
+                    <Lumeo.Text Size="sm" Color="muted">In your WASM app's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.csproj</code>:</Lumeo.Text>
+                    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">&lt;ItemGroup&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="Lumeo.DataGrid.Export.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="ClosedXML.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="ClosedXML.Parser.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="DocumentFormat.OpenXml.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="DocumentFormat.OpenXml.Framework.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="ExcelNumberFormat.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="RBush.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="SixLabors.Fonts.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="System.IO.Packaging.dll" /&gt;
+  &lt;BlazorWebAssemblyLazyLoad Include="QuestPDF.dll" /&gt;
+&lt;/ItemGroup&gt;</Stack>
+                </Stack>
+
+                <Stack Gap="2">
+                    <Heading Level="4" Size="sm" Class="font-semibold">2. Wire the loader hook</Heading>
+                    <Lumeo.Text Size="sm" Color="muted">In <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Program.cs</code>:</Lumeo.Text>
+                    <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">@@using Lumeo.Services;
+@@using Microsoft.AspNetCore.Components.WebAssembly.Services;
+
+var host = builder.Build();
+var lazy = host.Services.GetRequiredService&lt;LazyAssemblyLoader&gt;();
+DataGridExportLoader.LoadAssembliesAsync = names =&gt; lazy.LoadAssembliesAsync(names);
+await host.RunAsync();</Stack>
+                </Stack>
+
+                <Alert Variant="Alert.AlertVariant.Info">
+                    <Lumeo.Text Size="sm">
+                        DataGrid loads the right assemblies on the first export click — Excel pulls
+                        the ClosedXML closure, PDF pulls QuestPDF. An Excel-only WASM user never
+                        downloads QuestPDF. Without this opt-in nothing breaks: the backend just
+                        loads eagerly at startup like before.
+                    </Lumeo.Text>
+                </Alert>
+            </Stack>
         </Stack>
     </Stack>
 </Stack>
