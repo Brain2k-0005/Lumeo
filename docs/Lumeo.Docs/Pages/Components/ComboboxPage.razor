@@ -78,6 +78,49 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Grouped Items" Code="@_groupedCode">
+        <Stack Gap="2" Class="w-full max-w-xs">
+            <Combobox @bind-Value="_selectedGroupedFramework" @bind-Open="_isOpenGrouped">
+                <ComboboxInput Placeholder="Select framework..." />
+                <ComboboxContent>
+                    <ComboboxGroup Label="Web Frameworks">
+                        <ComboboxItem Value="blazor">Blazor</ComboboxItem>
+                        <ComboboxItem Value="react">React</ComboboxItem>
+                        <ComboboxItem Value="angular">Angular</ComboboxItem>
+                        <ComboboxItem Value="vue">Vue</ComboboxItem>
+                    </ComboboxGroup>
+                    <ComboboxGroup Label="Mobile Frameworks">
+                        <ComboboxItem Value="maui">.NET MAUI</ComboboxItem>
+                        <ComboboxItem Value="flutter">Flutter</ComboboxItem>
+                        <ComboboxItem Value="rn">React Native</ComboboxItem>
+                    </ComboboxGroup>
+                    <ComboboxEmpty>No framework found.</ComboboxEmpty>
+                </ComboboxContent>
+            </Combobox>
+            <Lumeo.Text Size="sm" Color="muted">Selected: @(_selectedGroupedFramework ?? "none")</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Collapsible Groups + Group Select" Code="@_groupedAdvancedCode">
+        <Stack Gap="2" Class="w-full max-w-sm">
+            <Combobox Multiple="true" @bind-Values="_selectedTools" @bind-Open="_isOpenGroupedAdv">
+                <ComboboxInput Placeholder="Select tools..." />
+                <ComboboxContent>
+                    <ComboboxGroup Label="Editors" Collapsible="true" GroupSelect="true">
+                        <ComboboxItem Value="vscode">VS Code</ComboboxItem>
+                        <ComboboxItem Value="rider">Rider</ComboboxItem>
+                        <ComboboxItem Value="vs">Visual Studio</ComboboxItem>
+                    </ComboboxGroup>
+                    <ComboboxGroup Label="CI/CD" Collapsible="true" GroupSelect="true" DefaultExpanded="false">
+                        <ComboboxItem Value="gha">GitHub Actions</ComboboxItem>
+                        <ComboboxItem Value="azdo">Azure DevOps</ComboboxItem>
+                    </ComboboxGroup>
+                </ComboboxContent>
+            </Combobox>
+            <Lumeo.Text Size="sm" Color="muted">Selected: @(_selectedTools.Count == 0 ? "none" : string.Join(", ", _selectedTools))</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Async Search" Code="@_asyncCode">
         <Container MaxWidth="sm" Center="false" Padding="">
             <Combobox @bind-Open="_isOpenAsync" OnSearchAsync="@HandleSearchAsync" IsSearchLoading="@_isSearching">
@@ -103,6 +146,10 @@
     private bool _isOpen3;
     private bool _isOpenMulti;
     private bool _isOpenAsync;
+    private string? _selectedGroupedFramework;
+    private bool _isOpenGrouped;
+    private HashSet<string> _selectedTools = new();
+    private bool _isOpenGroupedAdv;
     private string _searchText1 = "";
     private HashSet<string> _selectedFrameworks = new();
     private bool _isSearching;
@@ -180,6 +227,44 @@
     private HashSet<string> _selectedFrameworks = new();
     private bool _isOpen;
 }";
+
+    private string _groupedCode = @"<Combobox @bind-Value=""_selected"" @bind-Open=""_isOpen"">
+    <ComboboxInput Placeholder=""Select framework..."" />
+    <ComboboxContent>
+        <ComboboxGroup Label=""Web Frameworks"">
+            <ComboboxItem Value=""blazor"">Blazor</ComboboxItem>
+            <ComboboxItem Value=""react"">React</ComboboxItem>
+            <ComboboxItem Value=""angular"">Angular</ComboboxItem>
+            <ComboboxItem Value=""vue"">Vue</ComboboxItem>
+        </ComboboxGroup>
+        <ComboboxGroup Label=""Mobile Frameworks"">
+            <ComboboxItem Value=""maui"">.NET MAUI</ComboboxItem>
+            <ComboboxItem Value=""flutter"">Flutter</ComboboxItem>
+            <ComboboxItem Value=""rn"">React Native</ComboboxItem>
+        </ComboboxGroup>
+        <ComboboxEmpty>No framework found.</ComboboxEmpty>
+    </ComboboxContent>
+</Combobox>";
+
+    private string _groupedAdvancedCode = @"@* Collapsible groups + a tri-state group-select checkbox (Multiple mode).
+   Set DefaultExpanded=false to start a group collapsed; an active search
+   auto-expands groups and hides ones with no matching items. *@
+<Combobox Multiple=""true"" @bind-Values=""_selectedTools"" @bind-Open=""_isOpen"">
+    <ComboboxInput Placeholder=""Select tools..."" />
+    <ComboboxContent>
+        <ComboboxGroup Label=""Editors"" Collapsible=""true"" GroupSelect=""true"">
+            <ComboboxItem Value=""vscode"">VS Code</ComboboxItem>
+            <ComboboxItem Value=""rider"">Rider</ComboboxItem>
+            <ComboboxItem Value=""vs"">Visual Studio</ComboboxItem>
+        </ComboboxGroup>
+        <ComboboxGroup Label=""CI/CD"" Collapsible=""true"" GroupSelect=""true"" DefaultExpanded=""false"">
+            <ComboboxItem Value=""gha"">GitHub Actions</ComboboxItem>
+            <ComboboxItem Value=""azdo"">Azure DevOps</ComboboxItem>
+        </ComboboxGroup>
+    </ComboboxContent>
+</Combobox>
+
+@* Multi-level grouping: nest a ComboboxGroup inside another for Category -> Subcategory. *@";
 
     private string _asyncCode = @"<Combobox @bind-Open=""_isOpen"" OnSearchAsync=""@HandleSearchAsync"" IsSearchLoading=""@_isSearching"">
     <ComboboxInput Placeholder=""Search users..."" />

@@ -4,7 +4,7 @@
 @if (Visible)
 {
     <button type="button" id="@_itemId" role="option" aria-selected="@IsSelected.ToString().ToLower()"
-            class="@CssClass" @onclick="Select" @attributes="AdditionalAttributes">
+            class="@CssClass" style="@IndentStyle" @onclick="Select" @attributes="AdditionalAttributes">
         <span class="flex h-3.5 w-3.5 items-center justify-center">
             @if (IsSelected)
             {
@@ -17,6 +17,8 @@
 
 @code {
     [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
+    // Present when the item sits inside one or more ComboboxGroups (nearest group wins).
+    [CascadingParameter] public ComboboxGroup.ComboboxGroupContext? Group { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter, EditorRequired] public string Value { get; set; } = "";
     [Parameter] public string? Class { get; set; }
@@ -26,6 +28,12 @@
 
     private readonly string _itemId = LumeoIds.New("combobox-item");
     private bool _registered;
+    private bool _groupRegistered;
+
+    // Indent items one extra step beyond their group's header for visual nesting.
+    private string IndentStyle => Group is { Depth: var d } && d >= 0
+        ? $"padding-left:{0.5 + (d + 1) * 0.75:0.###}rem"
+        : "";
 
     private bool IsSelected => Context.Multiple
         ? Context.Values?.Contains(Value) == true
@@ -60,11 +68,20 @@
             Context.UnregisterItem(_itemId);
             _registered = false;
         }
+
+        // Report value + visibility to the enclosing group so it can hide itself when all
+        // descendants are filtered out and drive its group-select tri-state checkbox.
+        if (Group is not null)
+        {
+            Group.RegisterItem(_itemId, Value, Visible);
+            _groupRegistered = true;
+        }
     }
 
     public void Dispose()
     {
         if (_registered) Context.UnregisterItem(_itemId);
+        if (_groupRegistered) Group?.UnregisterItem(_itemId);
     }
 
     private async Task Select() => await Context.OnSelect.InvokeAsync(Value);
