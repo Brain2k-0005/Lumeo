@@ -156,6 +156,24 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Items with Icons + Descriptions (data-bound)" Code="@_richItemSelectCode">
+        <Stack Gap="2" Class="w-full max-w-sm">
+            <Select @bind-Value="_selectedRegion"
+                    Items="_regions"
+                    ItemValue="@(o => ((RegionItem)o).Id)"
+                    ItemText="@(o => ((RegionItem)o).Label)"
+                    ItemDescription="@(o => ((RegionItem)o).Hint)"
+                    ItemIcon="@(o => RenderRegionIcon((RegionItem)o))">
+                <SelectTrigger>
+                    <Text As="span" Class="@(_selectedRegion == null ? "text-muted-foreground" : "")">
+                        @(_selectedRegion == null ? "Pick a region…" : _regions.Cast<RegionItem>().First(r => r.Id == _selectedRegion).Label)
+                    </Text>
+                </SelectTrigger>
+                <SelectContent />
+            </Select>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Clearable" Code="@_clearableCode">
         <Container MaxWidth="sm" Center="false" Padding="">
             <Select Clearable="true" @bind-Value="_selectedClearable">
@@ -417,6 +435,26 @@
     private List<string>? _selectedFruits;
     private List<string>? _selectedTools;
     private string? _selectedClearable;
+    private string? _selectedRegion;
+
+    private record RegionItem(string Id, string Label, string Hint, string IconName);
+
+    private readonly IEnumerable<object> _regions = new object[]
+    {
+        new RegionItem("eu-west", "EU West",   "Frankfurt — eu-west-1",  "Globe"),
+        new RegionItem("us-east", "US East",   "N. Virginia — us-east-1", "Globe"),
+        new RegionItem("ap-1",    "Asia Pacific","Tokyo — ap-northeast-1", "Globe"),
+    };
+
+    // Uses the docs-site DynamicIcon helper so the icon library swap in the docs
+    // shell applies to live demos too. Return null per item to skip the icon column.
+    private RenderFragment? RenderRegionIcon(RegionItem item) => builder =>
+    {
+        builder.OpenComponent<Lumeo.Docs.Shared.DynamicIcon>(0);
+        builder.AddAttribute(1, "Name", item.IconName);
+        builder.AddAttribute(2, "Class", "h-4 w-4");
+        builder.CloseComponent();
+    };
     private string? _selectedLoading;
 
     private string _defaultCode = @"<Select @bind-Value=""_selected"">
@@ -510,6 +548,19 @@
 @code {
     private List<string>? _selectedFruits;
 }";
+
+    private string _richItemSelectCode = @"@* Data-bound mode: ItemIcon + ItemDescription drive the default item renderer
+   without a custom ItemTemplate. Same Func<object, …> pattern as ItemValue / ItemText.
+   record RegionItem(string Id, string Label, string Hint, SvgIcon Icon); *@
+<Select @bind-Value=""_selected""
+        Items=""_regions""
+        ItemValue=""@(o => ((RegionItem)o).Id)""
+        ItemText=""@(o => ((RegionItem)o).Label)""
+        ItemDescription=""@(o => ((RegionItem)o).Hint)""
+        ItemIcon=""@(o => @<Blazicon Svg=""@(((RegionItem)o).Icon)"" class=""h-4 w-4"" />)"">
+    <SelectTrigger><Text As=""span"">Pick a region…</Text></SelectTrigger>
+    <SelectContent />
+</Select>";
 
     private string _clearableCode = @"<Select Clearable=""true"" @bind-Value=""_selected"">
     <SelectTrigger>
