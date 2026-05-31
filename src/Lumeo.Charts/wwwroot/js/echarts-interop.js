@@ -485,6 +485,12 @@ export function registerTooltipSlot(elementId, portalId, dotnetRef) {
     // second, but Razor only needs one per visible point change.
     let lastSig = null;
     let pendingFrame = null;
+    // Outer-scoped pointer to the most recent formatter payload. Without this the rAF
+    // callback closes over whichever `p` was first in the frame window — a rapid mouse
+    // drag would then ship the stale first-point to Razor while the user's already on
+    // a different point. Updating latestPoint on every formatter call keeps the rAF
+    // send aligned with what the user is currently hovering.
+    let latestPoint = null;
 
     chart.setOption({
         tooltip: {
@@ -496,18 +502,42 @@ export function registerTooltipSlot(elementId, portalId, dotnetRef) {
                 const sig = `${p.seriesIndex}|${p.dataIndex}|${p.name}`;
                 if (sig !== lastSig) {
                     lastSig = sig;
+                    latestPoint = p;
                     if (pendingFrame === null) {
                         pendingFrame = requestAnimationFrame(() => {
                             pendingFrame = null;
+                            const current = latestPoint;
+                            if (!current) return;
                             try {
+                                // Forward a richer payload than the bare typed fields:
+                                // ChartTooltipContext.Raw exposes everything here so
+                                // consumers can pull formatter-only fields like
+                                // marker / percent / axisValueLabel / data without a
+                                // second round-trip. The hand-built whitelist avoids
+                                // serializing ECharts' internal back-refs (which carry
+                                // cycles JSON.stringify would crash on).
                                 const payload = {
-                                    seriesName: p.seriesName || '',
-                                    seriesType: p.seriesType || '',
-                                    seriesIndex: p.seriesIndex ?? 0,
-                                    name: p.name || '',
-                                    dataIndex: p.dataIndex ?? 0,
-                                    value: p.value,
-                                    color: typeof p.color === 'string' ? p.color : null,
+                                    seriesName: current.seriesName || '',
+                                    seriesType: current.seriesType || '',
+                                    seriesIndex: current.seriesIndex ?? 0,
+                                    componentType: current.componentType || '',
+                                    componentSubType: current.componentSubType || '',
+                                    name: current.name || '',
+                                    dataIndex: current.dataIndex ?? 0,
+                                    value: current.value,
+                                    data: current.data,
+                                    color: typeof current.color === 'string' ? current.color : null,
+                                    marker: typeof current.marker === 'string' ? current.marker : null,
+                                    percent: current.percent ?? null,
+                                    axisValue: current.axisValue ?? null,
+                                    axisValueLabel: current.axisValueLabel ?? null,
+                                    axisIndex: current.axisIndex ?? null,
+                                    axisType: current.axisType ?? null,
+                                    axisId: current.axisId ?? null,
+                                    axisDim: current.axisDim ?? null,
+                                    dimensionNames: current.dimensionNames ?? null,
+                                    encode: current.encode ?? null,
+                                    dataType: current.dataType ?? null,
                                 };
                                 dotnetRef.invokeMethodAsync('OnTooltipPointChange', JSON.stringify(payload));
                             } catch (_) {

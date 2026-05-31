@@ -31,17 +31,41 @@ public class ChartTooltipSlotTests : IAsyncLifetime
     {
         var changeCount = 0;
         var reg = new ChartTooltipSlotRegistration(() => changeCount++);
+        var owner = new object();
 
-        var info = new ChartTooltipSlotInfo(ctx => b => b.AddContent(0, "x"), Class: null);
-        reg.Set(info);
+        var info = new ChartTooltipSlotInfo(ctx => b => b.AddContent(0, "x"), Class: null, AdditionalAttributes: null);
+        reg.Set(owner, info);
         Assert.Same(info, reg.Current);
         Assert.Equal(1, changeCount);
 
-        // Identical Set is a no-op to keep parameter-set re-renders from spinning.
-        reg.Set(info);
+        // Same owner + same info is a no-op to keep parameter-set re-renders from spinning.
+        reg.Set(owner, info);
         Assert.Equal(1, changeCount);
 
-        reg.Clear();
+        reg.Clear(owner);
+        Assert.Null(reg.Current);
+        Assert.Equal(2, changeCount);
+    }
+
+    [Fact]
+    public void Registration_Clear_From_Other_Owner_Is_Ignored()
+    {
+        // Defensive: a stale ChartTooltip being disposed after a newer one has taken
+        // over the slot must NOT wipe out the newer registration.
+        var changeCount = 0;
+        var reg = new ChartTooltipSlotRegistration(() => changeCount++);
+        var newOwner = new object();
+        var staleOwner = new object();
+
+        var info = new ChartTooltipSlotInfo(ctx => b => b.AddContent(0, "x"), null, null);
+        reg.Set(newOwner, info);
+
+        reg.Clear(staleOwner); // stale owner — must be ignored
+        Assert.NotNull(reg.Current);
+        Assert.Equal(1, changeCount);
+
+        // The real owner can still clear.
+        reg.Clear(newOwner);
         Assert.Null(reg.Current);
         Assert.Equal(2, changeCount);
     }

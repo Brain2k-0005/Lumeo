@@ -34,8 +34,13 @@
     /// consumers theme the tooltip without restyling the whole portal.</summary>
     [Parameter] public string? Class { get; set; }
 
-    protected override void OnParametersSet()
-        => Registration?.Set(new ChartTooltipSlotInfo(ChildContent, Class));
+    /// <summary>Unmatched attributes flow through to the portal <c>&lt;div&gt;</c> so consumers
+    /// can attach <c>id</c>, <c>data-*</c>, ARIA attributes etc. to the rendered tooltip
+    /// wrapper without restyling the whole portal.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    public void Dispose() => Registration?.Clear();
+    protected override void OnParametersSet()
+        => Registration?.Set(this, new ChartTooltipSlotInfo(ChildContent, Class, AdditionalAttributes));
+
+    public void Dispose() => Registration?.Clear(this);
 }
