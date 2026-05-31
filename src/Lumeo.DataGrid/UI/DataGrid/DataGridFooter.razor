@@ -79,7 +79,12 @@
         }
 
         if (numericValues.Count == 0) return "-";
-        return aggregator(numericValues).ToString(format, System.Globalization.CultureInfo.CurrentCulture);
+        // Use the grid's cascaded Culture so footer totals format the same way the cells do
+        // (DataGrid.Culture lets a single grid render in a non-app-default locale; without
+        // this footer-side override we'd silently fall back to CultureInfo.CurrentCulture
+        // and mismatch the column's own cell formatting).
+        var culture = Context?.Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        return aggregator(numericValues).ToString(format, culture);
     }
 
     private string GetAggregateLabel(AggregateType aggregate) => aggregate switch
