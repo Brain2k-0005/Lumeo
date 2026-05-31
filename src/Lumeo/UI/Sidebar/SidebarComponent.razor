@@ -24,17 +24,13 @@
 
     private bool IsCollapsed => State?.IsCollapsed ?? false;
     private SidebarProvider.SidebarVariant Variant => State?.Variant ?? SidebarProvider.SidebarVariant.Push;
-
-    // Transient hover/focus-driven expansion for the MiniRail variant. Doesn't touch
-    // IsCollapsed (the user's pinned state), only the rendered width / aria-expanded.
-    private bool _hoverExpanded;
-
     private bool IsMiniRail => Variant == SidebarProvider.SidebarVariant.MiniRail;
 
-    // The effective rendered state. For MiniRail: when collapsed, hover/focus temporarily
-    // expands; when not collapsed it's already full width. For other variants: pinned
-    // expansion is the only signal.
-    private bool EffectivelyExpanded => !IsCollapsed || (IsMiniRail && _hoverExpanded);
+    // The "effective" state from the provider. Drives both the rail width AND the
+    // SidebarMenuButton label visibility via the cascade — without it MiniRail's
+    // hover-expansion only widened the rail while labels stayed hidden.
+    private bool EffectiveCollapsed => State?.EffectiveCollapsed ?? IsCollapsed;
+    private bool EffectivelyExpanded => !EffectiveCollapsed;
 
     private string CssClass
     {
@@ -47,9 +43,10 @@
                 SidebarProvider.SidebarVariant.Overlay =>
                     $"absolute z-40 top-0 {(Side == Lumeo.Side.Right ? "right-0" : "left-0")} w-64 shadow-xl {(IsCollapsed ? (Side == Lumeo.Side.Right ? "translate-x-full" : "-translate-x-full") : "translate-x-0")}",
                 SidebarProvider.SidebarVariant.Icon => $"shrink-0 {(IsCollapsed ? "w-16" : "w-64")}",
-                // MiniRail expands to w-64 whenever effectively expanded (pinned open OR
-                // hover/focus). Otherwise it's the same icon rail as Icon variant.
-                SidebarProvider.SidebarVariant.MiniRail => $"shrink-0 {(EffectivelyExpanded ? "w-64" : "w-16")}",
+                // MiniRail widens to w-64 whenever it's effectively expanded — pinned open
+                // OR hover/focus active. The provider owns the hover bit so the same flag
+                // flows to descendant labels via the cascade.
+                SidebarProvider.SidebarVariant.MiniRail => $"shrink-0 {(EffectiveCollapsed ? "w-16" : "w-64")}",
                 _ => $"shrink-0 {(IsCollapsed ? "w-0 border-r-0" : "w-64")}"
             };
 
@@ -65,16 +62,18 @@
             await State.Toggle.InvokeAsync();
     }
 
-    // Hover / focus handlers are wired for every variant but only MiniRail reacts —
-    // the other variants ignore _hoverExpanded in their CSS computation, so the
-    // state change is harmless (and the no-op render is cheap).
-    private void OnHoverEnter()
+    // Hover / focus handlers route to the provider so the effective state propagates
+    // through the cascade. Only MiniRail acts on the flag in its CSS / label logic;
+    // other variants ignore it (cheap no-op).
+    private async Task OnHoverEnter()
     {
-        if (IsMiniRail && IsCollapsed) _hoverExpanded = true;
+        if (!IsMiniRail || !IsCollapsed || State is null) return;
+        await State.SetHoverExpanded.InvokeAsync(true);
     }
 
-    private void OnHoverLeave()
+    private async Task OnHoverLeave()
     {
-        if (_hoverExpanded) _hoverExpanded = false;
+        if (State is null) return;
+        await State.SetHoverExpanded.InvokeAsync(false);
     }
 }
