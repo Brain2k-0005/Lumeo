@@ -1,0 +1,46 @@
+@namespace Lumeo
+@implements IDisposable
+
+@*  Declarative tooltip body for any chart wrapper. The RenderFragment is given a
+    ChartTooltipContext on every hover; the chart renders the slot into a hidden
+    DOM portal that ECharts' tooltip.formatter pulls innerHTML from. Use this when
+    you need real Razor markup in the tooltip (themed cards, formatted numbers,
+    @bind values, child components) — anything ECharts' raw formatter string can't
+    express.
+
+    Usage:
+        <LineChart ...>
+            <ChartTooltip>
+                <ChildContent Context="ctx">
+                    <Stack Gap="1">
+                        <div class="font-semibold">@ctx.SeriesName</div>
+                        <div>@ctx.DataName: <span class="font-mono">@ctx.Value?.ToString("N0")</span></div>
+                    </Stack>
+                </ChildContent>
+            </ChartTooltip>
+        </LineChart> *@
+
+@code {
+    [CascadingParameter] public ChartTooltipSlotRegistration? Registration { get; set; }
+
+    /// <summary>
+    /// The tooltip body. Receives the current <see cref="ChartTooltipContext"/> for the
+    /// hovered point. The fragment is re-rendered into the chart's hidden tooltip portal
+    /// on every hover; ECharts pulls the portal's <c>innerHTML</c> into the tooltip box.
+    /// </summary>
+    [Parameter, EditorRequired] public RenderFragment<ChartTooltipContext> ChildContent { get; set; } = default!;
+
+    /// <summary>Extra classes for the rendered tooltip wrapper inside the portal. Lets
+    /// consumers theme the tooltip without restyling the whole portal.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes flow through to the portal <c>&lt;div&gt;</c> so consumers
+    /// can attach <c>id</c>, <c>data-*</c>, ARIA attributes etc. to the rendered tooltip
+    /// wrapper without restyling the whole portal.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnParametersSet()
+        => Registration?.Set(this, new ChartTooltipSlotInfo(ChildContent, Class, AdditionalAttributes));
+
+    public void Dispose() => Registration?.Clear(this);
+}

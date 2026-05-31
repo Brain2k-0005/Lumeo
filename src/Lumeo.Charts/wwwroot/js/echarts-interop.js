@@ -460,6 +460,100 @@ export function registerChartEvent(elementId, eventName, dotnetRef) {
     });
 }
 
+/**
+ * Wire ECharts' tooltip.formatter to a Razor-rendered hidden DOM portal.
+ *
+ * The portal (rendered by the <ChartTooltip> Razor component into a
+ * `<div id="${portalId}" style="display:none">…</div>` outside the chart host) holds
+ * the consumer's RenderFragment markup. On each tooltip invocation we:
+ *   1. Serialize the formatter params and ship them to Razor via
+ *      `OnTooltipPointChange` — Razor updates the slot's context and re-renders
+ *      the portal's innerHTML.
+ *   2. Return the portal's CURRENT innerHTML to ECharts synchronously.
+ *
+ * First hover on a fresh portal returns the initial render (ChartTooltipContext.Empty);
+ * the next hover (and every one after) returns the Razor-updated markup. This matches
+ * the "near-real-time" pattern Material Charts uses and avoids the latency cost of an
+ * async Promise-based formatter on every mouse move.
+ */
+export function registerTooltipSlot(elementId, portalId, dotnetRef) {
+    const chart = charts.get(elementId);
+    if (!chart) return;
+
+    // Throttle hover-notifications to one per animation frame — moving the cursor
+    // continuously across a busy chart can fire dozens of formatter callbacks per
+    // second, but Razor only needs one per visible point change.
+    let lastSig = null;
+    let pendingFrame = null;
+    // Outer-scoped pointer to the most recent formatter payload. Without this the rAF
+    // callback closes over whichever `p` was first in the frame window — a rapid mouse
+    // drag would then ship the stale first-point to Razor while the user's already on
+    // a different point. Updating latestPoint on every formatter call keeps the rAF
+    // send aligned with what the user is currently hovering.
+    let latestPoint = null;
+
+    chart.setOption({
+        tooltip: {
+            formatter: function (params) {
+                // axis-trigger gives an array of points; pick the first as the headline.
+                const p = Array.isArray(params) ? params[0] : params;
+                if (!p) return '';
+
+                const sig = `${p.seriesIndex}|${p.dataIndex}|${p.name}`;
+                if (sig !== lastSig) {
+                    lastSig = sig;
+                    latestPoint = p;
+                    if (pendingFrame === null) {
+                        pendingFrame = requestAnimationFrame(() => {
+                            pendingFrame = null;
+                            const current = latestPoint;
+                            if (!current) return;
+                            try {
+                                // Forward a richer payload than the bare typed fields:
+                                // ChartTooltipContext.Raw exposes everything here so
+                                // consumers can pull formatter-only fields like
+                                // marker / percent / axisValueLabel / data without a
+                                // second round-trip. The hand-built whitelist avoids
+                                // serializing ECharts' internal back-refs (which carry
+                                // cycles JSON.stringify would crash on).
+                                const payload = {
+                                    seriesName: current.seriesName || '',
+                                    seriesType: current.seriesType || '',
+                                    seriesIndex: current.seriesIndex ?? 0,
+                                    componentType: current.componentType || '',
+                                    componentSubType: current.componentSubType || '',
+                                    name: current.name || '',
+                                    dataIndex: current.dataIndex ?? 0,
+                                    value: current.value,
+                                    data: current.data,
+                                    color: typeof current.color === 'string' ? current.color : null,
+                                    marker: typeof current.marker === 'string' ? current.marker : null,
+                                    percent: current.percent ?? null,
+                                    axisValue: current.axisValue ?? null,
+                                    axisValueLabel: current.axisValueLabel ?? null,
+                                    axisIndex: current.axisIndex ?? null,
+                                    axisType: current.axisType ?? null,
+                                    axisId: current.axisId ?? null,
+                                    axisDim: current.axisDim ?? null,
+                                    dimensionNames: current.dimensionNames ?? null,
+                                    encode: current.encode ?? null,
+                                    dataType: current.dataType ?? null,
+                                };
+                                dotnetRef.invokeMethodAsync('OnTooltipPointChange', JSON.stringify(payload));
+                            } catch (_) {
+                                // dotnetRef may have been disposed mid-hover — swallow.
+                            }
+                        });
+                    }
+                }
+
+                const portal = document.getElementById(portalId);
+                return portal ? portal.innerHTML : '';
+            },
+        },
+    });
+}
+
 export function showLoading(elementId, opts) {
     const chart = charts.get(elementId);
     if (chart) chart.showLoading('default', opts || { text: '', maskColor: 'rgba(255,255,255,0.7)', spinnerRadius: 14, lineWidth: 2 });
