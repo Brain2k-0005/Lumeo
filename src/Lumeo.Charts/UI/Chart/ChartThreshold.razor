@@ -1,0 +1,40 @@
+@namespace Lumeo
+@implements IDisposable
+
+@*  Declarative threshold line — a horizontal yAxis (default) or vertical xAxis line at a
+    given value, optionally labelled. Wraps ECharts' native series.markLine.data so it
+    composes with everything else the underlying option already does.
+
+    Usage:
+        <LineChart …>
+            <ChartThreshold Value="100" Label="Target" Color="#22c55e" />
+            <ChartThreshold Value="80"  Label="SLA"    Color="#ef4444" LineStyle="dotted" />
+        </LineChart> *@
+
+@code {
+    [CascadingParameter] public ChartAnnotationsContext? Context { get; set; }
+
+    /// <summary>Value on the perpendicular axis (yAxis for horizontal, xAxis for vertical).</summary>
+    [Parameter, EditorRequired] public object Value { get; set; } = 0;
+
+    /// <summary>Which axis the line is perpendicular to. Default <c>Horizontal</c>
+    /// (a yAxis line spanning the chart width — the common target / SLA line).</summary>
+    [Parameter] public ChartThresholdAxis Axis { get; set; } = ChartThresholdAxis.Horizontal;
+
+    /// <summary>Label rendered along the line. Null or empty hides it.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Hex / CSS colour for the line. When null ECharts inherits the series colour.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Line style passed to ECharts — <c>"solid"</c>, <c>"dashed"</c>, or
+    /// <c>"dotted"</c>. Defaults to <c>"dashed"</c> for visual distinction from data lines.</summary>
+    [Parameter] public string LineStyle { get; set; } = "dashed";
+
+    private readonly string _id = "thr-" + Guid.NewGuid().ToString("N")[..8];
+
+    protected override void OnParametersSet()
+        => Context?.RegisterThreshold(new ChartThresholdInfo(_id, Value, Axis, Label, Color, LineStyle));
+
+    public void Dispose() => Context?.UnregisterThreshold(_id);
+}
