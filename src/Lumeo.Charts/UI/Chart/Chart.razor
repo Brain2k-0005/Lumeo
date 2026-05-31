@@ -8,8 +8,24 @@
    the registrations in GetOptionsJson and merges them into series[0].markLine /
    markArea, without mutating the consumer-passed EChartOption. *@
 <CascadingValue Value="_annotations" IsFixed="true">
-    @ChildContent
+    <CascadingValue Value="_tooltipRegistration" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
 </CascadingValue>
+
+@* Hidden DOM portal for the optional ChartTooltip slot. ECharts owns the visible
+   tooltip element; we render the consumer's Razor markup into this off-screen div
+   and the JS-side formatter (registered via registerTooltipSlot) returns
+   portal.innerHTML each frame. The portal stays mounted as long as a ChartTooltip
+   is registered so ECharts' formatter never returns an empty string after the
+   first hover. *@
+@if (_tooltipRegistration.Current is { } slot)
+{
+    <div id="@_tooltipPortalId" class="@($"lumeo-chart-tooltip-portal {slot.Class}".Trim())"
+         style="display:none">
+        @slot.ChildContent(_tooltipContext)
+    </div>
+}
 
 @if (_initError is not null)
 {
@@ -120,9 +136,18 @@ else
     // updated JSON via OnAfterRenderAsync's existing _lastJson diff path.
     private readonly ChartAnnotationsContext _annotations;
 
+    // Cascaded to <ChartTooltip>. When a slot is registered, we render the consumer's
+    // RenderFragment into a hidden DOM portal whose innerHTML the JS-side tooltip
+    // formatter returns each frame.
+    private readonly ChartTooltipSlotRegistration _tooltipRegistration;
+    private string _tooltipPortalId => $"{_chartId}-tooltip";
+    private ChartTooltipContext _tooltipContext = ChartTooltipContext.Empty;
+    private bool _tooltipBridgeRegistered;
+
     public Chart()
     {
         _annotations = new ChartAnnotationsContext(onChanged: () => InvokeAsync(StateHasChanged));
+        _tooltipRegistration = new ChartTooltipSlotRegistration(onChanged: () => InvokeAsync(StateHasChanged));
     }
     private IJSObjectReference? _module;
     private DotNetObjectReference<Chart>? _selfRef;
@@ -374,6 +399,25 @@ else
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dataZoom", _selfRef);
         }
 
+        // Register the tooltip-portal bridge once a ChartTooltip slot exists. The JS
+        // side installs a tooltip.formatter that calls OnTooltipPointChange (updating
+        // _tooltipContext + rendering the portal) and returns portal.innerHTML to
+        // ECharts each frame.
+        if (_tooltipRegistration.Current is not null && !_tooltipBridgeRegistered)
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try
+            {
+                await _module.InvokeVoidAsync("registerTooltipSlot", _chartId, _tooltipPortalId, _selfRef);
+                _tooltipBridgeRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSException)
+            {
+                // Older Lumeo.Charts JS bundles without registerTooltipSlot fall through —
+                // ECharts uses its default tooltip body and the Razor portal stays unused.
+            }
+        }
+
         if (!string.IsNullOrEmpty(Group))
             await _module.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
     }
@@ -411,6 +455,59 @@ else
         else if (eventName == "dblclick") await OnDoubleClick.InvokeAsync(args);
         else if (eventName == "brushSelected") await OnBrushSelected.InvokeAsync(args);
         else if (eventName == "dataZoom") await OnDataZoom.InvokeAsync(args);
+    }
+
+    /// <summary>
+    /// Invoked from the JS-side tooltip formatter each time ECharts is about to render
+    /// the tooltip for a new point. We deserialize the formatter <c>params</c> object,
+    /// project it into a <see cref="ChartTooltipContext"/>, and re-render so the hidden
+    /// portal updates. The next animation frame the formatter reads the fresh innerHTML.
+    /// </summary>
+    [JSInvokable]
+    public Task OnTooltipPointChange(string paramsJson)
+    {
+        try
+        {
+            var raw = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(paramsJson)
+                ?? new();
+
+            string Get(string key) => raw.TryGetValue(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+                ? v.GetString() ?? "" : "";
+
+            int GetInt(string key) => raw.TryGetValue(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? v.GetInt32() : 0;
+
+            double? GetValue()
+            {
+                if (!raw.TryGetValue("value", out var v)) return null;
+                if (v.ValueKind == System.Text.Json.JsonValueKind.Number) return v.GetDouble();
+                if (v.ValueKind == System.Text.Json.JsonValueKind.Array && v.GetArrayLength() > 0)
+                {
+                    // Multi-dim point (scatter / candlestick) — first dimension is the headline.
+                    var first = v[0];
+                    if (first.ValueKind == System.Text.Json.JsonValueKind.Number) return first.GetDouble();
+                }
+                return null;
+            }
+
+            var boxed = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            _tooltipContext = new ChartTooltipContext(
+                SeriesName: Get("seriesName"),
+                SeriesType: Get("seriesType"),
+                SeriesIndex: GetInt("seriesIndex"),
+                DataName: Get("name"),
+                DataIndex: GetInt("dataIndex"),
+                Value: GetValue(),
+                Color: raw.TryGetValue("color", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String ? c.GetString() : null,
+                Raw: boxed);
+            return InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Malformed payload from JS — don't break the chart. Leave the last good
+            // context in place so the tooltip keeps rendering its previous content.
+            return Task.CompletedTask;
+        }
     }
 
     public async Task<string?> GetImageAsync(string type = "png", int pixelRatio = 2)
