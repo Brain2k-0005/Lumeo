@@ -2,6 +2,15 @@
 @using Blazicons
 @implements IAsyncDisposable
 
+@* ChildContent renders declarative annotations (ChartThreshold, ChartReferenceZone).
+   Wrapped in a hidden CascadingValue so the children themselves emit no DOM — they just
+   register their config via the cascaded ChartAnnotationsContext. The chart picks up
+   the registrations in GetOptionsJson and merges them into series[0].markLine /
+   markArea, without mutating the consumer-passed EChartOption. *@
+<CascadingValue Value="_annotations" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
 @if (_initError is not null)
 {
     <div class="@($"flex items-center justify-center text-sm text-destructive border border-destructive/30 rounded-md bg-destructive/5 {Class}".Trim())" style="@StyleStr" @attributes="AdditionalAttributes">
@@ -49,6 +58,9 @@ else
 @code {
     [Parameter] public EChartOption? Option { get; set; }
     [Parameter] public string? OptionJson { get; set; }
+    /// <summary>Declarative children — <see cref="ChartThreshold"/> and
+    /// <see cref="ChartReferenceZone"/>. Other content renders nothing visible.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Theme { get; set; }
     [Parameter] public string? EChartsSource { get; set; }
     [Parameter] public string Width { get; set; } = "100%";
@@ -102,6 +114,16 @@ else
     [Parameter] public string? LoadingText { get; set; }
 
     private readonly string _chartId = $"lumeo-chart-{Guid.NewGuid():N}";
+    // Cascaded to <ChartThreshold> and <ChartReferenceZone> children. They register
+    // their config here on OnParametersSet; GetOptionsJson merges the registrations
+    // into the option JSON before handing it to ECharts. On change we re-emit the
+    // updated JSON via OnAfterRenderAsync's existing _lastJson diff path.
+    private readonly ChartAnnotationsContext _annotations;
+
+    public Chart()
+    {
+        _annotations = new ChartAnnotationsContext(onChanged: () => InvokeAsync(StateHasChanged));
+    }
     private IJSObjectReference? _module;
     private DotNetObjectReference<Chart>? _selfRef;
     private bool _initialized;
@@ -358,17 +380,27 @@ else
 
     private string GetOptionsJson()
     {
-        if (!string.IsNullOrEmpty(OptionJson)) return OptionJson;
-        try
+        string baseJson;
+        if (!string.IsNullOrEmpty(OptionJson)) baseJson = OptionJson;
+        else
         {
-            return Option?.ToJson() ?? "{}";
+            try { baseJson = Option?.ToJson() ?? "{}"; }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Lumeo Chart] Serialization failed: {ex.Message}");
+                baseJson = "{}";
+            }
         }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo Chart] Serialization failed: {ex.Message}");
-            return "{}";
-        }
+        return MergeAnnotations(baseJson);
     }
+
+    // Merge cascaded <ChartThreshold> / <ChartReferenceZone> registrations into
+    // series[0].markLine.data / markArea.data on the already-serialized JSON. Operating
+    // on JsonNode lets us avoid mutating the consumer's EChartOption — and survives the
+    // pre-serialized OptionJson path the same way. No-op when there are no registrations
+    // or no series to attach to (e.g. an empty placeholder option).
+    private string MergeAnnotations(string baseJson)
+        => ChartAnnotationMerger.Merge(baseJson, _annotations.Thresholds, _annotations.Zones);
 
     [JSInvokable]
     public async Task OnChartEvent(string eventName, string dataJson)
