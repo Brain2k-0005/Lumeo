@@ -224,4 +224,105 @@ public class SidebarTests : IAsyncLifetime
         var aside = cut.Find("aside");
         Assert.Contains("order-last", aside.GetAttribute("class") ?? "");
     }
+
+    // --- MiniRail variant ---
+
+    private IRenderedComponent<IComponent> RenderMiniRail(bool isCollapsed)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarProvider>(0);
+            builder.AddAttribute(1, "Variant", L.SidebarProvider.SidebarVariant.MiniRail);
+            builder.AddAttribute(2, "IsCollapsed", isCollapsed);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarComponent>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void MiniRail_Collapsed_Renders_Narrow_Rail()
+    {
+        var cut = RenderMiniRail(isCollapsed: true);
+        var cls = cut.Find("aside").GetAttribute("class") ?? "";
+        Assert.Contains("w-16", cls);
+        Assert.DoesNotContain("w-64", cls);
+        Assert.Equal("false", cut.Find("aside").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void MiniRail_NotCollapsed_Renders_Full_Width()
+    {
+        var cut = RenderMiniRail(isCollapsed: false);
+        var cls = cut.Find("aside").GetAttribute("class") ?? "";
+        Assert.Contains("w-64", cls);
+        Assert.Equal("true", cut.Find("aside").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void MiniRail_MouseEnter_Expands_While_Collapsed()
+    {
+        var cut = RenderMiniRail(isCollapsed: true);
+        var aside = cut.Find("aside");
+        Assert.Contains("w-16", aside.GetAttribute("class") ?? "");
+
+        aside.TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+        // Hover-expanded → renders at full width and reports aria-expanded=true even
+        // though IsCollapsed is still true (the pinned state).
+        var aside2 = cut.Find("aside");
+        Assert.Contains("w-64", aside2.GetAttribute("class") ?? "");
+        Assert.Equal("true", aside2.GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void MiniRail_MouseLeave_Collapses_Back()
+    {
+        var cut = RenderMiniRail(isCollapsed: true);
+        var aside = cut.Find("aside");
+        aside.TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        Assert.Contains("w-64", cut.Find("aside").GetAttribute("class") ?? "");
+
+        aside.TriggerEvent("onmouseleave", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+        Assert.Contains("w-16", cut.Find("aside").GetAttribute("class") ?? "");
+        Assert.Equal("false", cut.Find("aside").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void MiniRail_FocusIn_Expands_For_Keyboard_Users()
+    {
+        // Tab-focusing an item inside the rail counts as "user wants the sidebar
+        // open" for accessibility — same expansion as hover.
+        var cut = RenderMiniRail(isCollapsed: true);
+        cut.Find("aside").TriggerEvent("onfocusin", new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+
+        Assert.Contains("w-64", cut.Find("aside").GetAttribute("class") ?? "");
+        Assert.Equal("true", cut.Find("aside").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void MiniRail_Icon_Variant_Ignores_Hover()
+    {
+        // Sanity guard — only MiniRail responds to hover. Icon stays narrow on hover.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarProvider>(0);
+            builder.AddAttribute(1, "Variant", L.SidebarProvider.SidebarVariant.Icon);
+            builder.AddAttribute(2, "IsCollapsed", true);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarComponent>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        cut.Find("aside").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        Assert.Contains("w-16", cut.Find("aside").GetAttribute("class") ?? "");
+        Assert.DoesNotContain("w-64", cut.Find("aside").GetAttribute("class") ?? "");
+    }
 }
