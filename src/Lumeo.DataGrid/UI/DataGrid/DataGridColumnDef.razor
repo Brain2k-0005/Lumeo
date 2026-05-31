@@ -3,6 +3,9 @@
 
 @code {
     [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
+    // Set by the enclosing <DataGridColumnGroup>, when present. Forwarded to the
+    // registered DataGridColumn so the header can emit the spanning parent <th>.
+    [CascadingParameter(Name = "ColumnGroupId")] private string? ColumnGroupId { get; set; }
 
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Field { get; set; }
@@ -14,6 +17,10 @@
     [Parameter] public DataGridFilterType FilterType { get; set; } = DataGridFilterType.Text;
     [Parameter] public AggregateType Aggregate { get; set; } = AggregateType.None;
     [Parameter] public string? Format { get; set; }
+    /// <summary>Optional .NET format string for the footer aggregate strip — overrides
+    /// <see cref="Format"/> for the totals row only. Useful when the cell format differs
+    /// from the desired totals format (e.g. cells <c>"C2"</c>, totals <c>"N0"</c>).</summary>
+    [Parameter] public string? FooterFormat { get; set; }
     [Parameter] public PinDirection Pin { get; set; } = PinDirection.None;
     [Parameter] public RenderFragment<TItem>? CellTemplate { get; set; }
     [Parameter] public RenderFragment? HeaderTemplate { get; set; }
@@ -56,6 +63,8 @@
             FilterType = FilterType,
             Aggregate = Aggregate,
             Format = Format,
+            FooterFormat = FooterFormat,
+            ColumnGroupId = ColumnGroupId,
             Pin = Pin,
             CellTemplate = CellTemplate,
             HeaderTemplate = HeaderTemplate,

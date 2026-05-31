@@ -24,6 +24,11 @@ public enum DataGridExportFormat
 
 public record SortDescriptor(string Field, SortDirection Direction);
 
+/// <summary>Metadata for a <c>DataGridColumnGroup</c> — the labelled parent header that
+/// spans one or more contiguous data columns via colspan. The grid keeps an ordered list
+/// of these for the header renderer to look up by id.</summary>
+public record DataGridColumnGroupInfo(string Id, string Label, string? HeaderClass);
+
 public record FilterDescriptor(
     string Field,
     FilterOperator Operator,

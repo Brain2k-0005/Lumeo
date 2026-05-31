@@ -2,7 +2,35 @@
 @typeparam TItem
 
 <thead data-slot="datagrid-header" class="@CssClass" @attributes="AdditionalAttributes">
-    <tr role="row" aria-rowindex="1">
+    @* When the grid has DataGridColumnGroups, render a parent header row above the data
+       row. Each registered group spans its child columns via colspan; columns without a
+       group get a blank cell so visual alignment stays intact. The data row that follows
+       carries the actual sort / filter / resize handles per column. *@
+    @if (Context is not null && HasColumnGroups)
+    {
+        <tr role="row" aria-rowindex="1" class="border-b border-border/40">
+            @if (Context.RowReorderable) { <th class="bg-muted/30"></th> }
+            @if (Context.SelectionMode != DataGridSelectionMode.None) { <th class="bg-muted/30"></th> }
+            @if (HasDetailTemplate) { <th class="bg-muted/30"></th> }
+            @foreach (var run in GetGroupHeaderRuns())
+            {
+                if (run.Info is { } info)
+                {
+                    <th colspan="@run.Span"
+                        class="@($"px-3 py-2 text-xs font-semibold text-foreground/80 bg-muted/40 text-center border-x border-border/40 {info.HeaderClass}".Trim())">
+                        @info.Label
+                    </th>
+                }
+                else
+                {
+                    @* Ungrouped column(s) — colspan over the run keeps the parent row aligned. *@
+                    <th colspan="@run.Span" class="bg-muted/30"></th>
+                }
+            }
+            @if (Context.EditMode == DataGridEditMode.Row) { <th class="bg-muted/30"></th> }
+        </tr>
+    }
+    <tr role="row" aria-rowindex="@(HasColumnGroups ? 2 : 1)">
         @* Row reorder handle column *@
         @if (Context?.RowReorderable == true)
         {
@@ -148,6 +176,46 @@
     }
 
     private int GetTotalSortCount() => Context?.Sorts.Count(s => s.Direction != SortDirection.None) ?? 0;
+
+    private bool HasColumnGroups
+        => Context is not null
+           && Context.ColumnGroups.Count > 0
+           && Context.VisibleColumns.Any(c => c.ColumnGroupId is not null);
+
+    // A contiguous run of visible columns that all share the same ColumnGroupId.
+    // Info is the resolved group metadata (null for the "ungrouped" runs). Span is
+    // the colspan to emit on the parent <th>.
+    private record GroupHeaderRun(DataGridColumnGroupInfo? Info, int Span);
+
+    // Compute the parent-row cells in one pass over VisibleColumns. Each maximal run
+    // of consecutive columns with the same ColumnGroupId collapses into one cell.
+    private IEnumerable<GroupHeaderRun> GetGroupHeaderRuns()
+    {
+        if (Context is null) yield break;
+        var groupsById = Context.ColumnGroups.ToDictionary(g => g.Id);
+        string? currentId = null;
+        DataGridColumnGroupInfo? currentInfo = null;
+        var span = 0;
+        foreach (var col in Context.VisibleColumns)
+        {
+            if (col.ColumnGroupId == currentId)
+            {
+                span++;
+                continue;
+            }
+            if (span > 0)
+            {
+                yield return new GroupHeaderRun(currentInfo, span);
+            }
+            currentId = col.ColumnGroupId;
+            currentInfo = currentId is not null && groupsById.TryGetValue(currentId, out var info) ? info : null;
+            span = 1;
+        }
+        if (span > 0)
+        {
+            yield return new GroupHeaderRun(currentInfo, span);
+        }
+    }
 
     private void OnSelectAllChanged(bool value)
     {
