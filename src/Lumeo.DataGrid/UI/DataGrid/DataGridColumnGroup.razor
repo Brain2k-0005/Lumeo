@@ -1,0 +1,44 @@
+@namespace Lumeo
+@typeparam TItem
+
+@*  Wraps a contiguous run of <DataGridColumnDef>s under a labelled parent header.
+    The grid renders a second <tr> above the data-column row with a single <th>
+    spanning the grouped columns via colspan, matching DevExpress / Telerik /
+    MUI X / AG Grid's "grouped headers" feature.
+
+    Usage:
+        <DataGridColumnGroup TItem="Sale" Label="Pricing">
+            <DataGridColumnDef Title="Revenue"  Field="Revenue"  Format="C0" />
+            <DataGridColumnDef Title="Cost"     Field="Cost"     Format="C0" />
+            <DataGridColumnDef Title="Margin %" Field="Margin"   Format="P0" />
+        </DataGridColumnGroup>
+
+    The group registers itself with the parent grid and cascades its id to its
+    DataGridColumnDef children. The header row stays flat — colspan handles the
+    visual nesting — so existing row + body rendering is untouched. *@
+
+<CascadingValue Value="_groupId" Name="ColumnGroupId" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
+
+    /// <summary>Header label shown in the spanning <c>th</c> above the grouped columns.</summary>
+    [Parameter] public string Label { get; set; } = "";
+
+    /// <summary>Extra classes for the spanning header cell — theming hook for the group.</summary>
+    [Parameter] public string? HeaderClass { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    // Stable per-instance id so the cascaded ColumnGroupId on child DataGridColumnDefs
+    // is matched to one specific DataGridColumnGroup<TItem> registration.
+    // LumeoIds isn't in this assembly (lives in core Lumeo); a plain Guid suffix is fine
+    // since the id is internal — only used to correlate the group header with its child
+    // columns' ColumnGroupId cascade.
+    private readonly string _groupId = "dgcg-" + Guid.NewGuid().ToString("N")[..8];
+
+    protected override void OnInitialized()
+        => ParentGrid?.RegisterColumnGroup(new DataGridColumnGroupInfo(_groupId, Label, HeaderClass));
+}

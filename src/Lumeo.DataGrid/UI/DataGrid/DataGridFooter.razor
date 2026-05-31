@@ -45,19 +45,22 @@
         if (items.Count == 0) return "-";
 
         var values = items.Select(i => column.GetValue(i)).Where(v => v is not null).ToList();
+        // FooterFormat wins; falls back to the cell Format; "N2" is the historic default
+        // when neither is set so existing grids keep their familiar 2-decimal totals.
+        var format = column.FooterFormat ?? column.Format ?? "N2";
 
         return column.Aggregate switch
         {
             AggregateType.Count => values.Count.ToString(),
-            AggregateType.Sum => ComputeNumeric(values, vals => vals.Sum()),
-            AggregateType.Average => ComputeNumeric(values, vals => vals.Average()),
-            AggregateType.Min => ComputeNumeric(values, vals => vals.Min()),
-            AggregateType.Max => ComputeNumeric(values, vals => vals.Max()),
+            AggregateType.Sum => ComputeNumeric(values, vals => vals.Sum(), format),
+            AggregateType.Average => ComputeNumeric(values, vals => vals.Average(), format),
+            AggregateType.Min => ComputeNumeric(values, vals => vals.Min(), format),
+            AggregateType.Max => ComputeNumeric(values, vals => vals.Max(), format),
             _ => ""
         };
     }
 
-    private string ComputeNumeric(List<object?> values, Func<IEnumerable<double>, double> aggregator)
+    private string ComputeNumeric(List<object?> values, Func<IEnumerable<double>, double> aggregator, string format)
     {
         var numericValues = new List<double>();
         foreach (var v in values)
@@ -76,8 +79,7 @@
         }
 
         if (numericValues.Count == 0) return "-";
-        var result = aggregator(numericValues);
-        return result.ToString("N2");
+        return aggregator(numericValues).ToString(format, System.Globalization.CultureInfo.CurrentCulture);
     }
 
     private string GetAggregateLabel(AggregateType aggregate) => aggregate switch

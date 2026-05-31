@@ -132,5 +132,11 @@ public record DataGridContext<TItem>(
     bool HasPinnedLeft,
     /// <summary>True when the grid has <c>Hoverable="true"</c>. Used by pinned cells
     /// to apply a group-hover tint that matches the row hover highlight.</summary>
-    bool Hoverable
+    bool Hoverable,
+
+    // --- Column groups (parent header that spans multiple data columns) ---
+    /// <summary>The registered <c>DataGridColumnGroup</c>s. <see cref="DataGridHeader{TItem}"/>
+    /// reads this to render a second <c>tr</c> above the data-column row with one <c>th</c>
+    /// per group spanning its members via colspan. Empty when no groups are declared.</summary>
+    IReadOnlyList<DataGridColumnGroupInfo> ColumnGroups
 );
