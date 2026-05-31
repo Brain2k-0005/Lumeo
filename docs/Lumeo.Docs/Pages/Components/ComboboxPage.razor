@@ -121,6 +121,20 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Items with Icons + Descriptions (data-bound)" Code="@_richItemCode">
+        <Container MaxWidth="sm" Center="false" Padding="">
+            <Combobox @bind-Value="_selectedAction" @bind-Open="_isOpenRich"
+                      Items="_actions"
+                      ItemValue="@(o => ((ActionItem)o).Id)"
+                      ItemText="@(o => ((ActionItem)o).Label)"
+                      ItemDescription="@(o => ((ActionItem)o).Hint)"
+                      ItemIcon="@(o => RenderActionIcon((ActionItem)o))">
+                <ComboboxInput Placeholder="Run a command..." />
+                <ComboboxContent />
+            </Combobox>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="Async Search" Code="@_asyncCode">
         <Container MaxWidth="sm" Center="false" Padding="">
             <Combobox @bind-Open="_isOpenAsync" OnSearchAsync="@HandleSearchAsync" IsSearchLoading="@_isSearching">
@@ -150,6 +164,26 @@
     private bool _isOpenGrouped;
     private HashSet<string> _selectedTools = new();
     private bool _isOpenGroupedAdv;
+
+    private record ActionItem(string Id, string Label, string Hint, Blazicons.SvgIcon Icon);
+
+    private readonly IEnumerable<object> _actions = new object[]
+    {
+        new ActionItem("new", "New File", "Ctrl + N", Blazicons.Lucide.FilePlus),
+        new ActionItem("open", "Open File", "Ctrl + O", Blazicons.Lucide.FolderOpen),
+        new ActionItem("save", "Save", "Ctrl + S", Blazicons.Lucide.Save),
+    };
+
+    private string? _selectedAction;
+    private bool _isOpenRich;
+
+    private RenderFragment? RenderActionIcon(ActionItem item) => builder =>
+    {
+        builder.OpenComponent<Blazicons.Blazicon>(0);
+        builder.AddAttribute(1, "Svg", item.Icon);
+        builder.AddAttribute(2, "class", "h-4 w-4");
+        builder.CloseComponent();
+    };
     private string _searchText1 = "";
     private HashSet<string> _selectedFrameworks = new();
     private bool _isSearching;
@@ -211,6 +245,19 @@
         _searchResults = allUsers.Where(u => u.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
         _isSearching = false;
     }
+
+    private string _richItemCode = @"@* Data-bound mode: ItemIcon + ItemDescription extend the default item renderer
+   without a custom ItemTemplate. Return null per item to mix iconed and un-iconed rows.
+   record ActionItem(string Id, string Label, string Hint, SvgIcon Icon); *@
+<Combobox @bind-Value=""_selectedAction"" @bind-Open=""_isOpenRich""
+          Items=""_actions""
+          ItemValue=""@(o => ((ActionItem)o).Id)""
+          ItemText=""@(o => ((ActionItem)o).Label)""
+          ItemDescription=""@(o => ((ActionItem)o).Hint)""
+          ItemIcon=""@(o => RenderActionIcon((ActionItem)o))"">
+    <ComboboxInput Placeholder=""Run a command..."" />
+    <ComboboxContent />
+</Combobox>";
 
     private string _multipleCode = @"<Combobox Multiple=""true"" @bind-Values=""_selectedFrameworks"" @bind-Open=""_isOpen"">
     <ComboboxInput Placeholder=""Select frameworks..."" />

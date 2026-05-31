@@ -213,4 +213,127 @@ public class ComboboxDataBoundTests : IAsyncLifetime
 
         Assert.Contains("Option 1", cut.Markup);
     }
+
+    // --- ItemDescription / ItemIcon (data-bound default-renderer extensions) ---
+
+    private record TaggedItem(string Value, string Label, string? Description);
+
+    [Fact]
+    public void ItemDescription_Renders_Below_Label_When_Set()
+    {
+        var items = new object[]
+        {
+            new TaggedItem("apple", "Apple", "Crisp red fruit"),
+            new TaggedItem("banana", "Banana", "Soft yellow fruit"),
+        };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemValue", (Func<object, string>)(o => ((TaggedItem)o).Value));
+            builder.AddAttribute(4, "ItemText", (Func<object, string>)(o => ((TaggedItem)o).Label));
+            builder.AddAttribute(5, "ItemDescription", (Func<object, string?>)(o => ((TaggedItem)o).Description));
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxContent>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("Apple", cut.Markup);
+        Assert.Contains("Crisp red fruit", cut.Markup);
+        // Description rendered in the muted/sub-line styling.
+        Assert.Contains("text-muted-foreground", cut.Markup);
+    }
+
+    [Fact]
+    public void ItemDescription_Null_For_Item_Falls_Back_To_Plain_Label()
+    {
+        // When ItemDescription returns null for a given item, that row renders just the
+        // label (no extra <span> wrapper) so mixed iconed / un-iconed lists stay tight.
+        var items = new object[]
+        {
+            new TaggedItem("apple", "Apple", null),
+            new TaggedItem("banana", "Banana", "With description"),
+        };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemValue", (Func<object, string>)(o => ((TaggedItem)o).Value));
+            builder.AddAttribute(4, "ItemText", (Func<object, string>)(o => ((TaggedItem)o).Label));
+            builder.AddAttribute(5, "ItemDescription", (Func<object, string?>)(o => ((TaggedItem)o).Description));
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxContent>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("Apple", cut.Markup);
+        Assert.Contains("Banana", cut.Markup);
+        Assert.Contains("With description", cut.Markup);
+    }
+
+    [Fact]
+    public void ItemIcon_Renders_Leading_Icon_When_Provided()
+    {
+        var items = new object[] { "apple", "banana" };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemIcon",
+                (Func<object, RenderFragment?>)(o => b =>
+                {
+                    b.OpenElement(0, "i");
+                    b.AddAttribute(1, "data-testid", $"icon-{o}");
+                    b.CloseElement();
+                }));
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxContent>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.NotNull(cut.Find("[data-testid='icon-apple']"));
+        Assert.NotNull(cut.Find("[data-testid='icon-banana']"));
+    }
+
+    [Fact]
+    public void ItemIcon_Null_For_Item_Skips_Icon_Slot()
+    {
+        // Mixed list: only the first item gets an icon. The second renders without
+        // an icon span at all.
+        var items = new object[] { "apple", "banana" };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemIcon",
+                (Func<object, RenderFragment?>)(o => o.ToString() == "apple"
+                    ? b => { b.OpenElement(0, "i"); b.AddAttribute(1, "data-testid", "icon-apple"); b.CloseElement(); }
+                    : null));
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxContent>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Single(cut.FindAll("[data-testid^='icon-']"));
+    }
 }
