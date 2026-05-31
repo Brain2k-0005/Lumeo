@@ -185,13 +185,12 @@ public class ChartTooltipSlotTests : IAsyncLifetime
                     (RenderFragment<ChartTooltipContext>)(ctx => cb =>
                     {
                         cb.OpenElement(0, "ul");
-                        var i = 0;
+                        var seq = 1;
                         foreach (var pt in ctx.Points)
                         {
-                            cb.OpenElement(1 + i, "li");
-                            cb.AddContent(2 + i, $"{pt.SeriesName}={pt.Value?.ToString() ?? "-"}");
+                            cb.OpenElement(seq++, "li");
+                            cb.AddContent(seq++, $"{pt.SeriesName}={pt.Value?.ToString() ?? "-"}");
                             cb.CloseElement();
-                            i++;
                         }
                         cb.CloseElement();
                     }));
