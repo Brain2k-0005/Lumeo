@@ -2,7 +2,14 @@
 @inject IComponentInteropService Interop
 
 @{
-    var context = new SidebarState(IsCollapsed, EventCallback.Factory.Create(this, Toggle), Variant);
+    var context = new SidebarState(
+        IsCollapsed,
+        EventCallback.Factory.Create(this, Toggle),
+        Variant)
+    {
+        EffectiveCollapsed = EffectiveCollapsed,
+        SetHoverExpanded = EventCallback.Factory.Create<bool>(this, SetHoverExpanded),
+    };
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -35,6 +42,18 @@
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Transient hover/focus-driven expansion for the MiniRail variant. Lives on the
+    // provider (not SidebarComponent) so descendants — most importantly
+    // SidebarMenuButton — can react via the cascaded SidebarState and reveal their
+    // LabelContent during hover-expansion, not just on pinned expand.
+    private bool _hoverExpanded;
+
+    // True when the sidebar should render + behave as collapsed for descendants. For
+    // MiniRail this is IsCollapsed unless the user is hovering / keyboard-focused on
+    // the rail. Other variants ignore the hover state.
+    private bool EffectiveCollapsed
+        => IsCollapsed && !(Variant == SidebarVariant.MiniRail && _hoverExpanded);
 
     private string CssClass
     {
@@ -82,7 +101,34 @@
         }
     }
 
-    public record SidebarState(bool IsCollapsed, EventCallback Toggle, SidebarVariant Variant);
+    // Called by SidebarComponent's @onmouseenter / @onmouseleave / focus handlers.
+    // Only meaningful for MiniRail — other variants set this but their CSS / button
+    // logic ignores it via the EffectiveCollapsed predicate.
+    private void SetHoverExpanded(bool value)
+    {
+        if (_hoverExpanded == value) return;
+        _hoverExpanded = value;
+        StateHasChanged();
+    }
+
+    // Kept as a 3-positional record so the v3.10.0 generated constructor + Deconstruct
+    // signature still compiles for external callers (this record is meant for our own
+    // cascade but is technically public). The two new fields land as init-only props
+    // with defaults — fully additive.
+    public record SidebarState(
+        bool IsCollapsed,
+        EventCallback Toggle,
+        SidebarVariant Variant)
+    {
+        /// <summary>True when descendants should render in their collapsed appearance.
+        /// For MiniRail this is <see cref="IsCollapsed"/> unless the user is hovering
+        /// the rail; other variants always match <see cref="IsCollapsed"/>.</summary>
+        public bool EffectiveCollapsed { get; init; } = IsCollapsed;
+
+        /// <summary>Called by <c>SidebarComponent</c> on hover / focus to flip the
+        /// MiniRail hover-expansion. No-op for other variants.</summary>
+        public EventCallback<bool> SetHoverExpanded { get; init; }
+    }
 
     /// <summary>
     /// Layout strategy for the sidebar.

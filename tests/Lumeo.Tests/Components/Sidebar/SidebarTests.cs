@@ -305,6 +305,46 @@ public class SidebarTests : IAsyncLifetime
     }
 
     [Fact]
+    public void MiniRail_Hover_Reveals_Menu_Button_Labels()
+    {
+        // Bug fix: previously _hoverExpanded lived only on SidebarComponent so the
+        // cascade only saw the pinned IsCollapsed — SidebarMenuButton kept its
+        // labels at opacity-0 even after the rail widened on hover.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarProvider>(0);
+            builder.AddAttribute(1, "Variant", L.SidebarProvider.SidebarVariant.MiniRail);
+            builder.AddAttribute(2, "IsCollapsed", true);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarComponent>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner =>
+                {
+                    inner.OpenComponent<L.SidebarMenuButton>(0);
+                    inner.AddAttribute(1, "Href", "#");
+                    inner.AddAttribute(2, "IconContent", (RenderFragment)(i => i.AddContent(0, "ICN")));
+                    inner.AddAttribute(3, "LabelContent", (RenderFragment)(l => l.AddContent(0, "Home")));
+                    inner.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Label span exists but starts at opacity-0 (collapsed rail).
+        var labelSpan = cut.FindAll("span").First(s => s.TextContent.Trim() == "Home");
+        Assert.Contains("opacity-0", labelSpan.GetAttribute("class") ?? "");
+
+        // Hover the rail.
+        cut.Find("aside").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+        // Now the same label flips to opacity-100 — driven by the cascaded
+        // EffectiveCollapsed flag from SidebarProvider.
+        var labelSpan2 = cut.FindAll("span").First(s => s.TextContent.Trim() == "Home");
+        Assert.Contains("opacity-100", labelSpan2.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
     public void MiniRail_Icon_Variant_Ignores_Hover()
     {
         // Sanity guard — only MiniRail responds to hover. Icon stays narrow on hover.
