@@ -38,7 +38,7 @@
                type="@(Variant == InputVariant.Search ? "search" : null)"
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-               class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+               maxlength="@MaxLength" class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
         @if (Clearable && !string.IsNullOrEmpty(Value))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
@@ -57,7 +57,13 @@ else
            name="@Name"
            aria-required="@Required.ToString().ToLowerInvariant()"
            aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-           class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+           maxlength="@MaxLength" class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+}
+
+@if (ShowCount)
+{
+    @* Counter sits below the input wrapper, matching Textarea. *@
+    <div class="mt-1 text-xs @CountClass text-right">@CountText</div>
 }
 
 @if (!InsideFormField)
@@ -94,6 +100,17 @@ else
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+
+    /// <summary>Renders a character counter below the input, matching Textarea's pattern.</summary>
+    [Parameter] public bool ShowCount { get; set; }
+
+    /// <summary>HTML <c>maxlength</c> on the input plus the limit shown in the counter.
+    /// When <c>null</c> and <see cref="ShowCount"/> is true, only the current length is rendered.</summary>
+    [Parameter] public int? MaxLength { get; set; }
+
+    /// <summary>Optional custom counter formatter (e.g. <c>c =&gt; $"{c} of 60 chars"</c>).
+    /// Default renders <c>42</c> or <c>42/60</c> when <see cref="MaxLength"/> is set.</summary>
+    [Parameter] public Func<int, string>? CountFormat { get; set; }
     /// <summary>
     /// Focuses the underlying &lt;input&gt; on first render. The HTML
     /// <c>autofocus</c> attribute doesn't work in Blazor WASM because the
@@ -128,6 +145,15 @@ else
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Character-counter helpers, mirroring Textarea's pattern.
+    private bool IsOverLimit => MaxLength.HasValue && (Value?.Length ?? 0) > MaxLength.Value;
+    private string CountClass => IsOverLimit ? "text-destructive" : "text-muted-foreground";
+    private string CountText => CountFormat is { } fmt
+        ? fmt(Value?.Length ?? 0)
+        : MaxLength.HasValue
+            ? $"{Value?.Length ?? 0}/{MaxLength}"
+            : (Value?.Length ?? 0).ToString();
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 

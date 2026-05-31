@@ -162,4 +162,58 @@ public class InputTests : IAsyncLifetime
         // and the bare input is rendered instead
         Assert.Empty(cut.FindAll("button"));
     }
+
+    // --- ShowCount / MaxLength (parity with Textarea) ---
+
+    [Fact]
+    public void ShowCount_Renders_Character_Count()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.Value, "hello"));
+
+        Assert.Contains("5", cut.Markup);
+    }
+
+    [Fact]
+    public void ShowCount_With_MaxLength_Renders_Count_And_Max()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 100)
+            .Add(t => t.Value, "hello"));
+
+        Assert.Contains("5/100", cut.Markup);
+    }
+
+    [Fact]
+    public void MaxLength_Forwarded_To_Input_Element()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p.Add(t => t.MaxLength, 42));
+        Assert.Equal("42", cut.Find("input").GetAttribute("maxlength"));
+    }
+
+    [Fact]
+    public void ShowCount_Over_Limit_Uses_Destructive_Color()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 3)
+            .Add(t => t.Value, "hello")); // 5 > 3
+
+        var counterDivs = cut.FindAll("div").Where(d => d.TextContent.Contains("5/3")).ToList();
+        Assert.Single(counterDivs);
+        Assert.Contains("text-destructive", counterDivs[0].GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void ShowCount_With_CountFormat_Uses_Custom_Format()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.Value, "ab")
+            .Add(t => t.CountFormat, c => $"{c} chars"));
+
+        Assert.Contains("2 chars", cut.Markup);
+    }
 }
