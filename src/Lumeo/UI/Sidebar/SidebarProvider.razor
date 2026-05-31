@@ -5,9 +5,11 @@
     var context = new SidebarState(
         IsCollapsed,
         EventCallback.Factory.Create(this, Toggle),
-        Variant,
-        EffectiveCollapsed,
-        EventCallback.Factory.Create<bool>(this, SetHoverExpanded));
+        Variant)
+    {
+        EffectiveCollapsed = EffectiveCollapsed,
+        SetHoverExpanded = EventCallback.Factory.Create<bool>(this, SetHoverExpanded),
+    };
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -109,17 +111,24 @@
         StateHasChanged();
     }
 
+    // Kept as a 3-positional record so the v3.10.0 generated constructor + Deconstruct
+    // signature still compiles for external callers (this record is meant for our own
+    // cascade but is technically public). The two new fields land as init-only props
+    // with defaults — fully additive.
     public record SidebarState(
         bool IsCollapsed,
         EventCallback Toggle,
-        SidebarVariant Variant,
+        SidebarVariant Variant)
+    {
         /// <summary>True when descendants should render in their collapsed appearance.
         /// For MiniRail this is <see cref="IsCollapsed"/> unless the user is hovering
         /// the rail; other variants always match <see cref="IsCollapsed"/>.</summary>
-        bool EffectiveCollapsed,
+        public bool EffectiveCollapsed { get; init; } = IsCollapsed;
+
         /// <summary>Called by <c>SidebarComponent</c> on hover / focus to flip the
         /// MiniRail hover-expansion. No-op for other variants.</summary>
-        EventCallback<bool> SetHoverExpanded);
+        public EventCallback<bool> SetHoverExpanded { get; init; }
+    }
 
     /// <summary>
     /// Layout strategy for the sidebar.
