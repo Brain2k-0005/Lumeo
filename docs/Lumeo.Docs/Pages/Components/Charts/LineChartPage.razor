@@ -13,6 +13,25 @@
         </Container>
     </ComponentDemo>
 
+    <ComponentDemo Title="Razor-Rendered Tooltip Slot" Description="Replace ECharts' default tooltip body with any Razor markup — themed cards, formatted numbers, child components. Updates on every hover." Code="@_tooltipSlotCode">
+        <Container>
+            <LineChart Categories="_categories" Series="_series" Smooth="true">
+                <ChartTooltip>
+                    <ChildContent Context="ctx">
+                        <Stack Gap="1" Class="p-2 min-w-[140px]">
+                            <Flex Gap="2" Align="center">
+                                <Stack Class="h-2 w-2 rounded-full" style="@($"background-color:{ctx.Color}")"></Stack>
+                                <Lumeo.Text As="span" Size="sm" Class="font-semibold">@ctx.SeriesName</Lumeo.Text>
+                            </Flex>
+                            <Lumeo.Text As="span" Size="xs" Color="muted">@ctx.DataName</Lumeo.Text>
+                            <Lumeo.Text As="span" Class="font-mono text-sm">@(ctx.Value?.ToString("N0") ?? "-")</Lumeo.Text>
+                        </Stack>
+                    </ChildContent>
+                </ChartTooltip>
+            </LineChart>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="Straight Line, No Dots" Description="Precise straight-line segments without markers keep focus on broad trends rather than individual data points." Code="@_straightCode">
         <Container>
             <LineChart Categories="_categories" Series="_series" Smooth="false" ShowDots="false" />
@@ -333,6 +352,24 @@
 
     private string _basicCode = @"<LineChart Categories=""_categories"" Series=""_series"" Smooth=""true"" ShowDots=""true"" />";
     private string _straightCode = @"<LineChart Categories=""_categories"" Series=""_series"" Smooth=""false"" ShowDots=""false"" />";
+
+    private string _tooltipSlotCode = @"@* The ChartTooltip child renders a hidden DOM portal whose innerHTML is fed to
+   ECharts' tooltip on each hover. ChildContent receives a ChartTooltipContext
+   per point (SeriesName, DataName, Value, Color, plus the raw Params dict). *@
+<LineChart Categories=""_categories"" Series=""_series"" Smooth=""true"">
+    <ChartTooltip>
+        <ChildContent Context=""ctx"">
+            <Stack Gap=""1"" Class=""p-2 min-w-[140px]"">
+                <Flex Gap=""2"" Align=""center"">
+                    <Stack Class=""h-2 w-2 rounded-full"" style=""@($\""background-color:{ctx.Color}\"")""></Stack>
+                    <Lumeo.Text As=""span"" Size=""sm"" Class=""font-semibold"">@ctx.SeriesName</Lumeo.Text>
+                </Flex>
+                <Lumeo.Text As=""span"" Size=""xs"" Color=""muted"">@ctx.DataName</Lumeo.Text>
+                <Lumeo.Text As=""span"" Class=""font-mono text-sm"">@(ctx.Value?.ToString(""N0"") ?? ""-"")</Lumeo.Text>
+            </Stack>
+        </ChildContent>
+    </ChartTooltip>
+</LineChart>";
     private string _threeSeriesCode = @"<LineChart Categories=""_categories"" Series=""_threeSeries"" Smooth=""true"" />";
     private string _labelsCode = @"<LineChart Categories=""_shortCategories"" Series=""_labelSeries"" Smooth=""true"" ShowDataLabels=""true"" LabelPosition=""top"" />";
     private string _zoomCode = @"<LineChart Categories=""_days60"" Series=""_dailySeries"" Smooth=""true"" ShowDots=""false"" DataZoom=""true"" />";
