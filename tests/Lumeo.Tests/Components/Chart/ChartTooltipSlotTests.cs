@@ -170,6 +170,77 @@ public class ChartTooltipSlotTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OnTooltipPointChange_Multi_Series_Surfaces_All_Points()
+    {
+        // Bug fix: previously the JS bridge sent only points[0] so a multi-series
+        // axis-trigger tooltip silently lost every series past the first. The bridge
+        // now sends a `points` array; ctx.Points iterates them.
+        var cut = _ctx.Render<Lumeo.Chart>(p => p
+            .Add(c => c.OptionJson, "{\"series\":[{\"type\":\"line\",\"data\":[1,2]},{\"type\":\"line\",\"data\":[3,4]}]}")
+            .Add(c => c.ShowLoadingSkeleton, false)
+            .Add(c => c.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<ChartTooltip>(0);
+                b.AddAttribute(1, "ChildContent",
+                    (RenderFragment<ChartTooltipContext>)(ctx => cb =>
+                    {
+                        cb.OpenElement(0, "ul");
+                        var i = 0;
+                        foreach (var pt in ctx.Points)
+                        {
+                            cb.OpenElement(1 + i, "li");
+                            cb.AddContent(2 + i, $"{pt.SeriesName}={pt.Value?.ToString() ?? "-"}");
+                            cb.CloseElement();
+                            i++;
+                        }
+                        cb.CloseElement();
+                    }));
+                b.CloseComponent();
+            })));
+
+        var payload = """
+            {
+              "seriesName": "Revenue",
+              "name": "Aug",
+              "value": 37700,
+              "points": [
+                { "seriesName": "Revenue",  "seriesIndex": 0, "value": 37700, "color": "#fff" },
+                { "seriesName": "Expenses", "seriesIndex": 1, "value": 16900, "color": "#22c55e" }
+              ]
+            }
+            """;
+        await cut.Instance.OnTooltipPointChange(payload);
+
+        var portal = cut.Find(".lumeo-chart-tooltip-portal");
+        Assert.Contains("Revenue=37700", portal.TextContent);
+        Assert.Contains("Expenses=16900", portal.TextContent);
+    }
+
+    [Fact]
+    public async Task OnTooltipPointChange_Without_Points_Falls_Back_Empty_List()
+    {
+        // Legacy single-point payloads (no `points` field) shouldn't crash — Points
+        // becomes empty and the slot consumer falls back to the typed headline fields.
+        var cut = _ctx.Render<Lumeo.Chart>(p => p
+            .Add(c => c.OptionJson, "{\"series\":[{\"type\":\"line\",\"data\":[1]}]}")
+            .Add(c => c.ShowLoadingSkeleton, false)
+            .Add(c => c.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<ChartTooltip>(0);
+                b.AddAttribute(1, "ChildContent",
+                    (RenderFragment<ChartTooltipContext>)(ctx => cb =>
+                        cb.AddContent(0, $"count={ctx.Points.Count} headline={ctx.SeriesName}")));
+                b.CloseComponent();
+            })));
+
+        await cut.Instance.OnTooltipPointChange("{\"seriesName\":\"OnlyOne\",\"value\":42}");
+
+        var portal = cut.Find(".lumeo-chart-tooltip-portal");
+        Assert.Contains("count=0", portal.TextContent);
+        Assert.Contains("headline=OnlyOne", portal.TextContent);
+    }
+
+    [Fact]
     public void ChartTooltip_Class_Applies_To_Portal_Wrapper()
     {
         var cut = _ctx.Render<Lumeo.Chart>(p => p

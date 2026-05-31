@@ -490,54 +490,70 @@ export function registerTooltipSlot(elementId, portalId, dotnetRef) {
     // drag would then ship the stale first-point to Razor while the user's already on
     // a different point. Updating latestPoint on every formatter call keeps the rAF
     // send aligned with what the user is currently hovering.
-    let latestPoint = null;
+    let latestPoints = null;
 
     chart.setOption({
         tooltip: {
             formatter: function (params) {
-                // axis-trigger gives an array of points; pick the first as the headline.
-                const p = Array.isArray(params) ? params[0] : params;
-                if (!p) return '';
+                // Axis-trigger fires with an ARRAY of points (one per series at the
+                // hovered x); item-trigger fires with a single point object. Normalize
+                // to an array so the Razor slot can iterate across all series — the
+                // previous code shipped only points[0] and silently hid every series
+                // past the first.
+                const arr = Array.isArray(params) ? params : (params ? [params] : []);
+                if (arr.length === 0) return '';
+                const head = arr[0];
 
-                const sig = `${p.seriesIndex}|${p.dataIndex}|${p.name}`;
+                const sig = `${head.seriesIndex}|${head.dataIndex}|${head.name}|${arr.length}`;
                 if (sig !== lastSig) {
                     lastSig = sig;
-                    latestPoint = p;
+                    latestPoints = arr;
                     if (pendingFrame === null) {
                         pendingFrame = requestAnimationFrame(() => {
                             pendingFrame = null;
-                            const current = latestPoint;
-                            if (!current) return;
+                            const current = latestPoints;
+                            if (!current || current.length === 0) return;
                             try {
+                                const projectPoint = (q) => ({
+                                    seriesName: q.seriesName || '',
+                                    seriesType: q.seriesType || '',
+                                    seriesIndex: q.seriesIndex ?? 0,
+                                    dataIndex: q.dataIndex ?? 0,
+                                    value: q.value,
+                                    color: typeof q.color === 'string' ? q.color : null,
+                                    marker: typeof q.marker === 'string' ? q.marker : null,
+                                });
+
+                                const h = current[0];
                                 // Forward a richer payload than the bare typed fields:
                                 // ChartTooltipContext.Raw exposes everything here so
                                 // consumers can pull formatter-only fields like
-                                // marker / percent / axisValueLabel / data without a
-                                // second round-trip. The hand-built whitelist avoids
-                                // serializing ECharts' internal back-refs (which carry
-                                // cycles JSON.stringify would crash on).
+                                // percent / axisValueLabel / data without a second
+                                // round-trip. points[] is the new entry that lets the
+                                // Razor slot iterate across all series at the same x.
                                 const payload = {
-                                    seriesName: current.seriesName || '',
-                                    seriesType: current.seriesType || '',
-                                    seriesIndex: current.seriesIndex ?? 0,
-                                    componentType: current.componentType || '',
-                                    componentSubType: current.componentSubType || '',
-                                    name: current.name || '',
-                                    dataIndex: current.dataIndex ?? 0,
-                                    value: current.value,
-                                    data: current.data,
-                                    color: typeof current.color === 'string' ? current.color : null,
-                                    marker: typeof current.marker === 'string' ? current.marker : null,
-                                    percent: current.percent ?? null,
-                                    axisValue: current.axisValue ?? null,
-                                    axisValueLabel: current.axisValueLabel ?? null,
-                                    axisIndex: current.axisIndex ?? null,
-                                    axisType: current.axisType ?? null,
-                                    axisId: current.axisId ?? null,
-                                    axisDim: current.axisDim ?? null,
-                                    dimensionNames: current.dimensionNames ?? null,
-                                    encode: current.encode ?? null,
-                                    dataType: current.dataType ?? null,
+                                    seriesName: h.seriesName || '',
+                                    seriesType: h.seriesType || '',
+                                    seriesIndex: h.seriesIndex ?? 0,
+                                    componentType: h.componentType || '',
+                                    componentSubType: h.componentSubType || '',
+                                    name: h.name || '',
+                                    dataIndex: h.dataIndex ?? 0,
+                                    value: h.value,
+                                    data: h.data,
+                                    color: typeof h.color === 'string' ? h.color : null,
+                                    marker: typeof h.marker === 'string' ? h.marker : null,
+                                    percent: h.percent ?? null,
+                                    axisValue: h.axisValue ?? null,
+                                    axisValueLabel: h.axisValueLabel ?? null,
+                                    axisIndex: h.axisIndex ?? null,
+                                    axisType: h.axisType ?? null,
+                                    axisId: h.axisId ?? null,
+                                    axisDim: h.axisDim ?? null,
+                                    dimensionNames: h.dimensionNames ?? null,
+                                    encode: h.encode ?? null,
+                                    dataType: h.dataType ?? null,
+                                    points: current.map(projectPoint),
                                 };
                                 dotnetRef.invokeMethodAsync('OnTooltipPointChange', JSON.stringify(payload));
                             } catch (_) {
