@@ -1,0 +1,39 @@
+@namespace Lumeo
+@implements IDisposable
+
+@*  Declarative reference band — a shaded rectangle between two values on one axis,
+    spanning the full extent of the other. Wraps ECharts' native series.markArea.data.
+
+    Usage:
+        <LineChart …>
+            <ChartReferenceZone From="80" To="120" Color="#22c55e22" Label="Healthy" />
+            <ChartReferenceZone From="0"  To="50"  Color="#ef444422" Label="Critical" />
+        </LineChart> *@
+
+@code {
+    [CascadingParameter] public ChartAnnotationsContext? Context { get; set; }
+
+    /// <summary>Lower bound on the perpendicular axis.</summary>
+    [Parameter, EditorRequired] public object From { get; set; } = 0;
+
+    /// <summary>Upper bound on the perpendicular axis.</summary>
+    [Parameter, EditorRequired] public object To { get; set; } = 0;
+
+    /// <summary>Which axis the band is perpendicular to. Default <c>Horizontal</c>
+    /// (a yAxis band spanning the chart width).</summary>
+    [Parameter] public ChartThresholdAxis Axis { get; set; } = ChartThresholdAxis.Horizontal;
+
+    /// <summary>Label rendered inside the band. Null or empty hides it.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Fill colour (typically a low-alpha hex like <c>"#22c55e22"</c>).
+    /// Required — without it the zone would be invisible.</summary>
+    [Parameter, EditorRequired] public string Color { get; set; } = "#3b82f622";
+
+    private readonly string _id = "zone-" + Guid.NewGuid().ToString("N")[..8];
+
+    protected override void OnParametersSet()
+        => Context?.RegisterZone(new ChartReferenceZoneInfo(_id, From, To, Axis, Label, Color));
+
+    public void Dispose() => Context?.UnregisterZone(_id);
+}
