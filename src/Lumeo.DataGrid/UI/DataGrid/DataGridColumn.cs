@@ -32,6 +32,15 @@ public class DataGridColumn<TItem>
     public DataGridFilterType FilterType { get; set; } = DataGridFilterType.Text;
     public AggregateType Aggregate { get; set; } = AggregateType.None;
     public string? Format { get; set; }
+    /// <summary>Optional .NET format string used by the footer aggregate strip — overrides
+    /// the cell <see cref="Format"/> for the totals row (e.g. cell shows <c>"C2"</c> and
+    /// totals show <c>"N0"</c>). When null the footer falls back to <see cref="Format"/>,
+    /// then to the historic <c>"N2"</c> default.</summary>
+    public string? FooterFormat { get; set; }
+    /// <summary>Id of the <see cref="DataGridColumnGroup{TItem}"/> this column belongs to,
+    /// when present. Drives the extra header row that spans grouped columns with a
+    /// single labelled <c>th</c>. Null for ungrouped columns.</summary>
+    public string? ColumnGroupId { get; set; }
     public string? CssClass { get; set; }
     public string? HeaderCssClass { get; set; }
     public RenderFragment<TItem>? CellTemplate { get; set; }

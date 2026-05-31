@@ -88,7 +88,8 @@
         OnHeaderKeyDown: HandleHeaderKeyDownAsync,
         Striped: Striped,
         HasPinnedLeft: _orderedColumns.Any(c => c.Visible && c.Pin == PinDirection.Left),
-        Hoverable: Hoverable
+        Hoverable: Hoverable,
+        ColumnGroups: _columnGroups
     );
 }
 
@@ -1057,6 +1058,8 @@
             existing.FilterType = column.FilterType;
             existing.Aggregate = column.Aggregate;
             existing.Format = column.Format;
+            existing.FooterFormat = column.FooterFormat;
+            existing.ColumnGroupId = column.ColumnGroupId;
             existing.CellTemplate = column.CellTemplate;
             existing.HeaderTemplate = column.HeaderTemplate;
             existing.EditTemplate = column.EditTemplate;
@@ -1104,6 +1107,24 @@
             _ = InvokeAsync(StateHasChanged);
         }
     }
+
+    // --- Column groups (parent header that spans multiple data columns) ---
+    private List<DataGridColumnGroupInfo> _columnGroups = new();
+
+    /// <summary>
+    /// Called by <see cref="DataGridColumnGroup{TItem}"/> children during initialization to
+    /// register a labelled parent header. The grid uses it during header rendering to add a
+    /// second <c>tr</c> that spans the grouped columns via colspan. Idempotent on group id.
+    /// </summary>
+    public void RegisterColumnGroup(DataGridColumnGroupInfo info)
+    {
+        if (_columnGroups.Any(g => g.Id == info.Id)) return;
+        _columnGroups.Add(info);
+    }
+
+    /// <summary>The registered column groups, surfaced via <see cref="DataGridContext{TItem}"/>
+    /// for the header to look up labels by id.</summary>
+    public IReadOnlyList<DataGridColumnGroupInfo> ColumnGroups => _columnGroups;
 
     /// <summary>Stable identity for a column: prefer Field (user-declared), fallback to Id.</summary>
     private static string ColumnKey(DataGridColumn<TItem> column) =>

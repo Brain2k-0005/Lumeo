@@ -169,8 +169,12 @@
     private string DetailChevronClasses =>
         $"h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200{(IsExpanded ? "" : " -rotate-90")}";
 
-    // 1-based ARIA row index; header occupies row 1 so body rows start at 2.
-    private int AriaRowIndex => RowIndex + 2;
+    // 1-based ARIA row index. The header normally occupies row 1, so body rows start at 2.
+    // When DataGridColumnGroups are declared the header is a 2-row block (parent labels +
+    // data-column row) and body rows must start at 3 — otherwise the first body row reports
+    // the same aria-rowindex the data-header already uses, giving assistive tech duplicate
+    // row positions.
+    private int AriaRowIndex => RowIndex + (Context?.ColumnGroups.Count > 0 ? 3 : 2);
 
     // ARIA tree-grid attributes — only meaningful when IsTreeGrid is true.
     private int? AriaLevel => (Context?.IsTreeGrid == true) ? (Context.TreeLevelOf(Item) + 1) : null;
