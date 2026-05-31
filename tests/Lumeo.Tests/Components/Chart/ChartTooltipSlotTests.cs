@@ -80,7 +80,7 @@ public class ChartTooltipSlotTests : IAsyncLifetime
     }
 
     [Fact]
-    public void OnTooltipPointChange_Updates_Portal_Content()
+    public async Task OnTooltipPointChange_Updates_Portal_Content()
     {
         var cut = _ctx.Render<Lumeo.Chart>(p => p
             .Add(c => c.OptionJson, "{\"series\":[{\"type\":\"line\",\"data\":[1,2,3]}]}")
@@ -96,14 +96,14 @@ public class ChartTooltipSlotTests : IAsyncLifetime
 
         // Simulate the JS-side hover notification.
         var payload = "{\"seriesName\":\"Sales\",\"seriesType\":\"line\",\"seriesIndex\":0,\"name\":\"Q1\",\"dataIndex\":0,\"value\":42.5,\"color\":\"#22c55e\"}";
-        cut.Instance.OnTooltipPointChange(payload).GetAwaiter().GetResult();
+        await cut.Instance.OnTooltipPointChange(payload);
 
         var portal = cut.Find(".lumeo-chart-tooltip-portal");
         Assert.Contains("Sales = 42.5", portal.TextContent);
     }
 
     [Fact]
-    public void OnTooltipPointChange_Multi_Dim_Value_Picks_First_Dimension()
+    public async Task OnTooltipPointChange_Multi_Dim_Value_Picks_First_Dimension()
     {
         // scatter / candlestick send value as an array; the headline Value picks [0].
         var cut = _ctx.Render<Lumeo.Chart>(p => p
@@ -118,12 +118,12 @@ public class ChartTooltipSlotTests : IAsyncLifetime
                 b.CloseComponent();
             })));
 
-        cut.Instance.OnTooltipPointChange("{\"seriesName\":\"\",\"value\":[7,99]}").GetAwaiter().GetResult();
+        await cut.Instance.OnTooltipPointChange("{\"seriesName\":\"\",\"value\":[7,99]}");
         Assert.Contains("v=7", cut.Find(".lumeo-chart-tooltip-portal").TextContent);
     }
 
     [Fact]
-    public void OnTooltipPointChange_Malformed_Json_Keeps_Last_Good_Context()
+    public async Task OnTooltipPointChange_Malformed_Json_Keeps_Last_Good_Context()
     {
         var cut = _ctx.Render<Lumeo.Chart>(p => p
             .Add(c => c.OptionJson, "{\"series\":[{\"type\":\"line\",\"data\":[1]}]}")
@@ -137,11 +137,11 @@ public class ChartTooltipSlotTests : IAsyncLifetime
             })));
 
         // First a good update to set state.
-        cut.Instance.OnTooltipPointChange("{\"name\":\"Good\"}").GetAwaiter().GetResult();
+        await cut.Instance.OnTooltipPointChange("{\"name\":\"Good\"}");
         Assert.Contains("name=Good", cut.Find(".lumeo-chart-tooltip-portal").TextContent);
 
         // Now garbage — must not throw, must keep the previous good state.
-        cut.Instance.OnTooltipPointChange("not json").GetAwaiter().GetResult();
+        await cut.Instance.OnTooltipPointChange("not json");
         Assert.Contains("name=Good", cut.Find(".lumeo-chart-tooltip-portal").TextContent);
     }
 
