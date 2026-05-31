@@ -165,23 +165,26 @@
     private HashSet<string> _selectedTools = new();
     private bool _isOpenGroupedAdv;
 
-    private record ActionItem(string Id, string Label, string Hint, Blazicons.SvgIcon Icon);
+    private record ActionItem(string Id, string Label, string Hint, string IconName);
 
     private readonly IEnumerable<object> _actions = new object[]
     {
-        new ActionItem("new", "New File", "Ctrl + N", Blazicons.Lucide.FilePlus),
-        new ActionItem("open", "Open File", "Ctrl + O", Blazicons.Lucide.FolderOpen),
-        new ActionItem("save", "Save", "Ctrl + S", Blazicons.Lucide.Save),
+        new ActionItem("new", "New File", "Ctrl + N", "FilePlus"),
+        new ActionItem("open", "Open File", "Ctrl + O", "FolderOpen"),
+        new ActionItem("save", "Save", "Ctrl + S", "Save"),
     };
 
     private string? _selectedAction;
     private bool _isOpenRich;
 
+    // Uses the docs-site DynamicIcon helper so the icon library swap in the docs
+    // shell applies to live demos too. ItemIcon returns null per item to skip its
+    // icon column (useful for mixed iconed / un-iconed lists).
     private RenderFragment? RenderActionIcon(ActionItem item) => builder =>
     {
-        builder.OpenComponent<Blazicons.Blazicon>(0);
-        builder.AddAttribute(1, "Svg", item.Icon);
-        builder.AddAttribute(2, "class", "h-4 w-4");
+        builder.OpenComponent<Lumeo.Docs.Shared.DynamicIcon>(0);
+        builder.AddAttribute(1, "Name", item.IconName);
+        builder.AddAttribute(2, "Class", "h-4 w-4");
         builder.CloseComponent();
     };
     private string _searchText1 = "";
@@ -254,7 +257,7 @@
           ItemValue=""@(o => ((ActionItem)o).Id)""
           ItemText=""@(o => ((ActionItem)o).Label)""
           ItemDescription=""@(o => ((ActionItem)o).Hint)""
-          ItemIcon=""@(o => RenderActionIcon((ActionItem)o))"">
+          ItemIcon=""@(o => @<Blazicon Svg=""@(((ActionItem)o).Icon)"" class=""h-4 w-4"" />)"">
     <ComboboxInput Placeholder=""Run a command..."" />
     <ComboboxContent />
 </Combobox>";
@@ -442,10 +445,22 @@
                             <td class="p-3 text-muted-foreground">Optional data source. When set, ComboboxContent renders options from this list instead of ChildContent.</td>
                         </tr>
                         <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ItemDescription</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;object, string?&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Optional secondary line per item, rendered below the label in muted text. Return null per item to suppress the sub-line. Only applies when ItemTemplate is unset.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ItemIcon</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;object, RenderFragment?&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Optional leading icon per item (typically a Blazicon). Return null per item to skip the icon column entirely so iconed and un-iconed rows can mix. Only applies when ItemTemplate is unset.</td>
+                        </tr>
+                        <tr>
                             <td class="p-3 font-mono text-xs text-primary">ItemTemplate</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;object&gt;?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                            <td class="p-3 text-muted-foreground">Optional custom render fragment for an item's content. Receives the raw item object.</td>
+                            <td class="p-3 text-muted-foreground">Optional custom render fragment for an item's content. Receives the raw item object. When set, ItemIcon / ItemDescription are not used (template wins).</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">Virtualize</td>

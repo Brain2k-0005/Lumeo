@@ -253,7 +253,7 @@ public class ComboboxDataBoundTests : IAsyncLifetime
     public void ItemDescription_Null_For_Item_Falls_Back_To_Plain_Label()
     {
         // When ItemDescription returns null for a given item, that row renders just the
-        // label (no extra <span> wrapper) so mixed iconed / un-iconed lists stay tight.
+        // label (no extra <span> wrapper) so mixed described / undescribed lists stay tight.
         var items = new object[]
         {
             new TaggedItem("apple", "Apple", null),
