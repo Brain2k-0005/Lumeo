@@ -5,7 +5,7 @@
 {
     <button type="button" id="@_itemId" role="option" aria-selected="@IsSelected.ToString().ToLower()"
             aria-disabled="@Disabled.ToString().ToLower()"
-            class="@CssClass" @onclick="HandleSelect" @attributes="AdditionalAttributes">
+            class="@CssClass" style="@IndentStyle" @onclick="HandleSelect" @attributes="AdditionalAttributes">
         <span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
             @if (IsSelected)
             {
@@ -18,6 +18,8 @@
 
 @code {
     [CascadingParameter] public Select.SelectContext Context { get; set; } = default!;
+    // Present when the item sits inside one or more SelectGroups (nearest group wins).
+    [CascadingParameter] public SelectGroup.SelectGroupContext? Group { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter, EditorRequired] public string Value { get; set; } = "";
     [Parameter] public bool Disabled { get; set; }
@@ -28,6 +30,12 @@
 
     private readonly string _itemId = LumeoIds.New("select-item");
     private bool _registered;
+    private bool _groupRegistered;
+
+    // Indent items one extra step beyond their group's header for visual nesting.
+    private string IndentStyle => Group is { Depth: var d } && d >= 0
+        ? $"padding-left:{0.5 + (d + 1) * 0.75:0.###}rem"
+        : "";
 
     private bool IsSelected => Context.Multiple
         ? Context.Values != null && Context.Values.Contains(Value)
@@ -35,7 +43,24 @@
 
     private bool IsFocused => Context.FocusedItemId == _itemId;
 
+    // True when the item should render as a navigable option in the listbox. A collapsed
+    // ancestor group hides its items entirely (and removes them from keyboard nav), but the
+    // item still registers with the group below so GroupSelect can see / mutate the
+    // descendants even while collapsed.
     private bool Visible
+    {
+        get
+        {
+            // EffectiveIsExpanded (not just IsExpanded) so a collapsed outer group hides
+            // inner items even when their immediate group is locally expanded.
+            if (Group is { EffectiveIsExpanded: false }) return false;
+            return PassesSearchFilter;
+        }
+    }
+
+    // Just the search check — used to drive the group's empty-hiding and aggregate state
+    // without coupling it to the collapsed/expanded view.
+    private bool PassesSearchFilter
     {
         get
         {
@@ -63,11 +88,22 @@
             Context.UnregisterItem(_itemId);
             _registered = false;
         }
+
+        // Report value + search visibility + disabled state to the enclosing group. We use
+        // PassesSearchFilter (not Visible) so a collapsed group still sees its descendants for
+        // GroupSelect; Disabled flows through so group-level toggles can skip non-selectable
+        // items and the tri-state aggregation ignores them.
+        if (Group is not null)
+        {
+            Group.RegisterItem(_itemId, Value, PassesSearchFilter, Disabled);
+            _groupRegistered = true;
+        }
     }
 
     public void Dispose()
     {
         if (_registered) Context.UnregisterItem(_itemId);
+        if (_groupRegistered) Group?.UnregisterItem(_itemId);
     }
 
     private async Task HandleSelect()

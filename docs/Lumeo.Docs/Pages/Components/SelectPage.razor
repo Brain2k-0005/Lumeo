@@ -132,6 +132,30 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Collapsible Groups + Group Select" Code="@_groupAdvancedCode">
+        <Stack Gap="2" Class="w-full max-w-sm">
+            <Select Multiple="true" @bind-Values="_selectedTools">
+                <SelectTrigger>
+                    <Text As="span" Class="@(_selectedTools == null ? "text-muted-foreground" : "")">
+                        @(_selectedTools == null ? "Select tools..." : "")
+                    </Text>
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectGroup Label="Editors" Collapsible="true" GroupSelect="true">
+                        <SelectItem Value="vscode">VS Code</SelectItem>
+                        <SelectItem Value="rider">Rider</SelectItem>
+                        <SelectItem Value="vs">Visual Studio</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup Label="CI/CD" Collapsible="true" GroupSelect="true" DefaultExpanded="false">
+                        <SelectItem Value="gha">GitHub Actions</SelectItem>
+                        <SelectItem Value="azdo">Azure DevOps</SelectItem>
+                    </SelectGroup>
+                </SelectContent>
+            </Select>
+            <Lumeo.Text Size="sm" Color="muted">Selected: @(_selectedTools != null ? string.Join(", ", _selectedTools) : "none")</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Clearable" Code="@_clearableCode">
         <Container MaxWidth="sm" Center="false" Padding="">
             <Select Clearable="true" @bind-Value="_selectedClearable">
@@ -361,9 +385,14 @@
                     </thead>
                     <tbody class="divide-y divide-border/40">
                         <tr>
-                            <td class="p-3 font-mono text-xs text-primary italic text-muted-foreground" colspan="4">These layout components accept only Class and AdditionalAttributes unless noted below. SelectGroup groups related items, SelectLabel labels a group, SelectTrigger is the button that opens the dropdown, and SelectContent is the dropdown panel.</td>
+                            <td class="p-3 font-mono text-xs text-primary italic text-muted-foreground" colspan="4">SelectLabel, SelectTrigger, and SelectContent accept only Class and AdditionalAttributes unless noted below. SelectGroup exposes the richer surface listed under "SelectGroup —" rows: wrap items under a labelled header, collapse them, and offer a single group-level checkbox in Multiple mode.</td>
                         </tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">Placeholder</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">SelectTrigger — text shown when no value is selected.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Label</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">SelectGroup — header text. When null/empty no header renders (still nests its items for layout / grouping semantics).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">LabelClass</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">SelectGroup — extra classes on the group label, theming hook for the header.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Collapsible</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">SelectGroup — clicking / Space / Enter on the header expands and collapses the group. An active search auto-expands collapsed groups so matches stay reachable.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">DefaultExpanded</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">true</td><td class="p-3 text-muted-foreground">SelectGroup — initial expanded state for a Collapsible group.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">GroupSelect</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">SelectGroup — in Multiple mode, renders a tri-state checkbox on the header that selects / deselects every descendant item (disabled items are skipped; when filtering, only visible matches).</td></tr>
                     </tbody>
                 </table>
             </Stack>
@@ -386,6 +415,7 @@
     private string? _selectedTimezone;
     private string? _selectedCountry;
     private List<string>? _selectedFruits;
+    private List<string>? _selectedTools;
     private string? _selectedClearable;
     private string? _selectedLoading;
 
@@ -430,6 +460,25 @@
             <SelectLabel>Europe</SelectLabel>
             <SelectItem Value=""gmt"">Greenwich (GMT)</SelectItem>
             <SelectItem Value=""cet"">Central European (CET)</SelectItem>
+        </SelectGroup>
+    </SelectContent>
+</Select>";
+
+    private string _groupAdvancedCode = @"@* Collapsible groups + a tri-state group-select checkbox (Multiple mode).
+   Set DefaultExpanded=false to start a group collapsed; an active search
+   auto-expands groups and hides ones with no matching items.
+   Nest SelectGroup inside SelectGroup for multi-level Category -> Subcategory. *@
+<Select Multiple=""true"" @bind-Values=""_selectedTools"">
+    <SelectTrigger><Text As=""span"">@(_selectedTools == null ? ""Select tools..."" : """")</Text></SelectTrigger>
+    <SelectContent>
+        <SelectGroup Label=""Editors"" Collapsible=""true"" GroupSelect=""true"">
+            <SelectItem Value=""vscode"">VS Code</SelectItem>
+            <SelectItem Value=""rider"">Rider</SelectItem>
+            <SelectItem Value=""vs"">Visual Studio</SelectItem>
+        </SelectGroup>
+        <SelectGroup Label=""CI/CD"" Collapsible=""true"" GroupSelect=""true"" DefaultExpanded=""false"">
+            <SelectItem Value=""gha"">GitHub Actions</SelectItem>
+            <SelectItem Value=""azdo"">Azure DevOps</SelectItem>
         </SelectGroup>
     </SelectContent>
 </Select>";

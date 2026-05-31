@@ -1,19 +1,310 @@
 @namespace Lumeo
+@implements IDisposable
 
+@* Composition-mode grouping for Select. Wrap SelectItems (or nested SelectGroups
+   for multi-level grouping) under a labelled, optionally collapsible header.
+   The group hides itself when an active search filters out all of its descendants,
+   and — in Multiple mode — can offer a group-level select-all checkbox. Mirrors
+   the ComboboxGroup machinery so both pickers behave the same. *@
+
+@* IsFixed=false: SelectGroupContext is mutable (SetExpanded, RegisterItem). Fixed
+   cascades skip re-binding when the cascaded value changes — even though the instance
+   reference stays the same, descendants like SelectItem must re-evaluate cascaded reads
+   on mutation, so we drop the fixed optimization to keep the contract honest. *@
 <CascadingValue Value="_groupContext" IsFixed="false">
-    <div role="group" aria-labelledby="@_groupContext.LabelId" class="@CssClass" @attributes="AdditionalAttributes">
-        @ChildContent
+    <div role="group" aria-labelledby="@_groupContext.LabelId"
+         class="@Cx.Join(Cx.When(_isHidden, "hidden"), CssClass)" @attributes="AdditionalAttributes">
+
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <div id="@_groupContext.LabelId"
+                 class="@HeaderCss"
+                 style="@IndentStyle"
+                 role="@(Collapsible ? "button" : null)"
+                 tabindex="@(Collapsible ? "0" : null)"
+                 aria-expanded="@(Collapsible ? _expanded.ToString().ToLowerInvariant() : null)"
+                 @onclick="OnHeaderClick"
+                 @onkeydown="OnHeaderKeyDown">
+
+                @if (Collapsible)
+                {
+                    <Blazicon Svg="Lucide.ChevronRight"
+                              class="@Cx.Join("h-3.5 w-3.5 shrink-0 transition-transform", Cx.When(_expanded, "rotate-90"))" />
+                }
+
+                @if (Context.Multiple && GroupSelect)
+                {
+                    @* stopPropagation on keydown prevents Space/Enter on the focused
+                       checkbox from also firing the header's OnHeaderKeyDown (which would
+                       toggle collapse on every selection). *@
+                    <span class="flex h-3.5 w-3.5 items-center justify-center shrink-0 rounded-sm border border-input focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                          role="checkbox" aria-checked="@GroupCheckedState"
+                          tabindex="0"
+                          @onclick="ToggleGroupSelection" @onclick:stopPropagation="true"
+                          @onkeydown="OnCheckboxKeyDown" @onkeydown:stopPropagation="true">
+                        @if (_allSelected)
+                        {
+                            <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
+                        }
+                        else if (_anySelected)
+                        {
+                            <Blazicon Svg="Lucide.Minus" class="h-3.5 w-3.5" />
+                        }
+                    </span>
+                }
+
+                <span class="@Cx.Merge("truncate", LabelClass)">@Label</span>
+            </div>
+        }
+
+        @* Always render ChildContent so descendant items register with the group even when
+           collapsed — required for GroupSelect's tri-state + select-all semantics to keep
+           working on a collapsed group. Visual hiding is done via CSS so the items stay
+           mounted; SelectItem itself drops out of keyboard navigation when its group is
+           collapsed (it sets Visible=false and unregisters from Select's _items list). *@
+        <div class="@Cx.When(!_expanded, "hidden")">
+            @ChildContent
+        </div>
     </div>
 </CascadingValue>
 
 @code {
+    [CascadingParameter] public Select.SelectContext Context { get; set; } = default!;
+    // A parent group, present only for nested (multi-level) grouping.
+    [CascadingParameter] public SelectGroupContext? ParentGroup { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Group header text. When null/empty no header renders (still nests its items).</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Extra classes for the group label — theming hook for the header.</summary>
+    [Parameter] public string? LabelClass { get; set; }
+
+    /// <summary>When true the header toggles the group open/closed. Collapsed groups hide their items.</summary>
+    [Parameter] public bool Collapsible { get; set; }
+
+    /// <summary>Initial expanded state for a <see cref="Collapsible"/> group. Default expanded.</summary>
+    [Parameter] public bool DefaultExpanded { get; set; } = true;
+
+    /// <summary>
+    /// In <c>Multiple</c> mode, render a tri-state checkbox on the header that selects /
+    /// deselects every descendant item in one click. Disabled descendants are skipped.
+    /// </summary>
+    [Parameter] public bool GroupSelect { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly SelectGroupContext _groupContext = new(LumeoIds.New("select-label"));
+    private SelectGroupContext _groupContext = default!;
+    // User's explicit expand state (header toggle). Effective expansion also force-opens
+    // while a search is active so matches inside a collapsed group stay reachable.
+    private bool _userExpanded = true;
+    private bool _expanded => !Collapsible || HasActiveSearch || _userExpanded;
+
+    // Depth drives the left-indent for multi-level grouping (Category -> Subcategory).
+    private int Depth => (ParentGroup?.Depth ?? -1) + 1;
+    private bool _isHidden;
+
+    private string IndentStyle => Depth > 0 ? $"padding-left:{0.5 + Depth * 0.75:0.###}rem" : "";
 
     private string CssClass => Cx.Merge("p-1", Class);
 
-    public record SelectGroupContext(string LabelId);
+    private string HeaderCss => Cx.Join(
+        "flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-muted-foreground",
+        Cx.When(Collapsible, "cursor-pointer select-none hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded-sm"));
+
+    protected override void OnInitialized()
+    {
+        _userExpanded = DefaultExpanded;
+        _groupContext = new SelectGroupContext(LumeoIds.New("select-label"), Depth, OnChildrenChanged, _expanded, ParentGroup);
+        ParentGroup?.RegisterChild(_groupContext);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Keep the cascaded context's IsExpanded in sync so descendant SelectItems see
+        // collapse/expand transitions and re-evaluate their Visible state for kbd nav.
+        _groupContext.SetExpanded(_expanded);
+        RecomputeVisibility();
+    }
+
+    // Only matters when the Select is Searchable AND has search text — otherwise items
+    // never disappear and the group is always visible.
+    private bool HasActiveSearch => Context.Searchable && !string.IsNullOrEmpty(Context.SearchText);
+
+    private void OnChildrenChanged()
+    {
+        RecomputeVisibility();
+        InvokeAsync(StateHasChanged);
+        // Bubble up: a nested visibility change must let the parent group re-evaluate its
+        // own _isHidden too, otherwise an outer group can stay hidden after the inner one's
+        // descendants come back into view.
+        ParentGroup?.NotifyChildrenChanged();
+    }
+
+    private void RecomputeVisibility()
+        => _isHidden = HasActiveSearch && _groupContext.VisibleDescendantCount == 0;
+
+    private void OnHeaderClick()
+    {
+        if (!Collapsible || HasActiveSearch) return;
+        _userExpanded = !_userExpanded;
+        _groupContext.SetExpanded(_expanded);
+    }
+
+    private void OnHeaderKeyDown(KeyboardEventArgs e)
+    {
+        if (!Collapsible) return;
+        if (e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar")
+        {
+            OnHeaderClick();
+        }
+    }
+
+    // async Task (not void) so ToggleGroupSelection's exceptions propagate and Blazor
+    // re-renders on completion the same way the @onclick path does.
+    private async Task OnCheckboxKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" && e.Key != " " && e.Key != "Spacebar") return;
+        await ToggleGroupSelection();
+    }
+
+    // --- Group-level selection (Multiple mode) ---
+
+    private bool _allSelected;
+    private bool _anySelected;
+
+    private string GroupCheckedState => _allSelected ? "true" : _anySelected ? "mixed" : "false";
+
+    private async Task ToggleGroupSelection()
+    {
+        // Skip disabled descendants so a group-toggle never selects a value the item itself
+        // prevents selecting. When a search is active, scope the toggle to the visible
+        // matches only — "select all" should mean "select what the user can see right now".
+        var values = (HasActiveSearch
+            ? _groupContext.VisibleSelectableDescendantValues
+            : _groupContext.SelectableDescendantValues).ToList();
+        if (values.Count == 0) return;
+        var selectAll = !_allSelected;
+        foreach (var v in values)
+        {
+            var isSelected = Context.Values?.Contains(v) == true;
+            if (selectAll != isSelected)
+                await Context.OnSelect.InvokeAsync(v);
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!Context.Multiple || !GroupSelect) return;
+        // Aggregation also ignores disabled descendants — they aren't selectable so they
+        // shouldn't count towards "all" being checked. Mirror ToggleGroupSelection's
+        // search-scope so the tri-state reflects "all visible matches" while filtering.
+        var values = (HasActiveSearch
+            ? _groupContext.VisibleSelectableDescendantValues
+            : _groupContext.SelectableDescendantValues).ToList();
+        var all = values.Count > 0 && values.All(v => Context.Values?.Contains(v) == true);
+        var any = values.Any(v => Context.Values?.Contains(v) == true);
+        if (all != _allSelected || any != _anySelected)
+        {
+            _allSelected = all;
+            _anySelected = any;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => ParentGroup?.UnregisterChild(_groupContext);
+
+    /// <summary>
+    /// Cascaded to a group's descendants. SelectItems report their value + current
+    /// search-visibility + disabled state here; nested groups register themselves so
+    /// empty-hiding and group selection aggregate across multiple levels. Exposes
+    /// <see cref="LabelId"/> for <c>SelectLabel</c> and <see cref="IsExpanded"/> for
+    /// descendants that need to react to collapse (SelectItem uses it to drop out of
+    /// keyboard navigation when its group is collapsed).
+    /// </summary>
+    public sealed class SelectGroupContext
+    {
+        private readonly Action _onChanged;
+        private readonly Dictionary<string, (string Value, bool Visible, bool Disabled)> _items = new();
+        private readonly List<SelectGroupContext> _childGroups = new();
+        private readonly SelectGroupContext? _parent;
+
+        public SelectGroupContext(string labelId, int depth, Action onChanged, bool isExpanded, SelectGroupContext? parent)
+        {
+            LabelId = labelId;
+            Depth = depth;
+            IsExpanded = isExpanded;
+            _parent = parent;
+            _onChanged = onChanged;
+        }
+
+        /// <summary>Stable id used by <c>SelectLabel</c> for <c>aria-labelledby</c>.</summary>
+        public string LabelId { get; }
+
+        public int Depth { get; }
+
+        /// <summary>True when this group's own header is expanded.</summary>
+        public bool IsExpanded { get; private set; }
+
+        /// <summary>True only when this group AND every ancestor are expanded. Items consult
+        /// this (not <see cref="IsExpanded"/>) so a collapsed outer group correctly hides
+        /// inner items even if the inner group is locally expanded — multi-level collapse
+        /// would otherwise leak nav focus into CSS-hidden subtrees.</summary>
+        public bool EffectiveIsExpanded => IsExpanded && (_parent?.EffectiveIsExpanded ?? true);
+
+        public void SetExpanded(bool value)
+        {
+            if (IsExpanded == value) return;
+            IsExpanded = value;
+            _onChanged();
+        }
+
+        public void RegisterItem(string id, string value, bool visible, bool disabled)
+        {
+            // Only notify on real change — SelectItem calls this on every parameter set.
+            if (_items.TryGetValue(id, out var existing)
+                && existing.Value == value && existing.Visible == visible && existing.Disabled == disabled)
+                return;
+            _items[id] = (value, visible, disabled);
+            _onChanged();
+        }
+
+        public void UnregisterItem(string id)
+        {
+            if (_items.Remove(id)) _onChanged();
+        }
+
+        public void RegisterChild(SelectGroupContext child)
+        {
+            if (!_childGroups.Contains(child)) _childGroups.Add(child);
+            _onChanged();
+        }
+
+        public void UnregisterChild(SelectGroupContext child)
+        {
+            if (_childGroups.Remove(child)) _onChanged();
+        }
+
+        /// <summary>Triggers the owning group's change handler. Used by child groups to
+        /// bubble visibility / aggregation changes up the chain.</summary>
+        public void NotifyChildrenChanged() => _onChanged();
+
+        public int VisibleDescendantCount
+            => _items.Values.Count(i => i.Visible) + _childGroups.Sum(g => g.VisibleDescendantCount);
+
+        /// <summary>Every descendant value across nested groups, excluding disabled items.
+        /// Drives both the tri-state aggregation and GroupSelect's select-all toggle when
+        /// no search filter is active.</summary>
+        public IEnumerable<string> SelectableDescendantValues
+            => _items.Values.Where(i => !i.Disabled).Select(i => i.Value)
+                .Concat(_childGroups.SelectMany(g => g.SelectableDescendantValues));
+
+        /// <summary>Selectable descendants that also currently pass the search filter. Used
+        /// when a search is active so "select all" targets only matches the user can see.</summary>
+        public IEnumerable<string> VisibleSelectableDescendantValues
+            => _items.Values.Where(i => !i.Disabled && i.Visible).Select(i => i.Value)
+                .Concat(_childGroups.SelectMany(g => g.VisibleSelectableDescendantValues));
+    }
 }
