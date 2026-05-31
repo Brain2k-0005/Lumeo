@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @{
     var context = new SidebarState(IsCollapsed, EventCallback.Factory.Create(this, Toggle), Variant);
@@ -15,6 +16,23 @@
     [Parameter] public bool IsCollapsed { get; set; }
     [Parameter] public EventCallback<bool> IsCollapsedChanged { get; set; }
     [Parameter] public SidebarVariant Variant { get; set; } = SidebarVariant.Push;
+
+    /// <summary>
+    /// When true, the collapsed / expanded state survives page reloads — the provider
+    /// reads <see cref="IsCollapsed"/> from <c>localStorage[PersistenceKey]</c> on first
+    /// render and writes back on every change. Falls back to the parameter value when
+    /// JS is unavailable (SSR, prerender, JSDisconnectedException). Opt-in to keep
+    /// existing consumers' behaviour untouched.
+    /// </summary>
+    [Parameter] public bool PersistCollapsed { get; set; }
+
+    /// <summary>
+    /// LocalStorage key used when <see cref="PersistCollapsed"/> is true. Override to
+    /// scope a per-route or per-tenant sidebar so multiple sidebars on the same origin
+    /// don't clobber each other's state.
+    /// </summary>
+    [Parameter] public string PersistenceKey { get; set; } = "lumeo.sidebar.collapsed";
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -27,12 +45,55 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !PersistCollapsed) return;
+        try
+        {
+            var stored = await Interop.LoadFromLocalStorage(PersistenceKey);
+            // Only restore if storage actually held a value AND it differs from the
+            // current parameter — avoids a redundant cascade refresh on every mount.
+            if (stored is "true" or "false")
+            {
+                var restored = stored == "true";
+                if (restored != IsCollapsed)
+                {
+                    IsCollapsed = restored;
+                    await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException)
+        {
+            // Circuit dropped between firstRender scheduling and the storage call.
+            // Fall through silently — the cascade keeps the parameter default.
+        }
+    }
+
     private async Task Toggle()
     {
         IsCollapsed = !IsCollapsed;
         await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+        if (PersistCollapsed)
+        {
+            try { await Interop.SaveToLocalStorage(PersistenceKey, IsCollapsed ? "true" : "false"); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
     }
 
     public record SidebarState(bool IsCollapsed, EventCallback Toggle, SidebarVariant Variant);
-    public enum SidebarVariant { Push, Overlay, Icon }
+
+    /// <summary>
+    /// Layout strategy for the sidebar.
+    /// <list type="bullet">
+    /// <item><c>Push</c> &mdash; collapses to zero width, pushing main content to the edge.</item>
+    /// <item><c>Overlay</c> &mdash; floats above content with a dismissible scrim.</item>
+    /// <item><c>Icon</c> &mdash; collapses to a narrow icon rail that stays put until toggled back.</item>
+    /// <item><c>MiniRail</c> &mdash; same icon-rail width when collapsed, but expands to full
+    /// width on hover or keyboard focus and collapses again on leave. Material&rsquo;s standard
+    /// collapsed-sidebar pattern; uses <c>Toggle()</c> to pin open.</item>
+    /// </list>
+    /// </summary>
+    public enum SidebarVariant { Push, Overlay, Icon, MiniRail }
 }
