@@ -230,4 +230,97 @@ public class SelectDataBoundTests : IAsyncLifetime
 
         Assert.Contains("Option 1", cut.Markup);
     }
+
+    // --- ItemDescription / ItemIcon (data-bound default-renderer extensions) ---
+
+    private record TaggedItem(string Value, string Label, string? Description);
+
+    [Fact]
+    public void ItemDescription_Renders_Below_Label_When_Set()
+    {
+        var items = new object[]
+        {
+            new TaggedItem("apple", "Apple", "Crisp red fruit"),
+        };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemValue", (Func<object, string>)(o => ((TaggedItem)o).Value));
+            builder.AddAttribute(4, "ItemText", (Func<object, string>)(o => ((TaggedItem)o).Label));
+            builder.AddAttribute(5, "ItemDescription", (Func<object, string?>)(o => ((TaggedItem)o).Description));
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(1);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("Apple", cut.Markup);
+        Assert.Contains("Crisp red fruit", cut.Markup);
+        Assert.Contains("text-muted-foreground", cut.Markup);
+    }
+
+    [Fact]
+    public void ItemIcon_Renders_Leading_Icon_When_Provided()
+    {
+        var items = new object[] { "apple", "banana" };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemIcon",
+                (Func<object, RenderFragment?>)(o => b =>
+                {
+                    b.OpenElement(0, "i");
+                    b.AddAttribute(1, "data-testid", $"icon-{o}");
+                    b.CloseElement();
+                }));
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(1);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.NotNull(cut.Find("[data-testid='icon-apple']"));
+        Assert.NotNull(cut.Find("[data-testid='icon-banana']"));
+    }
+
+    [Fact]
+    public void ItemIcon_Null_For_Item_Skips_Icon_Slot()
+    {
+        var items = new object[] { "apple", "banana" };
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Items", (IEnumerable<object>)items);
+            builder.AddAttribute(3, "ItemIcon",
+                (Func<object, RenderFragment?>)(o => o.ToString() == "apple"
+                    ? b => { b.OpenElement(0, "i"); b.AddAttribute(1, "data-testid", "icon-apple"); b.CloseElement(); }
+                    : null));
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(1);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Single(cut.FindAll("[data-testid^='icon-']"));
+    }
 }

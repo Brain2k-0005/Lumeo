@@ -160,8 +160,38 @@
         }
         else
         {
+            // Default renderer: optional leading icon, label, optional sub-line description.
+            // ItemIcon and ItemDescription can return null per item so iconed and un-iconed
+            // rows can mix in the same list without forcing every row to reserve the column.
+            var icon = Context.ItemIcon?.Invoke(item);
+            if (icon is not null)
+            {
+                builder.OpenElement(13, "span");
+                builder.AddAttribute(14, "class", "flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground");
+                builder.AddContent(15, icon);
+                builder.CloseElement();
+            }
+
             var label = Context.ItemText?.Invoke(item) ?? value;
-            builder.AddContent(13, label);
+            var description = Context.ItemDescription?.Invoke(item);
+            if (!string.IsNullOrEmpty(description))
+            {
+                builder.OpenElement(16, "span");
+                builder.AddAttribute(17, "class", "flex min-w-0 flex-col");
+                builder.OpenElement(18, "span");
+                builder.AddAttribute(19, "class", "truncate");
+                builder.AddContent(20, label);
+                builder.CloseElement();
+                builder.OpenElement(21, "span");
+                builder.AddAttribute(22, "class", "truncate text-xs text-muted-foreground");
+                builder.AddContent(23, description);
+                builder.CloseElement();
+                builder.CloseElement();
+            }
+            else
+            {
+                builder.AddContent(24, label);
+            }
         }
         builder.CloseElement(); // button
     };
