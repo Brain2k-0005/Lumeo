@@ -5,45 +5,46 @@ using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
 
-namespace Lumeo.Tests.Components.Combobox;
+namespace Lumeo.Tests.Components.Select;
 
 /// <summary>
-/// Tests for composition-mode grouping (<see cref="L.ComboboxGroup"/>): labelled headers,
+/// Tests for composition-mode grouping (<see cref="L.SelectGroup"/>): labelled headers,
 /// nested (multi-level) groups, collapsible behaviour, group-level selection in multi-select,
-/// and filtering that hides groups with no matching descendants.
+/// and filtering that hides groups with no matching descendants. Mirrors ComboboxGroupTests
+/// so both pickers stay behaviour-compatible.
 /// </summary>
-public class ComboboxGroupTests : IAsyncLifetime
+public class SelectGroupTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
-    public ComboboxGroupTests() => _ctx.AddLumeoServices();
+    public SelectGroupTests() => _ctx.AddLumeoServices();
 
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    // Renders an open Combobox with two groups (Fruits: apple/banana, Vegetables: carrot)
-    // and lets the caller tweak the group/item options via the builder hooks.
+    // Renders an open Select with two groups (Fruits: apple/banana, Vegetables: carrot)
+    // and the toggles the caller needs.
     private IRenderedComponent<IComponent> RenderGrouped(
-        string? search = null,
+        bool searchable = false,
         bool collapsible = false,
         bool defaultExpanded = true,
         bool multiple = false,
         bool groupSelect = false,
-        HashSet<string>? values = null)
+        List<string>? values = null)
     {
         return _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
-            builder.AddAttribute(2, "Multiple", multiple);
-            if (values is not null) builder.AddAttribute(3, "Values", values);
-            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            builder.AddAttribute(2, "Searchable", searchable);
+            builder.AddAttribute(3, "Multiple", multiple);
+            if (values is not null) builder.AddAttribute(4, "Values", values);
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxInput>(0);
-                b.AddAttribute(1, "Placeholder", "Search...");
+                b.OpenComponent<L.SelectTrigger>(0);
                 b.CloseComponent();
 
-                b.OpenComponent<L.ComboboxContent>(2);
+                b.OpenComponent<L.SelectContent>(2);
                 b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
                     Group(c, 0, "Fruits", grp =>
@@ -65,7 +66,7 @@ public class ComboboxGroupTests : IAsyncLifetime
         void Group(RenderTreeBuilder rb, int seq, string label, RenderFragment children,
                    bool col, bool def, bool gs)
         {
-            rb.OpenComponent<L.ComboboxGroup>(seq);
+            rb.OpenComponent<L.SelectGroup>(seq);
             rb.AddAttribute(seq + 1, "Label", label);
             rb.AddAttribute(seq + 2, "Collapsible", col);
             rb.AddAttribute(seq + 3, "DefaultExpanded", def);
@@ -76,24 +77,18 @@ public class ComboboxGroupTests : IAsyncLifetime
 
         void Item(RenderTreeBuilder rb, int seq, string value, string label)
         {
-            rb.OpenComponent<L.ComboboxItem>(seq);
+            rb.OpenComponent<L.SelectItem>(seq);
             rb.AddAttribute(seq + 1, "Value", value);
             rb.AddAttribute(seq + 2, "ChildContent", (RenderFragment)(i => i.AddContent(0, label)));
             rb.CloseComponent();
         }
     }
 
-    // Helper to type into the search input (drives client-side filtering).
-    private static void Search(IRenderedComponent<IComponent> cut, string text)
-        => cut.Find("input[type='text']").Input(text);
-
     [Fact]
-    public void Renders_Group_Headers_As_Non_Option_Roles()
+    public void Renders_Group_Headers_With_Labels()
     {
         var cut = RenderGrouped();
-        var groups = cut.FindAll("[role='group']");
-        Assert.Equal(2, groups.Count);
-        Assert.Contains(cut.Markup, m => true); // sanity
+        Assert.Equal(2, cut.FindAll("[role='group']").Count);
         Assert.Contains("Fruits", cut.Markup);
         Assert.Contains("Vegetables", cut.Markup);
     }
@@ -109,16 +104,21 @@ public class ComboboxGroupTests : IAsyncLifetime
     [Fact]
     public void Filter_Hides_Group_With_No_Matching_Items()
     {
-        var cut = RenderGrouped();
-        Search(cut, "carrot");
+        var cut = RenderGrouped(searchable: true);
 
-        // Only the Vegetables group should remain visible; Fruits is hidden.
+        // Drive the search via the public OnSearch callback on the context — Searchable
+        // tests in this project don't always have a textbox in scope.
+        // Instead, render again with a Select that has a search input. Reuse SelectTrigger
+        // typing path by setting Searchable=true and using the Select's input.
+        // Simpler: use the public component param via a re-render with a search value.
+        var input = cut.Find("input"); // SearchableSelect renders a search box
+        input.Input("carrot");
+
         var groups = cut.FindAll("[role='group']");
         var fruits = groups.First(g => g.TextContent.Contains("Fruits"));
         var veg = groups.First(g => g.TextContent.Contains("Vegetables"));
-        Assert.Contains("hidden", fruits.GetAttribute("class"));
+        Assert.Contains("hidden", fruits.GetAttribute("class") ?? "");
         Assert.DoesNotContain("hidden", veg.GetAttribute("class") ?? "");
-        // Only the carrot option is rendered now.
         Assert.Single(cut.FindAll("[role='option']"));
     }
 
@@ -126,10 +126,8 @@ public class ComboboxGroupTests : IAsyncLifetime
     public void Collapsible_Group_Hides_Items_When_Collapsed()
     {
         var cut = RenderGrouped(collapsible: true, defaultExpanded: false);
-        // Collapsed by default → its items are not rendered.
         Assert.Empty(cut.FindAll("[role='option']"));
 
-        // Click the Fruits header to expand it.
         var fruitsHeader = cut.FindAll("[role='button']").First(h => h.TextContent.Contains("Fruits"));
         fruitsHeader.Click();
 
@@ -139,11 +137,11 @@ public class ComboboxGroupTests : IAsyncLifetime
     [Fact]
     public void Active_Search_Force_Expands_Collapsed_Group()
     {
-        var cut = RenderGrouped(collapsible: true, defaultExpanded: false);
+        var cut = RenderGrouped(searchable: true, collapsible: true, defaultExpanded: false);
         Assert.Empty(cut.FindAll("[role='option']"));
 
-        Search(cut, "apple");
-        // The matching item shows even though the group started collapsed.
+        cut.Find("input").Input("apple");
+
         var options = cut.FindAll("[role='option']");
         Assert.Single(options);
         Assert.Contains("Apple", options[0].TextContent);
@@ -152,30 +150,32 @@ public class ComboboxGroupTests : IAsyncLifetime
     [Fact]
     public void GroupSelect_Checkbox_Selects_All_Descendants()
     {
-        var selected = new HashSet<string>();
+        var selected = new List<string>();
         var cut = _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
             builder.AddAttribute(2, "Multiple", true);
             builder.AddAttribute(3, "Values", selected);
             builder.AddAttribute(4, "ValuesChanged",
-                EventCallback.Factory.Create<HashSet<string>>(this, v => selected = v));
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
             builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxContent>(0);
-                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
-                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.OpenComponent<L.SelectGroup>(0);
                     c.AddAttribute(1, "Label", "Fruits");
                     c.AddAttribute(2, "GroupSelect", true);
                     c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
                     {
-                        g.OpenComponent<L.ComboboxItem>(0);
+                        g.OpenComponent<L.SelectItem>(0);
                         g.AddAttribute(1, "Value", "apple");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
                         g.CloseComponent();
-                        g.OpenComponent<L.ComboboxItem>(3);
+                        g.OpenComponent<L.SelectItem>(3);
                         g.AddAttribute(1, "Value", "banana");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Banana")));
                         g.CloseComponent();
@@ -187,7 +187,6 @@ public class ComboboxGroupTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        // The group header checkbox is the first role=checkbox in the markup.
         var checkbox = cut.Find("[role='checkbox']");
         checkbox.Click();
 
@@ -198,7 +197,6 @@ public class ComboboxGroupTests : IAsyncLifetime
     [Fact]
     public void Collapsible_Header_Toggles_With_Enter_Key()
     {
-        // Codex finding: header must be keyboard-operable for a11y.
         var cut = RenderGrouped(collapsible: true, defaultExpanded: false);
         Assert.Empty(cut.FindAll("[role='option']"));
 
@@ -212,27 +210,28 @@ public class ComboboxGroupTests : IAsyncLifetime
     [Fact]
     public void GroupSelect_Checkbox_Is_Keyboard_Focusable_And_Toggles_With_Space()
     {
-        // Codex finding: GroupSelect checkbox must be keyboard-operable for a11y.
-        var selected = new HashSet<string>();
+        var selected = new List<string>();
         var cut = _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
             builder.AddAttribute(2, "Multiple", true);
             builder.AddAttribute(3, "Values", selected);
             builder.AddAttribute(4, "ValuesChanged",
-                EventCallback.Factory.Create<HashSet<string>>(this, v => selected = v));
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
             builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxContent>(0);
-                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
-                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.OpenComponent<L.SelectGroup>(0);
                     c.AddAttribute(1, "Label", "Fruits");
                     c.AddAttribute(2, "GroupSelect", true);
                     c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
                     {
-                        g.OpenComponent<L.ComboboxItem>(0);
+                        g.OpenComponent<L.SelectItem>(0);
                         g.AddAttribute(1, "Value", "apple");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
                         g.CloseComponent();
@@ -256,32 +255,34 @@ public class ComboboxGroupTests : IAsyncLifetime
     {
         // Codex finding: when Collapsible+GroupSelect+DefaultExpanded=false, descendants
         // must still register so the group-select checkbox can toggle them while collapsed.
-        var selected = new HashSet<string>();
+        var selected = new List<string>();
         var cut = _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
             builder.AddAttribute(2, "Multiple", true);
             builder.AddAttribute(3, "Values", selected);
             builder.AddAttribute(4, "ValuesChanged",
-                EventCallback.Factory.Create<HashSet<string>>(this, v => selected = v));
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
             builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxContent>(0);
-                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
-                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.OpenComponent<L.SelectGroup>(0);
                     c.AddAttribute(1, "Label", "Editors");
                     c.AddAttribute(2, "Collapsible", true);
                     c.AddAttribute(3, "DefaultExpanded", false);
                     c.AddAttribute(4, "GroupSelect", true);
                     c.AddAttribute(5, "ChildContent", (RenderFragment)(g =>
                     {
-                        g.OpenComponent<L.ComboboxItem>(0);
+                        g.OpenComponent<L.SelectItem>(0);
                         g.AddAttribute(1, "Value", "vscode");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "VS Code")));
                         g.CloseComponent();
-                        g.OpenComponent<L.ComboboxItem>(3);
+                        g.OpenComponent<L.SelectItem>(3);
                         g.AddAttribute(1, "Value", "rider");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Rider")));
                         g.CloseComponent();
@@ -303,33 +304,84 @@ public class ComboboxGroupTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Collapsed_Outer_Group_Hides_Inner_Items_Even_When_Inner_Is_Expanded()
+    public void GroupSelect_Skips_Disabled_Items()
     {
-        // Codex finding: ComboboxItem must consult EffectiveIsExpanded (own + ancestors),
-        // not just nearest IsExpanded — otherwise nested inner-expanded items leak into
-        // keyboard navigation when their ancestor is collapsed.
+        // Codex finding: a disabled SelectItem inside a GroupSelect-enabled group must
+        // not be auto-selected by the header checkbox.
+        var selected = new List<string>();
         var cut = _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "Multiple", true);
+            builder.AddAttribute(3, "Values", selected);
+            builder.AddAttribute(4, "ValuesChanged",
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectGroup>(0);
+                    c.AddAttribute(1, "Label", "Fruits");
+                    c.AddAttribute(2, "GroupSelect", true);
+                    c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
+                    {
+                        g.OpenComponent<L.SelectItem>(0);
+                        g.AddAttribute(1, "Value", "apple");
+                        g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                        g.CloseComponent();
+                        g.OpenComponent<L.SelectItem>(3);
+                        g.AddAttribute(1, "Value", "banana");
+                        g.AddAttribute(2, "Disabled", true);
+                        g.AddAttribute(3, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Banana")));
+                        g.CloseComponent();
+                    }));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        cut.Find("[role='checkbox']").Click();
+
+        Assert.Contains("apple", selected);
+        Assert.DoesNotContain("banana", selected); // disabled — skipped
+    }
+
+    [Fact]
+    public void Collapsed_Outer_Group_Hides_Inner_Items_Even_When_Inner_Is_Expanded()
+    {
+        // Codex finding: SelectItem must consult EffectiveIsExpanded (own + ancestors),
+        // not just the nearest group's IsExpanded — otherwise an inner expanded group
+        // inside a collapsed outer leaks navigable items the user can't see.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
             builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxContent>(0);
-                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
-                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.OpenComponent<L.SelectGroup>(0);
                     c.AddAttribute(1, "Label", "Outer");
                     c.AddAttribute(2, "Collapsible", true);
                     c.AddAttribute(3, "DefaultExpanded", false);
                     c.AddAttribute(4, "ChildContent", (RenderFragment)(outer =>
                     {
-                        outer.OpenComponent<L.ComboboxGroup>(0);
+                        outer.OpenComponent<L.SelectGroup>(0);
                         outer.AddAttribute(1, "Label", "Inner");
                         outer.AddAttribute(2, "Collapsible", true);
                         outer.AddAttribute(3, "DefaultExpanded", true); // locally expanded
                         outer.AddAttribute(4, "ChildContent", (RenderFragment)(inner =>
                         {
-                            inner.OpenComponent<L.ComboboxItem>(0);
+                            inner.OpenComponent<L.SelectItem>(0);
                             inner.AddAttribute(1, "Value", "apple");
                             inner.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
                             inner.CloseComponent();
@@ -343,40 +395,42 @@ public class ComboboxGroupTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
+        // Outer is collapsed → no item is navigable even though Inner is locally expanded.
         Assert.Empty(cut.FindAll("[role='option']"));
     }
 
     [Fact]
     public void GroupSelect_Toggle_Scopes_To_Search_Visible_Matches()
     {
-        // Codex finding: with a search filter active, GroupSelect must only toggle the
-        // visible matches.
-        var selected = new HashSet<string>();
+        // Codex finding: when a search filter is active, GroupSelect should toggle only
+        // the visible matches — not silently select hidden items.
+        var selected = new List<string>();
         var cut = _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
             builder.AddAttribute(2, "Multiple", true);
-            builder.AddAttribute(3, "Values", selected);
-            builder.AddAttribute(4, "ValuesChanged",
-                EventCallback.Factory.Create<HashSet<string>>(this, v => selected = v));
-            builder.AddAttribute(5, "ChildContent", (RenderFragment)(b =>
+            builder.AddAttribute(3, "Searchable", true);
+            builder.AddAttribute(4, "Values", selected);
+            builder.AddAttribute(5, "ValuesChanged",
+                EventCallback.Factory.Create<List<string>?>(this, v => selected = v ?? new List<string>()));
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxInput>(0);
+                b.OpenComponent<L.SelectTrigger>(0);
                 b.CloseComponent();
-                b.OpenComponent<L.ComboboxContent>(2);
+                b.OpenComponent<L.SelectContent>(2);
                 b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
-                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.OpenComponent<L.SelectGroup>(0);
                     c.AddAttribute(1, "Label", "Fruits");
                     c.AddAttribute(2, "GroupSelect", true);
                     c.AddAttribute(3, "ChildContent", (RenderFragment)(g =>
                     {
-                        g.OpenComponent<L.ComboboxItem>(0);
+                        g.OpenComponent<L.SelectItem>(0);
                         g.AddAttribute(1, "Value", "apple");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
                         g.CloseComponent();
-                        g.OpenComponent<L.ComboboxItem>(3);
+                        g.OpenComponent<L.SelectItem>(3);
                         g.AddAttribute(1, "Value", "banana");
                         g.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Banana")));
                         g.CloseComponent();
@@ -388,11 +442,14 @@ public class ComboboxGroupTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
+        // Type a query that only matches "apple"
         cut.Find("input").Input("app");
+
+        // Click the group-select checkbox
         cut.Find("[role='checkbox']").Click();
 
         Assert.Contains("apple", selected);
-        Assert.DoesNotContain("banana", selected);
+        Assert.DoesNotContain("banana", selected); // filtered out, must NOT be selected
     }
 
     [Fact]
@@ -400,22 +457,24 @@ public class ComboboxGroupTests : IAsyncLifetime
     {
         var cut = _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Combobox>(0);
+            builder.OpenComponent<L.Select>(0);
             builder.AddAttribute(1, "Open", true);
             builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
             {
-                b.OpenComponent<L.ComboboxContent>(0);
-                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
                 {
-                    c.OpenComponent<L.ComboboxGroup>(0);
+                    c.OpenComponent<L.SelectGroup>(0);
                     c.AddAttribute(1, "Label", "Food");
                     c.AddAttribute(2, "ChildContent", (RenderFragment)(outer =>
                     {
-                        outer.OpenComponent<L.ComboboxGroup>(0);
+                        outer.OpenComponent<L.SelectGroup>(0);
                         outer.AddAttribute(1, "Label", "Fruits");
                         outer.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
                         {
-                            inner.OpenComponent<L.ComboboxItem>(0);
+                            inner.OpenComponent<L.SelectItem>(0);
                             inner.AddAttribute(1, "Value", "apple");
                             inner.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
                             inner.CloseComponent();
@@ -429,7 +488,6 @@ public class ComboboxGroupTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        // Two nested group containers + the apple option.
         Assert.Equal(2, cut.FindAll("[role='group']").Count);
         Assert.Single(cut.FindAll("[role='option']"));
         Assert.Contains("Food", cut.Markup);

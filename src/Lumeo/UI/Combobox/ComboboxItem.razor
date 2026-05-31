@@ -41,7 +41,24 @@
 
     private bool IsFocused => Context.FocusedItemId == _itemId;
 
+    // True when the item should render as a navigable option in the listbox. A collapsed
+    // ancestor group hides its items entirely (and removes them from keyboard nav), but the
+    // item still registers with the group below so GroupSelect can see / mutate the
+    // descendants even while collapsed.
     private bool Visible
+    {
+        get
+        {
+            // EffectiveIsExpanded (not just IsExpanded) so a collapsed outer group hides
+            // inner items even when their immediate group is locally expanded.
+            if (Group is { EffectiveIsExpanded: false }) return false;
+            return PassesSearchFilter;
+        }
+    }
+
+    // Just the search check — used to drive the group's empty-hiding and aggregate state
+    // without coupling it to the collapsed/expanded view.
+    private bool PassesSearchFilter
     {
         get
         {
@@ -69,11 +86,12 @@
             _registered = false;
         }
 
-        // Report value + visibility to the enclosing group so it can hide itself when all
-        // descendants are filtered out and drive its group-select tri-state checkbox.
+        // Report value + search visibility to the enclosing group. We use PassesSearchFilter
+        // (not Visible) so a collapsed group still sees its descendants for GroupSelect's
+        // tri-state aggregation and select-all toggle.
         if (Group is not null)
         {
-            Group.RegisterItem(_itemId, Value, Visible);
+            Group.RegisterItem(_itemId, Value, PassesSearchFilter);
             _groupRegistered = true;
         }
     }

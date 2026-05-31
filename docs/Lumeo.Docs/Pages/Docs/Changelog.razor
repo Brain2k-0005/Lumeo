@@ -15,6 +15,48 @@
 
     <Separator Class="my-4" />
 
+    <!-- v3.9.0 -->
+    <Stack Gap="4">
+        <div class="flex items-center gap-3">
+            <Badge>v3.9.0</Badge>
+            <Lumeo.Text Size="sm" Color="muted">May 2026</Lumeo.Text>
+        </div>
+
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Minor: a focused round of upgrades on the data-bound picker family, DataGrid,
+            and Charts &mdash; plus an Input character counter to match Textarea and a fresh
+            round of a11y / correctness fixes on the v3.8.0 grouping primitives that apply
+            equally to <code class="rounded bg-muted px-1 text-xs">SelectGroup</code> and
+            <code class="rounded bg-muted px-1 text-xs">ComboboxGroup</code>.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Added</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong><code class="rounded bg-muted px-1 text-xs">&lt;SelectGroup&gt;</code> upgrade (closes #133)</strong> &mdash; collapsible groups, multi-level nesting, tri-state group-select in <code class="rounded bg-muted px-1 text-xs">Multiple</code> mode, filter-aware empty-group hiding, and a <code class="rounded bg-muted px-1 text-xs">LabelClass</code> theming hook. Mirrors <code class="rounded bg-muted px-1 text-xs">ComboboxGroup</code> so the two pickers stay behaviour-compatible.</li>
+                <li><strong><code class="rounded bg-muted px-1 text-xs">Combobox.ItemDescription</code> + <code class="rounded bg-muted px-1 text-xs">ItemIcon</code> (closes #134)</strong> &mdash; mirrors on <code class="rounded bg-muted px-1 text-xs">Select</code>. Two new <code class="rounded bg-muted px-1 text-xs">Func&lt;object, &hellip;&gt;</code> extractors that drive the default item renderer for the standard &ldquo;icon + label + sub-line&rdquo; command-picker pattern, with no <code class="rounded bg-muted px-1 text-xs">ItemTemplate</code> needed. Returning <code>null</code> per item skips that row&rsquo;s slot so iconed / un-iconed lists can mix.</li>
+                <li><strong><code class="rounded bg-muted px-1 text-xs">&lt;DataGridColumnGroup&gt;</code> + per-column <code class="rounded bg-muted px-1 text-xs">FooterFormat</code> (closes #135)</strong> &mdash; declarative parent header that spans multiple data columns via <code class="rounded bg-muted px-1 text-xs">colspan</code>, plus a column-level <code class="rounded bg-muted px-1 text-xs">FooterFormat</code> string so totals can format independently from cells (e.g. cells in <code class="rounded bg-muted px-1 text-xs">"C2"</code>, totals in <code class="rounded bg-muted px-1 text-xs">"N0"</code>). Footer aggregates also now honour the grid&rsquo;s cascaded <code class="rounded bg-muted px-1 text-xs">Culture</code>.</li>
+                <li><strong><code class="rounded bg-muted px-1 text-xs">&lt;ChartThreshold&gt;</code> + <code class="rounded bg-muted px-1 text-xs">&lt;ChartReferenceZone&gt;</code> (partial #137)</strong> &mdash; declarative annotation children on <code class="rounded bg-muted px-1 text-xs">LineChart</code> / <code class="rounded bg-muted px-1 text-xs">BarChart</code> / <code class="rounded bg-muted px-1 text-xs">AreaChart</code> (and <code class="rounded bg-muted px-1 text-xs">Chart</code> directly) for target lines and healthy / critical bands. Translates to ECharts&rsquo; native <code class="rounded bg-muted px-1 text-xs">markLine</code> / <code class="rounded bg-muted px-1 text-xs">markArea</code> without mutating the consumer&rsquo;s <code class="rounded bg-muted px-1 text-xs">EChartOption</code>. The companion <code class="rounded bg-muted px-1 text-xs">&lt;ChartTooltip&gt;</code> RenderFragment slot is staged for a follow-up.</li>
+                <li><strong><code class="rounded bg-muted px-1 text-xs">Input.ShowCount</code> + <code class="rounded bg-muted px-1 text-xs">MaxLength</code> + <code class="rounded bg-muted px-1 text-xs">CountFormat</code> (closes #136)</strong> &mdash; character counter below the input, parity with Textarea. <code class="rounded bg-muted px-1 text-xs">MaxLength</code> is now a real <code class="rounded bg-muted px-1 text-xs">[Parameter]</code> and is forwarded to the underlying <code class="rounded bg-muted px-1 text-xs">&lt;input&gt;</code> on both render branches.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3" Size="sm" Class="font-semibold">Fixed</Heading>
+            <ul class="space-y-1.5 text-sm list-disc list-inside text-muted-foreground">
+                <li><strong>Group headers + GroupSelect checkbox are now keyboard-operable</strong> in both <code class="rounded bg-muted px-1 text-xs">SelectGroup</code> and <code class="rounded bg-muted px-1 text-xs">ComboboxGroup</code>. Both gain <code class="rounded bg-muted px-1 text-xs">tabindex="0"</code>, a focus ring, and Space / Enter handlers. Checkbox keydown stops propagating into the header so toggling selection doesn&rsquo;t also flip collapse.</li>
+                <li><strong>Collapsed + GroupSelect groups</strong> no longer lose their descendant values &mdash; items stay registered while their group is collapsed so the header checkbox can still toggle them.</li>
+                <li><strong>Disabled items are skipped by GroupSelect</strong> (Select only &mdash; Combobox items are not disablable). The tri-state aggregation also ignores them.</li>
+                <li><strong>Nested group visibility now bubbles up</strong> &mdash; an outer group correctly un-hides when a search match appears in an inner group, and items consult an <em>effective</em> expansion state so a collapsed outer hides inner items even when the inner group is locally expanded.</li>
+                <li><strong>GroupSelect respects the active search filter</strong> &mdash; when filtering, the header toggle and tri-state target only the visible matches instead of silently flipping hidden items.</li>
+                <li><strong>DataGridColumn metadata preserved on re-registration</strong> &mdash; columns that re-declare the same <code class="rounded bg-muted px-1 text-xs">Field</code> with a new <code class="rounded bg-muted px-1 text-xs">FooterFormat</code> or that move into / out of a <code class="rounded bg-muted px-1 text-xs">DataGridColumnGroup</code> now reflect the new value instead of keeping stale metadata.</li>
+                <li><strong>DataGrid grouped-header aria-rowindex</strong> &mdash; body rows correctly offset to row 3 when a column-group header row is present, removing the duplicate row-position the previous offset gave assistive tech.</li>
+            </ul>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- v3.8.0 -->
     <Stack Gap="4">
         <div class="flex items-center gap-3">
