@@ -13,18 +13,23 @@
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="Razor-Rendered Tooltip Slot" Description="Replace ECharts' default tooltip body with any Razor markup — themed cards, formatted numbers, child components. Updates on every hover." Code="@_tooltipSlotCode">
+    <ComponentDemo Title="Razor-Rendered Tooltip Slot" Description="Replace ECharts' default tooltip body with any Razor markup — themed cards, formatted numbers, child components. With axis-trigger (the default) the slot receives every series at the hovered category via ctx.Points." Code="@_tooltipSlotCode">
         <Container>
             <LineChart Categories="_categories" Series="_series" Smooth="true">
                 <ChartTooltip>
                     <ChildContent Context="ctx">
-                        <Stack Gap="1" Class="p-2 min-w-[140px]">
-                            <Flex Gap="2" Align="center">
-                                <Stack Class="h-2 w-2 rounded-full" style="@($"background-color:{ctx.Color}")"></Stack>
-                                <Lumeo.Text As="span" Size="sm" Class="font-semibold">@ctx.SeriesName</Lumeo.Text>
-                            </Flex>
+                        <Stack Gap="1.5" Class="p-2 min-w-[170px]">
                             <Lumeo.Text As="span" Size="xs" Color="muted">@ctx.DataName</Lumeo.Text>
-                            <Lumeo.Text As="span" Class="font-mono text-sm">@(ctx.Value?.ToString("N0") ?? "-")</Lumeo.Text>
+                            @foreach (var pt in ctx.Points)
+                            {
+                                <Flex Gap="2" Align="center" Justify="between">
+                                    <Flex Gap="2" Align="center">
+                                        <Stack Class="h-2 w-2 rounded-full" style="@($"background-color:{pt.Color}")"></Stack>
+                                        <Lumeo.Text As="span" Size="sm">@pt.SeriesName</Lumeo.Text>
+                                    </Flex>
+                                    <Lumeo.Text As="span" Class="font-mono text-sm font-semibold">@(pt.Value?.ToString("N0") ?? "-")</Lumeo.Text>
+                                </Flex>
+                            }
                         </Stack>
                     </ChildContent>
                 </ChartTooltip>
@@ -37,10 +42,13 @@
                    Code="@_annotationsCode">
         <Container>
             <LineChart Categories="_categories" Series="_series" Smooth="true">
-                <ChartReferenceZone From="60" To="90" Color="#22c55e22" Label="Healthy" />
-                <ChartReferenceZone From="0"  To="40" Color="#ef444422" Label="Critical" />
-                <ChartThreshold Value="80" Label="Target" Color="#22c55e" />
-                <ChartThreshold Value="40" Label="SLA"    Color="#ef4444" LineStyle="dotted" />
+                @* Values match the Revenue series scale (~18k–60k). Putting markLine
+                   values inside the data range is what makes them visually meaningful;
+                   the previous demo used yAxis=80 which sat right at the bottom edge. *@
+                <ChartReferenceZone From="40000" To="60000" Color="#22c55e22" Label="Healthy" />
+                <ChartReferenceZone From="0"     To="20000" Color="#ef444422" Label="Critical" />
+                <ChartThreshold Value="50000" Label="Target" Color="#22c55e" />
+                <ChartThreshold Value="25000" Label="SLA"    Color="#ef4444" LineStyle="dotted" />
             </LineChart>
         </Container>
     </ComponentDemo>
@@ -368,27 +376,35 @@
 
     private string _annotationsCode = @"@* ChartThreshold = horizontal line at a value (yAxis by default).
    ChartReferenceZone = shaded band between two values on the chosen axis.
-   Both translate to ECharts' native markLine / markArea on series[0]. *@
+   Both translate to ECharts' native markLine / markArea on series[0].
+   Pick values inside the data range — markLine sits on the y-axis. *@
 <LineChart Categories=""_categories"" Series=""_series"" Smooth=""true"">
-    <ChartReferenceZone From=""60"" To=""90"" Color=""#22c55e22"" Label=""Healthy"" />
-    <ChartReferenceZone From=""0""  To=""40"" Color=""#ef444422"" Label=""Critical"" />
-    <ChartThreshold Value=""80"" Label=""Target"" Color=""#22c55e"" />
-    <ChartThreshold Value=""40"" Label=""SLA""    Color=""#ef4444"" LineStyle=""dotted"" />
+    <ChartReferenceZone From=""40000"" To=""60000"" Color=""#22c55e22"" Label=""Healthy"" />
+    <ChartReferenceZone From=""0""     To=""20000"" Color=""#ef444422"" Label=""Critical"" />
+    <ChartThreshold Value=""50000"" Label=""Target"" Color=""#22c55e"" />
+    <ChartThreshold Value=""25000"" Label=""SLA""    Color=""#ef4444"" LineStyle=""dotted"" />
 </LineChart>";
 
     private string _tooltipSlotCode = @"@* The ChartTooltip child renders a hidden DOM portal whose innerHTML is fed to
-   ECharts' tooltip on each hover. ChildContent receives a ChartTooltipContext
-   per point (SeriesName, DataName, Value, Color, plus the raw Params dict). *@
+   ECharts' tooltip on each hover. With axis-trigger (the default) the slot's
+   ctx.Points enumerates every series at the hovered category — iterate it to
+   render a row per series. ctx.SeriesName/Value still surface the headline
+   point for back-compat with single-series / item-trigger tooltips. *@
 <LineChart Categories=""_categories"" Series=""_series"" Smooth=""true"">
     <ChartTooltip>
         <ChildContent Context=""ctx"">
-            <Stack Gap=""1"" Class=""p-2 min-w-[140px]"">
-                <Flex Gap=""2"" Align=""center"">
-                    <Stack Class=""h-2 w-2 rounded-full"" style=""@($\""background-color:{ctx.Color}\"")""></Stack>
-                    <Lumeo.Text As=""span"" Size=""sm"" Class=""font-semibold"">@ctx.SeriesName</Lumeo.Text>
-                </Flex>
+            <Stack Gap=""1.5"" Class=""p-2 min-w-[170px]"">
                 <Lumeo.Text As=""span"" Size=""xs"" Color=""muted"">@ctx.DataName</Lumeo.Text>
-                <Lumeo.Text As=""span"" Class=""font-mono text-sm"">@(ctx.Value?.ToString(""N0"") ?? ""-"")</Lumeo.Text>
+                @foreach (var pt in ctx.Points)
+                {
+                    <Flex Gap=""2"" Align=""center"" Justify=""between"">
+                        <Flex Gap=""2"" Align=""center"">
+                            <Stack Class=""h-2 w-2 rounded-full"" style=""@($\""background-color:{pt.Color}\"")""></Stack>
+                            <Lumeo.Text As=""span"" Size=""sm"">@pt.SeriesName</Lumeo.Text>
+                        </Flex>
+                        <Lumeo.Text As=""span"" Class=""font-mono text-sm font-semibold"">@(pt.Value?.ToString(""N0"") ?? ""-"")</Lumeo.Text>
+                    </Flex>
+                }
             </Stack>
         </ChildContent>
     </ChartTooltip>

@@ -491,6 +491,12 @@ else
             }
 
             var boxed = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+
+            // points: forwarded by the JS bridge as a flat array of per-series snapshots.
+            // For axis-trigger tooltips this contains every series at the hovered x; for
+            // item-trigger it'll be a single-entry list mirroring the headline fields.
+            var points = ProjectPoints(raw);
+
             _tooltipContext = new ChartTooltipContext(
                 SeriesName: Get("seriesName"),
                 SeriesType: Get("seriesType"),
@@ -499,7 +505,10 @@ else
                 DataIndex: GetInt("dataIndex"),
                 Value: GetValue(),
                 Color: raw.TryGetValue("color", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String ? c.GetString() : null,
-                Raw: boxed);
+                Raw: boxed)
+            {
+                Points = points,
+            };
             return InvokeAsync(StateHasChanged);
         }
         catch
@@ -508,6 +517,50 @@ else
             // context in place so the tooltip keeps rendering its previous content.
             return Task.CompletedTask;
         }
+    }
+
+    // Extracts the per-series snapshots from the bridge's "points" array. We only need
+    // a handful of fields; everything else stays in Raw on the headline. Defensive on
+    // shape — a missing / non-array "points" payload yields an empty list, and malformed
+    // (non-object) entries are skipped. Consumers fall back to the typed headline fields
+    // when Points is empty.
+    private static IReadOnlyList<ChartTooltipPoint> ProjectPoints(
+        Dictionary<string, System.Text.Json.JsonElement> raw)
+    {
+        if (!raw.TryGetValue("points", out var pts) || pts.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return Array.Empty<ChartTooltipPoint>();
+
+        var result = new List<ChartTooltipPoint>(pts.GetArrayLength());
+        foreach (var p in pts.EnumerateArray())
+        {
+            if (p.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+
+            string Str(string key) => p.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+                ? v.GetString() ?? "" : "";
+            int Int(string key) => p.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? v.GetInt32() : 0;
+            string? StrOrNull(string key) => p.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+                ? v.GetString() : null;
+            double? Val()
+            {
+                if (!p.TryGetProperty("value", out var v)) return null;
+                if (v.ValueKind == System.Text.Json.JsonValueKind.Number) return v.GetDouble();
+                if (v.ValueKind == System.Text.Json.JsonValueKind.Array && v.GetArrayLength() > 0
+                    && v[0].ValueKind == System.Text.Json.JsonValueKind.Number)
+                    return v[0].GetDouble();
+                return null;
+            }
+
+            result.Add(new ChartTooltipPoint(
+                SeriesName: Str("seriesName"),
+                SeriesType: Str("seriesType"),
+                SeriesIndex: Int("seriesIndex"),
+                DataIndex: Int("dataIndex"),
+                Value: Val(),
+                Color: StrOrNull("color"),
+                Marker: StrOrNull("marker")));
+        }
+        return result;
     }
 
     public async Task<string?> GetImageAsync(string type = "png", int pixelRatio = 2)
