@@ -388,17 +388,39 @@ public class EChartSeries
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public EChartEmphasis? Emphasis { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public string? Radius { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public List<string>? RadiusList { get; set; }
 
+    // ECharts accepts either a string ("70%") or a 2-element array (["50%", "70%"])
+    // for `radius`. We expose both strongly-typed setters and pick the right one at
+    // serialization time. Without this RadiusList serialized to "radiusList" (camelCase
+    // of the property name) which ECharts ignores entirely — the donut chart silently
+    // fell back to default radius and rendered as a full pie (#153).
+    [JsonPropertyName("radius")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? RadiusSerialized =>
+        RadiusList is { Count: > 0 } list ? list :
+        Radius is string s ? s :
+        null;
+
+    [JsonIgnore]
     public string? Center { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public List<string>? CenterList { get; set; }
+
+    // Same shape problem as Radius: ECharts wants `center` as either a string or a
+    // 2-element array, but the property-name fallback emitted `centerList` and the
+    // option was dropped on the floor.
+    [JsonPropertyName("center")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? CenterSerialized =>
+        CenterList is { Count: > 0 } list ? list :
+        Center is string s ? s :
+        null;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RoseType { get; set; }
