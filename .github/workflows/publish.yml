@@ -198,14 +198,33 @@ jobs:
         # "cannot publish over previously published versions" returns exit 1
         # which we swallow only for that specific case. Any other failure (auth,
         # network, validation) keeps its exit code.
+        #
+        # E409 catch: the release + push triggers fire publish.yml in parallel.
+        # If both jobs hit `npm publish` at the same instant the runner that loses
+        # the registry-side write race gets HTTP 409 "Failed to save packument"
+        # (different wording from the regular "already published" path). Before
+        # swallowing it we VERIFY the version is actually on the registry via
+        # `npm view` — otherwise a single-run workflow_dispatch or a transient
+        # registry outage that happens to surface as E409 would go green while
+        # the package is missing. Only after confirmation do we exit 0.
         run: |
           set +e
           out=$(npm publish --access public 2>&1)
           code=$?
           echo "$out"
-          if [ $code -ne 0 ] && echo "$out" | grep -qE "cannot publish over|previously published"; then
-            echo "::notice::Version already on npm — treating as success (likely a release re-run after a sibling job failed)."
+          if [ $code -eq 0 ]; then
             exit 0
+          fi
+          if echo "$out" | grep -qE "cannot publish over|previously published|E409|Failed to save packument"; then
+            version="${{ steps.ver.outputs.version }}"
+            echo "Publish returned a duplicate-shaped error — verifying @lumeo-ui/mcp-server@$version on the registry…"
+            # `npm view <pkg>@<version> version` prints the version on hit, empty + non-zero on miss.
+            registry_version=$(npm view "@lumeo-ui/mcp-server@$version" version 2>/dev/null)
+            if [ "$registry_version" = "$version" ]; then
+              echo "::notice::@lumeo-ui/mcp-server@$version confirmed live on npm — treating duplicate as success."
+              exit 0
+            fi
+            echo "::error::npm reported a duplicate but @lumeo-ui/mcp-server@$version is NOT on the registry (got '$registry_version'). Failing the job."
           fi
           exit $code
         env:
