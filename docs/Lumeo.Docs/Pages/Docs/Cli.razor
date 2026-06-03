@@ -1,5 +1,6 @@
 @page "/docs/cli"
 @namespace Lumeo.Docs.Pages.Docs
+@using System.Reflection
 
 <PageTitle>CLI — Lumeo</PageTitle>
 
@@ -36,7 +37,7 @@
                 Install as a global <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet</code> tool:
             </Lumeo.Text>
             <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground">
-                dotnet tool install -g Lumeo.Cli --version 2.2.3
+                dotnet tool install -g Lumeo.Cli --version @_v
             </Stack>
             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
                 The tool exposes a single command, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo</code>.
@@ -473,4 +474,20 @@ npm run watch:css</Stack>
     </Stack>
 
 </Stack>
+
 </Container>
+
+@code {
+    // Lockstep package version, auto-derived from the assembly InformationalVersion
+    // (built from Directory.Build.props <Version>). The CLI ships at the same version,
+    // so the install snippet tracks releases instead of a stale literal (was 2.2.3).
+    private static readonly string _v = ExtractVersion();
+    private static string ExtractVersion()
+    {
+        var raw = typeof(Cli).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? typeof(Cli).Assembly.GetName().Version?.ToString(3) ?? "";
+        var plus = raw.IndexOf('+');
+        return plus >= 0 ? raw[..plus] : raw;
+    }
+}
