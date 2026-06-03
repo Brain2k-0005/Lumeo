@@ -266,4 +266,62 @@ public class ComboboxTests : IAsyncLifetime
         var wrapper = cut.Find("div.relative");
         Assert.Equal("my-combobox", wrapper.GetAttribute("data-testid"));
     }
+
+    // --- #156: top-level Class + Placeholder API parity ---
+
+    [Fact]
+    public void Class_Is_Merged_Onto_Wrapper()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Class", "my-combobox-class");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var wrapper = cut.Find("div.relative");
+        Assert.Contains("my-combobox-class", wrapper.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void TopLevel_Placeholder_Shows_On_Input()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Placeholder", "Search fruit…");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Equal("Search fruit…", cut.Find("input").GetAttribute("placeholder"));
+    }
+
+    [Fact]
+    public void Input_Placeholder_Overrides_TopLevel()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Placeholder", "combobox-level");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.AddAttribute(1, "Placeholder", "input-level");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Equal("input-level", cut.Find("input").GetAttribute("placeholder"));
+    }
 }
