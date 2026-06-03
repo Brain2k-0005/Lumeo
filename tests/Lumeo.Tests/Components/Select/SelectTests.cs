@@ -340,4 +340,65 @@ public class SelectTests : IAsyncLifetime
         Assert.Contains("opacity-50", disabledItem!.GetAttribute("class"));
         Assert.Equal("true", disabledItem.GetAttribute("aria-disabled"));
     }
+
+    // --- #156: top-level Class + Placeholder API parity ---
+
+    [Fact]
+    public void Class_Is_Merged_Onto_Wrapper()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Class", "my-select-class");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Wrapper keeps its functional "relative" class AND the consumer class.
+        var wrapper = cut.Find("div.relative");
+        Assert.Contains("my-select-class", wrapper.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void TopLevel_Placeholder_Shows_In_Trigger_When_No_Value()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Placeholder", "Pick a fruit…");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("Pick a fruit…", cut.Markup);
+    }
+
+    [Fact]
+    public void Trigger_Placeholder_Overrides_TopLevel()
+    {
+        // SelectTrigger.Placeholder wins over Select.Placeholder when both are set.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Placeholder", "select-level");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.AddAttribute(1, "Placeholder", "trigger-level");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Contains("trigger-level", cut.Markup);
+        Assert.DoesNotContain("select-level", cut.Markup);
+    }
 }
