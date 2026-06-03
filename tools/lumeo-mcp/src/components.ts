@@ -142,16 +142,19 @@ export const components: ComponentDoc[] = [
   {
     name: "Select",
     category: "Forms",
-    description: "Dropdown select with options.",
+    description: "Dropdown select with options. Value is a string; use SelectItem children for static options or the Items parameter for data binding.",
     params: p([
-      { name: "Value", type: "TValue?", default: "default", description: "Current selection (two-way bindable)." },
-      { name: "ValueChanged", type: "EventCallback<TValue?>", default: "—", description: "Raised on selection." },
+      { name: "Value", type: "string?", default: "null", description: "Current selection value (two-way bindable)." },
+      { name: "ValueChanged", type: "EventCallback<string?>", default: "—", description: "Raised on selection." },
       { name: "Placeholder", type: "string?", default: "null", description: "Placeholder when no value selected." },
+      { name: "Items", type: "IEnumerable<object>?", default: "null", description: "Data source for data-bound mode. Rendered by the child SelectContent." },
+      { name: "ItemValue", type: "Func<object, string>", default: "ToString()", description: "Maps an item to its string value (data-bound mode)." },
+      { name: "ItemText", type: "Func<object, string>?", default: "ItemValue", description: "Maps an item to its display label (data-bound mode)." },
     ]),
     slots: [
-      { name: "ChildContent", description: "One or more <SelectItem Value=\"...\">…</SelectItem> entries." },
+      { name: "ChildContent", description: "Static mode: one or more <SelectItem Value=\"...\">…</SelectItem> entries. Data-bound mode (Items): still requires <SelectTrigger /> and <SelectContent /> children — a bare <Select Items=\"...\" /> renders an empty field." },
     ],
-    example: `<Select TValue="string" @bind-Value="_country" Placeholder="Select a country">
+    example: `<Select @bind-Value="_country" Placeholder="Select a country">
     <SelectItem Value="@("us")">United States</SelectItem>
     <SelectItem Value="@("de")">Germany</SelectItem>
     <SelectItem Value="@("fr")">France</SelectItem>
@@ -161,18 +164,26 @@ export const components: ComponentDoc[] = [
   {
     name: "Combobox",
     category: "Forms",
-    description: "Searchable dropdown select, supports async data and custom item templates.",
+    description: "Searchable dropdown select, supports async data and custom item templates. Not generic — items are typed as object.",
     params: p([
-      { name: "Items", type: "IEnumerable<TItem>", default: "[]", description: "Source list." },
-      { name: "Value", type: "TItem?", default: "default", description: "Current selection (two-way bindable)." },
-      { name: "ValueChanged", type: "EventCallback<TItem?>", default: "—", description: "Raised on selection." },
-      { name: "ItemLabel", type: "Func<TItem, string>", default: "—", description: "Maps item to display label." },
-      { name: "Placeholder", type: "string?", default: "null", description: "Placeholder text." },
+      { name: "Items", type: "IEnumerable<object>?", default: "null", description: "Data source for data-bound mode. Rendered by the child ComboboxContent." },
+      { name: "Value", type: "string?", default: "null", description: "Current selection value (two-way bindable)." },
+      { name: "ValueChanged", type: "EventCallback<string>", default: "—", description: "Raised on selection." },
+      { name: "ItemValue", type: "Func<object, string>", default: "ToString()", description: "Maps an item to its string value." },
+      { name: "ItemText", type: "Func<object, string>?", default: "ItemValue", description: "Maps an item to its display label. Defaults to ItemValue when null." },
+      { name: "Placeholder", type: "string?", default: "null", description: "Placeholder shown by the child ComboboxInput when it has none of its own." },
     ]),
     slots: [
-      { name: "ItemTemplate", description: "Custom template per item (RenderFragment<TItem>)." },
+      { name: "ChildContent", description: "Required. Must contain <ComboboxInput /> and <ComboboxContent /> — even in data-bound (Items) mode, a Combobox with no children renders nothing." },
+      { name: "ItemTemplate", description: "Custom template per item (RenderFragment<object>)." },
     ],
-    example: `<Combobox TItem="string" Items="_countries" @bind-Value="_country" ItemLabel="c => c" Placeholder="Search country..." />`,
+    example: `<Combobox Items="_frameworks" @bind-Value="_selected"
+          ItemValue="@(o => ((Framework)o).Id)"
+          ItemText="@(o => ((Framework)o).Name)"
+          Placeholder="Search frameworks...">
+    <ComboboxInput />
+    <ComboboxContent />
+</Combobox>`,
     cssVars: ["--color-popover", "--color-accent"],
   },
   {
