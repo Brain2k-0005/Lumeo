@@ -13,7 +13,10 @@
         _wrapperId, _contentId, _triggerId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
         RegisterItem, UnregisterItem, EffectiveInvalid, Required,
-        Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize);
+        Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
+    {
+        Placeholder = Placeholder,
+    };
 }
 
 @if (Label is not null && !InsideFormField)
@@ -28,7 +31,7 @@
 }
 
 <CascadingValue Value="context" IsFixed="false">
-    <div id="@_wrapperId" class="relative" @attributes="AdditionalAttributes">
+    <div id="@_wrapperId" class="@WrapperCssClass" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 </CascadingValue>
@@ -84,6 +87,14 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+    /// <summary>Custom CSS classes merged onto the Select's wrapper element. Consistent
+    /// with every other form component per the library's base API contract.</summary>
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Convenience placeholder shown by <see cref="SelectTrigger"/> when no value
+    /// is selected and the trigger doesn't set its own <c>Placeholder</c>. Lets consumers
+    /// write <c>&lt;Select Placeholder="…"&gt;</c> instead of threading it through the trigger
+    /// — matching DatePicker / TimePicker / Combobox's top-level placeholder ergonomics.</summary>
+    [Parameter] public string? Placeholder { get; set; }
     /// <summary>Focuses the select's trigger button on first render. See
     /// <c>Input.AutoFocus</c> — the HTML autofocus attribute doesn't work in
     /// Blazor WASM, this parameter uses <c>FocusElement</c> after mount.</summary>
@@ -135,6 +146,10 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // "relative" anchors the absolutely-positioned dropdown; Class is merged after so
+    // consumers can append (or override) wrapper styling like every other form control.
+    private string WrapperCssClass => Cx.Merge("relative", Class);
 
     private readonly string _wrapperId = LumeoIds.New("select");
     private readonly string _contentId = LumeoIds.New("select-content");
@@ -261,5 +276,11 @@
         Func<object, RenderFragment?>? ItemIcon,
         RenderFragment<object>? ItemTemplate,
         bool Virtualize,
-        float ItemSize);
+        float ItemSize)
+    {
+        /// <summary>Top-level placeholder set on <c>&lt;Select&gt;</c>; SelectTrigger uses it
+        /// as a fallback when its own Placeholder is unset. Init-only so the positional
+        /// constructor above stays source-compatible.</summary>
+        public string? Placeholder { get; init; }
+    }
 }
