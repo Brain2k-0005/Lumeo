@@ -519,4 +519,110 @@ public class ComboboxTests : IAsyncLifetime
 
         Assert.Null(captured);
     }
+
+    // --- PR #165 review fixes: Codex P2 (label lookup, chip click, comparer) ---
+
+    [Fact]
+    public void Clear_Preserves_HashSet_Comparer()
+    {
+        HashSet<string>? captured = null;
+        var callback = EventCallback.Factory.Create<HashSet<string>>(_ctx, (HashSet<string> v) => captured = v);
+
+        var seed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "React", "Vue" };
+        var cut = RenderMultiCombobox(values: seed, clearable: true, valuesChanged: callback);
+
+        var clearBtn = cut.Find("button[aria-label='Clear selection']");
+        try { clearBtn.Click(); } catch (ArgumentException) { }
+
+        Assert.NotNull(captured);
+        Assert.Empty(captured!);
+        // Comparer must survive the clear — otherwise downstream Contains/Add
+        // changes equality semantics silently (Codex P2, PR #165).
+        Assert.Same(StringComparer.OrdinalIgnoreCase, captured!.Comparer);
+    }
+
+    private IRenderedComponent<IComponent> RenderDataBoundSingleCombobox(
+        string? value,
+        IEnumerable<object> items,
+        Func<object, string> itemValue,
+        Func<object, string> itemText,
+        bool clearable = false)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            if (value != null) builder.AddAttribute(1, "Value", value);
+            builder.AddAttribute(2, "Items", items);
+            builder.AddAttribute(3, "ItemValue", itemValue);
+            builder.AddAttribute(4, "ItemText", itemText);
+            if (clearable) builder.AddAttribute(5, "Clearable", true);
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void Single_Chip_Shows_ItemText_Not_Raw_Value_When_Data_Bound()
+    {
+        // Data-bound: stored value "dotnet" should display as ".NET" in the chip.
+        var items = new object[]
+        {
+            new { Id = "dotnet", Label = ".NET" },
+            new { Id = "blazor", Label = "Blazor" },
+        };
+        var cut = RenderDataBoundSingleCombobox(
+            value: "dotnet",
+            items: items,
+            itemValue: o => ((dynamic)o).Id,
+            itemText: o => ((dynamic)o).Label);
+
+        // The chip wrapper span must contain the label, not the id.
+        var chipSpans = cut.FindAll("span.bg-secondary");
+        Assert.NotEmpty(chipSpans);
+        var chipText = chipSpans[0].TextContent;
+        Assert.Contains(".NET", chipText);
+        Assert.DoesNotContain("dotnet", chipText);
+    }
+
+    [Fact]
+    public void Single_Chip_Falls_Back_To_Raw_Value_In_Composition_Mode()
+    {
+        // Composition mode (no Items): no value→label registry, so the raw
+        // value is the best we can do. Matches v3.12.0 multi-chip behavior.
+        var cut = RenderSingleCombobox(value: "react");
+        var chipSpans = cut.FindAll("span.bg-secondary");
+        Assert.NotEmpty(chipSpans);
+        Assert.Contains("react", chipSpans[0].TextContent);
+    }
+
+    [Fact]
+    public void Clicking_Single_Chip_Wrapper_Opens_Combobox()
+    {
+        bool? opened = null;
+        var callback = EventCallback.Factory.Create<bool>(_ctx, (bool v) => opened = v);
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Value", "react");
+            builder.AddAttribute(2, "IsOpen", false);
+            builder.AddAttribute(3, "IsOpenChanged", callback);
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Click the wrapper div (chip layout). The wrapper carries @onclick=OpenAndFocus.
+        var wrapper = cut.Find("div.flex.flex-wrap");
+        try { wrapper.Click(); } catch (ArgumentException) { }
+
+        Assert.True(opened);
+    }
 }
