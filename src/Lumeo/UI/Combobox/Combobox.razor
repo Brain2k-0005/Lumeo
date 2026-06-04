@@ -258,8 +258,17 @@
     {
         if (Multiple)
         {
-            Values = null;
-            await ValuesChanged.InvokeAsync(null);
+            // Emit an empty set rather than null: ValuesChanged is typed as the
+            // non-nullable EventCallback<HashSet<string>>, and consumers commonly
+            // bind to a non-null `HashSet<string> _selected = new()` and read
+            // `_selected.Count` during render — a null roundtrip via @bind-Values
+            // would NRE there (Codex P2, PR #163). Preserve the bound set's
+            // comparer (e.g. StringComparer.OrdinalIgnoreCase) when present,
+            // otherwise the consumer loses case-insensitive equality semantics
+            // after a Clear (Codex P2, PR #165).
+            var comparer = Values?.Comparer ?? EqualityComparer<string>.Default;
+            Values = new HashSet<string>(comparer);
+            await ValuesChanged.InvokeAsync(Values);
         }
         else
         {

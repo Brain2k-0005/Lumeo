@@ -1,23 +1,27 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @if (HasChips)
 {
     @* Tag-input layout for Multiple mode with selections: chips, then a flex-1
        inline input that keeps search working alongside the chips. Border lives
-       on the wrapper so the field reads as a single control. *@
-    <div class="@WrapperCssClass">
+       on the wrapper so the field reads as a single control. Clicking anywhere
+       on the wrapper (between chips, on the chip text) focuses the input and
+       opens the dropdown — Codex P2 (PR #165). *@
+    <div class="@WrapperCssClass" @onclick="OpenAndFocus">
         @{
             var displayed = Context.Values!.Take(Context.MaxDisplayTags).ToList();
             var remaining = Context.Values!.Count - Context.MaxDisplayTags;
         }
         @foreach (var val in displayed)
         {
+            var label = ItemDisplay(val);
             <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
-                @val
+                @label
                 <button type="button"
                         class="cursor-pointer rounded-full hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
-                        aria-label="@($"Remove {val}")"
+                        aria-label="@($"Remove {label}")"
                         @onclick="() => RemoveValue(val)"
                         @onclick:stopPropagation="true">
                     <Blazicon Svg="Lucide.X" class="h-3 w-3" />
@@ -55,6 +59,47 @@
         }
     </div>
 }
+else if (HasSingleChip)
+{
+    @* #164: single-select also renders the current value as a chip alongside the
+       search input. Without this the input goes blank after selection and there's
+       no visual confirmation of what was picked. The chip is removable when
+       Clearable; otherwise it's a static indicator. Selecting a different item
+       replaces the chip via the existing Value flow. Wrapper-level @onclick keeps
+       a click on the chip text from being a dead zone — opens the dropdown and
+       focuses the input (Codex P2, PR #165). *@
+    var singleLabel = ItemDisplay(Context.Value!);
+    <div class="@WrapperCssClass" @onclick="OpenAndFocus">
+        <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+            @singleLabel
+            @if (Context.Clearable)
+            {
+                <button type="button"
+                        class="cursor-pointer rounded-full hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                        aria-label="@($"Remove {singleLabel}")"
+                        @onclick="HandleClear"
+                        @onclick:stopPropagation="true">
+                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                </button>
+            }
+        </span>
+        <input id="@Context.InputId"
+               type="text"
+               role="combobox"
+               aria-haspopup="listbox"
+               aria-expanded="@Context.IsOpen.ToString().ToLower()"
+               aria-controls="@Context.ContentId"
+               aria-autocomplete="list"
+               aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+               class="flex-1 min-w-[80px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+               placeholder="@EffectivePlaceholder"
+               value="@Context.SearchText"
+               @oninput="HandleInput"
+               @onfocus="Open"
+               @onkeydown="HandleKeyDown"
+               @attributes="AdditionalAttributes" />
+    </div>
+}
 else
 {
     <div class="relative">
@@ -77,16 +122,6 @@ else
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
                @attributes="AdditionalAttributes" />
-        @if (Context.Clearable && HasSingleValue)
-        {
-            <button type="button"
-                    class="absolute end-2.5 top-1/2 -translate-y-1/2 cursor-pointer hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
-                    aria-label="@L["Select.ClearSelection"]"
-                    @onclick="HandleClear"
-                    @onclick:stopPropagation="true">
-                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 opacity-50 hover:opacity-100" />
-            </button>
-        }
     </div>
 }
 
@@ -116,10 +151,10 @@ else
     };
 
     private bool HasChips => Context.Multiple && Context.Values != null && Context.Values.Count > 0;
-    private bool HasSingleValue => !Context.Multiple && !string.IsNullOrEmpty(Context.Value);
+    private bool HasSingleChip => !Context.Multiple && !string.IsNullOrEmpty(Context.Value);
     private string? EffectivePlaceholder => Placeholder ?? Context.Placeholder ?? L["Combobox.SearchPlaceholder"];
 
-    private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8", (Context.Clearable && HasSingleValue ? "pe-8" : "pe-3"), "text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
+    private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8 pe-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
 
     private string WrapperCssClass => Cx.Merge("flex flex-wrap items-center gap-1", ChipWrapperSizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent text-sm focus-within:outline-none", (Context.Invalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : ""), Class);
 
@@ -144,6 +179,34 @@ else
     private async Task RemoveValue(string value) => await Context.OnSelect.InvokeAsync(value);
 
     private async Task HandleClear() => await Context.OnClear.InvokeAsync();
+
+    // Wrapper click handler for chip-mode layouts: opens the dropdown and focuses
+    // the inline search input so clicks on chip text or empty space inside the
+    // wrapper aren't dead zones (Codex P2, PR #165).
+    private async Task OpenAndFocus()
+    {
+        if (!Context.IsOpen)
+            await Context.SetOpen.InvokeAsync(true);
+        try { await Interop.FocusElement(Context.InputId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    // Resolve a stored value to its human-friendly display label. Data-bound
+    // mode: look up the item via ItemValue and use ItemText. Composition mode
+    // (Items==null) has no value→label registry, so the raw value is the best
+    // we can do — same as v3.12.0 multi-chip behavior (Codex P2, PR #165).
+    private string ItemDisplay(string val)
+    {
+        if (Context.Items != null)
+        {
+            foreach (var item in Context.Items)
+            {
+                if (Context.ItemValue(item) == val)
+                    return Context.ItemText?.Invoke(item) ?? Context.ItemValue(item);
+            }
+        }
+        return val;
+    }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
