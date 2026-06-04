@@ -324,4 +324,163 @@ public class ComboboxTests : IAsyncLifetime
 
         Assert.Equal("input-level", cut.Find("input").GetAttribute("placeholder"));
     }
+
+    // --- #162: Multi-select chips + Clearable + MaxDisplayTags parity with Select ---
+
+    private IRenderedComponent<IComponent> RenderMultiCombobox(
+        HashSet<string>? values = null,
+        bool clearable = false,
+        int? maxDisplayTags = null,
+        EventCallback<HashSet<string>>? valuesChanged = null)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Multiple", true);
+            if (values != null)
+                builder.AddAttribute(2, "Values", values);
+            if (valuesChanged.HasValue)
+                builder.AddAttribute(3, "ValuesChanged", valuesChanged.Value);
+            if (clearable)
+                builder.AddAttribute(4, "Clearable", true);
+            if (maxDisplayTags.HasValue)
+                builder.AddAttribute(5, "MaxDisplayTags", maxDisplayTags.Value);
+            builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void Multiple_With_No_Values_Renders_Plain_Input()
+    {
+        var cut = RenderMultiCombobox(values: null);
+        Assert.Empty(cut.FindAll("button[aria-label^='Remove ']"));
+        Assert.NotNull(cut.Find("input[type='text']"));
+    }
+
+    [Fact]
+    public void Multiple_With_Values_Renders_Chip_Per_Value()
+    {
+        var cut = RenderMultiCombobox(values: new HashSet<string> { "react", "vue", "angular" });
+        var chips = cut.FindAll("button[aria-label^='Remove ']");
+        Assert.Equal(3, chips.Count);
+        Assert.Contains("react", cut.Markup);
+        Assert.Contains("vue", cut.Markup);
+        Assert.Contains("angular", cut.Markup);
+    }
+
+    [Fact]
+    public void Multiple_With_Values_Renders_Input_Alongside_Chips()
+    {
+        var cut = RenderMultiCombobox(values: new HashSet<string> { "react" });
+        Assert.NotNull(cut.Find("input[type='text']"));
+    }
+
+    [Fact]
+    public void Chip_Remove_Click_Toggles_Value_Off()
+    {
+        HashSet<string>? captured = null;
+        var callback = EventCallback.Factory.Create<HashSet<string>>(_ctx, (HashSet<string> v) => captured = v);
+        var cut = RenderMultiCombobox(
+            values: new HashSet<string> { "react", "vue" },
+            valuesChanged: callback);
+
+        var removeReact = cut.Find("button[aria-label='Remove react']");
+        try { removeReact.Click(); } catch (ArgumentException) { }
+
+        Assert.NotNull(captured);
+        Assert.DoesNotContain("react", captured!);
+        Assert.Contains("vue", captured!);
+    }
+
+    [Fact]
+    public void MaxDisplayTags_Caps_Visible_Chips_And_Shows_Remainder()
+    {
+        var values = new HashSet<string> { "a", "b", "c", "d", "e" };
+        var cut = RenderMultiCombobox(values: values, maxDisplayTags: 2);
+
+        Assert.Equal(2, cut.FindAll("button[aria-label^='Remove ']").Count);
+        Assert.Contains("+3 more", cut.Markup);
+    }
+
+    [Fact]
+    public void MaxDisplayTags_Default_Is_3()
+    {
+        var values = new HashSet<string> { "a", "b", "c", "d" };
+        var cut = RenderMultiCombobox(values: values);
+
+        Assert.Equal(3, cut.FindAll("button[aria-label^='Remove ']").Count);
+        Assert.Contains("+1 more", cut.Markup);
+    }
+
+    [Fact]
+    public void Clearable_Multiple_Shows_Clear_Button_When_Values_Present()
+    {
+        var cut = RenderMultiCombobox(values: new HashSet<string> { "react" }, clearable: true);
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Clear selection']"));
+    }
+
+    [Fact]
+    public void Clearable_False_Hides_Clear_Button()
+    {
+        var cut = RenderMultiCombobox(values: new HashSet<string> { "react" }, clearable: false);
+        Assert.Empty(cut.FindAll("button[aria-label='Clear selection']"));
+    }
+
+    [Fact]
+    public void Clear_Button_Clears_All_Values_In_Multiple_Mode()
+    {
+        HashSet<string>? captured = new HashSet<string> { "still-here" };
+        var callback = EventCallback.Factory.Create<HashSet<string>>(_ctx, (HashSet<string> v) => captured = v);
+        var cut = RenderMultiCombobox(
+            values: new HashSet<string> { "react", "vue" },
+            clearable: true,
+            valuesChanged: callback);
+
+        var clearBtn = cut.Find("button[aria-label='Clear selection']");
+        try { clearBtn.Click(); } catch (ArgumentException) { }
+
+        Assert.Null(captured);
+    }
+
+    [Fact]
+    public void Clearable_Single_Mode_Shows_Clear_Button_When_Value_Present()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Value", "react");
+            builder.AddAttribute(2, "Clearable", true);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Clear selection']"));
+    }
+
+    [Fact]
+    public void Clearable_Single_Mode_Hides_Clear_Button_When_Empty()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            builder.AddAttribute(1, "Clearable", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Empty(cut.FindAll("button[aria-label='Clear selection']"));
+    }
 }

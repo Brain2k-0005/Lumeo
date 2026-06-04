@@ -1,27 +1,94 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div class="relative">
-    @* top-1/2 + -translate-y-1/2 keeps the icon centred across all density
-       heights (h-8 / h-9 / h-10) instead of the fixed top-2.5 that only
-       centred the historical 36px comfortable input. *@
-    <Blazicon Svg="Lucide.Search" class="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-    <input id="@Context.InputId"
-           type="text"
-           role="combobox"
-           aria-haspopup="listbox"
-           aria-expanded="@Context.IsOpen.ToString().ToLower()"
-           aria-controls="@Context.ContentId"
-           aria-autocomplete="list"
-           aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
-           class="@CssClass"
-           placeholder="@(Placeholder ?? Context.Placeholder ?? L["Combobox.SearchPlaceholder"])"
-           value="@Context.SearchText"
-           @oninput="HandleInput"
-           @onfocus="Open"
-           @onkeydown="HandleKeyDown"
-           @attributes="AdditionalAttributes" />
-</div>
+@if (HasChips)
+{
+    @* Tag-input layout for Multiple mode with selections: chips, then a flex-1
+       inline input that keeps search working alongside the chips. Border lives
+       on the wrapper so the field reads as a single control. *@
+    <div class="@WrapperCssClass">
+        @{
+            var displayed = Context.Values!.Take(Context.MaxDisplayTags).ToList();
+            var remaining = Context.Values!.Count - Context.MaxDisplayTags;
+        }
+        @foreach (var val in displayed)
+        {
+            <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                @val
+                <button type="button"
+                        class="cursor-pointer rounded-full hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                        aria-label="@($"Remove {val}")"
+                        @onclick="() => RemoveValue(val)"
+                        @onclick:stopPropagation="true">
+                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                </button>
+            </span>
+        }
+        @if (remaining > 0)
+        {
+            <span class="text-xs text-muted-foreground">+@remaining more</span>
+        }
+        <input id="@Context.InputId"
+               type="text"
+               role="combobox"
+               aria-haspopup="listbox"
+               aria-expanded="@Context.IsOpen.ToString().ToLower()"
+               aria-controls="@Context.ContentId"
+               aria-autocomplete="list"
+               aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+               class="flex-1 min-w-[80px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+               placeholder="@EffectivePlaceholder"
+               value="@Context.SearchText"
+               @oninput="HandleInput"
+               @onfocus="Open"
+               @onkeydown="HandleKeyDown"
+               @attributes="AdditionalAttributes" />
+        @if (Context.Clearable)
+        {
+            <button type="button"
+                    class="cursor-pointer hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded ms-auto shrink-0"
+                    aria-label="@L["Select.ClearSelection"]"
+                    @onclick="HandleClear"
+                    @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 opacity-50 hover:opacity-100" />
+            </button>
+        }
+    </div>
+}
+else
+{
+    <div class="relative">
+        @* top-1/2 + -translate-y-1/2 keeps the icon centred across all density
+           heights (h-8 / h-9 / h-10) instead of the fixed top-2.5 that only
+           centred the historical 36px comfortable input. *@
+        <Blazicon Svg="Lucide.Search" class="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <input id="@Context.InputId"
+               type="text"
+               role="combobox"
+               aria-haspopup="listbox"
+               aria-expanded="@Context.IsOpen.ToString().ToLower()"
+               aria-controls="@Context.ContentId"
+               aria-autocomplete="list"
+               aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+               class="@CssClass"
+               placeholder="@EffectivePlaceholder"
+               value="@Context.SearchText"
+               @oninput="HandleInput"
+               @onfocus="Open"
+               @onkeydown="HandleKeyDown"
+               @attributes="AdditionalAttributes" />
+        @if (Context.Clearable && HasSingleValue)
+        {
+            <button type="button"
+                    class="absolute end-2.5 top-1/2 -translate-y-1/2 cursor-pointer hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
+                    aria-label="@L["Select.ClearSelection"]"
+                    @onclick="HandleClear"
+                    @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 opacity-50 hover:opacity-100" />
+            </button>
+        }
+    </div>
+}
 
 @code {
     [CascadingParameter] public Combobox.ComboboxContext Context { get; set; } = default!;
@@ -39,7 +106,22 @@
         _ => "h-9 py-2"
     };
 
-    private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8 pe-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
+    // Tag-input wrapper height is min- not fixed (chips can wrap to a second row),
+    // keeping the Comfortable visual default at h-9 minimum.
+    private string ChipWrapperSizeClasses => Density switch
+    {
+        Lumeo.Density.Compact => "min-h-8 px-2 py-1",
+        Lumeo.Density.Spacious => "min-h-10 px-3 py-1.5",
+        _ => "min-h-9 px-2.5 py-1"
+    };
+
+    private bool HasChips => Context.Multiple && Context.Values != null && Context.Values.Count > 0;
+    private bool HasSingleValue => !Context.Multiple && !string.IsNullOrEmpty(Context.Value);
+    private string? EffectivePlaceholder => Placeholder ?? Context.Placeholder ?? L["Combobox.SearchPlaceholder"];
+
+    private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8", (Context.Clearable && HasSingleValue ? "pe-8" : "pe-3"), "text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
+
+    private string WrapperCssClass => Cx.Merge("flex flex-wrap items-center gap-1", ChipWrapperSizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent text-sm focus-within:outline-none", (Context.Invalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : ""), Class);
 
     private async Task HandleInput(ChangeEventArgs e)
     {
@@ -58,6 +140,10 @@
             await Context.SetOpen.InvokeAsync(true);
         }
     }
+
+    private async Task RemoveValue(string value) => await Context.OnSelect.InvokeAsync(value);
+
+    private async Task HandleClear() => await Context.OnClear.InvokeAsync();
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
@@ -87,6 +173,15 @@
                 break;
             case "Escape":
                 await Context.SetOpen.InvokeAsync(false);
+                break;
+            case "Backspace":
+                // Tag-input convention: when the search field is empty and Multiple has
+                // selections, Backspace removes the last chip. Single mode is unchanged.
+                if (Context.Multiple && string.IsNullOrEmpty(Context.SearchText) && Context.Values is { Count: > 0 })
+                {
+                    var last = Context.Values.Last();
+                    await Context.OnSelect.InvokeAsync(last);
+                }
                 break;
         }
     }

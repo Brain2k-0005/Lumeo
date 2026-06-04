@@ -18,6 +18,9 @@
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
     {
         Placeholder = Placeholder,
+        Clearable = Clearable,
+        MaxDisplayTags = MaxDisplayTags,
+        OnClear = EventCallback.Factory.Create(this, OnClearSelection),
     };
 }
 
@@ -79,6 +82,14 @@
     [Parameter] public bool Multiple { get; set; }
     [Parameter] public HashSet<string>? Values { get; set; }
     [Parameter] public EventCallback<HashSet<string>> ValuesChanged { get; set; }
+    /// <summary>Cap on the number of selected-value chips rendered by
+    /// <see cref="ComboboxInput"/> in <see cref="Multiple"/> mode; the rest collapse into a
+    /// "+N more" indicator. Mirrors <c>Select.MaxDisplayTags</c>.</summary>
+    [Parameter] public int MaxDisplayTags { get; set; } = 3;
+    /// <summary>When <c>true</c>, the input shows a clear (×) affordance that resets
+    /// <see cref="Value"/> (or <see cref="Values"/> in <see cref="Multiple"/> mode) to its empty
+    /// state. Mirrors <c>Select.Clearable</c>.</summary>
+    [Parameter] public bool Clearable { get; set; }
 
     // Creatable
     [Parameter] public bool Creatable { get; set; }
@@ -243,6 +254,21 @@
         await Task.CompletedTask;
     }
 
+    private async Task OnClearSelection()
+    {
+        if (Multiple)
+        {
+            Values = null;
+            await ValuesChanged.InvokeAsync(null);
+        }
+        else
+        {
+            Value = null;
+            await ValueChanged.InvokeAsync(null);
+        }
+        SearchText = "";
+    }
+
     private async Task OnCreateItem(string value)
     {
         await OnCreate.InvokeAsync(value);
@@ -287,5 +313,8 @@
         /// as a fallback when its own Placeholder is unset. Init-only so the positional
         /// constructor above stays source-compatible.</summary>
         public string? Placeholder { get; init; }
+        public bool Clearable { get; init; }
+        public int MaxDisplayTags { get; init; } = 3;
+        public EventCallback OnClear { get; init; }
     }
 }
