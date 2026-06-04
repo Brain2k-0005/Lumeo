@@ -434,7 +434,7 @@ public class ComboboxTests : IAsyncLifetime
     [Fact]
     public void Clear_Button_Clears_All_Values_In_Multiple_Mode()
     {
-        HashSet<string>? captured = new HashSet<string> { "still-here" };
+        HashSet<string>? captured = null;
         var callback = EventCallback.Factory.Create<HashSet<string>>(_ctx, (HashSet<string> v) => captured = v);
         var cut = RenderMultiCombobox(
             values: new HashSet<string> { "react", "vue" },
@@ -444,43 +444,79 @@ public class ComboboxTests : IAsyncLifetime
         var clearBtn = cut.Find("button[aria-label='Clear selection']");
         try { clearBtn.Click(); } catch (ArgumentException) { }
 
+        // Codex P2 (#163 review): emit empty set rather than null so consumers
+        // binding to a non-null HashSet<string> don't NRE on _selected.Count.
+        Assert.NotNull(captured);
+        Assert.Empty(captured!);
+    }
+
+    // --- #164: single-select chip parity with multi ---
+
+    private IRenderedComponent<IComponent> RenderSingleCombobox(
+        string? value = null,
+        bool clearable = false,
+        EventCallback<string>? valueChanged = null)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Combobox>(0);
+            if (value != null)
+                builder.AddAttribute(1, "Value", value);
+            if (valueChanged.HasValue)
+                builder.AddAttribute(2, "ValueChanged", valueChanged.Value);
+            if (clearable)
+                builder.AddAttribute(3, "Clearable", true);
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ComboboxInput>(0);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void Single_Select_With_Value_Renders_Chip_In_Input()
+    {
+        var cut = RenderSingleCombobox(value: "react");
+        Assert.Contains("react", cut.Markup);
+        // Chip wrapper marks the tag-input layout (border-border/40 + bg-secondary on the span).
+        Assert.NotEmpty(cut.FindAll("span.bg-secondary"));
+    }
+
+    [Fact]
+    public void Single_Select_With_No_Value_Renders_Empty_Search_Input()
+    {
+        var cut = RenderSingleCombobox(value: null);
+        Assert.Empty(cut.FindAll("span.bg-secondary"));
+        Assert.NotNull(cut.Find("input[type='text']"));
+    }
+
+    [Fact]
+    public void Single_Select_Chip_Has_No_Remove_Button_When_Not_Clearable()
+    {
+        var cut = RenderSingleCombobox(value: "react", clearable: false);
+        // The chip is shown, but with no X button — pure visual indicator.
+        Assert.Empty(cut.FindAll("button[aria-label^='Remove ']"));
+    }
+
+    [Fact]
+    public void Single_Select_Clearable_Chip_Shows_Remove_Button()
+    {
+        var cut = RenderSingleCombobox(value: "react", clearable: true);
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Remove react']"));
+    }
+
+    [Fact]
+    public void Single_Select_Clearable_Chip_Click_Clears_Value()
+    {
+        string? captured = "react";
+        var callback = EventCallback.Factory.Create<string>(_ctx, (string v) => captured = v);
+        var cut = RenderSingleCombobox(value: "react", clearable: true, valueChanged: callback);
+
+        var removeBtn = cut.Find("button[aria-label='Remove react']");
+        try { removeBtn.Click(); } catch (ArgumentException) { }
+
         Assert.Null(captured);
-    }
-
-    [Fact]
-    public void Clearable_Single_Mode_Shows_Clear_Button_When_Value_Present()
-    {
-        var cut = _ctx.Render(builder =>
-        {
-            builder.OpenComponent<L.Combobox>(0);
-            builder.AddAttribute(1, "Value", "react");
-            builder.AddAttribute(2, "Clearable", true);
-            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
-            {
-                b.OpenComponent<L.ComboboxInput>(0);
-                b.CloseComponent();
-            }));
-            builder.CloseComponent();
-        });
-
-        Assert.NotEmpty(cut.FindAll("button[aria-label='Clear selection']"));
-    }
-
-    [Fact]
-    public void Clearable_Single_Mode_Hides_Clear_Button_When_Empty()
-    {
-        var cut = _ctx.Render(builder =>
-        {
-            builder.OpenComponent<L.Combobox>(0);
-            builder.AddAttribute(1, "Clearable", true);
-            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
-            {
-                b.OpenComponent<L.ComboboxInput>(0);
-                b.CloseComponent();
-            }));
-            builder.CloseComponent();
-        });
-
-        Assert.Empty(cut.FindAll("button[aria-label='Clear selection']"));
     }
 }

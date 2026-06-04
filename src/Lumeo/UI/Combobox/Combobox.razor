@@ -258,8 +258,13 @@
     {
         if (Multiple)
         {
-            Values = null;
-            await ValuesChanged.InvokeAsync(null);
+            // Emit an empty set rather than null: ValuesChanged is typed as the
+            // non-nullable EventCallback<HashSet<string>>, and consumers commonly
+            // bind to a non-null `HashSet<string> _selected = new()` and read
+            // `_selected.Count` during render — a null roundtrip via @bind-Values
+            // would NRE there (Codex P2, PR #163).
+            Values = new HashSet<string>();
+            await ValuesChanged.InvokeAsync(Values);
         }
         else
         {
