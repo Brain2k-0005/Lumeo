@@ -22,7 +22,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Toggles a class on <c>document.documentElement</c>. Useful for
     /// global modes (e.g. hiding floating chrome while a DataGrid is fullscreen).</summary>
     ValueTask SetHtmlClass(string className, bool active);
-    ValueTask SetupFocusTrap(string elementId);
+    /// <summary>Engages a Tab-cycling focus trap on the element, saves the
+    /// previously focused element (the trigger) and moves focus into the trap.
+    /// <paramref name="initialFocusSelector"/> optionally names the element
+    /// (resolved within the trap) to focus first — e.g. AlertDialog targets its
+    /// least destructive action via <c>[data-lumeo-initial-focus]</c>; when
+    /// null/unmatched, the first focusable element receives focus.</summary>
+    ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null);
+    /// <summary>Releases the trap and returns focus to the element that was
+    /// focused when <see cref="SetupFocusTrap"/> ran, if it is still in the
+    /// document.</summary>
     ValueTask RemoveFocusTrap(string elementId);
 
     /// <summary>Registers a native animationend listener that filters strictly on

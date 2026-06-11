@@ -7,7 +7,8 @@ namespace Lumeo.Tests.Helpers;
 /// <summary>
 /// A test-only IComponentInteropService implementation where every method is a
 /// no-op except Vibrate(), RegisterTabSwipe(), RegisterHorizontalSwipe(), and
-/// FocusElement(), which record each call so tests can assert lifecycle behaviour.
+/// FocusElement() and the focus-trap pair (SetupFocusTrap/RemoveFocusTrap),
+/// which record each call so tests can assert lifecycle behaviour.
 /// </summary>
 public sealed class TrackingInteropService : IComponentInteropService
 {
@@ -33,6 +34,12 @@ public sealed class TrackingInteropService : IComponentInteropService
 
     // Focus tracking (e.g. TreeView roving-tabindex keyboard navigation)
     public IReadOnlyList<string> FocusedElementIds => _focusedElementIds;
+
+    // Focus trap tracking (overlay lifecycle: Dialog / AlertDialog / Sheet / Drawer)
+    private readonly List<(string ElementId, string? InitialFocusSelector)> _focusTrapSetups = new();
+    private readonly List<string> _focusTrapRemovals = new();
+    public IReadOnlyList<(string ElementId, string? InitialFocusSelector)> FocusTrapSetups => _focusTrapSetups;
+    public IReadOnlyList<string> FocusTrapRemovals => _focusTrapRemovals;
 
     public ValueTask Vibrate(int milliseconds)
     {
@@ -85,8 +92,16 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask LockScroll() => ValueTask.CompletedTask;
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
-    public ValueTask SetupFocusTrap(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
+    public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
+    {
+        _focusTrapSetups.Add((elementId, initialFocusSelector));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask RemoveFocusTrap(string elementId)
+    {
+        _focusTrapRemovals.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;

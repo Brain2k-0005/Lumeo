@@ -195,15 +195,27 @@ export function setHtmlClass(className, active) {
 
 const focusTrapHandlers = new Map();
 
-export function setupFocusTrap(elementId) {
+const FOCUS_TRAP_FOCUSABLE =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
+
+// initialFocusSelector (optional): a CSS selector resolved WITHIN the trapped
+// element naming the preferred initial-focus target — e.g. AlertDialog passes
+// [data-lumeo-initial-focus] so focus lands on the least destructive action
+// (the Cancel button) instead of whatever is first in DOM order. Falls back
+// to the first focusable element when absent or not found.
+export function setupFocusTrap(elementId, initialFocusSelector) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
+    // Remember what had focus before the trap engages (normally the trigger
+    // button) so removeFocusTrap can hand focus back on close. Without this,
+    // keyboard users are dropped at <body> after every overlay dismissal.
+    const ae = document.activeElement;
+    const previousFocus = (ae && ae !== document.body && typeof ae.focus === 'function') ? ae : null;
+
     const handler = (e) => {
         if (e.key !== 'Tab') return;
-        const focusable = el.querySelectorAll(
-            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-        );
+        const focusable = el.querySelectorAll(FOCUS_TRAP_FOCUSABLE);
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -216,25 +228,39 @@ export function setupFocusTrap(elementId) {
         }
     };
 
-    focusTrapHandlers.set(elementId, handler);
+    focusTrapHandlers.set(elementId, { handler, previousFocus });
     el.addEventListener('keydown', handler);
 
-    const focusable = el.querySelectorAll(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-    );
-    if (focusable.length > 0) {
-        focusable[0].focus();
+    let initial = null;
+    if (initialFocusSelector) {
+        try { initial = el.querySelector(initialFocusSelector); } catch { initial = null; }
+    }
+    if (initial && typeof initial.focus === 'function') {
+        initial.focus();
+    } else {
+        const focusable = el.querySelectorAll(FOCUS_TRAP_FOCUSABLE);
+        if (focusable.length > 0) {
+            focusable[0].focus();
+        }
     }
 }
 
 export function removeFocusTrap(elementId) {
-    const handler = focusTrapHandlers.get(elementId);
-    if (handler) {
-        const el = document.getElementById(elementId);
-        if (el) {
-            el.removeEventListener('keydown', handler);
-        }
-        focusTrapHandlers.delete(elementId);
+    const entry = focusTrapHandlers.get(elementId);
+    if (!entry) return;
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.removeEventListener('keydown', entry.handler);
+    }
+    focusTrapHandlers.delete(elementId);
+    // Return focus to the element that was focused before the trap engaged
+    // (WCAG 2.4.3). Runs even when the overlay element is already gone from
+    // the DOM (dispose-while-open) — the trigger usually still exists. Guard
+    // everything: the trigger itself may have been removed in the meantime,
+    // and focus() can throw on detached/inert elements in some engines.
+    const prev = entry.previousFocus;
+    if (prev && prev.isConnected && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
     }
 }
 

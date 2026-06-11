@@ -44,7 +44,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
-    public ValueTask SetupFocusTrap(string elementId) => ValueTask.CompletedTask;
+    public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => ValueTask.CompletedTask;
     public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
 
     // ColorPicker SV Drag

@@ -14,7 +14,16 @@ else if (Context.IsOpen)
         <!-- Backdrop -->
         <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         <!-- Content -->
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        @* @onkeydown:stopPropagation — a modal surface owns the keys pressed
+           inside it. Nested overlays render INSIDE this div, so their keydown
+           events bubble here; without this, an Escape already handled by an
+           inner Dialog/Sheet/Drawer/AlertDialog would also fire this dialog's
+           Escape handler and cascade-close every ancestor overlay. The
+           directive is static (stops ALL keydown propagation at this element's
+           boundary), which is safe for a modal: descendants still receive
+           their events first — propagation is only cut once it reaches this
+           div — and nothing outside an open modal should react to its keys. *@
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @if (Scrollable)
             {
                 <div class="max-h-[85vh] overflow-y-auto">

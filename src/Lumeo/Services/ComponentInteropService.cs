@@ -135,10 +135,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("setHtmlClass", className, active);
     }
 
-    public async ValueTask SetupFocusTrap(string elementId)
+    public async ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         var module = await GetModuleAsync();
-        await _focus.SetupFocusTrap(module, elementId);
+        await _focus.SetupFocusTrap(module, elementId, initialFocusSelector);
     }
 
     public async ValueTask RemoveFocusTrap(string elementId)
