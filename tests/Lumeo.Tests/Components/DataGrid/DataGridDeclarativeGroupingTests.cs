@@ -76,6 +76,37 @@ public class DataGridDeclarativeGroupingTests : IAsyncLifetime
     }
 
     [Fact]
+    public void GroupBy_Unknown_Field_Warns_On_Console_Error()
+    {
+        // The consumer-reported shape: a column TITLE (or a typo) passed where
+        // the Field is required. Grouping can't work — but it must not fail
+        // silently anymore.
+        var sw = new StringWriter();
+        var original = Console.Error;
+        Console.SetError(sw);
+        try
+        {
+            var cut = _ctx.Render<DataGrid<Row>>(p => p
+                .Add(x => x.Items, Data())
+                .Add(x => x.GroupBy, "Kategorie")
+                .AddChildContent<DataGridColumnDef<Row>>(c => c
+                    .Add(x => x.Field, "Category").Add(x => x.Title, "Kategorie").Add(x => x.Groupable, true))
+                .AddChildContent<DataGridColumnDef<Row>>(c => c
+                    .Add(x => x.Field, "Name").Add(x => x.Title, "Name")));
+
+            Assert.DoesNotContain("datagrid-group-row", cut.Markup);
+            var warning = sw.ToString();
+            Assert.Contains("unknown column field", warning);
+            Assert.Contains("Kategorie", warning);
+            Assert.Contains("Category", warning);
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+    }
+
+    [Fact]
     public void GroupByFields_With_Declarative_ColumnDefs_Renders_Group_Rows()
     {
         var cut = _ctx.Render<DataGrid<Row>>(p => p

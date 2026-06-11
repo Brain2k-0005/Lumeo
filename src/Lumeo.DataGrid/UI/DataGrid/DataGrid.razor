@@ -1300,6 +1300,32 @@
                 _defaultLayout = SnapshotCurrentLayout();
             }
 
+            // All declarative columns have registered by now — if the grouping
+            // seed is still missing fields, they're genuinely unknown (typo, or
+            // a column Title was passed where the Field is required, or the
+            // column has no Field at all). Grouping then silently renders flat,
+            // which has cost real consumers real debugging time — say so.
+            if (_groupSeedIncomplete && EffectiveColumns.Count > 0)
+            {
+                var requested = GroupByFields is { Count: > 0 }
+                    ? GroupByFields
+                    : (!string.IsNullOrEmpty(GroupBy) ? new[] { GroupBy! } : Array.Empty<string>());
+                var unknown = requested
+                    .Where(f => !EffectiveColumns.Any(c => c.Field == f))
+                    .Distinct()
+                    .ToList();
+                if (unknown.Count > 0)
+                {
+                    var available = string.Join(", ", EffectiveColumns
+                        .Where(c => !string.IsNullOrEmpty(c.Field))
+                        .Select(c => c.Field));
+                    Console.Error.WriteLine(
+                        $"[Lumeo DataGrid] GroupBy/GroupByFields reference unknown column field(s): " +
+                        $"{string.Join(", ", unknown)}. Grouping matches DataGridColumnDef.Field (not Title). " +
+                        $"Available fields: {available}.");
+                }
+            }
+
             if (EnableLayoutPersistence && !_layoutService.LayoutLoaded)
             {
                 var key = LayoutStorageKey ?? _layoutId;
