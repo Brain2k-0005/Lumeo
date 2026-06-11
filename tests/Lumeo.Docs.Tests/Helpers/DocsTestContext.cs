@@ -114,6 +114,10 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
 
+    // Selective keydown preventDefault
+    public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
+    public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
+
     // DataGrid Column Resize
     public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;

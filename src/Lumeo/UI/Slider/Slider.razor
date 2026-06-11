@@ -59,20 +59,23 @@ else if (IsRange)
                 <div class="h-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;"></div>
             </div>
             <div class="relative flex items-center" style="pointer-events: none;">
+                @* Both inputs overlay the full track, so hit-testing must live on
+                   the THUMBS (pseudo-elements), not the inputs: with the whole
+                   end input set to pointer-events:auto it sat on top across the
+                   entire width and the start thumb could never be grabbed. *@
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@RangeInputClasses"
-                       style="pointer-events: auto;"
                        @oninput="OnStartInput" />
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
                        aria-label="@EndAriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@ValueEnd"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@RangeInputClasses"
-                       style="pointer-events: auto; position: absolute; left: 0; width: 100%;"
+                       style="position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
             </div>
             @if (Marks is not null || ShowTicks)
@@ -208,7 +211,7 @@ else
 
     private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
 
-    private const string RangeInputClasses = "w-full h-2 cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50";
+    private const string RangeInputClasses = "w-full h-2 cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
 
     private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
     private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;

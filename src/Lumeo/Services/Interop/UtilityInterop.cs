@@ -34,6 +34,21 @@ internal sealed class UtilityInterop
         }
     }
 
+    // --- Selective keydown preventDefault ---
+
+    public async ValueTask RegisterPreventDefaultKeys(
+        IJSObjectReference module,
+        string elementId,
+        IReadOnlyList<PreventDefaultKeyRule> rules)
+    {
+        await module.InvokeVoidAsync("registerPreventDefaultKeys", elementId, rules);
+    }
+
+    public async ValueTask UnregisterPreventDefaultKeys(IJSObjectReference module, string elementId)
+    {
+        await module.InvokeVoidAsync("unregisterPreventDefaultKeys", elementId);
+    }
+
     // --- Auto Resize ---
 
     public async ValueTask SetupAutoResize(IJSObjectReference module, string elementId, int maxRows)

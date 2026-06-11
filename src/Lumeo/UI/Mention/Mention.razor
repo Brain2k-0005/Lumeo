@@ -183,10 +183,15 @@
         switch (e.Key)
         {
             case "ArrowDown":
-                _activeIndex = (_activeIndex + 1) % filtered.Count;
+                // Guard: the dropdown stays logically open while zero options
+                // match (markup hides via FilteredOptions.Any()) — the modulo
+                // would throw DivideByZeroException and kill the circuit.
+                if (filtered.Count > 0)
+                    _activeIndex = (_activeIndex + 1) % filtered.Count;
                 break;
             case "ArrowUp":
-                _activeIndex = (_activeIndex - 1 + filtered.Count) % filtered.Count;
+                if (filtered.Count > 0)
+                    _activeIndex = (_activeIndex - 1 + filtered.Count) % filtered.Count;
                 break;
             case "Enter" or "Tab":
                 if (filtered.Count > 0 && _activeIndex < filtered.Count)

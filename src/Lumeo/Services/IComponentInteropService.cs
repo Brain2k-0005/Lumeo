@@ -145,6 +145,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler);
     ValueTask UnregisterOtpPaste(string baseId, int length);
 
+    // Selective keydown preventDefault — suppresses the browser default for
+    // the listed keys only, synchronously in the native event dispatch.
+    // Use instead of @onkeydown:preventDefault when some keys (e.g. Tab)
+    // must keep their default, or when the suppression must not lag one
+    // event behind a render-time bool (Splitter, Carousel, PromptInput).
+    ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules);
+    ValueTask UnregisterPreventDefaultKeys(string elementId);
+
     // DataGrid Column Resize — JS previews the drag directly in the DOM and invokes
     // commitHandler once with the final width on mouseup.
     ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler);

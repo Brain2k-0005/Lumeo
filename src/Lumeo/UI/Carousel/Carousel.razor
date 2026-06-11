@@ -15,7 +15,11 @@
     );
 }
 
-<div role="region" aria-roledescription="carousel" class="@CssClass" @onkeydown="HandleKeyDown" @onkeydown:preventDefault="true" @attributes="AdditionalAttributes">
+@* preventDefault is key-selective via JS (see OnAfterRenderAsync): the blanket
+   @onkeydown:preventDefault="true" cancelled EVERY key bubbling through the
+   region — Tab couldn't leave (keyboard trap) and typing/Space inside
+   interactive slide content was dead. *@
+<div id="@_rootId" role="region" aria-roledescription="carousel" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -40,6 +44,7 @@
     private int _currentIndex;
     private bool _canScrollPrev;
     private bool _canScrollNext = true;
+    private readonly string _rootId = LumeoIds.New("carousel-root");
     private readonly string _contentId = LumeoIds.New("carousel");
     // Item tokens registered by child CarouselItems so the live-region can
     // emit "Slide N of M". The count is the only thing we read from this
@@ -74,6 +79,15 @@
                 GestureOpts.Value.SwipeThresholdPx,
                 GestureOpts.Value.VerticalDeadZonePx
             );
+            // Suppress page scroll only for the orientation's nav keys, and
+            // never when the target is editable slide content (inputs keep
+            // their caret keys; HandleKeyDown still moves the deck).
+            var navKeys = Orientation == Lumeo.Orientation.Horizontal
+                ? new[] { "ArrowLeft", "ArrowRight" }
+                : new[] { "ArrowUp", "ArrowDown" };
+            await Interop.RegisterPreventDefaultKeys(
+                _rootId,
+                navKeys.Select(k => new PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -165,6 +179,7 @@
         try
         {
             await Interop.UnregisterCarouselSwipe(_contentId);
+            await Interop.UnregisterPreventDefaultKeys(_rootId);
         }
         catch (JSDisconnectedException) { }
     }

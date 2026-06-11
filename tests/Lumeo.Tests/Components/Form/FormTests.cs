@@ -18,6 +18,35 @@ public class FormTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
+    private class ResubmitModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public string? Name { get; set; }
+    }
+
+    [Fact]
+    public void Resubmit_After_Fixing_Field_Fires_OnValidSubmit()
+    {
+        // Regression: Validate() returns only FAILING fields; the old merge
+        // never removed fixed fields from FormContext.Errors, so a form that
+        // failed once could never become valid again.
+        var model = new ResubmitModel();
+        var validCount = 0;
+
+        var cut = _ctx.Render<L.Form<ResubmitModel>>(p => p
+            .Add(f => f.Model, model)
+            .Add(f => f.Validator, new L.DataAnnotationsFormValidator())
+            .Add(f => f.OnValidSubmit, (ResubmitModel _) => { validCount++; })
+            .AddChildContent("<button type=\"submit\">go</button>"));
+
+        cut.Find("form").Submit();
+        Assert.Equal(0, validCount);
+
+        model.Name = "fixed";
+        cut.Find("form").Submit();
+        Assert.Equal(1, validCount);
+    }
+
     // Helper to render FormField with optional children
     private IRenderedComponent<IComponent> RenderFormField(
         string? name = null,

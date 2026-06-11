@@ -576,6 +576,20 @@ public sealed class ComponentInteropService : IComponentInteropService
     [JSInvokable]
     public async Task OnOtpPaste(string baseId, string digits) => await _utility.OnOtpPaste(baseId, digits);
 
+    // --- Selective keydown preventDefault ---
+
+    public async ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules)
+    {
+        var module = await GetModuleAsync();
+        await _utility.RegisterPreventDefaultKeys(module, elementId, rules);
+    }
+
+    public async ValueTask UnregisterPreventDefaultKeys(string elementId)
+    {
+        var module = await GetModuleAsync();
+        await _utility.UnregisterPreventDefaultKeys(module, elementId);
+    }
+
     // --- DataGrid Column Resize ---
 
     public async ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)

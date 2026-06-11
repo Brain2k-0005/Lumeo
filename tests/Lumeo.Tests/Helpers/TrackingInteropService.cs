@@ -107,6 +107,8 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
+    public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
+    public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
     // Column resize tracking — used to assert that the JS pointerdown listener
     // is wired during the first render, not lazily on the first pointerdown
     // (the lazy path lost the originating event so the first drag was a no-op).

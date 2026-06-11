@@ -1,5 +1,5 @@
 @namespace Lumeo
-@implements IDisposable
+@implements IAsyncDisposable
 
 <div id="@_dividerId"
      role="separator"
@@ -15,7 +15,6 @@
      @onpointerup="OnPointerUp"
      @onpointercancel="OnPointerUp"
      @onkeydown="OnKeyDown"
-     @onkeydown:preventDefault="true"
      @attributes="AdditionalAttributes">
 </div>
 
@@ -102,6 +101,26 @@
         Context?.RegisterChild(_token);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Suppress page scroll for the resize arrows ONLY. The previous
+            // blanket @onkeydown:preventDefault="true" also cancelled Tab on
+            // a tabindex="0" element — a WCAG 2.1.2 keyboard trap: focus
+            // could never leave the divider via keyboard.
+            var keys = IsHorizontal
+                ? new[] { "ArrowLeft", "ArrowRight" }
+                : new[] { "ArrowUp", "ArrowDown" };
+            await Interop.RegisterPreventDefaultKeys(
+                _dividerId,
+                keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
     private async Task OnPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
         _dragging = true;
@@ -134,7 +153,8 @@
 
     // Keyboard resize: arrow keys move the divider by a fixed 10px step,
     // matching the same Context.ResizeNeighbors path used by pointer drag.
-    // @onkeydown:preventDefault="true" on the element stops page scroll.
+    // Page scroll for the arrow keys is suppressed via the key-selective JS
+    // preventDefault registration in OnAfterRenderAsync (Tab must pass).
     // In RTL, ArrowLeft/Right are swapped for horizontal splitters so the key
     // that points toward the visual "start" always shrinks the leading panel.
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -158,8 +178,14 @@
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         Context?.UnregisterChild(_token);
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_dividerId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 }

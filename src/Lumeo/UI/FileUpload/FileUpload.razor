@@ -336,7 +336,10 @@ else
     {
         _globalErrorMessage = null;
 
-        var candidates = Multiple ? e.GetMultipleFiles(MaxFiles + 1).ToList() : new List<IBrowserFile> { e.File };
+        // Pass the actual selection count: GetMultipleFiles THROWS when the user
+        // picks more files than the argument allows — capping at MaxFiles + 1
+        // crashed instead of surfacing the MaxFiles error below.
+        var candidates = Multiple ? e.GetMultipleFiles(Math.Max(e.FileCount, 1)).ToList() : new List<IBrowserFile> { e.File };
 
         // Count check against existing non-failed items
         var existing = _uploadItems.Count(i => i.Status != FileUploadStatus.Failed && i.Status != FileUploadStatus.Cancelled);

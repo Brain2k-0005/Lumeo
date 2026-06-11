@@ -27,6 +27,26 @@ public class InputTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Clearable_Renders_Wrapper_Even_While_Empty()
+    {
+        // Regression: keying the wrapper branch off "has a value" recreated
+        // the <input> element on the first typed character (and when deleting
+        // the last one), dropping focus and caret mid-typing. The wrapper must
+        // be stable; only the clear BUTTON is value-conditional.
+        var empty = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Clearable, true)
+            .Add(b => b.Value, ""));
+        Assert.NotNull(empty.Find("div input"));
+        Assert.Empty(empty.FindAll("button"));
+
+        var filled = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Clearable, true)
+            .Add(b => b.Value, "x"));
+        Assert.NotNull(filled.Find("div input"));
+        Assert.NotEmpty(filled.FindAll("button"));
+    }
+
+    [Fact]
     public void Renders_With_Default_Value()
     {
         var cut = _ctx.Render<Lumeo.Input>(p => p

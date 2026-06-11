@@ -974,8 +974,52 @@ export function carouselScrollTo(elementId, index, behavior) {
     const el = document.getElementById(elementId);
     if (!el) return;
     const children = el.children;
-    if (index >= 0 && index < children.length) {
+    if (children.length === 0) return;
+    // C# sends int.MaxValue as a "wrap to last slide" sentinel (Loop mode) —
+    // the child count only exists on this side of the interop boundary.
+    if (index >= children.length) index = children.length - 1;
+    if (index >= 0) {
         children[index].scrollIntoView({ behavior: behavior || 'smooth', block: 'nearest', inline: 'start' });
+    }
+}
+
+// --- Selective keydown preventDefault ---
+// Blazor's @onkeydown:preventDefault directive is all-or-nothing and its
+// bool form is evaluated at render time (one event late). Components that
+// must suppress the default for SOME keys only (Splitter dividers: arrows
+// but never Tab; PromptInput: Enter but not Shift+Enter / IME-confirm)
+// register the exact rules here so the decision happens synchronously in
+// the real keydown dispatch.
+
+const preventDefaultKeyHandlers = new Map();
+
+export function registerPreventDefaultKeys(elementId, rules) {
+    unregisterPreventDefaultKeys(elementId);
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const handler = (e) => {
+        for (const r of rules) {
+            if (e.key !== r.key) continue;
+            if (r.requireNoModifiers && (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey)) continue;
+            // keyCode 229 covers engines that fire composition keydowns
+            // without setting isComposing.
+            if (r.skipComposing && (e.isComposing || e.keyCode === 229)) continue;
+            if (r.skipEditable && e.target instanceof Element &&
+                e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) continue;
+            e.preventDefault();
+            return;
+        }
+    };
+    el.addEventListener('keydown', handler);
+    preventDefaultKeyHandlers.set(elementId, handler);
+}
+
+export function unregisterPreventDefaultKeys(elementId) {
+    const handler = preventDefaultKeyHandlers.get(elementId);
+    if (handler) {
+        const el = document.getElementById(elementId);
+        if (el) el.removeEventListener('keydown', handler);
+        preventDefaultKeyHandlers.delete(elementId);
     }
 }
 
@@ -1536,8 +1580,10 @@ export function registerOtpPaste(baseId, length, dotnetRef) {
             const handler = (e) => {
                 e.preventDefault();
                 const text = (e.clipboardData || window.clipboardData).getData('text');
-                const digits = text.replace(/\D/g, '').slice(0, length);
-                dotnetRef.invokeMethodAsync('OnOtpPaste', baseId, digits);
+                // Forward raw text (sanity-capped) — the C# side filters per
+                // InputMode. Stripping \D here destroyed alphanumeric codes
+                // before OtpInput.FilterInput ever saw them.
+                dotnetRef.invokeMethodAsync('OnOtpPaste', baseId, text.slice(0, 64));
             };
             el.addEventListener('paste', handler);
             handlers.push(handler);
