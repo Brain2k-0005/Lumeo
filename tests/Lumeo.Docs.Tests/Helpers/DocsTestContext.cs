@@ -118,6 +118,9 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
 
+    // Tour scroll-into-view
+    public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
+
     // DataGrid Column Resize
     public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;

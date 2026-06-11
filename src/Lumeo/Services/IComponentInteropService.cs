@@ -165,6 +165,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Tour
     ValueTask<ElementRect?> GetElementRectBySelector(string selector);
+    /// <summary>Instantly scrolls the first element matching <paramref name="selector"/>
+    /// into the viewport (block: center). Call BEFORE LockScroll — a locked body
+    /// can't be scrolled, programmatically or otherwise.</summary>
+    ValueTask ScrollSelectorIntoView(string selector);
 
     // Affix
     ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler);

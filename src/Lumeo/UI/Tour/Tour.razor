@@ -148,8 +148,25 @@
     {
         if (Open && _currentStepConfig is not null)
         {
+            // Off-screen step targets must be scrolled into view BEFORE the
+            // body lock — a locked body can't be scrolled at all, so the
+            // spotlight pointed at nothing and the user couldn't reach it.
+            // On step changes the lock is briefly lifted for the same reason
+            // (LockScroll is ref-counted; the cycle is invisible).
+            var movingToNewTarget = _currentStepConfig?.TargetSelector is not null
+                && _currentStepConfig?.TargetSelector != _currentTargetSelector;
+            if (movingToNewTarget && _scrollLocked)
+            {
+                try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+                _scrollLocked = false;
+            }
             if (!_scrollLocked)
             {
+                if (movingToNewTarget && _currentStepConfig?.TargetSelector is { } sel)
+                {
+                    try { await Interop.ScrollSelectorIntoView(sel); }
+                    catch (JSDisconnectedException) { }
+                }
                 await Interop.LockScroll();
                 _scrollLocked = true;
             }

@@ -1904,6 +1904,14 @@ export function getElementRectBySelector(selector) {
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, borderRadius: radius };
 }
 
+export function scrollSelectorIntoView(selector) {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    // 'instant' on purpose: the caller measures the rect right after this
+    // call — a smooth scroll would still be mid-animation when measured.
+    el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+}
+
 // --- Affix: scroll-based sticky positioning ---
 
 const affixHandlers = new Map();

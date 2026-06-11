@@ -635,6 +635,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _floatingPosition.GetElementRectBySelector(module, selector);
     }
 
+    public async ValueTask ScrollSelectorIntoView(string selector)
+    {
+        var module = await GetModuleAsync();
+        await _floatingPosition.ScrollSelectorIntoView(module, selector);
+    }
+
     // --- Affix ---
 
     public async ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
