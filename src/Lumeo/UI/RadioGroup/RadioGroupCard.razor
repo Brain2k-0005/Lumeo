@@ -71,10 +71,14 @@
                 _itemId,
                 new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft" }
                     .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    private bool _pdRegistered;
 
     private async Task Select() => await Context.OnSelect.InvokeAsync(Value);
 
@@ -127,11 +131,13 @@
             Context.ItemIds.Remove(_registeredValue);
             Context.ItemDisabled.Remove(_registeredValue);
         }
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(_itemId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

@@ -82,10 +82,17 @@
             await Interop.RegisterPreventDefaultKeys(
                 _textareaId,
                 new[] { new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true) });
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    // Set only after a successful JS registration so dispose during static
+    // prerendering (where OnAfterRenderAsync never ran) doesn't import the
+    // JS module just to unregister a handler that never existed (Codex P2).
+    private bool _pdRegistered;
 
     private async Task HandleInput(ChangeEventArgs e)
     {
@@ -122,11 +129,13 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(_textareaId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

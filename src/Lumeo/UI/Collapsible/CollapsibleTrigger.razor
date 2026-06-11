@@ -25,10 +25,14 @@
             await Interop.RegisterPreventDefaultKeys(
                 Context.TriggerId,
                 new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    private bool _pdRegistered;
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
@@ -40,11 +44,13 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(Context.TriggerId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

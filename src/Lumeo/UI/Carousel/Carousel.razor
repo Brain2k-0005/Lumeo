@@ -19,7 +19,7 @@
    @onkeydown:preventDefault="true" cancelled EVERY key bubbling through the
    region — Tab couldn't leave (keyboard trap) and typing/Space inside
    interactive slide content was dead. *@
-<div id="@_rootId" role="region" aria-roledescription="carousel" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div id="@EffectiveRootId" role="region" aria-roledescription="carousel" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -46,6 +46,17 @@
     private bool _canScrollNext = true;
     private readonly string _rootId = LumeoIds.New("carousel-root");
     private readonly string _contentId = LumeoIds.New("carousel");
+    // A consumer-supplied `id` in AdditionalAttributes overrides the generated
+    // one in the DOM (the splat renders after `id`), so JS registrations must
+    // target the id that actually ends up on the element (Codex P2).
+    private string EffectiveRootId =>
+        AdditionalAttributes is not null
+        && AdditionalAttributes.TryGetValue("id", out var v)
+        && v is string s && !string.IsNullOrEmpty(s)
+            ? s
+            : _rootId;
+    private string? _registeredNavId;
+    private Lumeo.Orientation? _registeredNavOrientation;
     // Item tokens registered by child CarouselItems so the live-region can
     // emit "Slide N of M". The count is the only thing we read from this
     // list — the token objects exist purely so Register/Unregister can be
@@ -67,30 +78,44 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
         try
         {
-            var orientationStr = Orientation == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
-            await Interop.RegisterCarouselSwipe(
-                _contentId,
-                orientationStr,
-                OnSwipe,
-                OnScrollPosition,
-                GestureOpts.Value.SwipeThresholdPx,
-                GestureOpts.Value.VerticalDeadZonePx
-            );
-            // Suppress page scroll only for the orientation's nav keys, and
-            // never when the target is editable slide content (inputs keep
-            // their caret keys; HandleKeyDown still moves the deck).
-            var navKeys = Orientation == Lumeo.Orientation.Horizontal
-                ? new[] { "ArrowLeft", "ArrowRight" }
-                : new[] { "ArrowUp", "ArrowDown" };
-            await Interop.RegisterPreventDefaultKeys(
-                _rootId,
-                navKeys.Select(k => new PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
+            if (firstRender)
+            {
+                var orientationStr = Orientation == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
+                await Interop.RegisterCarouselSwipe(
+                    _contentId,
+                    orientationStr,
+                    OnSwipe,
+                    OnScrollPosition,
+                    GestureOpts.Value.SwipeThresholdPx,
+                    GestureOpts.Value.VerticalDeadZonePx
+                );
+            }
+
+            // Suppress page scroll only for the CURRENT orientation's nav keys,
+            // and never when the target is editable slide content. Re-registered
+            // whenever the effective id or the Orientation parameter changes —
+            // a one-shot firstRender registration kept suppressing the original
+            // axis after an orientation switch (Codex P2).
+            var navId = EffectiveRootId;
+            if (_registeredNavId != navId || _registeredNavOrientation != Orientation)
+            {
+                if (_registeredNavId is not null)
+                    await Interop.UnregisterPreventDefaultKeys(_registeredNavId);
+                var navKeys = Orientation == Lumeo.Orientation.Horizontal
+                    ? new[] { "ArrowLeft", "ArrowRight" }
+                    : new[] { "ArrowUp", "ArrowDown" };
+                await Interop.RegisterPreventDefaultKeys(
+                    navId,
+                    navKeys.Select(k => new PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
+                _registeredNavId = navId;
+                _registeredNavOrientation = Orientation;
+            }
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
 
     private async Task OnSwipe(string direction)
@@ -179,9 +204,15 @@
         try
         {
             await Interop.UnregisterCarouselSwipe(_contentId);
-            await Interop.UnregisterPreventDefaultKeys(_rootId);
+            // Only unregister what was actually registered — during prerender
+            // OnAfterRenderAsync never ran and a JS call here would import the
+            // module just to throw (Codex P2 on the PromptInput sibling).
+            if (_registeredNavId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_registeredNavId);
         }
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     public record CarouselContext(

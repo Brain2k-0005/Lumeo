@@ -113,20 +113,25 @@ else
                 await Interop.RegisterPreventDefaultKeys(
                     _cardId,
                     new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
         }
     }
 
+    private bool _pdRegistered;
+
     public async ValueTask DisposeAsync()
     {
-        if (!IsInteractive) return;
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(_cardId);
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     public enum CardVariant { Default, Flat }

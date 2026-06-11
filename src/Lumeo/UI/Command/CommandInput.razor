@@ -46,10 +46,14 @@
                 new PreventDefaultKeyRule("ArrowUp", SkipComposing: true),
                 new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true),
             });
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    private bool _pdRegistered;
 
     private async Task HandleInput(ChangeEventArgs e)
     {
@@ -64,7 +68,10 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (!_pdRegistered) return;
         try { await Interop.UnregisterPreventDefaultKeys(_inputId); }
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

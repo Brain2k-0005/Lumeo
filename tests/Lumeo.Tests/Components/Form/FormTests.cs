@@ -47,6 +47,53 @@ public class FormTests : IAsyncLifetime
         Assert.Equal(1, validCount);
     }
 
+    private class ContextProbe : ComponentBase
+    {
+        [CascadingParameter] public L.FormContext? Ctx { get; set; }
+        [Parameter] public Action<L.FormContext>? OnContext { get; set; }
+        protected override void OnParametersSet()
+        {
+            if (Ctx is not null) OnContext?.Invoke(Ctx);
+        }
+    }
+
+    [Fact]
+    public void Async_Error_Overwriting_A_Sync_Key_Survives_Resubmit()
+    {
+        // Codex P1 regression: a field fails sync validation, then an async
+        // validator overwrites the SAME key (e.g. "username taken"). When the
+        // sync validator later passes, the stale-sync cleanup must not delete
+        // the async error — ownership is tracked by error-list INSTANCE.
+        var model = new ResubmitModel();
+        var validCount = 0;
+        L.FormContext? ctx = null;
+
+        var cut = _ctx.Render<L.Form<ResubmitModel>>(p => p
+            .Add(f => f.Model, model)
+            .Add(f => f.Validator, new L.DataAnnotationsFormValidator())
+            .Add(f => f.OnValidSubmit, (ResubmitModel _) => { validCount++; })
+            .AddChildContent(b =>
+            {
+                b.OpenComponent<ContextProbe>(0);
+                b.AddAttribute(1, "OnContext", (Action<L.FormContext>)(c => ctx = c));
+                b.CloseComponent();
+                b.AddMarkupContent(2, "<button type=\"submit\">go</button>");
+            }));
+
+        cut.Find("form").Submit(); // sync fails on Name
+        Assert.Equal(0, validCount);
+
+        // Async validator replaces the key with its own error instance.
+        ctx!.Errors["Name"] = new List<string> { "username taken" };
+        model.Name = "fixed"; // sync now passes
+
+        cut.Find("form").Submit();
+
+        Assert.Equal(0, validCount); // async error must still block
+        Assert.True(ctx.Errors.ContainsKey("Name"));
+        Assert.Contains("username taken", ctx.Errors["Name"]);
+    }
+
     // Helper to render FormField with optional children
     private IRenderedComponent<IComponent> RenderFormField(
         string? name = null,

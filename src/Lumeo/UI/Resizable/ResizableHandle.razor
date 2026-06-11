@@ -113,10 +113,14 @@
             await Interop.RegisterPreventDefaultKeys(
                 _handleId,
                 keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    private bool _pdRegistered;
 
     // Keyboard resize: arrow keys move the handle by a fixed 10px step through
     // the same group resize path used by pointer drags (min/max clamping
@@ -147,6 +151,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterResizeHandle(_handleId);
@@ -154,5 +159,6 @@
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

@@ -116,10 +116,14 @@
             await Interop.RegisterPreventDefaultKeys(
                 _dividerId,
                 keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    private bool _pdRegistered;
 
     private async Task OnPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
@@ -181,11 +185,13 @@
     public async ValueTask DisposeAsync()
     {
         Context?.UnregisterChild(_token);
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(_dividerId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

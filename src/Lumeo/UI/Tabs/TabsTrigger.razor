@@ -109,10 +109,14 @@
             await Interop.RegisterPreventDefaultKeys(
                 _tabId,
                 keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
+
+    private bool _pdRegistered;
 
     public async ValueTask DisposeAsync()
     {
@@ -128,12 +132,14 @@
             Context.TabIds.Remove(_registeredValue);
         }
         Context.Reorder.Order.Remove(Value);
+        if (!_pdRegistered) return;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(_tabId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private string CssClass
