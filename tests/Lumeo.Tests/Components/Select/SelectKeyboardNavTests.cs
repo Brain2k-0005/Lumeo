@@ -251,8 +251,8 @@ public class SelectKeyboardNavTests : IAsyncLifetime
         var triggerId = cut.Find("button[role='combobox']").GetAttribute("id");
         Assert.False(string.IsNullOrEmpty(triggerId));
 
-        var registration = Assert.Single(_ctx.JSInterop.Invocations
-            .Where(i => i.Identifier == "registerClickOutside"));
+        var registration = Assert.Single(_ctx.JSInterop.Invocations,
+            i => i.Identifier == "registerClickOutside");
         Assert.Equal(triggerId, registration.Arguments[1]);
     }
 }

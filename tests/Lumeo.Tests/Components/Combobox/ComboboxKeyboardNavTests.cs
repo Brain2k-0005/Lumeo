@@ -310,8 +310,8 @@ public class ComboboxKeyboardNavTests : IAsyncLifetime
         var wrapperId = cut.Find("div.relative").GetAttribute("id");
         Assert.False(string.IsNullOrEmpty(wrapperId));
 
-        var registration = Assert.Single(_ctx.JSInterop.Invocations
-            .Where(i => i.Identifier == "registerClickOutside"));
+        var registration = Assert.Single(_ctx.JSInterop.Invocations,
+            i => i.Identifier == "registerClickOutside");
         Assert.Equal(wrapperId, registration.Arguments[1]);
     }
 }

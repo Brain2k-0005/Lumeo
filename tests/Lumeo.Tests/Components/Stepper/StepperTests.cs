@@ -166,6 +166,6 @@ public class StepperTests : IAsyncLifetime
             .Add(s => s.ActiveStep, 0)
             .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "One")));
 
-        Assert.Equal(1, cut.FindAll("[role='tab']").Count);
+        Assert.Single(cut.FindAll("[role='tab']"));
     }
 }
