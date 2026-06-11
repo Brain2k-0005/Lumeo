@@ -1,6 +1,6 @@
 @namespace Lumeo
 @using Lumeo.Services
-@implements IDisposable
+@implements IAsyncDisposable
 
 @{
     var itemContext = new MegaMenuItemContext(_itemId, _triggerId);
@@ -23,10 +23,15 @@
     }
     else
     {
+        @* keydown sits on the <li> (not the trigger button) so Escape also
+           catches events bubbling from focusable elements INSIDE the open
+           panel, per the overlay rules. *@
         <li role="none"
+            id="@_itemId"
             class="@CssClass"
             @onpointerenter="HandlePointerEnter"
             @onpointerleave="HandlePointerLeave"
+            @onkeydown="HandleKeyDown"
             @attributes="AdditionalAttributes">
             <button id="@_triggerId"
                     type="button"
@@ -35,8 +40,7 @@
                     aria-expanded="@(_isOpen ? "true" : "false")"
                     disabled="@Disabled"
                     class="@TriggerCssClass"
-                    @onclick="HandleClick"
-                    @onkeydown="HandleKeyDown">
+                    @onclick="HandleClick">
                 @if (Icon is not null)
                 {
                     <Blazicon Svg="@Icon" class="h-4 w-4" />
@@ -51,6 +55,8 @@
         </li>
     }
 </CascadingValue>
+
+@inject IComponentInteropService Interop
 
 @code {
     [CascadingParameter] public MegaMenu.MegaMenuContext Context { get; set; } = default!;
@@ -67,6 +73,8 @@
     private readonly DelayedDispatch _dispatch = new();
     private const int CloseDelay = 150;
 
+    private bool _clickOutsideRegistered;
+
     private bool _isOpen => Context?.ActiveItemId == _itemId;
 
     private string CssClass => Class ?? "";
@@ -78,6 +86,31 @@
     private string ChevronCssClass => Cx.Join(
         "h-3 w-3 transition-transform duration-200",
         Cx.When(_isOpen, "rotate-180"));
+
+    // Overlay rules: dismiss the open panel when the user clicks/taps outside
+    // the item. The <li> (_itemId) contains both the trigger and the panel, so
+    // inside-clicks never fire the handler; the trigger id is excluded as well
+    // so a trigger click only runs its own toggle instead of racing the
+    // outside-dismiss handler.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isOpen && !_clickOutsideRegistered)
+        {
+            await Interop.RegisterClickOutside(_itemId, _triggerId, async () =>
+            {
+                if (Context.ActiveItemId == _itemId)
+                {
+                    await Context.SetActiveItemId.InvokeAsync(null);
+                }
+                await InvokeAsync(StateHasChanged);
+            });
+            _clickOutsideRegistered = true;
+        }
+        else if (!_isOpen && _clickOutsideRegistered)
+        {
+            await CleanupClickOutside();
+        }
+    }
 
     // rc.44 — Approach B: pointer events gated to mouse only. Touch devices
     // open via @onclick on the inner trigger button, avoiding the
@@ -129,21 +162,30 @@
         }
     }
 
+    // Enter and Space are deliberately NOT handled here: the trigger is a
+    // native <button>, so the browser synthesizes a click for them and
+    // HandleClick performs the toggle. Toggling from keydown as well made
+    // keyboard activation a net no-op (keydown opened, the synthesized click
+    // immediately toggled the panel closed again).
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        switch (e.Key)
+        if (e.Key == "Escape")
         {
-            case "Enter":
-            case " ":
-                await HandleClick();
-                break;
-            case "Escape":
-                await Context.SetActiveItemId.InvokeAsync(null);
-                break;
+            await Context.SetActiveItemId.InvokeAsync(null);
         }
     }
 
-    public void Dispose() => _dispatch.Dispose();
+    private async Task CleanupClickOutside()
+    {
+        try { await Interop.UnregisterClickOutside(_itemId); } catch (JSDisconnectedException) { }
+        _clickOutsideRegistered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dispatch.Dispose();
+        if (_clickOutsideRegistered) await CleanupClickOutside();
+    }
 
     public record MegaMenuItemContext(string ItemId, string TriggerId);
 }

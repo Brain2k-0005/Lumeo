@@ -3,8 +3,10 @@
 
 @if (Context.OpenMenuId == MenuContext.MenuId)
 {
-    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
-        @ChildContent
+    <div id="@_contentId" role="menu" aria-orientation="vertical" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+        <CascadingValue Value="_keyNavGuard" IsFixed="true">
+            @ChildContent
+        </CascadingValue>
     </div>
 }
 
@@ -18,7 +20,9 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("menubar-content");
+    private readonly MenubarKeyNavGuard _keyNavGuard = new();
     private bool _registered;
+    private int _focusedIndex = -1;
 
     private string CssClass => Cx.Merge("fixed z-50 min-w-[12rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in", Class);
 
@@ -27,12 +31,22 @@
         if (Context.OpenMenuId == MenuContext.MenuId && !_registered)
         {
             await Interop.PositionFixed(_contentId, MenuContext.WrapperId, "start");
-            await Interop.RegisterClickOutside(_contentId, null, async () =>
+            // Exclude the menu wrapper (the trigger lives inside it) from the
+            // click-outside check. With a null exclusion, mousedown on the open
+            // trigger fired this close handler first and the trigger's own click
+            // then re-opened the menu — the open trigger could never close it.
+            await Interop.RegisterClickOutside(_contentId, MenuContext.WrapperId, async () =>
             {
                 await Context.SetOpenMenuId.InvokeAsync(null);
                 await InvokeAsync(StateHasChanged);
             });
             _registered = true;
+            _focusedIndex = -1;
+
+            // Move focus to the menu container so Escape/ArrowUp/ArrowDown reach
+            // the @onkeydown handler. Without this, focus stays on the trigger
+            // button and keyboard nav silently breaks (per WAI-ARIA menu pattern).
+            try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
         }
         else if (Context.OpenMenuId != MenuContext.MenuId && _registered)
         {
@@ -42,9 +56,67 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape")
+        // An open submenu trigger may already have consumed this key (Blazor
+        // cannot stopPropagation for a single key) — see MenubarKeyNavGuard.
+        if (_keyNavGuard.Consumed)
         {
-            await Context.SetOpenMenuId.InvokeAsync(null);
+            _keyNavGuard.Consumed = false;
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case "Escape":
+                await Context.SetOpenMenuId.InvokeAsync(null);
+                break;
+            case "ArrowLeft":
+                // WAI-ARIA menubar: Left/Right inside an open menu close it and
+                // open the previous/next menubar menu.
+                Context.NavigateMenus(-1);
+                break;
+            case "ArrowRight":
+                Context.NavigateMenus(1);
+                break;
+            case "ArrowDown":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = (_focusedIndex + 1) % count;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
+            case "ArrowUp":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = _focusedIndex <= 0 ? count - 1 : _focusedIndex - 1;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
+            case "Home":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = 0;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
+            case "End":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0)
+                    {
+                        _focusedIndex = count - 1;
+                        await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex);
+                    }
+                    break;
+                }
         }
     }
 
@@ -58,5 +130,19 @@
     public async ValueTask DisposeAsync()
     {
         if (_registered) await Cleanup();
+    }
+
+    /// <summary>
+    /// Cascaded to submenu components so they can mark a navigation key as
+    /// handled BEFORE it bubbles up to this menu's @onkeydown. Blazor cannot
+    /// conditionally stopPropagation per key, and a blanket stopPropagation on
+    /// the submenu trigger would also swallow the Up/Down/Escape keys this
+    /// menu must keep handling. Without the guard, ArrowRight on a submenu
+    /// trigger would open the submenu AND move the menubar to the next menu,
+    /// unmounting the submenu that just opened.
+    /// </summary>
+    public sealed class MenubarKeyNavGuard
+    {
+        public bool Consumed { get; set; }
     }
 }

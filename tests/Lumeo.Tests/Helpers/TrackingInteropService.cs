@@ -36,13 +36,45 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
 
+    // Menu family tracking — click-outside registrations (with their trigger
+    // exclusion), focus calls and item-nav calls, so tests can assert the
+    // overlay/keyboard wiring without a real DOM.
+    private readonly List<(string ElementId, string? TriggerElementId, Func<Task> Handler)> _clickOutsideRegistrations = new();
+    private readonly List<string> _clickOutsideUnregistrations = new();
+    private readonly List<string> _focusElementCalls = new();
+    private readonly List<(string ContainerId, int Index)> _focusMenuItemCalls = new();
+
+    public IReadOnlyList<(string ElementId, string? TriggerElementId, Func<Task> Handler)> ClickOutsideRegistrations => _clickOutsideRegistrations;
+    public IReadOnlyList<string> ClickOutsideUnregistrations => _clickOutsideUnregistrations;
+    public IReadOnlyList<string> FocusElementCalls => _focusElementCalls;
+    public IReadOnlyList<(string ContainerId, int Index)> FocusMenuItemCalls => _focusMenuItemCalls;
+
+    /// <summary>Value returned by GetMenuItemCount; defaults to 0 (= no-op nav).</summary>
+    public int MenuItemCount { get; set; }
+
     // ---- All remaining members are silent no-ops ----
 
-    public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterClickOutside(string elementId) => ValueTask.CompletedTask;
-    public ValueTask FocusElement(string elementId) => ValueTask.CompletedTask;
-    public ValueTask FocusMenuItemByIndex(string containerId, int index) => ValueTask.CompletedTask;
-    public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(0);
+    public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)
+    {
+        _clickOutsideRegistrations.Add((elementId, triggerElementId, handler));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterClickOutside(string elementId)
+    {
+        _clickOutsideUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask FocusElement(string elementId)
+    {
+        _focusElementCalls.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask FocusMenuItemByIndex(string containerId, int index)
+    {
+        _focusMenuItemCalls.Add((containerId, index));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(MenuItemCount);
     public ValueTask LockScroll() => ValueTask.CompletedTask;
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
