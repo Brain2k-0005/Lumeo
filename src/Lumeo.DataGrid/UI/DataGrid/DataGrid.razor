@@ -928,6 +928,14 @@
     // edits are not stomped on the next render.
     private string? _seededGroupBy;
     private string? _seededGroupByFieldsKey;
+    // True when the last parameter seed had to drop requested group fields
+    // because their columns weren't registered yet (declarative
+    // DataGridColumnDef children initialize AFTER the grid's first
+    // OnParametersSetAsync). AddColumnDef uses this to re-seed when the
+    // missing column arrives — without it the seed-key short-circuit pinned
+    // an empty grouping forever and GroupBy silently did nothing for
+    // markup-declared columns.
+    private bool _groupSeedIncomplete;
     private List<DataGridGroupNode<TItem>> _groupedTree = new();
     private HashSet<string> _expandedGroupPaths = new();
     private HashSet<string> _knownGroupPaths = new();
@@ -1083,6 +1091,20 @@
 
         _columnDefs.Add(column);
         SyncOrderedColumns();
+        // If the parameter seed ran before this column existed and dropped a
+        // requested group field because of it, re-seed now that the column is
+        // here and rebuild the row set so GroupBy/GroupByFields take effect
+        // for declarative columns. Guarded by _groupSeedIncomplete so runtime
+        // group-panel edits are never stomped by late column registrations.
+        if (_groupSeedIncomplete && column.Field is not null
+            && (GroupBy == column.Field || GroupByFields?.Contains(column.Field) == true))
+        {
+            _seededGroupBy = null;
+            _seededGroupByFieldsKey = null;
+            SyncGroupFieldsFromParameters();
+            if (ServerMode) RegroupServerItems();
+            else ProcessClientData();
+        }
         // DataGridColumnDef children register themselves from their own
         // OnInitialized, which runs AFTER the parent has already built its
         // render tree with an empty column list. Without this nudge the
@@ -1600,12 +1622,17 @@
         _seededGroupByFieldsKey = byFieldsKey;
         _seededGroupBy = GroupBy;
 
-        _runtimeGroupFields = (GroupByFields is { Count: > 0 }
+        var requested = (GroupByFields is { Count: > 0 }
             ? GroupByFields.ToList()
             : (!string.IsNullOrEmpty(GroupBy) ? new List<string> { GroupBy! } : new List<string>()))
-            .Where(f => EffectiveColumns.Any(c => c.Field == f))
             .Distinct()
             .ToList();
+        _runtimeGroupFields = requested
+            .Where(f => EffectiveColumns.Any(c => c.Field == f))
+            .ToList();
+        // Fields can be dropped here merely because their declarative column
+        // hasn't registered yet — flag it so AddColumnDef re-seeds on arrival.
+        _groupSeedIncomplete = _runtimeGroupFields.Count < requested.Count;
         _expandedGroupPaths.Clear();
         _knownGroupPaths.Clear();
         _expandedGroups.Clear();
