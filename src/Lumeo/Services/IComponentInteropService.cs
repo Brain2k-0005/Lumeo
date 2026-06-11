@@ -66,6 +66,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Floating Position
     ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
+    /// <summary>
+    /// 3.12.x — extended overload with an explicit trigger→content gap in pixels
+    /// (Tooltip <c>Offset</c>). The default implementation ignores the offset and
+    /// falls back to the 5-arg overload (JS hardcoded 4px) so existing
+    /// implementations keep compiling unchanged.
+    /// </summary>
+    ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
+        PositionFixed(contentId, referenceId, align, matchWidth, side);
     ValueTask UnpositionFixed(string contentId);
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);

@@ -88,6 +88,9 @@
         _ => "text-sm text-muted-foreground"
     };
 
+    private const System.Globalization.NumberStyles ParseStyles =
+        System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands;
+
     private string FormattedValue
     {
         get
@@ -95,11 +98,30 @@
             if (Value is null) return "";
             if (Precision.HasValue)
             {
-                // Accept either invariant or the user's culture for the input string (both
-                // "1234.5" and "1234,5" parse for a de-DE user). Render via the effective
-                // culture so the thousands/decimal separators match the request locale.
-                if (double.TryParse(Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numericValue)
-                    || double.TryParse(Value, System.Globalization.NumberStyles.Any, EffectiveCulture, out numericValue))
+                // Parse order (the old invariant-FIRST + NumberStyles.Any order read
+                // de-DE "1234,5" as 12345 — ',' taken as an invariant group separator):
+                //
+                // 1. When the string contains exactly one '.' and no ',' it is treated
+                //    as an invariant decimal ("1234.5" stays 1234.5 even under de-DE,
+                //    where a culture-first parse would read '.' as grouping → 12345).
+                //    Trade-off, documented: a de-DE group-only string like "1.234"
+                //    therefore parses as 1.234, not 1234.
+                // 2. Otherwise the component's EffectiveCulture wins (de-DE "1234,5"
+                //    → 1234.5; "1.234,56" → 1234.56).
+                // 3. Invariant as the last-resort fallback.
+                //
+                // Render via the effective culture so separators match the locale.
+                var looksInvariantDecimal =
+                    Value.Count(ch => ch == '.') == 1 && !Value.Contains(',');
+
+                if (looksInvariantDecimal
+                    && double.TryParse(Value, ParseStyles, System.Globalization.CultureInfo.InvariantCulture, out var numericValue))
+                {
+                    return numericValue.ToString($"N{Precision.Value}", EffectiveCulture);
+                }
+
+                if (double.TryParse(Value, ParseStyles, EffectiveCulture, out numericValue)
+                    || double.TryParse(Value, ParseStyles, System.Globalization.CultureInfo.InvariantCulture, out numericValue))
                 {
                     return numericValue.ToString($"N{Precision.Value}", EffectiveCulture);
                 }

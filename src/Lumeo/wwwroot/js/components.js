@@ -353,13 +353,15 @@ export async function attachOverlaySlideEnd(elementId) {
 
 const positionCleanups = new Map();
 
-export function positionFixed(contentId, referenceId, align, matchWidth, side) {
+export function positionFixed(contentId, referenceId, align, matchWidth, side, offset) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
     if (!content || !reference) return;
 
     const resolvedSide = side || 'bottom';
-    const gap = 4;
+    // Trigger->content gap. Callers that don't pass an offset (legacy 5-arg
+    // interop path) keep the historical 4px default.
+    const gap = (typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) ? offset : 4;
 
     // Clean up any previous listener for this content
     if (positionCleanups.has(contentId)) {
