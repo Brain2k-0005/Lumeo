@@ -29,7 +29,10 @@
                     @Title
                 }
             </span>
-            <div class="flex items-center gap-1">
+            @* stopPropagation: a pointerdown on the control buttons must not start
+               a drag — and must not capture the pointer on the title bar, which
+               would retarget the subsequent click away from the button. *@
+            <div class="flex items-center gap-1" @onpointerdown:stopPropagation="true">
                 @if (ShowMinimize)
                 {
                     <button type="button"
@@ -80,7 +83,8 @@
                the handle compresses to a 16×16 corner so it doesn't intrude on
                the window's content area. Inner SVG stays a fixed 16×16 visual
                regardless of hit-area size so the chevron glyph doesn't scale. *@
-            <div class="absolute bottom-0 right-0 flex items-end justify-end w-11 h-11 sm:w-4 sm:h-4 cursor-se-resize opacity-40 hover:opacity-80"
+            <div id="@_resizeHandleId"
+                 class="absolute bottom-0 right-0 flex items-end justify-end w-11 h-11 sm:w-4 sm:h-4 cursor-se-resize opacity-40 hover:opacity-80"
                  @onpointerdown="HandleResizePointerDown"
                  @onpointermove="HandlePointerMove"
                  @onpointerup="HandlePointerUp"
@@ -189,6 +193,7 @@ else if (Open && _maximized)
     private readonly string _windowId = LumeoIds.New("window");
     private readonly string _titleBarId = LumeoIds.New("window-titlebar");
     private readonly string _titleId = LumeoIds.New("window-title");
+    private readonly string _resizeHandleId = LumeoIds.New("window-resize");
 
     private bool _minimized;
     private bool _maximized;
@@ -196,6 +201,7 @@ else if (Open && _maximized)
     // Drag state (pointer-events-based; viewport dimensions fetched via JS once per drag start)
     private bool _isDragging;
     private bool _isResizing;
+    private long _activePointerId;
     private double _posX;
     private double _posY;
     private double _width;
@@ -303,24 +309,33 @@ else if (Open && _maximized)
         if (!Draggable) return;
         _isDragging = true;
         _isResizing = false;
+        _activePointerId = e.PointerId;
         _dragStartX = e.ClientX;
         _dragStartY = e.ClientY;
         _dragStartPosX = _posX;
         _dragStartPosY = _posY;
+        // Capture the pointer on the title bar (same pattern as SplitterDivider):
+        // without capture, a fast drag leaves the element, pointermove stops
+        // firing and a pointerup outside is lost — _isDragging stayed true and
+        // the window glued itself to the cursor on the next hover.
+        await Interop.SetPointerCaptureOnElement(_titleBarId, e.PointerId);
         // Fetch current viewport size at drag-start so the clamp in HandlePointerMove
         // always reflects the live viewport (handles viewport resize between drags).
         await FetchAndClampToViewportAsync();
     }
 
-    private void HandleResizePointerDown(PointerEventArgs e)
+    private async Task HandleResizePointerDown(PointerEventArgs e)
     {
         if (!Resizable) return;
         _isResizing = true;
         _isDragging = false;
+        _activePointerId = e.PointerId;
         _dragStartX = e.ClientX;
         _dragStartY = e.ClientY;
         _dragStartPosX = _width;
         _dragStartPosY = _height;
+        // Same capture rationale as the title-bar drag above.
+        await Interop.SetPointerCaptureOnElement(_resizeHandleId, e.PointerId);
     }
 
     private void HandlePointerMove(PointerEventArgs e)
@@ -362,8 +377,16 @@ else if (Open && _maximized)
         }
     }
 
-    private void HandlePointerUp(PointerEventArgs e)
+    private async Task HandlePointerUp(PointerEventArgs e)
     {
+        if (_isDragging)
+        {
+            await Interop.ReleasePointerCaptureOnElement(_titleBarId, _activePointerId);
+        }
+        else if (_isResizing)
+        {
+            await Interop.ReleasePointerCaptureOnElement(_resizeHandleId, _activePointerId);
+        }
         _isDragging = false;
         _isResizing = false;
     }

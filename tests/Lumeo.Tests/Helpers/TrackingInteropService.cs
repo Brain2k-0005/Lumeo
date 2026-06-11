@@ -114,8 +114,24 @@ public sealed class TrackingInteropService : IComponentInteropService
         _wheelScrollToCalls.Add(top);
         return ValueTask.CompletedTask;
     }
-    public ValueTask SetPointerCaptureOnElement(string elementId, long pointerId) => ValueTask.CompletedTask;
-    public ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId) => ValueTask.CompletedTask;
+
+    // Pointer capture tracking — used by Window drag/resize tests to assert the
+    // capture-on-pointerdown / release-on-pointerup contract.
+    private readonly List<(string ElementId, long PointerId)> _pointerCaptures = new();
+    private readonly List<(string ElementId, long PointerId)> _pointerReleases = new();
+    public IReadOnlyList<(string ElementId, long PointerId)> PointerCaptureCalls => _pointerCaptures;
+    public IReadOnlyList<(string ElementId, long PointerId)> PointerReleaseCalls => _pointerReleases;
+
+    public ValueTask SetPointerCaptureOnElement(string elementId, long pointerId)
+    {
+        _pointerCaptures.Add((elementId, pointerId));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId)
+    {
+        _pointerReleases.Add((elementId, pointerId));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterDrawerSwipe(string elementId) => ValueTask.CompletedTask;

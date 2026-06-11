@@ -3,9 +3,14 @@
 
 <div id="@_handleId"
      role="separator"
+     aria-orientation="@(IsHorizontal ? "vertical" : "horizontal")"
+     aria-valuenow="@LeadingPanelValue"
+     aria-valuemin="@LeadingPanelMin"
+     aria-valuemax="@LeadingPanelMax"
      tabindex="0"
      class="@CssClass"
      data-panel-group-direction="@DirectionString"
+     @onkeydown="OnKeyDown"
      @attributes="AdditionalAttributes">
     @if (WithHandle)
     {
@@ -25,6 +30,7 @@
 </div>
 
 @inject IComponentInteropService Interop
+@inject ThemeService Theme
 
 @code {
     [CascadingParameter] public ResizablePanelGroup.ResizablePanelGroupContext Context { get; set; } = default!;
@@ -35,8 +41,41 @@
 
     private readonly string _handleId = LumeoIds.New("resizable-handle");
 
+    private bool IsHorizontal => Context?.Direction == Lumeo.Orientation.Horizontal;
+
     private string DirectionString =>
         Context.Direction == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
+
+    // aria-valuenow/min/max describe the LEADING panel (PanelIndex) — the same
+    // number drags and arrow keys steer. Mirrors SplitterDivider: min/max must
+    // account for BOTH neighbours, since the leading panel can't grow past the
+    // point where the trailing panel would drop below its MinSize (and vice
+    // versa) — HandleDrag clamps to exactly these limits.
+    private int LeadingPanelValue => (int)Math.Round(Context?.GetPanelSize(PanelIndex) ?? 0);
+
+    private int LeadingPanelMin
+    {
+        get
+        {
+            if (Context is null) return 0;
+            var (ownMin, _) = Context.GetPanelConstraints(PanelIndex);
+            var (_, trailingMax) = Context.GetPanelConstraints(PanelIndex + 1);
+            var pairTotal = Context.GetPanelSize(PanelIndex) + Context.GetPanelSize(PanelIndex + 1);
+            return (int)Math.Round(Math.Max(ownMin, pairTotal - trailingMax));
+        }
+    }
+
+    private int LeadingPanelMax
+    {
+        get
+        {
+            if (Context is null) return 100;
+            var (_, ownMax) = Context.GetPanelConstraints(PanelIndex);
+            var (trailingMin, _) = Context.GetPanelConstraints(PanelIndex + 1);
+            var pairTotal = Context.GetPanelSize(PanelIndex) + Context.GetPanelSize(PanelIndex + 1);
+            return (int)Math.Round(Math.Min(ownMax, pairTotal - trailingMin));
+        }
+    }
 
     private string CssClass =>
         Context.Direction == Lumeo.Orientation.Horizontal
@@ -64,9 +103,46 @@
                     await InvokeAsync(StateHasChanged);
                 }
             );
+            // Suppress page scroll for the resize arrows ONLY — a blanket
+            // @onkeydown:preventDefault on a tabindex="0" element also
+            // cancels Tab: a WCAG 2.1.2 keyboard trap (same fix as
+            // SplitterDivider).
+            var keys = IsHorizontal
+                ? new[] { "ArrowLeft", "ArrowRight" }
+                : new[] { "ArrowUp", "ArrowDown" };
+            await Interop.RegisterPreventDefaultKeys(
+                _handleId,
+                keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+    }
+
+    // Keyboard resize: arrow keys move the handle by a fixed 10px step through
+    // the same group resize path used by pointer drags (min/max clamping
+    // happens there). Page scroll for the arrows is suppressed via the
+    // key-selective JS registration above (Tab must pass). In RTL,
+    // ArrowLeft/Right are swapped for horizontal groups so the key that
+    // points toward the visual "start" always shrinks the leading panel.
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (Context is null) return;
+        const double step = 10.0;
+
+        var isRtl = IsHorizontal && Theme.CurrentDirection == LayoutDirection.Rtl;
+        var delta = (IsHorizontal, e.Key) switch
+        {
+            (true,  "ArrowLeft")  => isRtl ?  step : -step,
+            (true,  "ArrowRight") => isRtl ? -step :  step,
+            (false, "ArrowUp")    => -step,
+            (false, "ArrowDown")  =>  step,
+            _ => 0.0
+        };
+
+        if (delta != 0.0)
+        {
+            await Context.OnHandleDrag.InvokeAsync((PanelIndex, delta));
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -74,7 +150,9 @@
         try
         {
             await Interop.UnregisterResizeHandle(_handleId);
+            await Interop.UnregisterPreventDefaultKeys(_handleId);
         }
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 }
