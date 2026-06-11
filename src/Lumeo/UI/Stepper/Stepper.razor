@@ -201,6 +201,14 @@
     // notifies subscribers AND re-renders ChildContent), so registration must
     // be idempotent per child INSTANCE. The previous slot-index scheme
     // double-registered every step on re-renders (duplicated indicators).
+    // Registration order of step instances. Reordering dynamic steps (e.g.
+    // inserting before existing ones without @key) keeps first-registration
+    // order, not markup order — Blazor doesn't re-run children's
+    // OnParametersSet in document order when instances are reused, so render
+    // timing can't reconstruct position reliably. Static and appended steps
+    // (the overwhelmingly common case) are correct; document this limitation
+    // rather than ship an order heuristic that's wrong in subtle ways. Use
+    // @key on the steps if you reorder them dynamically.
     private readonly List<StepperStep> _stepOwners = new();
     private readonly Dictionary<StepperStep, StepperStep.StepRegistration> _stepData = new();
     internal int _stepCount;

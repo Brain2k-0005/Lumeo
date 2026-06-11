@@ -74,6 +74,7 @@
     private const int CloseDelay = 150;
 
     private bool _clickOutsideRegistered;
+    private string? _clickOutsideId;
 
     private bool _isOpen => Context?.ActiveItemId == _itemId;
 
@@ -96,7 +97,12 @@
     {
         if (_isOpen && !_clickOutsideRegistered)
         {
-            await Interop.RegisterClickOutside(_itemId, _triggerId, async () =>
+            // Register against the rendered id — a consumer `id` in the splat
+            // overrides _itemId on the <li>, so getElementById(_itemId) would
+            // return null and the panel would never close on outside click
+            // (Codex P2). _itemId stays the logical key for ActiveItemId.
+            _clickOutsideId = LumeoIds.Effective(AdditionalAttributes, _itemId);
+            await Interop.RegisterClickOutside(_clickOutsideId, _triggerId, async () =>
             {
                 if (Context.ActiveItemId == _itemId)
                 {
@@ -177,7 +183,7 @@
 
     private async Task CleanupClickOutside()
     {
-        try { await Interop.UnregisterClickOutside(_itemId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterClickOutside(_clickOutsideId ?? _itemId); } catch (JSDisconnectedException) { }
         _clickOutsideRegistered = false;
     }
 

@@ -2,7 +2,7 @@
 
 @if (Label is not null && !InsideFormField)
 {
-    <label for="@_id" class="text-sm font-medium leading-none">
+    <label for="@EffectiveId" class="text-sm font-medium leading-none">
         @Label
         @if (Required)
         {
@@ -12,7 +12,7 @@
 }
 
 <div class="inline-flex items-center">
-    <button type="button" id="@_id" role="switch"
+    <button type="button" id="@EffectiveId" role="switch"
             aria-checked="@Checked.ToString().ToLower()"
             aria-label="@AriaLabelValue"
             aria-required="@Required.ToString().ToLower()"
@@ -63,6 +63,10 @@
     // Links the visible <label for> to the switch button (Checkbox pattern) so
     // clicking the label toggles the switch and AT announces the association.
     private readonly string _id = LumeoIds.New("switch");
+    // A consumer `id` in the splat overrides the generated one on the button;
+    // the label's `for` must point at the SAME rendered id or the association
+    // (click-to-toggle, AT) breaks for custom-id switches (Codex P3).
+    private string EffectiveId => LumeoIds.Effective(AdditionalAttributes, _id);
 
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }

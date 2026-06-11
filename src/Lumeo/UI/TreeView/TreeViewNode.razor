@@ -1,5 +1,7 @@
 @namespace Lumeo
 @typeparam T
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
 
 <div class="@RootClass" role="treeitem"
      id="@NodeId"
@@ -14,7 +16,6 @@
      @onblur="HandleBlur"
      @onkeydown="HandleKeyDown"
      @onkeydown:stopPropagation="true"
-     @onkeydown:preventDefault="@_preventKey"
      @attributes="AdditionalAttributes">
 
     <div class="@NodeClass" style="padding-left: @(Level * 16)px" @onclick="HandleClick">
@@ -126,7 +127,6 @@
     // reached with the arrow keys. Without a cascaded tree context (node rendered
     // standalone) fall back to the legacy root-level behavior.
     private bool _isFocused;
-    private bool _preventKey;
     private string TabIndex => Context is not null
         ? Context.Tree.GetTabIndex(Item).ToString()
         : ((_isFocused || Level == 0) ? "0" : "-1");
@@ -270,10 +270,10 @@
     // which knows the flattened visible order.
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        // Rendered into @onkeydown:preventDefault for the next event (same
-        // pattern as RadioGroupItem) so focus-moving keys don't scroll the page.
-        _preventKey = e.Key is "ArrowDown" or "ArrowUp" or "Home" or "End";
-
+        // Page-scroll for the focus-moving keys is suppressed synchronously in
+        // JS (see OnAfterRenderAsync) — the former render-time _preventKey flag
+        // lagged one event, so the first ArrowDown/Up/Home/End still scrolled
+        // the page while focus also moved (Codex P2).
         switch (e.Key)
         {
             case "ArrowDown":
@@ -344,5 +344,41 @@
                 CascadeChecked(item.Children, value);
             }
         }
+    }
+
+    // Suppress page scroll for the focus-moving keys synchronously in JS,
+    // against the id the DOM actually carries (a consumer `id` in the splat
+    // wins over NodeId). Re-registered when that id changes; prerender-safe.
+    private string? _pdRegisteredId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var id = LumeoIds.Effective(AdditionalAttributes, NodeId);
+        if (_pdRegisteredId == id) return;
+        try
+        {
+            if (_pdRegisteredId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId);
+            await Interop.RegisterPreventDefaultKeys(id, new[]
+            {
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                new Lumeo.Services.PreventDefaultKeyRule("End"),
+            });
+            _pdRegisteredId = id;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pdRegisteredId is null) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

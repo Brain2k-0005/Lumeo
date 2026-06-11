@@ -43,6 +43,24 @@
             _registered = true;
             _focusedIndex = -1;
 
+            // The focused container consumes Arrow/Home/End to move menu focus,
+            // but those keys also scroll the page by default — suppress them in
+            // JS so keyboard menu navigation doesn't scroll the page behind the
+            // open menu (Codex P2). Escape has no scroll default.
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_contentId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight"),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                    new Lumeo.Services.PreventDefaultKeyRule("End"),
+                });
+            }
+            catch (JSDisconnectedException) { }
+
             // Move focus to the menu container so Escape/ArrowUp/ArrowDown reach
             // the @onkeydown handler. Without this, focus stays on the trigger
             // button and keyboard nav silently breaks (per WAI-ARIA menu pattern).
@@ -124,6 +142,7 @@
     {
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
 

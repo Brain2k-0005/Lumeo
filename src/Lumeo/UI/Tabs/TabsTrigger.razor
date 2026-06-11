@@ -97,12 +97,15 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
+        // Re-register whenever Orientation changes (not just firstRender): a
+        // first-render-only registration kept suppressing the original axis
+        // after a runtime orientation switch, so a now-vertical tablist still
+        // scrolled the page on Up/Down while Left/Right stayed prevented
+        // (Codex P2). Key-selective preventDefault in JS also replaced the
+        // former render-time _preventKey flag, which lagged one event behind.
+        if (_pdRegistered && _registeredOrientation == Context.Orientation) return;
         try
         {
-            // Key-selective preventDefault in JS: the former render-time
-            // _preventKey flag lagged one event behind — the first arrow press
-            // scrolled the page and the first Tab AFTER arrow nav was swallowed.
             var keys = Context.Orientation == Lumeo.Orientation.Horizontal
                 ? new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
                 : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
@@ -110,6 +113,7 @@
                 _tabId,
                 keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
             _pdRegistered = true;
+            _registeredOrientation = Context.Orientation;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -117,6 +121,7 @@
     }
 
     private bool _pdRegistered;
+    private Lumeo.Orientation? _registeredOrientation;
 
     public async ValueTask DisposeAsync()
     {
