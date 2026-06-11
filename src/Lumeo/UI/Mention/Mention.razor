@@ -183,10 +183,15 @@
         switch (e.Key)
         {
             case "ArrowDown":
-                _activeIndex = (_activeIndex + 1) % filtered.Count;
+                // Guard: the dropdown stays logically open while zero options
+                // match (markup hides via FilteredOptions.Any()) — the modulo
+                // would throw DivideByZeroException and kill the circuit.
+                if (filtered.Count > 0)
+                    _activeIndex = (_activeIndex + 1) % filtered.Count;
                 break;
             case "ArrowUp":
-                _activeIndex = (_activeIndex - 1 + filtered.Count) % filtered.Count;
+                if (filtered.Count > 0)
+                    _activeIndex = (_activeIndex - 1 + filtered.Count) % filtered.Count;
                 break;
             case "Enter" or "Tab":
                 if (filtered.Count > 0 && _activeIndex < filtered.Count)
@@ -245,12 +250,56 @@
         StateHasChanged();
     }
 
+    // Tracks whether the dropdown's key suppression is currently registered.
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // While the suggestion dropdown is open, Enter/Tab select and the
+        // arrows move the highlight — but their textarea defaults fired FIRST
+        // (newline inserted, caret moved) and SelectOption then read the moved
+        // caret, mangling the insertion. Suppress those defaults in JS exactly
+        // while the dropdown is open; when closed, Enter/Tab/arrows behave
+        // natively again. (Conditional attach pattern — same as TabsContent's
+        // swipe registration.)
+        try
+        {
+            if (_showDropdown && !_pdRegistered)
+            {
+                _pdRegistered = true;
+                await Interop.RegisterPreventDefaultKeys(
+                    _textareaId,
+                    new[]
+                    {
+                        new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true),
+                        new Lumeo.Services.PreventDefaultKeyRule("Tab"),
+                        new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                        new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                    });
+            }
+            else if (!_showDropdown && _pdRegistered)
+            {
+                _pdRegistered = false;
+                await Interop.UnregisterPreventDefaultKeys(_textareaId);
+            }
+        }
+        catch (JSDisconnectedException) { _pdRegistered = false; }
+        catch (ObjectDisposedException) { _pdRegistered = false; }
+        catch (InvalidOperationException) { _pdRegistered = false; } // prerender
+    }
+
     public async ValueTask DisposeAsync()
     {
         _blurDelayCts?.Cancel();
         _blurDelayCts?.Dispose();
         _blurDelayCts = null;
-        await Task.CompletedTask;
+        try
+        {
+            if (_pdRegistered)
+                await Interop.UnregisterPreventDefaultKeys(_textareaId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 
     public record MentionOption(string Label, string Value, string? Avatar = null, string? Description = null);

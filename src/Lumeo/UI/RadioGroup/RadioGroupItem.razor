@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
 @if (!string.IsNullOrEmpty(Description))
 {
@@ -12,7 +13,6 @@
                 class="@CssClass"
                 @onclick="Select"
                 @onkeydown="HandleKeyDown"
-                @onkeydown:preventDefault="@_preventKey"
                 disabled="@Disabled"
                 @attributes="AdditionalAttributes">
             @if (IsSelected)
@@ -40,7 +40,6 @@ else
             class="@CssClass"
             @onclick="Select"
             @onkeydown="HandleKeyDown"
-            @onkeydown:preventDefault="@_preventKey"
             disabled="@Disabled"
             @attributes="AdditionalAttributes">
         @if (IsSelected)
@@ -69,26 +68,64 @@ else
     // without a sibling <label> or ChildContent that provides the label text).
     private string EffectiveAriaLabel => !string.IsNullOrEmpty(AriaLabel) ? AriaLabel : Value;
     private bool IsSelected => Context.Value == Value;
-    private bool _preventKey;
 
     private int Tabindex
     {
         get
         {
             if (Context.Value == Value) return 0;
-            if (string.IsNullOrEmpty(Context.Value) && Context.ItemValues.FirstOrDefault() == Value) return 0;
+            // No selection yet: the first ENABLED radio is the tab stop.
+            if (string.IsNullOrEmpty(Context.Value)
+                && Context.ItemValues.FirstOrDefault(v => !IsItemDisabled(v)) == Value) return 0;
             return -1;
         }
     }
 
+    private bool IsItemDisabled(string value) =>
+        Context.ItemDisabled.TryGetValue(value, out var d) && d;
+
     private string CssClass => Cx.Merge("aspect-square h-4 w-4 shrink-0 cursor-pointer rounded-full border border-primary text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center", Class);
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
+        // Registered every parameter set (idempotent) so Disabled changes stay
+        // current for sibling arrow navigation; ownership-guarded re-key when
+        // Value changes so we never delete a sibling's live registration.
+        if (_registeredValue is not null && _registeredValue != Value
+            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
+        {
+            Context.ItemValues.Remove(_registeredValue);
+            Context.ItemIds.Remove(_registeredValue);
+            Context.ItemDisabled.Remove(_registeredValue);
+        }
         if (!Context.ItemValues.Contains(Value))
             Context.ItemValues.Add(Value);
         Context.ItemIds[Value] = _itemId;
+        Context.ItemDisabled[Value] = Disabled;
+        _registeredValue = Value;
     }
+
+    private string? _registeredValue;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Key-selective preventDefault: the former render-time _preventKey
+            // flag lagged one event — the first arrow press scrolled the page.
+            await Interop.RegisterPreventDefaultKeys(
+                _itemId,
+                new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft" }
+                    .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    private bool _pdRegistered;
 
     private async Task Select()
     {
@@ -100,19 +137,24 @@ else
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
+        // Space is NOT handled here: on a native <button> the browser
+        // synthesizes a click which already runs Select — the old explicit
+        // branch double-fired OnSelect.
         var items = Context.ItemValues;
         var idx = items.IndexOf(Value);
 
-        string? nextValue = e.Key switch
+        var direction = e.Key switch
         {
-            "ArrowDown" or "ArrowRight" => idx < items.Count - 1 ? items[idx + 1] : items[0],
-            "ArrowUp"   or "ArrowLeft"  => idx > 0 ? items[idx - 1] : items[^1],
-            _ => null
+            "ArrowDown" or "ArrowRight" => 1,
+            "ArrowUp" or "ArrowLeft" => -1,
+            _ => 0
         };
+        if (direction == 0 || Disabled) return;
 
-        _preventKey = e.Key is "ArrowDown" or "ArrowRight" or "ArrowUp" or "ArrowLeft";
-
-        if (nextValue is not null && !Disabled)
+        // WAI-ARIA radio group: arrows skip disabled radios (selecting one
+        // was possible before because only the CURRENT item was checked).
+        var nextValue = FindNextEnabled(items, idx, direction);
+        if (nextValue is not null)
         {
             await Context.OnSelect.InvokeAsync(nextValue);
             if (Context.ItemIds.TryGetValue(nextValue, out var nextId))
@@ -120,9 +162,41 @@ else
                 await Interop.FocusElement(nextId);
             }
         }
-        else if (e.Key == " ")
+    }
+
+    private string? FindNextEnabled(List<string> items, int currentIdx, int direction)
+    {
+        if (items.Count == 0) return null;
+        var idx = currentIdx;
+        for (var i = 0; i < items.Count; i++)
         {
-            await Select();
+            idx += direction;
+            if (idx < 0) idx = items.Count - 1;
+            else if (idx >= items.Count) idx = 0;
+            if (idx == currentIdx) return null;
+            if (!IsItemDisabled(items[idx])) return items[idx];
         }
+        return null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Conditionally-removed radios must leave the registry (ownership-
+        // guarded — see OnParametersSet).
+        if (_registeredValue is not null
+            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
+        {
+            Context.ItemValues.Remove(_registeredValue);
+            Context.ItemIds.Remove(_registeredValue);
+            Context.ItemDisabled.Remove(_registeredValue);
+        }
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_itemId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

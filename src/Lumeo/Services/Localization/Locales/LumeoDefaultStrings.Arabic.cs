@@ -344,5 +344,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "الملف «{0}» يتجاوز الحجم الأقصى {1}.",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "هل أنت متأكد؟",
+        ["ConfirmButton.Confirm"] = "متابعة",
+        ["ConfirmButton.Cancel"] = "إلغاء",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "المتاحة",
+        ["PickList.TargetHeader"] = "المحددة",
+        ["PickList.NoItems"] = "لا توجد عناصر",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "فتح",
+        ["FileManager.Rename"] = "إعادة تسمية",
+        ["FileManager.Delete"] = "حذف",
+        ["FileManager.Name"] = "الاسم",
+        ["FileManager.Size"] = "الحجم",
+        ["FileManager.Modified"] = "آخر تعديل",
+        ["FileManager.Loading"] = "جارٍ التحميل…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "مشغل الصوت",
+        ["AudioPlayer.Play"] = "تشغيل",
+        ["AudioPlayer.Pause"] = "إيقاف مؤقت",
+        ["AudioPlayer.Seek"] = "موضع التشغيل",
+        ["AudioPlayer.Mute"] = "كتم الصوت",
+        ["AudioPlayer.Unmute"] = "إلغاء كتم الصوت",
+        ["AudioPlayer.Download"] = "تنزيل الصوت",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "اللون",
+        ["Theme.Mode"] = "الوضع",
     };
 }

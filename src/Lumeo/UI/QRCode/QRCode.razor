@@ -12,10 +12,14 @@
         }
         @if (!string.IsNullOrEmpty(ImageSrc) && _moduleCount > 0)
         {
-            int center = _totalSize / 2;
-            int imgX = center - ImageSize / 2;
-            int imgY = center - ImageSize / 2;
-            <image href="@ImageSrc" x="@imgX" y="@imgY" width="@ImageSize" height="@ImageSize"
+            @* ImageSize is documented in PIXELS of the rendered Size-px box,
+               but the viewBox is in MODULE units (~21-77): using it raw made
+               the default 40 cover 60-130% of the code — unscannable. Scale
+               px → modules; invariant formatting (SVG rejects "13,8"). *@
+            double imgUnits = Size > 0 ? (double)ImageSize / Size * _totalSize : 0;
+            string imgDim = imgUnits.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            string imgPos = ((_totalSize - imgUnits) / 2).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            <image href="@ImageSrc" x="@imgPos" y="@imgPos" width="@imgDim" height="@imgDim"
                    preserveAspectRatio="xMidYMid meet" style="border-radius: 4px;" />
         }
     </svg>

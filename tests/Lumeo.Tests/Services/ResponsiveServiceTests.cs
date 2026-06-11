@@ -128,7 +128,7 @@ public class ResponsiveServiceTests
         public ValueTask LockScroll() => ValueTask.CompletedTask;
         public ValueTask UnlockScroll() => ValueTask.CompletedTask;
         public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
-        public ValueTask SetupFocusTrap(string elementId) => ValueTask.CompletedTask;
+        public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => ValueTask.CompletedTask;
         public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
         public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
         public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
@@ -169,6 +169,9 @@ public class ResponsiveServiceTests
         public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
         public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
         public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
+        public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
+        public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
+        public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
         public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
         public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
         public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;

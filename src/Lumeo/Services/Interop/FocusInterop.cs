@@ -29,9 +29,9 @@ internal sealed class FocusInterop
         await module.InvokeVoidAsync("unlockScroll");
     }
 
-    public async ValueTask SetupFocusTrap(IJSObjectReference module, string elementId)
+    public async ValueTask SetupFocusTrap(IJSObjectReference module, string elementId, string? initialFocusSelector = null)
     {
-        await module.InvokeVoidAsync("setupFocusTrap", elementId);
+        await module.InvokeVoidAsync("setupFocusTrap", elementId, initialFocusSelector);
     }
 
     public async ValueTask RemoveFocusTrap(IJSObjectReference module, string elementId)

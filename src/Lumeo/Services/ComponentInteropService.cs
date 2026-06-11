@@ -135,10 +135,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("setHtmlClass", className, active);
     }
 
-    public async ValueTask SetupFocusTrap(string elementId)
+    public async ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         var module = await GetModuleAsync();
-        await _focus.SetupFocusTrap(module, elementId);
+        await _focus.SetupFocusTrap(module, elementId, initialFocusSelector);
     }
 
     public async ValueTask RemoveFocusTrap(string elementId)
@@ -237,10 +237,13 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Floating Position ---
 
-    public async ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
+    public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
+        => PositionFixed(contentId, referenceId, align, matchWidth, side, 4);
+
+    public async ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset)
     {
         var module = await GetModuleAsync();
-        await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side);
+        await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
     }
 
     public async ValueTask UnpositionFixed(string contentId)
@@ -576,6 +579,20 @@ public sealed class ComponentInteropService : IComponentInteropService
     [JSInvokable]
     public async Task OnOtpPaste(string baseId, string digits) => await _utility.OnOtpPaste(baseId, digits);
 
+    // --- Selective keydown preventDefault ---
+
+    public async ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules)
+    {
+        var module = await GetModuleAsync();
+        await _utility.RegisterPreventDefaultKeys(module, elementId, rules);
+    }
+
+    public async ValueTask UnregisterPreventDefaultKeys(string elementId)
+    {
+        var module = await GetModuleAsync();
+        await _utility.UnregisterPreventDefaultKeys(module, elementId);
+    }
+
     // --- DataGrid Column Resize ---
 
     public async ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
@@ -619,6 +636,12 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         return await _floatingPosition.GetElementRectBySelector(module, selector);
+    }
+
+    public async ValueTask ScrollSelectorIntoView(string selector)
+    {
+        var module = await GetModuleAsync();
+        await _floatingPosition.ScrollSelectorIntoView(module, selector);
     }
 
     // --- Affix ---

@@ -339,5 +339,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "파일 \"{0}\"이(가) 최대 크기 {1}을(를) 초과합니다.",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "정말 진행하시겠습니까?",
+        ["ConfirmButton.Confirm"] = "계속",
+        ["ConfirmButton.Cancel"] = "취소",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "사용 가능",
+        ["PickList.TargetHeader"] = "선택됨",
+        ["PickList.NoItems"] = "항목 없음",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "열기",
+        ["FileManager.Rename"] = "이름 변경",
+        ["FileManager.Delete"] = "삭제",
+        ["FileManager.Name"] = "이름",
+        ["FileManager.Size"] = "크기",
+        ["FileManager.Modified"] = "수정일",
+        ["FileManager.Loading"] = "불러오는 중…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "오디오 플레이어",
+        ["AudioPlayer.Play"] = "재생",
+        ["AudioPlayer.Pause"] = "일시정지",
+        ["AudioPlayer.Seek"] = "재생 위치",
+        ["AudioPlayer.Mute"] = "음소거",
+        ["AudioPlayer.Unmute"] = "음소거 해제",
+        ["AudioPlayer.Download"] = "오디오 다운로드",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "색상",
+        ["Theme.Mode"] = "모드",
     };
 }

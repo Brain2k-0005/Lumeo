@@ -6,12 +6,14 @@ namespace Lumeo.Tests.Helpers;
 
 /// <summary>
 /// A test-only IComponentInteropService implementation where every method is a
-/// no-op except Vibrate(), RegisterTabSwipe(), and RegisterHorizontalSwipe(),
+/// no-op except Vibrate(), RegisterTabSwipe(), RegisterHorizontalSwipe(), and
+/// FocusElement() and the focus-trap pair (SetupFocusTrap/RemoveFocusTrap),
 /// which record each call so tests can assert lifecycle behaviour.
 /// </summary>
 public sealed class TrackingInteropService : IComponentInteropService
 {
     private readonly List<int> _vibrateArgs = new();
+    private readonly List<string> _focusedElementIds = new();
     private readonly List<string> _tabSwipeRegistrations = new();
     private readonly List<string> _tabSwipeUnregistrations = new();
     private readonly List<string> _horizontalSwipeRegistrations = new();
@@ -30,24 +32,76 @@ public sealed class TrackingInteropService : IComponentInteropService
     public IReadOnlyList<string> RegisterHorizontalSwipeElementIds => _horizontalSwipeRegistrations;
     public int UnregisterHorizontalSwipeCallCount => _horizontalSwipeUnregistrations.Count;
 
+    // Focus tracking (e.g. TreeView roving-tabindex keyboard navigation)
+    public IReadOnlyList<string> FocusedElementIds => _focusedElementIds;
+
+    // Focus trap tracking (overlay lifecycle: Dialog / AlertDialog / Sheet / Drawer)
+    private readonly List<(string ElementId, string? InitialFocusSelector)> _focusTrapSetups = new();
+    private readonly List<string> _focusTrapRemovals = new();
+    public IReadOnlyList<(string ElementId, string? InitialFocusSelector)> FocusTrapSetups => _focusTrapSetups;
+    public IReadOnlyList<string> FocusTrapRemovals => _focusTrapRemovals;
+
     public ValueTask Vibrate(int milliseconds)
     {
         _vibrateArgs.Add(milliseconds);
         return ValueTask.CompletedTask;
     }
 
+    // Menu family tracking — click-outside registrations (with their trigger
+    // exclusion), focus calls and item-nav calls, so tests can assert the
+    // overlay/keyboard wiring without a real DOM.
+    private readonly List<(string ElementId, string? TriggerElementId, Func<Task> Handler)> _clickOutsideRegistrations = new();
+    private readonly List<string> _clickOutsideUnregistrations = new();
+    private readonly List<string> _focusElementCalls = new();
+    private readonly List<(string ContainerId, int Index)> _focusMenuItemCalls = new();
+
+    public IReadOnlyList<(string ElementId, string? TriggerElementId, Func<Task> Handler)> ClickOutsideRegistrations => _clickOutsideRegistrations;
+    public IReadOnlyList<string> ClickOutsideUnregistrations => _clickOutsideUnregistrations;
+    public IReadOnlyList<string> FocusElementCalls => _focusElementCalls;
+    public IReadOnlyList<(string ContainerId, int Index)> FocusMenuItemCalls => _focusMenuItemCalls;
+
+    /// <summary>Value returned by GetMenuItemCount; defaults to 0 (= no-op nav).</summary>
+    public int MenuItemCount { get; set; }
+
     // ---- All remaining members are silent no-ops ----
 
-    public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterClickOutside(string elementId) => ValueTask.CompletedTask;
-    public ValueTask FocusElement(string elementId) => ValueTask.CompletedTask;
-    public ValueTask FocusMenuItemByIndex(string containerId, int index) => ValueTask.CompletedTask;
-    public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(0);
+    public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)
+    {
+        _clickOutsideRegistrations.Add((elementId, triggerElementId, handler));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterClickOutside(string elementId)
+    {
+        _clickOutsideUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask FocusElement(string elementId)
+    {
+        // Recorded in both views: menu tests assert via FocusElementCalls,
+        // TreeView roving-tabindex tests via FocusedElementIds.
+        _focusElementCalls.Add(elementId);
+        _focusedElementIds.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask FocusMenuItemByIndex(string containerId, int index)
+    {
+        _focusMenuItemCalls.Add((containerId, index));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(MenuItemCount);
     public ValueTask LockScroll() => ValueTask.CompletedTask;
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
-    public ValueTask SetupFocusTrap(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
+    public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
+    {
+        _focusTrapSetups.Add((elementId, initialFocusSelector));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask RemoveFocusTrap(string elementId)
+    {
+        _focusTrapRemovals.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
@@ -63,9 +117,36 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
     public ValueTask<double> WheelScrollTop(ElementReference element) => ValueTask.FromResult(0.0);
-    public ValueTask WheelScrollTo(ElementReference element, double top) => ValueTask.CompletedTask;
-    public ValueTask SetPointerCaptureOnElement(string elementId, long pointerId) => ValueTask.CompletedTask;
-    public ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId) => ValueTask.CompletedTask;
+
+    // Wheel-picker scroll tracking — used to assert that DateWheelPicker /
+    // TimeWheelPicker re-position their columns when the bound value changes
+    // externally (not just on first render).
+    private readonly List<double> _wheelScrollToCalls = new();
+    public int WheelScrollToCallCount => _wheelScrollToCalls.Count;
+    public IReadOnlyList<double> WheelScrollToTops => _wheelScrollToCalls;
+    public ValueTask WheelScrollTo(ElementReference element, double top)
+    {
+        _wheelScrollToCalls.Add(top);
+        return ValueTask.CompletedTask;
+    }
+
+    // Pointer capture tracking — used by Window drag/resize tests to assert the
+    // capture-on-pointerdown / release-on-pointerup contract.
+    private readonly List<(string ElementId, long PointerId)> _pointerCaptures = new();
+    private readonly List<(string ElementId, long PointerId)> _pointerReleases = new();
+    public IReadOnlyList<(string ElementId, long PointerId)> PointerCaptureCalls => _pointerCaptures;
+    public IReadOnlyList<(string ElementId, long PointerId)> PointerReleaseCalls => _pointerReleases;
+
+    public ValueTask SetPointerCaptureOnElement(string elementId, long pointerId)
+    {
+        _pointerCaptures.Add((elementId, pointerId));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId)
+    {
+        _pointerReleases.Add((elementId, pointerId));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterDrawerSwipe(string elementId) => ValueTask.CompletedTask;
@@ -107,6 +188,9 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
+    public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
+    public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
+    public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
     // Column resize tracking — used to assert that the JS pointerdown listener
     // is wired during the first render, not lazily on the first pointerdown
     // (the lazy path lost the originating event so the first drag was a no-op).

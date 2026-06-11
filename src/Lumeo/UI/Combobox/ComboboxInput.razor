@@ -239,11 +239,14 @@ else
                 break;
             case "Backspace":
                 // Tag-input convention: when the search field is empty and Multiple has
-                // selections, Backspace removes the last chip. Single mode is unchanged.
+                // selections, Backspace removes the most recently added chip. The parent
+                // tracks insertion order (MostRecentValue) because HashSet enumeration
+                // order is undefined — Values.Last() removed an arbitrary chip after any
+                // remove-then-add sequence. Single mode is unchanged.
                 if (Context.Multiple && string.IsNullOrEmpty(Context.SearchText) && Context.Values is { Count: > 0 })
                 {
-                    var last = Context.Values.Last();
-                    await Context.OnSelect.InvokeAsync(last);
+                    var newest = Context.MostRecentValue ?? Context.Values.Last();
+                    await Context.OnSelect.InvokeAsync(newest);
                 }
                 break;
         }

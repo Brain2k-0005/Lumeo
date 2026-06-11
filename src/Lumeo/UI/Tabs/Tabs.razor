@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, NavigateBySwipe, _reorderState);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -60,8 +60,10 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // Registry: value -> (tabId, panelId) — populated by TabsTrigger on first render
-    private readonly Dictionary<string, (string TabId, string PanelId)> _tabIds = new();
+    // Registry: value -> (tabId, panelId, disabled) — maintained by TabsTrigger
+    // (registered in OnParametersSet so Disabled changes stay current, removed
+    // on dispose so closable/conditional tabs don't leave keyboard ghosts).
+    private readonly Dictionary<string, (string TabId, string PanelId, bool Disabled)> _tabIds = new();
     // Set of tab values that have ever been the active tab — drives Lazy mode.
     private readonly HashSet<string> _activatedValues = new();
     // Ordered list of registered TabsContent values — used for swipe navigation.
@@ -85,6 +87,13 @@
     {
         if (!_contentOrder.Contains(value))
             _contentOrder.Add(value);
+    }
+
+    internal void UnregisterContent(string value)
+    {
+        // Closable/conditionally-removed panels must leave the swipe order,
+        // otherwise swipe navigation targets removed tabs (blank panel).
+        _contentOrder.Remove(value);
     }
 
     internal async Task NavigateBySwipe(string direction)
@@ -130,18 +139,19 @@
         EventCallback<string> SetValue,
         Lumeo.Orientation Orientation,
         TabsVariant Variant,
-        Dictionary<string, (string TabId, string PanelId)> TabIds,
+        Dictionary<string, (string TabId, string PanelId, bool Disabled)> TabIds,
         bool AnimatedIndicator,
         TabsRenderMode RenderMode,
         HashSet<string> ActivatedValues,
         bool SwipeEnabled,
         bool SwipeWrap,
         Action<string> RegisterContent,
+        Action<string> UnregisterContent,
         Func<string, Task> SwipeNavigate,
         TabsReorderState Reorder)
     {
         public TabsContext(string ActiveValue, EventCallback<string> SetValue, Lumeo.Orientation Orientation = Lumeo.Orientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
-            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => Task.CompletedTask, new TabsReorderState()) { }
+            : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string, bool)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => { }, _ => Task.CompletedTask, new TabsReorderState()) { }
     }
 
     /// <summary>

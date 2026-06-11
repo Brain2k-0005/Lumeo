@@ -49,6 +49,28 @@ public class AspectRatioTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Padding_Uses_Invariant_Decimal_Separator_On_Comma_Cultures()
+    {
+        // de-DE CurrentCulture rendered "padding-bottom: 12,5%" — invalid CSS
+        // the browser drops, collapsing the box to zero height.
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+            var cut = _ctx.Render<L.AspectRatio>(p => p
+                .Add(a => a.Ratio, 8.0)
+                .AddChildContent("Content"));
+
+            var style = cut.Find("div").GetAttribute("style") ?? "";
+            Assert.Contains("padding-bottom: 12.5%", style);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
     public void Ratio_16_9_Computes_Correct_Padding()
     {
         var cut = _ctx.Render<L.AspectRatio>(p => p

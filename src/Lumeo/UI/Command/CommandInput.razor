@@ -1,13 +1,22 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 <div class="flex items-center border-b border-border/40 px-3">
     <Blazicon Svg="Lucide.Search" class="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <input type="text"
+           id="@_inputId"
+           role="combobox"
+           aria-expanded="true"
+           aria-autocomplete="list"
+           aria-controls="@Context.ListId"
+           aria-activedescendant="@Context.HighlightedItemId"
            class="@CssClass"
            placeholder="@(Placeholder ?? L["Command.Placeholder"])"
            value="@Context.SearchText"
            @oninput="HandleInput"
+           @onkeydown="HandleKeyDown"
            @attributes="AdditionalAttributes" />
 </div>
 
@@ -17,10 +26,57 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _inputId = LumeoIds.New("cmd-input");
+    // Register against the id the DOM actually gets — a consumer `id` in the
+    // splat overrides the generated one (Codex P2).
+    private string EffectiveInputId => LumeoIds.Effective(AdditionalAttributes, _inputId);
+    private string? _registeredId;
+
     private string CssClass => Cx.Merge("flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Key-selective preventDefault in JS (TabsTrigger pattern): the
+            // arrows drive the highlight and must not move the caret, and a
+            // bare Enter must not submit an enclosing form. Every rule skips
+            // IME composition so candidate-list navigation / confirm keep
+            // their defaults.
+            _registeredId = EffectiveInputId;
+            await Interop.RegisterPreventDefaultKeys(_registeredId, new[]
+            {
+                new PreventDefaultKeyRule("ArrowDown", SkipComposing: true),
+                new PreventDefaultKeyRule("ArrowUp", SkipComposing: true),
+                new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true),
+            });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    private bool _pdRegistered;
 
     private async Task HandleInput(ChangeEventArgs e)
     {
         await Context.OnSearch.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "ArrowDown" or "ArrowUp" or "Home" or "End" or "Enter")
+            await Context.OnNavigationKey.InvokeAsync(e);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered || _registeredId is null) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_registeredId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

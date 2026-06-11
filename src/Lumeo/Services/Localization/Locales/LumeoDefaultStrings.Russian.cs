@@ -342,5 +342,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "Файл «{0}» превышает максимальный размер {1}.",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "Вы уверены?",
+        ["ConfirmButton.Confirm"] = "Продолжить",
+        ["ConfirmButton.Cancel"] = "Отмена",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "Доступные",
+        ["PickList.TargetHeader"] = "Выбранные",
+        ["PickList.NoItems"] = "Нет элементов",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "Открыть",
+        ["FileManager.Rename"] = "Переименовать",
+        ["FileManager.Delete"] = "Удалить",
+        ["FileManager.Name"] = "Имя",
+        ["FileManager.Size"] = "Размер",
+        ["FileManager.Modified"] = "Изменён",
+        ["FileManager.Loading"] = "Загрузка…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "Аудиоплеер",
+        ["AudioPlayer.Play"] = "Воспроизвести",
+        ["AudioPlayer.Pause"] = "Пауза",
+        ["AudioPlayer.Seek"] = "Позиция воспроизведения",
+        ["AudioPlayer.Mute"] = "Выключить звук",
+        ["AudioPlayer.Unmute"] = "Включить звук",
+        ["AudioPlayer.Download"] = "Скачать аудио",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "Цвет",
+        ["Theme.Mode"] = "Режим",
     };
 }

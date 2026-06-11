@@ -195,15 +195,27 @@ export function setHtmlClass(className, active) {
 
 const focusTrapHandlers = new Map();
 
-export function setupFocusTrap(elementId) {
+const FOCUS_TRAP_FOCUSABLE =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
+
+// initialFocusSelector (optional): a CSS selector resolved WITHIN the trapped
+// element naming the preferred initial-focus target — e.g. AlertDialog passes
+// [data-lumeo-initial-focus] so focus lands on the least destructive action
+// (the Cancel button) instead of whatever is first in DOM order. Falls back
+// to the first focusable element when absent or not found.
+export function setupFocusTrap(elementId, initialFocusSelector) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
+    // Remember what had focus before the trap engages (normally the trigger
+    // button) so removeFocusTrap can hand focus back on close. Without this,
+    // keyboard users are dropped at <body> after every overlay dismissal.
+    const ae = document.activeElement;
+    const previousFocus = (ae && ae !== document.body && typeof ae.focus === 'function') ? ae : null;
+
     const handler = (e) => {
         if (e.key !== 'Tab') return;
-        const focusable = el.querySelectorAll(
-            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-        );
+        const focusable = el.querySelectorAll(FOCUS_TRAP_FOCUSABLE);
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -216,25 +228,39 @@ export function setupFocusTrap(elementId) {
         }
     };
 
-    focusTrapHandlers.set(elementId, handler);
+    focusTrapHandlers.set(elementId, { handler, previousFocus });
     el.addEventListener('keydown', handler);
 
-    const focusable = el.querySelectorAll(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-    );
-    if (focusable.length > 0) {
-        focusable[0].focus();
+    let initial = null;
+    if (initialFocusSelector) {
+        try { initial = el.querySelector(initialFocusSelector); } catch { initial = null; }
+    }
+    if (initial && typeof initial.focus === 'function') {
+        initial.focus();
+    } else {
+        const focusable = el.querySelectorAll(FOCUS_TRAP_FOCUSABLE);
+        if (focusable.length > 0) {
+            focusable[0].focus();
+        }
     }
 }
 
 export function removeFocusTrap(elementId) {
-    const handler = focusTrapHandlers.get(elementId);
-    if (handler) {
-        const el = document.getElementById(elementId);
-        if (el) {
-            el.removeEventListener('keydown', handler);
-        }
-        focusTrapHandlers.delete(elementId);
+    const entry = focusTrapHandlers.get(elementId);
+    if (!entry) return;
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.removeEventListener('keydown', entry.handler);
+    }
+    focusTrapHandlers.delete(elementId);
+    // Return focus to the element that was focused before the trap engaged
+    // (WCAG 2.4.3). Runs even when the overlay element is already gone from
+    // the DOM (dispose-while-open) — the trigger usually still exists. Guard
+    // everything: the trigger itself may have been removed in the meantime,
+    // and focus() can throw on detached/inert elements in some engines.
+    const prev = entry.previousFocus;
+    if (prev && prev.isConnected && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
     }
 }
 
@@ -327,13 +353,15 @@ export async function attachOverlaySlideEnd(elementId) {
 
 const positionCleanups = new Map();
 
-export function positionFixed(contentId, referenceId, align, matchWidth, side) {
+export function positionFixed(contentId, referenceId, align, matchWidth, side, offset) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
     if (!content || !reference) return;
 
     const resolvedSide = side || 'bottom';
-    const gap = 4;
+    // Trigger->content gap. Callers that don't pass an offset (legacy 5-arg
+    // interop path) keep the historical 4px default.
+    const gap = (typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) ? offset : 4;
 
     // Clean up any previous listener for this content
     if (positionCleanups.has(contentId)) {
@@ -974,8 +1002,52 @@ export function carouselScrollTo(elementId, index, behavior) {
     const el = document.getElementById(elementId);
     if (!el) return;
     const children = el.children;
-    if (index >= 0 && index < children.length) {
+    if (children.length === 0) return;
+    // C# sends int.MaxValue as a "wrap to last slide" sentinel (Loop mode) —
+    // the child count only exists on this side of the interop boundary.
+    if (index >= children.length) index = children.length - 1;
+    if (index >= 0) {
         children[index].scrollIntoView({ behavior: behavior || 'smooth', block: 'nearest', inline: 'start' });
+    }
+}
+
+// --- Selective keydown preventDefault ---
+// Blazor's @onkeydown:preventDefault directive is all-or-nothing and its
+// bool form is evaluated at render time (one event late). Components that
+// must suppress the default for SOME keys only (Splitter dividers: arrows
+// but never Tab; PromptInput: Enter but not Shift+Enter / IME-confirm)
+// register the exact rules here so the decision happens synchronously in
+// the real keydown dispatch.
+
+const preventDefaultKeyHandlers = new Map();
+
+export function registerPreventDefaultKeys(elementId, rules) {
+    unregisterPreventDefaultKeys(elementId);
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const handler = (e) => {
+        for (const r of rules) {
+            if (e.key !== r.key) continue;
+            if (r.requireNoModifiers && (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey)) continue;
+            // keyCode 229 covers engines that fire composition keydowns
+            // without setting isComposing.
+            if (r.skipComposing && (e.isComposing || e.keyCode === 229)) continue;
+            if (r.skipEditable && e.target instanceof Element &&
+                e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) continue;
+            e.preventDefault();
+            return;
+        }
+    };
+    el.addEventListener('keydown', handler);
+    preventDefaultKeyHandlers.set(elementId, handler);
+}
+
+export function unregisterPreventDefaultKeys(elementId) {
+    const handler = preventDefaultKeyHandlers.get(elementId);
+    if (handler) {
+        const el = document.getElementById(elementId);
+        if (el) el.removeEventListener('keydown', handler);
+        preventDefaultKeyHandlers.delete(elementId);
     }
 }
 
@@ -1536,8 +1608,10 @@ export function registerOtpPaste(baseId, length, dotnetRef) {
             const handler = (e) => {
                 e.preventDefault();
                 const text = (e.clipboardData || window.clipboardData).getData('text');
-                const digits = text.replace(/\D/g, '').slice(0, length);
-                dotnetRef.invokeMethodAsync('OnOtpPaste', baseId, digits);
+                // Forward raw text (sanity-capped) — the C# side filters per
+                // InputMode. Stripping \D here destroyed alphanumeric codes
+                // before OtpInput.FilterInput ever saw them.
+                dotnetRef.invokeMethodAsync('OnOtpPaste', baseId, text.slice(0, 64));
             };
             el.addEventListener('paste', handler);
             handlers.push(handler);
@@ -1856,6 +1930,14 @@ export function getElementRectBySelector(selector) {
     const radiusStr = getComputedStyle(el).borderTopLeftRadius || '0';
     const radius = parseFloat(radiusStr) || 0;
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, borderRadius: radius };
+}
+
+export function scrollSelectorIntoView(selector) {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    // 'instant' on purpose: the caller measures the rect right after this
+    // call — a smooth scroll would still be mid-animation when measured.
+    el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
 }
 
 // --- Affix: scroll-based sticky positioning ---

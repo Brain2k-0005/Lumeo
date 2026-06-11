@@ -2,9 +2,13 @@
 
 <div class="@ContainerClass"
      role="img"
-     aria-label="@($"Barcode: {Value}")"
+     aria-label="@AriaLabel"
      @attributes="AdditionalAttributes">
-    @if (!string.IsNullOrEmpty(Value))
+    @if (_error is not null)
+    {
+        <div class="text-xs text-muted-foreground">@_error</div>
+    }
+    else if (_modules.Count > 0)
     {
         <svg width="@SvgWidth" height="@SvgHeight"
              viewBox="0 0 @SvgWidth @SvgHeight"
@@ -35,7 +39,7 @@
                 <foreignObject x="0" y="@Height" width="@SvgWidth" height="20">
                     <div xmlns="http://www.w3.org/1999/xhtml"
                          style="@($"width:{SvgWidth}px;text-align:center;font-size:11px;font-family:monospace;color:var(--color-{Color});line-height:18px;")">
-                        @Value
+                        @_text
                     </div>
                 </foreignObject>
             }
@@ -58,26 +62,62 @@
 
     private List<(double Width, bool IsBar)> _modules = new();
 
+    // Canonical text content of the rendered barcode. Matches what a scanner
+    // would decode: Value for Code 128, uppercased Value for Code 39, the
+    // full 13 digits (incl. check digit) for EAN-13.
+    private string _text = "";
+
+    // Human-readable encoding error, or null when the barcode rendered.
+    private string? _error;
+
     private int SvgWidth => (int)Math.Ceiling(_modules.Sum(m => m.Width) + QuietZone * 2);
     private int SvgHeight => ShowText ? Height + 20 : Height;
 
     private string ContainerClass => Cx.Merge("inline-block", Class);
+
+    private string AriaLabel => _error is null
+        ? $"Barcode: {_text}"
+        : $"Barcode error: {_error}";
 
     protected override void OnParametersSet() => Rebuild();
 
     private void Rebuild()
     {
         _modules.Clear();
+        _error = null;
+        _text = Value;
         if (string.IsNullOrEmpty(Value)) return;
         try
         {
-            var bits = Code128B.Encode(Value);
+            bool[] bits;
+            switch (Format)
+            {
+                case BarcodeFormat.Code39:
+                    // Code 39 has no lowercase symbols; traditional Code 39
+                    // behavior is to treat lowercase as uppercase, so we
+                    // normalize (and display/announce the encoded uppercase
+                    // text). Characters outside the 43-char set still fail.
+                    _text = Value.ToUpperInvariant();
+                    bits = Code39.Encode(_text);
+                    break;
+                case BarcodeFormat.EAN13:
+                    _text = Ean13.Normalize(Value);
+                    bits = Ean13.Encode(_text);
+                    break;
+                default:
+                    bits = Code128B.Encode(Value);
+                    break;
+            }
             foreach (var bit in bits)
                 _modules.Add((BarWidth, bit));
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
+            // Surface the problem instead of silently rendering nothing:
+            // show a small muted message and announce the error via aria-label.
             _modules.Clear();
+            _text = Value;
+            _error = ex.Message;
         }
     }
 
@@ -213,7 +253,7 @@
             // Validate: Code B supports ASCII 32–126
             foreach (char c in text)
                 if (c < 32 || c > 126)
-                    throw new ArgumentException($"Character '{c}' (0x{(int)c:X2}) is outside Code 128B range (ASCII 32-126).");
+                    throw new FormatException($"Character '{c}' (0x{(int)c:X2}) is outside Code 128B range (ASCII 32-126).");
 
             var symbols = new List<int>();
 
@@ -250,6 +290,165 @@
                 bits.Add(bit == '1');
 
             return bits.ToArray();
+        }
+    }
+
+    // ─── Code 39 encoder ─────────────────────────────────────────────────────
+    // 43 data characters: 0-9, A-Z, space, and - . $ / + %. Each symbol is 9
+    // elements (5 bars / 4 spaces, alternating, starting and ending with a
+    // bar) of which exactly 3 are wide. With wide = 2 narrow modules every
+    // symbol is 12 modules; symbols are separated by a 1-module narrow space.
+    // '*' is the start/stop symbol and is not valid as data. Standard Code 39
+    // carries no check digit, so none is added.
+    // Reference: https://en.wikipedia.org/wiki/Code_39
+    private static class Code39
+    {
+        // Canonical Code 39 table as 12-module bit strings (bar=1, space=0),
+        // i.e. the same intermediate representation Code128B emits.
+        private static readonly Dictionary<char, string> Patterns = new()
+        {
+            ['0'] = "101001101101", ['1'] = "110100101011", ['2'] = "101100101011",
+            ['3'] = "110110010101", ['4'] = "101001101011", ['5'] = "110100110101",
+            ['6'] = "101100110101", ['7'] = "101001011011", ['8'] = "110100101101",
+            ['9'] = "101100101101", ['A'] = "110101001011", ['B'] = "101101001011",
+            ['C'] = "110110100101", ['D'] = "101011001011", ['E'] = "110101100101",
+            ['F'] = "101101100101", ['G'] = "101010011011", ['H'] = "110101001101",
+            ['I'] = "101101001101", ['J'] = "101011001101", ['K'] = "110101010011",
+            ['L'] = "101101010011", ['M'] = "110110101001", ['N'] = "101011010011",
+            ['O'] = "110101101001", ['P'] = "101101101001", ['Q'] = "101010110011",
+            ['R'] = "110101011001", ['S'] = "101101011001", ['T'] = "101011011001",
+            ['U'] = "110010101011", ['V'] = "100110101011", ['W'] = "110011010101",
+            ['X'] = "100101101011", ['Y'] = "110010110101", ['Z'] = "100110110101",
+            ['-'] = "100101011011", ['.'] = "110010101101", [' '] = "100110101101",
+            ['$'] = "100100100101", ['/'] = "100100101001", ['+'] = "100101001001",
+            ['%'] = "101001001001",
+        };
+
+        private const string StartStop = "100101101101"; // '*'
+
+        /// <summary>
+        /// Encode text (already uppercased by the caller) as Code 39 and return
+        /// the raw module bits: true = bar, false = space.
+        /// </summary>
+        public static bool[] Encode(string text)
+        {
+            var bits = new List<bool>((text.Length + 2) * 12 + text.Length + 1);
+            Append(bits, StartStop);
+            foreach (char c in text)
+            {
+                if (!Patterns.TryGetValue(c, out var pattern))
+                    throw new FormatException($"Character '{c}' is not valid for Code 39 (allowed: 0-9, A-Z, space, - . $ / + %).");
+                bits.Add(false); // inter-character narrow space
+                Append(bits, pattern);
+            }
+            bits.Add(false);
+            Append(bits, StartStop);
+            return bits.ToArray();
+        }
+
+        private static void Append(List<bool> bits, string pattern)
+        {
+            foreach (char bit in pattern)
+                bits.Add(bit == '1');
+        }
+    }
+
+    // ─── EAN-13 encoder ──────────────────────────────────────────────────────
+    // 12 data digits + 1 check digit. Layout: start guard 101, six left
+    // digits (7 modules each, L- or G-coded per the parity table selected by
+    // the first digit), center guard 01010, six right digits (R-coded), end
+    // guard 101 — always 95 modules in total.
+    // Reference: https://en.wikipedia.org/wiki/International_Article_Number
+    private static class Ean13
+    {
+        private static readonly string[] LCodes =
+        {
+            "0001101", "0011001", "0010011", "0111101", "0100011",
+            "0110001", "0101111", "0111011", "0110111", "0001011",
+        };
+
+        private static readonly string[] GCodes =
+        {
+            "0100111", "0110011", "0011011", "0100001", "0011101",
+            "0111001", "0000101", "0010001", "0001001", "0010111",
+        };
+
+        private static readonly string[] RCodes =
+        {
+            "1110010", "1100110", "1101100", "1000010", "1011100",
+            "1001110", "1010000", "1000100", "1001000", "1110100",
+        };
+
+        // Parity (L/G) of the six left-group digits, indexed by the first digit.
+        private static readonly string[] LeftParity =
+        {
+            "LLLLLL", "LLGLGG", "LLGGLG", "LLGGGL", "LGLLGG",
+            "LGGLLG", "LGGGLL", "LGLGLG", "LGLGGL", "LGGLGL",
+        };
+
+        /// <summary>
+        /// Validate the input and return the full 13-digit code: 12 digits get
+        /// the computed check digit appended; 13 digits must carry a correct
+        /// check digit. Anything else is rejected.
+        /// </summary>
+        public static string Normalize(string value)
+        {
+            foreach (char c in value)
+                if (c is < '0' or > '9')
+                    throw new FormatException($"Character '{c}' is not valid for EAN-13 (digits only).");
+
+            switch (value.Length)
+            {
+                case 12:
+                    return value + CheckDigit(value);
+                case 13:
+                    char expected = CheckDigit(value);
+                    if (value[12] != expected)
+                        throw new FormatException($"EAN-13 check digit mismatch: expected {expected}, got {value[12]}.");
+                    return value;
+                default:
+                    throw new FormatException($"EAN-13 requires 12 or 13 digits, got {value.Length}.");
+            }
+        }
+
+        // Check digit over the first 12 digits: odd positions ×1, even ×3 (1-based).
+        private static char CheckDigit(string digits)
+        {
+            int sum = 0;
+            for (int i = 0; i < 12; i++)
+                sum += (digits[i] - '0') * (i % 2 == 0 ? 1 : 3);
+            return (char)('0' + (10 - sum % 10) % 10);
+        }
+
+        /// <summary>
+        /// Encode a normalized 13-digit code and return the raw module bits
+        /// (always 95): true = bar, false = space.
+        /// </summary>
+        public static bool[] Encode(string digits13)
+        {
+            var bits = new List<bool>(95);
+            Append(bits, "101"); // start guard
+
+            string parity = LeftParity[digits13[0] - '0'];
+            for (int i = 0; i < 6; i++)
+            {
+                int d = digits13[i + 1] - '0';
+                Append(bits, parity[i] == 'L' ? LCodes[d] : GCodes[d]);
+            }
+
+            Append(bits, "01010"); // center guard
+
+            for (int i = 0; i < 6; i++)
+                Append(bits, RCodes[digits13[i + 7] - '0']);
+
+            Append(bits, "101"); // end guard
+            return bits.ToArray();
+        }
+
+        private static void Append(List<bool> bits, string pattern)
+        {
+            foreach (char bit in pattern)
+                bits.Add(bit == '1');
         }
     }
 }

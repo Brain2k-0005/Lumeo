@@ -1,10 +1,12 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
 @if (OnClick.HasDelegate)
 {
     <CascadingValue TValue="Lumeo.Density?" Value="EffectiveDensity" IsFixed="false">
         <div @ref="_el"
+             id="@_cardId"
              class="@CssClass"
              role="button"
              tabindex="0"
@@ -58,6 +60,7 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private Microsoft.AspNetCore.Components.ElementReference _el;
+    private readonly string _cardId = LumeoIds.New("card");
 
     private bool IsInteractive => OnClick.HasDelegate;
 
@@ -96,14 +99,39 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && IsInteractive && PressEffect == Button.ButtonPressEffect.Ripple)
+        if (firstRender && IsInteractive)
         {
             try
             {
-                await Interop.RippleAttachAsync(_el);
+                if (PressEffect == Button.ButtonPressEffect.Ripple)
+                {
+                    await Interop.RippleAttachAsync(_el);
+                }
+                // div[role=button]: Space activated the card AND scrolled the
+                // page (no native key synthesis on a div). Suppress only
+                // Space's default; Enter has none on a div.
+                await Interop.RegisterPreventDefaultKeys(
+                    _cardId,
+                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
         }
+    }
+
+    private bool _pdRegistered;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_cardId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     public enum CardVariant { Default, Flat }

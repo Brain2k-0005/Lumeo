@@ -402,4 +402,71 @@
         Assert.Contains("rounded-t-lg", activeButton.ClassName);
     }
 
+    [Fact]
+    public void ArrowKey_Skips_Disabled_Tab()
+    {
+        // Regression: FindNextEnabledTab never checked Disabled — arrow keys
+        // focused AND activated disabled tabs.
+        string? selected = null;
+        var cut = Render(@<Tabs ActiveValue="tab1" ActiveValueChanged="@((string v) => selected = v)">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2" Disabled="true">Tab 2</TabsTrigger>
+                <TabsTrigger Value="tab3">Tab 3</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[0].KeyDown("ArrowRight");
+
+        Assert.Equal("tab3", selected);
+    }
+
+    [Fact]
+    public void Delete_Key_Closes_Closable_Tab()
+    {
+        var closed = false;
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1" IsClosable="true" OnClose="@(() => closed = true)">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[0].KeyDown("Delete");
+
+        Assert.True(closed);
+    }
+
+    [Fact]
+    public void Removed_Tab_Is_Not_A_Keyboard_Target()
+    {
+        // Regression: TabIds entries were never unregistered — arrow keys
+        // navigated to removed (closable/conditional) tabs.
+        string? selected = null;
+
+        Action<Bunit.ComponentParameterCollectionBuilder<TabsList>> listWith(params string[] values) => l =>
+        {
+            foreach (var v in values)
+            {
+                var value = v;
+                l.AddChildContent<TabsTrigger>(t => t.Add(x => x.Value, value).AddChildContent(value));
+            }
+        };
+
+        var cut = Render<Tabs>(p => p
+            .Add(t => t.ActiveValue, "tab1")
+            .Add(t => t.ActiveValueChanged, (string v) => selected = v)
+            .AddChildContent<TabsList>(listWith("tab1", "tab2", "tab3")));
+        Assert.Equal(3, cut.FindAll("[role='tab']").Count);
+
+        // Re-render without tab2 — its trigger disposes and must leave the registry.
+        cut.Render(p => p
+            .Add(t => t.ActiveValue, "tab1")
+            .Add(t => t.ActiveValueChanged, (string v) => selected = v)
+            .AddChildContent<TabsList>(listWith("tab1", "tab3")));
+
+        Assert.Equal(2, cut.FindAll("[role='tab']").Count);
+        cut.FindAll("[role='tab']")[0].KeyDown("ArrowRight");
+        Assert.Equal("tab3", selected);
+    }
 }

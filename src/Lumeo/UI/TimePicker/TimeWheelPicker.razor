@@ -96,6 +96,12 @@
     private readonly DebouncedValue<int> _minuteDebounced = new(SnapDebounceMs);
     private readonly DebouncedValue<int> _periodDebounced = new(SnapDebounceMs);
     private bool _initialised;
+    // External-change resync — see DateWheelPicker for the rationale: columns
+    // are scroll-positioned only programmatically, so a Value change from
+    // outside must re-scroll them or the next user scroll commits from stale
+    // offsets. RaiseChange pre-marks its own commits as synced.
+    private TimeSpan? _lastSyncedValue;
+    private bool _resyncPending;
 
     private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
     // Mirror TimePicker's derivation: lowercase "h" in ShortTimePattern = 12-hour.
@@ -117,6 +123,12 @@
         var step = Math.Max(1, MinuteStep);
         _minutes = new List<int>();
         for (var i = 0; i < 60; i += step) _minutes.Add(i);
+
+        if (Value != _lastSyncedValue)
+        {
+            _lastSyncedValue = Value;
+            _resyncPending = true;
+        }
 
         var seed = Value ?? TimeSpan.Zero;
         if (EffectiveUse24Hour)
@@ -215,6 +227,8 @@
             hour24 = _periodIndex == 1 ? h + 12 : h;
         }
         var t = new TimeSpan(hour24, _minute, 0);
+        // Our own commit — the parent echoing it back is not an external change.
+        _lastSyncedValue = t;
         await ValueChanged.InvokeAsync(t);
     }
 
@@ -222,30 +236,50 @@
     {
         if (firstRender)
         {
-            var hourIdx = _hours.IndexOf(_hour);
-            if (hourIdx >= 0) await Interop.WheelScrollTo(_hourCol, hourIdx * ItemHeight);
-
-            var minuteIdx = _minutes.IndexOf(_minute);
-            if (minuteIdx >= 0) await Interop.WheelScrollTo(_minuteCol, minuteIdx * ItemHeight);
-
-            if (!EffectiveUse24Hour)
-            {
-                await Interop.WheelScrollTo(_periodCol, _periodIndex * ItemHeight);
-            }
-
-            // 2.2.3: was Task.Delay().ContinueWith(...) — see DateWheelPicker
-            // for the rationale. Moves the continuation onto the Blazor sync
-            // context so exceptions are observed, not lost on the thread pool.
-            _ = InvokeAsync(async () =>
-            {
-                try
-                {
-                    await Task.Delay(150);
-                    _initialised = true;
-                }
-                catch (JSDisconnectedException) { /* circuit teardown — fine */ }
-            });
+            _resyncPending = false;
+            await ScrollColumnsToSelectionAsync();
+            ScheduleScrollHandlerEnable();
         }
+        else if (_resyncPending)
+        {
+            // The bound Value changed externally — re-position the columns and
+            // suppress the scroll handlers while the programmatic scrolls run
+            // (same reasoning as the first-render seeding).
+            _resyncPending = false;
+            _initialised = false;
+            await ScrollColumnsToSelectionAsync();
+            ScheduleScrollHandlerEnable();
+        }
+    }
+
+    private async Task ScrollColumnsToSelectionAsync()
+    {
+        var hourIdx = _hours.IndexOf(_hour);
+        if (hourIdx >= 0) await Interop.WheelScrollTo(_hourCol, hourIdx * ItemHeight);
+
+        var minuteIdx = _minutes.IndexOf(_minute);
+        if (minuteIdx >= 0) await Interop.WheelScrollTo(_minuteCol, minuteIdx * ItemHeight);
+
+        if (!EffectiveUse24Hour)
+        {
+            await Interop.WheelScrollTo(_periodCol, _periodIndex * ItemHeight);
+        }
+    }
+
+    // 2.2.3: was Task.Delay().ContinueWith(...) — see DateWheelPicker
+    // for the rationale. Moves the continuation onto the Blazor sync
+    // context so exceptions are observed, not lost on the thread pool.
+    private void ScheduleScrollHandlerEnable()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(150);
+                _initialised = true;
+            }
+            catch (JSDisconnectedException) { /* circuit teardown — fine */ }
+        });
     }
 
     public void Dispose()
