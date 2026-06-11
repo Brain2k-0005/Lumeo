@@ -4,8 +4,9 @@
 @* <gotcha>Data-bound mode (the Items parameter) still requires <SelectTrigger /> and <SelectContent /> children — a bare <Select Items="..." /> with no children shows only an empty field. Map items with ItemValue/ItemText; items are typed as object, so the data-bound Select is not generic.</gotcha> *@
 
 @{
-    var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
-    var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Value : null;
+    var navItems = NavItems;
+    var focusedItemId = _focusedIndex >= 0 && _focusedIndex < navItems.Count ? navItems[_focusedIndex].Id : null;
+    var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < navItems.Count ? navItems[_focusedIndex].Value : null;
     var context = new SelectContext(Value, Open, Searchable, SearchText, Multiple, Values, IsLoading, Disabled, Clearable, Creatable, MaxDisplayTags,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
@@ -171,9 +172,45 @@
         _items.RemoveAll(i => i.Id == id);
     }
 
+    // Keyboard-nav source of truth. Composition mode: SelectItem instances self-register
+    // into _items. Data-bound mode: bound rows are rendered inline by SelectContent (no
+    // component instance to register), so derive the list from the same filtered + grouped
+    // sequence the content renders, skipping disabled items so ArrowDown/Up, Home/End and
+    // Enter can never land on them. Ids must mirror SelectContent.RenderBoundItem.
+    private List<(string Id, string Value)> NavItems => Items is null ? _items : BuildBoundNavItems();
+
+    private List<(string Id, string Value)> BuildBoundNavItems()
+    {
+        var result = new List<(string Id, string Value)>();
+        if (Items is null) return result;
+
+        IEnumerable<object> source = Items;
+        if (Searchable && !string.IsNullOrEmpty(SearchText))
+        {
+            source = source.Where(item =>
+            {
+                var text = ItemText?.Invoke(item) ?? ItemValue(item);
+                return text.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+        // Grouped rendering flattens GroupBy order (groups appear at their first occurrence),
+        // so mirror it — otherwise the focused index walks the source order while the eye
+        // follows the grouped order. The Virtualize branch renders ungrouped.
+        if (ItemGroup is not null && !Virtualize)
+            source = source.GroupBy(i => ItemGroup(i) ?? "").SelectMany(g => g);
+
+        foreach (var item in source)
+        {
+            if (ItemDisabled?.Invoke(item) == true) continue;
+            var value = ItemValue(item);
+            result.Add(($"select-item-bound-{value.GetHashCode():X}", value));
+        }
+        return result;
+    }
+
     private async Task SetFocusedIndex(int index)
     {
-        var count = _items.Count;
+        var count = NavItems.Count;
         if (count == 0) return;
         if (index < 0) index = 0;
         if (index >= count) index = count - 1;
@@ -222,7 +259,10 @@
     {
         SearchText = text;
         _focusedIndex = -1;
-        _items.Clear();
+        // Do NOT clear _items here: still-visible SelectItems keep their _registered flag
+        // and would never re-register, leaving keyboard nav dead after the first keystroke.
+        // Items hidden by the new filter unregister themselves (OnParametersSet/Dispose),
+        // so the registry stays in sync on its own.
         return Task.CompletedTask;
     }
 

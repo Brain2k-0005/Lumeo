@@ -225,7 +225,11 @@
         if (Context.IsOpen && !_registered)
         {
             await Interop.PositionFixed(Context.ContentId, Context.WrapperId, "start", true);
-            await Interop.RegisterClickOutside(Context.ContentId, null, async () =>
+            // Exclude the combobox wrapper from outside-close (same as Popover): the "trigger"
+            // here is the input plus its chip wrapper, which has no id of its own — the
+            // WrapperId covers them all. Without the exclusion, mousedown on the input/chips
+            // fires the outside handler and races the input's own open logic.
+            await Interop.RegisterClickOutside(Context.ContentId, Context.WrapperId, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);

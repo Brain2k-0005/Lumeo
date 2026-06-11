@@ -5,8 +5,9 @@
 @* <gotcha>Data-bound mode (the Items parameter) still requires <ComboboxInput /> and <ComboboxContent /> children — a bare <Combobox Items="..." /> with no children renders only an empty wrapper. Map items with ItemValue/ItemText (there is no ItemLabel parameter); items are typed as object, so the Combobox is not generic (no TItem).</gotcha> *@
 
 @{
-    var focusedItemId = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Id : null;
-    var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < _items.Count ? _items[_focusedIndex].Value : null;
+    var navItems = NavItems;
+    var focusedItemId = _focusedIndex >= 0 && _focusedIndex < navItems.Count ? navItems[_focusedIndex].Id : null;
+    var focusedItemValue = _focusedIndex >= 0 && _focusedIndex < navItems.Count ? navItems[_focusedIndex].Value : null;
     var context = new ComboboxContext(Value, Values, SearchText, Open, Multiple, IsSearchLoading, Creatable,
         EventCallback.Factory.Create<string>(this, OnValueSelected),
         EventCallback.Factory.Create<bool>(this, SetOpen),
@@ -21,6 +22,7 @@
         Clearable = Clearable,
         MaxDisplayTags = MaxDisplayTags,
         OnClear = EventCallback.Factory.Create(this, OnClearSelection),
+        MostRecentValue = _valueOrder.Count > 0 ? _valueOrder[^1] : null,
     };
 }
 
@@ -178,6 +180,32 @@
     private readonly DelayedDispatch _dispatch = new();
     private int _focusedIndex = -1;
     private readonly List<(string Id, string Value)> _items = new();
+    // Insertion-ordered mirror of the (unordered) Values HashSet — see SyncValueOrder.
+    private readonly List<string> _valueOrder = new();
+
+    protected override void OnParametersSet() => SyncValueOrder();
+
+    // Mirrors the consumer-owned Values set into an insertion-ordered list so chip-editing
+    // keys (Backspace in ComboboxInput) can deterministically target the most recently
+    // added value — HashSet enumeration order is undefined, so Values.Last() removed an
+    // arbitrary chip. Comparisons go through the set's own comparer so custom equality
+    // (e.g. StringComparer.OrdinalIgnoreCase, preserved by Clear since PR #165) is
+    // respected. Values added through the UI append chronologically; values that arrive
+    // in bulk from the consumer append in enumeration order (no history exists for them).
+    private void SyncValueOrder()
+    {
+        if (Values is null || Values.Count == 0)
+        {
+            _valueOrder.Clear();
+            return;
+        }
+        _valueOrder.RemoveAll(v => !Values.Contains(v));
+        foreach (var v in Values)
+        {
+            if (!_valueOrder.Contains(v, Values.Comparer))
+                _valueOrder.Add(v);
+        }
+    }
 
     private void RegisterItem(string id, string value)
     {
@@ -190,9 +218,45 @@
         _items.RemoveAll(i => i.Id == id);
     }
 
+    // Keyboard-nav source of truth. Composition mode: ComboboxItem instances self-register
+    // into _items. Data-bound mode: bound rows are rendered inline by ComboboxContent (no
+    // component instance to register), so derive the list from the same filtered + grouped
+    // sequence the content renders, skipping disabled items so ArrowDown/Up, Home/End and
+    // Enter can never land on them. Ids must mirror ComboboxContent.RenderBoundItem.
+    private List<(string Id, string Value)> NavItems => Items is null ? _items : BuildBoundNavItems();
+
+    private List<(string Id, string Value)> BuildBoundNavItems()
+    {
+        var result = new List<(string Id, string Value)>();
+        if (Items is null) return result;
+
+        IEnumerable<object> source = Items;
+        if (!string.IsNullOrEmpty(SearchText))
+        {
+            source = source.Where(item =>
+            {
+                var text = ItemText?.Invoke(item) ?? ItemValue(item);
+                return text.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+        // Grouped rendering flattens GroupBy order (groups appear at their first occurrence),
+        // so mirror it — otherwise the focused index walks the source order while the eye
+        // follows the grouped order. The Virtualize branch renders ungrouped.
+        if (ItemGroup is not null && !Virtualize)
+            source = source.GroupBy(i => ItemGroup(i) ?? "").SelectMany(g => g);
+
+        foreach (var item in source)
+        {
+            if (ItemDisabled?.Invoke(item) == true) continue;
+            var value = ItemValue(item);
+            result.Add(($"combobox-item-bound-{value.GetHashCode():X}", value));
+        }
+        return result;
+    }
+
     private async Task SetFocusedIndex(int index)
     {
-        var count = _items.Count;
+        var count = NavItems.Count;
         if (count == 0) return;
         if (index < 0) index = 0;
         if (index >= count) index = count - 1;
@@ -210,6 +274,10 @@
                 Values.Remove(value);
             else
                 Values.Add(value);
+            // Sync here as well as in OnParametersSet: unbound usage (no ValuesChanged
+            // handler) never produces a fresh parameter pass, so the order mirror would
+            // go stale and Backspace would fall back to arbitrary removal.
+            SyncValueOrder();
             await ValuesChanged.InvokeAsync(Values);
         }
         else
@@ -237,13 +305,14 @@
         SearchText = text;
         _focusedIndex = -1;
 
-        // Only clear registered items for async search — async replaces the item set, so the old registrations
-        // are stale. For static items (filtered by the parent's bound text), the items remain mounted and handle
-        // their own register/unregister lifecycle; clearing here mis-reports ItemCount as 0 and triggers the
-        // "no results" empty state while items are still visible.
+        // Never clear _items here — for static AND async search alike, ComboboxItems own
+        // their registration lifecycle: items hidden/unmounted by the new results unregister
+        // themselves (OnParametersSet/Dispose) and new ones register on mount. Clearing
+        // orphaned the still-mounted survivors (their _registered flag stays true, so they
+        // never re-register), which killed keyboard nav and mis-reported ItemCount as 0 —
+        // showing the ComboboxEmpty state underneath live results.
         if (OnSearchAsync.HasDelegate)
         {
-            _items.Clear();
             _dispatch.Schedule(DebounceMs, () => InvokeAsync(async () =>
             {
                 await OnSearchAsync.InvokeAsync(text);
@@ -268,6 +337,7 @@
             // after a Clear (Codex P2, PR #165).
             var comparer = Values?.Comparer ?? EqualityComparer<string>.Default;
             Values = new HashSet<string>(comparer);
+            SyncValueOrder();
             await ValuesChanged.InvokeAsync(Values);
         }
         else
@@ -285,6 +355,7 @@
         {
             Values ??= [];
             Values.Add(value);
+            SyncValueOrder();
             await ValuesChanged.InvokeAsync(Values);
         }
         else
@@ -325,5 +396,9 @@
         public bool Clearable { get; init; }
         public int MaxDisplayTags { get; init; } = 3;
         public EventCallback OnClear { get; init; }
+        /// <summary>The most recently added entry of <see cref="Values"/> (insertion order is
+        /// tracked by the parent — the HashSet itself is unordered). Used by ComboboxInput's
+        /// Backspace chip removal so it deterministically removes the newest chip.</summary>
+        public string? MostRecentValue { get; init; }
     }
 }
