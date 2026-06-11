@@ -1,6 +1,7 @@
 @namespace Lumeo
 @typeparam T
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
 <div class="@CssClass" role="tree" aria-multiselectable="@MultiSelect.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
     @if (ShowSearch)
@@ -15,21 +16,26 @@
 
     @if (Items is { Count: > 0 })
     {
-        @foreach (var item in _displayItems)
-        {
-            <TreeViewNode T="T" @key="item" Item="item" Level="0"
-                          ShowCheckboxes="ShowCheckboxes"
-                          Expandable="Expandable"
-                          CascadeCheck="CascadeCheck"
-                          MultiSelect="MultiSelect"
-                          SelectedValues="_selectedValues"
-                          NodeTemplate="NodeTemplate"
-                          LoadChildren="LoadChildren"
-                          OnItemClick="HandleItemClick"
-                          OnItemCheck="HandleItemCheck"
-                          OnExpandChanged="HandleExpandChanged"
-                          OnSelectionChanged="HandleSelectionChanged" />
-        }
+        <CascadingValue Value="_context" IsFixed="true">
+            @for (var i = 0; i < _displayItems.Count; i++)
+            {
+                var item = _displayItems[i];
+                <TreeViewNode T="T" @key="item" Item="item" Level="0"
+                              PosInSet="@(i + 1)"
+                              SetSize="@_displayItems.Count"
+                              ShowCheckboxes="ShowCheckboxes"
+                              Expandable="Expandable"
+                              CascadeCheck="CascadeCheck"
+                              MultiSelect="MultiSelect"
+                              SelectedValues="_selectedValues"
+                              NodeTemplate="NodeTemplate"
+                              LoadChildren="LoadChildren"
+                              OnItemClick="HandleItemClick"
+                              OnItemCheck="HandleItemCheck"
+                              OnExpandChanged="HandleExpandChanged"
+                              OnSelectionChanged="HandleSelectionChanged" />
+            }
+        </CascadingValue>
     }
 </div>
 
@@ -55,11 +61,32 @@
     private string _searchText = "";
     private List<TreeViewItem<T>>? _previousItems;
     private bool _previousExpandAll;
-    private List<TreeViewItem<T>> _filteredCache = [];
     private List<TreeViewItem<T>> _displayItems = [];
     private HashSet<T> _selectedValues = [];
+    private TreeViewContext? _context;
+
+    // Search filtering renders the ORIGINAL item instances; visibility and
+    // search-forced expansion are tracked in these side tables instead of
+    // cloned subtrees, so checking/expanding a node while a filter is active
+    // mutates the real item and the state survives clearing the search.
+    // TreeViewItem is a record (value equality, mutable fields) — reference
+    // comparers keep set membership stable across mutations.
+    private HashSet<TreeViewItem<T>>? _visibleSet;
+    private readonly HashSet<TreeViewItem<T>> _autoExpanded = new(ReferenceEqualityComparer.Instance);
+
+    // Roving tabindex / keyboard navigation state (WAI-ARIA tree pattern).
+    private readonly string _treeId = LumeoIds.New("tree");
+    private readonly Dictionary<TreeViewItem<T>, string> _nodeIds = new(ReferenceEqualityComparer.Instance);
+    private int _nodeIdSeq;
+    private List<TreeViewItem<T>>? _flatVisible;
+    private TreeViewItem<T>? _activeItem;
 
     private string CssClass => Cx.Merge("text-sm", Class);
+
+    protected override void OnInitialized()
+    {
+        _context = new TreeViewContext(this);
+    }
 
     protected override void OnParametersSet()
     {
@@ -68,17 +95,18 @@
 
         bool itemsChanged = !ReferenceEquals(Items, _previousItems);
         bool expandAllChanged = ExpandAll != _previousExpandAll;
+        _previousItems = Items;
+        _previousExpandAll = ExpandAll;
+        _flatVisible = null;
 
         if (itemsChanged)
         {
-            _previousItems = Items;
             if (ExpandAll)
                 ApplyExpandAll(Items ?? [], true);
             RebuildDisplay();
         }
         else if (expandAllChanged)
         {
-            _previousExpandAll = ExpandAll;
             ApplyExpandAll(Items ?? [], ExpandAll);
             RebuildDisplay();
         }
@@ -87,12 +115,14 @@
     public void ExpandAllNodes()
     {
         ApplyExpandAll(Items ?? [], true);
+        _flatVisible = null;
         StateHasChanged();
     }
 
     public void CollapseAllNodes()
     {
         ApplyExpandAll(Items ?? [], false);
+        _flatVisible = null;
         StateHasChanged();
     }
 
@@ -119,15 +149,38 @@
         StateHasChanged();
     }
 
-    private Task HandleExpandChanged(TreeViewItem<T> _)
+    private Task HandleExpandChanged(TreeViewItem<T> item)
     {
+        // A manual collapse overrides any search-forced expansion.
+        if (!item.IsExpanded)
+            _autoExpanded.Remove(item);
+        _flatVisible = null;
         StateHasChanged();
         return Task.CompletedTask;
     }
 
     private async Task HandleSelectionChanged(TreeViewItem<T> item)
     {
-        if (SelectedValuesChanged.HasDelegate)
+        bool changed;
+        if (MultiSelect)
+        {
+            // Toggle membership.
+            if (!_selectedValues.Add(item.Value!))
+                _selectedValues.Remove(item.Value!);
+            changed = true;
+        }
+        else
+        {
+            // Replace the selection; re-clicking the selected node is a no-op.
+            changed = _selectedValues.Count != 1 || !_selectedValues.Contains(item.Value!);
+            if (changed)
+            {
+                _selectedValues.Clear();
+                _selectedValues.Add(item.Value!);
+            }
+        }
+
+        if (changed && SelectedValuesChanged.HasDelegate)
             await SelectedValuesChanged.InvokeAsync([.._selectedValues]);
         StateHasChanged();
     }
@@ -140,37 +193,162 @@
 
     private void RebuildDisplay()
     {
+        _flatVisible = null;
+        _autoExpanded.Clear();
+
         if (string.IsNullOrWhiteSpace(_searchText))
         {
-            _filteredCache = [];
+            _visibleSet = null;
             _displayItems = Items ?? [];
         }
         else
         {
-            _filteredCache = FilterItems(Items ?? [], _searchText);
-            _displayItems = _filteredCache;
+            _visibleSet = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+            CollectVisible(Items ?? [], _searchText, _visibleSet, _autoExpanded);
+            _displayItems = (Items ?? []).Where(_visibleSet.Contains).ToList();
         }
     }
 
-    private static List<TreeViewItem<T>> FilterItems(List<TreeViewItem<T>> items, string filter)
+    /// <summary>Marks every item whose text matches the filter — or that has a matching
+    /// descendant — as visible. A text-matching item keeps its whole subtree visible;
+    /// ancestors of deeper matches are force-expanded via <see cref="_autoExpanded"/>
+    /// without mutating their persisted <c>IsExpanded</c> state. Returns whether
+    /// anything in <paramref name="items"/> matched.</summary>
+    private static bool CollectVisible(List<TreeViewItem<T>> items, string filter,
+        HashSet<TreeViewItem<T>> visible, HashSet<TreeViewItem<T>> autoExpanded)
     {
-        var result = new List<TreeViewItem<T>>();
+        bool any = false;
         foreach (var item in items)
         {
-            var childMatches = item.Children is { Count: > 0 }
-                ? FilterItems(item.Children, filter)
-                : [];
+            bool selfMatches = item.Text.Contains(filter, StringComparison.OrdinalIgnoreCase);
+            bool childMatches = item.Children is { Count: > 0 }
+                && CollectVisible(item.Children, filter, visible, autoExpanded);
 
-            if (item.Text.Contains(filter, StringComparison.OrdinalIgnoreCase) || childMatches.Count > 0)
-            {
-                result.Add(item with
-                {
-                    Children = childMatches.Count > 0 ? childMatches : item.Children,
-                    IsExpanded = childMatches.Count > 0 || item.IsExpanded
-                });
-            }
+            if (!selfMatches && !childMatches) continue;
+
+            visible.Add(item);
+            any = true;
+            if (childMatches)
+                autoExpanded.Add(item);
+            else if (item.Children is { Count: > 0 })
+                MarkSubtreeVisible(item.Children, visible);
         }
-        return result;
+        return any;
+    }
+
+    private static void MarkSubtreeVisible(List<TreeViewItem<T>> items, HashSet<TreeViewItem<T>> visible)
+    {
+        foreach (var item in items)
+        {
+            visible.Add(item);
+            if (item.Children is { Count: > 0 })
+                MarkSubtreeVisible(item.Children, visible);
+        }
+    }
+
+    // ---- Shared state consumed by TreeViewNode through the cascaded context ----
+
+    internal bool IsEffectivelyExpanded(TreeViewItem<T> item)
+        => item.IsExpanded || _autoExpanded.Contains(item);
+
+    internal IReadOnlyList<TreeViewItem<T>> GetVisibleChildren(TreeViewItem<T> item)
+    {
+        if (item.Children is not { Count: > 0 }) return [];
+        return _visibleSet is null
+            ? item.Children
+            : item.Children.Where(_visibleSet.Contains).ToList();
+    }
+
+    /// <summary>Deterministic per-item element id used as the focus target for
+    /// keyboard navigation. Stable for the lifetime of the component.</summary>
+    internal string GetNodeId(TreeViewItem<T> item)
+    {
+        if (!_nodeIds.TryGetValue(item, out var id))
+        {
+            id = $"{_treeId}-node-{_nodeIdSeq++}";
+            _nodeIds[item] = id;
+        }
+        return id;
+    }
+
+    /// <summary>Roving tabindex: exactly one visible node (the active one) is in
+    /// the tab sequence; every other node is reachable via arrow keys.</summary>
+    internal int GetTabIndex(TreeViewItem<T> item)
+    {
+        EnsureFlatVisible();
+        return ReferenceEquals(item, _activeItem) ? 0 : -1;
+    }
+
+    /// <summary>Keeps the roving tabindex in sync when a node receives DOM focus
+    /// directly (mouse click or Tab) rather than via arrow-key navigation.</summary>
+    internal void SetActive(TreeViewItem<T> item)
+    {
+        if (ReferenceEquals(_activeItem, item)) return;
+        _activeItem = item;
+        StateHasChanged();
+    }
+
+    /// <summary>WAI-ARIA tree navigation. Down/Up move through the visible nodes in
+    /// depth-first order, Home/End jump to the first/last visible node, Right moves
+    /// into the first child of an expanded node and Left moves to the parent of a
+    /// collapsed/leaf node (the expand/collapse halves of Right/Left are handled in
+    /// <see cref="TreeViewNode{T}"/> where the item is mutated).</summary>
+    internal async Task HandleNavigationKeyAsync(TreeViewItem<T> item, string key)
+    {
+        EnsureFlatVisible();
+        var flat = _flatVisible!;
+        if (flat.Count == 0) return;
+        var index = flat.FindIndex(i => ReferenceEquals(i, item));
+        if (index < 0) return;
+
+        var target = key switch
+        {
+            "ArrowDown" => index < flat.Count - 1 ? flat[index + 1] : null,
+            "ArrowUp"   => index > 0 ? flat[index - 1] : null,
+            "Home"      => flat[0],
+            "End"       => flat[^1],
+            "ArrowRight" => IsEffectivelyExpanded(item) ? GetVisibleChildren(item).FirstOrDefault() : null,
+            "ArrowLeft"  => FindParent(Items ?? [], item),
+            _ => null
+        };
+
+        if (target is not null && !ReferenceEquals(target, item))
+        {
+            _activeItem = target;
+            StateHasChanged();
+            await Interop.FocusElement(GetNodeId(target));
+        }
+    }
+
+    private void EnsureFlatVisible()
+    {
+        if (_flatVisible is not null) return;
+        _flatVisible = [];
+        AppendVisible(_displayItems, _flatVisible);
+        if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
+            _activeItem = _flatVisible.Count > 0 ? _flatVisible[0] : null;
+    }
+
+    private void AppendVisible(IReadOnlyList<TreeViewItem<T>> items, List<TreeViewItem<T>> result)
+    {
+        foreach (var item in items)
+        {
+            result.Add(item);
+            if (IsEffectivelyExpanded(item) && item.Children is { Count: > 0 })
+                AppendVisible(GetVisibleChildren(item), result);
+        }
+    }
+
+    private static TreeViewItem<T>? FindParent(List<TreeViewItem<T>> items, TreeViewItem<T> child)
+    {
+        foreach (var item in items)
+        {
+            if (item.Children is not { Count: > 0 }) continue;
+            if (item.Children.Any(c => ReferenceEquals(c, child))) return item;
+            var found = FindParent(item.Children, child);
+            if (found is not null) return found;
+        }
+        return null;
     }
 
     private static void SetChildrenChecked(List<TreeViewItem<T>>? children, bool value)
@@ -255,4 +433,8 @@
         public bool IsDisabled { get; init; }
         public bool ChildrenLoaded { get; set; }
     }
+
+    /// <summary>Cascaded once per tree (IsFixed) so recursively-rendered nodes can
+    /// reach shared tree state: roving focus, search visibility, node ids.</summary>
+    public sealed record TreeViewContext(TreeView<T> Tree);
 }

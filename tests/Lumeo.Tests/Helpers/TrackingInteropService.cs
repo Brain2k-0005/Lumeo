@@ -6,12 +6,13 @@ namespace Lumeo.Tests.Helpers;
 
 /// <summary>
 /// A test-only IComponentInteropService implementation where every method is a
-/// no-op except Vibrate(), RegisterTabSwipe(), and RegisterHorizontalSwipe(),
-/// which record each call so tests can assert lifecycle behaviour.
+/// no-op except Vibrate(), RegisterTabSwipe(), RegisterHorizontalSwipe(), and
+/// FocusElement(), which record each call so tests can assert lifecycle behaviour.
 /// </summary>
 public sealed class TrackingInteropService : IComponentInteropService
 {
     private readonly List<int> _vibrateArgs = new();
+    private readonly List<string> _focusedElementIds = new();
     private readonly List<string> _tabSwipeRegistrations = new();
     private readonly List<string> _tabSwipeUnregistrations = new();
     private readonly List<string> _horizontalSwipeRegistrations = new();
@@ -29,6 +30,9 @@ public sealed class TrackingInteropService : IComponentInteropService
     public int RegisterHorizontalSwipeCallCount => _horizontalSwipeRegistrations.Count;
     public IReadOnlyList<string> RegisterHorizontalSwipeElementIds => _horizontalSwipeRegistrations;
     public int UnregisterHorizontalSwipeCallCount => _horizontalSwipeUnregistrations.Count;
+
+    // Focus tracking (e.g. TreeView roving-tabindex keyboard navigation)
+    public IReadOnlyList<string> FocusedElementIds => _focusedElementIds;
 
     public ValueTask Vibrate(int milliseconds)
     {
@@ -66,7 +70,10 @@ public sealed class TrackingInteropService : IComponentInteropService
     }
     public ValueTask FocusElement(string elementId)
     {
+        // Recorded in both views: menu tests assert via FocusElementCalls,
+        // TreeView roving-tabindex tests via FocusedElementIds.
         _focusElementCalls.Add(elementId);
+        _focusedElementIds.Add(elementId);
         return ValueTask.CompletedTask;
     }
     public ValueTask FocusMenuItemByIndex(string containerId, int index)
