@@ -1,18 +1,45 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
+@* The group hides itself (heading included) when every one of its CommandItems
+   is filtered out — cmdk parity. CSS-hidden via the native [hidden] attribute
+   instead of unmounting, so the items stay registered with the Command and the
+   group reappears the moment the filter matches again. *@
+<div class="@CssClass" hidden="@(!HasVisibleItems)" @attributes="AdditionalAttributes">
     @if (Heading is not null)
     {
         <div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">@Heading</div>
     }
-    @ChildContent
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
 </div>
 
 @code {
+    [CascadingParameter] public Command.CommandContext? Context { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Heading { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly List<CommandItem> _items = new();
+
     private string CssClass => Cx.Merge("overflow-hidden p-1 text-foreground", Class);
+
+    // An empty registry means the group hosts arbitrary (non-item) content —
+    // never hide those.
+    private bool HasVisibleItems => _items.Count == 0
+        || Context is null
+        || _items.Any(i => Command.MatchesFilter(Context.SearchText, i.ItemFilterValue));
+
+    // Items register idempotently per instance (OnParametersSet can run twice
+    // per parent render) and unregister on Dispose. No StateHasChanged here:
+    // everything that affects visibility (search text, item add/remove, a
+    // FilterValue change) already re-renders the Command tree through its
+    // cascading context, which re-renders this group with a fresh registry.
+    internal void RegisterItem(CommandItem item)
+    {
+        if (!_items.Contains(item)) _items.Add(item);
+    }
+
+    internal void UnregisterItem(CommandItem item) => _items.Remove(item);
 }

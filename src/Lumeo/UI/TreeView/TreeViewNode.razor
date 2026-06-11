@@ -1,10 +1,16 @@
 @namespace Lumeo
 @typeparam T
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
 
 <div class="@RootClass" role="treeitem"
+     id="@NodeId"
      aria-expanded="@AriaExpanded"
      aria-selected="@IsSelected.ToString().ToLowerInvariant()"
      aria-disabled="@Item.IsDisabled.ToString().ToLowerInvariant()"
+     aria-level="@(Level + 1)"
+     aria-posinset="@PosInSet"
+     aria-setsize="@SetSize"
      tabindex="@TabIndex"
      @onfocus="HandleFocus"
      @onblur="HandleBlur"
@@ -65,12 +71,16 @@
     </div>
 
     @* Children *@
-    @if (HasLoadedChildren && Item.IsExpanded)
+    @if (HasLoadedChildren && EffectiveExpanded)
     {
+        var children = VisibleChildren;
         <div role="group">
-            @foreach (var child in Item.Children!)
+            @for (var i = 0; i < children.Count; i++)
             {
+                var child = children[i];
                 <TreeViewNode T="T" @key="child" Item="child" Level="@(Level + 1)"
+                              PosInSet="@(i + 1)"
+                              SetSize="@children.Count"
                               ShowCheckboxes="ShowCheckboxes"
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
@@ -88,8 +98,12 @@
 </div>
 
 @code {
+    [CascadingParameter] private TreeView<T>.TreeViewContext? Context { get; set; }
+
     [Parameter] public TreeView<T>.TreeViewItem<T> Item { get; set; } = default!;
     [Parameter] public int Level { get; set; }
+    [Parameter] public int PosInSet { get; set; } = 1;
+    [Parameter] public int SetSize { get; set; } = 1;
     [Parameter] public bool ShowCheckboxes { get; set; }
     [Parameter] public bool Expandable { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnItemClick { get; set; }
@@ -108,16 +122,33 @@
 
     private string RootClass => Cx.Merge("group focus-visible:outline-none", Class);
 
-    // Roving tabindex: any node that currently holds DOM focus gets tabindex=0 so
-    // the browser can return focus to it. Level-0 nodes are also in the tab sequence
-    // initially (before any node has been focused) so the tree is reachable via Tab.
-    // Child nodes that have never been focused stay at -1 — they are only reachable
-    // via keyboard arrow-key navigation, matching the WAI-ARIA tree pattern.
+    // Roving tabindex (WAI-ARIA tree pattern): the tree keeps exactly one node —
+    // the active one — in the tab sequence; every other node carries -1 and is
+    // reached with the arrow keys. Without a cascaded tree context (node rendered
+    // standalone) fall back to the legacy root-level behavior.
     private bool _isFocused;
-    private string TabIndex => (_isFocused || Level == 0) ? "0" : "-1";
-    private string ExpandLabel => Item.IsExpanded ? "Collapse" : "Expand";
+    private string TabIndex => Context is not null
+        ? Context.Tree.GetTabIndex(Item).ToString()
+        : ((_isFocused || Level == 0) ? "0" : "-1");
+    private string ExpandLabel => EffectiveExpanded ? "Collapse" : "Expand";
+
+    // Deterministic id for keyboard-navigation focus targeting; local fallback
+    // keeps standalone nodes valid HTML.
+    private readonly string _fallbackId = LumeoIds.New("treenode");
+    private string NodeId => Context?.Tree.GetNodeId(Item) ?? _fallbackId;
 
     private bool HasLoadedChildren => Item.Children is { Count: > 0 };
+
+    // Expansion as rendered: the item's own state, plus any search-forced
+    // expansion tracked by the parent tree while a filter is active.
+    private bool EffectiveExpanded => Context?.Tree.IsEffectivelyExpanded(Item) ?? Item.IsExpanded;
+
+    // Children as rendered: when a search filter is active only the visible
+    // subset is rendered; otherwise all loaded children.
+    private IReadOnlyList<TreeView<T>.TreeViewItem<T>> VisibleChildren
+        => Context is not null
+            ? Context.Tree.GetVisibleChildren(Item)
+            : (IReadOnlyList<TreeView<T>.TreeViewItem<T>>?)Item.Children ?? [];
 
     private bool ShowExpandChevron =>
         HasLoadedChildren ||
@@ -126,7 +157,7 @@
     private bool IsSelected => SelectedValues?.Contains(Item.Value!) == true;
 
     private string? AriaExpanded => ShowExpandChevron
-        ? Item.IsExpanded.ToString().ToLowerInvariant()
+        ? EffectiveExpanded.ToString().ToLowerInvariant()
         : null;
 
     private string NodeClass
@@ -147,7 +178,7 @@
     // Single ChevronDown that rotates -90deg when collapsed; smooth like Accordion.
     private string ChevronClass => Cx.Join(
         "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-        Cx.When(!Item.IsExpanded, "-rotate-90"));
+        Cx.When(!EffectiveExpanded, "-rotate-90"));
 
     private string IconClass =>
         Item.IsDisabled
@@ -157,6 +188,8 @@
     private void HandleFocus()
     {
         _isFocused = true;
+        // Focus arrived directly (mouse/Tab) — keep the roving tabindex in sync.
+        Context?.Tree.SetActive(Item);
     }
 
     private void HandleBlur()
@@ -166,7 +199,7 @@
 
     private async Task ToggleExpand()
     {
-        if (Item.IsExpanded)
+        if (EffectiveExpanded)
         {
             Item.IsExpanded = false;
             await OnExpandChanged.InvokeAsync(Item);
@@ -220,6 +253,7 @@
     {
         if (Item.IsDisabled) return;
         await OnItemClick.InvokeAsync(Item);
+        await OnSelectionChanged.InvokeAsync(Item);
     }
 
     private async Task HandleCheck(bool value)
@@ -231,20 +265,41 @@
         await OnItemCheck.InvokeAsync(Item);
     }
 
+    // WAI-ARIA tree keyboard pattern. Expand/collapse mutations stay here (the
+    // node owns its item); pure focus movement is delegated to the parent tree,
+    // which knows the flattened visible order.
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
+        // Page-scroll for the focus-moving keys is suppressed synchronously in
+        // JS (see OnAfterRenderAsync) — the former render-time _preventKey flag
+        // lagged one event, so the first ArrowDown/Up/Home/End still scrolled
+        // the page while focus also moved (Codex P2).
         switch (e.Key)
         {
+            case "ArrowDown":
+            case "ArrowUp":
+            case "Home":
+            case "End":
+                if (Context is not null)
+                    await Context.Tree.HandleNavigationKeyAsync(Item, e.Key);
+                break;
+
             case "ArrowRight":
-                if (ShowExpandChevron && Expandable && !Item.IsExpanded)
+                if (ShowExpandChevron && Expandable && !EffectiveExpanded)
                     await ToggleExpand();
+                else if (Context is not null)
+                    await Context.Tree.HandleNavigationKeyAsync(Item, e.Key); // move into first child
                 break;
 
             case "ArrowLeft":
-                if (Item.IsExpanded)
+                if (EffectiveExpanded)
                 {
                     Item.IsExpanded = false;
                     await OnExpandChanged.InvokeAsync(Item);
+                }
+                else if (Context is not null)
+                {
+                    await Context.Tree.HandleNavigationKeyAsync(Item, e.Key); // move to parent
                 }
                 break;
 
@@ -268,6 +323,7 @@
                     else
                     {
                         await OnItemClick.InvokeAsync(Item);
+                        await OnSelectionChanged.InvokeAsync(Item);
                     }
                 }
                 break;
@@ -288,5 +344,41 @@
                 CascadeChecked(item.Children, value);
             }
         }
+    }
+
+    // Suppress page scroll for the focus-moving keys synchronously in JS,
+    // against the id the DOM actually carries (a consumer `id` in the splat
+    // wins over NodeId). Re-registered when that id changes; prerender-safe.
+    private string? _pdRegisteredId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var id = LumeoIds.Effective(AdditionalAttributes, NodeId);
+        if (_pdRegisteredId == id) return;
+        try
+        {
+            if (_pdRegisteredId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId);
+            await Interop.RegisterPreventDefaultKeys(id, new[]
+            {
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                new Lumeo.Services.PreventDefaultKeyRule("End"),
+            });
+            _pdRegisteredId = id;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pdRegisteredId is null) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

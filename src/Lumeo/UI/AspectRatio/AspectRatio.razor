@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<div class="relative w-full" style="padding-bottom: @(100.0 / Ratio)%" @attributes="AdditionalAttributes">
+<div class="relative w-full" style="padding-bottom: @PaddingPercent%" @attributes="AdditionalAttributes">
     <div class="@CssClass">
         @ChildContent
     </div>
@@ -13,4 +13,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("absolute inset-0", Class);
+
+    // Invariant formatting: CurrentCulture rendered "56,25%" on comma-decimal
+    // locales (de-DE Blazor Server) — an invalid declaration browsers drop,
+    // collapsing the box to zero height. Non-finite or non-positive ratios
+    // fall back to 1:1 (NaN/Infinity would emit "NaN%" / "0%").
+    private string PaddingPercent =>
+        (double.IsFinite(Ratio) && Ratio > 0 ? 100.0 / Ratio : 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

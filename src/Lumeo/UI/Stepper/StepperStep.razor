@@ -1,7 +1,11 @@
 @namespace Lumeo
+@implements IDisposable
 
 @* StepperStep registers itself into the parent Stepper's step list on each render.
-   The actual rendering is done by Stepper using the registered data. *@
+   The actual rendering is done by Stepper using the registered data. Registration
+   is keyed on this component instance (idempotent — OnParametersSet can fire more
+   than once per parent render via the cascading-value double notification) and is
+   withdrawn on dispose so conditionally-removed steps don't leave ghosts. *@
 
 @code {
     [CascadingParameter] public Stepper.StepperContext? Context { get; set; }
@@ -18,7 +22,7 @@
 
     protected override void OnParametersSet()
     {
-        Context?.Parent.RegisterStep(new StepRegistration(
+        Context?.Parent.RegisterStep(this, new StepRegistration(
             Title,
             Description,
             Optional,
@@ -27,6 +31,11 @@
             IconContent,
             ChildContent,
             KeepMounted));
+    }
+
+    public void Dispose()
+    {
+        Context?.Parent.UnregisterStep(this);
     }
 
     public bool IsStepValid() => IsValid?.Invoke() ?? true;

@@ -260,5 +260,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "Il file «{0}» supera la dimensione massima di {1}.",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "Sei sicuro?",
+        ["ConfirmButton.Confirm"] = "Continua",
+        ["ConfirmButton.Cancel"] = "Annulla",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "Disponibili",
+        ["PickList.TargetHeader"] = "Selezionati",
+        ["PickList.NoItems"] = "Nessun elemento",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "Apri",
+        ["FileManager.Rename"] = "Rinomina",
+        ["FileManager.Delete"] = "Elimina",
+        ["FileManager.Name"] = "Nome",
+        ["FileManager.Size"] = "Dimensione",
+        ["FileManager.Modified"] = "Modificato",
+        ["FileManager.Loading"] = "Caricamento…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "Lettore audio",
+        ["AudioPlayer.Play"] = "Riproduci",
+        ["AudioPlayer.Pause"] = "Pausa",
+        ["AudioPlayer.Seek"] = "Posizione di riproduzione",
+        ["AudioPlayer.Mute"] = "Disattiva audio",
+        ["AudioPlayer.Unmute"] = "Riattiva audio",
+        ["AudioPlayer.Download"] = "Scarica audio",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "Colore",
+        ["Theme.Mode"] = "Modalità",
     };
 }

@@ -22,7 +22,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Toggles a class on <c>document.documentElement</c>. Useful for
     /// global modes (e.g. hiding floating chrome while a DataGrid is fullscreen).</summary>
     ValueTask SetHtmlClass(string className, bool active);
-    ValueTask SetupFocusTrap(string elementId);
+    /// <summary>Engages a Tab-cycling focus trap on the element, saves the
+    /// previously focused element (the trigger) and moves focus into the trap.
+    /// <paramref name="initialFocusSelector"/> optionally names the element
+    /// (resolved within the trap) to focus first — e.g. AlertDialog targets its
+    /// least destructive action via <c>[data-lumeo-initial-focus]</c>; when
+    /// null/unmatched, the first focusable element receives focus.</summary>
+    ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null);
+    /// <summary>Releases the trap and returns focus to the element that was
+    /// focused when <see cref="SetupFocusTrap"/> ran, if it is still in the
+    /// document.</summary>
     ValueTask RemoveFocusTrap(string elementId);
 
     /// <summary>Registers a native animationend listener that filters strictly on
@@ -57,6 +66,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Floating Position
     ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
+    /// <summary>
+    /// 3.12.x — extended overload with an explicit trigger→content gap in pixels
+    /// (Tooltip <c>Offset</c>). The default implementation ignores the offset and
+    /// falls back to the 5-arg overload (JS hardcoded 4px) so existing
+    /// implementations keep compiling unchanged.
+    /// </summary>
+    ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
+        PositionFixed(contentId, referenceId, align, matchWidth, side);
     ValueTask UnpositionFixed(string contentId);
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);
@@ -145,6 +162,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler);
     ValueTask UnregisterOtpPaste(string baseId, int length);
 
+    // Selective keydown preventDefault — suppresses the browser default for
+    // the listed keys only, synchronously in the native event dispatch.
+    // Use instead of @onkeydown:preventDefault when some keys (e.g. Tab)
+    // must keep their default, or when the suppression must not lag one
+    // event behind a render-time bool (Splitter, Carousel, PromptInput).
+    ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules);
+    ValueTask UnregisterPreventDefaultKeys(string elementId);
+
     // DataGrid Column Resize — JS previews the drag directly in the DOM and invokes
     // commitHandler once with the final width on mouseup.
     ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler);
@@ -157,6 +182,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     // Tour
     ValueTask<ElementRect?> GetElementRectBySelector(string selector);
+    /// <summary>Instantly scrolls the first element matching <paramref name="selector"/>
+    /// into the viewport (block: center). Call BEFORE LockScroll — a locked body
+    /// can't be scrolled, programmatically or otherwise.</summary>
+    ValueTask ScrollSelectorIntoView(string selector);
 
     // Affix
     ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler);

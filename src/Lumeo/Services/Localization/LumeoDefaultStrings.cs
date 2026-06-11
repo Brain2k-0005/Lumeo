@@ -300,6 +300,13 @@ internal static partial class LumeoDefaultStrings
         ["FileManager.SwitchGridView"] = "Switch to grid view",
         ["FileManager.FolderTree"] = "Folder tree",
         ["FileManager.FileActions"] = "File actions",
+        ["FileManager.Open"] = "Open",
+        ["FileManager.Rename"] = "Rename",
+        ["FileManager.Delete"] = "Delete",
+        ["FileManager.Name"] = "Name",
+        ["FileManager.Size"] = "Size",
+        ["FileManager.Modified"] = "Modified",
+        ["FileManager.Loading"] = "Loading…",
 
         // ── Chart ───────────────────────────────────────────────────
         ["Chart.Loading"] = "Loading…",
@@ -330,6 +337,9 @@ internal static partial class LumeoDefaultStrings
         ["PickList.MoveSelected"] = "Move selected",
         ["PickList.MoveBackSelected"] = "Move back selected",
         ["PickList.MoveBackAll"] = "Move back all",
+        ["PickList.SourceHeader"] = "Available",
+        ["PickList.TargetHeader"] = "Selected",
+        ["PickList.NoItems"] = "No items",
 
         // ── Navigation ──────────────────────────────────────────────
         ["Navigation.Toggle"] = "Toggle navigation",
@@ -424,6 +434,8 @@ internal static partial class LumeoDefaultStrings
         ["Theme.Dark"] = "Dark",
         ["Theme.System"] = "System",
         ["Theme.Toggle"] = "Toggle theme",
+        ["Theme.Color"] = "Color",
+        ["Theme.Mode"] = "Mode",
 
         // ── Tabs ────────────────────────────────────────────────────
         ["Tabs.CloseTab"] = "Close tab",
@@ -445,6 +457,20 @@ internal static partial class LumeoDefaultStrings
 
         // ── PivotGrid ───────────────────────────────────────────────
         ["PivotGrid.GrandTotal"] = "Grand Total",
+
+        // ── ConfirmButton ───────────────────────────────────────────
+        ["ConfirmButton.Title"] = "Are you sure?",
+        ["ConfirmButton.Confirm"] = "Continue",
+        ["ConfirmButton.Cancel"] = "Cancel",
+
+        // ── AudioPlayer ─────────────────────────────────────────────
+        ["AudioPlayer.Label"] = "Audio player",
+        ["AudioPlayer.Play"] = "Play",
+        ["AudioPlayer.Pause"] = "Pause",
+        ["AudioPlayer.Seek"] = "Seek",
+        ["AudioPlayer.Mute"] = "Mute",
+        ["AudioPlayer.Unmute"] = "Unmute",
+        ["AudioPlayer.Download"] = "Download audio",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -735,6 +761,13 @@ internal static partial class LumeoDefaultStrings
         ["FileManager.SwitchGridView"] = "Zur Rasteransicht wechseln",
         ["FileManager.FolderTree"] = "Ordnerbaum",
         ["FileManager.FileActions"] = "Dateiaktionen",
+        ["FileManager.Open"] = "Öffnen",
+        ["FileManager.Rename"] = "Umbenennen",
+        ["FileManager.Delete"] = "Löschen",
+        ["FileManager.Name"] = "Name",
+        ["FileManager.Size"] = "Größe",
+        ["FileManager.Modified"] = "Geändert",
+        ["FileManager.Loading"] = "Wird geladen…",
 
         // ── Chart ───────────────────────────────────────────────────
         ["Chart.Loading"] = "Wird geladen…",
@@ -765,6 +798,9 @@ internal static partial class LumeoDefaultStrings
         ["PickList.MoveSelected"] = "Auswahl verschieben",
         ["PickList.MoveBackSelected"] = "Auswahl zurück verschieben",
         ["PickList.MoveBackAll"] = "Alle zurück verschieben",
+        ["PickList.SourceHeader"] = "Verfügbar",
+        ["PickList.TargetHeader"] = "Ausgewählt",
+        ["PickList.NoItems"] = "Keine Einträge",
 
         // ── Navigation ──────────────────────────────────────────────
         ["Navigation.Toggle"] = "Navigation ein-/ausblenden",
@@ -859,6 +895,8 @@ internal static partial class LumeoDefaultStrings
         ["Theme.Dark"] = "Dunkel",
         ["Theme.System"] = "System",
         ["Theme.Toggle"] = "Theme umschalten",
+        ["Theme.Color"] = "Farbe",
+        ["Theme.Mode"] = "Modus",
 
         // ── Tabs ────────────────────────────────────────────────────
         ["Tabs.CloseTab"] = "Tab schließen",
@@ -880,6 +918,20 @@ internal static partial class LumeoDefaultStrings
 
         // ── PivotGrid ───────────────────────────────────────────────
         ["PivotGrid.GrandTotal"] = "Gesamtsumme",
+
+        // ── ConfirmButton ───────────────────────────────────────────
+        ["ConfirmButton.Title"] = "Sind Sie sicher?",
+        ["ConfirmButton.Confirm"] = "Fortfahren",
+        ["ConfirmButton.Cancel"] = "Abbrechen",
+
+        // ── AudioPlayer ─────────────────────────────────────────────
+        ["AudioPlayer.Label"] = "Audio-Player",
+        ["AudioPlayer.Play"] = "Abspielen",
+        ["AudioPlayer.Pause"] = "Pause",
+        ["AudioPlayer.Seek"] = "Wiedergabeposition",
+        ["AudioPlayer.Mute"] = "Stummschalten",
+        ["AudioPlayer.Unmute"] = "Stummschaltung aufheben",
+        ["AudioPlayer.Download"] = "Audio herunterladen",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)

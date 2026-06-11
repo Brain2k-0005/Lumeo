@@ -1,12 +1,18 @@
 @namespace Lumeo
 
 @{
+    var visibleItems = VisibleItems;
+    var highlighted = _highlightedIndex >= 0 && _highlightedIndex < visibleItems.Count
+        ? visibleItems[_highlightedIndex]
+        : null;
     var context = new CommandContext(
         SearchText,
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
-        RegisterItem,
-        UnregisterItem,
-        VisibleItemCount);
+        EventCallback.Factory.Create<KeyboardEventArgs>(this, OnNavigationKey),
+        visibleItems.Count,
+        _listId,
+        highlighted?.ItemId,
+        this);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -21,36 +27,126 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string SearchText { get; set; } = "";
-    private readonly HashSet<string> _items = new();
+    private readonly string _listId = LumeoIds.New("cmd-list");
+
+    // Items register once per mounted instance — idempotent and keyed on the
+    // component itself (OnParametersSet can run twice per parent render via
+    // cascading-value double notification) — and unregister only on Dispose.
+    // The filter is applied at read time (VisibleItems) instead of churning
+    // register/unregister on visibility, so the keyboard-nav list keeps DOM
+    // order even after a filter hides and re-shows items.
+    private readonly List<CommandItem> _items = new();
+
+    // Index into VisibleItems. -1 = nothing highlighted (pristine palette).
+    private int _highlightedIndex = -1;
 
     private string CssClass => Cx.Merge("flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground", Class);
 
-    // CommandItem tracks its own visibility and calls Register only while visible, Unregister when it's not —
-    // so VisibleItemCount reflects the filtered result set, which lets CommandEmpty render only when everything
-    // is filtered out.
-    private int VisibleItemCount => _items.Count;
+    /// <summary>
+    /// The substring filter shared by Command (nav list + visible count),
+    /// CommandItem (self-hide) and CommandGroup (hide-when-empty). An item with
+    /// no FilterValue always matches, mirroring the previous behavior.
+    /// </summary>
+    internal static bool MatchesFilter(string searchText, string? filterValue)
+        => string.IsNullOrEmpty(searchText)
+           || string.IsNullOrEmpty(filterValue)
+           || filterValue.Contains(searchText, StringComparison.OrdinalIgnoreCase);
 
-    private void RegisterItem(string id)
+    /// <summary>Registered items that pass the current filter, in DOM order.</summary>
+    private List<CommandItem> VisibleItems
+        => _items.Where(i => MatchesFilter(SearchText, i.ItemFilterValue)).ToList();
+
+    internal void RegisterItem(CommandItem item)
     {
-        if (_items.Add(id)) StateHasChanged();
+        if (_items.Contains(item)) return;
+        _items.Add(item);
+        StateHasChanged();
     }
 
-    private void UnregisterItem(string id)
+    internal void UnregisterItem(CommandItem item)
     {
-        if (_items.Remove(id)) StateHasChanged();
+        if (_items.Remove(item)) StateHasChanged();
     }
+
+    /// <summary>
+    /// A registered item's FilterValue/Disabled parameter changed after
+    /// registration — re-render so the visible count, group hiding and the
+    /// highlight's disabled skip-list pick up the new values.
+    /// </summary>
+    internal void NotifyItemChanged() => StateHasChanged();
 
     private Task OnSearchChanged(string text)
     {
         SearchText = text;
+        // cmdk resets the highlight to the first selectable result on every
+        // filter change so Enter always acts on the top of what the user sees.
+        _highlightedIndex = VisibleItems.FindIndex(i => !i.IsDisabled);
         StateHasChanged();
         return Task.CompletedTask;
+    }
+
+    // Keyboard navigation driven from the CommandInput while it keeps focus
+    // (WAI-ARIA combobox-listbox pattern: the input only moves
+    // aria-activedescendant, never DOM focus).
+    private async Task OnNavigationKey(KeyboardEventArgs e)
+    {
+        if (e.IsComposing) return; // IME candidate navigation owns these keys
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                MoveHighlight(1);
+                break;
+            case "ArrowUp":
+                MoveHighlight(-1);
+                break;
+            case "Home":
+                _highlightedIndex = VisibleItems.FindIndex(i => !i.IsDisabled);
+                break;
+            case "End":
+                _highlightedIndex = VisibleItems.FindLastIndex(i => !i.IsDisabled);
+                break;
+            case "Enter":
+                var items = VisibleItems;
+                if (_highlightedIndex >= 0 && _highlightedIndex < items.Count)
+                    await items[_highlightedIndex].SelectAsync();
+                break;
+        }
+    }
+
+    // Wrapping step that skips disabled items; bails out after one full lap so
+    // a list of only-disabled items cannot loop forever.
+    private void MoveHighlight(int direction)
+    {
+        var items = VisibleItems;
+        if (items.Count == 0)
+        {
+            _highlightedIndex = -1;
+            return;
+        }
+
+        // A stale index (items unmounted since the last move) restarts from the edge.
+        var idx = _highlightedIndex >= items.Count ? -1 : _highlightedIndex;
+        for (var step = 0; step < items.Count; step++)
+        {
+            idx = direction > 0
+                ? (idx + 1) % items.Count
+                : idx <= 0 ? items.Count - 1 : idx - 1;
+            if (!items[idx].IsDisabled)
+            {
+                _highlightedIndex = idx;
+                return;
+            }
+        }
+        _highlightedIndex = -1;
     }
 
     public record CommandContext(
         string SearchText,
         EventCallback<string> OnSearch,
-        Action<string> RegisterItem,
-        Action<string> UnregisterItem,
-        int VisibleItemCount);
+        EventCallback<KeyboardEventArgs> OnNavigationKey,
+        int VisibleItemCount,
+        string ListId,
+        string? HighlightedItemId,
+        Command Owner);
 }

@@ -130,7 +130,10 @@ else
                     }
                 </div>
             </div>
-            <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+            @* Stretched invisibly over the whole dropzone: native drag&drop onto a
+               file input adds the dropped files and fires OnChange (no JS needed),
+               and clicking anywhere in the zone opens the browse dialog. *@
+            <InputFile class="absolute inset-0 h-full w-full cursor-pointer opacity-0" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
         @if (_globalErrorMessage is not null)
         {
@@ -301,6 +304,7 @@ else
 
     // ── Internal state ───────────────────────────────────────────────────────
     private bool _isDragOver;
+    private int _dragDepth;
     private string? _globalErrorMessage;
     private string? _thumbnailUrl;
     private List<FileUploadItem> _uploadItems = new();
@@ -324,19 +328,52 @@ else
     private string ButtonLabelCssClass =>
         $"inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-primary {ButtonSizeClasses} font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
-    private string DropzoneCssClass => $"flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : EffectiveInvalid ? "border-destructive bg-destructive/5" : _globalErrorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
+    private string DropzoneCssClass => $"relative flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors {(_isDragOver ? "border-primary bg-primary/5" : EffectiveInvalid ? "border-destructive bg-destructive/5" : _globalErrorMessage is not null ? "border-destructive bg-destructive/5" : "border-input bg-background hover:border-primary hover:bg-muted")} px-6".Trim();
 
     // ── Drag handlers ────────────────────────────────────────────────────────
-    private void HandleDragEnter(DragEventArgs e) => _isDragOver = true;
-    private void HandleDragLeave(DragEventArgs e) => _isDragOver = false;
-    private async Task HandleDrop(DragEventArgs e) => _isDragOver = false;
+    // The dropped files themselves are handled natively: the <InputFile> is
+    // stretched invisibly over the whole dropzone, so the browser populates it
+    // on drop and OnChange fires. These handlers only drive the visual
+    // drag-over highlight.
+    //
+    // NOTE: do NOT add @ondrop:preventDefault on the label (or any ancestor) —
+    // Blazor applies the flag to events bubbling up from descendants, and a
+    // cancelled drop stops the browser from populating the InputFile.
+    //
+    // _dragDepth counts dragenter/dragleave pairs because the spec fires
+    // dragenter at the new target BEFORE dragleave at the old one when moving
+    // between nested elements — a plain bool would flicker off while the
+    // pointer is still inside the zone.
+    private void HandleDragEnter(DragEventArgs e)
+    {
+        _dragDepth++;
+        _isDragOver = true;
+    }
+
+    private void HandleDragLeave(DragEventArgs e)
+    {
+        if (--_dragDepth <= 0)
+        {
+            _dragDepth = 0;
+            _isDragOver = false;
+        }
+    }
+
+    private void HandleDrop(DragEventArgs e)
+    {
+        _dragDepth = 0;
+        _isDragOver = false;
+    }
 
     // ── File selected ────────────────────────────────────────────────────────
     private async Task HandleFileSelected(InputFileChangeEventArgs e)
     {
         _globalErrorMessage = null;
 
-        var candidates = Multiple ? e.GetMultipleFiles(MaxFiles + 1).ToList() : new List<IBrowserFile> { e.File };
+        // Pass the actual selection count: GetMultipleFiles THROWS when the user
+        // picks more files than the argument allows — capping at MaxFiles + 1
+        // crashed instead of surfacing the MaxFiles error below.
+        var candidates = Multiple ? e.GetMultipleFiles(Math.Max(e.FileCount, 1)).ToList() : new List<IBrowserFile> { e.File };
 
         // Count check against existing non-failed items
         var existing = _uploadItems.Count(i => i.Status != FileUploadStatus.Failed && i.Status != FileUploadStatus.Cancelled);

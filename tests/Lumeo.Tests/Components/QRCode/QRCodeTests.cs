@@ -54,4 +54,27 @@ public class QRCodeTests : IAsyncLifetime
         Assert.Contains("width: 300px", cut.Markup);
         Assert.Contains("height: 300px", cut.Markup);
     }
+
+    [Fact]
+    public void Logo_Overlay_Is_Scaled_From_Pixels_To_Module_Units()
+    {
+        // Regression: ImageSize (pixels of the rendered box) was used RAW in
+        // viewBox module units — the default 40 covered 60-130% of the code.
+        var cut = _ctx.Render<L.QRCode>(p => p
+            .Add(c => c.Value, "https://example.com")
+            .Add(c => c.Size, 200)
+            .Add(c => c.ImageSize, 40)
+            .Add(c => c.ImageSrc, "logo.png"));
+
+        var svg = cut.Find("svg");
+        var viewBox = svg.GetAttribute("viewBox")!.Split(' ');
+        var total = double.Parse(viewBox[2], System.Globalization.CultureInfo.InvariantCulture);
+
+        var image = cut.Find("image");
+        var width = double.Parse(image.GetAttribute("width")!, System.Globalization.CultureInfo.InvariantCulture);
+
+        // 40px of a 200px box = 20% of the code, regardless of QR version.
+        Assert.Equal(0.20, width / total, 2);
+        Assert.True(width < total / 3, "logo must not dominate the code");
+    }
 }

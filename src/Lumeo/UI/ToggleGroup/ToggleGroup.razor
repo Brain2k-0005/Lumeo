@@ -24,19 +24,43 @@
 
     private readonly HashSet<string> _selectedItems = new();
 
+    // Last-seen bound parameters — lets us distinguish "consumer cleared the
+    // binding to null" (sync: clear the selection) from "consumer never binds
+    // at all" (uncontrolled usage: leave the internally-toggled selection alone).
+    private string? _lastValue;
+    private IEnumerable<string>? _lastSelectedValues;
+
     private string CssClass => Cx.Merge("flex items-center gap-1", Class);
 
     protected override void OnParametersSet()
     {
-        if (Type == ToggleGroupType.Single && Value is not null)
+        if (Type == ToggleGroupType.Single)
         {
-            _selectedItems.Clear();
-            _selectedItems.Add(Value);
+            if (Value is not null)
+            {
+                _selectedItems.Clear();
+                _selectedItems.Add(Value);
+            }
+            else if (_lastValue is not null)
+            {
+                // Bound value was reset to null — drop the stale selection.
+                _selectedItems.Clear();
+            }
+            _lastValue = Value;
         }
-        else if (Type == ToggleGroupType.Multiple && SelectedValues is not null)
+        else if (Type == ToggleGroupType.Multiple)
         {
-            _selectedItems.Clear();
-            foreach (var v in SelectedValues) _selectedItems.Add(v);
+            if (SelectedValues is not null)
+            {
+                _selectedItems.Clear();
+                foreach (var v in SelectedValues) _selectedItems.Add(v);
+            }
+            else if (_lastSelectedValues is not null)
+            {
+                // Bound collection was reset to null — drop the stale selection.
+                _selectedItems.Clear();
+            }
+            _lastSelectedValues = SelectedValues;
         }
     }
 

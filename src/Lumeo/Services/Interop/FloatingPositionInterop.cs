@@ -11,9 +11,10 @@ internal sealed class FloatingPositionInterop
         string referenceId,
         string align = "start",
         bool matchWidth = false,
-        string side = "bottom")
+        string side = "bottom",
+        int offset = 4)
     {
-        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth, side);
+        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth, side, offset);
     }
 
     public async ValueTask UnpositionFixed(IJSObjectReference module, string contentId)
@@ -33,6 +34,13 @@ internal sealed class FloatingPositionInterop
         string selector)
     {
         return await module.InvokeAsync<ElementRect?>("getElementRectBySelector", selector);
+    }
+
+    public async ValueTask ScrollSelectorIntoView(
+        IJSObjectReference module,
+        string selector)
+    {
+        await module.InvokeVoidAsync("scrollSelectorIntoView", selector);
     }
 
     public async ValueTask<double> GetElementDimension(

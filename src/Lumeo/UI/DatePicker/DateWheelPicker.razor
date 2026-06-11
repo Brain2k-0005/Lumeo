@@ -89,6 +89,13 @@
     private readonly DebouncedValue<int> _monthDebounced = new(SnapDebounceMs);
     private readonly DebouncedValue<int> _yearDebounced = new(SnapDebounceMs);
     private bool _initialised;
+    // External-change resync: columns are scroll-positioned programmatically on
+    // first render; when the bound Value changes from outside afterwards the
+    // offsets go stale and the next user scroll commits from stale geometry.
+    // Track the last value we synced (updated in RaiseChange so our own commits
+    // echoed back by the parent don't count) and re-scroll when it changes.
+    private DateOnly? _lastSyncedValue;
+    private bool _resyncPending;
 
     private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
 
@@ -97,6 +104,12 @@
 
     protected override void OnParametersSet()
     {
+        if (Value != _lastSyncedValue)
+        {
+            _lastSyncedValue = Value;
+            _resyncPending = true;
+        }
+
         var seed = Value ?? DateOnly.FromDateTime(DateTime.Today);
         _day = seed.Day;
         _month = seed.Month;
@@ -195,6 +208,10 @@
             if (Min.HasValue && d < Min.Value) d = Min.Value;
             if (Max.HasValue && d > Max.Value) d = Max.Value;
             _year = d.Year; _month = d.Month; _day = d.Day;
+            // Our own commit — when the parent echoes it back through the
+            // Value parameter it is not an external change, so pre-mark it
+            // as synced to avoid a redundant programmatic re-scroll.
+            _lastSyncedValue = d;
             await ValueChanged.InvokeAsync(d);
         }
         catch (ArgumentOutOfRangeException)
@@ -209,31 +226,53 @@
     {
         if (firstRender)
         {
-            await Interop.WheelScrollTo(_dayCol, (_day - 1) * ItemHeight);
-            await Interop.WheelScrollTo(_monthCol, (_month - 1) * ItemHeight);
-            var yearIdx = _years.IndexOf(_year);
-            if (yearIdx >= 0)
-            {
-                await Interop.WheelScrollTo(_yearCol, yearIdx * ItemHeight);
-            }
+            _resyncPending = false;
+            await ScrollColumnsToSelectionAsync();
             // Defer enabling scroll handlers until after the programmatic
             // scrollTo writes have settled — otherwise the first @onscroll
             // would interpret the seed scroll as a user gesture.
-            // 2.2.3: was Task.Delay().ContinueWith(...) which runs the
-            // continuation on the thread pool and swallows any exception
-            // unobserved. InvokeAsync(async () => { delay; flip flag; })
-            // keeps the work on the Blazor sync context and surfaces
-            // failures through the normal renderer error path.
-            _ = InvokeAsync(async () =>
-            {
-                try
-                {
-                    await Task.Delay(150);
-                    _initialised = true;
-                }
-                catch (JSDisconnectedException) { /* circuit teardown — fine */ }
-            });
+            ScheduleScrollHandlerEnable();
         }
+        else if (_resyncPending)
+        {
+            // The bound Value changed externally — re-position the columns so
+            // the visible offsets match the new selection. Suppress the scroll
+            // handlers while the programmatic scrolls run (same reasoning as
+            // the first-render seeding), then re-enable once settled.
+            _resyncPending = false;
+            _initialised = false;
+            await ScrollColumnsToSelectionAsync();
+            ScheduleScrollHandlerEnable();
+        }
+    }
+
+    private async Task ScrollColumnsToSelectionAsync()
+    {
+        await Interop.WheelScrollTo(_dayCol, (_day - 1) * ItemHeight);
+        await Interop.WheelScrollTo(_monthCol, (_month - 1) * ItemHeight);
+        var yearIdx = _years.IndexOf(_year);
+        if (yearIdx >= 0)
+        {
+            await Interop.WheelScrollTo(_yearCol, yearIdx * ItemHeight);
+        }
+    }
+
+    // 2.2.3: was Task.Delay().ContinueWith(...) which runs the
+    // continuation on the thread pool and swallows any exception
+    // unobserved. InvokeAsync(async () => { delay; flip flag; })
+    // keeps the work on the Blazor sync context and surfaces
+    // failures through the normal renderer error path.
+    private void ScheduleScrollHandlerEnable()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(150);
+                _initialised = true;
+            }
+            catch (JSDisconnectedException) { /* circuit teardown — fine */ }
+        });
     }
 
     public void Dispose()

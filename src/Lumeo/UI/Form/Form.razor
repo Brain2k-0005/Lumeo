@@ -48,6 +48,17 @@
         }
     }
 
+    // Error-list instances the sync Validator wrote, per field. Tracked so a
+    // re-submit can drop errors for fields that now pass — Validate() only
+    // returns failures, so merging alone left fixed fields permanently
+    // invalid and OnValidSubmit could never fire again. Tracking the exact
+    // INSTANCE (not just the key) keeps async-sourced errors safe even when
+    // they reuse a key that sync once failed: an async validator overwriting
+    // Errors[key] replaces the instance, so the cleanup below no longer
+    // considers the entry sync-owned and leaves it alone (Codex P1 on the
+    // earlier key-only tracking).
+    private readonly Dictionary<string, List<string>> _syncWrittenErrors = new();
+
     private async Task HandleSubmit()
     {
         if (Model is null) return;
@@ -62,9 +73,23 @@
                 // Merge sync validation results with any async errors already in the context
                 // so per-field async validators (e.g. "username taken") survive a sync re-validate.
                 var syncErrors = Validator.Validate(Model);
+                foreach (var (key, written) in _syncWrittenErrors)
+                {
+                    if (!syncErrors.ContainsKey(key)
+                        && _context.Errors.TryGetValue(key, out var current)
+                        && ReferenceEquals(current, written))
+                    {
+                        _context.Errors.Remove(key);
+                    }
+                }
                 foreach (var kvp in syncErrors)
                 {
                     _context.Errors[kvp.Key] = kvp.Value;
+                }
+                _syncWrittenErrors.Clear();
+                foreach (var kvp in syncErrors)
+                {
+                    _syncWrittenErrors[kvp.Key] = kvp.Value;
                 }
             }
 
@@ -89,14 +114,28 @@
         if (Model is null || Validator is null) return;
         var errors = Validator.ValidateField(Model, fieldName);
         if (errors.Count > 0)
+        {
             _context.Errors[fieldName] = errors;
+            _syncWrittenErrors[fieldName] = errors;
+        }
         else
-            _context.Errors.Remove(fieldName);
+        {
+            // Only remove what sync validation owns — an async error that
+            // replaced the instance under this key must survive.
+            if (_syncWrittenErrors.TryGetValue(fieldName, out var written)
+                && _context.Errors.TryGetValue(fieldName, out var current)
+                && ReferenceEquals(current, written))
+            {
+                _context.Errors.Remove(fieldName);
+            }
+            _syncWrittenErrors.Remove(fieldName);
+        }
         StateHasChanged();
     }
 
     public void Reset()
     {
+        _syncWrittenErrors.Clear();
         _context.Reset();
         StateHasChanged();
     }
@@ -132,6 +171,7 @@
             }
         }
 
+        _syncWrittenErrors.Clear();
         _context.Reset();
         StateHasChanged();
     }

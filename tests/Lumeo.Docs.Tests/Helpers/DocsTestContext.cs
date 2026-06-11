@@ -44,7 +44,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
-    public ValueTask SetupFocusTrap(string elementId) => ValueTask.CompletedTask;
+    public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => ValueTask.CompletedTask;
     public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
 
     // ColorPicker SV Drag
@@ -113,6 +113,13 @@ internal sealed class NoopInteropService : IComponentInteropService
     // OTP Paste
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
+
+    // Selective keydown preventDefault
+    public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
+    public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
+
+    // Tour scroll-into-view
+    public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
 
     // DataGrid Column Resize
     public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;

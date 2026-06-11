@@ -1,7 +1,10 @@
 @namespace Lumeo
 
 @{
-    _stepIndex = 0;
+    // Refresh the count at render start (not only in OnParametersSet) so the
+    // catch-up re-render triggered by late step registration — which runs
+    // WITHOUT a parameter set — still hands children the correct TotalSteps.
+    _stepCount = _steps.Count;
     var context = new StepperContext(
         ActiveStep,
         EventCallback.Factory.Create<int>(this, SetActiveStep),
@@ -72,7 +75,7 @@
                     }
                     @if (step.Optional)
                     {
-                        <span class="text-xs text-muted-foreground italic">Optional</span>
+                        <span class="text-xs text-muted-foreground italic">@L["Stepper.Optional"]</span>
                     }
                 </div>
                 @if (idx < _steps.Count - 1)
@@ -109,7 +112,7 @@
                         }
                         @if (step.Optional)
                         {
-                            <p class="text-xs text-muted-foreground italic">Optional</p>
+                            <p class="text-xs text-muted-foreground italic">@L["Stepper.Optional"]</p>
                         }
                     </div>
                 </div>
@@ -123,10 +126,24 @@
        relationship is dynamic (active step changes), so we read the
        currently-active step's id directly each render. *@
     <div id="@_panelId" role="tabpanel" aria-labelledby="@(ActiveStep >= 0 && ActiveStep < _steps.Count ? StepTabId(ActiveStep) : null)" class="mt-4">
-        @if (ActiveStep >= 0 && ActiveStep < _steps.Count)
+        @* KeepMounted steps render inside a STABLE keyed wrapper whose
+           visibility toggles — re-parenting the fragment between renders
+           would recreate the DOM and lose input state, which is the whole
+           point of KeepMounted. Non-KeepMounted steps keep the historical
+           behavior (only the active one is rendered, unwrapped). *@
+        @for (int i = 0; i < _steps.Count; i++)
         {
-            var activeStep = _steps[ActiveStep];
-            @activeStep.ChildContent
+            var stepIdx = i;
+            var bodyStep = _steps[stepIdx];
+            var isActivePanel = stepIdx == ActiveStep;
+            @if (bodyStep.KeepMounted)
+            {
+                <div @key="stepIdx" style="@(isActivePanel ? null : "display:none")" aria-hidden="@(isActivePanel ? null : "true")">@bodyStep.ChildContent</div>
+            }
+            else if (isActivePanel)
+            {
+                @bodyStep.ChildContent
+            }
         }
     </div>
 
@@ -161,6 +178,7 @@
 </div>
 
 @inject ThemeService Theme
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -178,7 +196,21 @@
 
     // Internal step registry — populated by StepperStep on each render pass
     internal readonly List<StepperStep.StepRegistration> _steps = new();
-    internal int _stepIndex;
+    // Identity-keyed registration: a StepperStep's OnParametersSet can run
+    // MORE than once per parent render (CascadingValue with IsFixed=false
+    // notifies subscribers AND re-renders ChildContent), so registration must
+    // be idempotent per child INSTANCE. The previous slot-index scheme
+    // double-registered every step on re-renders (duplicated indicators).
+    // Registration order of step instances. Reordering dynamic steps (e.g.
+    // inserting before existing ones without @key) keeps first-registration
+    // order, not markup order — Blazor doesn't re-run children's
+    // OnParametersSet in document order when instances are reused, so render
+    // timing can't reconstruct position reliably. Static and appended steps
+    // (the overwhelmingly common case) are correct; document this limitation
+    // rather than ship an order heuristic that's wrong in subtle ways. Use
+    // @key on the steps if you reorder them dynamically.
+    private readonly List<StepperStep> _stepOwners = new();
+    private readonly Dictionary<StepperStep, StepperStep.StepRegistration> _stepData = new();
     internal int _stepCount;
 
     // ElementReferences for each step indicator button — sized in OnParametersSet
@@ -193,20 +225,55 @@
     private readonly string _tabIdPrefix = LumeoIds.New("stepper-tab");
     private string StepTabId(int idx) => $"{_tabIdPrefix}-{idx}";
 
-    internal void RegisterStep(StepperStep.StepRegistration step)
+    internal void RegisterStep(StepperStep owner, StepperStep.StepRegistration step)
     {
-        // Steps register themselves during the hidden render pass
-        if (_steps.Count <= _stepIndex)
-            _steps.Add(step);
-        else
-            _steps[_stepIndex] = step;
-        _stepIndex++;
+        // Idempotent per child instance: repeated OnParametersSet calls only
+        // refresh the registration data; order is first-registration order.
+        if (!_stepData.ContainsKey(owner))
+            _stepOwners.Add(owner);
+        _stepData[owner] = step;
+        RebuildSteps();
+    }
+
+    internal void UnregisterStep(StepperStep owner)
+    {
+        if (_stepData.Remove(owner))
+        {
+            _stepOwners.Remove(owner);
+            RebuildSteps();
+            // Deferred + guarded: disposal may happen while the whole Stepper
+            // is being torn down, where a re-render request is invalid.
+            try { _ = InvokeAsync(StateHasChanged); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
+    }
+
+    private void RebuildSteps()
+    {
+        _steps.Clear();
+        foreach (var owner in _stepOwners)
+            _steps.Add(_stepData[owner]);
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // StepperStep children initialize/register AFTER this parent has
+        // already built its frames (on the first render: from an empty list —
+        // header/panel/footer were blank until an unrelated re-render; the
+        // old test suite worked around it with a manual extra Render()).
+        // _stepCount snapshots the count at render start, so a difference
+        // here means registrations landed during this pass — catch up with
+        // exactly one re-render AFTER the batch completed (doing it inside
+        // RegisterStep would interleave renders between sibling inits).
+        if (_steps.Count != _stepCount)
+        {
+            StateHasChanged();
+        }
     }
 
     protected override void OnParametersSet()
     {
-        // Reset index so re-render re-registers
-        _stepIndex = 0;
         _stepCount = _steps.Count;
 
         // Ensure the refs array is always large enough for the current step count.

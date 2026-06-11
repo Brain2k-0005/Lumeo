@@ -339,5 +339,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "\"{0}\" dosyası en fazla {1} sınırını aşıyor.",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "Emin misiniz?",
+        ["ConfirmButton.Confirm"] = "Devam et",
+        ["ConfirmButton.Cancel"] = "İptal",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "Kullanılabilir",
+        ["PickList.TargetHeader"] = "Seçilenler",
+        ["PickList.NoItems"] = "Öğe yok",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "Aç",
+        ["FileManager.Rename"] = "Yeniden adlandır",
+        ["FileManager.Delete"] = "Sil",
+        ["FileManager.Name"] = "Ad",
+        ["FileManager.Size"] = "Boyut",
+        ["FileManager.Modified"] = "Değiştirilme",
+        ["FileManager.Loading"] = "Yükleniyor…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "Ses oynatıcı",
+        ["AudioPlayer.Play"] = "Oynat",
+        ["AudioPlayer.Pause"] = "Duraklat",
+        ["AudioPlayer.Seek"] = "Oynatma konumu",
+        ["AudioPlayer.Mute"] = "Sessize al",
+        ["AudioPlayer.Unmute"] = "Sesi aç",
+        ["AudioPlayer.Download"] = "Sesi indir",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "Renk",
+        ["Theme.Mode"] = "Mod",
     };
 }

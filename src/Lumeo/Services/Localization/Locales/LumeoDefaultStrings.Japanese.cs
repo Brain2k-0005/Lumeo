@@ -260,5 +260,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "ファイル「{0}」は最大サイズ {1} を超えています。",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "よろしいですか？",
+        ["ConfirmButton.Confirm"] = "続行",
+        ["ConfirmButton.Cancel"] = "キャンセル",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "利用可能",
+        ["PickList.TargetHeader"] = "選択済み",
+        ["PickList.NoItems"] = "項目がありません",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "開く",
+        ["FileManager.Rename"] = "名前を変更",
+        ["FileManager.Delete"] = "削除",
+        ["FileManager.Name"] = "名前",
+        ["FileManager.Size"] = "サイズ",
+        ["FileManager.Modified"] = "更新日時",
+        ["FileManager.Loading"] = "読み込み中…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "オーディオプレーヤー",
+        ["AudioPlayer.Play"] = "再生",
+        ["AudioPlayer.Pause"] = "一時停止",
+        ["AudioPlayer.Seek"] = "再生位置",
+        ["AudioPlayer.Mute"] = "ミュート",
+        ["AudioPlayer.Unmute"] = "ミュート解除",
+        ["AudioPlayer.Download"] = "音声をダウンロード",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "カラー",
+        ["Theme.Mode"] = "モード",
     };
 }

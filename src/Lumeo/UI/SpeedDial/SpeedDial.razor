@@ -33,8 +33,15 @@
             aria-expanded="@_isOpen"
             aria-label="@L["Common.Actions"]"
             disabled="@Disabled">
-        @{ var plusClass = Cx.Join("h-6 w-6 transition-transform", Cx.When(_isOpen, "rotate-45")); }
-        <Blazicon Svg="Lucide.Plus" class="@plusClass" />
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="@(Cx.Join("text-xl leading-none transition-transform", Cx.When(_isOpen, "rotate-45")))">@Icon</span>
+        }
+        else
+        {
+            var plusClass = Cx.Join("h-6 w-6 transition-transform", Cx.When(_isOpen, "rotate-45"));
+            <Blazicon Svg="Lucide.Plus" class="@plusClass" />
+        }
     </button>
 </div>
 
@@ -42,9 +49,14 @@
 
 @code {
     [Parameter] public List<SpeedDialItem> Items { get; set; } = new();
+    /// <summary>Optional trigger icon override (text/emoji, like
+    /// <see cref="SpeedDialItem.Icon"/>). When unset, a Lucide plus icon
+    /// that rotates into an × while open is rendered.</summary>
     [Parameter] public string? Icon { get; set; }
     [Parameter] public SpeedDialPosition Position { get; set; } = SpeedDialPosition.BottomRight;
     [Parameter] public SpeedDialDirection Direction { get; set; } = SpeedDialDirection.Up;
+    /// <summary>Trigger color variant following the Button variant names:
+    /// "Default" (primary), "Secondary", "Destructive", "Outline", "Ghost".</summary>
     [Parameter] public string Variant { get; set; } = "Default";
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -78,10 +90,20 @@
         }
     }
 
+    // Variant color classes mirror Button.ButtonVariant conventions.
+    private string TriggerVariantClass => Variant?.ToLowerInvariant() switch
+    {
+        "secondary" => "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        "destructive" => "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        "outline" => "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        "ghost" => "hover:bg-accent hover:text-accent-foreground",
+        _ => "bg-primary text-primary-foreground hover:bg-primary/90"
+    };
+
     private string TriggerClass =>
         Disabled
-            ? "flex h-14 w-14 cursor-not-allowed items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg opacity-50 pointer-events-none"
-            : "flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+            ? Cx.Join("flex h-14 w-14 cursor-not-allowed items-center justify-center rounded-full shadow-lg opacity-50 pointer-events-none", TriggerVariantClass)
+            : Cx.Join("flex h-14 w-14 cursor-pointer items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", TriggerVariantClass);
 
     private async Task ToggleOpen()
     {

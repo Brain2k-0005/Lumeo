@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @{
@@ -32,7 +33,6 @@
         @ondragend="HandleDragEnd"
         @onclick="Activate"
         @onkeydown="HandleKeyDown"
-        @onkeydown:preventDefault="@_preventKey"
         @attributes="AdditionalAttributes">
     @if (IconContent is not null)
     {
@@ -74,14 +74,77 @@
 
     private readonly string _tabId = LumeoIds.New("tab");
     private readonly string _panelId = LumeoIds.New("tabpanel");
-    private bool _preventKey;
+    private string? _registeredValue;
 
     private bool IsActive => Context.ActiveValue == Value;
     private Tabs.TabsVariant CurrentVariant => Context.Variant;
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
-        Context.TabIds[Value] = (_tabId, _panelId);
+        // Registered every parameter set (idempotent dictionary write) so a
+        // changed Disabled flag stays current for sibling arrow-key navigation,
+        // and a changed Value doesn't orphan the old key. Ownership guard on
+        // removal: positional diffing can re-key THIS instance while a sibling
+        // already took over the old value — only remove entries we still own.
+        if (_registeredValue is not null && _registeredValue != Value
+            && Context.TabIds.TryGetValue(_registeredValue, out var old) && old.TabId == _tabId)
+        {
+            Context.TabIds.Remove(_registeredValue);
+        }
+        Context.TabIds[Value] = (_tabId, _panelId, Disabled);
+        _registeredValue = Value;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Re-register whenever Orientation changes (not just firstRender): a
+        // first-render-only registration kept suppressing the original axis
+        // after a runtime orientation switch, so a now-vertical tablist still
+        // scrolled the page on Up/Down while Left/Right stayed prevented
+        // (Codex P2). Key-selective preventDefault in JS also replaced the
+        // former render-time _preventKey flag, which lagged one event behind.
+        if (_pdRegistered && _registeredOrientation == Context.Orientation) return;
+        try
+        {
+            var keys = Context.Orientation == Lumeo.Orientation.Horizontal
+                ? new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
+                : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
+            await Interop.RegisterPreventDefaultKeys(
+                _tabId,
+                keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+            _registeredOrientation = Context.Orientation;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    private bool _pdRegistered;
+    private Lumeo.Orientation? _registeredOrientation;
+
+    public async ValueTask DisposeAsync()
+    {
+        // Closable/conditional tabs must leave the registry, otherwise arrow
+        // navigation still targets them (focus call on a removed element) and
+        // Home/End resolve to ghosts. Ownership guard: when positional diffing
+        // re-keys a surviving sibling onto our old value BEFORE we dispose,
+        // the entry belongs to that sibling now — removing it would delete a
+        // live tab from keyboard navigation.
+        if (_registeredValue is not null
+            && Context.TabIds.TryGetValue(_registeredValue, out var ids) && ids.TabId == _tabId)
+        {
+            Context.TabIds.Remove(_registeredValue);
+        }
+        Context.Reorder.Order.Remove(Value);
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_tabId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private string CssClass
@@ -174,6 +237,15 @@
     {
         if (Disabled) return;
 
+        // WAI-ARIA tabs: Delete closes a closable tab from the keyboard (the
+        // visual close affordance is a non-focusable span — nesting a real
+        // button inside the tab button would be invalid HTML).
+        if (e.Key == "Delete" && IsClosable)
+        {
+            await HandleClose();
+            return;
+        }
+
         var isHorizontal = Context.Orientation == Lumeo.Orientation.Horizontal;
         var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
         var keys = Context.TabIds.Keys.ToList();
@@ -193,10 +265,8 @@
             if (e.Key == "ArrowDown") nextValue = FindNextEnabledTab(keys, idx, 1);
             else if (e.Key == "ArrowUp") nextValue = FindNextEnabledTab(keys, idx, -1);
         }
-        if (e.Key == "Home") nextValue = keys.Count > 0 ? keys[0] : null;
-        else if (e.Key == "End") nextValue = keys.Count > 0 ? keys[^1] : null;
-
-        _preventKey = e.Key is "ArrowRight" or "ArrowLeft" or "ArrowDown" or "ArrowUp" or "Home" or "End";
+        if (e.Key == "Home") nextValue = keys.FirstOrDefault(k => !IsTabDisabled(k));
+        else if (e.Key == "End") nextValue = keys.LastOrDefault(k => !IsTabDisabled(k));
 
         if (nextValue is not null && Context.TabIds.TryGetValue(nextValue, out var ids))
         {
@@ -205,12 +275,24 @@
         }
     }
 
+    private bool IsTabDisabled(string value) =>
+        Context.TabIds.TryGetValue(value, out var ids) && ids.Disabled;
+
     private string? FindNextEnabledTab(List<string> keys, int currentIdx, int direction)
     {
+        // Despite its name, this previously returned the next tab UNCHECKED —
+        // arrow keys focused AND activated disabled tabs. Walk until an
+        // enabled tab is found; null when every other tab is disabled.
         if (keys.Count == 0) return null;
-        var nextIdx = currentIdx + direction;
-        if (nextIdx < 0) nextIdx = keys.Count - 1;
-        else if (nextIdx >= keys.Count) nextIdx = 0;
-        return keys[nextIdx];
+        var idx = currentIdx;
+        for (var i = 0; i < keys.Count; i++)
+        {
+            idx += direction;
+            if (idx < 0) idx = keys.Count - 1;
+            else if (idx >= keys.Count) idx = 0;
+            if (idx == currentIdx) return null;
+            if (!IsTabDisabled(keys[idx])) return keys[idx];
+        }
+        return null;
     }
 }

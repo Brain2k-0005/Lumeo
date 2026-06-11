@@ -86,6 +86,19 @@ public class ProgressTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Indicator_Width_Clamps_Negative_Value_To_Zero()
+    {
+        // width: -N% is invalid CSS the browser drops entirely — the
+        // un-sized indicator then painted as a FULL bar.
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, -25)
+            .Add(b => b.Max, 100));
+
+        var indicator = cut.Find("[role='progressbar'] div");
+        Assert.Contains("width: 0%", indicator.GetAttribute("style"));
+    }
+
+    [Fact]
     public void Default_Variant_Indicator_Has_Primary_Class()
     {
         var cut = _ctx.Render<Lumeo.Progress>(p => p

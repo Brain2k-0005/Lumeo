@@ -1,4 +1,6 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 <div id="@Context.TriggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-controls="@Context.ContentId" @onclick="Context.Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
@@ -12,11 +14,43 @@
 
     private string CssClass => Cx.Merge("cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm", Class);
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // div[role=button] has no native key synthesis: Space toggled AND
+            // scrolled the page. Suppress only Space's default (Enter has no
+            // default on a div) synchronously in JS.
+            await Interop.RegisterPreventDefaultKeys(
+                Context.TriggerId,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    private bool _pdRegistered;
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" || e.Key == " ")
         {
             await Context.Toggle.InvokeAsync();
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(Context.TriggerId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

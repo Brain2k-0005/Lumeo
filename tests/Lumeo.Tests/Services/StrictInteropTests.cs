@@ -90,6 +90,49 @@ public class StrictInteropTests : IAsyncLifetime
         Assert.Equal("content-1", invocation.Arguments[0]);
     }
 
+    [Fact]
+    public async Task PositionFixed_Offset_Overload_Forwards_Offset_To_JS()
+    {
+        await _service.PositionFixed("content-1", "ref-1", "center", false, "top", 8);
+
+        var invocation = _module.VerifyInvoke("positionFixed");
+        Assert.Equal("top", invocation.Arguments[4]);
+        Assert.Equal(8, invocation.Arguments[5]);
+    }
+
+    [Fact]
+    public async Task PositionFixed_Legacy_Overload_Defaults_Offset_To_4()
+    {
+        await _service.PositionFixed("content-1", "ref-1");
+
+        var invocation = _module.VerifyInvoke("positionFixed");
+        Assert.Equal(4, invocation.Arguments[5]);
+    }
+
+    // --- Prevent-default keys ---
+
+    [Fact]
+    public async Task RegisterPreventDefaultKeys_Invokes_Correct_JS_Function_With_All_Args()
+    {
+        await _service.RegisterPreventDefaultKeys("elem-1", new[] { new PreventDefaultKeyRule("Enter", SkipComposing: true) });
+
+        var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
+        Assert.Equal("elem-1", invocation.Arguments[0]);
+        var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
+        var rule = Assert.Single(rules);
+        Assert.Equal("Enter", rule.Key);
+        Assert.True(rule.SkipComposing);
+    }
+
+    [Fact]
+    public async Task UnregisterPreventDefaultKeys_Invokes_Correct_JS_Function()
+    {
+        await _service.UnregisterPreventDefaultKeys("elem-1");
+
+        var invocation = _module.VerifyInvoke("unregisterPreventDefaultKeys");
+        Assert.Equal("elem-1", invocation.Arguments[0]);
+    }
+
     // --- ClickOutside ---
 
     [Fact]

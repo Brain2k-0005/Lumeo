@@ -441,7 +441,9 @@ else
 
     /// <summary>
     /// Fires when keyboard input cannot be parsed against the active <see cref="Format"/>
-    /// (or culture short pattern). The argument is the offending raw buffer.
+    /// (or culture short pattern), or parses to a date that is rejected by
+    /// <see cref="MinDate"/>/<see cref="MaxDate"/>/<see cref="IsDateDisabled"/>.
+    /// The argument is the offending raw buffer.
     /// </summary>
     [Parameter] public EventCallback<string> OnParseError { get; set; }
 
@@ -598,6 +600,20 @@ else
 
         if (TryParseBuffer(buffer, out var parsed))
         {
+            if (IsDisallowedDate(parsed))
+            {
+                // The calendar grid silently refuses disabled / out-of-range days
+                // (Calendar.IsDisabled) — typed input must reject them the same way.
+                // Revert to the last valid value and surface the rejection through
+                // OnParseError; never commit an invalid date through ValueChanged.
+                _inputBuffer = FormatBuffer(Value);
+                if (OnParseError.HasDelegate)
+                {
+                    await OnParseError.InvokeAsync(buffer);
+                }
+                return;
+            }
+
             if (parsed != Value)
             {
                 Value = parsed;
@@ -622,6 +638,14 @@ else
             }
         }
     }
+
+    /// <summary>
+    /// Mirrors the calendar grid's disabled-day predicate (<c>Calendar.IsDisabled</c>)
+    /// so the typed-input path enforces the same constraints as day-cell clicks.
+    /// </summary>
+    private bool IsDisallowedDate(DateOnly date) =>
+        (MinDate.HasValue && date < MinDate.Value) || (MaxDate.HasValue && date > MaxDate.Value)
+        || (IsDateDisabled != null && IsDateDisabled(date.ToDateTime(TimeOnly.MinValue)));
 
     private bool TryParseBuffer(string buffer, out DateOnly result)
     {
@@ -715,9 +739,28 @@ else
 
     private async Task HandlePresetSelected(DatePickerPreset preset)
     {
-        Value = preset.Date;
-        await ValueChanged.InvokeAsync(preset.Date);
-        await RaiseDateTimeValueChanged(preset.Date);
+        if (Mode == DatePickerMode.Range)
+        {
+            // Range presets must drive the range pair, not Value — otherwise the
+            // preset click just closes the popover without selecting anything.
+            // A preset without an explicit End selects a single-day range.
+            var start = preset.Date;
+            var end = preset.End ?? preset.Date;
+            if (end < start)
+            {
+                (start, end) = (end, start);
+            }
+            RangeStart = start;
+            RangeEnd = end;
+            await RangeStartChanged.InvokeAsync(start);
+            await RangeEndChanged.InvokeAsync(end);
+        }
+        else
+        {
+            Value = preset.Date;
+            await ValueChanged.InvokeAsync(preset.Date);
+            await RaiseDateTimeValueChanged(preset.Date);
+        }
         _isOpen = false;
     }
 
@@ -753,5 +796,11 @@ else
         }
     }
 
-    public record DatePickerPreset(string Label, DateOnly Date);
+    /// <summary>
+    /// Quick-select preset. For <see cref="DatePickerMode.Single"/> only
+    /// <paramref name="Date"/> is used; for <see cref="DatePickerMode.Range"/>
+    /// the preset selects <paramref name="Date"/>..<paramref name="End"/>
+    /// (or a single-day range when <paramref name="End"/> is null).
+    /// </summary>
+    public record DatePickerPreset(string Label, DateOnly Date, DateOnly? End = null);
 }

@@ -217,6 +217,7 @@
     private bool _isOpen;
     private DateOnly? _dateValue;
     private TimeSpan? _timeValue;
+    private DateTime? _prevValue;
     private DateTimeOffset? _prevOffsetValue;
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
@@ -241,15 +242,24 @@
             }
         }
 
-        if (Value.HasValue)
+        // Resync the internal date/time selection only when the bound Value
+        // actually changed. A time picked before any date lives solely in
+        // _timeValue (UpdateValue can't commit without a date) — resyncing
+        // unconditionally meant any parent re-render wiped that pending
+        // selection back to the (null) Value.
+        if (Value != _prevValue)
         {
-            _dateValue = DateOnly.FromDateTime(Value.Value);
-            _timeValue = Value.Value.TimeOfDay;
-        }
-        else
-        {
-            _dateValue = null;
-            _timeValue = null;
+            _prevValue = Value;
+            if (Value.HasValue)
+            {
+                _dateValue = DateOnly.FromDateTime(Value.Value);
+                _timeValue = Value.Value.TimeOfDay;
+            }
+            else
+            {
+                _dateValue = null;
+                _timeValue = null;
+            }
         }
     }
 
@@ -365,6 +375,7 @@
             // mark it Unspecified so callers don't mistake it for system-local.
             if (TimeZone is not null) dt = DateTime.SpecifyKind(dt, DateTimeKind.Unspecified);
             Value = dt;
+            _prevValue = dt;
             await ValueChanged.InvokeAsync(dt);
 
             if (OffsetValueChanged.HasDelegate)
@@ -379,6 +390,7 @@
     private async Task HandleClear()
     {
         Value = null;
+        _prevValue = null;
         _dateValue = null;
         _timeValue = null;
         await ValueChanged.InvokeAsync(null);

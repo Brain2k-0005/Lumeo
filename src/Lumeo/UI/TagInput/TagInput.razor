@@ -357,6 +357,22 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // Enter must add a tag, not submit an enclosing <form>. A native
+            // JS listener is the only race-free way to suppress the browser
+            // default for the current event (Blazor's :preventDefault flag is
+            // applied at render time). SkipComposing keeps IME composition
+            // commits (isComposing / keyCode 229) working.
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_inputId, new[] { new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true) });
+                _pdRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { /* element may not exist (prerender teardown) */ }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
         if (firstRender && AutoFocus)
         {
             try { await Interop.FocusElement(_inputId); }
@@ -389,8 +405,17 @@
         _suggestionsRegistered = false;
     }
 
+    // Set only after a successful JS registration — dispose during static
+    // prerendering must not import the JS module just to unregister.
+    private bool _pdRegistered;
+
     public async ValueTask DisposeAsync()
     {
         if (_suggestionsRegistered) await CleanupSuggestions();
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_inputId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

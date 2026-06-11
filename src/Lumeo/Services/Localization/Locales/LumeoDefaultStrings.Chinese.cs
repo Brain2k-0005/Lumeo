@@ -339,5 +339,37 @@ internal static partial class LumeoDefaultStrings
 
         // FileUpload (parameterised)
         ["FileUpload.ExceedsMaxSize"] = "文件 \"{0}\" 超出最大大小 {1}。",
+
+        // ConfirmButton
+        ["ConfirmButton.Title"] = "确定吗？",
+        ["ConfirmButton.Confirm"] = "继续",
+        ["ConfirmButton.Cancel"] = "取消",
+
+        // PickList (panels)
+        ["PickList.SourceHeader"] = "可选",
+        ["PickList.TargetHeader"] = "已选",
+        ["PickList.NoItems"] = "无项目",
+
+        // FileManager (context menu / list view)
+        ["FileManager.Open"] = "打开",
+        ["FileManager.Rename"] = "重命名",
+        ["FileManager.Delete"] = "删除",
+        ["FileManager.Name"] = "名称",
+        ["FileManager.Size"] = "大小",
+        ["FileManager.Modified"] = "修改日期",
+        ["FileManager.Loading"] = "加载中…",
+
+        // AudioPlayer
+        ["AudioPlayer.Label"] = "音频播放器",
+        ["AudioPlayer.Play"] = "播放",
+        ["AudioPlayer.Pause"] = "暂停",
+        ["AudioPlayer.Seek"] = "播放进度",
+        ["AudioPlayer.Mute"] = "静音",
+        ["AudioPlayer.Unmute"] = "取消静音",
+        ["AudioPlayer.Download"] = "下载音频",
+
+        // ThemeSwitcher
+        ["Theme.Color"] = "颜色",
+        ["Theme.Mode"] = "模式",
     };
 }

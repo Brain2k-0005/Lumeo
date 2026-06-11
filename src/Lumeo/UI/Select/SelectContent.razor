@@ -121,10 +121,11 @@
         var isDisabled = Context.ItemDisabled?.Invoke(item) ?? false;
         var itemId = $"select-item-bound-{value.GetHashCode():X}";
 
-        // Register/unregister happens inline for bound items — we track them through a simple button render
-        // The keyboard nav uses the registered _items list on Select; bound items self-register by calling
-        // Context.RegisterItem from here just like SelectItem does, but without a persistent component.
-        // We render a plain button that matches SelectItem's markup so styling stays consistent.
+        // Bound items are rendered inline (no component instance), so they cannot self-register
+        // the way SelectItem does. Keyboard nav instead derives its list on the parent Select
+        // (NavItems) from the same filtered/grouped sequence rendered here — the deterministic
+        // itemId above is the contract between the two. We render a plain button that matches
+        // SelectItem's markup so styling stays consistent.
 
         var isFocused = Context.FocusedItemId == itemId;
 
@@ -203,7 +204,10 @@
         if (Context.IsOpen && !_registered)
         {
             await Interop.PositionFixed(Context.ContentId, Context.WrapperId, "start", true);
-            await Interop.RegisterClickOutside(Context.ContentId, null, async () =>
+            // Exclude the trigger from outside-close (same as Cascader): without it, mousedown
+            // on the open trigger fires the outside handler AND the trigger's own click toggle,
+            // racing close-then-reopen instead of reliably closing.
+            await Interop.RegisterClickOutside(Context.ContentId, Context.TriggerId, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
