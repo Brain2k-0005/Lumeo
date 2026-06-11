@@ -220,4 +220,53 @@
 
         Assert.Contains("grid", cut.Find("[role='radiogroup']").GetAttribute("class") ?? "");
     }
+
+    [Fact]
+    public void ArrowKey_Skips_Disabled_Radio()
+    {
+        // Regression: arrow nav only checked the CURRENT item's Disabled and
+        // happily selected disabled siblings (WAI-ARIA requires skipping).
+        string? receivedValue = null;
+        var cut = Render(@<RadioGroup Value="a" ValueChanged="@((string v) => receivedValue = v)">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b" Disabled="true">Option B</RadioGroupItem>
+            <RadioGroupItem Value="c">Option C</RadioGroupItem>
+        </RadioGroup>);
+
+        cut.FindAll("[role='radio']")[0].KeyDown("ArrowDown");
+
+        Assert.Equal("c", receivedValue);
+    }
+
+    [Fact]
+    public void Removed_Radio_Is_Not_A_Keyboard_Target()
+    {
+        // Regression: items never unregistered — arrows navigated to ghosts.
+        string? receivedValue = null;
+
+        Action<Bunit.ComponentParameterCollectionBuilder<RadioGroup>> groupWith(params string[] values) => g =>
+        {
+            g.Add(x => x.Value, "a");
+            g.Add(x => x.ValueChanged, (string v) => receivedValue = v);
+            g.AddChildContent(b =>
+            {
+                var seq = 0;
+                foreach (var v in values)
+                {
+                    b.OpenComponent<RadioGroupItem>(seq++);
+                    b.AddAttribute(seq++, "Value", v);
+                    b.CloseComponent();
+                }
+            });
+        };
+
+        var cut = Render<RadioGroup>(groupWith("a", "b", "c"));
+        Assert.Equal(3, cut.FindAll("[role='radio']").Count);
+
+        cut.Render(groupWith("a", "c"));
+        Assert.Equal(2, cut.FindAll("[role='radio']").Count);
+
+        cut.FindAll("[role='radio']")[0].KeyDown("ArrowDown");
+        Assert.Equal("c", receivedValue);
+    }
 }

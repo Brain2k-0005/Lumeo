@@ -39,33 +39,33 @@ CollapsibleTrigger, AudioPlayer).
 
 ---
 
-## P1 backlog (next iterations, highest value first)
+## Fixed in iteration 2 (waves 1-2)
 
-### Selection / pickers (flagship-critical)
-- [ ] **Select + Combobox**: data-bound mode never calls `Context.RegisterItem` (SelectContent.razor:131-197, ComboboxContent.razor:147-221) → Arrow/Home/End/Enter dead whenever `Items` is used. Searchable variants: `_items.Clear()` on search but surviving items keep `_registered=true` → keyboard dead after first keystroke (Select.razor:221-227, Combobox.razor:244-251; also mis-reports `ItemCount`→ spurious `ComboboxEmpty`).
+| Cluster | Fixed |
+|---|---|
+| **Select + Combobox** | data-bound keyboard nav (NavItems derived from the rendered sequence, disabled skipped); search no longer kills registrations / fakes `ComboboxEmpty`; trigger-click close race (exclusion ids); Backspace removes most-recent chip (insertion-ordered, comparer-safe) |
+| **Menu family** | Enter/Space double-fire removed (native click owns activation) in Menubar/DropdownMenuSub/ContextMenuSub/MenubarSub/MegaMenu; DropdownMenu+Menubar click-outside excludes trigger; ContextMenu content focused on open; MegaMenu got click-outside + Escape + IAsyncDisposable; MenubarContent: role=menu + full item nav + Left/Right menubar nav |
+| **DatePicker cluster** | typed input enforces Min/Max/IsDateDisabled (reverts buffer, OnParseError); range presets set RangeStart+RangeEnd (`DatePickerPreset.End`, compatible); Calendar follows external Value changes without stomping manual browsing; DateTimePicker keeps pending time across re-renders; Date/TimeWheelPicker resync on external changes |
+| **Tabs** | arrows/Home/End skip disabled tabs; TabIds carries Disabled and is dispose-unregistered (ownership-guarded vs positional re-keying); content unregisters from swipe order; stale `_preventKey` → key-selective JS preventDefault; Delete closes closable tabs |
+| **Stepper** | identity-keyed idempotent registration (fixes blank first render AND duplicated steps from the cascading-value double notification); IDisposable unregistration (no ghosts); `KeepMounted` wired (stable keyed hidden wrapper) |
+| **Accordion/Collapsible/Card** | collapsed content `invisible` (focusable children out of tab order); CollapsibleTrigger + clickable Card register Space-only preventDefault (div[role=button] scroll fix) |
+
+## P1 backlog (remaining)
+
+### In progress (wave 2 agents)
+- [ ] **TreeView** cluster: selection binding inert (`OnSelectionChanged` never invoked); children keyboard-unreachable (tabindex=-1, no Up/Down movement); checking a node in filtered view mutates clones → checks lost (TreeView.razor:166-170); `ExpandAll` only in OnInitialized; missing aria-level/posinset/setsize.
+- [ ] **Focus return on close** for all overlays (components.js setupFocusTrap never saves `activeElement`) + **nested overlays**: Escape closes ALL ancestor dialogs/sheets (DialogContent.razor:99-105, Sheet:206, Drawer:132, AlertDialog:50) + AlertDialog initial focus should land on cancel (Radix).
+- [ ] **FileUpload dropzone** drop is a no-op (browser may navigate away); **Window** drag/resize without pointer capture (glues to cursor); **Resizable** drag-dead without `DefaultSizes`, `ResizablePanel.DefaultSize` never consumed, handle keyboard-inert, reject-instead-of-clamp.
+
+### Queued
 - [ ] **Command**: `CommandItem.Disabled` dead (not rendered, not gated); NO keyboard navigation at all (cmdk's core feature: arrows/Enter/listbox roles/aria-activedescendant).
-- [ ] **DatePicker**: typed input bypasses `MinDate`/`MaxDate`/`IsDateDisabled` (CommitBufferAsync:599-614). Range presets broken end-to-end: `HandlePresetSelected` sets only `Value`; DateRangePicker maps presets dropping `End` (716-722; DateRangePicker.razor:53-54).
-- [ ] **TreeView** cluster: selection binding inert (`OnSelectionChanged` never invoked); children keyboard-unreachable (tabindex=-1, no Up/Down movement); checking a node in filtered view mutates clones → checks lost (TreeView.razor:166-170).
-- [ ] **Mention**: no preventDefault on Enter/arrows while dropdown open → newline inserted + caret moves before `SelectOption` reads it (mangled insertion). Migrate to `RegisterPreventDefaultKeys`.
-
-### Overlays / menus
-- [ ] **Menu family Enter/Space double-fire**: keydown opens, native click toggles closed — MenubarTrigger:53-78, DropdownMenuSubTrigger:66-89, ContextMenuSubTrigger:56-76, MegaMenuItem:132-139. Keyboard activation is a net no-op.
-- [ ] **DropdownMenu/Menubar click-outside**: registered with `null` trigger exclusion → clicking the open trigger closes-then-reopens; menu can't be dismissed via its own trigger (DropdownMenuContent.razor:70, MenubarContent.razor:30; Select/Combobox same at SelectContent.razor:206/ComboboxContent.razor:228).
-- [ ] **ContextMenu**: content never focused on open → all keyboard handlers unreachable (ContextMenuContent.razor:27-43 — DropdownMenuContent:78-81 contains the exact fix); no viewport collision clamp for the root menu.
-- [ ] **Focus return on close**: no overlay restores focus to its trigger (components.js setupFocusTrap never saves `activeElement`). Radix standard.
-- [ ] **Nested overlays**: Escape closes ALL ancestor dialogs/sheets (no stopPropagation once handled) — DialogContent.razor:99-105, Sheet:206, Drawer:132, AlertDialog:50.
-- [ ] **Window**: drag/resize without pointer capture → fast drag detaches, pointerup lost, window glues to cursor (Window.razor:18-21,84-87; `SetPointerCaptureOnElement` exists).
-- [ ] **Tour**: target never scrolled into view while `LockScroll()` blocks manual scrolling → off-screen steps unreachable (Tour.razor:169-188).
-
-### Layout / structure
-- [ ] **Resizable**: drag-dead without group `DefaultSizes` (`_sizes` empty → HandleDrag early-returns, ResizablePanelGroup.razor:78); documented `ResizablePanel.DefaultSize` never consumed. ResizableHandle: focusable but keyboard-inert (no keydown/aria-value*; SplitterDivider has it all).
-- [ ] **Tabs**: `FindNextEnabledTab` doesn't check disabled → arrows focus AND activate disabled tabs (TabsTrigger.razor:208-215); `Context.TabIds`/content registrations never removed → closable tabs navigate to ghosts; close affordance not keyboard-operable; stale `_preventKey` flag (first arrow scrolls page).
-- [ ] **Stepper**: registration after parent render, nothing re-renders → first render shows no indicators/content (StepperTests works around it with an extra `cut.Render()`); `KeepMounted` parameter dead.
-- [ ] **Accordion/Collapsible**: collapsed content stays mounted `aria-hidden` but focusable children remain tabbable (needs `invisible`/`inert` when closed). Accordion also lacks any controlled/two-way open state.
+- [ ] **Mention**: no preventDefault on Enter/arrows while dropdown open → newline inserted + caret moves before `SelectOption` reads it. Migrate to `RegisterPreventDefaultKeys`.
+- [ ] **RadioGroup**: arrows select disabled siblings; items never unregister; stale `_preventKey` (first arrow scrolls).
 - [ ] **Barcode**: `Format` parameter ignored — EAN13/Code39 silently render as Code128 (Barcode.razor:48,74).
-- [ ] **QRCode**: logo overlay mixes px and module units → default logo covers 60-130% of the code, unscannable (QRCode.razor:270-273). Also: 500-line dead `QRCodeEncoder.cs` ships in the package.
-- [ ] **FileUpload dropzone**: drop is a no-op (`HandleDrop` only clears hover; InputFile is `sr-only`, no `@ondrop:preventDefault`) → browser may navigate away. Stretch the InputFile transparently over the zone or add JS DataTransfer bridge.
-- [ ] **PullToRefresh**: pointermove + `touch-action: pan-y` → native pan claims the gesture on real devices, `pointercancel` kills it (validated only in DevTools mouse emulation per its own comments).
+- [ ] **QRCode**: logo overlay mixes px and module units → default logo unscannable (QRCode.razor:270-273); dead `QRCodeEncoder.cs` ships in package.
+- [ ] **ContextMenu**: no viewport collision clamp for the root menu (submenus DO flip).
+- [ ] **Tour**: target never scrolled into view while `LockScroll()` blocks manual scrolling (Tour.razor:169-188).
+- [ ] **PullToRefresh**: pointermove + `touch-action: pan-y` → native pan claims the gesture on real devices (needs hardware verification; conservative fix: `touch-action:none` while engaged).
 
 ## P2 backlog (grouped)
 
