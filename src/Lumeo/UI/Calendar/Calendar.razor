@@ -73,13 +73,35 @@
     private DateOnly? _hoverDate;
     private CalendarView _currentView = CalendarView.Days;
     private bool _swipeAttached;
+    // Last-seen bound anchor (Value, or RangeStart in range mode). Used to
+    // detect *external* value changes in OnParametersSet without stomping the
+    // user's manual month navigation on unrelated re-renders.
+    private DateOnly? _lastSeenAnchor;
 
     private string CssClass => Cx.Merge("p-3", Class);
 
     protected override void OnInitialized()
     {
         _currentView = InitialView;
-        DisplayDate = (IsRange ? RangeStart : Value) ?? DateOnly.FromDateTime(DateTime.Today);
+        _lastSeenAnchor = IsRange ? RangeStart : Value;
+        DisplayDate = _lastSeenAnchor ?? DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // When the bound Value (or RangeStart) changes from outside — e.g. the
+        // parent sets Value programmatically on an inline calendar — navigate
+        // the visible month to it. Only react to actual changes: re-renders
+        // that leave the anchor untouched must not reset manual browsing.
+        var anchor = IsRange ? RangeStart : Value;
+        if (anchor != _lastSeenAnchor)
+        {
+            _lastSeenAnchor = anchor;
+            if (anchor.HasValue)
+            {
+                DisplayDate = new DateOnly(anchor.Value.Year, anchor.Value.Month, 1);
+            }
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -313,6 +335,11 @@
         {
             DisplayDate = new DateOnly(day.Year, day.Month, 1);
             Value = day;
+            // Keep the external-change tracker aligned with this internal
+            // mutation so an unrelated parent re-render later (uncontrolled
+            // usage) doesn't read it as a new external value and yank the
+            // display month away from wherever the user has browsed to.
+            _lastSeenAnchor = day;
             await ValueChanged.InvokeAsync(day);
         }
     }

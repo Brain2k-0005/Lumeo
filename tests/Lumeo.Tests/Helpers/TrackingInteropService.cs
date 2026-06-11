@@ -63,7 +63,18 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
     public ValueTask<double> WheelScrollTop(ElementReference element) => ValueTask.FromResult(0.0);
-    public ValueTask WheelScrollTo(ElementReference element, double top) => ValueTask.CompletedTask;
+
+    // Wheel-picker scroll tracking — used to assert that DateWheelPicker /
+    // TimeWheelPicker re-position their columns when the bound value changes
+    // externally (not just on first render).
+    private readonly List<double> _wheelScrollToCalls = new();
+    public int WheelScrollToCallCount => _wheelScrollToCalls.Count;
+    public IReadOnlyList<double> WheelScrollToTops => _wheelScrollToCalls;
+    public ValueTask WheelScrollTo(ElementReference element, double top)
+    {
+        _wheelScrollToCalls.Add(top);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetPointerCaptureOnElement(string elementId, long pointerId) => ValueTask.CompletedTask;
     public ValueTask ReleasePointerCaptureOnElement(string elementId, long pointerId) => ValueTask.CompletedTask;
     public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler) => ValueTask.CompletedTask;
