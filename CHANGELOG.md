@@ -5,6 +5,12 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1] - 2026-06-12
+
+### Fixed
+- **Tabs (Card variant)**: the active tab now fuses with the list's edge border — axis-aware seam (bottom for horizontal, right for vertical) with squared seam corners; previously the card floated above the border line with the base rounding peeking through.
+- **Tabs (Card variant)**: switching tabs no longer flickers — every card tab carries identical box metrics (inactive tabs render a transparent border), so activation swaps colors only instead of animating a 2px layout reflow.
+
 ## [3.13.0] - 2026-06-11
 
 Component-audit hardening release: a full-library audit benchmarked against shadcn/ui, Blueprint, MudBlazor and Ant Design, fixing keyboard/ARIA, lifecycle and culture defects across ~25 components, plus a consumer-reported DataGrid grouping regression.
