@@ -152,10 +152,18 @@
         get
         {
             var disabledClasses = Disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "";
+            // Card variant: the active tab must FUSE with the list's edge
+            // border — axis-aware (bottom border for horizontal, right border
+            // for vertical), with the seam-side corners explicitly squared:
+            // the base `rounded-md` otherwise survives on those corners and
+            // the list border peeks through the 4px gaps under the card.
+            var isVerticalTabs = Context.Orientation == Lumeo.Orientation.Vertical;
             var variantClasses = CurrentVariant switch
             {
                 Tabs.TabsVariant.Card => IsActive
-                    ? "rounded-t-lg border border-b-0 border-border/40 bg-card text-foreground -mb-px"
+                    ? (isVerticalTabs
+                        ? "rounded-l-lg rounded-r-none border border-r-0 border-border/40 bg-card text-foreground -mr-px"
+                        : "rounded-t-lg rounded-b-none border border-b-0 border-border/40 bg-card text-foreground -mb-px")
                     : "text-muted-foreground hover:text-foreground",
                 Tabs.TabsVariant.Pill => IsActive
                     ? "rounded-full bg-primary text-primary-foreground"
