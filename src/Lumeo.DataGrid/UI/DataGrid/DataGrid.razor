@@ -2006,7 +2006,11 @@
     private void ToggleGroupPath(string path)
     {
         if (!_expandedGroupPaths.Remove(path)) _expandedGroupPaths.Add(path);
-        ProcessClientData();
+        // ServerMode grids regroup the already-delivered page — ProcessClientData
+        // early-returns without Items, so collapse/expand silently did nothing
+        // on every ServerMode grid (same dispatch as RemoveGroupField).
+        if (ServerMode) RegroupServerItems();
+        else ProcessClientData();
         StateHasChanged();
     }
 
@@ -2442,7 +2446,10 @@
             _expandedGroups.Remove(key);
         else
             _expandedGroups.Add(key);
-        ProcessClientData();
+        // See ToggleGroupPath — ServerMode must regroup the server-delivered
+        // rows; ProcessClientData is a no-op without client Items.
+        if (ServerMode) RegroupServerItems();
+        else ProcessClientData();
         StateHasChanged();
     }
 
@@ -2896,8 +2903,20 @@
         // Restore sorts
         _sorts = layout.Sorts is not null ? new List<SortDescriptor>(layout.Sorts) : new List<SortDescriptor>();
 
-        // Restore filters
-        _filters = layout.Filters is not null ? new List<FilterDescriptor>(layout.Filters) : new List<FilterDescriptor>();
+        // Restore filters. Values that came through JSON (persisted layout,
+        // SavedLayout parameter, named layouts) arrive as JsonElement —
+        // normalize them to CLR primitives here so both the client filter
+        // pipeline and ServerMode consumers (who receive these descriptors in
+        // OnServerDataRequest) get comparable values.
+        _filters = layout.Filters is not null
+            ? layout.Filters
+                .Select(f => f with
+                {
+                    Value = DataGridFilterOperator.Normalize(f.Value),
+                    ValueTo = DataGridFilterOperator.Normalize(f.ValueTo)
+                })
+                .ToList()
+            : new List<FilterDescriptor>();
 
         // Restore page size
         if (layout.PageSize.HasValue)
@@ -2915,6 +2934,20 @@
                 .Where(f => EffectiveColumns.Any(c => c.Field == f))
                 .Distinct()
                 .ToList();
+
+            // Seed the un-group restore snapshot for restored chips. The
+            // snapshot taken when a column is grouped LIVE isn't part of the
+            // persisted layout, so after a restore _groupedColPrevState was
+            // empty and removing a chip left its auto-hidden column hidden
+            // forever. Restoring to visible/unpinned is the sane default —
+            // post-restore we can't distinguish "auto-hidden by grouping"
+            // from "user-hidden", and a removed chip is expected to bring
+            // its column back.
+            foreach (var f in _runtimeGroupFields)
+            {
+                if (!_groupedColPrevState.ContainsKey(f))
+                    _groupedColPrevState[f] = (PinDirection.None, true);
+            }
         }
         else
         {

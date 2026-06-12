@@ -185,4 +185,60 @@ public class DataGridServerModeGroupingTests : IAsyncLifetime
 
         Assert.Empty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));
     }
+
+    // ===========================================================================
+    // Regression: group expand/collapse toggles regroup in ServerMode
+    // (ToggleGroupExpand / ToggleGroupPath called ProcessClientData
+    // unconditionally, which early-returns without client Items — clicking a
+    // group row silently did nothing on every ServerMode grid.)
+    // ===========================================================================
+
+    [Fact]
+    public void ServerMode_GroupRowClick_Collapses_SingleLevel_Group()
+    {
+        var items = GetEmployees();
+        var cut = _ctx.Render<DataGrid<Employee>>(p =>
+        {
+            p.Add(x => x.ServerMode, true);
+            p.Add(x => x.TotalCount, items.Count);
+            p.Add(x => x.Items, items);
+            p.Add(x => x.Columns, GetColumns());
+            p.Add(x => x.GroupByFields, (IReadOnlyList<string>)new[] { "Department" });
+            p.Add(x => x.GroupsExpandedByDefault, true);
+        });
+
+        Assert.Contains("Alice", cut.Markup); // Engineering rows visible
+
+        // Collapse the first (Engineering) group via the group-row click.
+        cut.Find("[data-slot=\"datagrid-group-row\"]").Click();
+
+        Assert.DoesNotContain("Alice", cut.Markup);
+        Assert.DoesNotContain("Bob", cut.Markup);
+        Assert.Contains("Carol", cut.Markup); // other groups untouched
+    }
+
+    [Fact]
+    public void ServerMode_GroupRowClick_Collapses_MultiLevel_Path()
+    {
+        var items = GetEmployees();
+        var cut = _ctx.Render<DataGrid<Employee>>(p =>
+        {
+            p.Add(x => x.ServerMode, true);
+            p.Add(x => x.TotalCount, items.Count);
+            p.Add(x => x.Items, items);
+            p.Add(x => x.Columns, GetColumns());
+            p.Add(x => x.GroupByFields, (IReadOnlyList<string>)new[] { "Department", "Status" });
+            p.Add(x => x.GroupsExpandedByDefault, true);
+        });
+
+        var groupRowsBefore = cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count;
+        Assert.Contains("Alice", cut.Markup);
+
+        // Collapse the first (Engineering) top-level path node — its child
+        // group rows and leaf rows must disappear.
+        cut.Find("[data-slot=\"datagrid-group-row\"]").Click();
+
+        Assert.DoesNotContain("Alice", cut.Markup);
+        Assert.True(cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count < groupRowsBefore);
+    }
 }
