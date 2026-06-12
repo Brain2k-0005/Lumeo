@@ -321,4 +321,76 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         Assert.Equal("Email", after.Columns[1].Field);
         Assert.Equal("Id", after.Columns[2].Field);
     }
+
+    // -------------------------------------------------------------------------
+    // Regression: JSON-restored filter values arrive as JsonElement
+    // -------------------------------------------------------------------------
+
+    private record NumRow(int Id, string Name, string Email);
+
+    [Fact]
+    public async Task ApplyLayout_From_Json_Normalizes_JsonElement_Filter_Values()
+    {
+        // Ids chosen so numeric vs lexicographic comparison differ: ">5" must
+        // keep 7 AND 10 — a JsonElement filter value isn't IComparable, so the
+        // old path degraded to string compare and dropped 10 ("10" < "5").
+        var data = new List<NumRow> { new(2, "Two", "t@x"), new(7, "Seven", "s@x"), new(10, "Ten", "x@x") };
+        var cut = _ctx.Render<DataGrid<NumRow>>(p => p
+            .Add(g => g.Items, data)
+            .Add(g => g.Columns, new List<DataGridColumn<NumRow>>
+            {
+                new() { Field = "Id", Title = "ID", Filterable = true, FilterType = DataGridFilterType.Number },
+                new() { Field = "Name", Title = "Name" },
+            }));
+
+        var layout = new DataGridLayout
+        {
+            Filters = new() { new FilterDescriptor("Id", FilterOperator.GreaterThan, 5, FilterType: DataGridFilterType.Number) }
+        };
+        var roundTripped = JsonSerializer.Deserialize<DataGridLayout>(JsonSerializer.Serialize(layout))!;
+        Assert.IsType<JsonElement>(roundTripped.Filters![0].Value); // precondition: JSON path produces JsonElement
+
+        await cut.InvokeAsync(() => cut.Instance.ApplyLayoutAsync(roundTripped));
+
+        Assert.Contains("Seven", cut.Markup);
+        Assert.Contains("Ten", cut.Markup);
+        Assert.DoesNotContain("Two", cut.Markup);
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression: removing a chip after a layout restore must unhide its column
+    // (_groupedColPrevState is empty after a restore — the live-grouping
+    // snapshot isn't part of the persisted layout)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RemoveChip_After_Layout_Restore_Unhides_The_Grouped_Column()
+    {
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, Cols())
+            .Add(g => g.ShowGroupPanel, true));
+
+        var layout = new DataGridLayout
+        {
+            Columns = new()
+            {
+                new() { Field = "Id", Order = 0, Visible = true },
+                // Saved while grouping had auto-hidden the grouped column:
+                new() { Field = "Name", Order = 1, Visible = false },
+                new() { Field = "Email", Order = 2, Visible = true },
+            },
+            GroupByFields = new() { "Name" }
+        };
+        await cut.InvokeAsync(() => cut.Instance.ApplyLayoutAsync(layout));
+
+        Assert.DoesNotContain(cut.FindAll("th"), th => th.TextContent.Contains("Name"));
+        Assert.NotEmpty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));
+
+        // Remove the restored chip — the column must come back.
+        cut.Find("[data-slot=\"datagrid-group-panel\"] span button").Click();
+
+        Assert.Empty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));
+        Assert.Contains(cut.FindAll("th"), th => th.TextContent.Contains("Name"));
+    }
 }
