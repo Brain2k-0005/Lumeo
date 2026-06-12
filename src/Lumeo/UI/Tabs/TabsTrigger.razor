@@ -152,19 +152,26 @@
         get
         {
             var disabledClasses = Disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "";
-            // Card variant: the active tab must FUSE with the list's edge
-            // border — axis-aware (bottom border for horizontal, right border
-            // for vertical), with the seam-side corners explicitly squared:
-            // the base `rounded-md` otherwise survives on those corners and
-            // the list border peeks through the 4px gaps under the card.
+            // Card variant: EVERY card tab carries the same box metrics — the
+            // inactive ones just render the border transparent. When only the
+            // active tab had a real border, switching tabs grew the new tab by
+            // 2px and shrank the old one, and the base `transition-all`
+            // animated that reflow: the whole row visibly flickered on every
+            // switch. With constant geometry, activation only swaps colors.
+            // Axis-aware: the seam side (bottom for horizontal, right for
+            // vertical) is open and squared so the active card fuses with the
+            // list's edge border; base rounded-md must not survive there.
             var isVerticalTabs = Context.Orientation == Lumeo.Orientation.Vertical;
+            var cardGeometry = isVerticalTabs
+                ? "rounded-l-lg rounded-r-none border border-r-0 -mr-px"
+                : "rounded-t-lg rounded-b-none border border-b-0 -mb-px";
             var variantClasses = CurrentVariant switch
             {
-                Tabs.TabsVariant.Card => IsActive
-                    ? (isVerticalTabs
-                        ? "rounded-l-lg rounded-r-none border border-r-0 border-border/40 bg-card text-foreground -mr-px"
-                        : "rounded-t-lg rounded-b-none border border-b-0 border-border/40 bg-card text-foreground -mb-px")
-                    : "text-muted-foreground hover:text-foreground",
+                Tabs.TabsVariant.Card => Cx.Join(
+                    cardGeometry,
+                    IsActive
+                        ? "border-border/40 bg-card text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground"),
                 Tabs.TabsVariant.Pill => IsActive
                     ? "rounded-full bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted/50 rounded-full",
