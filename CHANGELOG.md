@@ -5,6 +5,13 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.2] - 2026-06-12
+
+### Fixed
+- **DataGrid (ServerMode)**: group expand/collapse now regroups the server-delivered page — the toggles previously dispatched to the client pipeline, which re-applied client filtering/sorting/paging over the server page and could corrupt the row set on every collapse.
+- **DataGrid (layouts)**: filter values restored from JSON (persisted layouts, the `SavedLayout` parameter, named layouts) are normalized from `JsonElement` to CLR primitives — number/date filters compared lexicographically before (`">5"` dropped `10`), and ServerMode consumers now receive comparable descriptor values in `OnServerRequest`.
+- **DataGrid (layouts)**: removing a group chip after a layout restore unhides its auto-hidden column — the un-group snapshot is now seeded for restored chips.
+
 ## [3.13.1] - 2026-06-12
 
 ### Fixed
