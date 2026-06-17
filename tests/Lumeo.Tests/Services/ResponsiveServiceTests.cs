@@ -193,7 +193,7 @@ public class ResponsiveServiceTests
         public ValueTask SaveToLocalStorage(string key, string value) => ValueTask.CompletedTask;
         public ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);
         public ValueTask RemoveFromLocalStorage(string key) => ValueTask.CompletedTask;
-        public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",") => ValueTask.CompletedTask;
+        public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".") => ValueTask.CompletedTask;
         public ValueTask MotionDisposeTicker(string elementId) => ValueTask.CompletedTask;
         public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => ValueTask.CompletedTask;
         public ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false) => ValueTask.CompletedTask;
