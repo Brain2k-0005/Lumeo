@@ -1,0 +1,131 @@
+@inherits Bunit.BunitContext
+@using AngleSharp.Dom
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #258 — late panes become visible, drags clamp at min/max instead of being
+    // rejected, and the Collapsible pane param is wired (collapse on over-drag).
+
+    private readonly TrackingInteropService _interop = new();
+
+    public SplitterCollapseClampTests()
+    {
+        this.AddLumeoServices();
+        // A non-zero group dimension makes ResizeNeighbors' px->% math run.
+        _interop.ElementDimension = 1000;
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    // Drives a pointer drag on the divider: down then move by deltaPx.
+    private static void Drag(IElement divider, double deltaPx, bool horizontal = true)
+    {
+        divider.PointerDown(new PointerEventArgs { PointerId = 1, ClientX = 0, ClientY = 0 });
+        divider.PointerMove(new PointerEventArgs
+        {
+            PointerId = 1,
+            ClientX = horizontal ? deltaPx : 0,
+            ClientY = horizontal ? 0 : deltaPx
+        });
+    }
+
+    private static double PaneFlexGrow(IElement pane)
+    {
+        // style="flex: <grow> 1 0; ..."
+        var style = pane.GetAttribute("style") ?? "";
+        var m = System.Text.RegularExpressions.Regex.Match(style, @"flex:\s*([0-9.]+)");
+        return m.Success ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+    }
+
+    [Fact]
+    public void Late_Added_Pane_Gets_A_Size()
+    {
+        var cut = Render<SplitterLatePaneHost>(p => p.Add(h => h.ShowThird, false));
+
+        // Initially two panes split 50/50.
+        var panesBefore = cut.FindAll("[data-testid^='pane-']");
+        Assert.Equal(2, panesBefore.Count);
+
+        cut.Render(p => p.Add(h => h.ShowThird, true));
+
+        var panes = cut.FindAll("[data-testid^='pane-']");
+        Assert.Equal(3, panes.Count);
+        // The newly added third pane must have a non-zero flex-grow (visible),
+        // not be frozen at 0 (#258).
+        var third = panes.First(p => p.GetAttribute("data-testid") == "pane-2");
+        Assert.True(PaneFlexGrow(third) > 0, "late pane should receive a size");
+    }
+
+    [Fact]
+    public void Drag_Past_Min_Clamps_Instead_Of_Rejecting()
+    {
+        // Two panes, MinSize 20 each. A huge leftward drag would push the
+        // leading pane below 20; it must clamp at 20, not stay at 50.
+        var cut = Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Horizontal">
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-0">L</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-1">R</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+        var divider = cut.Find("[role='separator']");
+        // Drag left by 600px on a 1000px group = -60% requested; clamps at min.
+        Drag(divider, -600);
+
+        var leading = cut.Find("[data-testid='pane-0']").ParentElement!;
+        // Leading pane clamped to its 20% minimum (flex-grow ~20), not stuck at 50.
+        Assert.Equal(20.0, PaneFlexGrow(leading), precision: 0);
+    }
+
+    [Fact]
+    public void Drag_Past_Max_Clamps_At_Max()
+    {
+        var cut = Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Horizontal">
+            <Lumeo.SplitterPane MinSize="20" MaxSize="70"><span data-testid="pane-0">L</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-1">R</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+        var divider = cut.Find("[role='separator']");
+        Drag(divider, 600); // +60% requested
+
+        var leading = cut.Find("[data-testid='pane-0']").ParentElement!;
+        // Leading capped at its 70% max.
+        Assert.Equal(70.0, PaneFlexGrow(leading), precision: 0);
+    }
+
+    [Fact]
+    public void Collapsible_Pane_Collapses_On_Over_Drag()
+    {
+        var cut = Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Horizontal">
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80" Collapsible="true"><span data-testid="pane-0">L</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-1">R</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+        var divider = cut.Find("[role='separator']");
+        // Drag well below min — a collapsible pane snaps to CollapsedSize (0).
+        Drag(divider, -600);
+
+        var leading = cut.Find("[data-testid='pane-0']").ParentElement!;
+        Assert.Equal(0.0, PaneFlexGrow(leading), precision: 1);
+    }
+
+    [Fact]
+    public void NonCollapsible_Pane_Does_Not_Collapse()
+    {
+        var cut = Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Horizontal">
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-0">L</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-1">R</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+        var divider = cut.Find("[role='separator']");
+        Drag(divider, -600);
+
+        var leading = cut.Find("[data-testid='pane-0']").ParentElement!;
+        // Without Collapsible it clamps at min (20), never reaching 0.
+        Assert.Equal(20.0, PaneFlexGrow(leading), precision: 0);
+    }
+}
