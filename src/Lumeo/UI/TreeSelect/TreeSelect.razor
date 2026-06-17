@@ -62,6 +62,8 @@
                            placeholder="@L["Combobox.SearchPlaceholder"]"
                            value="@_searchText"
                            @oninput="OnSearchInput"
+                           @onkeydown="OnSearchKeyDown"
+                           @onkeydown:stopPropagation="true"
                            @onclick:stopPropagation="true" />
                 </div>
             }
@@ -526,6 +528,28 @@
             if (found is not null) return found;
         }
         return null;
+    }
+
+    // Keydown from the search box: caret-movement keys (and typing a space) stay
+    // with the input; the rest (Escape to close, Up/Down to move the active node,
+    // Enter to select/expand) drive the tree. Propagation to the panel's
+    // HandleKeyDown is stopped on the input so each key is handled exactly once —
+    // without this, ArrowLeft/Right/Home/End in the search box also moved or
+    // collapsed/expanded tree nodes while editing the query.
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowLeft":
+            case "ArrowRight":
+            case "Home":
+            case "End":
+            case " ":
+                return; // belongs to the text box (caret move / space)
+            default:
+                await HandleKeyDown(e);
+                return;
+        }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
