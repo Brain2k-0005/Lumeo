@@ -665,11 +665,24 @@
         public List<RowNode> Children { get; } = new();
         public string Key { get; }
 
+        // Separator used to join row-path segments into the cache key. The Unit
+        // Separator control char (U+001F) cannot occur in displayed values, so it
+        // guarantees segment boundaries are unambiguous.
+        private const char PathSep = (char)0x1F;
+
         public RowNode(object?[] path, int level)
         {
             Path = path;
             Level = level;
-            Key = "L" + level + "|" + string.Join("", path.Select(p => p?.ToString() ?? " "));
+            // Tag each segment with its index and join with PathSep. With the old
+            // empty-string join, distinct paths such as ["a","bc"] and ["ab","c"]
+            // both collapsed to "abc" and silently shared cell lookups (_cellItems)
+            // and collapse state (_collapsed) — corrupting totals and drill-down.
+            var sb = new System.Text.StringBuilder();
+            sb.Append('L').Append(level);
+            for (var i = 0; i < path.Length; i++)
+                sb.Append(PathSep).Append(i).Append('=').Append(path[i]?.ToString() ?? " ");
+            Key = sb.ToString();
         }
     }
 
