@@ -17,9 +17,9 @@
               id="@_elementId"
               name="@Name"
               aria-required="@Required.ToString().ToLowerInvariant()"
-              aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+              aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
               class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled"
-              maxlength="@MaxLength" @attributes="AdditionalAttributes"></textarea>
+              maxlength="@EffectiveMaxLength" @attributes="AdditionalAttributes"></textarea>
     @if (ShowCount)
     {
         <div class="mt-1 text-xs @CountClass text-right">
@@ -111,6 +111,14 @@
     private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (EffectiveInvalid ? "border-destructive" : "border-input"), "bg-transparent text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px]", (EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring"), "disabled:cursor-not-allowed disabled:opacity-50", ResizeClass, Class);
 
     private bool IsOverLimit => MaxLength.HasValue && (Value?.Length ?? 0) > MaxLength.Value;
+
+    // When a character counter is shown we deliberately DROP the native maxlength
+    // hard-cap so the field behaves as a soft limit (matching AntD/shadcn): the
+    // user can type past the limit and the counter turns red to warn them. With a
+    // hard maxlength the browser silently blocks the extra characters, so the
+    // over-limit warning state (and CountClass) could never be reached. Without a
+    // counter we keep the hard cap as a plain input constraint.
+    private int? EffectiveMaxLength => ShowCount ? null : MaxLength;
 
     private string CountClass => IsOverLimit ? "text-destructive" : "text-muted-foreground";
 
