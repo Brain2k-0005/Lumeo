@@ -176,6 +176,24 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
     public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
+
+    // PullToRefresh gesture-guard registration tracking (#308) — tests assert
+    // the non-passive touchmove guard is wired on first render and torn down.
+    private readonly List<string> _pullToRefreshRegistrations = new();
+    private readonly List<string> _pullToRefreshUnregistrations = new();
+    public IReadOnlyList<string> PullToRefreshRegistrations => _pullToRefreshRegistrations;
+    public IReadOnlyList<string> PullToRefreshUnregistrations => _pullToRefreshUnregistrations;
+    public ValueTask RegisterPullToRefresh(string elementId)
+    {
+        _pullToRefreshRegistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterPullToRefresh(string elementId)
+    {
+        _pullToRefreshUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<double> WheelScrollTop(ElementReference element) => ValueTask.FromResult(0.0);
 
     // Wheel-picker scroll tracking — used to assert that DateWheelPicker /
@@ -427,6 +445,7 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.CompletedTask;
     public ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted) => ValueTask.CompletedTask;
     public ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds) => ValueTask.CompletedTask;
+    public ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
     public ValueTask<Lumeo.Services.MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.FromResult(new Lumeo.Services.MediaState(0, 0));
     public ValueTask SignaturePadInit(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<Lumeo.SignaturePad> dotNetRef) => ValueTask.CompletedTask;
     public ValueTask SignaturePadClear(string elementId) => ValueTask.CompletedTask;

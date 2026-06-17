@@ -322,6 +322,28 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return 0; }
     }
 
+    // --- PullToRefresh gesture guard (#308) ---
+
+    public async ValueTask RegisterPullToRefresh(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("registerPullToRefresh", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask UnregisterPullToRefresh(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterPullToRefresh", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Wheel Pickers (DateWheelPicker / TimeWheelPicker) ---
 
     public async ValueTask<double> WheelScrollTop(Microsoft.AspNetCore.Components.ElementReference element)
@@ -860,6 +882,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("seekMedia", element, seconds);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setPlaybackRate", element, rate);
         }
         catch (JSDisconnectedException) { }
     }
