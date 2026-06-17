@@ -1,6 +1,7 @@
 @page "/components/icon"
 @inject Lumeo.Docs.Services.IconService IconService
 @inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader LazyLoader
 @implements IDisposable
 @using Lumeo.Docs.Shared
 @using Blazicons
@@ -101,7 +102,14 @@
                  id="@_gridId"
                  class="flex-1 p-3 min-w-0 overflow-y-auto"
                  style="max-height: 600px">
-                @if (Filtered.Count == 0)
+                @if (!CatalogReady)
+                {
+                    <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+                        <DynamicIcon Name="Loader" Class="h-8 w-8 animate-spin text-muted-foreground/40" />
+                        <Lumeo.Text Size="sm">Loading @LibraryDisplayName(IconService.ActiveLibrary) icons…</Lumeo.Text>
+                    </div>
+                }
+                else if (Filtered.Count == 0)
                 {
                     <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
                         <DynamicIcon Name="SearchX" Class="h-10 w-10 text-muted-foreground/40" />
@@ -362,34 +370,73 @@
     // Name is the Blazicons property name (e.g. "Search", "ChevronDown").
     private record IconEntry(string Name, SvgIcon Svg);
 
-    // Full catalog per library — enumerated via reflection over the Blazicons
-    // static classes so every available icon is shown automatically. No manual
-    // list to keep in sync when Blazicons adds more.
-    private static readonly Dictionary<string, IReadOnlyList<IconEntry>> _catalogsByLibrary = BuildCatalogs();
+    // Per-library catalogs, built ON DEMAND. The non-Lucide Blazicons packs are
+    // <BlazorWebAssemblyLazyLoad> assemblies. Reflecting over their types
+    // (typeof(FluentUiIcon), …) eagerly in a static initializer forced the WASM
+    // runtime to resolve those assemblies through the reflection path, which
+    // raced CustomizerSidebar's LazyAssemblyLoader fetch of the same DLLs and
+    // double-read the DLL Response ("Failed to execute 'arrayBuffer' … body
+    // stream already read"), crashing the page on load. We now load each pack
+    // via LazyAssemblyLoader BEFORE reflecting over it and cache the result.
+    // Lucide is eager (in the boot manifest), so it is safe to build up front.
+    private readonly Dictionary<string, IReadOnlyList<IconEntry>> _catalogs = new();
+    private readonly HashSet<string> _loadingLibs = new();
+
+    // library key -> (lazy-loaded DLL file, fully-qualified Blazicons container type)
+    private static readonly Dictionary<string, (string Dll, string TypeName)> _lazyLibs = new()
+    {
+        ["bootstrap"]       = ("Blazicons.Bootstrap.dll", "Blazicons.BootstrapIcon"),
+        ["fluentui"]        = ("Blazicons.FluentUI.dll", "Blazicons.FluentUiIcon"),
+        ["google-material"] = ("Blazicons.GoogleMaterialDesign.dll", "Blazicons.GoogleMaterialOutlinedIcon"),
+        ["font-awesome"]    = ("Blazicons.FontAwesome.dll", "Blazicons.FontAwesomeSolidIcon"),
+        ["ionicons"]        = ("Blazicons.Ionicons.dll", "Blazicons.Ionicon"),
+        ["material-design"] = ("Blazicons.MaterialDesignIcons.dll", "Blazicons.MdiIcon"),
+    };
 
     // Key that re-mounts the grid scroll container whenever the filter/library
     // changes, so scrollTop resets to 0 and the first row is never cut off.
     private string GridKey => $"grid-{IconService.ActiveLibrary}-{_query}";
 
+    // Cached catalog for the active library, or empty while its pack is still
+    // loading. Deliberately NOT a Lucide fallback: returning Lucide's icons
+    // under e.g. the "Bootstrap Icons" label briefly showed mislabeled icons
+    // and let a click select the wrong library's entry before the load
+    // finished (Codex #170). The grid shows a loading state instead — see
+    // CatalogReady. EnsureCatalogAsync repopulates + re-renders when done.
     private IReadOnlyList<IconEntry> ActiveCatalog =>
-        _catalogsByLibrary.TryGetValue(IconService.ActiveLibrary, out var list)
+        _catalogs.TryGetValue(IconService.ActiveLibrary, out var list)
             ? list
-            : _catalogsByLibrary["lucide"];
+            : Array.Empty<IconEntry>();
+
+    // False while the active (non-Lucide) library's pack is still loading.
+    // Lucide is built in OnInitialized so it is always ready (no flash).
+    private bool CatalogReady => _catalogs.ContainsKey(IconService.ActiveLibrary);
 
     private List<IconEntry> Filtered => string.IsNullOrWhiteSpace(_query)
         ? ActiveCatalog.ToList()
         : ActiveCatalog.Where(e => e.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
 
-    private static Dictionary<string, IReadOnlyList<IconEntry>> BuildCatalogs() => new()
+    // Loads the active library's lazy assembly (no-op if already loaded — e.g.
+    // CustomizerSidebar preloaded it) and only then reflects over its icon type.
+    private async Task EnsureCatalogAsync(string lib)
     {
-        ["lucide"]          = EnumerateIcons(typeof(Lucide)),
-        ["bootstrap"]       = EnumerateIcons(typeof(BootstrapIcon)),
-        ["fluentui"]        = EnumerateIcons(typeof(FluentUiIcon)),
-        ["google-material"] = EnumerateIcons(typeof(GoogleMaterialOutlinedIcon)),
-        ["font-awesome"]    = EnumerateIcons(typeof(FontAwesomeSolidIcon)),
-        ["ionicons"]        = EnumerateIcons(typeof(Ionicon)),
-        ["material-design"] = EnumerateIcons(typeof(MdiIcon)),
-    };
+        if (_catalogs.ContainsKey(lib)) return;
+        if (!_lazyLibs.TryGetValue(lib, out var meta)) return; // unknown key → Lucide fallback
+        if (!_loadingLibs.Add(lib)) return;                    // de-dupe concurrent loads of this pack
+        try
+        {
+            await LazyLoader.LoadAssembliesAsync(new[] { meta.Dll });
+            var asmName = System.IO.Path.GetFileNameWithoutExtension(meta.Dll);
+            var type = Type.GetType($"{meta.TypeName}, {asmName}");
+            if (type is not null)
+                _catalogs[lib] = EnumerateIcons(type);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        finally
+        {
+            _loadingLibs.Remove(lib);
+        }
+    }
 
     private static IReadOnlyList<IconEntry> EnumerateIcons(Type svgIconContainer)
     {
@@ -478,9 +525,25 @@
     protected override void OnInitialized()
     {
         IconService.OnChange += OnLibChanged;
+        // Lucide is eager (boot manifest) — safe to reflect immediately.
+        _catalogs["lucide"] = EnumerateIcons(typeof(Lucide));
     }
 
-    private void OnLibChanged() => InvokeAsync(StateHasChanged);
+    // Covers the initial render and direct navigation: ensure the (possibly
+    // non-Lucide) active library's catalog is built before the grid renders.
+    protected override async Task OnParametersSetAsync()
+        => await EnsureCatalogAsync(IconService.ActiveLibrary);
+
+    // Library switched (page Select or the global CustomizerSidebar picker):
+    // load its pack on demand, then re-render. Fire-and-forget is fine — the
+    // load is guarded and idempotent.
+    private void OnLibChanged() => _ = OnLibChangedAsync();
+
+    private async Task OnLibChangedAsync()
+    {
+        await EnsureCatalogAsync(IconService.ActiveLibrary);
+        await InvokeAsync(StateHasChanged);
+    }
 
     // Browsers restore scrollTop of inner scroll containers across reloads and
     // re-renders. @key alone doesn't reliably clear it. Resolve the element by
