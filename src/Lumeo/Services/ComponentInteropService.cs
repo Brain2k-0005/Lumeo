@@ -590,7 +590,13 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth)
     {
         var module = await GetModuleAsync();
-        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth);
+        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth, 0);
+    }
+
+    public async ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth, offset);
     }
 
     [JSInvokable]

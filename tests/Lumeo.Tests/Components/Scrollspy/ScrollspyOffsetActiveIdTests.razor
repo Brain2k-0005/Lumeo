@@ -1,0 +1,93 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #246 — click-scroll must honour Offset, and ActiveId must be two-way
+    // (ActiveIdChanged fires on click; an external ActiveId set scrolls to it).
+
+    private readonly TrackingInteropService _interop = new();
+
+    public ScrollspyOffsetActiveIdTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    [Fact]
+    public void Click_Honours_Offset_On_Scroll()
+    {
+        var cut = Render(@<Lumeo.Scrollspy Offset="80">
+            <Lumeo.ScrollspyLink Target="intro">Intro</Lumeo.ScrollspyLink>
+            <Lumeo.ScrollspySection Id="intro">Intro body</Lumeo.ScrollspySection>
+        </Lumeo.Scrollspy>);
+
+        cut.Find("[data-slot='scrollspy-link']").Click();
+
+        var call = Assert.Single(_interop.ScrollspyScrollToCalls);
+        Assert.Equal("intro", call.SectionId);
+        Assert.Equal(80, call.Offset);
+    }
+
+    [Fact]
+    public void Registers_Observer_With_Offset()
+    {
+        Render(@<Lumeo.Scrollspy Offset="120">
+            <Lumeo.ScrollspySection Id="a">A</Lumeo.ScrollspySection>
+        </Lumeo.Scrollspy>);
+
+        var reg = Assert.Single(_interop.ScrollspyRegistrations);
+        Assert.Equal(120, reg.Offset);
+    }
+
+    [Fact]
+    public void Click_Fires_ActiveIdChanged()
+    {
+        string? changed = null;
+        var cut = Render(@<Lumeo.Scrollspy ActiveIdChanged="@(v => changed = v)">
+            <Lumeo.ScrollspyLink Target="features">Features</Lumeo.ScrollspyLink>
+            <Lumeo.ScrollspySection Id="features">Features body</Lumeo.ScrollspySection>
+        </Lumeo.Scrollspy>);
+
+        cut.Find("[data-slot='scrollspy-link']").Click();
+
+        Assert.Equal("features", changed);
+    }
+
+    [Fact]
+    public void Click_Marks_Link_Active_TwoWay()
+    {
+        var cut = Render(@<Lumeo.Scrollspy>
+            <Lumeo.ScrollspyLink Target="one">One</Lumeo.ScrollspyLink>
+            <Lumeo.ScrollspyLink Target="two">Two</Lumeo.ScrollspyLink>
+            <Lumeo.ScrollspySection Id="one">One</Lumeo.ScrollspySection>
+            <Lumeo.ScrollspySection Id="two">Two</Lumeo.ScrollspySection>
+        </Lumeo.Scrollspy>);
+
+        var links = cut.FindAll("[data-slot='scrollspy-link']");
+        links[1].Click();
+
+        // The clicked link reflects active via data-active (cascaded ActiveId).
+        var active = cut.FindAll("[data-slot='scrollspy-link']")
+            .Where(l => l.GetAttribute("data-active") == "true")
+            .ToList();
+        Assert.Single(active);
+        Assert.Contains("Two", active[0].TextContent);
+    }
+
+    [Fact]
+    public void External_ActiveId_Set_Scrolls_To_Section()
+    {
+        var cut = Render<ScrollspyActiveIdHost>();
+
+        // No scroll yet.
+        Assert.Empty(_interop.ScrollspyScrollToCalls);
+
+        cut.Render(p => p.Add(h => h.ActiveId, "target"));
+
+        var call = Assert.Single(_interop.ScrollspyScrollToCalls);
+        Assert.Equal("target", call.SectionId);
+        Assert.Equal(50, call.Offset);
+    }
+}

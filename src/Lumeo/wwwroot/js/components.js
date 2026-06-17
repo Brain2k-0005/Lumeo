@@ -1553,7 +1553,7 @@ export function unregisterScrollspy(containerId) {
     }
 }
 
-export function scrollspyScrollTo(containerId, sectionId, smooth) {
+export function scrollspyScrollTo(containerId, sectionId, smooth, offset = 0) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -1561,8 +1561,12 @@ export function scrollspyScrollTo(containerId, sectionId, smooth) {
     const section = document.getElementById(sectionId);
     if (!section) return;
 
+    // Honour the same Offset the observer uses to decide the active section
+    // (#246): subtract it so a click lands the section top below a sticky
+    // header instead of flush with the viewport top (which would re-activate
+    // the *previous* section). Clamp at 0 so we never request a negative top.
     viewport.scrollTo({
-        top: section.offsetTop,
+        top: Math.max(0, section.offsetTop - offset),
         behavior: smooth ? 'smooth' : 'auto'
     });
 }
