@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Lumeo;
 
 /// <summary>
@@ -5,6 +7,17 @@ namespace Lumeo;
 /// to send polylines, polygons, circles, arcs (and GeoJSON layers) over to
 /// map.js. Property names match the camelCase shape `createShape` reads in JS.
 /// </summary>
+/// <remarks>
+/// Marked polymorphic so that when the shapes are serialized through the
+/// declared base type (<c>MapShape[]</c> in <c>Map.razor</c>), derived payloads
+/// such as <see cref="MapHeatmapShape"/> still emit their own properties
+/// (<c>Radius</c>/<c>ColorRamp</c>/<c>Opacity</c>). Without this the JS interop
+/// serializer dropped them and <c>&lt;MapHeatmap&gt;</c> params were inert. The
+/// <c>$shapeKind</c> discriminator is ignored by map.js (it reads <c>type</c>).
+/// </remarks>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$shapeKind")]
+[JsonDerivedType(typeof(MapShape), "shape")]
+[JsonDerivedType(typeof(MapHeatmapShape), "heatmap")]
 internal class MapShape
 {
     public string Type { get; set; } = "polyline";
