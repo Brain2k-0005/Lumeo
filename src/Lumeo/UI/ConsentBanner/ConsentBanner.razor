@@ -1,10 +1,14 @@
 @namespace Lumeo
-@implements IDisposable
+@implements IAsyncDisposable
 @inject Lumeo.Services.ConsentService Consent
+@inject IComponentInteropService Interop
 
 @if (_ready && !Consent.HasDecided && !_preferencesOpen)
 {
-    <div role="dialog" aria-labelledby="@_titleId" aria-describedby="@_descId"
+    @* Non-modal: the banner is dismissible without trapping the page, so it
+       uses role="region" rather than role="dialog". Only the preferences
+       overlay below is a true aria-modal dialog. *@
+    <div role="region" aria-labelledby="@_titleId" aria-describedby="@_descId"
          class="@(Cx.Merge("lumeo-consent-banner fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-50", AnimationClass, Class))"
          @attributes="AdditionalAttributes">
         <div class="rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-xl p-5">
@@ -51,7 +55,9 @@
 
 @if (_preferencesOpen)
 {
-    <div role="dialog" aria-modal="true" aria-labelledby="@_prefTitleId"
+    <div id="@_prefDialogId" role="dialog" aria-modal="true" aria-labelledby="@_prefTitleId"
+         tabindex="-1"
+         @onkeydown="HandlePrefKeyDown" @onkeydown:stopPropagation="true"
          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/70 backdrop-blur-sm animate-fade-in">
         <div class="w-full max-w-lg rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-2xl">
             <div class="p-6 border-b border-border/40">
@@ -99,8 +105,7 @@
                         @onclick="RejectAll">
                     @RejectLabel
                 </button>
-                <button @ref="_prefSaveButtonRef"
-                        type="button"
+                <button type="button"
                         class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                         @onclick="SavePreferences">
                     @SaveLabel
@@ -144,17 +149,16 @@
     private readonly string _titleId = LumeoIds.New("lumeo-consent-title");
     private readonly string _descId  = LumeoIds.New("lumeo-consent-desc");
     private readonly string _prefTitleId = LumeoIds.New("lumeo-consent-pref-title");
+    private readonly string _prefDialogId = LumeoIds.New("lumeo-consent-pref-dialog");
 
     private bool _ready;
     private bool _preferencesOpen;
-    private ElementReference _prefSaveButtonRef;
-    // Set when OpenPreferences flips _preferencesOpen → true. OnAfterRender
-    // consumes it once the dialog is in the DOM and focuses the Save
-    // button. Without this, opening the preferences dialog left focus on
-    // the underlying page so keyboard-only users had to Tab through
-    // background content to reach the dialog — failing the modal-focus
-    // expectation set by aria-modal="true" on the wrapper.
-    private bool _shouldFocusPrefsOnRender;
+    // True while the preferences dialog has an active scroll-lock + focus-trap
+    // installed. Driven from OnAfterRenderAsync so the JS calls run once the
+    // dialog (or its absence) is in the DOM. SetupFocusTrap focuses the first
+    // focusable element on open and restores focus to the trigger on removal
+    // (WCAG 2.4.3), so the manual Save-button focus dance is no longer needed.
+    private bool _prefModalActive;
     private Dictionary<string, bool> _draft = new(StringComparer.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
@@ -183,12 +187,39 @@
             catch (ObjectDisposedException) { }
         }
 
-        if (_shouldFocusPrefsOnRender)
+        // Drive the modal a11y primitives off the open/closed transition.
+        if (_preferencesOpen && !_prefModalActive)
         {
-            _shouldFocusPrefsOnRender = false;
-            try { await _prefSaveButtonRef.FocusAsync(); }
+            _prefModalActive = true;
+            try
+            {
+                await Interop.LockScroll();
+                await Interop.SetupFocusTrap(_prefDialogId);
+            }
             catch (JSDisconnectedException) { }
-            catch (InvalidOperationException) { /* ref not yet bound — preferences dialog wasn't rendered this pass */ }
+        }
+        else if (!_preferencesOpen && _prefModalActive)
+        {
+            _prefModalActive = false;
+            await TeardownPrefModal();
+        }
+    }
+
+    private async Task TeardownPrefModal()
+    {
+        try
+        {
+            await Interop.RemoveFocusTrap(_prefDialogId);
+            await Interop.UnlockScroll();
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task HandlePrefKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await ClosePreferencesNoSave();
         }
     }
 
@@ -211,7 +242,6 @@
         // Seed the draft from current consent so the toggles reflect reality.
         _draft = Categories.ToDictionary(c => c.Key, c => c.Required || Consent.HasConsent(c.Key), StringComparer.OrdinalIgnoreCase);
         _preferencesOpen = true;
-        _shouldFocusPrefsOnRender = true;
     }
 
     /// <summary>Public entry point so a "Manage cookie preferences" link anywhere in the layout can reopen the dialog.</summary>
@@ -221,7 +251,11 @@
         StateHasChanged();
     }
 
-    private void ClosePreferencesNoSave() => _preferencesOpen = false;
+    private Task ClosePreferencesNoSave()
+    {
+        _preferencesOpen = false;
+        return Task.CompletedTask;
+    }
 
     private bool IsDraftChecked(Lumeo.Services.ConsentCategory cat)
     {
@@ -240,9 +274,16 @@
         _preferencesOpen = false;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         Consent.OnChange -= HandleConsentChange;
         Consent.OnRequestOpenPreferences -= HandleReopenRequest;
+        // If the circuit tears down while the prefs dialog is open, release the
+        // scroll lock + focus trap so they don't leak into the next page.
+        if (_prefModalActive)
+        {
+            _prefModalActive = false;
+            await TeardownPrefModal();
+        }
     }
 }
