@@ -28,6 +28,7 @@
         @foreach (var toast in _toasts.Where(t => ResolvePosition(t.Options.Position) == pos))
         {
             <Toast Variant="@toast.Options.Variant"
+                   Id="@ToastElementId(toast.Id)"
                    Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)"
                    OnMouseEnter="@(() => PauseTimer(toast.Id))"
                    OnMouseLeave="@(() => ResumeTimer(toast.Id))"
@@ -63,10 +64,15 @@
 
 
 @inject ToastService ToastService
+@inject IComponentInteropService Interop
 
 @code {
     private readonly List<ToastItem> _toasts = new();
     private readonly Dictionary<string, CancellationTokenSource> _timers = new();
+    // Toast ids that currently have the JS swipe-to-dismiss gesture attached
+    // to their DOM element, so we register once per toast and unregister on
+    // removal/dispose. Maps toast id -> element id passed to the JS layer.
+    private readonly Dictionary<string, string> _swipeRegistered = new();
     private readonly Dictionary<string, CancellationTokenSource> _exitTimers = new();
     // Per-toast timer bookkeeping for pause-on-hover/focus:
     //   _timerStart    = wall-clock time the current Task.Delay started
@@ -87,6 +93,53 @@
         ToastService.OnShow += HandleShow;
         ToastService.OnDismiss += HandleDismiss;
         ToastService.OnUpdate += HandleUpdate;
+    }
+
+    // Stable per-toast DOM id, derived from the toast id so it survives
+    // re-renders and the JS swipe handler can target it.
+    private static string ToastElementId(string toastId) => $"lumeo-toast-{toastId}";
+
+    // After each render, attach the swipe-to-dismiss gesture to any toast
+    // element that doesn't have it yet. sonner's signature gesture: dragging
+    // a toast horizontally past the JS threshold dismisses it. The JS calls
+    // back OnToastSwipeDismiss(toastId); we route that to the same dismissal
+    // path as the close button (exit animation + OnDismiss).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        foreach (var toast in _toasts.ToList())
+        {
+            // Don't (re)register for a toast already leaving the DOM.
+            if (toast.Leaving || _swipeRegistered.ContainsKey(toast.Id)) continue;
+
+            var elementId = ToastElementId(toast.Id);
+            try
+            {
+                await Interop.RegisterToastSwipe(elementId, toast.Id, OnToastSwiped);
+                _swipeRegistered[toast.Id] = elementId;
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    private Task OnToastSwiped(string toastId)
+    {
+        // Mirror the close-button path so OnDismiss fires and the exit
+        // animation plays. RemoveWithExitAsync also tears down the swipe
+        // registration via CancelTimer-adjacent cleanup below.
+        Remove(toastId);
+        return Task.CompletedTask;
+    }
+
+    private async Task UnregisterSwipe(string toastId)
+    {
+        if (_swipeRegistered.TryGetValue(toastId, out var elementId))
+        {
+            _swipeRegistered.Remove(toastId);
+            try { await Interop.UnregisterToastSwipe(toastId, elementId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
     }
 
     private void HandleShow(ToastMessage message)
@@ -246,6 +299,9 @@
         if (toast is null) return;
 
         CancelTimer(id);
+        // Detach the swipe gesture before the element animates out and is
+        // removed; once marked Leaving it won't be re-registered.
+        await UnregisterSwipe(id);
         if (runOnDismiss)
         {
             toast.Options.OnDismiss?.Invoke();
@@ -319,7 +375,14 @@
         _timerRemaining.Clear();
         _paused.Clear();
 
-        await Task.CompletedTask;
+        // Tear down any remaining swipe gestures so the JS listeners don't leak.
+        foreach (var (toastId, elementId) in _swipeRegistered.ToList())
+        {
+            try { await Interop.UnregisterToastSwipe(toastId, elementId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+        _swipeRegistered.Clear();
     }
 
     private record ToastItem(string Id, ToastOptions Options, bool Leaving = false);
