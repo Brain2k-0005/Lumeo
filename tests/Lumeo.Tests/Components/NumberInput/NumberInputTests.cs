@@ -111,4 +111,88 @@ public class NumberInputTests : IAsyncLifetime
         Assert.Contains("$", cut.Markup);
         Assert.Contains("USD", cut.Markup);
     }
+
+    // --- #176: clear to null + culture-aware parse ---
+
+    [Fact]
+    public void Clearing_Input_Sets_Value_To_Null()
+    {
+        double? value = 42;
+        var changedToNull = false;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, 42.0)
+            .Add(n => n.ValueChanged, v => { value = v; changedToNull = v is null; }));
+
+        cut.Find("input[type='number']").Change("");
+
+        Assert.Null(value);
+        Assert.True(changedToNull);
+    }
+
+    [Fact]
+    public void Whitespace_Input_Sets_Value_To_Null()
+    {
+        double? value = 7;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, 7.0)
+            .Add(n => n.ValueChanged, v => value = v));
+
+        cut.Find("input[type='number']").Change("   ");
+
+        Assert.Null(value);
+    }
+
+    [Fact]
+    public void Clearing_When_Already_Null_Does_Not_Refire()
+    {
+        var callCount = 0;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, (double?)null)
+            .Add(n => n.ValueChanged, _ => callCount++));
+
+        cut.Find("input[type='number']").Change("");
+
+        Assert.Equal(0, callCount);
+    }
+
+    [Fact]
+    public void Parses_Invariant_Decimal()
+    {
+        double? value = null;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.ValueChanged, v => value = v));
+
+        cut.Find("input[type='number']").Change("3.5");
+
+        Assert.Equal(3.5, value);
+    }
+
+    [Fact]
+    public void Parses_Culture_Comma_Decimal_As_Fallback()
+    {
+        double? value = null;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Culture, new System.Globalization.CultureInfo("de-DE"))
+            .Add(n => n.ValueChanged, v => value = v));
+
+        // A de-DE user typing a comma decimal must round-trip to 1.5 (the native
+        // numeric input reports invariant, but FormatType=Text / programmatic
+        // input can deliver culture-formatted text).
+        cut.Find("input[type='number']").Change("1,5");
+
+        Assert.Equal(1.5, value);
+    }
+
+    [Fact]
+    public void Parsed_Value_Is_Clamped_To_Max()
+    {
+        double? value = null;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Max, 10.0)
+            .Add(n => n.ValueChanged, v => value = v));
+
+        cut.Find("input[type='number']").Change("999");
+
+        Assert.Equal(10, value);
+    }
 }
