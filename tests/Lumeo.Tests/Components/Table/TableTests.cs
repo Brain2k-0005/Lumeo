@@ -364,4 +364,109 @@ public class TableTests : IAsyncLifetime
         Assert.Contains("Name", cut.Markup);
         Assert.Contains("Alice", cut.Markup);
     }
+
+    // --- Striped (#262) ---
+
+    [Fact]
+    public void Table_Striped_Adds_Zebra_Rule()
+    {
+        var cut = _ctx.Render<L.Table>(p => p
+            .Add(c => c.Striped, true)
+            .AddChildContent(""));
+        var cls = cut.Find("table").GetAttribute("class") ?? "";
+        Assert.Contains("nth-child(even)", cls);
+    }
+
+    [Fact]
+    public void Table_Not_Striped_By_Default()
+    {
+        var cut = _ctx.Render<L.Table>(p => p.AddChildContent(""));
+        var cls = cut.Find("table").GetAttribute("class") ?? "";
+        Assert.DoesNotContain("nth-child(even)", cls);
+    }
+
+    // --- TableFooter (#262) ---
+
+    [Fact]
+    public void TableFooter_Renders_Tfoot_Element()
+    {
+        var cut = _ctx.Render<L.TableFooter>(p => p.AddChildContent("totals"));
+        Assert.NotNull(cut.Find("tfoot"));
+    }
+
+    [Fact]
+    public void TableFooter_Has_Footer_Classes()
+    {
+        var cut = _ctx.Render<L.TableFooter>(p => p.AddChildContent(""));
+        var cls = cut.Find("tfoot").GetAttribute("class") ?? "";
+        Assert.Contains("border-t", cls);
+        Assert.Contains("font-medium", cls);
+    }
+
+    [Fact]
+    public void TableFooter_Additional_Attributes_Forwarded()
+    {
+        var cut = _ctx.Render<L.TableFooter>(p => p
+            .Add(c => c.AdditionalAttributes, new Dictionary<string, object> { ["data-testid"] = "tfoot" })
+            .AddChildContent(""));
+        Assert.Equal("tfoot", cut.Find("tfoot").GetAttribute("data-testid"));
+    }
+
+    // --- TableEmpty (#262) ---
+
+    [Fact]
+    public void TableEmpty_Renders_Row_With_Colspan()
+    {
+        var cut = _ctx.Render<L.TableEmpty>(p => p
+            .Add(c => c.ColumnCount, 4));
+        var td = cut.Find("td");
+        Assert.Equal("4", td.GetAttribute("colspan"));
+    }
+
+    [Fact]
+    public void TableEmpty_Falls_Back_To_Localized_NoResults()
+    {
+        var cut = _ctx.Render<L.TableEmpty>();
+        Assert.Contains("No results", cut.Markup);
+    }
+
+    [Fact]
+    public void TableEmpty_Custom_Text_Wins()
+    {
+        var cut = _ctx.Render<L.TableEmpty>(p => p
+            .Add(c => c.Text, "Nothing here"));
+        Assert.Contains("Nothing here", cut.Markup);
+        Assert.DoesNotContain("No results", cut.Markup);
+    }
+
+    [Fact]
+    public void TableEmpty_ChildContent_Wins_Over_Text()
+    {
+        var cut = _ctx.Render<L.TableEmpty>(p => p
+            .Add(c => c.Text, "ignored")
+            .AddChildContent("<span>custom empty</span>"));
+        Assert.Contains("custom empty", cut.Markup);
+        Assert.DoesNotContain("ignored", cut.Markup);
+    }
+
+    // --- TableSkeleton (#262) ---
+
+    [Fact]
+    public void TableSkeleton_Renders_Requested_Rows_And_Columns()
+    {
+        var cut = _ctx.Render<L.TableSkeleton>(p => p
+            .Add(c => c.Rows, 3)
+            .Add(c => c.Columns, 5));
+        Assert.Equal(3, cut.FindAll("tr").Count);
+        Assert.Equal(15, cut.FindAll("td").Count);
+    }
+
+    [Fact]
+    public void TableSkeleton_Rows_Are_Aria_Hidden()
+    {
+        var cut = _ctx.Render<L.TableSkeleton>(p => p
+            .Add(c => c.Rows, 1)
+            .Add(c => c.Columns, 1));
+        Assert.Equal("true", cut.Find("tr").GetAttribute("aria-hidden"));
+    }
 }
