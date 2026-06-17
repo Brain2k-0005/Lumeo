@@ -19,11 +19,12 @@
             var filteredItems = FilteredItems;
             @if (Context.Virtualize)
             {
-                <Virtualize Items="@filteredItems" Context="item" ItemSize="@Context.ItemSize">
-                    @* Ungrouped path: an item's sequence index is its position in the filtered
-                       list, matching Combobox.BuildBoundNavItems' source-order indexing so the
-                       focus highlight / Enter resolve to the same id the parent computed. *@
-                    @RenderBoundItem(item, filteredItems.IndexOf(item))
+                @* Pair each item with its positional index up-front. IndexOf would return
+                   the FIRST equal item, so duplicate values collapsed to one id and desynced
+                   from Combobox.BuildBoundNavItems' positional indexing. *@
+                var indexedItems = filteredItems.Select((it, idx) => (Item: it, Index: idx)).ToList();
+                <Virtualize Items="@indexedItems" Context="entry" ItemSize="@Context.ItemSize">
+                    @RenderBoundItem(entry.Item, entry.Index)
                 </Virtualize>
             }
             else if (Context.ItemGroup is not null)
@@ -157,11 +158,11 @@
             ? Context.Values?.Contains(value) == true
             : Context.Value == value;
         var isDisabled = Context.ItemDisabled?.Invoke(item) ?? false;
-        // Index-based, not value.GetHashCode(): two values whose hashes collide would otherwise
-        // share a DOM id, so aria-activedescendant / Enter would land on the wrong row. The index
-        // is the item's position in the filtered (+ grouped) sequence — the same basis
-        // Combobox.BuildBoundNavItems uses, keeping the two in sync.
-        var itemId = $"combobox-item-bound-{index}";
+        // Per-instance ContentId prefix + position index (never value.GetHashCode()):
+        // hash-derived ids collided across equal values AND across two open Comboboxes.
+        // The index is the item's position in the filtered (+ grouped) sequence — the same
+        // basis Combobox.BuildBoundNavItems uses, keeping the rendered id and nav id in sync.
+        var itemId = $"{Context.ContentId}-bound-{index}";
         var isFocused = Context.FocusedItemId == itemId;
 
         builder.OpenElement(0, "button");

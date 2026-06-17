@@ -111,7 +111,13 @@
         // keydown bubbles up from whichever handle is focused. Tab is excluded so
         // focus traversal off the list still works, and SkipEditable keeps arrow
         // keys alive inside editable item templates.
-        if (!_pdRegistered)
+        // Only suppress the reorder keys while keyboard drag handles are actually
+        // rendered (Handle && !Disabled). Registering unconditionally swallowed
+        // ArrowUp/Down/Home/End from any focusable child in the item template when
+        // no handle could consume them. Reconciled every render so toggling
+        // Disabled/Handle adds or drops the listener.
+        var keyboardHandlesActive = Handle && !Disabled;
+        if (keyboardHandlesActive && !_pdRegistered)
         {
             try
             {
@@ -124,6 +130,13 @@
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!keyboardHandlesActive && _pdRegistered)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_containerId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            _pdRegistered = false;
         }
 
         // Restore focus to the handle of the just-moved item after a keyboard

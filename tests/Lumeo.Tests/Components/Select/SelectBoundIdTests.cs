@@ -76,13 +76,12 @@ public class SelectBoundIdTests : IAsyncLifetime
         // Force a real hash collision: map two distinct items to values that collide.
         // Even when string.GetHashCode() returns the same value for both, the index-based
         // ids must differ so highlight/Enter target the right row.
-        var a = new object();
-        var b = new object();
-        var items = new[] { a, b };
+        // Two distinct list positions sharing the SAME logical value: the OLD hash-derived
+        // id scheme emitted one id for both (a real collision); the position-index scheme
+        // must keep them distinct.
+        var items = new object[] { "x", "x" };
 
-        // Both values intentionally hash to the same bucket via identical content; the OLD
-        // scheme `select-item-bound-{hash:X}` would emit identical ids here.
-        var cut = RenderDataBound(items, itemValue: o => ReferenceEquals(o, a) ? "x" : "x_dup_same_hash");
+        var cut = RenderDataBound(items, itemValue: o => (string)o);
 
         var ids = cut.FindAll("button[role='option']")
             .Select(o => o.GetAttribute("id"))

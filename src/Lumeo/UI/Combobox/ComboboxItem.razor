@@ -80,12 +80,15 @@
 
     protected override void OnParametersSet()
     {
-        if (Visible && !_registered)
+        // Disabled items are kept out of the nav registry (mirroring the data-bound
+        // path) so roving keyboard nav / Enter never lands on a disabled row; the
+        // guard in HandleSelect is the second line of defense.
+        if (Visible && !Disabled && !_registered)
         {
             Context.RegisterItem(_itemId, Value);
             _registered = true;
         }
-        else if (!Visible && _registered)
+        else if ((!Visible || Disabled) && _registered)
         {
             Context.UnregisterItem(_itemId);
             _registered = false;
