@@ -263,6 +263,7 @@ internal static partial class LumeoDefaultStrings
         ["Window.Minimize"] = "Minimize",
         ["Window.Maximize"] = "Maximize",
         ["Window.Restore"] = "Restore",
+        ["Window.Resize"] = "Resize",
 
         // ── Empty state defaults ────────────────────────────────────
         ["Empty.Title"] = "Nothing here yet",
@@ -737,6 +738,7 @@ internal static partial class LumeoDefaultStrings
         ["Window.Minimize"] = "Minimieren",
         ["Window.Maximize"] = "Maximieren",
         ["Window.Restore"] = "Wiederherstellen",
+        ["Window.Resize"] = "Größe ändern",
 
         // ── NumberInput ─────────────────────────────────────────────
         ["NumberInput.Decrease"] = "Verringern",

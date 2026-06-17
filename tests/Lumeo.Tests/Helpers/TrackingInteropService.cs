@@ -107,7 +107,11 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterPinchZoom(string elementId) => ValueTask.CompletedTask;
-    public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(new ViewportSize(0, 0));
+    /// <summary>Viewport size returned by <see cref="GetViewportSize"/>; defaults to 0×0
+    /// (no clamping) so existing tests are unaffected. Set it to exercise viewport
+    /// clamping (e.g. Window resize/drag bounds).</summary>
+    public ViewportSize ViewportSize { get; set; } = new(0, 0);
+    public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(ViewportSize);
     // 2.1.3: viewport listener no-ops (IResponsiveService is exercised separately via NoOpInterop)
     public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult<ViewportSize?>(new ViewportSize(0, 0));
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
