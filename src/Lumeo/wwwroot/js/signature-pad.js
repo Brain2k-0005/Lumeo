@@ -62,29 +62,34 @@ function buildSvgDataUrl(pad) {
     const round = (n) => Math.round(n * 100) / 100;
     const paths = [];
     for (const stroke of pad.strokes) {
-        if (!stroke || stroke.length === 0) continue;
-        if (stroke.length === 1) {
+        const pts = stroke && stroke.points;
+        if (!pts || pts.length === 0) continue;
+        // Each stroke carries the color/width active when it was drawn, so a
+        // mid-signature setStrokeStyle change is preserved in the export rather
+        // than every stroke inheriting the final global style.
+        const color = stroke.color;
+        const width = stroke.width;
+        if (pts.length === 1) {
             // A lone tap: render a filled dot of the stroke radius.
-            const p = stroke[0];
-            paths.push(`<circle cx="${round(p.x)}" cy="${round(p.y)}" r="${round(pad.strokeWidth / 2)}" fill="${pad.strokeColor}" />`);
+            const p = pts[0];
+            paths.push(`<circle cx="${round(p.x)}" cy="${round(p.y)}" r="${round(width / 2)}" fill="${color}" />`);
             continue;
         }
-        let d = `M ${round(stroke[0].x)} ${round(stroke[0].y)}`;
+        let d = `M ${round(pts[0].x)} ${round(pts[0].y)}`;
         // Quadratic smoothing through midpoints, mirroring the canvas path.
-        for (let i = 1; i < stroke.length; i++) {
-            const prev = stroke[i - 1];
-            const cur = stroke[i];
+        for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const cur = pts[i];
             const midX = (prev.x + cur.x) / 2;
             const midY = (prev.y + cur.y) / 2;
             d += ` Q ${round(prev.x)} ${round(prev.y)} ${round(midX)} ${round(midY)}`;
         }
-        paths.push(`<path d="${d}" />`);
+        paths.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" />`);
     }
     if (paths.length === 0) return null;
     const svg =
         `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-        `<g fill="none" stroke="${pad.strokeColor}" stroke-width="${pad.strokeWidth}" ` +
-        `stroke-linecap="round" stroke-linejoin="round">${paths.join('')}</g></svg>`;
+        `${paths.join('')}</svg>`;
     // Encode as a UTF-8-safe base64 data URL.
     const b64 = btoa(unescape(encodeURIComponent(svg)));
     return `data:image/svg+xml;base64,${b64}`;
@@ -112,8 +117,9 @@ export function init(elementId, options, dotnetRef) {
         lastPoint: null,
         debounceTimer: 0,
         handlers: {},
-        // Recorded vector strokes for real SVG export. Each stroke is an array
-        // of {x,y} points; we replay them as <path> elements in getSvgDataUrl.
+        // Recorded vector strokes for real SVG export. Each stroke is
+        // { points: [{x,y}…], color, width } capturing the style active when it
+        // was drawn; replayed as <path>/<circle> elements in getSvgDataUrl.
         // Raster (PNG) export still reads the canvas directly.
         strokes: [],
         currentStroke: null,
@@ -144,8 +150,11 @@ export function init(elementId, options, dotnetRef) {
         const p = pointFromEvent(pad, e);
         pad.lastPoint = p;
         // Start recording a new vector stroke for SVG export.
-        pad.currentStroke = [{ x: p.x, y: p.y }];
+        pad.currentStroke = { points: [{ x: p.x, y: p.y }], color: pad.strokeColor, width: pad.strokeWidth };
         pad.strokes.push(pad.currentStroke);
+        // A tap-only dot is still a real signature — mark non-empty now so it
+        // exports (move events would otherwise be the only thing clearing this).
+        pad.isEmpty = false;
         const ctx = getCtx(pad);
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
@@ -174,7 +183,7 @@ export function init(elementId, options, dotnetRef) {
         ctx.moveTo(mid.x, mid.y);
         pad.lastPoint = p;
         pad.isEmpty = false;
-        if (pad.currentStroke) pad.currentStroke.push({ x: p.x, y: p.y });
+        if (pad.currentStroke) pad.currentStroke.points.push({ x: p.x, y: p.y });
     };
 
     const endStroke = (e) => {

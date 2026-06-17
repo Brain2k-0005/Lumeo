@@ -141,7 +141,30 @@
         // CollapsedSize (default 0) and hands the freed space to its neighbour,
         // instead of clamping at MinSize. Dragging back out past the threshold
         // restores it. Mirrors Radix's collapse-on-drag behaviour.
-        if (before.Collapsible && desiredBefore < before.MinSize - (before.MinSize - before.CollapsedSize) / 2)
+        // An already-collapsed pane expands on a drag back OUT. Per-pointer-move
+        // deltas are small, so accumulate them toward MinSize rather than letting
+        // the collapse branch below immediately re-snap to CollapsedSize (which
+        // otherwise left a collapsed pane stuck unless a single move crossed the
+        // threshold).
+        if (before.Collapsible && before.Collapsed && deltaPercent > 0)
+        {
+            var expanded = Math.Min(before.MinSize, before.Size + deltaPercent);
+            before.Size = expanded;
+            after.Size = pairTotal - expanded;
+            if (before.Size >= before.MinSize) before.Collapsed = false;
+            StateHasChanged();
+            return;
+        }
+        if (after.Collapsible && after.Collapsed && deltaPercent < 0)
+        {
+            var expanded = Math.Min(after.MinSize, after.Size - deltaPercent);
+            after.Size = expanded;
+            before.Size = pairTotal - expanded;
+            if (after.Size >= after.MinSize) after.Collapsed = false;
+            StateHasChanged();
+            return;
+        }
+        if (before.Collapsible && !before.Collapsed && desiredBefore < before.MinSize - (before.MinSize - before.CollapsedSize) / 2)
         {
             before.Collapsed = true;
             before.Size = before.CollapsedSize;
@@ -149,7 +172,7 @@
             StateHasChanged();
             return;
         }
-        if (after.Collapsible && (pairTotal - desiredBefore) < after.MinSize - (after.MinSize - after.CollapsedSize) / 2)
+        if (after.Collapsible && !after.Collapsed && (pairTotal - desiredBefore) < after.MinSize - (after.MinSize - after.CollapsedSize) / 2)
         {
             after.Collapsed = true;
             after.Size = after.CollapsedSize;

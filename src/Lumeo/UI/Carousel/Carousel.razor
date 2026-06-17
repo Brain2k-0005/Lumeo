@@ -303,14 +303,17 @@
             // Guard the dispose race: the timer can fire and queue this callback
             // just as DisposeAsync runs, so bail if we've been torn down.
             if (!AutoplayActive || _isDisposed) return;
-            if (_canScrollNext)
+            // Best-effort autoplay: a circuit drop / disposal mid-scroll must not
+            // surface as an unobserved task exception.
+            try
             {
-                await ScrollNext();
+                if (_canScrollNext)
+                    await ScrollNext();
+                else
+                    await ScrollTo(0);
             }
-            else
-            {
-                await ScrollTo(0);
-            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
         });
     }
 

@@ -78,7 +78,10 @@ public class PickListKeyboardReorderTests : IAsyncLifetime
     public void Space_Toggles_Selection_On_Focused_Source_Item()
     {
         var cut = Render();
-        Option(SourceList(cut), "Alpha").KeyDown(new KeyboardEventArgs { Key = " " });
+        // The option is a native <button>; Space/Enter activate it through the
+        // browser's native click (not a Blazor @onkeydown), which bUnit models
+        // with Click(). Handling keydown here too would double-toggle in a real browser.
+        Option(SourceList(cut), "Alpha").Click();
         Assert.Equal("true", Option(SourceList(cut), "Alpha").GetAttribute("aria-selected"));
     }
 

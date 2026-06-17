@@ -314,7 +314,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted);
     ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds);
     /// <summary>Sets the media element's <c>playbackRate</c> (clamped 0.25–4×).</summary>
-    ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate);
+    ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
     /// <summary>
     /// Reads the live <c>duration</c> and <c>currentTime</c> off an
     /// HTMLMediaElement. Required because Blazor's media event args don't

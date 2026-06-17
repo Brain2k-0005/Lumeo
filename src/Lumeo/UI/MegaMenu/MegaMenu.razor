@@ -55,20 +55,35 @@
 
     private void RegisterItem(string triggerId, bool disabled)
     {
+        var shouldRender = false;
+
         if (!_itemIds.Contains(triggerId))
         {
             _itemIds.Add(triggerId);
-            StateHasChanged();
+            shouldRender = true;
         }
+
         // Track disabled state so roving nav can skip non-interactive triggers.
-        if (disabled) _disabledItemIds.Add(triggerId);
-        else _disabledItemIds.Remove(triggerId);
+        // Re-render on a change even for an already-registered item so the
+        // menubar tabindex stays in sync when a trigger enables/disables.
+        var disabledChanged = disabled
+            ? _disabledItemIds.Add(triggerId)
+            : _disabledItemIds.Remove(triggerId);
+        if (disabledChanged) shouldRender = true;
+
         // The tab stop must be an enabled trigger — a disabled one can't receive
         // focus, which would strand keyboard users at the menubar entry point.
         if (_rovingItemId is null || _disabledItemIds.Contains(_rovingItemId))
         {
-            _rovingItemId = _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id));
+            var next = _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id));
+            if (_rovingItemId != next)
+            {
+                _rovingItemId = next;
+                shouldRender = true;
+            }
         }
+
+        if (shouldRender) StateHasChanged();
     }
 
     private void UnregisterItem(string triggerId)

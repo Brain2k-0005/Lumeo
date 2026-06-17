@@ -1576,6 +1576,9 @@ export function scrollspyScrollTo(containerId, sectionId, smooth, offset = 0) {
 const tabsOverflowHandlers = new Map();
 
 export function registerTabsOverflow(listId, dotnetRef) {
+    // Idempotent: drop any prior listeners/observer for this id so a re-register
+    // (e.g. ShowArrows toggled off→on) never stacks duplicate handlers.
+    unregisterTabsOverflow(listId);
     const el = document.getElementById(listId);
     if (!el) return;
 
