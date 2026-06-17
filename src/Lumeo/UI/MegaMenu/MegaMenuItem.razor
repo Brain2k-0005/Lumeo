@@ -9,10 +9,15 @@
 <CascadingValue Value="itemContext" IsFixed="false">
     @if (ChildContent is null && Href is not null)
     {
-        <li role="none" class="@CssClass" @attributes="AdditionalAttributes">
+        @* keydown sits on the <li> so Arrow/Home/End roving works on the link
+           variant too, matching the button variant. *@
+        <li role="none" id="@_itemId" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
             <a href="@Href"
+               id="@_triggerId"
                role="menuitem"
-               class="@TriggerCssClass">
+               tabindex="@RovingTabIndex"
+               class="@TriggerCssClass"
+               @onfocusin="HandleFocusIn">
                 @if (Icon is not null)
                 {
                     <Blazicon Svg="@Icon" class="h-4 w-4" />
@@ -25,7 +30,8 @@
     {
         @* keydown sits on the <li> (not the trigger button) so Escape also
            catches events bubbling from focusable elements INSIDE the open
-           panel, per the overlay rules. *@
+           panel, per the overlay rules. Arrow/Home/End move roving focus
+           between the top-level triggers (WAI-ARIA menubar). *@
         <li role="none"
             id="@_itemId"
             class="@CssClass"
@@ -38,9 +44,11 @@
                     role="menuitem"
                     aria-haspopup="true"
                     aria-expanded="@(_isOpen ? "true" : "false")"
+                    tabindex="@RovingTabIndex"
                     disabled="@Disabled"
                     class="@TriggerCssClass"
-                    @onclick="HandleClick">
+                    @onclick="HandleClick"
+                    @onfocusin="HandleFocusIn">
                 @if (Icon is not null)
                 {
                     <Blazicon Svg="@Icon" class="h-4 w-4" />
@@ -75,8 +83,16 @@
 
     private bool _clickOutsideRegistered;
     private string? _clickOutsideId;
+    private bool _registeredItem;
 
     private bool _isOpen => Context?.ActiveItemId == _itemId;
+
+    // Roving tabindex: exactly one top-level trigger is in the tab order
+    // (tabindex=0); the rest are -1 so Tab enters/leaves the menubar once and
+    // Arrow keys move within it (WAI-ARIA menubar). Falls back to tabbable when
+    // no roving item has been resolved yet (single-item / pre-registration).
+    private string RovingTabIndex =>
+        (Context?.RovingItemId is null || Context.RovingItemId == _triggerId) ? "0" : "-1";
 
     private string CssClass => Class ?? "";
 
@@ -87,6 +103,14 @@
     private string ChevronCssClass => Cx.Join(
         "h-3 w-3 transition-transform duration-200",
         Cx.When(_isOpen, "rotate-180"));
+
+    protected override void OnInitialized()
+    {
+        // Register in DOM order so the parent can resolve arrow-key neighbours
+        // and assign the roving tab stop.
+        Context?.RegisterItem(_triggerId);
+        _registeredItem = true;
+    }
 
     // Overlay rules: dismiss the open panel when the user clicks/taps outside
     // the item. The <li> (_itemId) contains both the trigger and the panel, so
@@ -168,17 +192,70 @@
         }
     }
 
+    // Keep the roving tab stop on whichever trigger the user focuses (mouse or
+    // Tab), so re-entering the menubar with Tab lands on the last-focused item.
+    private void HandleFocusIn()
+    {
+        Context?.SetRovingItem(_triggerId);
+    }
+
     // Enter and Space are deliberately NOT handled here: the trigger is a
     // native <button>, so the browser synthesizes a click for them and
     // HandleClick performs the toggle. Toggling from keydown as well made
     // keyboard activation a net no-op (keydown opened, the synthesized click
     // immediately toggled the panel closed again).
+    //
+    // Arrow/Home/End implement the WAI-ARIA menubar roving navigation between
+    // the top-level triggers. The orientation picks which arrow pair moves
+    // focus (horizontal: Left/Right; vertical: Up/Down). Escape closes an open
+    // panel.
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape")
+        switch (e.Key)
         {
-            await Context.SetActiveItemId.InvokeAsync(null);
+            case "Escape":
+                await Context.SetActiveItemId.InvokeAsync(null);
+                break;
+            case "ArrowRight" when Context.Orientation == Lumeo.Orientation.Horizontal:
+            case "ArrowDown" when Context.Orientation == Lumeo.Orientation.Vertical:
+                await MoveFocus(1);
+                break;
+            case "ArrowLeft" when Context.Orientation == Lumeo.Orientation.Horizontal:
+            case "ArrowUp" when Context.Orientation == Lumeo.Orientation.Vertical:
+                await MoveFocus(-1);
+                break;
+            case "Home":
+                await FocusEdge(first: true);
+                break;
+            case "End":
+                await FocusEdge(first: false);
+                break;
         }
+    }
+
+    private async Task MoveFocus(int delta)
+    {
+        var ids = Context.ItemIds;
+        if (ids.Count == 0) return;
+        var current = ids.ToList().IndexOf(_triggerId);
+        if (current < 0) return;
+        var next = (current + delta + ids.Count) % ids.Count;
+        await FocusTrigger(ids[next]);
+    }
+
+    private async Task FocusEdge(bool first)
+    {
+        var ids = Context.ItemIds;
+        if (ids.Count == 0) return;
+        await FocusTrigger(first ? ids[0] : ids[^1]);
+    }
+
+    private async Task FocusTrigger(string triggerId)
+    {
+        // Move the roving tab stop first so the target renders tabindex=0, then
+        // focus it via interop. SetRovingItem triggers a parent re-render.
+        Context.SetRovingItem(triggerId);
+        try { await Interop.FocusElement(triggerId); } catch (JSDisconnectedException) { }
     }
 
     private async Task CleanupClickOutside()
@@ -190,6 +267,7 @@
     public async ValueTask DisposeAsync()
     {
         _dispatch.Dispose();
+        if (_registeredItem) Context?.UnregisterItem(_triggerId);
         if (_clickOutsideRegistered) await CleanupClickOutside();
     }
 
