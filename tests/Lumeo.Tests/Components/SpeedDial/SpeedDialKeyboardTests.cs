@@ -78,7 +78,11 @@ public class SpeedDialKeyboardTests : IAsyncLifetime
         // Escape on the wrapper closes the menu and returns focus to the trigger.
         cut.Find("[role='menu']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
 
-        Assert.DoesNotContain("role=\"menu\"", cut.Markup);
+        // The close is async — the handler awaits focus-restore interop before the
+        // re-render — so wait for the menu to actually leave the markup rather than
+        // asserting on the transient state the moment the keydown returns (that race
+        // flaked under parallel test load).
+        cut.WaitForAssertion(() => Assert.DoesNotContain("role=\"menu\"", cut.Markup));
         cut.WaitForAssertion(() =>
             Assert.Contains(_interop.FocusElementCalls, id => id.StartsWith("speeddial-trigger-")));
     }
