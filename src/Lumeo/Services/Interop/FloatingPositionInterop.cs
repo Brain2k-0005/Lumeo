@@ -22,6 +22,11 @@ internal sealed class FloatingPositionInterop
         await module.InvokeVoidAsync("unpositionFixed", contentId);
     }
 
+    public async ValueTask PositionAtPoint(IJSObjectReference module, string contentId, double x, double y)
+    {
+        await module.InvokeVoidAsync("positionAtPoint", contentId, x, y);
+    }
+
     public async ValueTask<ElementRect?> GetElementRect(
         IJSObjectReference module,
         string elementId)

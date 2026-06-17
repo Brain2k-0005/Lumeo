@@ -113,6 +113,16 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
     public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
+
+    // ContextMenu root-menu viewport clamp (#224) — opens at click coords with
+    // no anchor, so it calls PositionAtPoint rather than PositionFixed.
+    private readonly List<(string ContentId, double X, double Y)> _positionAtPointCalls = new();
+    public IReadOnlyList<(string ContentId, double X, double Y)> PositionAtPointCalls => _positionAtPointCalls;
+    public ValueTask PositionAtPoint(string contentId, double x, double y)
+    {
+        _positionAtPointCalls.Add((contentId, x, y));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
     public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);

@@ -75,6 +75,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side);
     ValueTask UnpositionFixed(string contentId);
+
+    /// <summary>
+    /// Positions a fixed-position element at the viewport point (<paramref name="x"/>,
+    /// <paramref name="y"/>) and clamps it inside the viewport (flipping up/left of the
+    /// point if it would overflow). Used by ContextMenu, which opens at raw click
+    /// coordinates with no anchor element. Default implementation is a no-op so
+    /// existing implementers (and test doubles) keep compiling.
+    /// </summary>
+    ValueTask PositionAtPoint(string contentId, double x, double y) => ValueTask.CompletedTask;
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);
     ValueTask<double> GetScrollTop(string elementId);

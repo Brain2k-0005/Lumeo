@@ -86,24 +86,24 @@ public class ContextMenuTests : IAsyncLifetime
     }
 
     // --- Trigger aria-expanded ---
-    // Blazor renders bool false as absent (null) and bool true as "" (HTML boolean attribute)
+    // #224 — aria-expanded now renders lowercase ARIA tokens ("true"/"false")
+    // and is always present so AT consistently sees the expanded state.
 
     [Fact]
-    public void ContextMenuTrigger_Has_No_Aria_Expanded_When_Closed()
+    public void ContextMenuTrigger_Has_Aria_Expanded_False_When_Closed()
     {
         var cut = RenderContextMenu(isOpen: false);
-        // When IsOpen is false, Blazor omits the aria-expanded attribute entirely
-        var elements = cut.FindAll("[aria-expanded]");
-        Assert.Empty(elements);
+        var trigger = cut.Find("[aria-expanded]");
+        Assert.Equal("false", trigger.GetAttribute("aria-expanded"));
     }
 
     [Fact]
-    public void ContextMenuTrigger_Has_Aria_Expanded_When_Open()
+    public void ContextMenuTrigger_Has_Aria_Expanded_True_When_Open()
     {
         var cut = RenderContextMenu(isOpen: true);
-        // When IsOpen is true, Blazor renders aria-expanded as "" (HTML boolean presence)
         var trigger = cut.FindAll("[aria-expanded]").FirstOrDefault();
         Assert.NotNull(trigger);
+        Assert.Equal("true", trigger!.GetAttribute("aria-expanded"));
     }
 
     // --- Item selection closes menu ---
