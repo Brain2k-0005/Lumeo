@@ -50,6 +50,7 @@
 
     private readonly string _elementId = LumeoIds.New("ptr");
     private ElementReference _ref;
+    private bool _gestureGuardRegistered;
 
     private long? _activePointerId;
     private double _startY;
@@ -104,7 +105,24 @@
 
     private string SpinnerIconClass => (_refreshing ? "h-5 w-5 animate-spin" : "h-5 w-5").Trim();
 
+    // pan-y still lets the container scroll natively everywhere EXCEPT a
+    // downward drag pinned at the top — that case is claimed by the non-passive
+    // touchmove guard registered in OnAfterRenderAsync (#308). Without the guard
+    // the browser consumed the top-pull as overscroll and our pointer deltas
+    // never moved the rubber-band.
     private string ContainerStyle => "touch-action: pan-y;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _gestureGuardRegistered) return;
+        try
+        {
+            await Interop.RegisterPullToRefresh(_elementId);
+            _gestureGuardRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
 
     private async Task HandlePointerDown(PointerEventArgs e)
     {
@@ -196,10 +214,14 @@
         }
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        // No JS-side registrations to tear down today; method present so we can
-        // attach cleanup safely if a future v2 adds native touch listeners.
-        return ValueTask.CompletedTask;
+        // Tear down the non-passive touchmove guard registered on first render.
+        if (_gestureGuardRegistered)
+        {
+            try { await Interop.UnregisterPullToRefresh(_elementId); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+        }
     }
 }
