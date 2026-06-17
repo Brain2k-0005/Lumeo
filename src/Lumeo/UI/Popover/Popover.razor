@@ -1,11 +1,13 @@
 @namespace Lumeo
 
 @{
-    var context = new PopoverContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _wrapperId);
+    var context = new PopoverContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _wrapperId, _contentId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
-    <div id="@_wrapperId" class="relative inline-block" @attributes="AdditionalAttributes">
+    @* tabindex=-1 makes the wrapper a programmatic focus target so PopoverContent
+       can return focus here on close (the trigger lives inside it). *@
+    <div id="@_wrapperId" class="relative inline-block outline-none" tabindex="-1" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 </CascadingValue>
@@ -24,6 +26,10 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _wrapperId = LumeoIds.New("popover");
+    // Stable content id shared with the trigger (aria-controls) and the content
+    // (focus management / role=dialog target) so the trigger can advertise the
+    // relationship and the content can focus itself on open.
+    internal readonly string _contentId = LumeoIds.New("popover-content");
 
     private async Task SetOpen(bool value)
     {
@@ -31,5 +37,5 @@
         await OpenChanged.InvokeAsync(value);
     }
 
-    public record PopoverContext(bool IsOpen, EventCallback<bool> SetOpen, string WrapperId);
+    public record PopoverContext(bool IsOpen, EventCallback<bool> SetOpen, string WrapperId, string ContentId);
 }
