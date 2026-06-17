@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DialogContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
+    var context = new DialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -12,6 +12,14 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>
+    /// Uncontrolled initial open state. Used only when the consumer does NOT
+    /// bind <see cref="Open"/> (Radix <c>defaultOpen</c>): the dialog then owns
+    /// its open state internally, seeded from this value. When <see cref="Open"/>
+    /// is supplied the component is controlled and this is ignored.
+    /// </summary>
+    [Parameter] public bool DefaultOpen { get; set; }
 
     /// <summary>
     /// Fires before any user-initiated dismiss (Escape, backdrop click,
@@ -32,10 +40,46 @@
     private readonly string _titleId = LumeoIds.New("dialog-title");
     private readonly string _descriptionId = LumeoIds.New("dialog-desc");
 
+    // Uncontrolled state. _controlled is set in SetParametersAsync when the
+    // consumer supplies Open/IsOpen; otherwise the dialog owns _open (Radix
+    // controlled-vs-uncontrolled disambiguation — a bool param can't be
+    // "undefined", so we inspect which parameters were actually provided).
+    private bool _controlled;
+    private bool _open;
+
+    private bool EffectiveOpen => _controlled ? Open : _open;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // The legacy IsOpen alias is obsolete but still a valid bound parameter,
+        // so we must honour it when deciding controlled-ness (suppress CS0618 for
+        // the nameof — we're intentionally probing the alias).
+#pragma warning disable CS0618
+        _controlled = parameters.TryGetValue<bool>(nameof(Open), out _)
+            || parameters.TryGetValue<bool>(nameof(IsOpen), out _)
+            || OpenChanged.HasDelegate;
+#pragma warning restore CS0618
+        return base.SetParametersAsync(parameters);
+    }
+
+    protected override void OnInitialized()
+    {
+        if (!_controlled) _open = DefaultOpen;
+    }
+
     private async Task SetOpen(bool value)
     {
+        // Mirror the new state onto Open so two-way @bind-Open consumers and the
+        // uncontrolled internal state stay in sync; OpenChanged drives controlled
+        // consumers.
+        _open = value;
         Open = value;
         await OpenChanged.InvokeAsync(value);
+        // Re-render so the cascaded context picks up EffectiveOpen. The close
+        // paths (Escape / backdrop / DialogClose) call this via TryDismiss as a
+        // direct method call — without an explicit StateHasChanged an uncontrolled
+        // dialog (no OpenChanged) would never re-render and so never close.
+        StateHasChanged();
     }
 
     private async Task<bool> TryDismiss(string reason)
