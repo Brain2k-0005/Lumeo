@@ -42,11 +42,20 @@
 
     private Map? _owner;
     private bool _registered;
+    private DotNetObjectReference<MapPopup>? _selfRef;
 
     internal string HostId => _hostId;
     private readonly string _hostId = $"lumeo-standalone-popup-{Guid.NewGuid():N}";
     internal bool HasRichContent => ChildContent is not null && Html is null;
     internal string? GetHtml() => Html;
+
+    /// <summary>Stable id JS uses to route the MapLibre 'close' event back to this
+    /// popup. Reuses the host-element GUID so it is unique per component instance.</summary>
+    internal string PopupId => _hostId;
+
+    /// <summary>Lazily-created reference so map.js can invoke <see cref="OnPopupClosed"/>
+    /// on THIS popup when the user dismisses it (× button or map-background click).</summary>
+    internal DotNetObjectReference<MapPopup> SelfRef => _selfRef ??= DotNetObjectReference.Create(this);
 
     protected override void OnParametersSet()
     {
@@ -71,5 +80,9 @@
         if (IsOpenChanged.HasDelegate) await IsOpenChanged.InvokeAsync(false);
     }
 
-    public void Dispose() => _owner?.UnregisterStandalonePopup(this);
+    public void Dispose()
+    {
+        _owner?.UnregisterStandalonePopup(this);
+        _selfRef?.Dispose();
+    }
 }

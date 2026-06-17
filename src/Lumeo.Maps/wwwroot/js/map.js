@@ -1088,6 +1088,10 @@ export async function setShapes(elementId, shapes) {
 
 function clearStandalonePopups(inst) {
     for (const p of (inst.standalonePopups || [])) {
+        // Suppress the close-callback for programmatic removal — only a USER
+        // dismiss (× button / map-background click) should notify C#. Without
+        // this, re-syncing popups would fire OnPopupClosed and desync IsOpen.
+        p._lumeoSuppressClose = true;
         try { p.remove(); } catch (_) {}
     }
     inst.standalonePopups = [];
@@ -1112,6 +1116,15 @@ export async function setStandalonePopups(elementId, popups) {
             .setLngLat(toLngLat(p.lat, p.lon))
             .setHTML(html)
             .addTo(inst.map);
+        // Wire MapLibre's 'close' event (× button or map-background click) back to
+        // the owning MapPopup so its two-way IsOpen binding updates. The ref is
+        // marshalled per-popup from C#.
+        if (p.dotNetRef) {
+            popup.on('close', () => {
+                if (popup._lumeoSuppressClose) return;
+                try { p.dotNetRef.invokeMethodAsync('OnPopupClosed'); } catch (_) {}
+            });
+        }
         inst.standalonePopups.push(popup);
     }
 }
