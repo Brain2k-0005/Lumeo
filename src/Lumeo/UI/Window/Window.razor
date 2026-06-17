@@ -11,6 +11,9 @@
          role="dialog"
          aria-modal="false"
          aria-labelledby="@_titleId"
+         tabindex="-1"
+         @onpointerdown="BringToFront"
+         @onkeydown="HandleKeyDown"
          @attributes="AdditionalAttributes">
         @* Title bar *@
         <div id="@_titleBarId"
@@ -84,12 +87,14 @@
                the window's content area. Inner SVG stays a fixed 16×16 visual
                regardless of hit-area size so the chevron glyph doesn't scale. *@
             <div id="@_resizeHandleId"
+                 role="button"
+                 aria-label="@L["Window.Resize"]"
                  class="absolute bottom-0 right-0 flex items-end justify-end w-11 h-11 sm:w-4 sm:h-4 cursor-se-resize opacity-40 hover:opacity-80"
                  @onpointerdown="HandleResizePointerDown"
                  @onpointermove="HandlePointerMove"
                  @onpointerup="HandlePointerUp"
                  @onpointercancel="HandlePointerUp">
-                <svg viewBox="0 0 10 10" class="w-4 h-4 text-muted-foreground fill-current">
+                <svg viewBox="0 0 10 10" class="w-4 h-4 text-muted-foreground fill-current" aria-hidden="true">
                     <path d="M0 10L10 0M4 10L10 4M8 10L10 8" stroke="currentColor" stroke-width="1" fill="none"/>
                 </svg>
             </div>
@@ -100,8 +105,9 @@ else if (Open && _minimized)
 {
     @* Minimized title bar only *@
     <div id="@_windowId"
-         class="fixed z-40 flex items-center gap-2 px-4 py-2 bg-card border border-border/40 rounded-lg shadow-md"
+         class="fixed flex items-center gap-2 px-4 py-2 bg-card border border-border/40 rounded-lg shadow-md"
          style="@MinimizedStyleString"
+         @onpointerdown="BringToFront"
          @attributes="AdditionalAttributes">
         <span class="flex-1 text-sm font-medium text-foreground truncate max-w-[200px]">@Title</span>
         <button type="button"
@@ -125,10 +131,14 @@ else if (Open && _maximized)
 {
     @* Maximized — fills most of viewport *@
     <div id="@_windowId"
-         class="fixed inset-4 z-40 flex flex-col bg-card border border-border/40 rounded-lg shadow-xl overflow-hidden"
+         class="fixed inset-4 flex flex-col bg-card border border-border/40 rounded-lg shadow-xl overflow-hidden"
+         style="@ZStyle"
          role="dialog"
          aria-modal="false"
          aria-labelledby="@_titleId"
+         tabindex="-1"
+         @onpointerdown="BringToFront"
+         @onkeydown="HandleKeyDown"
          @attributes="AdditionalAttributes">
         <div class="flex items-center gap-2 px-4 py-2 border-b border-border/40 bg-card select-none">
             <span id="@_titleId" class="flex-1 text-sm font-medium text-foreground truncate">@Title</span>
@@ -194,6 +204,13 @@ else if (Open && _maximized)
     private readonly string _titleBarId = LumeoIds.New("window-titlebar");
     private readonly string _titleId = LumeoIds.New("window-title");
     private readonly string _resizeHandleId = LumeoIds.New("window-resize");
+
+    // Shared monotonic z-index counter so the most recently focused/clicked
+    // window comes to the front (MDI raise-on-focus). Starts at 40 to match the
+    // historical base layer; each raise bumps the shared counter and assigns it
+    // to this instance.
+    private static int _zCounter = 40;
+    private int _zIndex = ++_zCounter;
 
     private bool _minimized;
     private bool _maximized;
@@ -291,18 +308,24 @@ else if (Open && _maximized)
         return 0;
     }
 
+    // z-index is set inline (not a Tailwind class) so the shared raise-on-focus
+    // counter can assign an arbitrary value per window.
+    private string ZStyle => $"z-index:{_zIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)};";
+
     private string StyleString =>
         $"left:{_posX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
         $"top:{_posY.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
         $"width:{_width.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
-        $"height:{_height.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
+        $"height:{_height.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
+        ZStyle;
 
     private string MinimizedStyleString =>
         $"left:{_posX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
-        $"bottom:16px;";
+        $"bottom:16px;" +
+        ZStyle;
 
     private string CssClass =>
-        Cx.Merge("fixed z-40 flex flex-col bg-card border border-border/40 rounded-lg shadow-xl overflow-hidden", Class);
+        Cx.Merge("fixed flex flex-col bg-card border border-border/40 rounded-lg shadow-xl overflow-hidden", Class);
 
     private async Task HandleTitleBarPointerDown(PointerEventArgs e)
     {
@@ -336,6 +359,9 @@ else if (Open && _maximized)
         _dragStartPosY = _height;
         // Same capture rationale as the title-bar drag above.
         await Interop.SetPointerCaptureOnElement(_resizeHandleId, e.PointerId);
+        // Refresh viewport bounds so the resize clamp in HandlePointerMove keeps
+        // the window inside the viewport even if it was resized since open.
+        await FetchAndClampToViewportAsync();
     }
 
     private void HandlePointerMove(PointerEventArgs e)
@@ -371,8 +397,25 @@ else if (Open && _maximized)
         {
             var dx = e.ClientX - _dragStartX;
             var dy = e.ClientY - _dragStartY;
-            _width = Math.Max(200, _dragStartPosX + dx);
-            _height = Math.Max(120, _dragStartPosY + dy);
+            var width = Math.Max(200, _dragStartPosX + dx);
+            var height = Math.Max(120, _dragStartPosY + dy);
+
+            // Re-clamp against the viewport so a window near an edge can't grow
+            // off-screen (drag is already clamped; resize previously only had a
+            // lower bound). Keep an 8px breathing margin on the far edges.
+            if (_viewportWidth > 0)
+            {
+                var maxWidth = _viewportWidth - _posX - 8;
+                if (maxWidth >= 200) width = Math.Min(width, maxWidth);
+            }
+            if (_viewportHeight > 0)
+            {
+                var maxHeight = _viewportHeight - _posY - 8;
+                if (maxHeight >= 120) height = Math.Min(height, maxHeight);
+            }
+
+            _width = width;
+            _height = height;
             StateHasChanged();
         }
     }
@@ -401,6 +444,24 @@ else if (Open && _maximized)
     {
         _maximized = !_maximized;
         if (_maximized) _minimized = false;
+    }
+
+    // Raise-on-focus: assign the next shared z-index so a click anywhere on a
+    // background window brings it to the front (the defining MDI behaviour).
+    // Cheap no-op when this window is already the topmost.
+    private void BringToFront()
+    {
+        if (_zIndex == _zCounter) return;
+        _zIndex = ++_zCounter;
+        StateHasChanged();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && ShowClose)
+        {
+            await Close();
+        }
     }
 
     private async Task Close()
