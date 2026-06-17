@@ -1,18 +1,58 @@
 @namespace Lumeo
 
-<img class="@CssClass" src="@Src" alt="@Alt" @attributes="AdditionalAttributes" @onerror="HandleError" />
+@* The image hides itself once it has errored (or when Src is blank) so the
+   sibling AvatarFallback can take over — the Radix image→fallback chain.
+   Rendering is suppressed rather than just visually hidden so a broken-image
+   glyph never flashes. When used standalone (no Avatar parent) there's no
+   context and the image always renders, preserving the old behaviour. *@
+@if (ShowImage)
+{
+    <img class="@CssClass" src="@Src" alt="@Alt" @attributes="AdditionalAttributes"
+         @onload="HandleLoad" @onerror="HandleError" />
+}
 
 @code {
+    [CascadingParameter] private Avatar.AvatarImageContext? ImageContext { get; set; }
+
     [Parameter] public string? Src { get; set; }
     [Parameter] public string? Alt { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback OnError { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private bool _errored;
+
     private string CssClass => Cx.Merge("aspect-square h-full w-full object-cover", Class);
+
+    // Render unless we've errored. A blank Src counts as an immediate error so
+    // the fallback shows without waiting for the browser to fire onerror.
+    private bool ShowImage => !_errored;
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrEmpty(Src))
+        {
+            _errored = true;
+            ImageContext?.SetLoaded(false);
+        }
+        else if (_errored)
+        {
+            // Src changed to a real value after a previous failure — give it
+            // another chance to load.
+            _errored = false;
+        }
+    }
+
+    private void HandleLoad()
+    {
+        _errored = false;
+        ImageContext?.SetLoaded(true);
+    }
 
     private async Task HandleError()
     {
+        _errored = true;
+        ImageContext?.SetLoaded(false);
         await OnError.InvokeAsync();
     }
 }
