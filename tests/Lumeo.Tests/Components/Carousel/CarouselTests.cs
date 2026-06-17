@@ -218,4 +218,84 @@ public class CarouselTests : IAsyncLifetime
         Assert.NotNull(nextBtn);
         Assert.Contains("absolute", nextBtn!.GetAttribute("class") ?? "");
     }
+
+    // --- Indicators + autoplay (#289) ---
+
+    private IRenderedComponent<L.Carousel> RenderCarouselWith(
+        int slideCount = 3,
+        bool showIndicators = false,
+        bool autoplay = false,
+        int autoplayInterval = 4000)
+    {
+        return _ctx.Render<L.Carousel>(p =>
+        {
+            p.Add(c => c.ShowIndicators, showIndicators);
+            p.Add(c => c.Autoplay, autoplay);
+            p.Add(c => c.AutoplayInterval, autoplayInterval);
+            p.Add(c => c.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.CarouselContent>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(c =>
+                {
+                    for (int i = 0; i < slideCount; i++)
+                    {
+                        int index = i;
+                        c.OpenComponent<L.CarouselItem>(index * 10);
+                        c.AddAttribute(index * 10 + 1, "ChildContent", (RenderFragment)(inner =>
+                            inner.AddContent(0, $"Slide {index + 1}")));
+                        c.CloseComponent();
+                    }
+                }));
+                b.CloseComponent();
+            }));
+        });
+    }
+
+    [Fact]
+    public void Indicators_Render_One_Dot_Per_Slide()
+    {
+        var cut = RenderCarouselWith(slideCount: 4, showIndicators: true);
+
+        // Indicator dots carry "Go to slide N" aria-labels.
+        var dots = cut.FindAll("button").Where(b =>
+            (b.GetAttribute("aria-label") ?? "").StartsWith("Go to slide")).ToList();
+        Assert.Equal(4, dots.Count);
+    }
+
+    [Fact]
+    public void Indicators_Not_Rendered_When_Disabled()
+    {
+        var cut = RenderCarouselWith(slideCount: 4, showIndicators: false);
+        Assert.DoesNotContain(cut.FindAll("button"), b =>
+            (b.GetAttribute("aria-label") ?? "").StartsWith("Go to slide"));
+    }
+
+    [Fact]
+    public void First_Indicator_Is_Current_Initially()
+    {
+        var cut = RenderCarouselWith(slideCount: 3, showIndicators: true);
+
+        var dots = cut.FindAll("button").Where(b =>
+            (b.GetAttribute("aria-label") ?? "").StartsWith("Go to slide")).ToList();
+        Assert.Equal("true", dots[0].GetAttribute("aria-current"));
+        Assert.Null(dots[1].GetAttribute("aria-current"));
+    }
+
+    [Fact]
+    public void Indicators_Hidden_For_Single_Slide()
+    {
+        var cut = RenderCarouselWith(slideCount: 1, showIndicators: true);
+        Assert.DoesNotContain(cut.FindAll("button"), b =>
+            (b.GetAttribute("aria-label") ?? "").StartsWith("Go to slide"));
+    }
+
+    [Fact]
+    public void Autoplay_Renders_Without_Error()
+    {
+        // Smoke: autoplay wiring (timer + hover/focus handlers) renders cleanly
+        // under bUnit. The timer ticks marshal through InvokeAsync; we just
+        // assert the deck renders its slides.
+        var cut = RenderCarouselWith(slideCount: 3, autoplay: true, autoplayInterval: 5000);
+        Assert.Contains("Slide 1", cut.Markup);
+    }
 }
