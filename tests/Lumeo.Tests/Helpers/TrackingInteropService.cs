@@ -275,9 +275,28 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterGallerySwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterResizeHandle(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler) => ValueTask.CompletedTask;
+    // Scrollspy tracking (#246) — assert click/programmatic scroll honours the
+    // Offset, and the registered observer offset.
+    private readonly List<(string ContainerId, int Offset, bool Smooth)> _scrollspyRegistrations = new();
+    private readonly List<(string ContainerId, string SectionId, bool Smooth, int Offset)> _scrollspyScrollToCalls = new();
+    public IReadOnlyList<(string ContainerId, int Offset, bool Smooth)> ScrollspyRegistrations => _scrollspyRegistrations;
+    public IReadOnlyList<(string ContainerId, string SectionId, bool Smooth, int Offset)> ScrollspyScrollToCalls => _scrollspyScrollToCalls;
+    public ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler)
+    {
+        _scrollspyRegistrations.Add((containerId, offset, smooth));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask UnregisterScrollspy(string containerId) => ValueTask.CompletedTask;
-    public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth) => ValueTask.CompletedTask;
+    public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth)
+    {
+        _scrollspyScrollToCalls.Add((containerId, sectionId, smooth, 0));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset)
+    {
+        _scrollspyScrollToCalls.Add((containerId, sectionId, smooth, offset));
+        return ValueTask.CompletedTask;
+    }
     // Toast swipe tracking (#232) — the swipe-to-dismiss gesture is wired in
     // JS + service but was never registered by any component. Tests assert the
     // provider now registers per toast and can drive a dismissal via the

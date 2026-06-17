@@ -32,9 +32,10 @@ internal sealed class ScrollInterop
         IJSObjectReference module,
         string containerId,
         string sectionId,
-        bool smooth)
+        bool smooth,
+        int offset)
     {
-        await module.InvokeVoidAsync("scrollspyScrollTo", containerId, sectionId, smooth);
+        await module.InvokeVoidAsync("scrollspyScrollTo", containerId, sectionId, smooth, offset);
     }
 
     public async Task OnScrollspyUpdate(string containerId, string? activeId)

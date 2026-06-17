@@ -189,6 +189,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler);
     ValueTask UnregisterScrollspy(string containerId);
     ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth);
+    /// <summary>
+    /// Click-scroll overload that honours the Scrollspy <c>Offset</c> (#246) so a
+    /// programmatic jump lands at the same scroll position the observer treats
+    /// as "active" (e.g. clearing a sticky header). The default implementation
+    /// ignores the offset and forwards to the 3-arg overload so existing
+    /// implementers / test doubles keep compiling unchanged.
+    /// </summary>
+    ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset) =>
+        ScrollspyScrollTo(containerId, sectionId, smooth);
 
     // Toast Swipe
     ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler);
