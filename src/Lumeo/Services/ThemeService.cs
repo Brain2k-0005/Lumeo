@@ -2,9 +2,11 @@ using Microsoft.JSInterop;
 
 namespace Lumeo.Services;
 
-public sealed class ThemeService : IThemeService
+public sealed class ThemeService : IThemeService, IAsyncDisposable, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
+    private DotNetObjectReference<ThemeService>? _selfRef;
+    private bool _listenerRegistered;
 
     public event Action? OnThemeChanged;
     public ThemeMode CurrentMode { get; private set; } = ThemeMode.System;
@@ -43,6 +45,53 @@ public sealed class ThemeService : IThemeService
         IsDark = await _jsRuntime.InvokeAsync<bool>("themeManager.isDark");
         var dir = await _jsRuntime.InvokeAsync<string>("themeManager.getDirection");
         CurrentDirection = dir == "rtl" ? LayoutDirection.Rtl : LayoutDirection.Ltr;
+
+        await EnsureListenerRegisteredAsync();
+    }
+
+    // Subscribe (once) to OS prefers-color-scheme flips + cross-tab storage
+    // events on the JS side. The JS calls OnExternalThemeChange back, which
+    // re-reads state and raises OnThemeChanged so System mode live-updates with
+    // the OS and theme choices sync across tabs (#312/#313). Registered from
+    // InitializeAsync — already invoked by ThemeSwitcher/ThemeToggle on first
+    // render — so no new public API is needed.
+    private async Task EnsureListenerRegisteredAsync()
+    {
+        if (_listenerRegistered) return;
+        _listenerRegistered = true;
+        _selfRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("themeManager.registerThemeListener", _selfRef);
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { /* older host without the listener API — ignore */ }
+    }
+
+    /// <summary>
+    /// Invoked from JS when the OS color scheme changes (in System mode) or
+    /// another tab updates the theme. Re-reads the live state and raises
+    /// <see cref="OnThemeChanged"/> so subscribed components repaint.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnExternalThemeChange()
+    {
+        try
+        {
+            var modeStr = await _jsRuntime.InvokeAsync<string>("themeManager.getMode");
+            CurrentMode = modeStr switch
+            {
+                "dark" => ThemeMode.Dark,
+                "light" => ThemeMode.Light,
+                _ => ThemeMode.System,
+            };
+            CurrentScheme = await _jsRuntime.InvokeAsync<string>("themeManager.getScheme");
+            IsDark = await _jsRuntime.InvokeAsync<bool>("themeManager.isDark");
+            var dir = await _jsRuntime.InvokeAsync<string>("themeManager.getDirection");
+            CurrentDirection = dir == "rtl" ? LayoutDirection.Rtl : LayoutDirection.Ltr;
+        }
+        catch (JSDisconnectedException) { }
+        OnThemeChanged?.Invoke();
     }
 
     public async Task SetModeAsync(ThemeMode mode)
@@ -93,6 +142,54 @@ public sealed class ThemeService : IThemeService
         var dir = await _jsRuntime.InvokeAsync<string>("themeManager.getDirection");
         CurrentDirection = dir == "rtl" ? LayoutDirection.Rtl : LayoutDirection.Ltr;
         return CurrentDirection;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_listenerRegistered && _selfRef is not null)
+        {
+            try
+            {
+                await _jsRuntime.InvokeVoidAsync("themeManager.unregisterThemeListener", _selfRef);
+            }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+        }
+        _selfRef?.Dispose();
+        _selfRef = null;
+    }
+
+    // Synchronous Dispose so DI containers that tear down synchronously (e.g.
+    // bUnit's BunitContext.Dispose) can release this scoped service without
+    // throwing "type only implements IAsyncDisposable". We fire-and-forget the
+    // JS unregister (detached) — there's no caller to await — and drop the ref.
+    public void Dispose()
+    {
+        if (_listenerRegistered && _selfRef is not null)
+        {
+            _ = UnregisterListenerDetachedAsync();
+        }
+        else
+        {
+            _selfRef?.Dispose();
+            _selfRef = null;
+        }
+    }
+
+    private async Task UnregisterListenerDetachedAsync()
+    {
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("themeManager.unregisterThemeListener", _selfRef!);
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            _selfRef?.Dispose();
+            _selfRef = null;
+        }
     }
 }
 
