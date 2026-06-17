@@ -3286,11 +3286,19 @@
         _layoutService?.Dispose();
         _serverService?.Dispose();
 
-        // Defensive: if disposed while still in fullscreen, unlock scroll so the host page
-        // isn't left with a locked body.
+        // Defensive: if disposed while still in fullscreen, unlock scroll AND drop
+        // the html-level fullscreen class. ToggleExpanded adds
+        // `lumeo-fullscreen-active` on <html> when entering fullscreen; disposing
+        // the grid mid-fullscreen (route change, parent re-render) skips the
+        // toggle-off path, so without this the class leaks onto the host page and
+        // any CSS keyed off it (hidden scrollbars, dimmed chrome) stays stuck.
         if (_isExpanded)
         {
             try { await Interop.UnlockScroll(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+
+            try { await Interop.SetHtmlClass("lumeo-fullscreen-active", false); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
         }

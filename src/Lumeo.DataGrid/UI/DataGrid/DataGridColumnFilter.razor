@@ -140,12 +140,56 @@
     private bool _boolValue;
     private HashSet<string> _selectedOptions = new();
 
+    // Seed the draft once per popover lifetime. The header cell re-creates this
+    // component every time the filter popover opens, so OnParametersSet runs on a
+    // fresh instance per open — we hydrate the editor from the column's ACTIVE
+    // filter (CurrentFilter) so reopening shows the applied criteria instead of a
+    // blank form, and we DON'T re-stomp the draft on later re-renders (typing,
+    // operator change) which previously reset Number/Date back to Equals on every
+    // keystroke.
+    private bool _seeded;
+
     protected override void OnParametersSet()
     {
-        if (Column?.FilterType == DataGridFilterType.Number)
-            _selectedOperator = FilterOperator.Equals;
-        else if (Column?.FilterType == DataGridFilterType.Date)
-            _selectedOperator = FilterOperator.Equals;
+        if (_seeded) return;
+        _seeded = true;
+
+        // Default operator per filter type (used when there's no active filter).
+        _selectedOperator = Column?.FilterType switch
+        {
+            DataGridFilterType.Number => FilterOperator.Equals,
+            DataGridFilterType.Date => FilterOperator.Equals,
+            DataGridFilterType.Select => FilterOperator.Contains,
+            DataGridFilterType.Boolean => FilterOperator.Equals,
+            _ => FilterOperator.Contains,
+        };
+
+        // Hydrate from the column's currently-applied filter, if any. CurrentFilter
+        // always carries the real applied operator (including Contains, which is the
+        // enum's default value), so assign it unconditionally.
+        if (CurrentFilter is not null)
+        {
+            _selectedOperator = CurrentFilter.Operator;
+
+            switch (Column?.FilterType)
+            {
+                case DataGridFilterType.Boolean:
+                    _boolValue = CurrentFilter.Value is bool b
+                        ? b
+                        : bool.TryParse(CurrentFilter.Value?.ToString(), out var pb) && pb;
+                    break;
+                case DataGridFilterType.Select:
+                    var joined = CurrentFilter.Value?.ToString();
+                    _selectedOptions = string.IsNullOrEmpty(joined)
+                        ? new HashSet<string>()
+                        : new HashSet<string>(joined.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                    break;
+                default:
+                    _filterValue = CurrentFilter.Value?.ToString();
+                    _filterValueTo = CurrentFilter.ValueTo?.ToString();
+                    break;
+            }
+        }
     }
 
     private void OnOperatorSelected(string value)

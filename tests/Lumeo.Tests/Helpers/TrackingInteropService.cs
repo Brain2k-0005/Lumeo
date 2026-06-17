@@ -104,7 +104,17 @@ public sealed class TrackingInteropService : IComponentInteropService
     }
     public ValueTask LockScroll() => ValueTask.CompletedTask;
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
-    public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
+
+    // Records (className, active) for each SetHtmlClass call so tests can assert
+    // html-class lifecycle (e.g. fullscreen-active added on enter / removed on
+    // teardown).
+    private readonly List<(string ClassName, bool Active)> _setHtmlClassCalls = new();
+    public IReadOnlyList<(string ClassName, bool Active)> SetHtmlClassCalls => _setHtmlClassCalls;
+    public ValueTask SetHtmlClass(string className, bool active)
+    {
+        _setHtmlClassCalls.Add((className, active));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         _focusTrapSetups.Add((elementId, initialFocusSelector));
