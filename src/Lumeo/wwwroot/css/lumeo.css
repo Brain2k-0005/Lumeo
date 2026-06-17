@@ -624,6 +624,60 @@ input[type="range"]::-moz-range-thumb {
   animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Exit animations for Sheet (and any future slide-in overlay) — the close
+   counterpart to fade-in / slide-in-from-*. The component keeps the panel
+   mounted for the duration of these animations, then unmounts it, so the user
+   sees it slide/fade out instead of vanishing instantly. Exit easing is the
+   accelerate curve (fast-out) which reads better for dismissals. The slide-out
+   keyframes intentionally finish at a translated (off-screen) transform: the
+   element is removed from the DOM right after, so the lingering transform never
+   establishes a containing block for fixed descendants (unlike the slide-in
+   case, which clears its transform via AttachOverlaySlideEnd). */
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes slide-out-to-bottom {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+@keyframes slide-out-to-top {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-100%); }
+}
+
+@keyframes slide-out-to-left {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+
+@keyframes slide-out-to-right {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
+.animate-fade-out {
+  animation: fade-out 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-bottom {
+  animation: slide-out-to-bottom 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-top {
+  animation: slide-out-to-top 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-left {
+  animation: slide-out-to-left 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-right {
+  animation: slide-out-to-right 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
 /* =====================================================
  * === motion ===
  * Keyframes and utilities for the motion primitives:
@@ -1228,6 +1282,16 @@ input[type="range"]::-moz-range-thumb {
 @keyframes slide-in-from-left-rtl {
   from { transform: translateX(-100%); }
   to   { transform: translateX(0); }
+}
+
+/* Exit counterparts: a left-anchored sheet in RTL exits toward the visual
+   left (positive X), and vice-versa — swap the left/right slide-out names so
+   the dismissal direction tracks the (mirrored) anchor edge. */
+[dir="rtl"] .animate-slide-out-to-left {
+  animation-name: slide-out-to-right;
+}
+[dir="rtl"] .animate-slide-out-to-right {
+  animation-name: slide-out-to-left;
 }
 
 /* Toast default slides from the right-hand edge. In RTL the visual edge

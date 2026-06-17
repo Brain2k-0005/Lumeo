@@ -13,10 +13,12 @@
        are intentionally ignored; the provider controls those via OverlayOptions. *@
     @ChildContent
 }
-else if (Context.IsOpen)
+else if (Context.IsOpen || _exiting)
 {
     <div class="fixed inset-0" style="z-index:@BackdropZ">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        @* Backdrop — theme-aware --color-overlay-backdrop token via inline style
+           (see DialogContent). Fades out alongside the panel while exiting. *@
+        <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. *@
@@ -71,9 +73,23 @@ else if (Context.IsOpen)
 
     private readonly string _contentId = LumeoIds.New("sheet");
     private bool _wasOpen;
+    // Exit-animation state: stays true between the close request and the moment
+    // the slide/fade-out animation finishes, keeping the panel mounted so the
+    // user sees it leave instead of vanishing. Driven by _exitDispatch.
+    private bool _exiting;
+    private readonly DelayedDispatch _exitDispatch = new();
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
+
+    // Slide-out matches the slide-in 0.3s window with a little buffer; fade-out
+    // is the 0.2s opacity tween. None unmounts immediately (no exit phase).
+    private int ExitDurationMs => Animation switch
+    {
+        SheetAnimation.Slide => 280,
+        SheetAnimation.Fade => 220,
+        _ => 0,
+    };
 
     // Slide-animation transform trap is fixed via JS interop:
     // Interop.AttachOverlaySlideEnd registers a native animationend listener
@@ -131,7 +147,9 @@ else if (Context.IsOpen)
     // both` identity-matrix trap that would otherwise create a containing
     // block for fixed-positioned descendants. Fade / None don't use a
     // transform at all, so no JS cleanup is needed.
-    private string AnimationClass => Animation switch
+    private string AnimationClass => _exiting ? ExitAnimationClass : EnterAnimationClass;
+
+    private string EnterAnimationClass => Animation switch
     {
         SheetAnimation.None => "",
         SheetAnimation.Fade => "animate-fade-in",
@@ -146,8 +164,28 @@ else if (Context.IsOpen)
         _ => ""
     };
 
+    // Close counterpart to EnterAnimationClass — the panel slides/fades back out
+    // toward its anchor edge while _exiting is true.
+    private string ExitAnimationClass => Animation switch
+    {
+        SheetAnimation.None => "",
+        SheetAnimation.Fade => "animate-fade-out",
+        SheetAnimation.Slide => Side switch
+        {
+            Lumeo.Side.Top => "animate-slide-out-to-top",
+            Lumeo.Side.Bottom => "animate-slide-out-to-bottom",
+            Lumeo.Side.Left => "animate-slide-out-to-left",
+            Lumeo.Side.Right => "animate-slide-out-to-right",
+            _ => "animate-slide-out-to-right"
+        },
+        _ => ""
+    };
+
+    // Backdrop fades in on open, fades out while the panel exits.
+    private string BackdropClass => _exiting ? "fixed inset-0 animate-fade-out" : "fixed inset-0 animate-fade-in";
+
     // Kept for backward-compat with tests / consumers that read SideClasses.
-    private string SideClasses => $"{PositionClasses} {AnimationClass}".Trim();
+    private string SideClasses => $"{PositionClasses} {EnterAnimationClass}".Trim();
 
     // Swipe direction is the direction of the gesture that should dismiss the sheet:
     // a Right-anchored sheet flies out to the right when the user swipes right, etc.
@@ -169,6 +207,12 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
+            // Re-opened mid-exit: cancel the pending unmount so the panel stays.
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
             await Interop.LockScroll();
             await Interop.SetupFocusTrap(_contentId);
             // Native animationend listener sets inline transform:none after
@@ -194,8 +238,23 @@ else if (Context.IsOpen)
         }
         else if (!Context.IsOpen && _wasOpen)
         {
+            // Close: tear down scroll-lock / focus-trap / swipe immediately
+            // (focus returns to the trigger now), but keep the panel mounted for
+            // the exit animation, then unmount when it finishes. Animation=None
+            // unmounts straight away.
             await Cleanup();
             _wasOpen = false;
+
+            if (ExitDurationMs > 0)
+            {
+                _exiting = true;
+                StateHasChanged(); // re-render with the exit animation class
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
     }
 
@@ -226,6 +285,7 @@ else if (Context.IsOpen)
 
     public async ValueTask DisposeAsync()
     {
+        _exitDispatch.Dispose();
         if (_wasOpen) await Cleanup();
     }
 
