@@ -56,13 +56,16 @@
                 </div>
                 <div class="flex divide-x divide-border/40">
                     @* Hours column *@
-                    <div class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                    <div role="listbox" aria-label="@L["TimePicker.HoursLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
                         @foreach (var hour in GetHours())
                         {
                             var h = hour;
                             var isSelected = _timeValue.HasValue && GetDisplayHour(_timeValue.Value) == h;
-                            <button type="button"
-                                    class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                            var disabled = IsHourDisabled(h);
+                            <button type="button" role="option"
+                                    aria-selected="@(isSelected ? "true" : "false")"
+                                    disabled="@disabled"
+                                    class="@TimeItemClass(isSelected)"
                                     @onclick="() => SelectHour(h)">
                                 @h.ToString("D2")
                             </button>
@@ -70,13 +73,16 @@
                     </div>
 
                     @* Minutes column *@
-                    <div class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                        @for (var i = 0; i < 60; i++)
+                    <div role="listbox" aria-label="@L["TimePicker.MinutesLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                        @foreach (var minute in GetMinutes())
                         {
-                            var m = i;
+                            var m = minute;
                             var isSelected = _timeValue.HasValue && _timeValue.Value.Minutes == m;
-                            <button type="button"
-                                    class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                            var disabled = IsMinuteDisabled(m);
+                            <button type="button" role="option"
+                                    aria-selected="@(isSelected ? "true" : "false")"
+                                    disabled="@disabled"
+                                    class="@TimeItemClass(isSelected)"
                                     @onclick="() => SelectMinute(m)">
                                 @m.ToString("D2")
                             </button>
@@ -86,13 +92,16 @@
                     @* Seconds column *@
                     @if (ShowSeconds)
                     {
-                        <div class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                            @for (var i = 0; i < 60; i++)
+                        <div role="listbox" aria-label="@L["TimePicker.SecondsLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                            @foreach (var second in GetSeconds())
                             {
-                                var s = i;
+                                var s = second;
                                 var isSelected = _timeValue.HasValue && _timeValue.Value.Seconds == s;
-                                <button type="button"
-                                        class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                                var disabled = IsSecondDisabled(s);
+                                <button type="button" role="option"
+                                        aria-selected="@(isSelected ? "true" : "false")"
+                                        disabled="@disabled"
+                                        class="@TimeItemClass(isSelected)"
                                         @onclick="() => SelectSecond(s)">
                                     @s.ToString("D2")
                                 </button>
@@ -110,12 +119,12 @@
                                 var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                             }
                             <button type="button"
-                                    class="@(isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                                    class="@TimeItemClass(isAm)"
                                     @onclick="() => SelectAmPm(true)">
                                 @amLabel
                             </button>
                             <button type="button"
-                                    class="@(!isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                                    class="@TimeItemClass(!isAm)"
                                     @onclick="() => SelectAmPm(false)">
                                 @pmLabel
                             </button>
@@ -183,6 +192,12 @@
 
     [Parameter] public bool Use24Hour { get; set; } = true;
     [Parameter] public bool ShowSeconds { get; set; }
+    /// <summary>Minute column increment. <c>1</c> (default) lists every minute;
+    /// <c>5</c>/<c>15</c> etc. list only multiples of the step.</summary>
+    [Parameter] public int MinuteStep { get; set; } = 1;
+    /// <summary>Second column increment (only relevant when <see cref="ShowSeconds"/>
+    /// is true). Defaults to <c>1</c>.</summary>
+    [Parameter] public int SecondStep { get; set; } = 1;
     /// <summary>
     /// Date portion format. When null (default) falls back to the effective culture's
     /// <c>ShortDatePattern</c>.
@@ -318,6 +333,94 @@
         return h == 0 ? 12 : h;
     }
 
+    private List<int> GetMinutes()
+    {
+        var minutes = new List<int>();
+        var step = Math.Max(1, MinuteStep);
+        for (var i = 0; i < 60; i += step) minutes.Add(i);
+        return minutes;
+    }
+
+    private List<int> GetSeconds()
+    {
+        var seconds = new List<int>();
+        var step = Math.Max(1, SecondStep);
+        for (var i = 0; i < 60; i += step) seconds.Add(i);
+        return seconds;
+    }
+
+    private static string TimeItemClass(bool isSelected) =>
+        isSelected
+            ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40"
+            : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50 disabled:pointer-events-none disabled:opacity-40";
+
+    // ---- Date-aware Min/Max enforcement on the time columns (#208) ----
+    // The bounds only bite on the boundary day: if the selected date equals
+    // MinDate's date, times before MinDate's time-of-day are disabled; likewise
+    // MaxDate caps the time on its date. On days strictly inside the range the
+    // whole clock is selectable. With no date picked yet we can't know which
+    // day applies, so nothing is disabled (the calendar already gates the date).
+    private TimeSpan? MinTimeForSelectedDate
+    {
+        get
+        {
+            if (!MinDate.HasValue || !_dateValue.HasValue) return null;
+            return _dateValue.Value == DateOnly.FromDateTime(MinDate.Value) ? MinDate.Value.TimeOfDay : null;
+        }
+    }
+
+    private TimeSpan? MaxTimeForSelectedDate
+    {
+        get
+        {
+            if (!MaxDate.HasValue || !_dateValue.HasValue) return null;
+            return _dateValue.Value == DateOnly.FromDateTime(MaxDate.Value) ? MaxDate.Value.TimeOfDay : null;
+        }
+    }
+
+    private bool IsHourDisabled(int displayHour)
+    {
+        var h24 = DisplayHourTo24(displayHour);
+        var hourStart = new TimeSpan(h24, 0, 0);
+        var hourEnd = new TimeSpan(0, h24, 59, ShowSeconds ? 59 : 0);
+        var min = MinTimeForSelectedDate;
+        var max = MaxTimeForSelectedDate;
+        if (min.HasValue && hourEnd < min.Value) return true;
+        if (max.HasValue && hourStart > max.Value) return true;
+        return false;
+    }
+
+    private bool IsMinuteDisabled(int minute)
+    {
+        var h = (_timeValue ?? TimeSpan.Zero).Hours;
+        var minStart = new TimeSpan(0, h, minute, 0);
+        var minEnd = new TimeSpan(0, h, minute, ShowSeconds ? 59 : 0);
+        var min = MinTimeForSelectedDate;
+        var max = MaxTimeForSelectedDate;
+        if (min.HasValue && minEnd < min.Value) return true;
+        if (max.HasValue && minStart > max.Value) return true;
+        return false;
+    }
+
+    private bool IsSecondDisabled(int second)
+    {
+        var current = _timeValue ?? TimeSpan.Zero;
+        var candidate = new TimeSpan(0, current.Hours, current.Minutes, second);
+        var min = MinTimeForSelectedDate;
+        var max = MaxTimeForSelectedDate;
+        if (min.HasValue && candidate < min.Value) return true;
+        if (max.HasValue && candidate > max.Value) return true;
+        return false;
+    }
+
+    private int DisplayHourTo24(int displayHour)
+    {
+        if (Use24Hour) return displayHour;
+        var isPm = (_timeValue ?? TimeSpan.Zero).Hours >= 12;
+        var h = displayHour % 12;
+        return isPm ? h + 12 : h;
+    }
+
     private async Task HandleDateChanged(DateOnly? date)
     {
         _dateValue = date;
@@ -326,6 +429,7 @@
 
     private async Task SelectHour(int hour)
     {
+        if (IsHourDisabled(hour)) return;
         var current = _timeValue ?? TimeSpan.Zero;
         int actualHour;
         if (Use24Hour)
@@ -344,6 +448,7 @@
 
     private async Task SelectMinute(int minute)
     {
+        if (IsMinuteDisabled(minute)) return;
         var current = _timeValue ?? TimeSpan.Zero;
         _timeValue = new TimeSpan(current.Hours, minute, current.Seconds);
         await UpdateValue();
@@ -351,6 +456,7 @@
 
     private async Task SelectSecond(int second)
     {
+        if (IsSecondDisabled(second)) return;
         var current = _timeValue ?? TimeSpan.Zero;
         _timeValue = new TimeSpan(current.Hours, current.Minutes, second);
         await UpdateValue();

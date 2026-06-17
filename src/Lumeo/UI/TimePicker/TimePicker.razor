@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
 @if (Label is not null && !InsideFormField)
 {
@@ -44,28 +45,40 @@ else
     <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0">
         <div class="flex divide-x divide-border/40">
             @* Hours column *@
-            <div class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
-                @foreach (var hour in GetHours())
+            <div id="@_hoursColId" role="listbox" aria-label="@L["TimePicker.HoursLabel"]" class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
+                @{ var hours = GetHours(); }
+                @foreach (var hour in hours)
                 {
                     var h = hour;
                     var isSelected = Value.HasValue && GetDisplayHour(Value.Value) == h;
-                    <button type="button"
-                            class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
-                            @onclick="() => SelectHour(h)">
+                    var disabled = IsHourDisabled(h);
+                    <button type="button" id="@ColItemId(_hoursColId, h)" role="option"
+                            aria-selected="@(isSelected ? "true" : "false")"
+                            tabindex="@(isSelected ? "0" : "-1")"
+                            disabled="@disabled"
+                            class="@ColItemClass(isSelected)"
+                            @onclick="() => SelectHour(h)"
+                            @onkeydown="e => HandleColumnKeyDown(e, _hoursColId, hours, h)">
                         @h.ToString("D2")
                     </button>
                 }
             </div>
 
             @* Minutes column *@
-            <div class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
-                @foreach (var minute in GetMinutes())
+            <div id="@_minutesColId" role="listbox" aria-label="@L["TimePicker.MinutesLabel"]" class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
+                @{ var minutes = GetMinutes(); }
+                @foreach (var minute in minutes)
                 {
                     var m = minute;
                     var isSelected = Value.HasValue && Value.Value.Minutes == m;
-                    <button type="button"
-                            class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
-                            @onclick="() => SelectMinute(m)">
+                    var disabled = IsMinuteDisabled(m);
+                    <button type="button" id="@ColItemId(_minutesColId, m)" role="option"
+                            aria-selected="@(isSelected ? "true" : "false")"
+                            tabindex="@(isSelected ? "0" : "-1")"
+                            disabled="@disabled"
+                            class="@ColItemClass(isSelected)"
+                            @onclick="() => SelectMinute(m)"
+                            @onkeydown="e => HandleColumnKeyDown(e, _minutesColId, minutes, m)">
                         @m.ToString("D2")
                     </button>
                 }
@@ -74,14 +87,20 @@ else
             @* Seconds column *@
             @if (ShowSeconds)
             {
-                <div class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
-                    @foreach (var second in GetSeconds())
+                <div id="@_secondsColId" role="listbox" aria-label="@L["TimePicker.SecondsLabel"]" class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
+                    @{ var seconds = GetSeconds(); }
+                    @foreach (var second in seconds)
                     {
                         var s = second;
                         var isSelected = Value.HasValue && Value.Value.Seconds == s;
-                        <button type="button"
-                                class="@(isSelected ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
-                                @onclick="() => SelectSecond(s)">
+                        var disabled = IsSecondDisabled(s);
+                        <button type="button" id="@ColItemId(_secondsColId, s)" role="option"
+                                aria-selected="@(isSelected ? "true" : "false")"
+                                tabindex="@(isSelected ? "0" : "-1")"
+                                disabled="@disabled"
+                                class="@ColItemClass(isSelected)"
+                                @onclick="() => SelectSecond(s)"
+                                @onkeydown="e => HandleColumnKeyDown(e, _secondsColId, seconds, s)">
                             @s.ToString("D2")
                         </button>
                     }
@@ -98,12 +117,12 @@ else
                         var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                     }
                     <button type="button"
-                            class="@(isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                            class="@ColItemClass(isAm)"
                             @onclick="() => SelectAmPm(true)">
                         @amLabel
                     </button>
                     <button type="button"
-                            class="@(!isAm ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground" : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50")"
+                            class="@ColItemClass(!isAm)"
                             @onclick="() => SelectAmPm(false)">
                         @pmLabel
                     </button>
@@ -127,6 +146,7 @@ else
 }
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @code {
     /// <summary>
@@ -163,6 +183,14 @@ else
     [Parameter] public bool ShowSeconds { get; set; }
     [Parameter] public int MinuteStep { get; set; } = 1;
     [Parameter] public int SecondStep { get; set; } = 1;
+
+    /// <summary>Earliest selectable time (inclusive). Times before this are
+    /// rendered as disabled options. Null (default) means no lower bound.</summary>
+    [Parameter] public TimeSpan? Min { get; set; }
+    /// <summary>Latest selectable time (inclusive). Times after this are
+    /// rendered as disabled options. Null (default) means no upper bound.</summary>
+    [Parameter] public TimeSpan? Max { get; set; }
+
     [Parameter] public string? Placeholder { get; set; }
 
     /// <summary>
@@ -188,6 +216,174 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
+
+    // Per-column ids so the arrow-key list navigation can move DOM focus
+    // between option buttons (each button id is "{colId}-{value}").
+    private readonly string _hoursColId = LumeoIds.New("tp-hours");
+    private readonly string _minutesColId = LumeoIds.New("tp-minutes");
+    private readonly string _secondsColId = LumeoIds.New("tp-seconds");
+
+    private static string ColItemId(string colId, int value) => $"{colId}-{value}";
+
+    private static string ColItemClass(bool isSelected) =>
+        isSelected
+            ? "px-3 py-1.5 text-sm cursor-pointer bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40"
+            : "px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:bg-muted/50 disabled:pointer-events-none disabled:opacity-40";
+
+    // ---- Min/Max enforcement ----
+    // An hour is disabled when its whole [h:00..h:59(:59)] band lies outside
+    // [Min, Max]. A minute/second is disabled when the time it would produce
+    // (with the rest of the current selection) falls outside the bounds. The
+    // 12-hour hour column carries display hours (1..12); convert to the 24-hour
+    // value using the current AM/PM before bounds-checking.
+    private bool IsHourDisabled(int displayHour)
+    {
+        var h24 = DisplayHourTo24(displayHour);
+        // Highest time in this hour we could ever pick (seconds optional).
+        var hourEnd = new TimeSpan(0, h24, 59, ShowSeconds ? 59 : 0);
+        var hourStart = new TimeSpan(h24, 0, 0);
+        if (Min.HasValue && hourEnd < Min.Value) return true;
+        if (Max.HasValue && hourStart > Max.Value) return true;
+        return false;
+    }
+
+    private bool IsMinuteDisabled(int minute)
+    {
+        var h = (Value ?? TimeSpan.Zero).Hours;
+        var minStart = new TimeSpan(0, h, minute, 0);
+        var minEnd = new TimeSpan(0, h, minute, ShowSeconds ? 59 : 0);
+        if (Min.HasValue && minEnd < Min.Value) return true;
+        if (Max.HasValue && minStart > Max.Value) return true;
+        return false;
+    }
+
+    private bool IsSecondDisabled(int second)
+    {
+        var current = Value ?? TimeSpan.Zero;
+        var candidate = new TimeSpan(0, current.Hours, current.Minutes, second);
+        if (Min.HasValue && candidate < Min.Value) return true;
+        if (Max.HasValue && candidate > Max.Value) return true;
+        return false;
+    }
+
+    private int DisplayHourTo24(int displayHour)
+    {
+        if (EffectiveUse24Hour) return displayHour;
+        var isPm = (Value ?? TimeSpan.Zero).Hours >= 12;
+        var h = displayHour % 12;
+        return isPm ? h + 12 : h;
+    }
+
+    // ---- Arrow-key list navigation (roving focus per column) ----
+    // ArrowDown/Up move to the next/previous ENABLED option, Home/End jump to
+    // the first/last enabled option, Enter/Space select. Page scroll for the
+    // arrow keys is suppressed via the prevent-default-keys registration below.
+    private async Task HandleColumnKeyDown(KeyboardEventArgs e, string colId, List<int> values, int current)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown": await FocusAdjacent(colId, values, current, +1); break;
+            case "ArrowUp": await FocusAdjacent(colId, values, current, -1); break;
+            case "Home": await FocusEdge(colId, values, fromStart: true); break;
+            case "End": await FocusEdge(colId, values, fromStart: false); break;
+            case "Enter":
+            case " ":
+                await SelectForColumn(colId, current);
+                break;
+        }
+    }
+
+    private async Task FocusAdjacent(string colId, List<int> values, int current, int step)
+    {
+        var idx = values.IndexOf(current);
+        if (idx < 0) return;
+        for (var i = idx + step; i >= 0 && i < values.Count; i += step)
+        {
+            if (!IsColItemDisabled(colId, values[i]))
+            {
+                await Interop.FocusElement(ColItemId(colId, values[i]));
+                return;
+            }
+        }
+    }
+
+    private async Task FocusEdge(string colId, List<int> values, bool fromStart)
+    {
+        var ordered = fromStart ? values : Enumerable.Reverse(values).ToList();
+        foreach (var v in ordered)
+        {
+            if (!IsColItemDisabled(colId, v))
+            {
+                await Interop.FocusElement(ColItemId(colId, v));
+                return;
+            }
+        }
+    }
+
+    private bool IsColItemDisabled(string colId, int value)
+    {
+        if (colId == _hoursColId) return IsHourDisabled(value);
+        if (colId == _minutesColId) return IsMinuteDisabled(value);
+        if (colId == _secondsColId) return IsSecondDisabled(value);
+        return false;
+    }
+
+    private Task SelectForColumn(string colId, int value)
+    {
+        if (colId == _hoursColId) return SelectHour(value);
+        if (colId == _minutesColId) return SelectMinute(value);
+        if (colId == _secondsColId) return SelectSecond(value);
+        return Task.CompletedTask;
+    }
+
+    // Suppress page / column scroll for the arrow keys while the list popover
+    // is open so the first ArrowUp/Down moves focus without also scrolling the
+    // overflow column (same pattern as Calendar's day grid). Only relevant to
+    // the List variant — the Wheel variant manages its own scroll snapping.
+    private bool _navKeysRegistered;
+    private static readonly PreventDefaultKeyRule[] ColumnNavKeys =
+    [
+        new("ArrowUp"), new("ArrowDown"), new("Home"), new("End"),
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Variant != TimePickerVariant.List) return;
+
+        if (_isOpen && !_navKeysRegistered)
+        {
+            _navKeysRegistered = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_hoursColId, ColumnNavKeys);
+                await Interop.RegisterPreventDefaultKeys(_minutesColId, ColumnNavKeys);
+                if (ShowSeconds) await Interop.RegisterPreventDefaultKeys(_secondsColId, ColumnNavKeys);
+            }
+            catch (JSDisconnectedException) { _navKeysRegistered = false; }
+            catch (InvalidOperationException) { _navKeysRegistered = false; } // prerender
+        }
+        else if (!_isOpen && _navKeysRegistered)
+        {
+            _navKeysRegistered = false;
+            await UnregisterNavKeys();
+        }
+    }
+
+    private async Task UnregisterNavKeys()
+    {
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_hoursColId);
+            await Interop.UnregisterPreventDefaultKeys(_minutesColId);
+            await Interop.UnregisterPreventDefaultKeys(_secondsColId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_navKeysRegistered) await UnregisterNavKeys();
+    }
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -263,6 +459,7 @@ else
 
     private async Task SelectHour(int hour)
     {
+        if (IsHourDisabled(hour)) return;
         var current = Value ?? TimeSpan.Zero;
         int actualHour;
         if (EffectiveUse24Hour)
@@ -282,6 +479,7 @@ else
 
     private async Task SelectMinute(int minute)
     {
+        if (IsMinuteDisabled(minute)) return;
         var current = Value ?? TimeSpan.Zero;
         var newValue = new TimeSpan(current.Hours, minute, current.Seconds);
         Value = newValue;
@@ -290,6 +488,7 @@ else
 
     private async Task SelectSecond(int second)
     {
+        if (IsSecondDisabled(second)) return;
         var current = Value ?? TimeSpan.Zero;
         var newValue = new TimeSpan(current.Hours, current.Minutes, second);
         Value = newValue;
