@@ -710,6 +710,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _floatingPosition.ScrollSelectorIntoView(module, selector);
     }
 
+    public async ValueTask ScrollIntoView(string elementId, string block = "nearest")
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _floatingPosition.ScrollIntoView(module, elementId, block);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Affix ---
 
     public async ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
@@ -735,7 +745,13 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _utility.GetTextareaCaretPosition(module, elementId);
     }
 
-    public record TextareaCaretInfo(double Top, double Left, int SelectionStart);
+    /// <summary><see cref="Top"/>/<see cref="Left"/> are viewport-relative (legacy).
+    /// <see cref="OffsetTop"/>/<see cref="OffsetLeft"/> are relative to the textarea's
+    /// offset parent (its <c>position: relative</c> wrapper) so a caret-anchored
+    /// dropdown can be positioned absolutely and track the textarea on scroll.
+    /// <see cref="LineHeight"/> is the computed line height so callers can drop the
+    /// dropdown one line below the caret.</summary>
+    public record TextareaCaretInfo(double Top, double Left, int SelectionStart, double OffsetTop = 0, double OffsetLeft = 0, double LineHeight = 20);
 
     // --- InputMask caret (text input selectionStart) ---
     // Read/restore the caret of a masked text <input> so edits insert and delete

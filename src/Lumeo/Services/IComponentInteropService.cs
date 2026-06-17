@@ -227,6 +227,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// can't be scrolled, programmatically or otherwise.</summary>
     ValueTask ScrollSelectorIntoView(string selector);
 
+    /// <summary>Scrolls the element with id <paramref name="elementId"/> into view
+    /// within its nearest scroll container. Used by keyboard-navigated lists
+    /// (e.g. the Command palette active item) to keep the highlighted row
+    /// visible. <paramref name="block"/> maps to <c>scrollIntoView</c>'s block
+    /// option ("nearest" by default so already-visible rows don't jump). Default
+    /// implementation is a no-op so existing implementers / test doubles keep
+    /// compiling.</summary>
+    ValueTask ScrollIntoView(string elementId, string block = "nearest") => ValueTask.CompletedTask;
+
     // Affix
     ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler);
     ValueTask UnregisterAffix(string elementId);
