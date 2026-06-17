@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 <details class="@RootClass" open="@DefaultOpen" @attributes="AdditionalAttributes">
     <summary class="@SummaryClass">
@@ -28,7 +29,10 @@
         @if (!string.IsNullOrEmpty(Input))
         {
             <div class="space-y-1">
-                <div class="font-semibold uppercase tracking-wider text-muted-foreground" style="font-size: 10px">Input</div>
+                <div class="flex items-center justify-between gap-2">
+                    <div class="font-semibold uppercase tracking-wider text-muted-foreground" style="font-size: 10px">Input</div>
+                    @CopyButton(CopyTarget.Input, Input!)
+                </div>
                 <pre class="max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-xs font-mono text-foreground whitespace-pre-wrap break-words"><code>@Input</code></pre>
             </div>
         }
@@ -36,14 +40,20 @@
         @if (Status == ToolCallStatus.Error && !string.IsNullOrEmpty(ErrorMessage))
         {
             <div class="space-y-1">
-                <div class="font-semibold uppercase tracking-wider text-destructive" style="font-size: 10px">Error</div>
+                <div class="flex items-center justify-between gap-2">
+                    <div class="font-semibold uppercase tracking-wider text-destructive" style="font-size: 10px">Error</div>
+                    @CopyButton(CopyTarget.Output, ErrorMessage!)
+                </div>
                 <pre class="max-h-48 overflow-auto rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs font-mono text-destructive whitespace-pre-wrap break-words"><code>@ErrorMessage</code></pre>
             </div>
         }
         else if (!string.IsNullOrEmpty(Output))
         {
             <div class="space-y-1">
-                <div class="font-semibold uppercase tracking-wider text-muted-foreground" style="font-size: 10px">Output</div>
+                <div class="flex items-center justify-between gap-2">
+                    <div class="font-semibold uppercase tracking-wider text-muted-foreground" style="font-size: 10px">Output</div>
+                    @CopyButton(CopyTarget.Output, Output!)
+                </div>
                 <pre class="max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-xs font-mono text-foreground whitespace-pre-wrap break-words"><code>@Output</code></pre>
             </div>
         }
@@ -108,6 +118,34 @@
         return $"{ms / 1000.0:0.##}s";
     }
 
+    // Which section's copy button last fired, so only that button shows the
+    // transient "copied" check. Error and Output never render together, so they
+    // share the Output slot.
+    private CopyTarget? _copied;
+
+    private RenderFragment CopyButton(CopyTarget target, string text) => __builder =>
+    {
+        var copied = _copied == target;
+        <button type="button"
+                class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring transition-colors"
+                aria-label="@(copied ? "Copied" : "Copy to clipboard")"
+                @onclick="() => CopyAsync(target, text)">
+            <Icon Name="@(copied ? "Check" : "Clipboard")" Size="Lumeo.Size.Xs" />
+            <span>@(copied ? "Copied" : "Copy")</span>
+        </button>
+    };
+
+    private async Task CopyAsync(CopyTarget target, string text)
+    {
+        try
+        {
+            await Interop.CopyToClipboard(text);
+            _copied = target;
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable (e.g. prerender)
+    }
+
     public enum ToolCallStatus
     {
         Pending,
@@ -115,4 +153,6 @@
         Success,
         Error
     }
+
+    private enum CopyTarget { Input, Output }
 }
