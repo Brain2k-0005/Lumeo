@@ -84,6 +84,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// existing implementers (and test doubles) keep compiling.
     /// </summary>
     ValueTask PositionAtPoint(string contentId, double x, double y) => ValueTask.CompletedTask;
+
+    // Toolbar roving focus (Radix Toolbar keyboard model). Default no-ops so
+    // existing implementers/test doubles keep compiling.
+
+    /// <summary>Initialise a single-tab-stop roving tabindex over the toolbar's items.</summary>
+    ValueTask InitToolbarRoving(string toolbarId) => ValueTask.CompletedTask;
+    /// <summary>Move focus <paramref name="delta"/> items from the focused toolbar item (clamped, no wrap).</summary>
+    ValueTask MoveToolbarFocus(string toolbarId, int delta) => ValueTask.CompletedTask;
+    /// <summary>Focus the first (<paramref name="last"/>=false) or last toolbar item.</summary>
+    ValueTask FocusToolbarEdge(string toolbarId, bool last) => ValueTask.CompletedTask;
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);
     ValueTask<double> GetScrollTop(string elementId);

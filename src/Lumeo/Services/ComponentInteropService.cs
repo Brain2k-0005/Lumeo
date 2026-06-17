@@ -258,6 +258,38 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _floatingPosition.PositionAtPoint(module, contentId, x, y);
     }
 
+    // --- Toolbar roving focus (lives in components.js, always loaded) ---
+
+    public async ValueTask InitToolbarRoving(string toolbarId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("initToolbarRoving", toolbarId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MoveToolbarFocus(string toolbarId, int delta)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("moveToolbarFocus", toolbarId, delta);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask FocusToolbarEdge(string toolbarId, bool last)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("focusToolbarEdge", toolbarId, last);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Element Rect ---
 
     public async ValueTask<ElementRect?> GetElementRect(string elementId)

@@ -123,6 +123,29 @@ public sealed class TrackingInteropService : IComponentInteropService
         _positionAtPointCalls.Add((contentId, x, y));
         return ValueTask.CompletedTask;
     }
+
+    // Toolbar roving focus (#235).
+    private readonly List<string> _initToolbarRovingCalls = new();
+    private readonly List<(string ToolbarId, int Delta)> _moveToolbarFocusCalls = new();
+    private readonly List<(string ToolbarId, bool Last)> _focusToolbarEdgeCalls = new();
+    public IReadOnlyList<string> InitToolbarRovingCalls => _initToolbarRovingCalls;
+    public IReadOnlyList<(string ToolbarId, int Delta)> MoveToolbarFocusCalls => _moveToolbarFocusCalls;
+    public IReadOnlyList<(string ToolbarId, bool Last)> FocusToolbarEdgeCalls => _focusToolbarEdgeCalls;
+    public ValueTask InitToolbarRoving(string toolbarId)
+    {
+        _initToolbarRovingCalls.Add(toolbarId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask MoveToolbarFocus(string toolbarId, int delta)
+    {
+        _moveToolbarFocusCalls.Add((toolbarId, delta));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask FocusToolbarEdge(string toolbarId, bool last)
+    {
+        _focusToolbarEdgeCalls.Add((toolbarId, last));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
     public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);

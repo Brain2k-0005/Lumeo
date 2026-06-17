@@ -1628,6 +1628,64 @@ export function getMenuItemCount(containerId) {
     return getMenuItems(containerId).length;
 }
 
+// --- Toolbar roving focus (Radix Toolbar keyboard model) ---
+//
+// A toolbar is a single tab stop; Arrow keys move focus between its focusable
+// items. We resolve the focusable items at call time (so dynamically added/
+// removed items are handled) and manage a roving tabindex: the focused item is
+// tabindex=0, the rest are tabindex=-1, so Shift+Tab/Tab enter/leave the
+// toolbar at the last-focused item.
+
+function getToolbarItems(toolbarId) {
+    const container = document.getElementById(toolbarId);
+    if (!container) return [];
+    // Focusable interactive descendants, excluding disabled ones and the
+    // overflow trigger button (it has its own dropdown semantics).
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.from(container.querySelectorAll(selector))
+        .filter(el => !el.closest('[data-toolbar-overflow-trigger]'));
+}
+
+function applyToolbarRovingTabindex(items, activeIndex) {
+    for (let i = 0; i < items.length; i++) {
+        items[i].setAttribute('tabindex', i === activeIndex ? '0' : '-1');
+    }
+}
+
+// Initialise the roving tabindex so only the first item is in the tab order.
+// Called when the toolbar mounts; safe to call repeatedly.
+export function initToolbarRoving(toolbarId) {
+    const items = getToolbarItems(toolbarId);
+    if (items.length === 0) return;
+    // If one item already holds focus, keep it; otherwise make the first the stop.
+    const focusedIndex = items.findIndex(el => el === document.activeElement);
+    applyToolbarRovingTabindex(items, focusedIndex >= 0 ? focusedIndex : 0);
+}
+
+// Move focus `delta` items from the currently focused item (clamped, no wrap —
+// matches Radix RovingFocus default). Returns the new index, or -1.
+export function moveToolbarFocus(toolbarId, delta) {
+    const items = getToolbarItems(toolbarId);
+    if (items.length === 0) return -1;
+    let current = items.findIndex(el => el === document.activeElement);
+    if (current < 0) current = 0;
+    let next = current + delta;
+    next = Math.max(0, Math.min(next, items.length - 1));
+    applyToolbarRovingTabindex(items, next);
+    items[next].focus();
+    return next;
+}
+
+// Focus the first (last=false) or last (last=true) toolbar item — Home/End.
+export function focusToolbarEdge(toolbarId, last) {
+    const items = getToolbarItems(toolbarId);
+    if (items.length === 0) return -1;
+    const index = last ? items.length - 1 : 0;
+    applyToolbarRovingTabindex(items, index);
+    items[index].focus();
+    return index;
+}
+
 // --- OTP Paste ---
 
 const otpPasteHandlers = new Map();
