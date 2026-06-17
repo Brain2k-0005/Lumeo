@@ -247,7 +247,12 @@
         else if (Column.FilterType == DataGridFilterType.Select)
         {
             filterValue = string.Join(",", _selectedOptions);
-            _selectedOperator = FilterOperator.Contains;
+            // Don't clobber a hydrated operator the Select filter legitimately
+            // supports (Contains/Equals) — reopening an Equals filter and pressing
+            // Apply must not silently flip it to Contains. Only coerce operators
+            // that don't apply to a Select filter.
+            if (_selectedOperator is not (FilterOperator.Contains or FilterOperator.Equals))
+                _selectedOperator = FilterOperator.Contains;
         }
         else
         {

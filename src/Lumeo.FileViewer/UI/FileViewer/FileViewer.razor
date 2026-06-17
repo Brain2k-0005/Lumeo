@@ -629,9 +629,14 @@
 
         if (_factoryType is not null && Services.GetService(_factoryType) is { } factory)
         {
-            var created = string.IsNullOrEmpty(HttpClientName)
-                ? _factoryType.GetMethod("CreateClient", Type.EmptyTypes)?.Invoke(factory, null)
-                : _factoryType.GetMethod("CreateClient", new[] { typeof(string) })?.Invoke(factory, new object?[] { HttpClientName });
+            // IHttpClientFactory only declares CreateClient(string); the
+            // parameterless overload is an extension method, so reflecting for
+            // Type.EmptyTypes returns null and a registered factory would be
+            // skipped whenever HttpClientName is empty. Always call
+            // CreateClient(string) with the default ("") name so the factory is
+            // honoured per the precedence documented above.
+            var createClient = _factoryType.GetMethod("CreateClient", new[] { typeof(string) });
+            var created = createClient?.Invoke(factory, new object?[] { HttpClientName ?? string.Empty });
             if (created is HttpClient fromFactory) return fromFactory;
         }
 
