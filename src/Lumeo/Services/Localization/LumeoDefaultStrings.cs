@@ -277,6 +277,8 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Previous slide",
         ["Carousel.NextSlide"] = "Next slide",
         ["Carousel.SlideXofY"] = "Slide {0} of {1}",
+        ["Carousel.Indicators"] = "Slide indicators",
+        ["Carousel.GoToSlide"] = "Go to slide {0}",
 
         // ── NumberInput ─────────────────────────────────────────────
         ["NumberInput.Decrease"] = "Decrease",
@@ -456,6 +458,8 @@ internal static partial class LumeoDefaultStrings
 
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Image compare slider",
+        ["ImageCompare.Before"] = "Before",
+        ["ImageCompare.ValueText"] = "{0} {1}%",
 
         // ── PromptInput ─────────────────────────────────────────────
         ["PromptInput.Send"] = "Send",
@@ -481,6 +485,16 @@ internal static partial class LumeoDefaultStrings
         ["AudioPlayer.Mute"] = "Mute",
         ["AudioPlayer.Unmute"] = "Unmute",
         ["AudioPlayer.Download"] = "Download audio",
+        ["AudioPlayer.SkipBack"] = "Skip back {0} seconds",
+        ["AudioPlayer.SkipForward"] = "Skip forward {0} seconds",
+        ["AudioPlayer.PlaybackRate"] = "Playback speed {0}×",
+        ["AudioPlayer.Volume"] = "Volume",
+
+        // ── SignaturePad ────────────────────────────────────────────
+        ["SignaturePad.Label"] = "Signature pad",
+        ["SignaturePad.Clear"] = "Clear signature",
+        ["SignaturePad.Download"] = "Download signature",
+        ["SignaturePad.Cleared"] = "Signature cleared",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -730,6 +744,8 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Vorherige Folie",
         ["Carousel.NextSlide"] = "Nächste Folie",
         ["Carousel.SlideXofY"] = "Folie {0} von {1}",
+        ["Carousel.Indicators"] = "Folienanzeiger",
+        ["Carousel.GoToSlide"] = "Zu Folie {0}",
 
         // ── Stepper ─────────────────────────────────────────────────
         ["Stepper.Back"] = "Zurück",
@@ -923,6 +939,8 @@ internal static partial class LumeoDefaultStrings
 
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Bildvergleichs-Schieberegler",
+        ["ImageCompare.Before"] = "Vorher",
+        ["ImageCompare.ValueText"] = "{0} {1} %",
 
         // ── PromptInput ─────────────────────────────────────────────
         ["PromptInput.Send"] = "Senden",
@@ -948,6 +966,16 @@ internal static partial class LumeoDefaultStrings
         ["AudioPlayer.Mute"] = "Stummschalten",
         ["AudioPlayer.Unmute"] = "Stummschaltung aufheben",
         ["AudioPlayer.Download"] = "Audio herunterladen",
+        ["AudioPlayer.SkipBack"] = "{0} Sekunden zurück",
+        ["AudioPlayer.SkipForward"] = "{0} Sekunden vor",
+        ["AudioPlayer.PlaybackRate"] = "Wiedergabegeschwindigkeit {0}×",
+        ["AudioPlayer.Volume"] = "Lautstärke",
+
+        // ── SignaturePad ────────────────────────────────────────────
+        ["SignaturePad.Label"] = "Unterschriftsfeld",
+        ["SignaturePad.Clear"] = "Unterschrift löschen",
+        ["SignaturePad.Download"] = "Unterschrift herunterladen",
+        ["SignaturePad.Cleared"] = "Unterschrift gelöscht",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)
