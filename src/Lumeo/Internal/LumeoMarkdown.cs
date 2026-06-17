@@ -156,9 +156,13 @@ internal static class LumeoMarkdown
         {
             var label = m.Groups[1].Value;
             var href = m.Groups[2].Value;
-            return IsSafeHref(href)
-                ? $"<a href=\"{href}\">{label}</a>"
-                : label; // drop unsafe URL, keep the visible label
+            if (!IsSafeHref(href)) return label; // drop unsafe URL, keep the visible label
+            // Shield emphasis markers inside the URL so the * / _ passes below
+            // don't rewrite the href (e.g. /a_b_c → /a<em>b</em>c). The numeric
+            // entities decode back to the literal characters in the browser, so
+            // the link still resolves.
+            var hrefAttr = href.Replace("_", "&#95;").Replace("*", "&#42;");
+            return $"<a href=\"{hrefAttr}\">{label}</a>";
         });
 
         // Bold (**x** / __x__) before italic so the inner single-marker pass

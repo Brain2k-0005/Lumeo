@@ -55,10 +55,24 @@
     private readonly string _listId = LumeoIds.New("agent-message-list");
     private bool _observerRegistered;
 
-    // Virtualize<TItem>.Items wants an ICollection<TItem>; expose the read-only
-    // list as one without copying when it already is a collection.
-    private ICollection<RenderFragment> VirtualizedItems =>
-        Items as ICollection<RenderFragment> ?? Items?.ToList() ?? new List<RenderFragment>();
+    // Virtualize<TItem>.Items wants an ICollection<TItem>. Materialize it only
+    // when the bound Items reference changes — recomputing (and copying, when
+    // Items isn't already a collection) on every render would be O(n) per frame
+    // during streaming and defeat virtualization.
+    private IReadOnlyList<RenderFragment>? _itemsSnapshot;
+    private ICollection<RenderFragment> _virtualizedItems = System.Array.Empty<RenderFragment>();
+    private ICollection<RenderFragment> VirtualizedItems => _virtualizedItems;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_itemsSnapshot, Items))
+        {
+            _itemsSnapshot = Items;
+            _virtualizedItems = Items as ICollection<RenderFragment>
+                ?? Items?.ToList()
+                ?? (ICollection<RenderFragment>)System.Array.Empty<RenderFragment>();
+        }
+    }
 
     private string RootClass =>
         Cx.Merge("flex w-full flex-col overflow-y-auto", Class);
