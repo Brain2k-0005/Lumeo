@@ -681,7 +681,15 @@
             var sb = new System.Text.StringBuilder();
             sb.Append('L').Append(level);
             for (var i = 0; i < path.Length; i++)
-                sb.Append(PathSep).Append(i).Append('=').Append(path[i]?.ToString() ?? " ");
+            {
+                // Length-prefix each segment value (and a -1 marker for null) on top of the
+                // index + Unit-Separator join, so a literal " " can't alias null and "1"+"0"
+                // can't merge into the same key as "10"+"".
+                var s = path[i]?.ToString();
+                sb.Append(PathSep).Append(i).Append('=');
+                if (s is null) sb.Append("-1:");
+                else sb.Append(s.Length).Append(':').Append(s);
+            }
             Key = sb.ToString();
         }
     }
