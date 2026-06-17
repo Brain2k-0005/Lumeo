@@ -597,6 +597,47 @@ export function unpositionFixed(contentId) {
     try { fn(); } catch (_) { positionCleanups.delete(contentId); }
 }
 
+// Position a fixed element so its top-left starts at the point (x, y) — used by
+// ContextMenu, which opens at raw click coordinates with no anchor element so
+// positionFixed (reference-element based) doesn't apply. Clamps the element
+// into the viewport: if it would overflow the right/bottom edge it flips to
+// open up/left of the point (native context-menu behaviour), and as a final
+// guard keeps it >= 8px from every edge. Returns nothing; safe if missing.
+export function positionAtPoint(contentId, x, y) {
+    const el = document.getElementById(contentId);
+    if (!el) return;
+
+    const margin = 8;
+    el.style.position = 'fixed';
+    el.style.transform = '';
+    // Place at the raw point first, then measure the natural size.
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    void el.offsetHeight; // force layout flush before measuring
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = x;
+    let top = y;
+
+    // Horizontal: flip to the left of the cursor if it overflows the right edge,
+    // then clamp so it never sits past either edge.
+    if (left + rect.width > vw - margin) {
+        left = x - rect.width;
+    }
+    left = Math.max(margin, Math.min(left, vw - rect.width - margin));
+
+    // Vertical: flip above the cursor if it overflows the bottom edge, then clamp.
+    if (top + rect.height > vh - margin) {
+        top = y - rect.height;
+    }
+    top = Math.max(margin, Math.min(top, vh - rect.height - margin));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+}
+
 // --- Viewport Size ---
 
 export function getViewportSize() {

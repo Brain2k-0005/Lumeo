@@ -252,6 +252,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _floatingPosition.UnpositionFixed(module, contentId);
     }
 
+    public async ValueTask PositionAtPoint(string contentId, double x, double y)
+    {
+        var module = await GetModuleAsync();
+        await _floatingPosition.PositionAtPoint(module, contentId, x, y);
+    }
+
     // --- Element Rect ---
 
     public async ValueTask<ElementRect?> GetElementRect(string elementId)
