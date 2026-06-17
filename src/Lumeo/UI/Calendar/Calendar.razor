@@ -33,6 +33,15 @@
     [Parameter] public EventCallback<DateOnly?> RangeStartChanged { get; set; }
     [Parameter] public DateOnly? RangeEnd { get; set; }
     [Parameter] public EventCallback<DateOnly?> RangeEndChanged { get; set; }
+    /// <summary>When true the grid selects a set of independent days: clicking a
+    /// day (or Enter/Space on it) toggles it in/out of <see cref="Values"/>.
+    /// Takes precedence over single <see cref="Value"/> selection; ignored when
+    /// <see cref="IsRange"/> is set.</summary>
+    [Parameter] public bool IsMultiple { get; set; }
+    /// <summary>The selected days in multiple-selection mode. Pair with
+    /// <see cref="ValuesChanged"/> for two-way binding.</summary>
+    [Parameter] public List<DateOnly>? Values { get; set; }
+    [Parameter] public EventCallback<List<DateOnly>?> ValuesChanged { get; set; }
     [Parameter] public int NumberOfMonths { get; set; } = 1;
     [Parameter] public bool ShowWeekNumbers { get; set; }
     [Parameter] public bool ShowYearPicker { get; set; }
@@ -95,17 +104,20 @@
         // year-picker view. When set it wins over InitialView so consumers can
         // request the year grid without knowing the CalendarView enum.
         _currentView = ShowYearPicker ? CalendarView.Years : InitialView;
-        _lastSeenAnchor = IsRange ? RangeStart : Value;
+        // CurrentAnchor folds in multiple/range/single precedence so the
+        // displayed month seeds correctly regardless of selection mode.
+        _lastSeenAnchor = CurrentAnchor;
         DisplayDate = _lastSeenAnchor ?? DateOnly.FromDateTime(DateTime.Today);
     }
 
     protected override void OnParametersSet()
     {
-        // When the bound Value (or RangeStart) changes from outside — e.g. the
-        // parent sets Value programmatically on an inline calendar — navigate
-        // the visible month to it. Only react to actual changes: re-renders
-        // that leave the anchor untouched must not reset manual browsing.
-        var anchor = IsRange ? RangeStart : Value;
+        // When the bound anchor (Value, RangeStart, or the first selected day in
+        // multiple mode) changes from outside — e.g. the parent sets it
+        // programmatically on an inline calendar — navigate the visible month to
+        // it. Only react to actual changes: re-renders that leave the anchor
+        // untouched must not reset manual browsing.
+        var anchor = CurrentAnchor;
         if (anchor != _lastSeenAnchor)
         {
             _lastSeenAnchor = anchor;
@@ -115,6 +127,14 @@
             }
         }
     }
+
+    // The day the displayed month tracks for external value changes: in
+    // multiple mode the earliest selected day, in range mode the start, else
+    // the single Value.
+    private DateOnly? CurrentAnchor =>
+        IsMultiple ? (Values is { Count: > 0 } ? Values.Min() : null)
+        : IsRange ? RangeStart
+        : Value;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -305,7 +325,9 @@
     {
         var isCurrentMonth = day.Month == monthDate.Month;
         var isDisabled = IsDisabled(day);
-        var isSelected = !IsRange && Value.HasValue && day == Value.Value;
+        var isSelected = IsMultiple
+            ? (Values?.Contains(day) ?? false)
+            : (!IsRange && Value.HasValue && day == Value.Value);
         var isToday = day == DateOnly.FromDateTime(DateTime.Today);
 
         // 'relative' kept on every day so DateBadge slots can absolute-position inside.
@@ -358,6 +380,19 @@
         // the tabbable cell (and keyboard focus stays put after Enter/Space).
         _focusedDate = day;
 
+        if (IsMultiple)
+        {
+            // Toggle the day in/out of the selected set; keep the result sorted
+            // so consumers get a stable, chronological list.
+            var next = Values is null ? new List<DateOnly>() : new List<DateOnly>(Values);
+            if (!next.Remove(day)) next.Add(day);
+            next.Sort();
+            Values = next;
+            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            await ValuesChanged.InvokeAsync(next);
+            return;
+        }
+
         if (IsRange)
         {
             if (!RangeStart.HasValue || (RangeStart.HasValue && RangeEnd.HasValue))
@@ -406,11 +441,14 @@
     // ---- WAI-ARIA grid keyboard navigation (roving tabindex) ----
 
     /// <summary>Whether <paramref name="day"/> renders as the selected day —
-    /// drives <c>aria-selected</c> on the grid cell. In range mode the two
-    /// endpoints are the selected cells.</summary>
-    private bool IsDaySelected(DateOnly day) => IsRange
-        ? (RangeStart.HasValue && day == RangeStart.Value) || (RangeEnd.HasValue && day == RangeEnd.Value)
-        : Value.HasValue && day == Value.Value;
+    /// drives <c>aria-selected</c> on the grid cell. In multiple mode every day
+    /// in <see cref="Values"/> is selected; in range mode the two endpoints are
+    /// the selected cells; otherwise the single <see cref="Value"/>.</summary>
+    private bool IsDaySelected(DateOnly day) => IsMultiple
+        ? (Values?.Contains(day) ?? false)
+        : IsRange
+            ? (RangeStart.HasValue && day == RangeStart.Value) || (RangeEnd.HasValue && day == RangeEnd.Value)
+            : Value.HasValue && day == Value.Value;
 
     /// <summary>Deterministic per-day element id used as the keyboard focus
     /// target. Scoped to the rendered month panel so the same calendar date
@@ -770,6 +808,7 @@
                             <div role="gridcell" aria-selected="@isSelectedDay.ToString().ToLowerInvariant()" class="@RangeBarClasses(d, monthDate, col)">
                                 <button type="button" id="@DayId(monthDate, d)" tabindex="@DayTabIndex(d, monthDate)"
                                         aria-label="@DayAriaLabel(d)"
+                                        aria-pressed="@(IsMultiple ? ((Values?.Contains(d) ?? false) ? "true" : "false") : null)"
                                         class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip"
                                         @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
                                         @onfocus="() => OnDayFocus(d)"
