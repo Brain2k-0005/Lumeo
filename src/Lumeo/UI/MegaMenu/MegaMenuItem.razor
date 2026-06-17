@@ -108,7 +108,7 @@
     {
         // Register in DOM order so the parent can resolve arrow-key neighbours
         // and assign the roving tab stop.
-        Context?.RegisterItem(_triggerId);
+        Context?.RegisterItem(_triggerId, Disabled);
         _registeredItem = true;
     }
 
@@ -235,9 +235,10 @@
 
     private async Task MoveFocus(int delta)
     {
-        var ids = Context.ItemIds;
+        // Skip disabled triggers so arrow nav never lands on a non-interactive item.
+        var ids = Context.ItemIds.Where(id => !Context.DisabledItemIds.Contains(id)).ToList();
         if (ids.Count == 0) return;
-        var current = ids.ToList().IndexOf(_triggerId);
+        var current = ids.IndexOf(_triggerId);
         if (current < 0) return;
         var next = (current + delta + ids.Count) % ids.Count;
         await FocusTrigger(ids[next]);
@@ -245,7 +246,7 @@
 
     private async Task FocusEdge(bool first)
     {
-        var ids = Context.ItemIds;
+        var ids = Context.ItemIds.Where(id => !Context.DisabledItemIds.Contains(id)).ToList();
         if (ids.Count == 0) return;
         await FocusTrigger(first ? ids[0] : ids[^1]);
     }

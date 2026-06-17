@@ -199,6 +199,20 @@ else if (Context.IsOpen || _exiting)
         _ => "right"
     };
 
+    protected override void OnParametersSet()
+    {
+        if (Shell is not null) return;
+        // The mount gate (Context.IsOpen || _exiting) is evaluated during render,
+        // but _exiting used to be set only afterwards in OnAfterRenderAsync — so the
+        // close render dropped the panel before the flag flipped and OnAfterRender
+        // then re-added it: a flicker that also reset child component state and
+        // skipped the slide-out. Flip _exiting here, before the close render, so the
+        // panel stays mounted and animates out. OnAfterRenderAsync still owns the
+        // teardown and scheduling the final unmount.
+        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
+            _exiting = true;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // When passthrough mode is active the host SheetContent owns scroll lock
@@ -247,8 +261,9 @@ else if (Context.IsOpen || _exiting)
 
             if (ExitDurationMs > 0)
             {
-                _exiting = true;
-                StateHasChanged(); // re-render with the exit animation class
+                // _exiting was already flipped in OnParametersSet (before the close
+                // render) so the panel stayed mounted and slid out; here we only
+                // schedule the unmount for when the animation finishes.
                 _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
                 {
                     _exiting = false;

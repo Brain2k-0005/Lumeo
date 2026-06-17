@@ -6,7 +6,8 @@
         EventCallback.Factory.Create<string?>(this, SetActiveItemId),
         Orientation,
         _itemIds,
-        _rovingItemId ?? (_itemIds.Count > 0 ? _itemIds[0] : null),
+        _disabledItemIds,
+        _rovingItemId ?? _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id)),
         RegisterItem,
         UnregisterItem,
         SetRovingItem);
@@ -30,8 +31,11 @@
     // Ordered list of registered top-level trigger ids (DOM order) backing the
     // roving-tabindex arrow navigation across the menubar (WAI-ARIA menubar).
     private readonly List<string> _itemIds = [];
+    // Trigger ids registered with Disabled=true — roving arrow/Home/End nav skips
+    // these so focus never lands on a non-interactive trigger.
+    private readonly HashSet<string> _disabledItemIds = [];
     // The single item currently in the tab order (tabindex=0). Null until the
-    // first item registers; the context falls back to the first item.
+    // first item registers; the context falls back to the first enabled item.
     private string? _rovingItemId;
 
     private string CssClass => Cx.Merge("relative", Class);
@@ -49,24 +53,32 @@
         return Task.CompletedTask;
     }
 
-    private void RegisterItem(string triggerId)
+    private void RegisterItem(string triggerId, bool disabled)
     {
         if (!_itemIds.Contains(triggerId))
         {
             _itemIds.Add(triggerId);
-            // First registered item becomes the initial tab stop.
-            _rovingItemId ??= triggerId;
             StateHasChanged();
+        }
+        // Track disabled state so roving nav can skip non-interactive triggers.
+        if (disabled) _disabledItemIds.Add(triggerId);
+        else _disabledItemIds.Remove(triggerId);
+        // The tab stop must be an enabled trigger — a disabled one can't receive
+        // focus, which would strand keyboard users at the menubar entry point.
+        if (_rovingItemId is null || _disabledItemIds.Contains(_rovingItemId))
+        {
+            _rovingItemId = _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id));
         }
     }
 
     private void UnregisterItem(string triggerId)
     {
+        _disabledItemIds.Remove(triggerId);
         if (_itemIds.Remove(triggerId))
         {
             if (_rovingItemId == triggerId)
             {
-                _rovingItemId = _itemIds.Count > 0 ? _itemIds[0] : null;
+                _rovingItemId = _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id));
             }
             StateHasChanged();
         }
@@ -88,8 +100,9 @@
         EventCallback<string?> SetActiveItemId,
         Lumeo.Orientation Orientation,
         IReadOnlyList<string> ItemIds,
+        IReadOnlySet<string> DisabledItemIds,
         string? RovingItemId,
-        Action<string> RegisterItem,
+        Action<string, bool> RegisterItem,
         Action<string> UnregisterItem,
         Action<string> SetRovingItem);
 }
