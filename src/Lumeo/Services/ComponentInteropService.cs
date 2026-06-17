@@ -770,6 +770,28 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Reduced motion (core) + TouchRipple coordinate resolution ---
+
+    public async ValueTask<bool> PrefersReducedMotion()
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<bool>("prefersReducedMotion");
+        }
+        catch (JSDisconnectedException) { return false; }
+    }
+
+    public async ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<RipplePoint>("touchRippleCoords", hostElementId, clientX, clientY);
+        }
+        catch (JSDisconnectedException) { return new RipplePoint(0, 0); }
+    }
+
     // --- HTMLMediaElement helpers (AudioPlayer 3.1.0) ---
 
     public async ValueTask PlayMedia(Microsoft.AspNetCore.Components.ElementReference element)
@@ -898,6 +920,16 @@ public sealed class ComponentInteropService : IComponentInteropService
             await module.InvokeVoidAsync("motion.disposeObserver", elementId);
         }
         catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask<bool> MotionPrefersReducedMotion()
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            return await module.InvokeAsync<bool>("motion.prefersReducedMotion");
+        }
+        catch (JSDisconnectedException) { return false; }
     }
 
     public async ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options)
