@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -265,5 +266,132 @@ public class AvatarTests : IAsyncLifetime
             (s.GetAttribute("class") ?? "").Contains("rounded-full") &&
             (s.GetAttribute("class") ?? "").Contains("ring-2")).ToList();
         Assert.Empty(statusSpans);
+    }
+
+    // --- Image → fallback chain (#265) ---
+
+    private IRenderedComponent<IComponent> RenderAvatarWithImageAndFallback(string? src)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Avatar>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.AvatarImage>(0);
+                b.AddAttribute(1, "Src", src);
+                b.CloseComponent();
+                b.OpenComponent<L.AvatarFallback>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(f => f.AddContent(0, "JD")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void Image_With_Src_Renders_Img_Element()
+    {
+        var cut = RenderAvatarWithImageAndFallback("/a.png");
+        // Image element is present while the Src is valid (Radix shows the
+        // fallback only until the image successfully loads; here onload hasn't
+        // fired in bUnit, so the fallback co-exists — see Image_Load test).
+        Assert.NotNull(cut.Find("img"));
+        Assert.Equal("/a.png", cut.Find("img").GetAttribute("src"));
+    }
+
+    [Fact]
+    public void Image_Error_Hides_Img_And_Shows_Fallback()
+    {
+        var cut = RenderAvatarWithImageAndFallback("/missing.png");
+        cut.Find("img").TriggerEvent("onerror", new Microsoft.AspNetCore.Components.Web.ErrorEventArgs());
+
+        // After the image errors it stops rendering and the fallback initials appear.
+        Assert.Empty(cut.FindAll("img"));
+        Assert.Contains("JD", cut.Markup);
+    }
+
+    [Fact]
+    public void Blank_Src_Shows_Fallback_Immediately()
+    {
+        var cut = RenderAvatarWithImageAndFallback("");
+        Assert.Empty(cut.FindAll("img"));
+        Assert.Contains("JD", cut.Markup);
+    }
+
+    [Fact]
+    public void Image_Load_Keeps_Fallback_Hidden()
+    {
+        var cut = RenderAvatarWithImageAndFallback("/a.png");
+        cut.Find("img").TriggerEvent("onload", new EventArgs());
+        Assert.NotNull(cut.Find("img"));
+        Assert.DoesNotContain("JD", cut.Markup);
+    }
+
+    [Fact]
+    public void Standalone_Fallback_Always_Renders()
+    {
+        // No Avatar parent → no image context → fallback always shows.
+        var cut = _ctx.Render<L.AvatarFallback>(p => p.AddChildContent("AB"));
+        Assert.Contains("AB", cut.Find("div").TextContent);
+    }
+
+    // --- AvatarGroup Max / +N (#265) ---
+
+    private IRenderedComponent<L.AvatarGroup> RenderGroup(int childCount, int max, int total = 0)
+    {
+        return _ctx.Render<L.AvatarGroup>(p =>
+        {
+            p.Add(g => g.Max, max);
+            if (total > 0) p.Add(g => g.Total, total);
+            p.Add(g => g.ChildContent, (RenderFragment)(b =>
+            {
+                for (var i = 0; i < childCount; i++)
+                {
+                    var idx = i;
+                    b.OpenComponent<L.Avatar>(idx * 10);
+                    b.AddAttribute(idx * 10 + 1, "ChildContent", (RenderFragment)(inner =>
+                        inner.AddContent(0, $"U{idx}")));
+                    b.CloseComponent();
+                }
+            }));
+        });
+    }
+
+    [Fact]
+    public void Group_Caps_Visible_Avatars_At_Max_And_Shows_Overflow()
+    {
+        // 5 children, Max 3 → 3 visible + "+2".
+        var cut = RenderGroup(childCount: 5, max: 3);
+
+        var avatars = cut.FindComponents<L.Avatar>();
+        var hidden = avatars.Count(a =>
+            (a.Find("div").GetAttribute("style") ?? "").Contains("display: none"));
+        Assert.Equal(2, hidden); // last two collapsed
+        Assert.Contains("+2", cut.Markup);
+    }
+
+    [Fact]
+    public void Group_Without_Max_Shows_All_And_No_Overflow()
+    {
+        var cut = RenderGroup(childCount: 4, max: 0);
+        var avatars = cut.FindComponents<L.Avatar>();
+        Assert.DoesNotContain(avatars, a =>
+            (a.Find("div").GetAttribute("style") ?? "").Contains("display: none"));
+        Assert.DoesNotContain("+", cut.Markup);
+    }
+
+    [Fact]
+    public void Group_Explicit_Total_Drives_Overflow_Count()
+    {
+        // 3 children rendered, Max 3, but Total says 50 → "+47".
+        var cut = RenderGroup(childCount: 3, max: 3, total: 50);
+        Assert.Contains("+47", cut.Markup);
+    }
+
+    [Fact]
+    public void Group_At_Max_Has_No_Overflow()
+    {
+        var cut = RenderGroup(childCount: 3, max: 3);
+        Assert.DoesNotContain("+", cut.Markup);
     }
 }

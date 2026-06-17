@@ -1,13 +1,45 @@
 @namespace Lumeo
+@implements IDisposable
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@* Renders only while the sibling AvatarImage has NOT successfully loaded — the
+   Radix image→fallback chain. Used standalone (no Avatar parent) it always
+   renders, so existing fallback-only usages are unaffected. *@
+@if (ShowFallback)
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
+    [CascadingParameter] private Avatar.AvatarImageContext? ImageContext { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private Avatar.AvatarImageContext? _subscribed;
+
+    private bool ShowFallback => ImageContext is null || !ImageContext.ImageLoaded;
+
+    protected override void OnParametersSet()
+    {
+        // (Re)subscribe to the active context so an image that loads/errors
+        // after first paint flips our visibility without the parent forcing it.
+        if (!ReferenceEquals(_subscribed, ImageContext))
+        {
+            if (_subscribed is not null) _subscribed.OnChange -= OnImageStateChanged;
+            _subscribed = ImageContext;
+            if (_subscribed is not null) _subscribed.OnChange += OnImageStateChanged;
+        }
+    }
+
+    private void OnImageStateChanged() => InvokeAsync(StateHasChanged);
+
     private string CssClass => Cx.Merge("flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium", Class);
+
+    public void Dispose()
+    {
+        if (_subscribed is not null) _subscribed.OnChange -= OnImageStateChanged;
+    }
 }

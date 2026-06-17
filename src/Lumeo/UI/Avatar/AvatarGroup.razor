@@ -1,7 +1,13 @@
 @namespace Lumeo
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
+    @* The cascaded context is recreated each render carrying the live member
+       count + Max, so a non-fixed CascadingValue propagates to child Avatars
+       and they re-evaluate IsHidden when membership settles. The stable
+       registrar inside it keeps ordering across those re-renders. *@
+    <CascadingValue Value="CurrentContext" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
     @if (OverflowCount > 0)
     {
         <div class="@OverflowClasses">
@@ -12,13 +18,101 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Maximum number of avatars to show before collapsing the rest
+    /// into a single "+N" overflow chip. <c>0</c> (default) shows them all.</summary>
     [Parameter] public int Max { get; set; }
+
+    /// <summary>
+    /// Optional explicit total used to compute "+N". Set this when the group
+    /// represents more people than the avatars actually rendered (e.g. "show 3
+    /// of 50"): the chip then reads <c>Total - Max</c>. When left at <c>0</c>
+    /// the overflow is computed from the number of child avatars instead, so a
+    /// plain group of N children with <c>Max</c> set "just works".
+    /// </summary>
     [Parameter] public int Total { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private int OverflowCount => Max > 0 && Total > Max ? Total - Max : 0;
+    private readonly AvatarGroupRegistrar _registrar;
+    private int _lastRenderedCount = -1;
+
+    public AvatarGroup()
+    {
+        _registrar = new AvatarGroupRegistrar(OnMembersChanged);
+    }
+
+    // New context instance per render → non-fixed CascadingValue notifies
+    // children, so they recompute visibility once all siblings have registered.
+    private AvatarGroupContext CurrentContext => new(_registrar, Max);
+
+    private void OnMembersChanged()
+    {
+        // Re-render once the membership count settles so hidden slots + the
+        // overflow chip reflect the final set. Guard on the count to avoid a
+        // render loop (register fires during our own ChildContent render).
+        if (_registrar.Count != _lastRenderedCount)
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        _lastRenderedCount = _registrar.Count;
+    }
+
+    // Effective total: explicit Total wins; otherwise the live child count.
+    private int EffectiveTotal => Total > 0 ? Total : _registrar.Count;
+
+    private int OverflowCount => Max > 0 && EffectiveTotal > Max ? EffectiveTotal - Max : 0;
 
     private string CssClass => Cx.Merge("flex -space-x-3", Class);
     private const string OverflowClasses = "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-muted-foreground";
+
+    /// <summary>
+    /// Stable registry of the group's member avatars, preserving DOM order
+    /// across re-renders. Avatars register a token in their OnInitialized.
+    /// </summary>
+    public sealed class AvatarGroupRegistrar
+    {
+        private readonly List<object> _members = new();
+        private readonly Action _onChange;
+
+        public AvatarGroupRegistrar(Action onChange) => _onChange = onChange;
+
+        public int Count => _members.Count;
+
+        public void Register(object token)
+        {
+            if (_members.Contains(token)) return;
+            _members.Add(token);
+            _onChange();
+        }
+
+        public void Unregister(object token)
+        {
+            if (_members.Remove(token)) _onChange();
+        }
+
+        public int IndexOf(object token) => _members.IndexOf(token);
+    }
+
+    /// <summary>
+    /// Cascaded to child <see cref="Avatar"/>s so the group can cap how many are
+    /// visible. Tokens at an ordinal index &gt;= <c>Max</c> report
+    /// <see cref="IsHidden"/> true and collapse, leaving room for the "+N" chip.
+    /// </summary>
+    public sealed record AvatarGroupContext(AvatarGroupRegistrar Registrar, int Max)
+    {
+        public void Register(object token) => Registrar.Register(token);
+        public void Unregister(object token) => Registrar.Unregister(token);
+
+        public bool IsHidden(object token)
+        {
+            if (Max <= 0) return false;
+            var index = Registrar.IndexOf(token);
+            return index >= 0 && index >= Max;
+        }
+    }
 }
