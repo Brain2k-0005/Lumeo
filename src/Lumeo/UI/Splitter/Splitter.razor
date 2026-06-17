@@ -71,15 +71,30 @@
         var unsetPanes = panes.Where(p => p.Size <= 0 && !p.Collapsed).ToList();
         if (unsetPanes.Count == 0) return;
 
-        // Space already claimed by sized (or collapsed) panes; the rest is split
-        // evenly across the unsized newcomers so they become visible.
+        // Space already claimed by sized (or collapsed) panes; newcomers split
+        // whatever is left so they become visible.
         var usedSpace = panes.Where(p => p.Size > 0 || p.Collapsed).Sum(p => p.Size);
-        var remaining = Math.Max(0, 100 - usedSpace);
-        var share = unsetPanes.Count > 0 ? remaining / unsetPanes.Count : 0;
+        var remaining = 100 - usedSpace;
 
-        foreach (var pane in unsetPanes)
+        if (remaining > 0.01)
         {
-            pane.Size = share;
+            var share = remaining / unsetPanes.Count;
+            foreach (var pane in unsetPanes)
+                pane.Size = share;
+        }
+        else
+        {
+            // No leftover room — the track is already full (e.g. a third pane
+            // added after the initial 50/50 layout). Re-balance ALL non-collapsed
+            // panes to an equal share so the newcomer still receives a positive
+            // size instead of freezing at 0. Assigning a positive size is also
+            // what breaks the OnAfterRender→StateHasChanged loop: leaving a pane
+            // at 0 keeps it "unset", so the guard above never trips and the
+            // re-render recurses until the stack overflows.
+            var active = panes.Where(p => !p.Collapsed).ToList();
+            var equal = 100.0 / active.Count;
+            foreach (var pane in active)
+                pane.Size = equal;
         }
 
         StateHasChanged();
