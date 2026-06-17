@@ -12,6 +12,20 @@
 const motionTickers = new Map();       // elementId -> rafId
 const motionObservers = new Map();     // elementId -> IntersectionObserver
 
+/* ---------- Reduced-motion gate ----------
+ * Single source of truth for `prefers-reduced-motion: reduce`. Every motion
+ * primitive that animates via JS (rAF / canvas / inline transforms) — where a
+ * CSS `@media` block can't reach — calls this to decide whether to no-op or
+ * snap to the end state. CSS-only animations stay gated in lumeo.css. Kept as
+ * a function (not a cached boolean) so a user toggling the OS setting mid-
+ * session is honoured on the next interaction. Guarded for SSR / non-browser
+ * (bUnit) hosts where matchMedia is undefined. */
+function prefersReducedMotion() {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function formatNumber(value, decimals, separator) {
     const sep = separator !== undefined && separator !== null ? separator : ',';
     const fixed = value.toFixed(decimals);
@@ -21,6 +35,13 @@ function formatNumber(value, decimals, separator) {
 }
 
 export const motion = {
+    /* ---------- Reduced-motion query ----------
+     * Exposed so the C# side (and Wave-3 components) can branch in Blazor
+     * before scheduling any JS animation, mirroring the internal gate above. */
+    prefersReducedMotion() {
+        return prefersReducedMotion();
+    },
+
     /* ---------- NumberTicker ---------- */
     tickNumber(elementId, from, to, durationMs, decimals, separator) {
         const el = document.getElementById(elementId);
@@ -291,7 +312,14 @@ export const motion = {
     },
 
     /* ---------- Dock ----------
-     * Magnifies dock children based on cursor proximity. */
+     * Magnifies dock children based on a focal point's proximity. Three focal
+     * sources are wired so the effect is not mouse-only (the old gap):
+     *   - pointermove  → cursor / pen / single-touch drag along the dock
+     *   - focusin      → keyboard Tab onto an item magnifies it + neighbours
+     *   - pointerleave / focusout → reset
+     * prefers-reduced-motion: skip entirely (CSS already drops the per-item
+     * transform transition; here we also avoid setting the transform at all so
+     * items stay at rest). */
     dock(elementId, options) {
         const el = document.getElementById(elementId);
         if (!el) return;
@@ -299,31 +327,52 @@ export const motion = {
         const maxScale = (options && options.maxScale) || 1.8;
         const magnifyRadius = (options && options.magnifyRadius) || 100;
 
-        const onMouseMove = (e) => {
-            const items = el.children;
-            for (const item of items) {
+        const reset = () => {
+            for (const item of el.children) item.style.transform = '';
+        };
+
+        // Apply magnification using a single horizontal focal coordinate
+        // (clientX). A vertical dock would key off clientY, but the macOS dock
+        // metaphor is horizontal and matches the CSS transform-origin.
+        const magnifyAt = (focalX) => {
+            if (prefersReducedMotion()) { reset(); return; }
+            for (const item of el.children) {
                 const rect = item.getBoundingClientRect();
                 const itemCx = rect.left + rect.width / 2;
-                const itemCy = rect.top + rect.height / 2;
-                const dist = Math.hypot(e.clientX - itemCx, e.clientY - itemCy);
+                const dist = Math.abs(focalX - itemCx);
                 const t = Math.max(0, 1 - dist / magnifyRadius);
                 const scale = 1 + (maxScale - 1) * t;
                 item.style.transform = `scale(${scale.toFixed(3)})`;
             }
         };
 
-        const onMouseLeave = () => {
-            for (const item of el.children) {
-                item.style.transform = '';
-            }
+        const onPointerMove = (e) => magnifyAt(e.clientX);
+        const onPointerLeave = () => reset();
+
+        // Keyboard: when an item (or something inside it) receives focus, centre
+        // the magnification on that item so Tab-navigation mirrors hover.
+        const onFocusIn = (e) => {
+            const item = [...el.children].find((c) => c === e.target || c.contains(e.target));
+            if (!item) return;
+            const rect = item.getBoundingClientRect();
+            magnifyAt(rect.left + rect.width / 2);
+        };
+        // Reset only when focus leaves the dock entirely (not when moving
+        // between two items inside it).
+        const onFocusOut = (e) => {
+            if (!e.relatedTarget || !el.contains(e.relatedTarget)) reset();
         };
 
-        el.addEventListener('mousemove', onMouseMove);
-        el.addEventListener('mouseleave', onMouseLeave);
+        el.addEventListener('pointermove', onPointerMove);
+        el.addEventListener('pointerleave', onPointerLeave);
+        el.addEventListener('focusin', onFocusIn);
+        el.addEventListener('focusout', onFocusOut);
 
         motionObservers.set(elementId + '-dock', { disconnect: () => {
-            el.removeEventListener('mousemove', onMouseMove);
-            el.removeEventListener('mouseleave', onMouseLeave);
+            el.removeEventListener('pointermove', onPointerMove);
+            el.removeEventListener('pointerleave', onPointerLeave);
+            el.removeEventListener('focusin', onFocusIn);
+            el.removeEventListener('focusout', onFocusOut);
         }});
     },
 
@@ -344,17 +393,29 @@ export const motion = {
         const triggerEl = document.getElementById(elementId);
         if (!triggerEl) return;
 
-        // Use a fixed-position canvas that covers the full viewport so particles
-        // can travel outside the component's bounding box.
-        let canvas = document.getElementById(elementId + '-canvas');
+        const canvas = document.getElementById(elementId + '-canvas');
         if (!canvas) return;
+
+        const tickerKey = elementId + '-confetti';
+
+        // prefers-reduced-motion: emit nothing. A confetti burst is purely
+        // decorative, so the correct reduced-motion behaviour is a no-op (no
+        // instant "flash" of particles either). Clear any leftover pixels and
+        // cancel an in-flight loop so a setting change mid-burst settles.
+        if (prefersReducedMotion()) {
+            const prevId = motionTickers.get(tickerKey);
+            if (prevId) cancelAnimationFrame(prevId);
+            motionTickers.delete(tickerKey);
+            const c = canvas.getContext('2d');
+            if (c) c.clearRect(0, 0, canvas.width, canvas.height);
+            return;
+        }
 
         // Cancel any in-flight rAF loop for this confetti before starting a
         // fresh one. Repeated Fire() calls otherwise stack parallel loops
         // that each run until their particles fade — each loop costs CPU
         // until then, and the loops keep running even after the component
         // is disposed (only this tracker is consulted by disposeConfetti).
-        const tickerKey = elementId + '-confetti';
         const prev = motionTickers.get(tickerKey);
         if (prev) cancelAnimationFrame(prev);
 
@@ -364,27 +425,31 @@ export const motion = {
         const originX = (options && options.origin && options.origin.x) !== undefined ? options.origin.x : 0.5;
         const originY = (options && options.origin && options.origin.y) !== undefined ? options.origin.y : 0.5;
 
-        // Move canvas to fixed viewport overlay
-        canvas.style.position = 'fixed';
+        // Scope the canvas to the host element instead of hijacking the whole
+        // viewport. The host already has position:relative + overflow:hidden
+        // (see .lumeo-confetti), so an absolutely-positioned full-bleed canvas
+        // confines the burst to the component's own box — no global z-index
+        // 9999 overlay swallowing pointer events across the entire page.
+        const elRect = triggerEl.getBoundingClientRect();
+        const w = Math.max(1, Math.round(elRect.width));
+        const h = Math.max(1, Math.round(elRect.height));
+        canvas.style.position = 'absolute';
         canvas.style.top = '0';
         canvas.style.left = '0';
-        canvas.style.width = '100vw';
-        canvas.style.height = '100vh';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
         canvas.style.pointerEvents = 'none';
-        canvas.style.zIndex = '9999';
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        // Map origin from element-relative (0-1) to viewport pixel coords
-        const elRect = triggerEl.getBoundingClientRect();
-        const elOriginX = elRect.left + elRect.width * originX;
-        const elOriginY = elRect.top + elRect.height * originY;
+        canvas.style.zIndex = '1';
+        canvas.width = w;
+        canvas.height = h;
 
         const ctx = canvas.getContext('2d');
         const particles = [];
 
-        const ox = elOriginX;
-        const oy = elOriginY;
+        // Origin is element-relative (0-1) → canvas pixel coords (canvas now
+        // shares the element's coordinate space).
+        const ox = w * originX;
+        const oy = h * originY;
         const spreadRad = (spread * Math.PI) / 180;
 
         for (let i = 0; i < particleCount; i++) {
