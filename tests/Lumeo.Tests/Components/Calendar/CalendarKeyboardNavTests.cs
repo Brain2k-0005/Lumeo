@@ -63,7 +63,7 @@ public class CalendarKeyboardNavTests : IAsyncLifetime
     public void Grid_has_accessible_month_label()
     {
         var cut = RenderCalendar();
-        Assert.Equal("June 2024", cut.Find("[role='grid']").GetAttribute("aria-label"));
+        Assert.Equal(MonthLabel(Anchor), cut.Find("[role='grid']").GetAttribute("aria-label"));
     }
 
     [Fact]
@@ -168,13 +168,18 @@ public class CalendarKeyboardNavTests : IAsyncLifetime
     private static string GridMonth(IRenderedComponent<L.Calendar> cut)
         => cut.Find("[role='grid']").GetAttribute("aria-label")!;
 
+    // The grid aria-label is monthDate.ToString("MMMM yyyy") in the active culture;
+    // mirror that here so assertions hold regardless of the test host's locale.
+    private static string MonthLabel(DateOnly d)
+        => d.ToString("MMMM yyyy", System.Globalization.CultureInfo.CurrentCulture);
+
     [Fact]
     public async Task PageDown_advances_to_next_month()
     {
         var cut = RenderCalendar();
-        Assert.Equal("June 2024", GridMonth(cut));
+        Assert.Equal(MonthLabel(Anchor), GridMonth(cut));
         await Key(cut, "PageDown");
-        Assert.Equal("July 2024", GridMonth(cut));
+        Assert.Equal(MonthLabel(Anchor.AddMonths(1)), GridMonth(cut));
         Assert.Equal("15", Tabbable(cut).TextContent.Trim());
     }
 
@@ -183,7 +188,7 @@ public class CalendarKeyboardNavTests : IAsyncLifetime
     {
         var cut = RenderCalendar();
         await Key(cut, "PageUp");
-        Assert.Equal("May 2024", GridMonth(cut));
+        Assert.Equal(MonthLabel(Anchor.AddMonths(-1)), GridMonth(cut));
         Assert.Equal("15", Tabbable(cut).TextContent.Trim());
     }
 
@@ -202,27 +207,31 @@ public class CalendarKeyboardNavTests : IAsyncLifetime
     // ---- Selection via keyboard ----
 
     [Fact]
-    public async Task Enter_selects_the_focused_day()
+    public async Task Activating_the_focused_day_selects_it()
     {
         DateOnly? selected = null;
         var cb = EventCallback.Factory.Create<DateOnly?>(_ctx, (DateOnly? d) => selected = d);
         var cut = RenderCalendar(extra: p => p.Add(c => c.ValueChanged, cb));
 
         await Key(cut, "ArrowRight"); // focus 16
-        await Key(cut, "Enter");
+        // Enter/Space on the focused day activate the native <button> (→ click). The keydown
+        // handler intentionally no longer calls SelectDay — doing so alongside the native click
+        // double-selected in a real browser. bUnit can't synthesize the activation click from a
+        // keydown, so we drive the click that activation produces.
+        await cut.InvokeAsync(() => Tabbable(cut).Click());
 
         Assert.Equal(new DateOnly(2024, 6, 16), selected);
     }
 
     [Fact]
-    public async Task Space_selects_the_focused_day()
+    public async Task Activating_the_focused_day_after_vertical_nav_selects_it()
     {
         DateOnly? selected = null;
         var cb = EventCallback.Factory.Create<DateOnly?>(_ctx, (DateOnly? d) => selected = d);
         var cut = RenderCalendar(extra: p => p.Add(c => c.ValueChanged, cb));
 
         await Key(cut, "ArrowDown"); // focus 22
-        await Key(cut, " ");
+        await cut.InvokeAsync(() => Tabbable(cut).Click());
 
         Assert.Equal(new DateOnly(2024, 6, 22), selected);
     }
@@ -230,9 +239,8 @@ public class CalendarKeyboardNavTests : IAsyncLifetime
     // ---- Disabled days ----
 
     [Fact]
-    public async Task Enter_on_disabled_day_does_not_select()
+    public async Task Activating_a_disabled_day_does_not_select()
     {
-        // Disable every day from the 20th onward; navigate toward it.
         DateOnly? selected = null;
         var cb = EventCallback.Factory.Create<DateOnly?>(_ctx, (DateOnly? d) => selected = d);
         var cut = RenderCalendar(new DateOnly(2024, 6, 19), extra: p =>
@@ -241,14 +249,13 @@ public class CalendarKeyboardNavTests : IAsyncLifetime
             p.Add(c => c.ValueChanged, cb);
         });
 
-        // ArrowRight would target the 20th (disabled) — skipped, focus stays on 19.
-        await Key(cut, "ArrowRight");
-        Assert.Equal("19", Tabbable(cut).TextContent.Trim());
+        // The 20th is past MaxDate → a disabled native button. SelectDay guards on IsDisabled,
+        // so activating it (click, or Enter/Space → click) leaves the value untouched.
+        var disabled = cut.FindAll("[role='gridcell'] button")
+            .First(b => b.TextContent.Trim() == "20" && b.HasAttribute("disabled"));
+        await cut.InvokeAsync(() => disabled.Click());
 
-        // Even forcing a keydown on the focused (enabled) day after MaxDate is
-        // fine; the guarantee under test is that a disabled day can't be picked.
-        await Key(cut, "Enter");
-        Assert.Equal(new DateOnly(2024, 6, 19), selected); // the enabled 19th, not a disabled day
+        Assert.Null(selected);
     }
 
     [Fact]

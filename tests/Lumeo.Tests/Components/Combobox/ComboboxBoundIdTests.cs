@@ -82,11 +82,12 @@ public class ComboboxBoundIdTests : IAsyncLifetime
     [Fact]
     public void BoundOptions_Two_Hash_Colliding_Values_Get_Different_Ids()
     {
-        var a = new object();
-        var b = new object();
-        var items = new[] { a, b };
+        // Two distinct list positions sharing the SAME logical value: the OLD hash-derived
+        // id scheme emitted one id for both (a real collision); the position-index scheme
+        // must keep them distinct.
+        var items = new object[] { "x", "x" };
 
-        var cut = RenderDataBound(items, itemValue: o => ReferenceEquals(o, a) ? "x" : "x_dup_same_hash");
+        var cut = RenderDataBound(items, itemValue: o => (string)o);
 
         var ids = cut.FindAll("button[role='option']")
             .Select(o => o.GetAttribute("id"))

@@ -30,11 +30,12 @@
             var filteredItems = FilteredItems;
             @if (Context.Virtualize)
             {
-                <Virtualize Items="@filteredItems" Context="item" ItemSize="@Context.ItemSize">
-                    @* Ungrouped path: an item's sequence index is its position in the filtered
-                       list, matching Select.BuildBoundNavItems' source-order indexing so the
-                       focus highlight / Enter resolve to the same id the parent computed. *@
-                    @RenderBoundItem(item, filteredItems.IndexOf(item))
+                @* Pair each item with its positional index up-front. IndexOf would return
+                   the FIRST equal item, so duplicate values collapsed to one id and desynced
+                   from Select.BuildBoundNavItems' positional indexing. *@
+                var indexedItems = filteredItems.Select((it, idx) => (Item: it, Index: idx)).ToList();
+                <Virtualize Items="@indexedItems" Context="entry" ItemSize="@Context.ItemSize">
+                    @RenderBoundItem(entry.Item, entry.Index)
                 </Virtualize>
             }
             else if (Context.ItemGroup is not null)
@@ -128,7 +129,7 @@
         // otherwise share a DOM id, so aria-activedescendant / Enter would land on the
         // wrong row. The index is the item's position in the filtered (+ grouped) sequence
         // — the same basis Select.BuildBoundNavItems uses, keeping the two in sync.
-        var itemId = $"select-item-bound-{index}";
+        var itemId = $"{Context.ContentId}-bound-{index}";
 
         // Bound items are rendered inline (no component instance), so they cannot self-register
         // the way SelectItem does. Keyboard nav instead derives its list on the parent Select

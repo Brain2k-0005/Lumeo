@@ -263,6 +263,11 @@
         await Task.Yield();
         if (_disposed) return;
         await Interop.PositionFixed(_contentId, _wrapperId, "start", true, "bottom");
+        // Mark registered as soon as the first global registration lands so
+        // CloseDropdown/DisposeAsync actually run UnpositionFixed / UnregisterClickOutside /
+        // UnregisterPreventDefaultKeys. Previously this flag was never set after open, so
+        // every close short-circuited teardown and leaked the global registrations.
+        _registered = true;
         if (_disposed) return;
         await Interop.RegisterClickOutside(_contentId, _wrapperId, async () =>
         {

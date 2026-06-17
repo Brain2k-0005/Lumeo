@@ -504,10 +504,10 @@
             case "End":        await MoveFocusToAsync(SkipDisabled(StartOfWeek(day).AddDays(6), -1)); break;
             case "PageUp":     await MoveFocusToAsync(SkipDisabled(day.AddMonths(-1), 1)); break;
             case "PageDown":   await MoveFocusToAsync(SkipDisabled(day.AddMonths(1), -1)); break;
-            case "Enter":
-            case " ":
-                await SelectDay(day);
-                break;
+            // Enter/Space are intentionally NOT handled here: the day cell is a
+            // native <button> whose @onclick already calls SelectDay, so handling
+            // the key here too fired SelectDay twice — in range mode that set
+            // RangeStart and RangeEnd to the same day in a single keypress.
         }
     }
 
@@ -521,8 +521,12 @@
         var candidate = from;
         for (var i = 0; i < 62 && IsDisabled(candidate); i++)
         {
-            var next = candidate.AddDays(step);
-            if (next == candidate) break; // clamped at DateOnly.Min/MaxValue
+            // AddDays THROWS (it does not clamp) once the result would leave DateOnly's
+            // 0001-01-01..9999-12-31 range, so stop there. Min/MaxDate constraints
+            // normally settle this loop long before the type bounds are reached.
+            DateOnly next;
+            try { next = candidate.AddDays(step); }
+            catch (ArgumentOutOfRangeException) { break; }
             candidate = next;
         }
         return IsDisabled(candidate) ? from : candidate;
@@ -544,8 +548,6 @@
         // tabbable day never becomes a non-focusable native-disabled button.
         if (IsDisabled(target)) return;
 
-        // DateOnly clamps at its Min/MaxValue, so PageUp from year 1 / PageDown
-        // from year 9999 simply stays put rather than throwing.
         _focusedDate = target;
 
         // Pull the displayed month onto the target so the day actually renders
@@ -560,7 +562,8 @@
         var ownerMonth = NumberOfMonths == 1
             ? DisplayDate
             : new DateOnly(target.Year, target.Month, 1);
-        await Interop.FocusElement(DayId(ownerMonth, target));
+        try { await Interop.FocusElement(DayId(ownerMonth, target)); }
+        catch (JSDisconnectedException) { }
     }
 
     private void PreviousMonth() => DisplayDate = DisplayDate.AddMonths(-1);
