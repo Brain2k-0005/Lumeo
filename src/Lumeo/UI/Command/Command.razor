@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @{
     var visibleItems = VisibleItems;
@@ -40,17 +41,54 @@
     // Index into VisibleItems. -1 = nothing highlighted (pristine palette).
     private int _highlightedIndex = -1;
 
+    // Last item id we scrolled into view. Tracked so OnAfterRenderAsync only
+    // issues a scroll when the highlight actually moves to a different item
+    // (#214) — not on every unrelated re-render.
+    private string? _lastScrolledItemId;
+
     private string CssClass => Cx.Merge("flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground", Class);
 
     /// <summary>
-    /// The substring filter shared by Command (nav list + visible count),
-    /// CommandItem (self-hide) and CommandGroup (hide-when-empty). An item with
-    /// no FilterValue always matches, mirroring the previous behavior.
+    /// The filter shared by Command (nav list + visible count), CommandItem
+    /// (self-hide) and CommandGroup (hide-when-empty). An item with no
+    /// FilterValue always matches. Matching is now smarter than a plain
+    /// substring (#214): a contiguous substring match still wins, but the term
+    /// also matches when its characters appear in order anywhere in the filter
+    /// value (subsequence) — so "gp" finds "Git Push" and "stng" finds
+    /// "Settings". This mirrors cmdk's forgiving fuzzy search while keeping the
+    /// trivial substring case (the common one) cheap and first.
     /// </summary>
     internal static bool MatchesFilter(string searchText, string? filterValue)
-        => string.IsNullOrEmpty(searchText)
-           || string.IsNullOrEmpty(filterValue)
-           || filterValue.Contains(searchText, StringComparison.OrdinalIgnoreCase);
+    {
+        if (string.IsNullOrEmpty(searchText) || string.IsNullOrEmpty(filterValue))
+            return true;
+        if (filterValue.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return IsSubsequence(searchText, filterValue);
+    }
+
+    /// <summary>True when every non-whitespace character of <paramref name="needle"/>
+    /// appears in <paramref name="haystack"/> in the same order (case-insensitive).
+    /// Spaces in the needle are ignored so a multi-word query ("git push")
+    /// matches "Git: Push to remote". Returns false for an all-whitespace needle
+    /// so a stray space never widens results to everything.</summary>
+    private static bool IsSubsequence(string needle, string haystack)
+    {
+        var n = 0;
+        // Skip leading whitespace; if the needle is all whitespace, no match.
+        while (n < needle.Length && char.IsWhiteSpace(needle[n])) n++;
+        if (n >= needle.Length) return false;
+
+        for (var h = 0; h < haystack.Length && n < needle.Length; h++)
+        {
+            if (char.IsWhiteSpace(needle[n])) { n++; continue; }
+            if (char.ToLowerInvariant(haystack[h]) == char.ToLowerInvariant(needle[n]))
+                n++;
+        }
+        // Consume any trailing whitespace in the needle.
+        while (n < needle.Length && char.IsWhiteSpace(needle[n])) n++;
+        return n == needle.Length;
+    }
 
     /// <summary>Registered items that pass the current filter, in DOM order.</summary>
     private List<CommandItem> VisibleItems
@@ -139,6 +177,36 @@
             }
         }
         _highlightedIndex = -1;
+    }
+
+    /// <summary>The element id of the currently highlighted item, or null when
+    /// nothing is highlighted. Drives both <c>aria-activedescendant</c> on the
+    /// input and the scroll-into-view target.</summary>
+    private string? HighlightedItemId
+    {
+        get
+        {
+            var items = VisibleItems;
+            return _highlightedIndex >= 0 && _highlightedIndex < items.Count
+                ? items[_highlightedIndex].ItemId
+                : null;
+        }
+    }
+
+    // Keep the highlighted item visible as the keyboard moves it past the
+    // scroll viewport edge (#214). Only scrolls when the target changes so an
+    // unrelated re-render doesn't fight the user's mouse-wheel scroll.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var id = HighlightedItemId;
+        if (id is null)
+        {
+            _lastScrolledItemId = null;
+            return;
+        }
+        if (id == _lastScrolledItemId) return;
+        _lastScrolledItemId = id;
+        await Interop.ScrollIntoView(id, "nearest");
     }
 
     public record CommandContext(

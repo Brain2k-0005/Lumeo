@@ -2147,6 +2147,17 @@ export function scrollSelectorIntoView(selector) {
     el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
 }
 
+// Scrolls an element (by id) into view inside its nearest scroll container.
+// Used by keyboard-navigated lists (Command palette active item) to keep the
+// highlighted row visible as Arrow/Home/End move it. block: 'nearest' avoids
+// yanking the whole list when the row is already visible; only off-screen rows
+// scroll. No-op when the element is absent (e.g. filtered out this render).
+export function scrollIntoViewById(elementId, block) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'instant', block: block || 'nearest', inline: 'nearest' });
+}
+
 // --- Affix: scroll-based sticky positioning ---
 
 const affixHandlers = new Map();
@@ -2300,7 +2311,7 @@ export function setInputCaret(elementId, position) {
 
 export function getTextareaCaretPosition(elementId) {
     const el = document.getElementById(elementId);
-    if (!el) return { top: 0, left: 0, selectionStart: 0 };
+    if (!el) return { top: 0, left: 0, offsetTop: 0, offsetLeft: 0, lineHeight: 20, selectionStart: 0 };
 
     const { selectionStart } = el;
     const elRect = el.getBoundingClientRect();
@@ -2320,11 +2331,23 @@ export function getTextareaCaretPosition(elementId) {
     div.appendChild(span);
     document.body.appendChild(div);
 
+    // Viewport-relative coordinates (kept for back-compat with any caller).
     const top = elRect.top + span.offsetTop - el.scrollTop;
     const left = elRect.left + span.offsetLeft - el.scrollLeft;
+
+    // Caret position relative to the textarea's offsetParent (the Mention
+    // component's `position: relative` wrapper). The dropdown is positioned
+    // absolutely against that wrapper so it tracks the textarea on page /
+    // container scroll instead of staying pinned at a stale viewport point
+    // (#205). offsetTop/Left already account for the textarea's own position
+    // within the wrapper.
+    const caretTop = el.offsetTop + span.offsetTop - el.scrollTop;
+    const caretLeft = el.offsetLeft + span.offsetLeft - el.scrollLeft;
+    const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) * 1.2) || 20;
+
     document.body.removeChild(div);
 
-    return { top, left, selectionStart };
+    return { top, left, offsetTop: caretTop, offsetLeft: caretLeft, lineHeight, selectionStart };
 }
 
 // --- LocalStorage ---

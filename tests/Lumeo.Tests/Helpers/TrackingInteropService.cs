@@ -304,6 +304,18 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
+
+    // Scroll-into-view tracking — Command palette scrolls its active item into
+    // view on keyboard navigation (#214); tests assert the call fires with the
+    // highlighted item's id.
+    private readonly List<(string ElementId, string Block)> _scrollIntoViewCalls = new();
+    public IReadOnlyList<(string ElementId, string Block)> ScrollIntoViewCalls => _scrollIntoViewCalls;
+    public ValueTask ScrollIntoView(string elementId, string block = "nearest")
+    {
+        _scrollIntoViewCalls.Add((elementId, block));
+        return ValueTask.CompletedTask;
+    }
+
     // Column resize tracking — used to assert that the JS pointerdown listener
     // is wired during the first render, not lazily on the first pointerdown
     // (the lazy path lost the originating event so the first drag was a no-op).

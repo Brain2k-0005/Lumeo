@@ -48,6 +48,14 @@ internal sealed class FloatingPositionInterop
         await module.InvokeVoidAsync("scrollSelectorIntoView", selector);
     }
 
+    public async ValueTask ScrollIntoView(
+        IJSObjectReference module,
+        string elementId,
+        string block)
+    {
+        await module.InvokeVoidAsync("scrollIntoViewById", elementId, block);
+    }
+
     public async ValueTask<double> GetElementDimension(
         IJSObjectReference module,
         string elementId,
