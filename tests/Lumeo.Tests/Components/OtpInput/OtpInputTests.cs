@@ -247,4 +247,115 @@ public class OtpInputTests : IAsyncLifetime
         Assert.Contains("border", inputCls);
         Assert.Contains("text-center", inputCls);
     }
+
+    // --- #178: arrow nav, clean rejection, no interior-space padding ---
+
+    [Fact]
+    public void Each_Cell_Has_Aria_Label()
+    {
+        var cut = _ctx.Render<L.OtpInput>(p => p.Add(c => c.Length, 3));
+        var inputs = cut.FindAll("input");
+        Assert.Equal("Digit 1 of 3", inputs[0].GetAttribute("aria-label"));
+        Assert.Equal("Digit 3 of 3", inputs[2].GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void Rejected_Char_Does_Not_Change_Value()
+    {
+        string? changed = null;
+        var changeCount = 0;
+        var cut = _ctx.Render<L.OtpInput>(p => p
+            .Add(c => c.Length, 4)
+            .Add(c => c.InputMode, "Numeric")
+            .Add(c => c.Value, "")
+            .Add(c => c.ValueChanged, v => { changed = v; changeCount++; }));
+
+        // Letters are invalid in Numeric mode — the value stays empty and
+        // ValueChanged must not fire.
+        cut.FindAll("input")[0].Input(new ChangeEventArgs { Value = "x" });
+
+        Assert.Null(changed);
+        Assert.Equal(0, changeCount);
+    }
+
+    [Fact]
+    public void Rejected_Char_Reverts_The_Cell_To_Model_Value()
+    {
+        // The bound value attribute follows the (empty) model, so the painted
+        // reject is discarded rather than lingering.
+        var cut = _ctx.Render<L.OtpInput>(p => p
+            .Add(c => c.Length, 4)
+            .Add(c => c.InputMode, "Numeric"));
+
+        cut.FindAll("input")[0].Input(new ChangeEventArgs { Value = "x" });
+
+        Assert.Equal("", cut.FindAll("input")[0].GetAttribute("value") ?? "");
+    }
+
+    [Fact]
+    public void Arrow_Keys_Do_Not_Throw_Or_Mutate()
+    {
+        var cut = _ctx.Render<L.OtpInput>(p => p
+            .Add(c => c.Length, 4)
+            .Add(c => c.Value, "12"));
+
+        cut.FindAll("input")[1].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+        cut.FindAll("input")[1].KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
+        cut.FindAll("input")[1].KeyDown(new KeyboardEventArgs { Key = "Home" });
+        cut.FindAll("input")[1].KeyDown(new KeyboardEventArgs { Key = "End" });
+
+        Assert.Equal("1", cut.FindAll("input")[0].GetAttribute("value"));
+        Assert.Equal("2", cut.FindAll("input")[1].GetAttribute("value"));
+    }
+
+    [Fact]
+    public void Arrow_Keys_Do_Not_Fire_ValueChanged()
+    {
+        string? changed = "sentinel";
+        var cut = _ctx.Render<L.OtpInput>(p => p
+            .Add(c => c.Length, 4)
+            .Add(c => c.Value, "12")
+            .Add(c => c.ValueChanged, v => changed = v));
+
+        cut.FindAll("input")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        Assert.Equal("sentinel", changed);
+    }
+
+    [Fact]
+    public void Clearing_Middle_Cell_Does_Not_Leave_Interior_Space()
+    {
+        string? changed = null;
+        var cut = _ctx.Render<L.OtpInput>(p => p
+            .Add(c => c.Length, 4)
+            .Add(c => c.Value, "123")
+            .Add(c => c.ValueChanged, v => changed = v));
+
+        // Backspace at the middle (index 1) clears that cell. The emitted value
+        // must collapse to gap-free "13", never "1 3" with an interior space.
+        cut.FindAll("input")[1].KeyDown(new KeyboardEventArgs { Key = "Backspace" });
+
+        Assert.NotNull(changed);
+        Assert.DoesNotContain(" ", changed);
+        Assert.Equal("13", changed);
+    }
+
+    [Fact]
+    public void Paste_Does_Not_Pad_With_Trailing_Spaces()
+    {
+        string? changed = null;
+        var cut = _ctx.Render<L.OtpInput>(p => p
+            .Add(c => c.Length, 6)
+            .Add(c => c.ValueChanged, v => changed = v));
+
+        // Drive the paste handler the way the JS interop callback would.
+        var otp = cut.Instance;
+        cut.InvokeAsync(() =>
+            (Task)typeof(L.OtpInput)
+                .GetMethod("HandlePaste", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(otp, ["123"])!);
+
+        Assert.Equal("123", changed);
+        Assert.Equal(3, changed!.Length); // no padding to Length
+    }
 }
