@@ -270,6 +270,7 @@ internal static partial class LumeoDefaultStrings
 
         // ── Kanban ──────────────────────────────────────────────────────
         ["Kanban.AddCard"] = "Add card",
+        ["Kanban.CardRoleDescription"] = "Draggable card",
 
         // ── Carousel ────────────────────────────────────────────────────
         ["Carousel.PreviousSlide"] = "Previous slide",
