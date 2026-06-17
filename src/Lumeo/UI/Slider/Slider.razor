@@ -173,6 +173,14 @@ else
     [Parameter] public bool IsRange { get; set; }
     [Parameter] public double ValueEnd { get; set; }
     [Parameter] public EventCallback<double> ValueEndChanged { get; set; }
+    /// <summary>
+    /// Minimum permitted distance between the two range thumbs, expressed in
+    /// <see cref="Step"/> units (so the absolute gap is <c>MinStepsBetweenThumbs * Step</c>).
+    /// Mirrors Radix's <c>minStepsBetweenThumbs</c>. The default of <c>0</c> lets the
+    /// thumbs meet but — unlike before — they can no longer cross past each other.
+    /// Only meaningful when <see cref="IsRange"/> is true.
+    /// </summary>
+    [Parameter] public int MinStepsBetweenThumbs { get; set; }
     [Parameter] public double Min { get; set; } = 0;
     [Parameter] public double Max { get; set; } = 100;
     [Parameter] public double Step { get; set; } = 1;
@@ -235,10 +243,22 @@ else
         }
     }
 
+    // Absolute minimum gap the two thumbs must keep, in value units. Negative
+    // MinStepsBetweenThumbs is treated as 0 (thumbs may meet but not cross).
+    private double MinGap => Math.Max(0, MinStepsBetweenThumbs) * Step;
+
     private async Task OnStartInput(ChangeEventArgs e)
     {
         if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
         {
+            // Clamp so the start thumb can't cross (or come within MinGap of) the
+            // end thumb — previously the two inputs moved independently and could
+            // swap order, which scrambled the filled range.
+            var ceiling = ValueEnd - MinGap;
+            if (newValue > ceiling) newValue = ceiling;
+            if (newValue < Min) newValue = Min;
+
+            if (newValue == Value) return;
             Value = newValue;
             await ValueChanged.InvokeAsync(Value);
         }
@@ -248,6 +268,12 @@ else
     {
         if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
         {
+            // Symmetric clamp: the end thumb can't drop below start + MinGap.
+            var floor = Value + MinGap;
+            if (newValue < floor) newValue = floor;
+            if (newValue > Max) newValue = Max;
+
+            if (newValue == ValueEnd) return;
             ValueEnd = newValue;
             await ValueEndChanged.InvokeAsync(ValueEnd);
         }
