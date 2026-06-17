@@ -12,6 +12,7 @@ namespace Lumeo.Tests.Components.Alert;
 /// callback would still fire OnDismiss + StateHasChanged after the test context
 /// (and therefore the component) had already been disposed.
 /// </summary>
+[Collection("UnobservedTaskException")] // serialized + isolated: see UnobservedTaskExceptionCollection
 public class AlertAutoDismissTests
 {
     [Fact]

@@ -10,18 +10,26 @@ namespace Lumeo.Tests.Services;
 /// outer InvokeAsync(...) Task was unobserved when the dispatcher itself faulted
 /// synchronously (e.g. circuit/renderer disposed before the work delegate ran).
 /// </summary>
+[Collection("UnobservedTaskException")] // serialized + isolated: see UnobservedTaskExceptionCollection
 public class SafeAsyncDispatcherTests
 {
     [Fact]
     public async Task FireAndForget_Does_Not_Surface_UnobservedTaskException_When_InvokeAsync_Throws_Synchronously()
     {
+        // TaskScheduler.UnobservedTaskException is PROCESS-WIDE; under the parallel
+        // test run other tests' faulted fire-and-forget tasks also raise it. Tag this
+        // test's own exception with a unique marker and only record THAT one — without
+        // this, a foreign unobserved exception landing in the GC window trips the
+        // assertion (the flake). We still SetObserved() everything to keep the process
+        // alive, exactly as before.
+        var marker = "SAD-sync-" + Guid.NewGuid().ToString("N");
         var unobservedTcs = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
         {
-            // Mark as observed so the test process doesn't crash.
             e.SetObserved();
-            unobservedTcs.TrySetResult(e.Exception);
+            if (e.Exception?.ToString().Contains(marker) == true)
+                unobservedTcs.TrySetResult(e.Exception);
         };
 
         TaskScheduler.UnobservedTaskException += handler;
@@ -30,7 +38,7 @@ public class SafeAsyncDispatcherTests
             // invokeAsync that throws synchronously (mimics InvokeAsync called on a
             // disposed renderer/circuit). The pre-fix code path would create an
             // unobserved Task here.
-            Func<Func<Task>, Task> faultingInvoke = _ => throw new ObjectDisposedException("Renderer");
+            Func<Func<Task>, Task> faultingInvoke = _ => throw new ObjectDisposedException(marker);
 
             SafeAsyncDispatcher.FireAndForget(
                 faultingInvoke,
@@ -46,7 +54,7 @@ public class SafeAsyncDispatcherTests
                 await Task.Delay(50);
             }
 
-            // If we get a result here, an unobserved exception fired (test fails).
+            // If we get OUR marked exception here, the dispatcher leaked it (test fails).
             // We expect a timeout instead — meaning the dispatcher swallowed it.
             var winner = await Task.WhenAny(unobservedTcs.Task, Task.Delay(500));
             Assert.NotSame(unobservedTcs.Task, winner);
@@ -60,12 +68,17 @@ public class SafeAsyncDispatcherTests
     [Fact]
     public async Task FireAndForget_Does_Not_Surface_UnobservedTaskException_When_InvokeAsync_Returns_Faulted_Task()
     {
+        // Process-wide event (see the sync test above): scope to this test's own
+        // exception via a unique marker so a parallel test's unobserved fault can't
+        // trip the assertion.
+        var marker = "SAD-faulted-" + Guid.NewGuid().ToString("N");
         var unobservedTcs = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
         {
             e.SetObserved();
-            unobservedTcs.TrySetResult(e.Exception);
+            if (e.Exception?.ToString().Contains(marker) == true)
+                unobservedTcs.TrySetResult(e.Exception);
         };
 
         TaskScheduler.UnobservedTaskException += handler;
@@ -73,7 +86,7 @@ public class SafeAsyncDispatcherTests
         {
             // Faulted task return — same shape as a renderer that's already disposed.
             Func<Func<Task>, Task> faultingInvoke = _ =>
-                Task.FromException(new ObjectDisposedException("Renderer"));
+                Task.FromException(new ObjectDisposedException(marker));
 
             SafeAsyncDispatcher.FireAndForget(
                 faultingInvoke,
