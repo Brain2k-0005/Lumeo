@@ -206,7 +206,16 @@
         }
         if (id == _lastScrolledItemId) return;
         _lastScrolledItemId = id;
-        await Interop.ScrollIntoView(id, "nearest");
+        // Guard the interop against a disconnect/disposal race so a late
+        // OnAfterRender during teardown can't throw and destabilize rendering;
+        // reset the tracker so a live re-render can retry the scroll.
+        try
+        {
+            await Interop.ScrollIntoView(id, "nearest");
+        }
+        catch (JSDisconnectedException) { _lastScrolledItemId = null; }
+        catch (ObjectDisposedException) { _lastScrolledItemId = null; }
+        catch (InvalidOperationException) { _lastScrolledItemId = null; } // JS unavailable during prerender
     }
 
     public record CommandContext(

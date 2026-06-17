@@ -47,6 +47,20 @@ public class IconTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Whitespace_Title_Is_Decorative()
+    {
+        // A whitespace-only Title carries no accessible name, so the icon must
+        // fall back to decorative (aria-hidden) rather than role="img" with a
+        // blank aria-label.
+        var cut = _ctx.Render<L.Icon>(p => p
+            .Add(i => i.Name, "Search")
+            .Add(i => i.Title, "   "));
+        var svg = cut.Find("svg");
+        Assert.Equal("true", svg.GetAttribute("aria-hidden"));
+        Assert.Null(svg.GetAttribute("role"));
+    }
+
+    [Fact]
     public void Consumer_Aria_Label_Wins_Over_Default_Hidden()
     {
         var cut = _ctx.Render<L.Icon>(p => p

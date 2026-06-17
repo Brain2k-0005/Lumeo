@@ -84,6 +84,7 @@
     private bool _focused;
     private bool _canScrollPrev;
     private bool _canScrollNext = true;
+    private bool _isDisposed;
     private readonly string _rootId = LumeoIds.New("carousel-root");
     private readonly string _contentId = LumeoIds.New("carousel");
     // A consumer-supplied `id` in AdditionalAttributes overrides the generated
@@ -299,7 +300,9 @@
         // without Loop set, otherwise it would stall on the last slide).
         _ = InvokeAsync(async () =>
         {
-            if (!AutoplayActive) return;
+            // Guard the dispose race: the timer can fire and queue this callback
+            // just as DisposeAsync runs, so bail if we've been torn down.
+            if (!AutoplayActive || _isDisposed) return;
             if (_canScrollNext)
             {
                 await ScrollNext();
@@ -335,6 +338,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _isDisposed = true;
         if (_autoplayTimer is not null)
         {
             _autoplayTimer.Elapsed -= OnAutoplayTick;
