@@ -199,6 +199,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset) =>
         ScrollspyScrollTo(containerId, sectionId, smooth);
 
+    // Tabs overflow scroll arrows (#239) — observes the scrollable tablist and
+    // reports (canScrollStart, canScrollEnd) on scroll/resize so the list can
+    // show/hide its overflow chevrons; TabsScrollBy nudges the list by a chunk.
+    // Default no-ops so existing implementers / test doubles keep compiling.
+    ValueTask RegisterTabsOverflow(string listId, Func<bool, bool, Task> handler) => ValueTask.CompletedTask;
+    ValueTask UnregisterTabsOverflow(string listId) => ValueTask.CompletedTask;
+    /// <summary>Scrolls the tablist by <paramref name="delta"/> px (smooth).
+    /// Horizontal scrolls scrollLeft; vertical scrolls scrollTop.</summary>
+    ValueTask TabsScrollBy(string listId, double delta, bool horizontal) => ValueTask.CompletedTask;
+
     // Toast Swipe
     ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler);
     ValueTask UnregisterToastSwipe(string toastId, string elementId);

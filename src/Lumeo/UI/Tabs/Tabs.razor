@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -56,6 +56,19 @@
     /// vice-versa). Default is <c>false</c> (no wrap-around at boundaries).
     /// </summary>
     [Parameter] public bool SwipeWrap { get; set; }
+
+    /// <summary>
+    /// How arrow-key navigation activates a tab (WAI-ARIA tabs pattern):
+    /// <list type="bullet">
+    /// <item><see cref="TabsActivation.Automatic"/> (default) — arrow keys move
+    /// focus AND activate the focused tab immediately (its panel shows). Best
+    /// when switching tabs is cheap.</item>
+    /// <item><see cref="TabsActivation.Manual"/> — arrow keys only move focus;
+    /// the user presses Enter or Space (or clicks) to activate. Preferred when
+    /// activating a tab is expensive (loads data, runs queries).</item>
+    /// </list>
+    /// </summary>
+    [Parameter] public TabsActivation Activation { get; set; } = TabsActivation.Automatic;
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -148,10 +161,20 @@
         Action<string> RegisterContent,
         Action<string> UnregisterContent,
         Func<string, Task> SwipeNavigate,
-        TabsReorderState Reorder)
+        TabsReorderState Reorder,
+        TabsActivation Activation = TabsActivation.Automatic)
     {
         public TabsContext(string ActiveValue, EventCallback<string> SetValue, Lumeo.Orientation Orientation = Lumeo.Orientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
             : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string, bool)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => { }, _ => Task.CompletedTask, new TabsReorderState()) { }
+    }
+
+    /// <summary>Arrow-key activation mode for tabs. See <see cref="Tabs.Activation"/>.</summary>
+    public enum TabsActivation
+    {
+        /// <summary>Arrow keys move focus and activate the focused tab. Default.</summary>
+        Automatic,
+        /// <summary>Arrow keys move focus only; Enter/Space (or click) activates.</summary>
+        Manual
     }
 
     /// <summary>
