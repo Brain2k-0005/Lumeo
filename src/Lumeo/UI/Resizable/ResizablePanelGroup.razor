@@ -9,7 +9,9 @@
         GetPanelSize,
         _sizes.Count,
         RegisterPanel,
-        GetPanelConstraints
+        GetPanelConstraints,
+        IsPanelCollapsed,
+        EventCallback.Factory.Create<int>(this, ToggleCollapse)
     );
 }
 
@@ -28,6 +30,31 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public Lumeo.Orientation Direction { get; set; } = Lumeo.Orientation.Horizontal;
     [Parameter] public double[]? DefaultSizes { get; set; }
+
+    /// <summary>
+    /// Optional previously-persisted panel sizes. The group seeds its layout
+    /// from this on first render (taking precedence over panel
+    /// <c>DefaultSize</c>s and <see cref="DefaultSizes"/>). Mirrors DataGrid /
+    /// Tabs <c>SavedLayout</c>: the library never persists on its own — store
+    /// the snapshot you receive from <see cref="OnLayout"/> and feed it back
+    /// here on init.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// protected override void OnInitialized() => _layout = LoadFromStorage();
+    ///
+    /// &lt;ResizablePanelGroup SavedLayout="_layout" OnLayout="SaveToStorage"&gt;
+    /// </code>
+    /// </example>
+    [Parameter] public ResizableLayout? SavedLayout { get; set; }
+
+    /// <summary>
+    /// Fires after every resize (drag, keyboard step, or collapse toggle) with
+    /// the current panel sizes so the consumer can persist them. Pairs with
+    /// <see cref="SavedLayout"/> to round-trip the layout through storage.
+    /// </summary>
+    [Parameter] public EventCallback<ResizableLayout> OnLayout { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -36,6 +63,12 @@
     private int _panelCount;
     private readonly Dictionary<int, (double MinSize, double MaxSize)> _panelConstraints = new();
     private readonly Dictionary<int, double> _panelDefaultSizes = new();
+    // Per-panel collapse config + live collapsed state + the size remembered at
+    // collapse time so a toggle/expand can restore it.
+    private readonly Dictionary<int, (bool Collapsible, double CollapsedSize)> _collapseConfig = new();
+    private readonly HashSet<int> _collapsed = new();
+    private readonly Dictionary<int, double> _preCollapseSize = new();
+    private bool _savedLayoutApplied;
 
     private string DirectionString => Direction == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
 
@@ -46,6 +79,17 @@
 
     protected override void OnParametersSet()
     {
+        // SavedLayout wins over DefaultSizes: a persisted layout is the user's
+        // last explicit choice. Applied once (per the guard) so a re-render
+        // doesn't stomp a live drag.
+        if (!_savedLayoutApplied && SavedLayout is { Sizes.Count: > 0 })
+        {
+            _sizes = new List<double>(SavedLayout.Sizes);
+            _panelCount = _sizes.Count;
+            _savedLayoutApplied = true;
+            return;
+        }
+
         if (DefaultSizes is { Length: > 0 })
         {
             if (_sizes.Count != DefaultSizes.Length)
@@ -58,6 +102,9 @@
 
     protected override void OnAfterRender(bool firstRender)
     {
+        // A SavedLayout already seeded _sizes in OnParametersSet — don't override.
+        if (_savedLayoutApplied && _sizes.Count > 0) return;
+
         // Panels register from their OnInitialized, which runs during this
         // component's first render — AFTER OnParametersSet has already executed.
         // When the consumer didn't supply group-level DefaultSizes, seed the
@@ -79,6 +126,12 @@
         StateHasChanged();
     }
 
+    private async Task EmitLayoutAsync()
+    {
+        if (OnLayout.HasDelegate)
+            await OnLayout.InvokeAsync(new ResizableLayout(new List<double>(_sizes)));
+    }
+
     private double GetPanelSize(int index)
     {
         if (index >= 0 && index < _sizes.Count)
@@ -91,14 +144,57 @@
         return 100.0 / count;
     }
 
-    private void RegisterPanel(int order, double defaultSize, double minSize, double maxSize)
+    private void RegisterPanel(int order, double defaultSize, double minSize, double maxSize, bool collapsible, double collapsedSize)
     {
         _panelDefaultSizes[order] = defaultSize;
         _panelConstraints[order] = (minSize, maxSize);
+        _collapseConfig[order] = (collapsible, collapsedSize);
     }
 
     private (double MinSize, double MaxSize) GetPanelConstraints(int index) =>
         _panelConstraints.TryGetValue(index, out var c) ? c : (0.0, 100.0);
+
+    private (bool Collapsible, double CollapsedSize) GetCollapseConfig(int index) =>
+        _collapseConfig.TryGetValue(index, out var c) ? c : (false, 0.0);
+
+    private bool IsPanelCollapsed(int index) => _collapsed.Contains(index);
+
+    // Public collapse toggle (wired to ResizablePanel.Collapsible UI / consumer
+    // code via the cascading context). Collapsing parks the panel at its
+    // CollapsedSize and hands the freed space to the next panel; expanding
+    // restores the size remembered at collapse time (falling back to its
+    // DefaultSize).
+    private async Task ToggleCollapse(int index)
+    {
+        if (index < 0 || index >= _sizes.Count) return;
+        var (collapsible, collapsedSize) = GetCollapseConfig(index);
+        if (!collapsible) return;
+
+        // Pair the panel with a neighbour to absorb / release the delta — prefer
+        // the next panel, fall back to the previous one (last panel collapse).
+        var neighbour = index + 1 < _sizes.Count ? index + 1 : index - 1;
+        if (neighbour < 0) return;
+
+        if (_collapsed.Contains(index))
+        {
+            var restore = _preCollapseSize.TryGetValue(index, out var s) ? s : _panelDefaultSizes.GetValueOrDefault(index, 50);
+            var delta = restore - _sizes[index];
+            _sizes[index] = restore;
+            _sizes[neighbour] = Math.Max(0, _sizes[neighbour] - delta);
+            _collapsed.Remove(index);
+        }
+        else
+        {
+            _preCollapseSize[index] = _sizes[index];
+            var freed = _sizes[index] - collapsedSize;
+            _sizes[index] = collapsedSize;
+            _sizes[neighbour] += freed;
+            _collapsed.Add(index);
+        }
+
+        StateHasChanged();
+        await EmitLayoutAsync();
+    }
 
     private async Task HandleDrag((int PanelIndex, double Delta) args)
     {
@@ -116,23 +212,54 @@
 
         var deltaPercent = (deltaPx / totalSize) * 100.0;
 
+        var leftConstraints = GetPanelConstraints(panelIndex);
+        var rightConstraints = GetPanelConstraints(panelIndex + 1);
+        var pairTotal = _sizes[panelIndex] + _sizes[panelIndex + 1];
+        var desiredLeft = _sizes[panelIndex] + deltaPercent;
+
+        // Collapsible panels snap to CollapsedSize when over-dragged below half
+        // their MinSize (matching Splitter), instead of clamping at MinSize.
+        var (leftCollapsible, leftCollapsed) = GetCollapseConfig(panelIndex);
+        var (rightCollapsible, rightCollapsed) = GetCollapseConfig(panelIndex + 1);
+        if (leftCollapsible && desiredLeft < leftConstraints.MinSize - (leftConstraints.MinSize - leftCollapsed) / 2)
+        {
+            _preCollapseSize[panelIndex] = _sizes[panelIndex];
+            _sizes[panelIndex] = leftCollapsed;
+            _sizes[panelIndex + 1] = pairTotal - leftCollapsed;
+            _collapsed.Add(panelIndex);
+            StateHasChanged();
+            await EmitLayoutAsync();
+            return;
+        }
+        if (rightCollapsible && (pairTotal - desiredLeft) < rightConstraints.MinSize - (rightConstraints.MinSize - rightCollapsed) / 2)
+        {
+            _preCollapseSize[panelIndex + 1] = _sizes[panelIndex + 1];
+            _sizes[panelIndex + 1] = rightCollapsed;
+            _sizes[panelIndex] = pairTotal - rightCollapsed;
+            _collapsed.Add(panelIndex + 1);
+            StateHasChanged();
+            await EmitLayoutAsync();
+            return;
+        }
+
         // Enforce per-panel min/max constraints by CLAMPING (not rejecting):
         // a fast drag whose accumulated delta overshoots a boundary lands
         // exactly ON the boundary instead of stalling short of it.
-        var leftConstraints = GetPanelConstraints(panelIndex);
-        var rightConstraints = GetPanelConstraints(panelIndex + 1);
-
-        var pairTotal = _sizes[panelIndex] + _sizes[panelIndex + 1];
         var minLeft = Math.Max(leftConstraints.MinSize, pairTotal - rightConstraints.MaxSize);
         var maxLeft = Math.Min(leftConstraints.MaxSize, pairTotal - rightConstraints.MinSize);
         if (minLeft > maxLeft) return; // unsatisfiable constraints — keep current sizes
 
-        var newLeft = Math.Clamp(_sizes[panelIndex] + deltaPercent, minLeft, maxLeft);
+        var newLeft = Math.Clamp(desiredLeft, minLeft, maxLeft);
 
         _sizes[panelIndex] = newLeft;
         _sizes[panelIndex + 1] = pairTotal - newLeft;
+        // A resize that lands either panel back at/above its MinSize clears its
+        // collapsed flag.
+        if (_sizes[panelIndex] >= leftConstraints.MinSize) _collapsed.Remove(panelIndex);
+        if (_sizes[panelIndex + 1] >= rightConstraints.MinSize) _collapsed.Remove(panelIndex + 1);
 
         StateHasChanged();
+        await EmitLayoutAsync();
     }
 
     public ValueTask DisposeAsync()
@@ -146,7 +273,9 @@
         EventCallback<(int PanelIndex, double Delta)> OnHandleDrag,
         Func<int, double> GetPanelSize,
         int PanelCount,
-        Action<int, double, double, double> RegisterPanel,
-        Func<int, (double MinSize, double MaxSize)> GetPanelConstraints
+        Action<int, double, double, double, bool, double> RegisterPanel,
+        Func<int, (double MinSize, double MaxSize)> GetPanelConstraints,
+        Func<int, bool> IsPanelCollapsed,
+        EventCallback<int> ToggleCollapse
     );
 }
