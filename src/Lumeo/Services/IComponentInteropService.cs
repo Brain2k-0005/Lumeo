@@ -342,7 +342,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     ValueTask<bool> MotionPrefersReducedMotion() => ValueTask.FromResult(false);
 
-    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",");
+    /// <param name="separator">Thousands group separator (locale-aware; supplied by NumberTicker).</param>
+    /// <param name="decimalSeparator">Decimal separator (locale-aware). Defaults to "." for back-compat.</param>
+    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".");
     ValueTask MotionDisposeTicker(string elementId);
     ValueTask MotionRevealText(string elementId, int staggerMs, double threshold);
     ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false);

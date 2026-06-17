@@ -26,12 +26,15 @@ function prefersReducedMotion() {
         && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function formatNumber(value, decimals, separator) {
+function formatNumber(value, decimals, separator, decimalSeparator) {
     const sep = separator !== undefined && separator !== null ? separator : ',';
+    const dec = decimalSeparator !== undefined && decimalSeparator !== null ? decimalSeparator : '.';
+    // toFixed always emits '.' as the decimal point — split on it, then re-join
+    // with the locale-aware grouping/decimal separators supplied by NumberTicker.
     const fixed = value.toFixed(decimals);
     const [whole, frac] = fixed.split('.');
     const withSep = sep ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, sep) : whole;
-    return frac !== undefined ? `${withSep}.${frac}` : withSep;
+    return frac !== undefined ? `${withSep}${dec}${frac}` : withSep;
 }
 
 export const motion = {
@@ -43,13 +46,24 @@ export const motion = {
     },
 
     /* ---------- NumberTicker ---------- */
-    tickNumber(elementId, from, to, durationMs, decimals, separator) {
+    tickNumber(elementId, from, to, durationMs, decimals, separator, decimalSeparator) {
         const el = document.getElementById(elementId);
         if (!el) return;
 
         // Cancel any in-flight animation on the same element.
         const prev = motionTickers.get(elementId);
         if (prev) cancelAnimationFrame(prev);
+
+        const dec = Math.max(0, decimals | 0);
+        const sep = separator !== undefined ? separator : ',';
+        const decSep = decimalSeparator !== undefined ? decimalSeparator : '.';
+
+        // Reduced motion: skip the count-up and show the final value immediately.
+        if (prefersReducedMotion()) {
+            el.textContent = formatNumber(to, dec, sep, decSep);
+            motionTickers.delete(elementId);
+            return;
+        }
 
         // start is set on the FIRST step() callback rather than at schedule time.
         // When a tab loads in the background, RAF is paused, so the original
@@ -60,8 +74,6 @@ export const motion = {
         let start = -1;
         const delta = to - from;
         const dur = Math.max(1, durationMs | 0);
-        const dec = Math.max(0, decimals | 0);
-        const sep = separator !== undefined ? separator : ',';
 
         const step = (now) => {
             if (start < 0) start = now;
@@ -69,12 +81,12 @@ export const motion = {
             // easeOutCubic — snappy, settles nicely
             const eased = 1 - Math.pow(1 - t, 3);
             const current = from + delta * eased;
-            el.textContent = formatNumber(current, dec, sep);
+            el.textContent = formatNumber(current, dec, sep, decSep);
             if (t < 1) {
                 const id = requestAnimationFrame(step);
                 motionTickers.set(elementId, id);
             } else {
-                el.textContent = formatNumber(to, dec, sep);
+                el.textContent = formatNumber(to, dec, sep, decSep);
                 motionTickers.delete(elementId);
             }
         };

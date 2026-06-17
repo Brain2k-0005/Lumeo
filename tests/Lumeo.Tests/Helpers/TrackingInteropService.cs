@@ -469,7 +469,7 @@ public sealed class TrackingInteropService : IComponentInteropService
         _prefersReducedMotionCallCount++;
         return ValueTask.FromResult(ReducedMotion);
     }
-    public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",") => ValueTask.CompletedTask;
+    public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".") => ValueTask.CompletedTask;
     public ValueTask MotionDisposeTicker(string elementId) => ValueTask.CompletedTask;
     public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => ValueTask.CompletedTask;
     public ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false) => ValueTask.CompletedTask;
