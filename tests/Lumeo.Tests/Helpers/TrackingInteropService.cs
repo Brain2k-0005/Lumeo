@@ -160,8 +160,26 @@ public sealed class TrackingInteropService : IComponentInteropService
         _tabSwipeUnregistrations.Add(elementId);
         return ValueTask.CompletedTask;
     }
-    public ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterSortableTouch(string containerId) => ValueTask.CompletedTask;
+    // Sortable touch tracking — used to assert SortableList (re-)registers its
+    // touch handler against the CURRENT Disabled state (a list mounted Disabled
+    // then enabled must still wire up touch) and drops it again when disabled.
+    private readonly List<string> _sortableTouchRegistrations = new();
+    private readonly List<string> _sortableTouchUnregistrations = new();
+    public int RegisterSortableTouchCallCount => _sortableTouchRegistrations.Count;
+    public IReadOnlyList<string> RegisterSortableTouchContainerIds => _sortableTouchRegistrations;
+    public int UnregisterSortableTouchCallCount => _sortableTouchUnregistrations.Count;
+    public IReadOnlyList<string> UnregisterSortableTouchContainerIds => _sortableTouchUnregistrations;
+
+    public ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler)
+    {
+        _sortableTouchRegistrations.Add(containerId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterSortableTouch(string containerId)
+    {
+        _sortableTouchUnregistrations.Add(containerId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterCarouselSwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth") => ValueTask.CompletedTask;
