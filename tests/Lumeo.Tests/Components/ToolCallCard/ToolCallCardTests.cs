@@ -155,4 +155,59 @@ public class ToolCallCardTests : IAsyncLifetime
 
         Assert.Contains("tcc-x", cut.Find("details").GetAttribute("class"));
     }
+
+    // --- #307: copy-to-clipboard ---
+
+    [Fact]
+    public void Input_Section_Renders_A_Copy_Button()
+    {
+        var cut = _ctx.Render<Lumeo.ToolCallCard>(p => p
+            .Add(c => c.ToolName, "x")
+            .Add(c => c.Input, "{\"q\":\"test\"}"));
+
+        Assert.Contains(
+            cut.FindAll("button"),
+            b => b.GetAttribute("aria-label") == "Copy to clipboard");
+    }
+
+    [Fact]
+    public void Output_Section_Renders_A_Copy_Button()
+    {
+        var cut = _ctx.Render<Lumeo.ToolCallCard>(p => p
+            .Add(c => c.ToolName, "x")
+            .Add(c => c.Status, Lumeo.ToolCallCard.ToolCallStatus.Success)
+            .Add(c => c.Output, "result-data"));
+
+        Assert.Contains(
+            cut.FindAll("button"),
+            b => b.GetAttribute("aria-label") == "Copy to clipboard");
+    }
+
+    [Fact]
+    public void No_Copy_Button_When_No_Input_Or_Output()
+    {
+        var cut = _ctx.Render<Lumeo.ToolCallCard>(p => p
+            .Add(c => c.ToolName, "x"));
+
+        Assert.DoesNotContain(
+            cut.FindAll("button"),
+            b => b.GetAttribute("aria-label") == "Copy to clipboard");
+    }
+
+    [Fact]
+    public async Task Clicking_Copy_Flips_Button_To_Copied_State()
+    {
+        // Loose-mode JSInterop lets CopyToClipboard resolve without throwing; the
+        // button only flips to "Copied" if the interop call completed.
+        var cut = _ctx.Render<Lumeo.ToolCallCard>(p => p
+            .Add(c => c.ToolName, "x")
+            .Add(c => c.Input, "payload"));
+
+        var copyBtn = cut.FindAll("button")
+            .First(b => b.GetAttribute("aria-label") == "Copy to clipboard");
+
+        await cut.InvokeAsync(() => copyBtn.Click());
+
+        Assert.Contains("Copied", cut.Markup);
+    }
 }
