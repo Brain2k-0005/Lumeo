@@ -1,6 +1,11 @@
 @namespace Lumeo
+@implements IDisposable
 
 @{
+    // Re-read the stable registry index every render so it stays correct when
+    // items are added/removed (the registry list is the single source of truth
+    // for ordering — see Steps.GetItemIndex / #244).
+    _index = Context?.Parent is not null ? Context.Parent.GetItemIndex(this) : 0;
     var status = GetStatus();
     var isHorizontal = Context?.Orientation != Lumeo.Orientation.Vertical;
     var isError = Status == StepsItemStatus.Error && status == StepStatus.Current;
@@ -102,14 +107,17 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _index;
+    private Steps? _registeredParent;
 
-    protected override void OnParametersSet()
+    protected override void OnInitialized()
     {
-        if (Context?.Parent is not null)
-        {
-            _index = Context.Parent.GetNextIndex();
-        }
+        // Register once with the parent on mount; identity (this) keys the
+        // stable index, so the slot survives independent re-renders.
+        _registeredParent = Context?.Parent;
+        _registeredParent?.RegisterItem(this);
     }
+
+    public void Dispose() => _registeredParent?.UnregisterItem(this);
 
     private bool IsClickable => Context?.Clickable == true;
     private bool IsAnimated => Context?.Animated == true;

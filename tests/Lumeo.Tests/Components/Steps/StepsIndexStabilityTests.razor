@@ -1,0 +1,83 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // #244 — step index assigned via an OnParametersSet counter drifted when a
+    // child re-rendered independently of the parent reset. The index is now
+    // identity-keyed against the parent registry, so the rendered step numbers
+    // and completed/current states stay stable across re-renders.
+
+    public StepsIndexStabilityTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Step_Numbers_Are_Sequential_And_Stable()
+    {
+        var cut = Render(@<Steps CurrentStep="0">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+            <StepsItem Title="Three" />
+        </Steps>);
+
+        // Future steps render their 1-based number inside the indicator button.
+        var numbers = cut.FindAll("button span")
+            .Select(s => s.TextContent.Trim())
+            .Where(t => t is "1" or "2" or "3")
+            .ToList();
+
+        Assert.Equal(new[] { "1", "2", "3" }, numbers);
+    }
+
+    [Fact]
+    public void Indices_Do_Not_Drift_After_Rerender()
+    {
+        var cut = Render(@<Steps CurrentStep="1">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+            <StepsItem Title="Three" />
+        </Steps>);
+
+        // Step 0 completed (Check icon), step 1 current (aria-current=step),
+        // step 2 future (renders "3").
+        var currentBefore = cut.FindAll("button[aria-current='step']");
+        Assert.Single(currentBefore);
+
+        // Force several re-renders; with the old counter model the parent reset
+        // races the children and the current marker / numbering drift.
+        for (var i = 0; i < 3; i++)
+        {
+            cut.Render();
+        }
+
+        var currentAfter = cut.FindAll("button[aria-current='step']");
+        Assert.Single(currentAfter);
+        Assert.Contains("Two", currentAfter[0].ParentElement!.ParentElement!.TextContent);
+
+        // The third step still shows its stable 1-based number.
+        var lastNumber = cut.FindAll("button span")
+            .Select(s => s.TextContent.Trim())
+            .FirstOrDefault(t => t == "3");
+        Assert.Equal("3", lastNumber);
+    }
+
+    [Fact]
+    public void Removing_A_Step_Renumbers_Remaining_Stably()
+    {
+        // Drive the conditional item through a real parameter so the @if is
+        // re-evaluated on re-render (a fragment-closure local captured at first
+        // render would not re-run inside the child content).
+        var cut = Render<StepsRemovalHost>(p => p.Add(h => h.ShowThird, true));
+
+        Assert.Equal(3, cut.FindAll("button[aria-label]").Count);
+
+        cut.Render(p => p.Add(h => h.ShowThird, false));
+
+        // Two steps remain, numbered 1 and 2 — no ghost index from the removed
+        // third item.
+        var buttons = cut.FindAll("button[aria-label]");
+        Assert.Equal(2, buttons.Count);
+        var numbers = cut.FindAll("button span")
+            .Select(s => s.TextContent.Trim())
+            .Where(t => t is "1" or "2" or "3")
+            .ToList();
+        Assert.Equal(new[] { "1", "2" }, numbers);
+    }
+}
