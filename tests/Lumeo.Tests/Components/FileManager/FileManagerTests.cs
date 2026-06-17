@@ -263,4 +263,92 @@ public class FileManagerTests : IAsyncLifetime
         Assert.Equal("report", renameArgs!.Value.Node.Id);
         Assert.Equal("renamed-report.pdf", renameArgs.Value.NewName);
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // #314: swapping Root while keeping CurrentPath must show the NEW children
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FileManager_RootSwap_SameCurrentPath_ShowsNewChildren()
+    {
+        // First tree: "docs" contains report.pdf / notes.txt.
+        var treeA = BuildSampleTree();
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, treeA)
+            .Add(x => x.CurrentPath, "docs"));
+
+        Assert.Contains("report.pdf", cut.Markup);
+
+        // Swap in a FRESH tree whose "docs" folder holds different children,
+        // keeping CurrentPath == "docs". The old early-return matched on Id and
+        // kept the stale node; now the new children must render.
+        var treeB = new List<FileSystemNode>
+        {
+            new FileSystemNode
+            {
+                Id = "docs",
+                Name = "Documents",
+                IsFolder = true,
+                Children =
+                [
+                    new FileSystemNode { Id = "brandnew", Name = "brand-new.txt", IsFolder = false, Size = 10 }
+                ]
+            }
+        };
+
+        cut.Render(p => p
+            .Add(x => x.Root, treeB)
+            .Add(x => x.CurrentPath, "docs"));
+
+        var markup = cut.Markup;
+        Assert.Contains("brand-new.txt", markup);
+        Assert.DoesNotContain("report.pdf", markup); // stale child must be gone
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // #314: rows are keyboard-operable (Enter opens, Space selects)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FileManager_Row_Has_Tabindex_For_Keyboard_Focus()
+    {
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildSampleTree())
+            .Add(x => x.CurrentPath, "docs"));
+
+        var row = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
+        Assert.Equal("0", row.GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void FileManager_Space_On_Row_Selects_The_Node()
+    {
+        FileSystemNode? selected = null;
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildSampleTree())
+            .Add(x => x.CurrentPath, "docs")
+            .Add(x => x.SelectedNodeChanged, EventCallback.Factory.Create<FileSystemNode?>(this, n => selected = n)));
+
+        var row = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
+        row.KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = " " });
+
+        Assert.NotNull(selected);
+        Assert.Equal("report", selected!.Id);
+    }
+
+    [Fact]
+    public void FileManager_Enter_On_Folder_Row_Navigates_Into_It()
+    {
+        string? navigated = null;
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildSampleTree())
+            .Add(x => x.CurrentPath, "docs")
+            .Add(x => x.CurrentPathChanged, EventCallback.Factory.Create<string?>(this, v => navigated = v)));
+
+        // The "Archive" sub-folder appears as a row inside docs.
+        var row = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("Archive"));
+        row.KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Enter" });
+
+        Assert.Equal("archive", navigated);
+    }
 }

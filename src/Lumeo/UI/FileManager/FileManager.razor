@@ -1,5 +1,6 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @* ── Toolbar ─────────────────────────────────────────────────────────── *@
@@ -177,6 +178,9 @@
 
     // Navigation stack: list of ancestor nodes from root to current folder
     private List<FileSystemNode> _pathStack = [];
+    // The Root reference seen on the previous parameter set, used to detect a
+    // tree swap so cached stack nodes from the old tree get discarded.
+    private IReadOnlyList<FileSystemNode>? _lastRoot;
     private bool _loadingFolder;
     // Which nodes currently have their children expanded in the tree pane
     private readonly HashSet<string> _expandedTreeNodes = [];
@@ -188,6 +192,10 @@
     private bool _contextMenuOpen;
     private double _contextMenuX;
     private double _contextMenuY;
+    private readonly string _contextMenuId = LumeoIds.New("fm-ctx");
+    // Set when the context menu opens so OnAfterRender moves focus into it
+    // (so keyboard users land on the menu and Escape closes it).
+    private bool _shouldFocusContextMenu;
 
     // ──────────────────────────────────────────────────────────────────────────
     // CSS helpers
@@ -205,6 +213,17 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // Detect a Root replacement. If the consumer swaps in a fresh tree, any
+        // nodes cached in _pathStack point at the OLD tree and must be discarded
+        // — otherwise GetCurrentFolderContents returns the previous tree's
+        // children. Comparing by reference catches the swap even when
+        // CurrentPath is unchanged (which the Id-equality early-return below
+        // would otherwise treat as a no-op, keeping the stale node).
+        var rootChanged = !ReferenceEquals(Root, _lastRoot);
+        _lastRoot = Root;
+        if (rootChanged)
+            _pathStack = [];
+
         // Sync _pathStack when CurrentPath is changed externally
         if (CurrentPath is null)
         {
@@ -212,7 +231,9 @@
             return;
         }
 
-        // If path stack already ends at this id, nothing to do
+        // If path stack already ends at this id, nothing to do. (After a Root
+        // swap the stack was cleared above, so this won't short-circuit on a
+        // stale node.)
         if (_pathStack.Count > 0 && _pathStack[^1].Id == CurrentPath)
             return;
 
@@ -359,6 +380,24 @@
         }
     }
 
+    // Keyboard handler for file rows / grid tiles (a11y): Enter opens (folder
+    // navigate / file open), Space selects. Mirrors the click/double-click
+    // mouse affordances so the role=grid / role=listbox containers are actually
+    // keyboard-operable.
+    private async Task HandleRowKeyDown(FileSystemNode node, KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                await HandleNodeDoubleClick(node);
+                break;
+            case " ":
+            case "Spacebar": // legacy key name
+                await SelectNode(node);
+                break;
+        }
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Context menu / toolbar operations
     // ──────────────────────────────────────────────────────────────────────────
@@ -369,12 +408,27 @@
         _contextMenuX = e.ClientX;
         _contextMenuY = e.ClientY;
         _contextMenuOpen = true;
+        _shouldFocusContextMenu = true;
     }
 
     private void CloseContextMenu()
     {
         _contextMenuOpen = false;
         _contextMenuNode = null;
+    }
+
+    private void HandleContextMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") CloseContextMenu();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocusContextMenu && _contextMenuOpen)
+        {
+            _shouldFocusContextMenu = false;
+            try { await Interop.FocusElement(_contextMenuId); } catch (JSDisconnectedException) { }
+        }
     }
 
     private void BeginRename(FileSystemNode node)
@@ -566,10 +620,12 @@
             builder.AddAttribute(31, "class", rowClass);
             builder.AddAttribute(32, "role", "row");
             builder.AddAttribute(33, "aria-selected", isSelected.ToString().ToLowerInvariant());
-            builder.AddAttribute(34, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
-            builder.AddAttribute(35, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
-            builder.AddAttribute(36, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(37, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(34, "tabindex", 0);
+            builder.AddAttribute(35, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
+            builder.AddAttribute(36, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(37, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(38, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(39, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, e)));
 
             // Name cell
             builder.OpenElement(40, "td");
@@ -597,7 +653,10 @@
                     if (e.Key == "Enter") await CommitRename();
                     else if (e.Key == "Escape") CancelRename();
                 }));
-                builder.AddAttribute(67, "onclick:stopPropagation", true);
+                // Keep typing (Space / Enter) inside the rename box from bubbling
+                // to the row's keyboard handler.
+                builder.AddAttribute(67, "onkeydown:stopPropagation", true);
+                builder.AddAttribute(68, "onclick:stopPropagation", true);
                 builder.CloseElement();
             }
             else
@@ -657,22 +716,24 @@
         {
             var n = node;
             bool isSelected = SelectedNode?.Id == n.Id;
-            var tileClass = $"flex flex-col items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors border {(isSelected ? "bg-accent border-ring" : "border-transparent hover:bg-muted/40 hover:border-border/40")}";
+            var tileClass = $"flex flex-col items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors border focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring {(isSelected ? "bg-accent border-ring" : "border-transparent hover:bg-muted/40 hover:border-border/40")}";
 
             builder.OpenElement(10, "div");
             builder.AddAttribute(11, "class", tileClass);
             builder.AddAttribute(12, "role", "option");
             builder.AddAttribute(13, "aria-selected", isSelected.ToString().ToLowerInvariant());
             builder.AddAttribute(14, "aria-label", n.Name);
-            builder.AddAttribute(15, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
-            builder.AddAttribute(16, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
-            builder.AddAttribute(17, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(18, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(15, "tabindex", 0);
+            builder.AddAttribute(16, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
+            builder.AddAttribute(17, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(18, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(19, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(20, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, e)));
 
             // Icon
-            builder.OpenComponent<Blazicon>(20);
-            builder.AddAttribute(21, "Svg", GetNodeIcon(n));
-            builder.AddAttribute(22, "class", "h-10 w-10 text-muted-foreground");
+            builder.OpenComponent<Blazicon>(25);
+            builder.AddAttribute(26, "Svg", GetNodeIcon(n));
+            builder.AddAttribute(27, "class", "h-10 w-10 text-muted-foreground");
             builder.CloseComponent();
 
             // Name
@@ -758,9 +819,12 @@
 {
     var node = _contextMenuNode;
     <div class="fixed inset-0 z-40" @onclick="CloseContextMenu" aria-hidden="true"></div>
-    <div class="fixed z-50 min-w-[10rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg"
+    <div id="@_contextMenuId"
+         class="fixed z-50 min-w-[10rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg focus:outline-none"
          style="@($"left:{_contextMenuX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;top:{_contextMenuY.ToString(System.Globalization.CultureInfo.InvariantCulture)}px")"
          role="menu"
+         tabindex="-1"
+         @onkeydown="HandleContextMenuKeyDown"
          aria-label="@L["FileManager.FileActions"]">
         @if (node.IsFolder)
         {
