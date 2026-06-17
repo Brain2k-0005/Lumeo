@@ -79,18 +79,27 @@
 
     private async Task HandleDrop(DragEventArgs e)
     {
-        // Legacy raw-event path is always honored.
-        await OnDrop.InvokeAsync(e);
-
-        // Enriched path: only when we can resolve the dragged card + this column.
-        if (Board is { } board && board.DraggingCardId is { } cardId && ColumnId is { } toColumn
-            && board.HasCardDropHandler)
+        var board = Board;
+        try
         {
-            var toIndex = _pendingIndex < 0 ? int.MaxValue : _pendingIndex;
-            await board.NotifyDrop(new Kanban.DropEventArgs(cardId, board.DraggingFromColumnId, toColumn, toIndex));
-            board.EndDrag();
+            // Legacy raw-event path is always honored.
+            await OnDrop.InvokeAsync(e);
+
+            // Enriched path: only when we can resolve the dragged card + this column.
+            if (board is not null && board.DraggingCardId is { } cardId && ColumnId is { } toColumn
+                && board.HasCardDropHandler)
+            {
+                var toIndex = _pendingIndex < 0 ? int.MaxValue : _pendingIndex;
+                await board.NotifyDrop(new Kanban.DropEventArgs(cardId, board.DraggingFromColumnId, toColumn, toIndex));
+            }
         }
-        _pendingIndex = -1;
+        finally
+        {
+            // Always clear drag state, even if a handler above threw, so the board
+            // doesn't stay stuck mid-drag.
+            _pendingIndex = -1;
+            board?.EndDrag();
+        }
     }
 
     // Hovering the column body (not a card) targets the end of the column.
