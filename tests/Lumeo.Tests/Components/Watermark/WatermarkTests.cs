@@ -60,4 +60,64 @@ public class WatermarkTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-watermark", cls);
     }
+
+    // --- #290: image watermark mode ---
+
+    [Fact]
+    public void Image_Source_Renders_As_Overlay_Background()
+    {
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Image, "/logo.png"));
+
+        var overlay = cut.Find("div.pointer-events-none");
+        var style = overlay.GetAttribute("style") ?? "";
+        Assert.Contains("url(\"/logo.png\")", style);
+        Assert.Contains("background-repeat: repeat", style);
+    }
+
+    [Fact]
+    public void Image_Mode_Uses_Image_Dimensions_For_Background_Size()
+    {
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Image, "/logo.png")
+            .Add(w => w.ImageWidth, 200)
+            .Add(w => w.ImageHeight, 80));
+
+        var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
+        Assert.Contains("background-size: 200px 80px", style);
+    }
+
+    [Fact]
+    public void Image_Takes_Precedence_Over_Text()
+    {
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Text, "Confidential")
+            .Add(w => w.Image, "/logo.png"));
+
+        var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
+        Assert.Contains("/logo.png", style);
+        // The SVG text data-uri must not be emitted when an image is supplied.
+        Assert.DoesNotContain("data:image/svg+xml", style);
+    }
+
+    [Fact]
+    public void Image_Opacity_Applied_To_Overlay()
+    {
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Image, "/logo.png")
+            .Add(w => w.Opacity, 0.25));
+
+        var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
+        Assert.Contains("opacity: 0.25", style);
+    }
+
+    [Fact]
+    public void No_Image_Falls_Back_To_Text_Svg()
+    {
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Text, "Confidential"));
+
+        var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
+        Assert.Contains("data:image/svg+xml", style);
+    }
 }
