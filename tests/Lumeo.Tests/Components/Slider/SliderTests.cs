@@ -181,4 +181,99 @@ public class SliderTests : IAsyncLifetime
         var input = cut.Find("input[type='range']");
         Assert.Contains("accent-primary", input.GetAttribute("class"));
     }
+
+    // --- #186: range thumbs can't cross; min-steps-between ---
+
+    [Fact]
+    public void Range_Renders_Two_Inputs()
+    {
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 20)
+            .Add(s => s.ValueEnd, 80));
+
+        Assert.Equal(2, cut.FindAll("input[type='range']").Count);
+    }
+
+    [Fact]
+    public void Start_Thumb_Cannot_Cross_End_Thumb()
+    {
+        double? start = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 20)
+            .Add(s => s.ValueEnd, 50)
+            .Add(s => s.ValueChanged, v => start = v));
+
+        // Drag start past the end thumb — it must clamp at the end value.
+        cut.FindAll("input[type='range']")[0].Input("70");
+
+        Assert.Equal(50, start);
+    }
+
+    [Fact]
+    public void End_Thumb_Cannot_Cross_Start_Thumb()
+    {
+        double? end = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 40)
+            .Add(s => s.ValueEnd, 60)
+            .Add(s => s.ValueEndChanged, v => end = v));
+
+        // Drag end below the start thumb — it must clamp at the start value.
+        cut.FindAll("input[type='range']")[1].Input("10");
+
+        Assert.Equal(40, end);
+    }
+
+    [Fact]
+    public void MinStepsBetweenThumbs_Keeps_A_Gap()
+    {
+        double? start = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Step, 1)
+            .Add(s => s.MinStepsBetweenThumbs, 10)
+            .Add(s => s.Value, 20)
+            .Add(s => s.ValueEnd, 50)
+            .Add(s => s.ValueChanged, v => start = v));
+
+        // Try to push start to 48 — with a 10-step (10-unit) gap it clamps to 40.
+        cut.FindAll("input[type='range']")[0].Input("48");
+
+        Assert.Equal(40, start);
+    }
+
+    [Fact]
+    public void MinStepsBetweenThumbs_Clamps_End_Floor()
+    {
+        double? end = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Step, 2)
+            .Add(s => s.MinStepsBetweenThumbs, 5) // 5 * 2 = 10 unit gap
+            .Add(s => s.Value, 30)
+            .Add(s => s.ValueEnd, 60)
+            .Add(s => s.ValueEndChanged, v => end = v));
+
+        cut.FindAll("input[type='range']")[1].Input("32");
+
+        Assert.Equal(40, end); // 30 + 10
+    }
+
+    [Fact]
+    public void Range_Within_Bounds_Passes_Through_Unclamped()
+    {
+        double? start = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 20)
+            .Add(s => s.ValueEnd, 80)
+            .Add(s => s.ValueChanged, v => start = v));
+
+        cut.FindAll("input[type='range']")[0].Input("35");
+
+        Assert.Equal(35, start);
+    }
 }
