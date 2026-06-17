@@ -245,11 +245,18 @@
         if (ItemGroup is not null && !Virtualize)
             source = source.GroupBy(i => ItemGroup(i) ?? "").SelectMany(g => g);
 
+        // Index increments for EVERY item (disabled included) so it stays the item's position
+        // in the rendered sequence — ComboboxContent.RenderBoundItem assigns the same per-position
+        // id. Disabled items are skipped from the nav list but still consume an index slot so the
+        // enabled rows keep the id their rendered counterpart computed. Using the position (not
+        // value.GetHashCode()) makes the ids collision-proof.
+        var index = 0;
         foreach (var item in source)
         {
+            var i = index++;
             if (ItemDisabled?.Invoke(item) == true) continue;
             var value = ItemValue(item);
-            result.Add(($"combobox-item-bound-{value.GetHashCode():X}", value));
+            result.Add(($"combobox-item-bound-{i}", value));
         }
         return result;
     }
