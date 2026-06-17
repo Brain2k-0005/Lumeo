@@ -3,19 +3,62 @@
 @implements IAsyncDisposable
 
 <div id="@_listId" class="@RootClass" role="log" aria-live="polite" aria-relevant="additions" @attributes="AdditionalAttributes">
-    <div class="flex flex-col gap-4">
-        @ChildContent
-    </div>
+    @if (Virtualize && Items is not null)
+    {
+        @* Virtualized path: <Virtualize> must sit directly inside the scroll
+           container so its spacer elements measure correctly, so the flex-gap
+           wrapper used by the default path is replaced with per-item bottom
+           padding. Each item is a RenderFragment the consumer supplies. *@
+        <Virtualize TItem="RenderFragment" Items="VirtualizedItems" ItemSize="ItemSize" OverscanCount="OverscanCount" Context="message">
+            <div class="pb-4">
+                @message
+            </div>
+        </Virtualize>
+    }
+    else
+    {
+        <div class="flex flex-col gap-4">
+            @ChildContent
+        </div>
+    }
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool AutoScroll { get; set; } = true;
+
+    /// <summary>
+    /// Opt-in virtualization for long threads. When <c>true</c> AND
+    /// <see cref="Items"/> is supplied, messages render through
+    /// <see cref="Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize{TItem}"/>
+    /// so only the rows near the viewport are in the DOM. Leave <c>false</c> to
+    /// use the simple <see cref="ChildContent"/> path (unchanged default).
+    /// </summary>
+    [Parameter] public bool Virtualize { get; set; }
+
+    /// <summary>
+    /// The per-message render fragments to virtualize. Each entry is rendered as
+    /// one row (typically an <c>AgentMessage</c>). Only used when
+    /// <see cref="Virtualize"/> is <c>true</c>; ignored otherwise.
+    /// </summary>
+    [Parameter] public IReadOnlyList<RenderFragment>? Items { get; set; }
+
+    /// <summary>Estimated row height in pixels for the virtualizer (default 80).</summary>
+    [Parameter] public float ItemSize { get; set; } = 80f;
+
+    /// <summary>Extra rows to render above/below the viewport to smooth scrolling (default 4).</summary>
+    [Parameter] public int OverscanCount { get; set; } = 4;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _listId = LumeoIds.New("agent-message-list");
     private bool _observerRegistered;
+
+    // Virtualize<TItem>.Items wants an ICollection<TItem>; expose the read-only
+    // list as one without copying when it already is a collection.
+    private ICollection<RenderFragment> VirtualizedItems =>
+        Items as ICollection<RenderFragment> ?? Items?.ToList() ?? new List<RenderFragment>();
 
     private string RootClass =>
         Cx.Merge("flex w-full flex-col overflow-y-auto", Class);
