@@ -139,6 +139,12 @@
             <div class="flex min-h-full items-start p-4">
                 <div class="relative inline-block mx-auto">
                     <canvas id="@_canvasId" class="@CanvasVisibilityClass shadow-md"></canvas>
+                    @* pdf.js text layer — transparent, selectable spans aligned over
+                       the canvas so the rendered page is copyable and screen-reader
+                       readable. Populated by renderPage in pdf-viewer.js. *@
+                    <div id="@_textLayerId"
+                         class="lumeo-pdf-text-layer @CanvasVisibilityClass"
+                         aria-label="Page text"></div>
                     @if (_highlights.Count > 0 && !string.IsNullOrWhiteSpace(_searchQuery))
                     {
                         <div class="lumeo-pdf-highlights pointer-events-none absolute inset-0" aria-hidden="true">
@@ -206,6 +212,9 @@
     private const double ZoomStep = 0.25;
 
     private readonly string _canvasId = $"lumeo-pdf-{Guid.NewGuid():N}";
+    // Text layer id is derived from the canvas id by convention so renderPage can
+    // locate it without changing the JS call signature.
+    private string _textLayerId => $"{_canvasId}-text";
     private IJSObjectReference? _module;
     private string? _lastSrc;
     private int _lastPage;
