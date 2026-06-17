@@ -1,7 +1,8 @@
 @namespace Lumeo
+@implements IDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<button @ref="_el" type="button" aria-pressed="@IsPressed.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+<button @ref="_el" id="@_itemId" type="button" aria-pressed="@IsPressed.ToString().ToLower()" tabindex="@Context.GetTabIndex(Value, Disabled)" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
     @ChildContent
 </button>
 
@@ -22,8 +23,31 @@
     [CascadingParameter] public ToggleGroup.ToggleGroupContext Context { get; set; } = default!;
 
     private Microsoft.AspNetCore.Components.ElementReference _el;
+    private readonly string _itemId = LumeoIds.New("toggle-item");
+    private string? _registeredValue;
 
     private bool IsPressed => Context.SelectedItems.Contains(Value);
+
+    protected override void OnParametersSet()
+    {
+        if (Context is null) return;
+
+        // Register into the parent's shared registry (ownership-guarded re-key so
+        // we never delete a sibling's live entry) so roving tabindex + arrow-key
+        // focus movement see this item in DOM order with its current Disabled state.
+        if (_registeredValue is not null && _registeredValue != Value
+            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
+        {
+            Context.ItemValues.Remove(_registeredValue);
+            Context.ItemIds.Remove(_registeredValue);
+            Context.ItemDisabled.Remove(_registeredValue);
+        }
+        if (!Context.ItemValues.Contains(Value))
+            Context.ItemValues.Add(Value);
+        Context.ItemIds[Value] = _itemId;
+        Context.ItemDisabled[Value] = Disabled;
+        _registeredValue = Value;
+    }
 
     private string CssClass => Cx.Merge(VariantClasses, SizeClasses, BaseClasses, "cursor-pointer disabled:cursor-not-allowed", PressEffectClass, Class);
 
@@ -73,6 +97,18 @@
                 await Interop.RippleAttachAsync(_el);
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    public void Dispose()
+    {
+        // Conditionally-removed items must leave the registry (ownership-guarded).
+        if (Context is not null && _registeredValue is not null
+            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
+        {
+            Context.ItemValues.Remove(_registeredValue);
+            Context.ItemIds.Remove(_registeredValue);
+            Context.ItemDisabled.Remove(_registeredValue);
         }
     }
 }
