@@ -1,5 +1,6 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@inject IComponentInteropService Interop
 
 @*
     SwipeActions — iOS Mail.app pattern. A horizontal "card" whose foreground
@@ -26,6 +27,8 @@
 
 <div id="@_elementId"
      class="@CssClass"
+     role="group"
+     aria-label="@AriaLabel"
      @attributes="AdditionalAttributes">
 
     @if (LeadingActions is not null)
@@ -44,13 +47,19 @@
         </div>
     }
 
-    <div class="relative z-10 bg-background"
+    @* tabindex + keydown give keyboard users a way to reach the actions the
+       gesture reveals: arrows open the matching side, Escape/Home close. Once
+       open, the action buttons inside are reachable via Tab. *@
+    <div id="@_foregroundId"
+         class="relative z-10 bg-background focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-inset"
          style="@ForegroundStyle"
+         tabindex="0"
          @onpointerdown="HandlePointerDown"
          @onpointermove="HandlePointerMove"
          @onpointerup="HandlePointerUp"
          @onpointercancel="HandlePointerUp"
-         @onclick="HandleForegroundClick">
+         @onclick="HandleForegroundClick"
+         @onkeydown="HandleKeyDown">
         @ChildContent
     </div>
 </div>
@@ -60,10 +69,13 @@
     [Parameter] public RenderFragment? LeadingActions { get; set; }
     [Parameter] public RenderFragment? TrailingActions { get; set; }
     [Parameter] public double ActivationThresholdPx { get; set; } = 80;
+    /// <summary>Accessible label for the swipeable row, announced to AT users who can't see the gesture affordance.</summary>
+    [Parameter] public string AriaLabel { get; set; } = "Swipeable item — use arrow keys to reveal actions";
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _elementId = LumeoIds.New("swa");
+    private readonly string _foregroundId = LumeoIds.New("swa-fg");
 
     // v1: fixed open width — room for two 80px square action buttons.
     private const double OpenWidthPx = 160d;
@@ -78,6 +90,16 @@
     // clearly scrolling vertically we abandon the swipe so we don't fight
     // the page's normal vertical scroll.
     private bool _gestureLocked;
+    // Set true once a pointer gesture has actually moved the foreground, so the
+    // synthesized click the browser fires after a mouse drag can be swallowed
+    // (without this, a desktop swipe-open snaps shut immediately because the
+    // trailing click runs HandleForegroundClick and resets the offset).
+    private bool _didDrag;
+    private bool _suppressNextClick;
+    // True while we hold a pointer capture on the foreground (mid-drag), so we
+    // know to release it on pointer-up / dispose even if the pointer drifted
+    // off the element.
+    private bool _hasPointerCapture;
 
     private string CssClass =>
         Cx.Merge("relative w-full overflow-hidden touch-pan-y select-none bg-background", Class);
@@ -102,12 +124,13 @@
         _startY = e.ClientY;
         _dragging = true;
         _gestureLocked = false;
+        _didDrag = false;
         // Begin from whatever side is locked open (if any) — allows the
         // user to "push" a locked panel back toward closed.
         _currentOffset = _lockedOffset;
     }
 
-    private void HandlePointerMove(PointerEventArgs e)
+    private async Task HandlePointerMove(PointerEventArgs e)
     {
         if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;
 
@@ -128,6 +151,16 @@
                 return;
             }
             _gestureLocked = true;
+            _didDrag = true;
+            // Capture the pointer once we commit to a horizontal drag so moves
+            // keep routing here even if the pointer drifts off the foreground
+            // (otherwise the card sticks half-open). Capture only after the
+            // direction lock so we never steal vertical-scroll gestures.
+            if (!_hasPointerCapture)
+            {
+                _hasPointerCapture = true;
+                await Interop.SetPointerCaptureOnElement(_foregroundId, e.PointerId);
+            }
         }
 
         var target = _lockedOffset + dx;
@@ -141,12 +174,23 @@
         StateHasChanged();
     }
 
-    private void HandlePointerUp(PointerEventArgs e)
+    private async Task HandlePointerUp(PointerEventArgs e)
     {
         if (!_activePointerId.HasValue || _activePointerId.Value != e.PointerId) return;
 
+        var pointerId = _activePointerId.Value;
         _activePointerId = null;
         _dragging = false;
+
+        if (_hasPointerCapture)
+        {
+            _hasPointerCapture = false;
+            await Interop.ReleasePointerCaptureOnElement(_foregroundId, pointerId);
+        }
+
+        // A real drag just ended — swallow the click the browser synthesizes
+        // next on mouse input, so it doesn't immediately re-close the panel.
+        if (_didDrag) _suppressNextClick = true;
 
         // Settle: if |offset| >= threshold, lock to that side's full open
         // position; otherwise spring back to 0.
@@ -171,6 +215,14 @@
 
     private void HandleForegroundClick()
     {
+        // Swallow the synthetic click that follows a mouse drag — otherwise the
+        // panel we just opened would snap shut on the same gesture.
+        if (_suppressNextClick)
+        {
+            _suppressNextClick = false;
+            return;
+        }
+
         // Tapping the foreground while open closes it. While closed this is
         // a no-op so consumers' own click handlers inside ChildContent still
         // work (clicks bubble down to children before this runs).
@@ -182,9 +234,43 @@
         }
     }
 
-    public ValueTask DisposeAsync()
+    // Keyboard alternative to the swipe gesture (a11y): arrows open the side
+    // that has actions, Escape / Home close. Once open, the action buttons
+    // become reachable in the normal Tab order.
+    private void HandleKeyDown(KeyboardEventArgs e)
     {
-        // No JS registrations today; placeholder for v2 cleanup symmetry.
-        return ValueTask.CompletedTask;
+        switch (e.Key)
+        {
+            case "ArrowLeft":
+                // Reveal trailing (right-edge) actions, mirroring a left swipe.
+                if (TrailingActions is not null) OpenSide(-OpenWidthPx);
+                break;
+            case "ArrowRight":
+                // Reveal leading (left-edge) actions, mirroring a right swipe.
+                if (LeadingActions is not null) OpenSide(OpenWidthPx);
+                break;
+            case "Escape":
+            case "Home":
+                if (_lockedOffset != 0) OpenSide(0);
+                break;
+        }
+    }
+
+    private void OpenSide(double offset)
+    {
+        _lockedOffset = offset;
+        _currentOffset = offset;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Release a still-held pointer capture if the component is torn down
+        // mid-drag. The interop swallows JSDisconnectedException internally.
+        if (_hasPointerCapture && _activePointerId.HasValue)
+        {
+            _hasPointerCapture = false;
+            await Interop.ReleasePointerCaptureOnElement(_foregroundId, _activePointerId.Value);
+        }
     }
 }
