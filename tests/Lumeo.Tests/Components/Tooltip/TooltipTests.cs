@@ -172,4 +172,58 @@ public class TooltipTests : IAsyncLifetime
         var tooltip = cut.Find("[role='tooltip']");
         Assert.Equal("my-tooltip", tooltip.GetAttribute("data-testid"));
     }
+
+    // --- #221 a11y: aria-describedby, open-on-focus, Escape ---
+
+    [Fact]
+    public void Wrapper_AriaDescribedBy_Points_At_Tooltip_Content_When_Open()
+    {
+        var cut = RenderTooltip();
+        OpenTooltip(cut);
+
+        var wrapper = cut.Find("div");
+        var describedBy = wrapper.GetAttribute("aria-describedby");
+        Assert.False(string.IsNullOrEmpty(describedBy));
+        // The role=tooltip content must carry that id.
+        var tooltip = cut.Find("[role='tooltip']");
+        Assert.Equal(describedBy, tooltip.GetAttribute("id"));
+    }
+
+    [Fact]
+    public void Wrapper_Has_No_AriaDescribedBy_When_Closed()
+    {
+        var cut = RenderTooltip();
+        var wrapper = cut.Find("div");
+        Assert.True(string.IsNullOrEmpty(wrapper.GetAttribute("aria-describedby")));
+    }
+
+    [Fact]
+    public void Tooltip_Opens_On_Focus()
+    {
+        var cut = RenderTooltip();
+        cut.Find("div").TriggerEvent("onfocusin", new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+        Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
+    }
+
+    [Fact]
+    public void Tooltip_Closes_On_Blur()
+    {
+        var cut = RenderTooltip();
+        cut.Find("div").TriggerEvent("onfocusin", new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+        Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
+
+        cut.Find("div").TriggerEvent("onfocusout", new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+        Assert.Empty(cut.FindAll("[role='tooltip']"));
+    }
+
+    [Fact]
+    public void Escape_Dismisses_Focused_Tooltip()
+    {
+        var cut = RenderTooltip();
+        cut.Find("div").TriggerEvent("onfocusin", new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+        Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
+
+        cut.Find("div").KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
+        Assert.Empty(cut.FindAll("[role='tooltip']"));
+    }
 }
