@@ -107,6 +107,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _focus.GetMenuItemCount(module, containerId);
     }
 
+    public async ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)
+    {
+        var module = await GetModuleAsync();
+        return await _focus.FocusMenuItemByTypeahead(module, containerId, query, currentIndex);
+    }
+
     public async ValueTask LockScroll()
     {
         var module = await GetModuleAsync();

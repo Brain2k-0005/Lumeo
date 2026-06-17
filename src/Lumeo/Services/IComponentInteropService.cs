@@ -17,6 +17,19 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask FocusElement(string elementId);
     ValueTask FocusMenuItemByIndex(string containerId, int index);
     ValueTask<int> GetMenuItemCount(string containerId);
+
+    /// <summary>
+    /// Type-to-focus (Radix menu typeahead). Focuses the first enabled menu item
+    /// in <paramref name="containerId"/> whose text content starts with
+    /// <paramref name="query"/> (case-insensitive), searching after
+    /// <paramref name="currentIndex"/> first then wrapping, and returns its index
+    /// (or <c>-1</c> when nothing matches). Shared by DropdownMenu / Menubar /
+    /// MegaMenu via the <see cref="MenuTypeahead"/> buffer helper. Default
+    /// implementation returns <c>-1</c> so existing implementers / test doubles
+    /// keep compiling.
+    /// </summary>
+    ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex) =>
+        ValueTask.FromResult(-1);
     ValueTask LockScroll();
     ValueTask UnlockScroll();
     /// <summary>Toggles a class on <c>document.documentElement</c>. Useful for

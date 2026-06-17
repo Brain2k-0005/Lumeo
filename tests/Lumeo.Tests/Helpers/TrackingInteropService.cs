@@ -63,6 +63,14 @@ public sealed class TrackingInteropService : IComponentInteropService
     /// <summary>Value returned by GetMenuItemCount; defaults to 0 (= no-op nav).</summary>
     public int MenuItemCount { get; set; }
 
+    // Typeahead tracking (#222 DropdownMenu / #225 Menubar / #226 MegaMenu) —
+    // records each (containerId, query, currentIndex) call. The returned matched
+    // index is configurable so tests can drive the focus-follow assertion.
+    private readonly List<(string ContainerId, string Query, int CurrentIndex)> _typeaheadCalls = new();
+    public IReadOnlyList<(string ContainerId, string Query, int CurrentIndex)> TypeaheadCalls => _typeaheadCalls;
+    /// <summary>Index returned by FocusMenuItemByTypeahead; defaults to -1 (no match).</summary>
+    public int TypeaheadMatchIndex { get; set; } = -1;
+
     // ---- All remaining members are silent no-ops ----
 
     public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)
@@ -89,6 +97,11 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(MenuItemCount);
+    public ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)
+    {
+        _typeaheadCalls.Add((containerId, query, currentIndex));
+        return ValueTask.FromResult(TypeaheadMatchIndex);
+    }
     public ValueTask LockScroll() => ValueTask.CompletedTask;
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
