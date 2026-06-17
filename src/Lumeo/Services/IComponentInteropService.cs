@@ -226,6 +226,11 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Mention / Textarea Caret
     ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId);
 
+    // InputMask caret (selectionStart of a text <input>) — read/restore so masked
+    // edits insert/delete at the caret instead of jumping to the end.
+    ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(0);
+    ValueTask SetInputCaret(string elementId, int position) => ValueTask.CompletedTask;
+
     // Tabs (active indicator measurement for animated underline)
     ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
 

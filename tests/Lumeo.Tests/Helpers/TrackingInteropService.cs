@@ -315,6 +315,21 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterAffix(string elementId) => ValueTask.CompletedTask;
     public ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId) => ValueTask.FromResult(new ComponentInteropService.TextareaCaretInfo(0, 0, 0));
+
+    // InputMask caret (#177). GetInputCaret returns InputCaret (default 0) so tests
+    // can stage where the caret sits; SetInputCaret records each restore so tests
+    // can assert the component repositions the caret after a masked edit.
+    private readonly List<(string ElementId, int Position)> _setInputCaretCalls = new();
+    public IReadOnlyList<(string ElementId, int Position)> SetInputCaretCalls => _setInputCaretCalls;
+    /// <summary>Caret position returned by <see cref="GetInputCaret"/>; defaults to 0.</summary>
+    public int InputCaret { get; set; }
+    public ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(InputCaret);
+    public ValueTask SetInputCaret(string elementId, int position)
+    {
+        _setInputCaretCalls.Add((elementId, position));
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterBackToTop(string id) => ValueTask.CompletedTask;
     public ValueTask ScrollToTop() => ValueTask.CompletedTask;

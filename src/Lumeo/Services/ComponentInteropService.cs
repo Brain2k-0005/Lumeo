@@ -715,6 +715,30 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public record TextareaCaretInfo(double Top, double Left, int SelectionStart);
 
+    // --- InputMask caret (text input selectionStart) ---
+    // Read/restore the caret of a masked text <input> so edits insert and delete
+    // at the caret rather than snapping to the end after re-masking.
+
+    public async ValueTask<int> GetInputCaret(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<int>("getInputCaret", elementId);
+        }
+        catch (JSDisconnectedException) { return 0; }
+    }
+
+    public async ValueTask SetInputCaret(string elementId, int position)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setInputCaret", elementId, position);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- BackToTop ---
 
     public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
