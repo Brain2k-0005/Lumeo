@@ -432,9 +432,25 @@ export function refreshAllCharts() {
         // firing resize() calls into a disposed chart instance, leaving
         // both the observer and the dead instance attached to the DOM.
         if (chart._lumeoObserver) chart._lumeoObserver.disconnect();
+        // Carry the registrations off the old instance before disposing it.
+        const savedEvents = chart._lumeoEvents || [];
+        const savedTooltip = chart._lumeoTooltip || null;
         chart.dispose();
         const newChart = window.echarts.init(el, 'lumeo', { renderer: 'canvas' });
         newChart.setOption(opts);
+        // Re-attach the tooltip slot first (it calls setOption), then the event
+        // handlers. Disposing the old chart dropped every chart.on(...) binding
+        // and the custom tooltip.formatter, so OnClick/OnDataZoom/OnBrushSelected
+        // and the <ChartTooltip> portal would otherwise go dead after a theme
+        // change. Restore them onto the fresh instance.
+        if (savedTooltip) {
+            newChart._lumeoTooltip = savedTooltip;
+            attachTooltipSlot(newChart, savedTooltip.portalId, savedTooltip.dotnetRef);
+        }
+        if (savedEvents.length) {
+            newChart._lumeoEvents = savedEvents;
+            for (const ev of savedEvents) attachChartEvent(newChart, ev.eventName, ev.dotnetRef);
+        }
         // Re-attach a fresh observer so the new chart still auto-resizes;
         // disposeChart and the original initChart use the same pattern.
         const observer = new ResizeObserver(() => { newChart.resize(); });
@@ -444,9 +460,10 @@ export function refreshAllCharts() {
     }
 }
 
-export function registerChartEvent(elementId, eventName, dotnetRef) {
-    const chart = charts.get(elementId);
-    if (!chart) return;
+// Attach a single ECharts event handler to a live chart instance. Kept separate
+// from registerChartEvent so refreshAllCharts() can re-attach the same handlers
+// to the freshly re-initialized instance after a theme change.
+function attachChartEvent(chart, eventName, dotnetRef) {
     chart.on(eventName, (params) => {
         const data = {
             name: params.name || '',
@@ -458,6 +475,16 @@ export function registerChartEvent(elementId, eventName, dotnetRef) {
         };
         dotnetRef.invokeMethodAsync('OnChartEvent', eventName, JSON.stringify(data));
     });
+}
+
+export function registerChartEvent(elementId, eventName, dotnetRef) {
+    const chart = charts.get(elementId);
+    if (!chart) return;
+    // Remember the registration so a theme refresh (dispose + re-init) can
+    // re-attach it; without this OnClick/OnDataZoom/OnBrushSelected went dead
+    // after every lumeo:theme-changed.
+    (chart._lumeoEvents || (chart._lumeoEvents = [])).push({ eventName, dotnetRef });
+    attachChartEvent(chart, eventName, dotnetRef);
 }
 
 /**
@@ -479,7 +506,16 @@ export function registerChartEvent(elementId, eventName, dotnetRef) {
 export function registerTooltipSlot(elementId, portalId, dotnetRef) {
     const chart = charts.get(elementId);
     if (!chart) return;
+    // Remember the slot wiring so refreshAllCharts() can restore the custom
+    // formatter after the theme-change dispose + re-init (otherwise the
+    // <ChartTooltip> portal went dead after lumeo:theme-changed).
+    chart._lumeoTooltip = { portalId, dotnetRef };
+    attachTooltipSlot(chart, portalId, dotnetRef);
+}
 
+// Wires the tooltip formatter onto a live chart instance. See registerTooltipSlot
+// for the full portal contract; split out so a theme refresh can re-attach it.
+function attachTooltipSlot(chart, portalId, dotnetRef) {
     // Throttle hover-notifications to one per animation frame — moving the cursor
     // continuously across a busy chart can fire dozens of formatter callbacks per
     // second, but Razor only needs one per visible point change.
