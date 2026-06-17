@@ -200,8 +200,25 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterScrollspy(string containerId) => ValueTask.CompletedTask;
     public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth) => ValueTask.CompletedTask;
-    public ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterToastSwipe(string toastId, string elementId) => ValueTask.CompletedTask;
+    // Toast swipe tracking (#232) — the swipe-to-dismiss gesture is wired in
+    // JS + service but was never registered by any component. Tests assert the
+    // provider now registers per toast and can drive a dismissal via the
+    // captured handler.
+    private readonly List<(string ElementId, string ToastId, Func<string, Task> Handler)> _toastSwipeRegistrations = new();
+    private readonly List<(string ToastId, string ElementId)> _toastSwipeUnregistrations = new();
+    public IReadOnlyList<(string ElementId, string ToastId, Func<string, Task> Handler)> ToastSwipeRegistrations => _toastSwipeRegistrations;
+    public IReadOnlyList<(string ToastId, string ElementId)> ToastSwipeUnregistrations => _toastSwipeUnregistrations;
+
+    public ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)
+    {
+        _toastSwipeRegistrations.Add((elementId, toastId, handler));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterToastSwipe(string toastId, string elementId)
+    {
+        _toastSwipeUnregistrations.Add((toastId, elementId));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
