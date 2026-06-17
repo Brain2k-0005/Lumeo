@@ -66,7 +66,7 @@ public class ContextMenuViewportClampTests : IAsyncLifetime
         {
             Assert.Single(_interop.PositionAtPointCalls);
             var call = _interop.PositionAtPointCalls[0];
-            Assert.True(call.ContentId.StartsWith("context-menu-content-"));
+            Assert.StartsWith("context-menu-content-", call.ContentId);
             Assert.Equal(1900, call.X);
             Assert.Equal(1050, call.Y);
         });
