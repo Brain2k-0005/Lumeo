@@ -603,6 +603,30 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async Task OnScrollspyUpdate(string containerId, string? activeId)
         => await _scroll.OnScrollspyUpdate(containerId, activeId);
 
+    // --- Tabs overflow scroll arrows ---
+
+    public async ValueTask RegisterTabsOverflow(string listId, Func<bool, bool, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.RegisterTabsOverflow(module, GetSelfRef(), listId, handler);
+    }
+
+    public async ValueTask UnregisterTabsOverflow(string listId)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.UnregisterTabsOverflow(module, listId);
+    }
+
+    public async ValueTask TabsScrollBy(string listId, double delta, bool horizontal)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.TabsScrollBy(module, listId, delta, horizontal);
+    }
+
+    [JSInvokable]
+    public async Task OnTabsOverflowChange(string listId, bool canScrollStart, bool canScrollEnd)
+        => await _scroll.OnTabsOverflowChange(listId, canScrollStart, canScrollEnd);
+
     // --- Toast Swipe ---
 
     public async ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)

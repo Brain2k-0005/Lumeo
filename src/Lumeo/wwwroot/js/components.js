@@ -1571,6 +1571,56 @@ export function scrollspyScrollTo(containerId, sectionId, smooth, offset = 0) {
     });
 }
 
+// --- Tabs overflow scroll arrows (#239) ---
+
+const tabsOverflowHandlers = new Map();
+
+export function registerTabsOverflow(listId, dotnetRef) {
+    const el = document.getElementById(listId);
+    if (!el) return;
+
+    const report = () => {
+        // Horizontal tablists scroll on X, vertical on Y. A 1px slack absorbs
+        // sub-pixel rounding so the end arrow hides exactly at the end.
+        const horizontal = el.scrollWidth > el.clientWidth;
+        const canStart = horizontal ? el.scrollLeft > 1 : el.scrollTop > 1;
+        const canEnd = horizontal
+            ? el.scrollLeft < el.scrollWidth - el.clientWidth - 1
+            : el.scrollTop < el.scrollHeight - el.clientHeight - 1;
+        dotnetRef.invokeMethodAsync('OnTabsOverflowChange', listId, canStart, canEnd);
+    };
+
+    el.addEventListener('scroll', report, { passive: true });
+    // A ResizeObserver catches container resizes AND content changes (tabs
+    // added/removed) that flip whether the list overflows at all.
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+        ro = new ResizeObserver(report);
+        ro.observe(el);
+    }
+    window.addEventListener('resize', report, { passive: true });
+    tabsOverflowHandlers.set(listId, { el, report, ro });
+
+    requestAnimationFrame(report);
+}
+
+export function unregisterTabsOverflow(listId) {
+    const h = tabsOverflowHandlers.get(listId);
+    if (h) {
+        h.el.removeEventListener('scroll', h.report);
+        window.removeEventListener('resize', h.report);
+        if (h.ro) h.ro.disconnect();
+        tabsOverflowHandlers.delete(listId);
+    }
+}
+
+export function tabsScrollBy(listId, delta, horizontal) {
+    const el = document.getElementById(listId);
+    if (!el) return;
+    if (horizontal) el.scrollBy({ left: delta, behavior: 'smooth' });
+    else el.scrollBy({ top: delta, behavior: 'smooth' });
+}
+
 // --- Toast Swipe ---
 
 const toastSwipeHandlers = new Map();

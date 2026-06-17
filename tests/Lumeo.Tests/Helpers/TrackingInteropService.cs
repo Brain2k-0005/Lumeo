@@ -320,6 +320,31 @@ public sealed class TrackingInteropService : IComponentInteropService
         _toastSwipeUnregistrations.Add((toastId, elementId));
         return ValueTask.CompletedTask;
     }
+
+    // Tabs overflow scroll arrows (#239) — capture the observer handler so tests
+    // can drive arrow visibility, and record TabsScrollBy nudges.
+    private readonly Dictionary<string, Func<bool, bool, Task>> _tabsOverflowHandlers = new();
+    private readonly List<(string ListId, double Delta, bool Horizontal)> _tabsScrollByCalls = new();
+    public IReadOnlyCollection<string> TabsOverflowRegistrations => _tabsOverflowHandlers.Keys.ToList();
+    public IReadOnlyList<(string ListId, double Delta, bool Horizontal)> TabsScrollByCalls => _tabsScrollByCalls;
+    /// <summary>Simulates a JS overflow report for the given tablist.</summary>
+    public Task RaiseTabsOverflow(string listId, bool canScrollStart, bool canScrollEnd) =>
+        _tabsOverflowHandlers.TryGetValue(listId, out var h) ? h(canScrollStart, canScrollEnd) : Task.CompletedTask;
+    public ValueTask RegisterTabsOverflow(string listId, Func<bool, bool, Task> handler)
+    {
+        _tabsOverflowHandlers[listId] = handler;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterTabsOverflow(string listId)
+    {
+        _tabsOverflowHandlers.Remove(listId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask TabsScrollBy(string listId, double delta, bool horizontal)
+    {
+        _tabsScrollByCalls.Add((listId, delta, horizontal));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
