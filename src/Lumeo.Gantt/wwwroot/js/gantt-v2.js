@@ -109,12 +109,24 @@ function readTokens(el) {
     };
 }
 
+// Format a Date as a timezone-safe yyyy-MM-dd using its LOCAL fields. parseDate
+// builds dates at local midnight, so toISOString() (which converts to UTC) rolled
+// the calendar day back to the previous day in positive-UTC zones — corrupting the
+// date on every drag/resize round-trip. C# sends/receives plain "yyyy-MM-dd", so we
+// mirror that exactly with no UTC conversion.
+function toLocalDateString(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 function taskToJson(task) {
     return {
         Id: task.id,
         Name: task.name,
-        Start: task.start ? task.start.toISOString() : null,
-        End: task.end ? task.end.toISOString() : null,
+        Start: task.start ? toLocalDateString(task.start) : null,
+        End: task.end ? toLocalDateString(task.end) : null,
         Progress: task.progress,
         Dependencies: task.dependencies,
         CustomClass: null,
