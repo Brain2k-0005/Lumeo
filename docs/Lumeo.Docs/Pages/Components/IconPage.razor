@@ -102,7 +102,14 @@
                  id="@_gridId"
                  class="flex-1 p-3 min-w-0 overflow-y-auto"
                  style="max-height: 600px">
-                @if (Filtered.Count == 0)
+                @if (!CatalogReady)
+                {
+                    <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+                        <DynamicIcon Name="Loader" Class="h-8 w-8 animate-spin text-muted-foreground/40" />
+                        <Lumeo.Text Size="sm">Loading @LibraryDisplayName(IconService.ActiveLibrary) icons…</Lumeo.Text>
+                    </div>
+                }
+                else if (Filtered.Count == 0)
                 {
                     <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
                         <DynamicIcon Name="SearchX" Class="h-10 w-10 text-muted-foreground/40" />
@@ -390,12 +397,20 @@
     // changes, so scrollTop resets to 0 and the first row is never cut off.
     private string GridKey => $"grid-{IconService.ActiveLibrary}-{_query}";
 
-    // Cached catalog for the active library; falls back to Lucide while a pack
-    // is still loading (EnsureCatalogAsync repopulates + re-renders when done).
+    // Cached catalog for the active library, or empty while its pack is still
+    // loading. Deliberately NOT a Lucide fallback: returning Lucide's icons
+    // under e.g. the "Bootstrap Icons" label briefly showed mislabeled icons
+    // and let a click select the wrong library's entry before the load
+    // finished (Codex #170). The grid shows a loading state instead — see
+    // CatalogReady. EnsureCatalogAsync repopulates + re-renders when done.
     private IReadOnlyList<IconEntry> ActiveCatalog =>
         _catalogs.TryGetValue(IconService.ActiveLibrary, out var list)
             ? list
-            : (_catalogs.TryGetValue("lucide", out var lucide) ? lucide : Array.Empty<IconEntry>());
+            : Array.Empty<IconEntry>();
+
+    // False while the active (non-Lucide) library's pack is still loading.
+    // Lucide is built in OnInitialized so it is always ready (no flash).
+    private bool CatalogReady => _catalogs.ContainsKey(IconService.ActiveLibrary);
 
     private List<IconEntry> Filtered => string.IsNullOrWhiteSpace(_query)
         ? ActiveCatalog.ToList()
