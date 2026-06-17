@@ -52,13 +52,13 @@ public class AffixResizeTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Unregisters_Affix_On_Dispose()
+    public async Task Unregisters_Affix_On_Dispose()
     {
         var cut = _ctx.Render<Lumeo.Affix>(p => p
             .AddChildContent("Sticky"));
         var id = cut.Find("div").GetAttribute("id");
 
-        cut.Instance.DisposeAsync().AsTask().Wait();
+        await cut.Instance.DisposeAsync();
 
         Assert.Contains(id, _interop.AffixUnregistrations);
     }
