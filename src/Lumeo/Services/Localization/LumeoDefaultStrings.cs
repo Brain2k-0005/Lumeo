@@ -221,6 +221,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.Copied"] = "Copied",
         ["Common.More"] = "More",
         ["Common.Back"] = "Back",
+        ["Common.Expand"] = "Expand",
+        ["Common.Collapse"] = "Collapse",
         ["Common.Next"] = "Next",
         ["Common.ShowMore"] = "Show more",
         ["Common.ShowLess"] = "Show less",
@@ -237,6 +239,7 @@ internal static partial class LumeoDefaultStrings
         ["Transfer.NoItems"] = "No items",
         ["TreeSelect.Placeholder"] = "Select…",
         ["TreeSelect.NoResults"] = "No results",
+        ["TreeSelect.ClearSelection"] = "Clear selection",
         ["TagInput.Placeholder"] = "Add tag…",
 
         // ── Cascader ────────────────────────────────────────────────
