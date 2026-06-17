@@ -456,6 +456,8 @@ internal static partial class LumeoDefaultStrings
 
         // ── PromptInput ─────────────────────────────────────────────
         ["PromptInput.Send"] = "Send",
+        ["PromptInput.Stop"] = "Stop",
+        ["PromptInput.Attach"] = "Attach file",
 
         // ── Editor (RichTextEditor) ─────────────────────────────────
         ["Editor.StartWriting"] = "Start writing…",
@@ -918,6 +920,8 @@ internal static partial class LumeoDefaultStrings
 
         // ── PromptInput ─────────────────────────────────────────────
         ["PromptInput.Send"] = "Senden",
+        ["PromptInput.Stop"] = "Stopp",
+        ["PromptInput.Attach"] = "Datei anhängen",
 
         // ── Editor (RichTextEditor) ─────────────────────────────────
         ["Editor.StartWriting"] = "Schreiben beginnen…",
