@@ -14,6 +14,21 @@
     case "strong":
         <strong class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</strong>
         break;
+    case "em":
+        <em class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</em>
+        break;
+    case "b":
+        <b class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</b>
+        break;
+    case "i":
+        <i class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</i>
+        break;
+    case "label":
+        <label class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</label>
+        break;
+    case "mark":
+        <mark class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</mark>
+        break;
     default:
         <p class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</p>
         break;
@@ -26,6 +41,13 @@
     [Parameter] public string As { get; set; } = "p";
     [Parameter] public string? Leading { get; set; }
     [Parameter] public bool Truncate { get; set; }
+
+    /// <summary>Clamp the text to a fixed number of lines via Tailwind's
+    /// <c>line-clamp-N</c>. Supported range is 1–3 (the utilities shipped in the
+    /// prebuilt Lumeo CSS bundle); values outside that range are ignored.
+    /// Multi-line counterpart to <see cref="Truncate"/>, which clips to a single
+    /// line. When both are set, <c>Truncate</c> wins (single-line ellipsis).</summary>
+    [Parameter] public int? LineClamp { get; set; }
     [Parameter] public string? Align { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -68,8 +90,12 @@
             if (!string.IsNullOrEmpty(Leading))
                 classes.Add($"leading-{Leading}");
 
+            // Truncate (single-line ellipsis) takes precedence over LineClamp;
+            // applying both yields conflicting overflow rules.
             if (Truncate)
                 classes.Add("truncate");
+            else if (LineClamp is int n && n is >= 1 and <= 3)
+                classes.Add($"line-clamp-{n}");
 
             if (!string.IsNullOrEmpty(Align))
                 classes.Add($"text-{Align}");
