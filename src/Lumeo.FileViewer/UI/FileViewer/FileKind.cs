@@ -18,5 +18,16 @@ public enum FileKind
     Json,
     Csv,
     Text,
+
+    /// <summary>
+    /// Office document (Word / Excel / PowerPoint, legacy and OOXML). There is
+    /// no safe, dependency-free way to render these inline in the browser, so
+    /// <see cref="FileViewer"/> shows a clear "preview unavailable" panel with a
+    /// download (and optional open-in-online-viewer) action rather than a broken
+    /// blank frame. Detecting it as its own kind — instead of <see cref="Unknown"/> —
+    /// lets the fallback message name the format and offer the right CTA.
+    /// </summary>
+    Office,
+
     Unknown,
 }

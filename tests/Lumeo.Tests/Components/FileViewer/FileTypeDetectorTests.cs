@@ -27,6 +27,13 @@ public class FileTypeDetectorTests
     // Text fallbacks
     [InlineData("debug.log", FileKind.Text)]
     [InlineData("app.txt", FileKind.Text)]
+    // Office — Word / Excel / PowerPoint (OOXML + legacy binary)
+    [InlineData("report.docx", FileKind.Office)]
+    [InlineData("legacy.doc", FileKind.Office)]
+    [InlineData("budget.xlsx", FileKind.Office)]
+    [InlineData("old.xls", FileKind.Office)]
+    [InlineData("deck.pptx", FileKind.Office)]
+    [InlineData("slides.ppt", FileKind.Office)]
     // Unknown
     [InlineData("archive.zip", FileKind.Unknown)]
     [InlineData("/folder/", FileKind.Unknown)]
@@ -34,6 +41,19 @@ public class FileTypeDetectorTests
     public void DetectFromExtension_Maps_Known_Extensions(string src, FileKind expected)
     {
         Assert.Equal(expected, FileTypeDetector.DetectFromExtension(src));
+    }
+
+    [Theory]
+    [InlineData("application/vnd.openxmlformats-officedocument.wordprocessingml.document", FileKind.Office)]
+    [InlineData("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", FileKind.Office)]
+    [InlineData("application/vnd.openxmlformats-officedocument.presentationml.presentation", FileKind.Office)]
+    [InlineData("application/msword", FileKind.Office)]
+    [InlineData("application/vnd.ms-excel", FileKind.Office)]
+    [InlineData("application/vnd.ms-powerpoint", FileKind.Office)]
+    [InlineData("application/pdf", FileKind.Pdf)]
+    public void DetectFromMime_Maps_Office_Types(string mime, FileKind expected)
+    {
+        Assert.Equal(expected, FileTypeDetector.DetectFromMime(mime));
     }
 
     [Theory]
