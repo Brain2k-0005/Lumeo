@@ -219,12 +219,26 @@ else
             catch (InvalidOperationException) { } // prerender
         }
 
-        if (ShowArrows && firstRender && !_overflowRegistered)
+        if (ShowArrows && !_overflowRegistered)
         {
             try
             {
                 await Interop.RegisterTabsOverflow(_listId, OnOverflowChange);
                 _overflowRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
+        else if (!ShowArrows && _overflowRegistered)
+        {
+            // Scrollable/Arrows toggled off after first render — tear the observer
+            // down and clear the stale scroll-state so the arrows disappear.
+            try
+            {
+                await Interop.UnregisterTabsOverflow(_listId);
+                _overflowRegistered = false;
+                _canScrollStart = false;
+                _canScrollEnd = false;
             }
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // prerender

@@ -260,8 +260,10 @@
     {
         var source = SourceItems ?? [];
         var target = TargetItems ?? [];
-        var moved = source.Where(i => _selectedSource.Contains(i.Value)).ToList();
-        var remaining = source.Where(i => !_selectedSource.Contains(i.Value)).ToList();
+        // A selected row the parent flipped to Disabled must not move — it stays
+        // in the source list (matches the contract that disabled rows can't move).
+        var moved = source.Where(i => _selectedSource.Contains(i.Value) && !i.Disabled).ToList();
+        var remaining = source.Where(i => !_selectedSource.Contains(i.Value) || i.Disabled).ToList();
         target = [..target, ..moved];
 
         SourceItems = remaining;
@@ -277,8 +279,8 @@
     {
         var source = SourceItems ?? [];
         var target = TargetItems ?? [];
-        var moved = target.Where(i => _selectedTarget.Contains(i.Value)).ToList();
-        var remaining = target.Where(i => !_selectedTarget.Contains(i.Value)).ToList();
+        var moved = target.Where(i => _selectedTarget.Contains(i.Value) && !i.Disabled).ToList();
+        var remaining = target.Where(i => !_selectedTarget.Contains(i.Value) || i.Disabled).ToList();
         source = [..source, ..moved];
 
         SourceItems = source;

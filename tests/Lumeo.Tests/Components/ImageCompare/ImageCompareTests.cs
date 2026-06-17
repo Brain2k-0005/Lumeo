@@ -123,7 +123,7 @@ public class ImageCompareTests : IAsyncLifetime
             .Add(c => c.BeforeSrc, "/b.jpg")
             .Add(c => c.AfterSrc, "/a.jpg"));
         var slider = cut.Find("input[type='range']");
-        slider.Input("100");
+        slider.Input("1000"); // beyond max — must clamp to 100
         Assert.Equal("100", cut.Find("input[type='range']").GetAttribute("aria-valuenow"));
     }
 }

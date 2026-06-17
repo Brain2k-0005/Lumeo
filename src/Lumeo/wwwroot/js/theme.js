@@ -372,13 +372,20 @@ window.themeManager = {
     _notifyListeners: function () {
         // Fire the in-page event too so non-.NET consumers (charts) repaint.
         try { document.dispatchEvent(new CustomEvent('lumeo:theme-changed')); } catch (_) { }
-        for (var i = themeManager._themeListeners.length - 1; i >= 0; i--) {
-            var ref = themeManager._themeListeners[i];
+        for (let i = themeManager._themeListeners.length - 1; i >= 0; i--) {
+            const ref = themeManager._themeListeners[i];
             try {
-                ref.invokeMethodAsync('OnExternalThemeChange');
+                // invokeMethodAsync returns a Promise; a disconnected circuit
+                // rejects asynchronously, so prune the dead ref in .catch too —
+                // the sync catch alone would leak it. const ref keeps each
+                // closure bound to its own listener.
+                ref.invokeMethodAsync('OnExternalThemeChange').catch(function () {
+                    const idx = themeManager._themeListeners.indexOf(ref);
+                    if (idx >= 0) themeManager._themeListeners.splice(idx, 1);
+                });
             } catch (_) {
-                // Circuit/component gone — drop the dead ref.
-                themeManager._themeListeners.splice(i, 1);
+                const idx = themeManager._themeListeners.indexOf(ref);
+                if (idx >= 0) themeManager._themeListeners.splice(idx, 1);
             }
         }
     },

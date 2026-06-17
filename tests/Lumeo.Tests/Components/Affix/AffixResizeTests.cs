@@ -57,6 +57,7 @@ public class AffixResizeTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Affix>(p => p
             .AddChildContent("Sticky"));
         var id = cut.Find("div").GetAttribute("id");
+        Assert.False(string.IsNullOrWhiteSpace(id)); // distinguish "missing id" from "unregister mismatch"
 
         await cut.Instance.DisposeAsync();
 
