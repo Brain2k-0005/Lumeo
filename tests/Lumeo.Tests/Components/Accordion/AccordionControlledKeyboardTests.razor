@@ -1,0 +1,224 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #237 — controlled Value/Values (+ ValueChanged/ValuesChanged) and roving
+    // ArrowUp/Down/Home/End focus between triggers.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public AccordionControlledKeyboardTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    private static bool ContentVisible(Bunit.IRenderedComponent<Microsoft.AspNetCore.Components.IComponent> cut, string text)
+    {
+        var w = cut.FindAll("[aria-hidden]").FirstOrDefault(x => (x.TextContent ?? "").Contains(text));
+        return w?.GetAttribute("aria-hidden") == "false";
+    }
+
+    // --- Controlled (Single) ---
+
+    [Fact]
+    public void Controlled_Single_Opens_Bound_Value()
+    {
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Single" Value="item2">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Two</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.True(ContentVisible(cut, "Content 2"));
+        Assert.False(ContentVisible(cut, "Content 1"));
+    }
+
+    [Fact]
+    public void Controlled_Single_Click_Reports_ValueChanged_Without_Self_Mutation()
+    {
+        string? reported = null;
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Single" Value="" ValueChanged="@(v => reported = v)">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.Find("button").Click();
+
+        // Reported the new value, but stayed closed (consumer owns state).
+        Assert.Equal("item1", reported);
+        Assert.False(ContentVisible(cut, "Content 1"));
+    }
+
+    [Fact]
+    public void Controlled_Single_Click_Open_Item_Reports_Empty()
+    {
+        string? reported = null;
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Single" Value="item1" ValueChanged="@(v => reported = v)">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.Find("button").Click();
+
+        Assert.Equal("", reported);
+    }
+
+    // --- Controlled (Multiple) ---
+
+    [Fact]
+    public void Controlled_Multiple_Opens_All_Bound_Values()
+    {
+        var values = new List<string> { "item1", "item3" };
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Multiple" Values="values">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Two</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item3">
+                <AccordionTrigger>Three</AccordionTrigger>
+                <AccordionContent>Content 3</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.True(ContentVisible(cut, "Content 1"));
+        Assert.False(ContentVisible(cut, "Content 2"));
+        Assert.True(ContentVisible(cut, "Content 3"));
+    }
+
+    [Fact]
+    public void Controlled_Multiple_Click_Reports_Added_Value()
+    {
+        IReadOnlyList<string>? reported = null;
+        var values = new List<string> { "item1" };
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Multiple" Values="values" ValuesChanged="@(v => reported = v)">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Two</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.FindAll("button")[1].Click();
+
+        Assert.NotNull(reported);
+        Assert.Contains("item1", reported!);
+        Assert.Contains("item2", reported!);
+    }
+
+    // --- Roving keyboard nav ---
+
+    [Fact]
+    public void ArrowDown_Moves_Focus_To_Next_Trigger()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="a">
+                <AccordionTrigger>A</AccordionTrigger>
+                <AccordionContent>CA</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="b">
+                <AccordionTrigger>B</AccordionTrigger>
+                <AccordionContent>CB</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var triggers = cut.FindAll("button");
+        var secondId = triggers[1].GetAttribute("id");
+
+        triggers[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        Assert.Contains(secondId, _interop.FocusElementCalls);
+    }
+
+    [Fact]
+    public void ArrowUp_From_First_Does_Not_Move_Focus()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="a">
+                <AccordionTrigger>A</AccordionTrigger>
+                <AccordionContent>CA</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="b">
+                <AccordionTrigger>B</AccordionTrigger>
+                <AccordionContent>CB</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        cut.FindAll("button")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowUp" });
+
+        // No wrap at the top edge.
+        Assert.Empty(_interop.FocusElementCalls);
+    }
+
+    [Fact]
+    public void End_Focuses_Last_Trigger()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="a">
+                <AccordionTrigger>A</AccordionTrigger>
+                <AccordionContent>CA</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="b">
+                <AccordionTrigger>B</AccordionTrigger>
+                <AccordionContent>CB</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="c">
+                <AccordionTrigger>C</AccordionTrigger>
+                <AccordionContent>CC</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var triggers = cut.FindAll("button");
+        var lastId = triggers[2].GetAttribute("id");
+
+        triggers[0].KeyDown(new KeyboardEventArgs { Key = "End" });
+
+        Assert.Contains(lastId, _interop.FocusElementCalls);
+    }
+
+    [Fact]
+    public void ArrowDown_Skips_Disabled_Trigger()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="a">
+                <AccordionTrigger>A</AccordionTrigger>
+                <AccordionContent>CA</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="b" Disabled="true">
+                <AccordionTrigger>B</AccordionTrigger>
+                <AccordionContent>CB</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="c">
+                <AccordionTrigger>C</AccordionTrigger>
+                <AccordionContent>CC</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var triggers = cut.FindAll("button");
+        var thirdId = triggers[2].GetAttribute("id");
+
+        triggers[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        // Skips the disabled middle trigger, lands on the third.
+        Assert.Contains(thirdId, _interop.FocusElementCalls);
+    }
+}
