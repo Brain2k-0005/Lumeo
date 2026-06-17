@@ -1,6 +1,9 @@
+using System.Reflection;
 using Bunit;
+using Microsoft.AspNetCore.Components.Web;
 using Xunit;
 using Lumeo;
+using Lumeo.Services;
 using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.Rating;
@@ -8,9 +11,18 @@ namespace Lumeo.Tests.Components.Rating;
 public class RatingTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
+    private BunitJSModuleInterop _module = null!;
 
     public RatingTests()
     {
+        _ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var v = typeof(ComponentInteropService).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        _module = _ctx.JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={v}");
+        _module.Mode = JSRuntimeMode.Loose;
         _ctx.AddLumeoServices();
     }
 
@@ -64,5 +76,97 @@ public class RatingTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-rating", cls);
+    }
+
+    // --- #189: arrow keys change value instead of scrolling the page ---
+
+    [Fact]
+    public void Registers_PreventDefault_For_Arrow_Keys()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>();
+        var groupId = cut.Find("[role='radiogroup']").GetAttribute("id");
+
+        var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
+        Assert.Equal(groupId, invocation.Arguments[0]);
+        var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
+        var keys = rules.Select(r => r.Key).ToList();
+        Assert.Contains("ArrowUp", keys);
+        Assert.Contains("ArrowDown", keys);
+        Assert.Contains("ArrowLeft", keys);
+        Assert.Contains("ArrowRight", keys);
+    }
+
+    [Fact]
+    public void ReadOnly_Does_Not_Register_PreventDefault()
+    {
+        _ctx.Render<Lumeo.Rating>(p => p.Add(r => r.ReadOnly, true));
+
+        Assert.Empty(_module.Invocations["registerPreventDefaultKeys"]);
+    }
+
+    [Fact]
+    public void ArrowRight_Increments_Value()
+    {
+        double? changed = null;
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Value, 2)
+            .Add(r => r.ValueChanged, v => changed = v));
+
+        cut.Find("[role='radiogroup']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        Assert.Equal(3, changed);
+    }
+
+    [Fact]
+    public void ArrowLeft_Decrements_Value()
+    {
+        double? changed = null;
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Value, 2)
+            .Add(r => r.ValueChanged, v => changed = v));
+
+        cut.Find("[role='radiogroup']").KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
+
+        Assert.Equal(1, changed);
+    }
+
+    [Fact]
+    public void AllowHalf_Steps_By_Half()
+    {
+        double? changed = null;
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.AllowHalf, true)
+            .Add(r => r.Value, 2)
+            .Add(r => r.ValueChanged, v => changed = v));
+
+        cut.Find("[role='radiogroup']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        Assert.Equal(2.5, changed);
+    }
+
+    [Fact]
+    public void End_Key_Sets_Max()
+    {
+        double? changed = null;
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Max, 5)
+            .Add(r => r.Value, 1)
+            .Add(r => r.ValueChanged, v => changed = v));
+
+        cut.Find("[role='radiogroup']").KeyDown(new KeyboardEventArgs { Key = "End" });
+
+        Assert.Equal(5, changed);
+    }
+
+    [Fact]
+    public void Stars_Expose_Radio_Role_And_Checked_State()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p.Add(r => r.Value, 2));
+
+        var radios = cut.FindAll("[role='radio']");
+        Assert.Equal(5, radios.Count);
+        Assert.Equal("true", radios[0].GetAttribute("aria-checked"));
+        Assert.Equal("true", radios[1].GetAttribute("aria-checked"));
+        Assert.Equal("false", radios[2].GetAttribute("aria-checked"));
     }
 }
