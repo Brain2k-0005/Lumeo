@@ -183,10 +183,16 @@
         _lastSyncedValue = Value is null ? null : new List<string>(Value);
         _lastSyncedOptions = Options;
 
+        // Rebuild the drill-down trail from the (possibly null) Value. A null /
+        // empty Value — e.g. a programmatic reset by the parent — must clear the
+        // selected-path highlight and the active panels; otherwise the old
+        // highlighted path lingered because the rebuild was guarded behind a
+        // "Count > 0" check that skipped the clear entirely on reset (#199).
+        _selectedPath.Clear();
+        _activePanels.Clear();
+
         if (Value is { Count: > 0 })
         {
-            _selectedPath.Clear();
-            _activePanels.Clear();
             var current = Options ?? [];
             foreach (var val in Value)
             {
