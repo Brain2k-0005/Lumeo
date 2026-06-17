@@ -83,30 +83,27 @@ public class DialogTests : IAsyncLifetime
 
     // --- Backdrop ---
 
+    // #215 — backdrop now uses the theme-aware --color-overlay-backdrop token
+    // via inline style (was a hardcoded bg-black/80 utility).
     [Fact]
     public void Backdrop_Rendered_When_Open()
     {
         var cut = RenderDialog(isOpen: true);
-        // Backdrop is a fixed inset-0 div with bg-black/80
-        var allDivs = cut.FindAll("div");
-        var hasBackdrop = allDivs.Any(d =>
+        var hasBackdrop = cut.FindAll("div").Any(d =>
         {
             var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("bg-black") && cls.Contains("fixed") && cls.Contains("inset-0");
+            var style = d.GetAttribute("style") ?? "";
+            return style.Contains("--color-overlay-backdrop") && cls.Contains("fixed") && cls.Contains("inset-0");
         });
-        Assert.True(hasBackdrop, "Backdrop div with bg-black/fixed/inset-0 should be present");
+        Assert.True(hasBackdrop, "Backdrop div should be present when dialog is open");
     }
 
     [Fact]
     public void Backdrop_Not_Rendered_When_Closed()
     {
         var cut = RenderDialog(isOpen: false);
-        var allDivs = cut.FindAll("div");
-        var hasBackdrop = allDivs.Any(d =>
-        {
-            var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("bg-black") && cls.Contains("fixed") && cls.Contains("inset-0");
-        });
+        var hasBackdrop = cut.FindAll("div").Any(d =>
+            (d.GetAttribute("style") ?? "").Contains("--color-overlay-backdrop"));
         Assert.False(hasBackdrop, "Backdrop should not be present when dialog is closed");
     }
 
