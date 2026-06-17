@@ -111,6 +111,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<double> GetElementDimension(string elementId, string dimension);
     ValueTask<double> GetScrollTop(string elementId);
 
+    /// <summary>
+    /// Attaches a non-passive touchmove guard so PullToRefresh can claim a
+    /// downward drag at scrollTop 0 instead of the browser consuming it as
+    /// native overscroll. No-op off touch devices. See <c>registerPullToRefresh</c>.
+    /// </summary>
+    ValueTask RegisterPullToRefresh(string elementId);
+    ValueTask UnregisterPullToRefresh(string elementId);
+
     // Wheel pickers (DateWheelPicker / TimeWheelPicker) — read/write scrollTop on
     // an ElementReference. Used to detect the centre-aligned snap target and to
     // initially scroll each column to the active value on first render.
@@ -277,6 +285,8 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted);
     ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds);
+    /// <summary>Sets the media element's <c>playbackRate</c> (clamped 0.25–4×).</summary>
+    ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate);
     /// <summary>
     /// Reads the live <c>duration</c> and <c>currentTime</c> off an
     /// HTMLMediaElement. Required because Blazor's media event args don't

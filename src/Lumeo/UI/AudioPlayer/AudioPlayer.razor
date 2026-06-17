@@ -18,7 +18,7 @@
 *@
 
 <div class="@WrapperClass"
-     id="@_wrapperId"
+     id="@EffectiveWrapperId"
      role="region"
      aria-label="@L["AudioPlayer.Label"]"
      tabindex="0"
@@ -54,6 +54,17 @@
         }
 
         <div class="flex items-center gap-2">
+            @if (ShowSkipButtons)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Icon"
+                        Class="h-8 w-8 shrink-0"
+                        OnClick="() => Skip(-SkipSeconds)"
+                        aria-label="@L["AudioPlayer.SkipBack", SkipSeconds]">
+                    <Blazicon Svg="Lucide.SkipBack" class="h-4 w-4" />
+                </Button>
+            }
+
             <Button Variant="Button.ButtonVariant.Ghost"
                     Size="Button.ButtonSize.Icon"
                     Class="h-8 w-8 shrink-0"
@@ -68,6 +79,17 @@
                     <Blazicon Svg="Lucide.Play" class="h-4 w-4" />
                 }
             </Button>
+
+            @if (ShowSkipButtons)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Icon"
+                        Class="h-8 w-8 shrink-0"
+                        OnClick="() => Skip(SkipSeconds)"
+                        aria-label="@L["AudioPlayer.SkipForward", SkipSeconds]">
+                    <Blazicon Svg="Lucide.SkipForward" class="h-4 w-4" />
+                </Button>
+            }
 
             @* Progress bar — click-to-seek + drag-to-scrub.
                Pointer events drive a local _scrubValue so timeupdate doesn't
@@ -94,12 +116,23 @@
                 @Format(DisplayTime) / @Format(_duration)
             </span>
 
+            @if (ShowPlaybackRate)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Sm"
+                        Class="h-8 shrink-0 px-2 tabular-nums text-xs"
+                        OnClick="CyclePlaybackRate"
+                        aria-label="@L["AudioPlayer.PlaybackRate", RateLabel]">
+                    @RateLabel&times;
+                </Button>
+            }
+
             <Button Variant="Button.ButtonVariant.Ghost"
                     Size="Button.ButtonSize.Icon"
                     Class="h-8 w-8 shrink-0"
                     OnClick="ToggleMute"
                     aria-label="@(_muted ? L["AudioPlayer.Unmute"] : L["AudioPlayer.Mute"])">
-                @if (_muted)
+                @if (_muted || _volume <= 0)
                 {
                     <Blazicon Svg="Lucide.VolumeX" class="h-4 w-4" />
                 }
@@ -108,6 +141,16 @@
                     <Blazicon Svg="Lucide.Volume2" class="h-4 w-4" />
                 }
             </Button>
+
+            @if (ShowVolume)
+            {
+                <input type="range" min="0" max="1" step="0.01"
+                       value="@_volume.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                       @oninput="OnVolumeInput"
+                       class="h-1.5 w-16 shrink-0 cursor-pointer accent-primary"
+                       aria-label="@L["AudioPlayer.Volume"]"
+                       aria-valuetext="@VolumePercentText" />
+            }
         </div>
     </div>
 
@@ -146,6 +189,22 @@
     [Parameter] public RenderFragment? Cover { get; set; }
     [Parameter] public string? PreloadMode { get; set; } = "metadata";
 
+    /// <summary>Show skip-back / skip-forward buttons (±<see cref="SkipSeconds"/>).</summary>
+    [Parameter] public bool ShowSkipButtons { get; set; } = true;
+
+    /// <summary>Seconds to jump per skip-button press / arrow key. Defaults to 10.</summary>
+    [Parameter] public int SkipSeconds { get; set; } = 10;
+
+    /// <summary>Show the playback-rate cycle button (0.5× → 2×).</summary>
+    [Parameter] public bool ShowPlaybackRate { get; set; } = true;
+
+    /// <summary>Selectable playback rates, cycled by the rate button. Defaults
+    /// to 0.5×, 1×, 1.25×, 1.5×, 2×.</summary>
+    [Parameter] public double[] PlaybackRates { get; set; } = { 0.5, 1.0, 1.25, 1.5, 2.0 };
+
+    /// <summary>Show the volume slider next to the mute toggle.</summary>
+    [Parameter] public bool ShowVolume { get; set; } = true;
+
     [Parameter] public EventCallback<double> OnTimeUpdate { get; set; }
     [Parameter] public EventCallback OnEnded { get; set; }
     [Parameter] public EventCallback OnPlay { get; set; }
@@ -157,11 +216,17 @@
     private ElementReference _audioRef;
     private readonly string _wrapperId = LumeoIds.New("audio-player");
     private readonly string _progressId = LumeoIds.New("audio-progress");
+    // A consumer-supplied `id` overrides the generated one in the DOM, so the
+    // keydown-suppression JS registration must target the rendered id.
+    private string EffectiveWrapperId => LumeoIds.Effective(AdditionalAttributes, _wrapperId);
+    private bool _preventKeysRegistered;
 
     private bool _playing;
     private bool _muted;
     private double _duration;
     private double _currentTime;
+    private double _volume = 1.0;
+    private double _playbackRate = 1.0;
 
     // Scrub state — when the user is dragging the progress bar we suppress
     // timeupdate-driven UI refresh and show their finger position instead.
@@ -190,6 +255,15 @@
         }
     }
 
+    // Compact rate label, e.g. "1", "1.25", "0.5" (no trailing zeros). The
+    // "×" glyph is appended in the markup. Invariant so "1.25" never becomes
+    // "1,25" in de-DE.
+    private string RateLabel =>
+        _playbackRate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private string VolumePercentText =>
+        $"{Math.Round((_muted ? 0 : _volume) * 100).ToString(System.Globalization.CultureInfo.InvariantCulture)}%";
+
     private static string FormatAria(double seconds) =>
         Math.Round(seconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -215,7 +289,40 @@
     private async Task ToggleMute()
     {
         _muted = !_muted;
-        await Interop.SetMediaVolume(_audioRef, 1.0, _muted);
+        await Interop.SetMediaVolume(_audioRef, _volume, _muted);
+    }
+
+    // --- Volume / rate / skip ---
+
+    private async Task OnVolumeInput(ChangeEventArgs e)
+    {
+        if (e.Value is string s &&
+            double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            _volume = Math.Clamp(v, 0, 1);
+            // Dragging the slider up from zero implicitly unmutes; dragging to
+            // zero reads as muted. Keeps the icon honest.
+            _muted = _volume <= 0;
+            await Interop.SetMediaVolume(_audioRef, _volume, _muted);
+        }
+    }
+
+    private async Task CyclePlaybackRate()
+    {
+        if (PlaybackRates is null || PlaybackRates.Length == 0) return;
+        // Find the current rate's slot and advance to the next, wrapping round.
+        var idx = Array.FindIndex(PlaybackRates, r => Math.Abs(r - _playbackRate) < 0.001);
+        var next = PlaybackRates[(idx + 1) % PlaybackRates.Length];
+        _playbackRate = next;
+        await Interop.SetPlaybackRate(_audioRef, next);
+    }
+
+    private async Task Skip(double seconds)
+    {
+        var target = Math.Clamp(_currentTime + seconds, 0, _duration > 0 ? _duration : double.MaxValue);
+        _currentTime = target;
+        await Interop.SeekMedia(_audioRef, target);
+        await OnTimeUpdate.InvokeAsync(target);
     }
 
     private async Task OnLoadedMetadata(EventArgs e)
@@ -326,7 +433,10 @@
     // --- Keyboard accessibility ---
     //
     // Space and "k" toggle play/pause when the wrapper has focus — matching
-    // the de-facto YouTube/SoundCloud convention. Arrow keys nudge ±5s.
+    // the de-facto YouTube/SoundCloud convention. Arrow keys nudge ±SkipSeconds.
+    // The default-action of these keys is suppressed via RegisterPreventDefaultKeys
+    // (see OnAfterRenderAsync) so Space doesn't scroll the page out from under
+    // the focused player (#302) — but only when the player itself has focus.
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
@@ -338,19 +448,11 @@
                 await TogglePlay();
                 break;
             case "ArrowRight":
-                {
-                    var target = Math.Min(_duration, _currentTime + 5);
-                    _currentTime = target;
-                    await Interop.SeekMedia(_audioRef, target);
-                    break;
-                }
+                await Skip(SkipSeconds);
+                break;
             case "ArrowLeft":
-                {
-                    var target = Math.Max(0, _currentTime - 5);
-                    _currentTime = target;
-                    await Interop.SeekMedia(_audioRef, target);
-                    break;
-                }
+                await Skip(-SkipSeconds);
+                break;
             case "m":
             case "M":
                 await ToggleMute();
@@ -358,11 +460,42 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preventKeysRegistered) return;
+        try
+        {
+            // Suppress the browser default ONLY for keys we handle, and never
+            // when focus is inside editable content (none here today, but the
+            // SkipEditable guard keeps it future-proof and consistent with the
+            // Carousel registration). Space is the important one — its default
+            // is page scroll.
+            await Interop.RegisterPreventDefaultKeys(EffectiveWrapperId, new[]
+            {
+                new PreventDefaultKeyRule(" ", SkipEditable: true),
+                new PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                new PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+            });
+            _preventKeysRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
     public async ValueTask DisposeAsync()
     {
         // Pause on dispose so the element doesn't keep playing if the consumer
         // unmounts the component (e.g. SPA navigation). JSDisconnectedException
         // can fire if the circuit is already torn down.
-        try { await Interop.PauseMedia(_audioRef); } catch (JSDisconnectedException) { }
+        try
+        {
+            if (_preventKeysRegistered)
+                await Interop.UnregisterPreventDefaultKeys(EffectiveWrapperId);
+            await Interop.PauseMedia(_audioRef);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

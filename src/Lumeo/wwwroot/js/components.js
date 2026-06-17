@@ -672,6 +672,72 @@ export function getScrollTop(elementId) {
     return el.scrollTop || 0;
 }
 
+// --- Pull-to-refresh gesture guard (#308) ---
+//
+// PullToRefresh's wrapper IS the scroll container. With CSS `touch-action:
+// pan-y` the browser owns vertical panning, so a downward drag at scrollTop 0
+// is consumed as native (over)scroll and the Blazor pointermove deltas that
+// drive the rubber-band never get a chance — the gesture is "stolen". A
+// non-passive touchmove listener that calls preventDefault() ONLY while the
+// container is at the top AND the finger is moving down hands that case to us,
+// while leaving normal upward/inner scrolling fully native. This is the piece
+// CSS alone can't express (touch-action can't say "only intercept downward at
+// the top"). Pointer Events stay the source of truth for the visual offset.
+const pullToRefreshHandlers = new Map();
+
+export function registerPullToRefresh(elementId) {
+    unregisterPullToRefresh(elementId);
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    let startY = 0;
+    let tracking = false;
+
+    const onTouchStart = (e) => {
+        if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+        // Only arm when already at the very top — otherwise this is a normal
+        // inner scroll and must stay native.
+        tracking = (el.scrollTop || 0) <= 0;
+        startY = e.touches[0].clientY;
+    };
+
+    const onTouchMove = (e) => {
+        if (!tracking || !e.touches || e.touches.length !== 1) return;
+        const dy = e.touches[0].clientY - startY;
+        // Downward pull while pinned at the top → claim it so the browser
+        // doesn't overscroll/native-refresh. Upward (dy <= 0) stays native so
+        // the user can scroll into content.
+        if (dy > 0 && (el.scrollTop || 0) <= 0) {
+            if (e.cancelable) e.preventDefault();
+        } else {
+            tracking = false;
+        }
+    };
+
+    const onTouchEnd = () => { tracking = false; };
+
+    const handlers = { onTouchStart, onTouchMove, onTouchEnd };
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    // Must be non-passive so preventDefault is honored.
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    pullToRefreshHandlers.set(elementId, { el, handlers });
+}
+
+export function unregisterPullToRefresh(elementId) {
+    const entry = pullToRefreshHandlers.get(elementId);
+    if (!entry) return;
+    const { el, handlers } = entry;
+    try {
+        el.removeEventListener('touchstart', handlers.onTouchStart);
+        el.removeEventListener('touchmove', handlers.onTouchMove);
+        el.removeEventListener('touchend', handlers.onTouchEnd);
+        el.removeEventListener('touchcancel', handlers.onTouchEnd);
+    } catch (_) { /* noop */ }
+    pullToRefreshHandlers.delete(elementId);
+}
+
 // --- Wheel picker helpers (DateWheelPicker / TimeWheelPicker) ---
 // Accept a live ElementReference (no id round-trip) — Blazor passes the element
 // directly. We just read scrollTop / write it back. The picker handles the rest.
@@ -2785,6 +2851,13 @@ export function setMediaVolume(el, volume, muted) {
 export function seekMedia(el, seconds) {
     if (!el) return;
     try { el.currentTime = Math.max(0, seconds); } catch { /* swallow */ }
+}
+
+export function setPlaybackRate(el, rate) {
+    if (!el) return;
+    // Clamp to the range browsers actually honor; values outside ~0.25–4 are
+    // ignored or throw on some engines.
+    try { el.playbackRate = Math.max(0.25, Math.min(4, rate)); } catch { /* swallow */ }
 }
 
 // Reads the live `duration` and `currentTime` off a media element. Blazor
