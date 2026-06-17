@@ -231,6 +231,26 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
 
+    /// <summary>
+    /// Core-side <c>prefers-reduced-motion: reduce</c> query (mirrors the
+    /// Lumeo.Motion helper) for core components that animate via Blazor/JS and
+    /// can't be fully neutralised by a CSS <c>@media</c> block alone. Default
+    /// returns <c>false</c> (motion allowed) so existing implementers/test
+    /// doubles keep compiling unchanged.
+    /// </summary>
+    ValueTask<bool> PrefersReducedMotion() => ValueTask.FromResult(false);
+
+    /// <summary>
+    /// Resolves a pointer's viewport coordinates (<paramref name="clientX"/>,
+    /// <paramref name="clientY"/>) into coordinates relative to the element
+    /// identified by <paramref name="hostElementId"/>. Used by TouchRipple so a
+    /// ripple is centred on the click point even when the pointer lands on a
+    /// nested child (where <c>OffsetX/OffsetY</c> would be relative to the
+    /// child, not the ripple host). Default returns (0,0) for test doubles.
+    /// </summary>
+    ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
+        => ValueTask.FromResult(new RipplePoint(0, 0));
+
     // HTMLMediaElement helpers (AudioPlayer, 3.1.0). Pass-through to play()/pause()
     // and a couple of property setters so Lumeo components never touch IJSRuntime
     // directly. play() rejects when autoplay is blocked — the JS side swallows
@@ -255,6 +275,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RemoveFromLocalStorage(string key);
 
     // Motion primitives
+
+    /// <summary>
+    /// Queries the browser's <c>prefers-reduced-motion: reduce</c> media query
+    /// via the Lumeo.Motion JS module. Lets a component branch in C# (skip a
+    /// burst, snap to the end value) before scheduling any JS-driven animation
+    /// that a CSS <c>@media</c> block can't reach. The default implementation
+    /// returns <c>false</c> (motion allowed) so existing implementers and test
+    /// doubles keep compiling and behave exactly as before.
+    /// </summary>
+    ValueTask<bool> MotionPrefersReducedMotion() => ValueTask.FromResult(false);
+
     ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",");
     ValueTask MotionDisposeTicker(string elementId);
     ValueTask MotionRevealText(string elementId, int staggerMs, double threshold);

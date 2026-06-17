@@ -309,9 +309,34 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask CopyToClipboard(string text) => ValueTask.CompletedTask;
     public ValueTask RippleAttachAsync(ElementReference element) => ValueTask.CompletedTask;
     public ValueTask RippleDetachAsync(ElementReference element) => ValueTask.CompletedTask;
+
+    // Core reduced-motion gate (shares the PrefersReducedMotion flag with the
+    // Motion override below) + TouchRipple coordinate resolution. TouchRipple
+    // tests set TouchRippleCoordsResult to assert the ripple span uses the
+    // host-relative coords the JS helper returns (nested-target fix #310).
+    public ValueTask<bool> PrefersReducedMotion() => ValueTask.FromResult(ReducedMotion);
+    public RipplePoint TouchRippleCoordsResult { get; set; } = new RipplePoint(0, 0);
+    private readonly List<(string HostId, double X, double Y)> _touchRippleCoordsCalls = new();
+    public IReadOnlyList<(string HostId, double X, double Y)> TouchRippleCoordsCalls => _touchRippleCoordsCalls;
+    public ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
+    {
+        _touchRippleCoordsCalls.Add((hostElementId, clientX, clientY));
+        return ValueTask.FromResult(TouchRippleCoordsResult);
+    }
     public ValueTask SaveToLocalStorage(string key, string value) => ValueTask.CompletedTask;
     public ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);
     public ValueTask RemoveFromLocalStorage(string key) => ValueTask.CompletedTask;
+    // Reduced-motion gate (#310/#327/#328) — tests set ReducedMotion to
+    // exercise the no-op / instant-settle branch of JS-driven motion primitives.
+    // Shared by both the Motion and the core reduced-motion queries.
+    public bool ReducedMotion { get; set; }
+    private int _prefersReducedMotionCallCount;
+    public int MotionPrefersReducedMotionCallCount => _prefersReducedMotionCallCount;
+    public ValueTask<bool> MotionPrefersReducedMotion()
+    {
+        _prefersReducedMotionCallCount++;
+        return ValueTask.FromResult(ReducedMotion);
+    }
     public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",") => ValueTask.CompletedTask;
     public ValueTask MotionDisposeTicker(string elementId) => ValueTask.CompletedTask;
     public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => ValueTask.CompletedTask;

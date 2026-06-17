@@ -2596,6 +2596,34 @@ function detachRipple(el) {
 
 export const ripple = { attach: attachRipple, detach: detachRipple };
 
+/* =============================================================
+ * Reduced-motion gate (core) — mirror of the Lumeo.Motion helper
+ * so core components (TouchRipple, …) can branch in C# before
+ * spawning a JS/Blazor animation that a CSS `@media` block can't
+ * fully neutralise. CSS-only animations stay gated in lumeo.css.
+ * A function, not a cached bool, so an OS-setting toggle mid-
+ * session is honoured next interaction. SSR/test-host safe.
+ * ============================================================= */
+export function prefersReducedMotion() {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/* TouchRipple — resolve the pointer's coordinates relative to the ripple
+ * HOST element (the element the listener is bound to), not the event target.
+ * The component previously used PointerEventArgs.OffsetX/OffsetY, which the
+ * DOM defines relative to whatever child the pointer actually landed on — so
+ * a ripple hosted around an icon/label spawned the circle at the child's
+ * origin, visibly offset. Reading the host's getBoundingClientRect() and
+ * subtracting from clientX/clientY fixes nested targets across browsers. */
+export function touchRippleCoords(hostId, clientX, clientY) {
+    const host = document.getElementById(hostId);
+    if (!host) return { x: 0, y: 0 };
+    const rect = host.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
 // Haptic feedback. No-op on browsers that don't expose Vibration API
 // (e.g. iOS Safari) or when user has disabled motion. Safe to call without guards.
 export function vibrate(ms) {

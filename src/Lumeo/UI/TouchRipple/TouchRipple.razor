@@ -1,7 +1,9 @@
 @namespace Lumeo
+@inject Services.IComponentInteropService Interop
 @implements IAsyncDisposable
 
-<div class="@CssClass"
+<div id="@_hostId"
+     class="@CssClass"
      style="position: relative; overflow: hidden; --ripple-opacity: @Opacity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture); --ripple-duration: @(DurationMs)ms"
      @onpointerdown="OnPointerDown"
      @attributes="AdditionalAttributes">
@@ -23,6 +25,11 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _fallbackId = LumeoIds.New("touch-ripple");
+    // A consumer-supplied id wins (it lands on the element after @attributes),
+    // so the JS coordinate lookup must target the id actually in the DOM.
+    private string _hostId => LumeoIds.Effective(AdditionalAttributes, _fallbackId);
+
     private string CssClass => Cx.Merge("lumeo-touch-ripple", Class);
 
     private record RippleEntry(Guid Id, double X, double Y);
@@ -32,13 +39,46 @@
 
     private async Task OnPointerDown(PointerEventArgs e)
     {
-        var ripple = new RippleEntry(Guid.NewGuid(), e.OffsetX, e.OffsetY);
+        // prefers-reduced-motion: don't spawn a ripple at all. The CSS also
+        // disables the span animation as defence-in-depth, but skipping here
+        // avoids running a cleanup timer for an invisible element.
+        if (await Interop.PrefersReducedMotion())
+        {
+            return;
+        }
+
+        // Resolve the click point relative to the ripple HOST element.
+        // PointerEventArgs.OffsetX/OffsetY are relative to whatever child the
+        // pointer actually landed on, so a ripple hosted around an icon/label
+        // spawned off-centre. The JS helper subtracts the host's bounding rect
+        // from the viewport clientX/clientY. Falls back to the raw offsets when
+        // interop is unavailable (prerender / no JS) or returns the (0,0)
+        // default for a click genuinely at the host origin.
+        var point = await Interop.TouchRippleCoords(_hostId, e.ClientX, e.ClientY);
+        var x = point.X;
+        var y = point.Y;
+        if (x == 0 && y == 0 && (e.OffsetX != 0 || e.OffsetY != 0))
+        {
+            x = e.OffsetX;
+            y = e.OffsetY;
+        }
+
+        var ripple = new RippleEntry(Guid.NewGuid(), x, y);
         _ripples.Add(ripple);
         StateHasChanged();
 
+        // Schedule removal AFTER the CSS animation without blocking the event
+        // handler: the handler's returned Task must complete now so the ripple
+        // is observable immediately (and a held pointer doesn't keep the
+        // handler "running" for the whole duration). The detached continuation
+        // marshals the state change back onto the renderer's sync context.
         var cts = new CancellationTokenSource();
         _pendingCts.Add(cts);
+        _ = RemoveAfterDelayAsync(ripple, cts);
+    }
 
+    private async Task RemoveAfterDelayAsync(RippleEntry ripple, CancellationTokenSource cts)
+    {
         try
         {
             await Task.Delay(DurationMs, cts.Token);
@@ -54,7 +94,7 @@
         }
 
         _ripples.Remove(ripple);
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()
