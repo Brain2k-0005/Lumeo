@@ -1618,7 +1618,14 @@ function getMenuItems(containerId) {
 export function focusMenuItemByIndex(containerId, index) {
     const items = getMenuItems(containerId);
     if (index >= 0 && index < items.length) {
-        items[index].focus();
+        const item = items[index];
+        item.focus();
+        // Keep the focused item visible in a scrollable menu (long DropdownMenu /
+        // Menubar content). block:'nearest' avoids jumping when the item is
+        // already on-screen — matches Radix's scroll-into-view-on-highlight.
+        if (typeof item.scrollIntoView === 'function') {
+            item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
         return index;
     }
     return -1;
@@ -1684,6 +1691,41 @@ export function focusToolbarEdge(toolbarId, last) {
     applyToolbarRovingTabindex(items, index);
     items[index].focus();
     return index;
+}
+
+// Type-to-focus (Radix menu typeahead). Finds the first enabled menu item whose
+// trimmed text content starts with `query` (case-insensitive), scanning AFTER
+// `currentIndex` first so a repeated keystroke cycles through same-prefix items,
+// then wrapping to the start. Focuses + scrolls the match into view and returns
+// its index, or -1 when nothing matches (the caller keeps the current focus).
+// The query buffer + reset timing live in C# (shared MenuTypeahead helper); this
+// function only does the DOM text match so it stays SSR-free and reusable across
+// DropdownMenu / Menubar / MegaMenu.
+export function focusMenuItemByTypeahead(containerId, query, currentIndex) {
+    const items = getMenuItems(containerId);
+    if (items.length === 0 || !query) return -1;
+    const q = query.toLowerCase();
+
+    const matches = (el) => (el.textContent || '').trim().toLowerCase().startsWith(q);
+
+    // Single-char buffer: start one past the current item so the same letter
+    // advances to the next candidate. Multi-char buffer: start at the current
+    // item so "se" can still match the item the user is already on.
+    const start = (currentIndex >= 0 && currentIndex < items.length)
+        ? (query.length === 1 ? currentIndex + 1 : currentIndex)
+        : 0;
+
+    for (let i = 0; i < items.length; i++) {
+        const idx = (start + i) % items.length;
+        if (matches(items[idx])) {
+            items[idx].focus();
+            if (typeof items[idx].scrollIntoView === 'function') {
+                items[idx].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }
+            return idx;
+        }
+    }
+    return -1;
 }
 
 // --- OTP Paste ---
