@@ -1,5 +1,8 @@
 @namespace Lumeo
 @inject IComponentInteropService Interop
+@inject Lumeo.Services.IResponsiveService Responsive
+@inject Lumeo.Services.IKeyboardShortcutService Shortcuts
+@implements IAsyncDisposable
 
 @{
     var context = new SidebarState(
@@ -9,6 +12,7 @@
     {
         EffectiveCollapsed = EffectiveCollapsed,
         SetHoverExpanded = EventCallback.Factory.Create<bool>(this, SetHoverExpanded),
+        IsMobileSheet = IsMobileSheet,
     };
 }
 
@@ -23,6 +27,23 @@
     [Parameter] public bool IsCollapsed { get; set; }
     [Parameter] public EventCallback<bool> IsCollapsedChanged { get; set; }
     [Parameter] public SidebarVariant Variant { get; set; } = SidebarVariant.Push;
+
+    /// <summary>
+    /// When true, the sidebar renders as an off-canvas sheet (slide-in over a
+    /// dismissible scrim) on mobile viewports (&lt; <c>md</c>), regardless of
+    /// <see cref="Variant"/>. On larger viewports it keeps its configured
+    /// variant. Collapsed acts as the sheet's closed state; toggling opens it.
+    /// Opt-in (default false) so existing layouts are unchanged. (#241)
+    /// </summary>
+    [Parameter] public bool MobileSheet { get; set; }
+
+    /// <summary>
+    /// Optional keyboard shortcut that toggles the sidebar, in the
+    /// <see cref="Lumeo.Services.IKeyboardShortcutService"/> combo format
+    /// (e.g. <c>"ctrl+b"</c>, <c>"meta+b"</c>). Registered on first render and
+    /// released on dispose. Null disables the shortcut. (#241)
+    /// </summary>
+    [Parameter] public string? ToggleShortcut { get; set; }
 
     /// <summary>
     /// When true, the collapsed / expanded state survives page reloads — the provider
@@ -48,6 +69,9 @@
     // SidebarMenuButton — can react via the cascaded SidebarState and reveal their
     // LabelContent during hover-expansion, not just on pinned expand.
     private bool _hoverExpanded;
+    private IAsyncDisposable? _shortcutHandle;
+    private string? _registeredShortcut;
+    private bool _viewportSubscribed;
 
     // True when the sidebar should render + behave as collapsed for descendants. For
     // MiniRail this is IsCollapsed unless the user is hovering / keyboard-focused on
@@ -55,45 +79,95 @@
     private bool EffectiveCollapsed
         => IsCollapsed && !(Variant == SidebarVariant.MiniRail && _hoverExpanded);
 
+    // Off-canvas sheet behaviour only kicks in on mobile, and only when opted in.
+    private bool IsMobileSheet => MobileSheet && Responsive.IsMobile;
+
     private string CssClass
     {
         get
         {
-            var variant = Variant == SidebarVariant.Overlay ? "relative overflow-hidden" : "";
-            return Cx.Merge("flex h-full w-full", variant, Class);
+            // The mobile sheet (or the Overlay variant) needs a positioning
+            // context for its absolutely-positioned panel + scrim.
+            var positioned = (Variant == SidebarVariant.Overlay || IsMobileSheet) ? "relative overflow-hidden" : "";
+            return Cx.Merge("flex h-full w-full", positioned, Class);
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || !PersistCollapsed) return;
-        try
+        if (!firstRender) return;
+
+        // React to viewport changes so the mobile-sheet treatment flips on the
+        // md boundary without a manual refresh.
+        if (MobileSheet && !_viewportSubscribed)
         {
-            var stored = await Interop.LoadFromLocalStorage(PersistenceKey);
-            // Only restore if storage actually held a value AND it differs from the
-            // current parameter — avoids a redundant cascade refresh on every mount.
-            if (stored is "true" or "false")
+            _viewportSubscribed = true;
+            Responsive.ViewportChanged += OnViewportChanged;
+            try { await Responsive.EnsureInitialisedAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            StateHasChanged();
+        }
+
+        await SyncShortcutAsync();
+
+        if (PersistCollapsed)
+        {
+            try
             {
-                var restored = stored == "true";
-                if (restored != IsCollapsed)
+                var stored = await Interop.LoadFromLocalStorage(PersistenceKey);
+                // Only restore if storage actually held a value AND it differs from the
+                // current parameter — avoids a redundant cascade refresh on every mount.
+                if (stored is "true" or "false")
                 {
-                    IsCollapsed = restored;
-                    await IsCollapsedChanged.InvokeAsync(IsCollapsed);
-                    StateHasChanged();
+                    var restored = stored == "true";
+                    if (restored != IsCollapsed)
+                    {
+                        IsCollapsed = restored;
+                        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+                        StateHasChanged();
+                    }
                 }
             }
+            catch (Microsoft.JSInterop.JSDisconnectedException)
+            {
+                // Circuit dropped between firstRender scheduling and the storage call.
+                // Fall through silently — the cascade keeps the parameter default.
+            }
         }
-        catch (Microsoft.JSInterop.JSDisconnectedException)
+    }
+
+    // (Re)registers the toggle shortcut when ToggleShortcut changes. Releases a
+    // previous registration first so a changed combo doesn't leave a ghost.
+    private async Task SyncShortcutAsync()
+    {
+        if (_registeredShortcut == ToggleShortcut) return;
+        if (_shortcutHandle is not null)
         {
-            // Circuit dropped between firstRender scheduling and the storage call.
-            // Fall through silently — the cascade keeps the parameter default.
+            try { await _shortcutHandle.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _shortcutHandle = null;
         }
+        _registeredShortcut = ToggleShortcut;
+        if (string.IsNullOrWhiteSpace(ToggleShortcut)) return;
+        try
+        {
+            _shortcutHandle = await Shortcuts.RegisterAsync(ToggleShortcut!, Toggle);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // JS unavailable during prerender
+    }
+
+    private void OnViewportChanged(Lumeo.Services.ViewportInfo _)
+    {
+        // A breakpoint crossing may flip IsMobileSheet — re-render the cascade.
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task Toggle()
     {
         IsCollapsed = !IsCollapsed;
         await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+        await InvokeAsync(StateHasChanged);
         if (PersistCollapsed)
         {
             try { await Interop.SaveToLocalStorage(PersistenceKey, IsCollapsed ? "true" : "false"); }
@@ -111,9 +185,20 @@
         StateHasChanged();
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (_viewportSubscribed)
+            Responsive.ViewportChanged -= OnViewportChanged;
+        if (_shortcutHandle is not null)
+        {
+            try { await _shortcutHandle.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
     // Kept as a 3-positional record so the v3.10.0 generated constructor + Deconstruct
     // signature still compiles for external callers (this record is meant for our own
-    // cascade but is technically public). The two new fields land as init-only props
+    // cascade but is technically public). The new fields land as init-only props
     // with defaults — fully additive.
     public record SidebarState(
         bool IsCollapsed,
@@ -128,6 +213,12 @@
         /// <summary>Called by <c>SidebarComponent</c> on hover / focus to flip the
         /// MiniRail hover-expansion. No-op for other variants.</summary>
         public EventCallback<bool> SetHoverExpanded { get; init; }
+
+        /// <summary>True when the sidebar should render as a mobile off-canvas
+        /// sheet (opted into via <c>MobileSheet</c> and currently on a mobile
+        /// viewport). <c>SidebarComponent</c> swaps to the slide-in + scrim
+        /// treatment when set.</summary>
+        public bool IsMobileSheet { get; init; }
     }
 
     /// <summary>
