@@ -99,4 +99,59 @@ public class DropdownButtonTests : IAsyncLifetime
         // The menu content should not be in the DOM when closed
         Assert.Empty(cut.FindAll(".menu-item-marker"));
     }
+
+    // --- Disabled bypass (#223) ---
+    // The live @onclick that opens the menu sits on the OUTER role="button"
+    // trigger (DropdownMenuTrigger), not the inner <Button>. Passing Disabled
+    // only to the inner button left the trigger clickable, so a click on the
+    // trigger padding still opened the menu. Disabled must now gate the trigger.
+
+    [Fact]
+    public void Disabled_Trigger_Is_Marked_AriaDisabled_And_PointerEventsNone()
+    {
+        var cut = _ctx.Render<Lumeo.DropdownButton>(p => p
+            .Add(b => b.Text, "Disabled")
+            .Add(b => b.Disabled, true)
+            .Add(b => b.MenuContent, (RenderFragment)(_ => { })));
+
+        var trigger = cut.Find("[role='button']");
+        Assert.Equal("true", trigger.GetAttribute("aria-disabled"));
+        Assert.Contains("pointer-events-none", trigger.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Clicking_Disabled_Trigger_Does_Not_Open_Menu()
+    {
+        var cut = _ctx.Render<Lumeo.DropdownButton>(p => p
+            .Add(b => b.Text, "Disabled")
+            .Add(b => b.Disabled, true)
+            .Add(b => b.MenuContent, (RenderFragment)(b =>
+            {
+                b.OpenElement(0, "div");
+                b.AddAttribute(1, "class", "menu-item-marker");
+                b.CloseElement();
+            })));
+
+        // Click the outer trigger div (where the live @onclick lives).
+        cut.Find("[role='button']").Click();
+
+        Assert.Empty(cut.FindAll(".menu-item-marker"));
+    }
+
+    [Fact]
+    public void Clicking_Enabled_Trigger_Opens_Menu()
+    {
+        var cut = _ctx.Render<Lumeo.DropdownButton>(p => p
+            .Add(b => b.Text, "Enabled")
+            .Add(b => b.MenuContent, (RenderFragment)(b =>
+            {
+                b.OpenElement(0, "div");
+                b.AddAttribute(1, "class", "menu-item-marker");
+                b.CloseElement();
+            })));
+
+        cut.Find("[role='button']").Click();
+
+        Assert.NotEmpty(cut.FindAll(".menu-item-marker"));
+    }
 }
