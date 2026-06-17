@@ -32,7 +32,7 @@
     </div>
 
     <!-- Tooltip -->
-    <div id="@_tooltipId" class="@TooltipCssClass" style="@TooltipStyle" role="dialog" aria-modal="false" aria-label="@(_currentStepConfig.Title ?? $"Tour step {CurrentStep + 1}")" @attributes="AdditionalAttributes">
+    <div id="@_tooltipId" class="@TooltipCssClass" style="@TooltipStyle" role="dialog" aria-modal="true" tabindex="-1" aria-label="@(_currentStepConfig.Title ?? $"Tour step {CurrentStep + 1}")" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
         <div class="flex flex-col gap-2">
             @if (!string.IsNullOrEmpty(_currentStepConfig.Title))
             {
@@ -108,6 +108,8 @@
     private TourStepConfig? _currentStepConfig;
     private bool _scrollLocked;
     private string? _currentTargetSelector;
+    // Step we last moved focus into, so we focus once per step (not every render).
+    private int _focusedStep = -1;
 
     private string TooltipCssClass => Cx.Merge("fixed z-[61] w-80 rounded-lg border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg animate-fade-in", Class);
 
@@ -171,6 +173,15 @@
                 _scrollLocked = true;
             }
             await UpdateTargetRect();
+
+            // Move focus into the step dialog on each new step so keyboard users
+            // aren't stranded behind the overlay and the @onkeydown handler
+            // (Escape / arrow navigation) receives events. Focus once per step.
+            if (_focusedStep != CurrentStep)
+            {
+                _focusedStep = CurrentStep;
+                try { await Interop.FocusElement(_tooltipId); } catch (JSDisconnectedException) { }
+            }
         }
         else if (_scrollLocked)
         {
@@ -246,6 +257,25 @@
         await HandleSkip();
     }
 
+    // Keyboard model matching driver.js / intro.js: Escape skips the tour, the
+    // arrow keys move between steps. The step dialog is focused on each step so
+    // these events reach this handler.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await HandleSkip();
+                break;
+            case "ArrowRight":
+                if (CurrentStep < Steps.Count - 1) await HandleNext();
+                break;
+            case "ArrowLeft":
+                if (CurrentStep > 0) await HandlePrevious();
+                break;
+        }
+    }
+
     private async Task Close()
     {
         Open = false;
@@ -253,6 +283,7 @@
         _currentStepConfig = null;
         _targetRect = null;
         _currentTargetSelector = null;
+        _focusedStep = -1;
         await OpenChanged.InvokeAsync(false);
         await CurrentStepChanged.InvokeAsync(0);
         if (_scrollLocked)
