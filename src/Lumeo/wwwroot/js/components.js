@@ -2212,6 +2212,24 @@ export function scrollToTop() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// --- InputMask: read / restore a text input's caret (selectionStart) ---
+// Used by InputMask to keep the caret put after re-masking: getInputCaret reads
+// it before the value is rewritten, setInputCaret restores it (collapsed) after.
+
+export function getInputCaret(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el || typeof el.selectionStart !== 'number') return 0;
+    return el.selectionStart;
+}
+
+export function setInputCaret(elementId, position) {
+    const el = document.getElementById(elementId);
+    if (!el || typeof el.setSelectionRange !== 'function') return;
+    const len = (el.value || '').length;
+    const pos = Math.max(0, Math.min(position, len));
+    try { el.setSelectionRange(pos, pos); } catch { /* element not focusable yet */ }
+}
+
 // --- Mention: get textarea caret coordinates ---
 
 export function getTextareaCaretPosition(elementId) {
