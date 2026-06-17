@@ -3,7 +3,7 @@
 
 @if (Context.ActiveItemId == ItemContext.ItemId)
 {
-    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="menu" aria-labelledby="@ItemContext.TriggerId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         <div class="@InnerCssClass">
             @ChildContent
         </div>
@@ -19,7 +19,9 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _contentId = LumeoIds.New("nav-content");
+    // Use the content id from the item context so the trigger's aria-controls
+    // points here and ArrowDown on the trigger can focus this element.
+    private string _contentId => ItemContext.ContentId;
     private bool _registered;
 
     private string CssClass => Cx.Merge("fixed z-50 animate-fade-in", Class);
@@ -49,6 +51,8 @@
         if (e.Key == "Escape")
         {
             await Context.SetActiveItemId.InvokeAsync(null);
+            // Return focus to the trigger so the user isn't stranded.
+            try { await Interop.FocusElement(ItemContext.TriggerId); } catch (JSDisconnectedException) { }
         }
     }
 

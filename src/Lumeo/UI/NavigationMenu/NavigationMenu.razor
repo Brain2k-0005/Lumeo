@@ -1,10 +1,13 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @{
-    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId));
+    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this);
 }
 
-<nav class="@CssClass" @attributes="AdditionalAttributes">
+@* aria-label names the navigation landmark so AT users can distinguish it from
+   other <nav>s on the page (Radix / APG NavigationMenu contract). *@
+<nav class="@CssClass" aria-label="@Label" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -12,10 +15,19 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Accessible name for the &lt;nav&gt; landmark. Defaults to "Main".</summary>
+    [Parameter] public string Label { get; set; } = "Main";
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string? _activeItemId;
+
+    // Ordered list of top-level trigger element ids, registered by each
+    // NavigationMenuItem so the menu can move focus between them with the arrow
+    // keys (roving — APG navigation pattern). Registration follows DOM order
+    // because items render top-to-bottom.
+    private readonly List<string> _triggerIds = new();
 
     private string CssClass => Cx.Merge("relative z-10 flex max-w-max flex-1 items-center justify-center", Class);
 
@@ -26,5 +38,30 @@
         return Task.CompletedTask;
     }
 
-    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId);
+    internal void RegisterTrigger(string id)
+    {
+        if (!_triggerIds.Contains(id)) _triggerIds.Add(id);
+    }
+
+    internal void UnregisterTrigger(string id) => _triggerIds.Remove(id);
+
+    // Move focus to the trigger `delta` positions from `currentId` (wrapping).
+    // Used by NavigationMenuTrigger's ArrowLeft/ArrowRight handlers.
+    internal async Task FocusTriggerRelative(string currentId, int delta)
+    {
+        if (_triggerIds.Count == 0) return;
+        var index = _triggerIds.IndexOf(currentId);
+        if (index < 0) return;
+        var next = ((index + delta) % _triggerIds.Count + _triggerIds.Count) % _triggerIds.Count;
+        try { await Interop.FocusElement(_triggerIds[next]); } catch (JSDisconnectedException) { }
+    }
+
+    internal async Task FocusTriggerEdge(bool last)
+    {
+        if (_triggerIds.Count == 0) return;
+        try { await Interop.FocusElement(last ? _triggerIds[^1] : _triggerIds[0]); }
+        catch (JSDisconnectedException) { }
+    }
+
+    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner);
 }
