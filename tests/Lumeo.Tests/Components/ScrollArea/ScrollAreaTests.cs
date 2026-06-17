@@ -27,13 +27,24 @@ public class ScrollAreaTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Has_Overflow_Auto_Class()
+    public void Has_Cross_Browser_Scrollbar_Class()
     {
+        // #256 — webkit-only inline classes were replaced by the cross-browser
+        // lumeo-scrollarea rule (Firefox scrollbar-* + WebKit pseudo-elements).
         var cut = _ctx.Render<L.ScrollArea>(p => p
             .AddChildContent("content"));
 
         var div = cut.Find("div");
-        Assert.Contains("overflow-auto", div.GetAttribute("class"));
+        Assert.Contains("lumeo-scrollarea", div.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Default_Type_Is_Auto()
+    {
+        var cut = _ctx.Render<L.ScrollArea>(p => p
+            .AddChildContent("content"));
+
+        Assert.Equal("auto", cut.Find("div").GetAttribute("data-scroll-type"));
     }
 
     [Fact]
@@ -64,7 +75,7 @@ public class ScrollAreaTests : IAsyncLifetime
 
         var div = cut.Find("div");
         Assert.Contains("h-64", div.GetAttribute("class"));
-        Assert.Contains("overflow-auto", div.GetAttribute("class"));
+        Assert.Contains("lumeo-scrollarea", div.GetAttribute("class"));
     }
 
     [Fact]
@@ -95,14 +106,29 @@ public class ScrollAreaTests : IAsyncLifetime
         Assert.False(cls!.EndsWith(" "));
     }
 
-    [Fact]
-    public void Has_Webkit_Scrollbar_Styling()
+    [Theory]
+    [InlineData(L.ScrollArea.ScrollAreaType.Auto, "auto")]
+    [InlineData(L.ScrollArea.ScrollAreaType.Always, "always")]
+    [InlineData(L.ScrollArea.ScrollAreaType.Scroll, "scroll")]
+    [InlineData(L.ScrollArea.ScrollAreaType.Hover, "hover")]
+    public void Type_Sets_Data_Scroll_Type(L.ScrollArea.ScrollAreaType type, string expected)
     {
         var cut = _ctx.Render<L.ScrollArea>(p => p
+            .Add(b => b.Type, type)
             .AddChildContent("content"));
 
-        var div = cut.Find("div");
-        var cls = div.GetAttribute("class");
-        Assert.Contains("[&::-webkit-scrollbar]", cls);
+        Assert.Equal(expected, cut.Find("div").GetAttribute("data-scroll-type"));
+    }
+
+    [Fact]
+    public void FocusRingGutter_Adds_Inline_Gutter()
+    {
+        var cut = _ctx.Render<L.ScrollArea>(p => p
+            .Add(b => b.FocusRingGutter, true)
+            .AddChildContent("content"));
+
+        var cls = cut.Find("div").GetAttribute("class");
+        Assert.Contains("-mx-1", cls);
+        Assert.Contains("px-1", cls);
     }
 }
