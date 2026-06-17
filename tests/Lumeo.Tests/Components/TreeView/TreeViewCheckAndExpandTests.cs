@@ -159,4 +159,84 @@ public class TreeViewCheckAndExpandTests : IAsyncLifetime
         Assert.False(items[0].IsExpanded);
         Assert.Equal("false", TreeItem(cut, "Root").GetAttribute("aria-expanded"));
     }
+
+    // ---------------------------------------------------------------------
+    // #201: ExpandAll honors lazy-loading (LoadChildren)
+    // ---------------------------------------------------------------------
+
+    // A single lazy root that resolves two children on first expand.
+    private static List<L.TreeView<string>.TreeViewItem<string>> LazyRoot() =>
+    [
+        new() { Text = "Lazy", Value = "lazy", IsLeaf = false }
+    ];
+
+    private static Func<L.TreeView<string>.TreeViewItem<string>, Task<List<L.TreeView<string>.TreeViewItem<string>>>>
+        Loader(Action? onCall = null) => _ =>
+    {
+        onCall?.Invoke();
+        return Task.FromResult(new List<L.TreeView<string>.TreeViewItem<string>>
+        {
+            new() { Text = "Child-A", Value = "a", IsLeaf = true },
+            new() { Text = "Child-B", Value = "b", IsLeaf = true }
+        });
+    };
+
+    [Fact]
+    public async Task ExpandAllNodesAsync_loads_unloaded_lazy_children()
+    {
+        var items = LazyRoot();
+        var calls = 0;
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.LoadChildren, Loader(() => calls++)));
+
+        // Nothing loaded yet.
+        Assert.False(items[0].ChildrenLoaded);
+
+        var tree = cut.Instance;
+        await cut.InvokeAsync(() => tree.ExpandAllNodesAsync());
+
+        Assert.Equal(1, calls);
+        Assert.True(items[0].ChildrenLoaded);
+        Assert.True(items[0].IsExpanded);
+        Assert.Equal(2, items[0].Children!.Count);
+        Assert.Contains("Child-A", cut.Markup);
+        Assert.Contains("Child-B", cut.Markup);
+    }
+
+    [Fact]
+    public void Declarative_ExpandAll_with_LoadChildren_loads_lazy_branch()
+    {
+        var items = LazyRoot();
+        var calls = 0;
+
+        // ExpandAll set declaratively at first render with a lazy loader.
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.ExpandAll, true)
+            .Add(c => c.LoadChildren, Loader(() => calls++)));
+
+        // OnParametersSetAsync runs the lazy load during render.
+        Assert.Equal(1, calls);
+        Assert.True(items[0].ChildrenLoaded);
+        Assert.Contains("Child-A", cut.Markup);
+    }
+
+    [Fact]
+    public async Task ExpandAllNodesAsync_does_not_reload_already_loaded_children()
+    {
+        var items = LazyRoot();
+        var calls = 0;
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.LoadChildren, Loader(() => calls++)));
+
+        var tree = cut.Instance;
+        await cut.InvokeAsync(() => tree.ExpandAllNodesAsync());
+        Assert.Equal(1, calls);
+
+        // Second expand-all must not hit the loader again — already loaded.
+        await cut.InvokeAsync(() => tree.ExpandAllNodesAsync());
+        Assert.Equal(1, calls);
+    }
 }
