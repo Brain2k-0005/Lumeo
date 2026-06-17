@@ -215,6 +215,11 @@ else
             _title = await Interop.SchedulerGetTitleAsync(_instanceId);
             StateHasChanged();
         }
+        catch (Microsoft.JSInterop.JSDisconnectedException)
+        {
+            // Circuit dropped mid-init (e.g. user navigated away during prerender
+            // hand-off). Nothing to render; swallow as Gantt does.
+        }
         catch (Microsoft.JSInterop.JSException ex)
         {
             _initError = ex.Message;
@@ -373,10 +378,19 @@ else
     [JSInvokable]
     public async Task JsOnEventChange(SchedulerEvent ev)
     {
-        // Replace the matching event in our local snapshot, then bubble both
-        // the per-event change and the new collection up to the parent.
+        // A drag/resize only changes the time window (Start/End/AllDay). The JS
+        // payload (eventToJson) carries only id/title/start/end/allDay/color/url/
+        // extendedProps, so wholesale-replacing the stored event flattened every
+        // field it omits — DaysOfWeek/RecurrenceEnd/ExceptionDates/ResourceId/
+        // ClassNames — turning a recurring event into a one-off. Merge the new
+        // window onto the existing record so the rest of the rule survives.
         var idx = _events.FindIndex(e => e.Id == ev.Id);
-        if (idx >= 0) _events[idx] = ev;
+        if (idx >= 0)
+        {
+            var existing = _events[idx];
+            ev = existing with { Start = ev.Start, End = ev.End, AllDay = ev.AllDay };
+            _events[idx] = ev;
+        }
 
         _lastEventsHash = ComputeEventsHash(_events);
 
