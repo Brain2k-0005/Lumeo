@@ -613,8 +613,14 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public async ValueTask UnregisterTabsOverflow(string listId)
     {
-        var module = await GetModuleAsync();
-        await _scroll.UnregisterTabsOverflow(module, listId);
+        // Runs during component teardown — swallow a circuit drop so the rest of
+        // the dispose chain still executes.
+        try
+        {
+            var module = await GetModuleAsync();
+            await _scroll.UnregisterTabsOverflow(module, listId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
     public async ValueTask TabsScrollBy(string listId, double delta, bool horizontal)

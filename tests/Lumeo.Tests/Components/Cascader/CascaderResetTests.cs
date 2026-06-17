@@ -57,8 +57,8 @@ public class CascaderResetTests : IAsyncLifetime
         // Open the dropdown.
         cut.Find("button").Click();
 
-        // Both levels of the selected path are highlighted.
-        Assert.True(SelectedOptionCount(cut) >= 2);
+        // Both levels of the selected path are highlighted (exactly two).
+        Assert.Equal(2, SelectedOptionCount(cut));
     }
 
     [Fact]

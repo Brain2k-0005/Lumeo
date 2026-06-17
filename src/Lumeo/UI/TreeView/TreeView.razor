@@ -16,7 +16,7 @@
 
     @if (Items is { Count: > 0 })
     {
-        <CascadingValue Value="_context" IsFixed="true">
+        <CascadingValue Value="_context" IsFixed="false">
             @for (var i = 0; i < _displayItems.Count; i++)
             {
                 var item = _displayItems[i];
@@ -127,7 +127,9 @@
     {
         if (!_expandAllNeedsLazyLoad) return;
         _expandAllNeedsLazyLoad = false;
-        await LoadAndExpandAllAsync(Items ?? []);
+        var gen = ++_expandGeneration;
+        await LoadAndExpandAllAsync(Items ?? [], gen);
+        if (gen != _expandGeneration) return; // superseded by a collapse/expand
         _flatVisible = null;
         RebuildDisplay();
         StateHasChanged();
@@ -153,17 +155,25 @@
 
     /// <summary>Expands every node, awaiting <see cref="LoadChildren"/> for any
     /// not-yet-loaded lazy branches so the whole tree is realized on completion.</summary>
+    // Bumped on every expand-all / collapse-all so a stale background lazy-expand
+    // pass (started before a later collapse) detects it lost the race and bails
+    // instead of re-expanding the tree the user just collapsed.
+    private int _expandGeneration;
+
     public async Task ExpandAllNodesAsync()
     {
+        var gen = ++_expandGeneration;
         ApplyExpandAll(Items ?? [], true);
         if (LoadChildren is not null)
-            await LoadAndExpandAllAsync(Items ?? []);
+            await LoadAndExpandAllAsync(Items ?? [], gen);
+        if (gen != _expandGeneration) return; // superseded by a newer expand/collapse
         _flatVisible = null;
         StateHasChanged();
     }
 
     public void CollapseAllNodes()
     {
+        _expandGeneration++; // cancel any in-flight lazy expand pass
         ApplyExpandAll(Items ?? [], false);
         _flatVisible = null;
         StateHasChanged();
@@ -174,10 +184,11 @@
     /// descending into the freshly-loaded subtrees. Re-renders after each fetch so
     /// the tree fills in progressively. Safe when <see cref="LoadChildren"/> is null
     /// (it simply recurses over already-loaded children).</summary>
-    private async Task LoadAndExpandAllAsync(List<TreeViewItem<T>> items)
+    private async Task LoadAndExpandAllAsync(List<TreeViewItem<T>> items, int gen)
     {
         foreach (var item in items)
         {
+            if (gen != _expandGeneration) return; // a newer collapse/expand superseded us
             item.IsExpanded = true;
 
             // A lazy, not-yet-loaded, non-leaf branch: fetch it once.
@@ -190,6 +201,9 @@
                 try
                 {
                     item.Children = await LoadChildren(item);
+                    // Bail if the user collapsed / re-expanded while we awaited — don't
+                    // resurrect a tree they just collapsed (finally resets IsLoading).
+                    if (gen != _expandGeneration) return;
                     item.ChildrenLoaded = true;
                     // Mirror the per-node lazy-load cascade (rc.42): a fully-checked
                     // parent propagates its check to freshly-loaded children.
@@ -203,7 +217,7 @@
             }
 
             if (item.Children is { Count: > 0 })
-                await LoadAndExpandAllAsync(item.Children);
+                await LoadAndExpandAllAsync(item.Children, gen);
         }
     }
 

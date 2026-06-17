@@ -95,11 +95,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-
         // React to viewport changes so the mobile-sheet treatment flips on the
         // md boundary without a manual refresh.
-        if (MobileSheet && !_viewportSubscribed)
+        if (firstRender && MobileSheet && !_viewportSubscribed)
         {
             _viewportSubscribed = true;
             Responsive.ViewportChanged += OnViewportChanged;
@@ -108,9 +106,11 @@
             StateHasChanged();
         }
 
+        // Run every render (not just firstRender) so a changed ToggleShortcut
+        // parameter re-registers; SyncShortcutAsync is a no-op when unchanged.
         await SyncShortcutAsync();
 
-        if (PersistCollapsed)
+        if (firstRender && PersistCollapsed)
         {
             try
             {

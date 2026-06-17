@@ -269,7 +269,22 @@ else
     private int DisplayHourTo24(int displayHour)
     {
         if (EffectiveUse24Hour) return displayHour;
-        var isPm = (Value ?? TimeSpan.Zero).Hours >= 12;
+        // With no value chosen yet, AM/PM is ambiguous. Defaulting to AM would
+        // disable every hour when Min is a PM time (e.g. 14:00). Infer per-hour
+        // from the allowed range and prefer PM only when AM is out of bounds.
+        if (Value is null)
+        {
+            var min = Min;
+            var max = Max;
+            var amHour = displayHour % 12;
+            var pmHour = amHour + 12;
+            var amInBounds = (!min.HasValue || new TimeSpan(amHour, 59, 59) >= min.Value)
+                          && (!max.HasValue || new TimeSpan(amHour, 0, 0) <= max.Value);
+            var pmInBounds = (!min.HasValue || new TimeSpan(pmHour, 59, 59) >= min.Value)
+                          && (!max.HasValue || new TimeSpan(pmHour, 0, 0) <= max.Value);
+            return (!amInBounds && pmInBounds) ? pmHour : amHour;
+        }
+        var isPm = Value.Value.Hours >= 12;
         var h = displayHour % 12;
         return isPm ? h + 12 : h;
     }

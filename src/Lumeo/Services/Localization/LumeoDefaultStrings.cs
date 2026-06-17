@@ -734,6 +734,7 @@ internal static partial class LumeoDefaultStrings
         ["Transfer.SelectAll"] = "Alle auswählen",
         ["TreeSelect.Placeholder"] = "Auswählen…",
         ["TreeSelect.NoResults"] = "Keine Ergebnisse",
+        ["TreeSelect.ClearSelection"] = "Auswahl leeren",
         ["TagInput.Placeholder"] = "Tag hinzufügen…",
 
         // ── Cascader ────────────────────────────────────────────────

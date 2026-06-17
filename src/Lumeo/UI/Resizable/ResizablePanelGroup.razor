@@ -178,9 +178,11 @@
         if (_collapsed.Contains(index))
         {
             var restore = _preCollapseSize.TryGetValue(index, out var s) ? s : _panelDefaultSizes.GetValueOrDefault(index, 50);
-            var delta = restore - _sizes[index];
-            _sizes[index] = restore;
-            _sizes[neighbour] = Math.Max(0, _sizes[neighbour] - delta);
+            var neighbourMin = GetPanelConstraints(neighbour).MinSize;
+            // Reclaim space from the neighbour, but never push it below its MinSize.
+            var delta = Math.Min(restore - _sizes[index], Math.Max(0, _sizes[neighbour] - neighbourMin));
+            _sizes[index] += delta;
+            _sizes[neighbour] -= delta;
             _collapsed.Remove(index);
         }
         else
