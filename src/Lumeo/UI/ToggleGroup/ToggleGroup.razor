@@ -1,10 +1,12 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
 
 @{
-    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem));
+    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem), GetTabIndex, _itemValues, _itemIds, _itemDisabled);
 }
 
-<div role="group" class="@CssClass" @attributes="AdditionalAttributes">
+<div id="@_id" role="group" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -23,6 +25,13 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly HashSet<string> _selectedItems = new();
+    private readonly string _id = LumeoIds.New("togglegroup");
+
+    // Ordered item registry — populated by ToggleGroupItem children. Drives the
+    // roving tabindex (one tab stop) and arrow-key focus movement.
+    private readonly List<string> _itemValues = new();
+    private readonly Dictionary<string, string> _itemIds = new();
+    private readonly Dictionary<string, bool> _itemDisabled = new();
 
     // Last-seen bound parameters — lets us distinguish "consumer cleared the
     // binding to null" (sync: clear the selection) from "consumer never binds
@@ -31,6 +40,100 @@
     private IEnumerable<string>? _lastSelectedValues;
 
     private string CssClass => Cx.Merge("flex items-center gap-1", Class);
+
+    // Roving tabindex: the first selected item is the tab stop; if nothing is
+    // selected, the first ENABLED item holds it. Arrow keys then move focus among
+    // the rest (Radix ToggleGroup: arrows move focus, Enter/Space toggles).
+    private string GetTabIndex(string value, bool disabled)
+    {
+        if (disabled) return "-1";
+        var firstSelected = _itemValues.FirstOrDefault(v => _selectedItems.Contains(v) && !IsItemDisabled(v));
+        if (firstSelected is not null) return value == firstSelected ? "0" : "-1";
+        return _itemValues.FirstOrDefault(v => !IsItemDisabled(v)) == value ? "0" : "-1";
+    }
+
+    private bool IsItemDisabled(string value) =>
+        _itemDisabled.TryGetValue(value, out var d) && d;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (_itemValues.Count == 0) return;
+
+        // The reference point for navigation is the focused item. We can't read
+        // document.activeElement from C#, so we navigate relative to the current
+        // tab stop (first selected, else first enabled) — matching where focus
+        // sits when the user tabs in, and arrow presses chain from there.
+        var anchor = _itemValues.FirstOrDefault(v => _selectedItems.Contains(v) && !IsItemDisabled(v))
+            ?? _itemValues.FirstOrDefault(v => !IsItemDisabled(v));
+        if (anchor is null) return;
+        var idx = _focusValue is not null && _itemValues.Contains(_focusValue)
+            ? _itemValues.IndexOf(_focusValue)
+            : _itemValues.IndexOf(anchor);
+
+        string? target = e.Key switch
+        {
+            "ArrowRight" or "ArrowDown" => FindNextEnabled(idx, 1),
+            "ArrowLeft" or "ArrowUp" => FindNextEnabled(idx, -1),
+            "Home" => _itemValues.FirstOrDefault(v => !IsItemDisabled(v)),
+            "End" => _itemValues.LastOrDefault(v => !IsItemDisabled(v)),
+            _ => null
+        };
+        if (target is null) return;
+
+        _focusValue = target;
+        if (_itemIds.TryGetValue(target, out var id))
+        {
+            try { await Interop.FocusElement(id); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    // Tracks the last item we moved focus to via arrow keys, so successive
+    // presses chain (right, right, right) rather than always restarting from the
+    // selected item.
+    private string? _focusValue;
+
+    private string? FindNextEnabled(int currentIdx, int direction)
+    {
+        if (_itemValues.Count == 0) return null;
+        var idx = currentIdx;
+        for (var i = 0; i < _itemValues.Count; i++)
+        {
+            idx += direction;
+            if (idx < 0) idx = _itemValues.Count - 1;
+            else if (idx >= _itemValues.Count) idx = 0;
+            if (idx == currentIdx) return null;
+            if (!IsItemDisabled(_itemValues[idx])) return _itemValues[idx];
+        }
+        return null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(
+                _id,
+                new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
+                    .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private bool _pdRegistered;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_id); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
 
     protected override void OnParametersSet()
     {
@@ -89,7 +192,16 @@
     public enum ToggleGroupType { Single, Multiple }
     public enum ToggleGroupVariant { Default, Outline }
 
-    public record ToggleGroupContext(ToggleGroupType Type, HashSet<string> SelectedItems, ToggleGroupVariant Variant, Lumeo.Size Size, EventCallback<string> Toggle)
+    public record ToggleGroupContext(
+        ToggleGroupType Type,
+        HashSet<string> SelectedItems,
+        ToggleGroupVariant Variant,
+        Lumeo.Size Size,
+        EventCallback<string> Toggle,
+        Func<string, bool, string> GetTabIndex,
+        List<string> ItemValues,
+        Dictionary<string, string> ItemIds,
+        Dictionary<string, bool> ItemDisabled)
     {
         public bool IsSelected(string value) => SelectedItems.Contains(value);
     }
