@@ -1,9 +1,17 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
 <div class="@CssClass"
+     id="@_cardId"
      draggable="@(Draggable ? "true" : "false")"
-     role="@(OnClick.HasDelegate ? "button" : null)"
-     tabindex="@(OnClick.HasDelegate ? "0" : null)"
+     role="@(IsInteractive ? "button" : null)"
+     tabindex="@(IsInteractive ? "0" : null)"
+     aria-roledescription="@(KeyboardMovable ? L["Kanban.CardRoleDescription"] : null)"
+     @ondragstart="HandleDragStart"
+     @ondragend="HandleDragEnd"
+     @ondragover="HandleDragOver"
      @onclick="OnClick"
      @onkeydown="HandleKeyDown"
      @attributes="AdditionalAttributes">
@@ -42,6 +50,9 @@
 </div>
 
 @code {
+    [CascadingParameter] private Kanban.BoardContext? Board { get; set; }
+    [CascadingParameter] private KanbanColumn.ColumnContext? Column { get; set; }
+
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Description { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -49,15 +60,107 @@
     [Parameter] public string? Avatar { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
     [Parameter] public bool Draggable { get; set; } = true;
+
+    /// <summary>Stable id for this card, written into the board's drop/move payloads.</summary>
+    [Parameter] public string? CardId { get; set; }
+
+    /// <summary>This card's position within its column. Lets the board compute a
+    /// precise insert index when another card is dropped onto this one.</summary>
+    [Parameter] public int Index { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("bg-card rounded-lg border border-border/40 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2", Class);
 
+    private readonly string _cardId = LumeoIds.New("kanban-card");
+
+    // The card joins the board's keyboard-move flow when it has an id and the
+    // board exposes a move handler. It is interactive (focusable) when it can be
+    // clicked OR keyboard-moved.
+    private bool KeyboardMovable => CardId is not null && Board is { HasCardMoveHandler: true };
+    private bool IsInteractive => OnClick.HasDelegate || KeyboardMovable;
+
+    // When keyboard-movable, suppress the browser default (page/column scroll)
+    // for the arrow keys so they reorder/move the card instead. Registered
+    // against the id the DOM actually carries (a consumer id in the splat wins
+    // over the generated one); re-registered when that id or movability changes.
+    private string? _pdRegisteredId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var targetId = KeyboardMovable ? LumeoIds.Effective(AdditionalAttributes, _cardId) : null;
+        if (_pdRegisteredId == targetId) return;
+        try
+        {
+            if (_pdRegisteredId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId);
+            if (targetId is not null)
+                await Interop.RegisterPreventDefaultKeys(targetId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                });
+            _pdRegisteredId = targetId;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    private void HandleDragStart()
+    {
+        // Record the drag identity on the board so the destination column can
+        // emit an enriched drop payload (DataTransfer is unreliable / empty
+        // under the touch shim). A consumer-supplied @ondragstart splatted via
+        // AdditionalAttributes still runs and wins, keeping manual boards working.
+        if (CardId is { } id && Board is { } board)
+            board.BeginDrag(id, Column?.ColumnId);
+    }
+
+    private void HandleDragEnd()
+    {
+        Board?.EndDrag();
+    }
+
+    private void HandleDragOver()
+    {
+        // Advertise this card's slot as the insert target while hovered.
+        Column?.SetPendingIndex(Index);
+    }
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (!OnClick.HasDelegate) return;
-        if (e.Key is "Enter" or " ") await OnClick.InvokeAsync();
+        if (KeyboardMovable && Column?.ColumnId is { } fromColumn)
+        {
+            var dir = e.Key switch
+            {
+                "ArrowLeft" => (Kanban.MoveDirection?)Kanban.MoveDirection.Left,
+                "ArrowRight" => Kanban.MoveDirection.Right,
+                "ArrowUp" => Kanban.MoveDirection.Up,
+                "ArrowDown" => Kanban.MoveDirection.Down,
+                _ => null
+            };
+            if (dir is { } d && Board is { } board)
+            {
+                await board.NotifyMove(new Kanban.MoveEventArgs(CardId!, fromColumn, d));
+                return;
+            }
+        }
+
+        if (OnClick.HasDelegate && e.Key is "Enter" or " ")
+            await OnClick.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pdRegisteredId is null) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private static string GetLabelClass(string color) => color switch
