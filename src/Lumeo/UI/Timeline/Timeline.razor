@@ -1,8 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TimelineContext(Orientation, Animated, ActiveIndex, _lastActiveIndex, _replayKey, this);
-    _index = 0;
+    var context = new TimelineContext(Orientation, Animated, ActiveIndex, _lastActiveIndex, _replayKey, this, Layout);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -23,6 +22,19 @@
     [Parameter] public bool Animated { get; set; }
 
     /// <summary>
+    /// Visual arrangement of the items:
+    /// <list type="bullet">
+    /// <item><see cref="TimelineLayout.Default"/> — all items stacked on one
+    /// side of the rail (the classic single-column timeline).</item>
+    /// <item><see cref="TimelineLayout.Alternate"/> — items zig-zag to either
+    /// side of a centered rail (even indices on the left, odd on the right).
+    /// Only applies to vertical orientation; horizontal falls back to
+    /// Default.</item>
+    /// </list>
+    /// </summary>
+    [Parameter] public TimelineLayout Layout { get; set; } = TimelineLayout.Default;
+
+    /// <summary>
     /// When set AND <see cref="Animated"/> is true, drives the active-dot
     /// progression: items with index &lt; ActiveIndex render as "completed"
     /// (solid primary), the item at ActiveIndex pulses, later items are
@@ -37,7 +49,11 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private int _index;
+    // Identity-keyed item registry (mirrors Steps #244). Each TimelineItem
+    // registers once and reads its index back, so the index stays stable across
+    // independent child re-renders and the alternate layout assigns a
+    // deterministic side per item.
+    private readonly List<TimelineItem> _items = new();
 
     // Track the previous ActiveIndex so children can tell whether THEIR
     // connector should re-animate on this parameter change. `_replayKey`
@@ -46,7 +62,19 @@
     private int? _lastActiveIndex;
     private int _replayKey;
 
-    internal int GetNextIndex() => _index++;
+    internal void RegisterItem(TimelineItem item)
+    {
+        if (!_items.Contains(item))
+            _items.Add(item);
+    }
+
+    internal void UnregisterItem(TimelineItem item) => _items.Remove(item);
+
+    internal int GetItemIndex(TimelineItem item)
+    {
+        var idx = _items.IndexOf(item);
+        return idx < 0 ? 0 : idx;
+    }
 
     protected override void OnParametersSet()
     {
@@ -57,14 +85,31 @@
         }
     }
 
+    private bool IsAlternate => Layout == TimelineLayout.Alternate && Orientation == Lumeo.Orientation.Vertical;
+
     private string CssClass => Orientation switch
     {
         Lumeo.Orientation.Horizontal => Cx.Merge("flex flex-row items-start", Class),
-        _ => Cx.Merge("flex flex-col", Class)
+        _ => IsAlternate
+            ? Cx.Merge("flex flex-col", Class)
+            : Cx.Merge("flex flex-col", Class)
     };
 
-    public record TimelineContext(Lumeo.Orientation Orientation, bool Animated, int? ActiveIndex, int? PreviousActiveIndex, int ReplayKey, Timeline Parent)
+    /// <summary>Visual arrangement for <see cref="Timeline"/> items.</summary>
+    public enum TimelineLayout
     {
-        public TimelineContext(Lumeo.Orientation Orientation) : this(Orientation, false, null, null, 0, default!) { }
+        /// <summary>All items on one side of the rail (default single column).</summary>
+        Default,
+        /// <summary>Items alternate to either side of a centered rail (vertical only).</summary>
+        Alternate
+    }
+
+    public record TimelineContext(Lumeo.Orientation Orientation, bool Animated, int? ActiveIndex, int? PreviousActiveIndex, int ReplayKey, Timeline Parent, TimelineLayout Layout)
+    {
+        public TimelineContext(Lumeo.Orientation Orientation) : this(Orientation, false, null, null, 0, default!, TimelineLayout.Default) { }
+
+        /// <summary>True when the alternate (zig-zag) layout is in effect —
+        /// alternate is meaningful only on the vertical axis.</summary>
+        public bool IsAlternate => Layout == TimelineLayout.Alternate && Orientation == Lumeo.Orientation.Vertical;
     }
 }
