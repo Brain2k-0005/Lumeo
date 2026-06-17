@@ -352,8 +352,24 @@ public sealed class TrackingInteropService : IComponentInteropService
     }
 
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
-    public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterAffix(string elementId) => ValueTask.CompletedTask;
+
+    // Affix registration tracking (#248) — assert the sticky element is wired
+    // with the consumer's offsets so the resize/rotate width-recompute path
+    // stays reachable.
+    private readonly List<(string ElementId, int OffsetTop, int? OffsetBottom, string? Target)> _affixRegistrations = new();
+    private readonly List<string> _affixUnregistrations = new();
+    public IReadOnlyList<(string ElementId, int OffsetTop, int? OffsetBottom, string? Target)> AffixRegistrations => _affixRegistrations;
+    public IReadOnlyList<string> AffixUnregistrations => _affixUnregistrations;
+    public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
+    {
+        _affixRegistrations.Add((elementId, offsetTop, offsetBottom, target));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterAffix(string elementId)
+    {
+        _affixUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId) => ValueTask.FromResult(new ComponentInteropService.TextareaCaretInfo(0, 0, 0));
 
     // InputMask caret (#177). GetInputCaret returns InputCaret (default 0) so tests
