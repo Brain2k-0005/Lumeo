@@ -3,12 +3,18 @@
 <button id="@ItemContext.TriggerId"
         type="button"
         class="@CssClass"
+        aria-haspopup="menu"
+        aria-expanded="@(IsActive ? "true" : "false")"
+        aria-controls="@(IsActive ? ItemContext.ContentId : null)"
         @onclick="HandleClick"
+        @onkeydown="HandleKeyDown"
         @onpointerenter="HandlePointerEnter"
         @attributes="AdditionalAttributes">
     @ChildContent
     <Blazicon Svg="Lucide.ChevronDown" class="@ChevronClasses" />
 </button>
+
+@inject IComponentInteropService Interop
 
 @code {
     [CascadingParameter] public NavigationMenu.NavigationMenuContext Context { get; set; } = default!;
@@ -48,5 +54,35 @@
     {
         if (e.PointerType != "mouse") return;
         await Context.SetActiveItemId.InvokeAsync(ItemContext.ItemId);
+    }
+
+    // APG navigation keyboard model: Left/Right move focus between top-level
+    // triggers (roving), Home/End jump to the first/last, ArrowDown (or
+    // Enter/Space — handled natively by the button click) opens this item and
+    // moves focus into its content, Escape closes the open item.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await Context.Owner.FocusTriggerRelative(ItemContext.TriggerId, 1);
+                break;
+            case "ArrowLeft":
+                await Context.Owner.FocusTriggerRelative(ItemContext.TriggerId, -1);
+                break;
+            case "Home":
+                await Context.Owner.FocusTriggerEdge(last: false);
+                break;
+            case "End":
+                await Context.Owner.FocusTriggerEdge(last: true);
+                break;
+            case "ArrowDown":
+                if (!IsActive) await Context.SetActiveItemId.InvokeAsync(ItemContext.ItemId);
+                try { await Interop.FocusElement(ItemContext.ContentId); } catch (JSDisconnectedException) { }
+                break;
+            case "Escape":
+                if (IsActive) await Context.SetActiveItemId.InvokeAsync(null);
+                break;
+        }
     }
 }

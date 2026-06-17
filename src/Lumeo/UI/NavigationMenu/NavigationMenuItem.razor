@@ -2,7 +2,7 @@
 @implements IDisposable
 
 @{
-    var itemContext = new NavigationMenuItemContext(_itemId, _triggerId);
+    var itemContext = new NavigationMenuItemContext(_itemId, _triggerId, _contentId);
 }
 
 <CascadingValue Value="itemContext" IsFixed="true">
@@ -22,10 +22,17 @@
 
     private readonly string _itemId = LumeoIds.New("nav-item");
     private readonly string _triggerId = LumeoIds.New("nav-trigger");
+    // Stable content id shared with the trigger (aria-controls) and the content
+    // (focus-into target).
+    private readonly string _contentId = LumeoIds.New("nav-content");
     private readonly DelayedDispatch _dispatch = new();
     private const int CloseDelay = 150;
 
     private string CssClass => Cx.Merge("relative", Class);
+
+    // Register this item's trigger id with the menu so arrow-key roving can move
+    // focus between top-level triggers in DOM order.
+    protected override void OnInitialized() => Context.Owner.RegisterTrigger(_triggerId);
 
     // rc.44 — Approach B: pointer events with PointerType filter. On touch
     // devices the browser emulates `mouseenter` on tap and `mouseleave` when
@@ -54,7 +61,11 @@
         }
     }
 
-    public void Dispose() => _dispatch.Dispose();
+    public void Dispose()
+    {
+        _dispatch.Dispose();
+        Context.Owner.UnregisterTrigger(_triggerId);
+    }
 
-    public record NavigationMenuItemContext(string ItemId, string TriggerId);
+    public record NavigationMenuItemContext(string ItemId, string TriggerId, string ContentId);
 }
