@@ -2173,6 +2173,26 @@ export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector
     placeholder.style.display = 'none';
     let isFixed = false;
 
+    // While affixed, the element is position:fixed with an inline width frozen
+    // at the moment it stuck. The placeholder still occupies the element's slot
+    // in normal flow, so it reflows with the parent on a window resize / device
+    // rotation. Re-sync the fixed element's width (and the placeholder's frozen
+    // box) to the live placeholder geometry so a responsive affixed bar tracks
+    // its container instead of staying stale at its first-render width.
+    const syncFixedWidth = () => {
+        if (!isFixed) return;
+        // Reading el.offsetWidth while fixed returns the frozen width; the
+        // placeholder is the in-flow proxy, so measure it instead. Temporarily
+        // drop the recorded width so the placeholder reflows to its natural
+        // (parent-driven) size before we re-read it.
+        placeholder.style.width = '';
+        const naturalWidth = placeholder.getBoundingClientRect().width;
+        if (naturalWidth > 0) {
+            placeholder.style.width = naturalWidth + 'px';
+            el.style.width = naturalWidth + 'px';
+        }
+    };
+
     const onScroll = () => {
         const rect = (isFixed ? placeholder : el).getBoundingClientRect();
 
@@ -2227,10 +2247,18 @@ export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector
         }
     };
 
+    // On resize/rotate, first re-measure the affixed width from the reflowed
+    // placeholder, then re-evaluate the stick/unstick boundary (the viewport
+    // height the offsetBottom branch compares against also changes).
+    const onResize = () => {
+        syncFixedWidth();
+        onScroll();
+    };
+
     const eventTarget = scrollTarget === window ? window : scrollTarget;
     eventTarget.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
-    affixHandlers.set(elementId, { onScroll, placeholder, eventTarget });
+    window.addEventListener('resize', onResize, { passive: true });
+    affixHandlers.set(elementId, { onScroll, onResize, placeholder, eventTarget });
 
     // Initial check
     requestAnimationFrame(onScroll);
@@ -2240,7 +2268,7 @@ export function unregisterAffix(elementId) {
     const handler = affixHandlers.get(elementId);
     if (handler) {
         handler.eventTarget.removeEventListener('scroll', handler.onScroll);
-        window.removeEventListener('resize', handler.onScroll);
+        window.removeEventListener('resize', handler.onResize);
         if (handler.placeholder.parentNode) handler.placeholder.remove();
         const el = document.getElementById(elementId);
         if (el) {
