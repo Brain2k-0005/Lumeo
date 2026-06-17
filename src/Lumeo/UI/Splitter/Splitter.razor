@@ -31,7 +31,6 @@
 
     private readonly string _groupId = LumeoIds.New("splitter");
     private readonly List<object> _children = new();
-    private bool _distributed;
 
     private string OrientationString => Orientation == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
 
@@ -56,10 +55,12 @@
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (firstRender || !_distributed)
-        {
-            DistributeInitialSizes();
-        }
+        // Re-run distribution whenever there are still-unsized panes — not only
+        // on the first render. A pane added AFTER the initial layout (a tab
+        // opened, a conditional @if flipping true) registers with Size 0 and was
+        // previously left invisible because the one-shot _distributed guard had
+        // already latched. Now any unsized pane triggers a fresh share-out (#258).
+        DistributeInitialSizes();
     }
 
     private void DistributeInitialSizes()
@@ -67,23 +68,20 @@
         var panes = Panes.ToList();
         if (panes.Count == 0) return;
 
-        var unsetPanes = panes.Where(p => p.Size <= 0).ToList();
-        if (unsetPanes.Count == 0)
-        {
-            _distributed = true;
-            return;
-        }
+        var unsetPanes = panes.Where(p => p.Size <= 0 && !p.Collapsed).ToList();
+        if (unsetPanes.Count == 0) return;
 
-        var usedSpace = panes.Where(p => p.Size > 0).Sum(p => p.Size);
+        // Space already claimed by sized (or collapsed) panes; the rest is split
+        // evenly across the unsized newcomers so they become visible.
+        var usedSpace = panes.Where(p => p.Size > 0 || p.Collapsed).Sum(p => p.Size);
         var remaining = Math.Max(0, 100 - usedSpace);
-        var share = remaining / unsetPanes.Count;
+        var share = unsetPanes.Count > 0 ? remaining / unsetPanes.Count : 0;
 
         foreach (var pane in unsetPanes)
         {
             pane.Size = share;
         }
 
-        _distributed = true;
         StateHasChanged();
     }
 
@@ -111,15 +109,48 @@
         if (totalSize <= 0) return;
 
         var deltaPercent = (deltaPixels / totalSize) * 100.0;
+        var pairTotal = before.Size + after.Size;
 
-        var newBefore = before.Size + deltaPercent;
-        var newAfter = after.Size - deltaPercent;
+        // CLAMP rather than reject (#258): a fast drag whose accumulated delta
+        // overshoots a boundary lands exactly ON the boundary instead of
+        // stalling short. The leading pane's range must also respect BOTH
+        // neighbours — it can't grow past where the trailing pane would fall
+        // below its MinSize, nor shrink past where the trailing pane would
+        // exceed its MaxSize.
+        var minBefore = Math.Max(before.MinSize, pairTotal - after.MaxSize);
+        var maxBefore = Math.Min(before.MaxSize, pairTotal - after.MinSize);
 
-        if (newBefore < before.MinSize || newBefore > before.MaxSize) return;
-        if (newAfter < after.MinSize || newAfter > after.MaxSize) return;
+        var desiredBefore = before.Size + deltaPercent;
 
+        // Collapsible panes: dragging a pane below half its MinSize snaps it to
+        // CollapsedSize (default 0) and hands the freed space to its neighbour,
+        // instead of clamping at MinSize. Dragging back out past the threshold
+        // restores it. Mirrors Radix's collapse-on-drag behaviour.
+        if (before.Collapsible && desiredBefore < before.MinSize - (before.MinSize - before.CollapsedSize) / 2)
+        {
+            before.Collapsed = true;
+            before.Size = before.CollapsedSize;
+            after.Size = pairTotal - before.CollapsedSize;
+            StateHasChanged();
+            return;
+        }
+        if (after.Collapsible && (pairTotal - desiredBefore) < after.MinSize - (after.MinSize - after.CollapsedSize) / 2)
+        {
+            after.Collapsed = true;
+            after.Size = after.CollapsedSize;
+            before.Size = pairTotal - after.CollapsedSize;
+            StateHasChanged();
+            return;
+        }
+
+        if (minBefore > maxBefore) return; // unsatisfiable constraints
+
+        var newBefore = Math.Clamp(desiredBefore, minBefore, maxBefore);
         before.Size = newBefore;
-        after.Size = newAfter;
+        after.Size = pairTotal - newBefore;
+        // Any resize that lands a pane back at/above its MinSize clears collapse.
+        if (before.Size >= before.MinSize) before.Collapsed = false;
+        if (after.Size >= after.MinSize) after.Collapsed = false;
 
         StateHasChanged();
     }
@@ -129,6 +160,16 @@
         public double Size { get; set; }
         public double MinSize { get; set; } = 10;
         public double MaxSize { get; set; } = 90;
+
+        /// <summary>When true, the pane snaps to <see cref="CollapsedSize"/> when
+        /// dragged below (roughly) half its MinSize, and restores on drag-out.</summary>
+        public bool Collapsible { get; set; }
+
+        /// <summary>Percentage the pane occupies while collapsed (default 0).</summary>
+        public double CollapsedSize { get; set; }
+
+        /// <summary>Live collapsed state — toggled by drag and the public API.</summary>
+        public bool Collapsed { get; set; }
     }
 
     public class SplitterDividerToken { }

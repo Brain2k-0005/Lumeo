@@ -12,7 +12,18 @@
     [Parameter] public double Size { get; set; }
     [Parameter] public double MinSize { get; set; } = 10;
     [Parameter] public double MaxSize { get; set; } = 90;
+
+    /// <summary>
+    /// When true, the pane can collapse to <see cref="CollapsedSize"/> by
+    /// dragging its divider below (roughly) half the pane's MinSize, and
+    /// restores when dragged back out. Previously this flag was inert (#258).
+    /// </summary>
     [Parameter] public bool Collapsible { get; set; }
+
+    /// <summary>Percentage size the pane shrinks to when collapsed. Default 0
+    /// (fully hidden). Only meaningful when <see cref="Collapsible"/> is true.</summary>
+    [Parameter] public double CollapsedSize { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -37,14 +48,18 @@
         Handle.Size = Size;
         Handle.MinSize = MinSize;
         Handle.MaxSize = MaxSize;
+        Handle.Collapsible = Collapsible;
+        Handle.CollapsedSize = CollapsedSize;
         Context?.RegisterChild(Handle);
     }
 
     protected override void OnParametersSet()
     {
-        // Track min/max updates but don't overwrite runtime-computed size
+        // Track min/max + collapse config but don't overwrite runtime-computed size
         Handle.MinSize = MinSize;
         Handle.MaxSize = MaxSize;
+        Handle.Collapsible = Collapsible;
+        Handle.CollapsedSize = CollapsedSize;
     }
 
     public void Dispose()

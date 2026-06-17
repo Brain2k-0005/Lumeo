@@ -174,7 +174,11 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
-    public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
+    /// <summary>Value returned by <see cref="GetElementDimension"/> — defaults to
+    /// 0 (so size-dependent paths short-circuit, preserving old behaviour). Set
+    /// it to a positive pixel size to exercise Splitter/Resizable drag math.</summary>
+    public double ElementDimension { get; set; }
+    public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(ElementDimension);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
 
     // PullToRefresh gesture-guard registration tracking (#308) — tests assert
