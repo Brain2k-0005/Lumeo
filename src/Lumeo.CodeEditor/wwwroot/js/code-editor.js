@@ -23,12 +23,24 @@
 // at init time and re-evaluates via a MutationObserver on the html element's
 // class attribute, so Lumeo's ThemeSwitcher flips CodeMirror instantly.
 
-// ESM base — overridable via `window.lumeoCdn.codeMirrorBase` so airgapped /
-// self-hosted consumers can swap esm.sh for their own bundle directory.
+// ESM base — overridable three ways, in precedence order:
+//   1. the per-component `esmBase` option (C# `EsmBase` parameter) — wins,
+//   2. the global `window.lumeoCdn.codeMirrorBase`,
+//   3. the public esm.sh CDN.
+// All three let airgapped / self-hosted / strict-CSP consumers swap esm.sh for
+// their own ESM mirror directory. `_esmBase` is resolved on first init and
+// reused for every later import so the global core/lang/theme caches stay keyed
+// to a single origin.
 function _cdn(key, fallback) {
     return (typeof window !== 'undefined' && window.lumeoCdn && window.lumeoCdn[key]) || fallback;
 }
-const ESM = _cdn('codeMirrorBase', 'https://esm.sh').replace(/\/$/, '');
+const DEFAULT_ESM = _cdn('codeMirrorBase', 'https://esm.sh').replace(/\/$/, '');
+let _esmBase = DEFAULT_ESM;
+function _resolveBase(options) {
+    const fromOpts = options && typeof options.esmBase === 'string' ? options.esmBase.trim() : '';
+    if (fromOpts) _esmBase = fromOpts.replace(/\/$/, '');
+    return _esmBase;
+}
 const CM_VERSION = '6';       // major; esm.sh resolves to latest 6.x
 const LANG_VERSION = '6';     // language packs
 
@@ -38,17 +50,18 @@ const _instances = new Map();
 let _corePromise = null;
 const _langCache = new Map();
 let _oneDarkPromise = null;
+let _minimapPromise = null;
 
 async function loadCore() {
     if (_corePromise) return _corePromise;
     _corePromise = (async () => {
         const [state, view, language, commands, search, autocomplete] = await Promise.all([
-            import(`${ESM}/@codemirror/state@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/view@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/language@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/commands@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/search@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/autocomplete@${CM_VERSION}`),
+            import(`${_esmBase}/@codemirror/state@${CM_VERSION}`),
+            import(`${_esmBase}/@codemirror/view@${CM_VERSION}`),
+            import(`${_esmBase}/@codemirror/language@${CM_VERSION}`),
+            import(`${_esmBase}/@codemirror/commands@${CM_VERSION}`),
+            import(`${_esmBase}/@codemirror/search@${CM_VERSION}`),
+            import(`${_esmBase}/@codemirror/autocomplete@${CM_VERSION}`),
         ]);
         return { state, view, language, commands, search, autocomplete };
     })();
@@ -86,8 +99,8 @@ async function loadLanguage(language) {
             // CodeMirror 5 modes via StreamLanguage. Bundle is small (~10KB) and saves
             // us pulling a separate tree-sitter grammar for an admin-form-grade editor.
             const [legacyLang, clike] = await Promise.all([
-                import(`${ESM}/@codemirror/language@${CM_VERSION}`),
-                import(`${ESM}/@codemirror/legacy-modes@${LANG_VERSION}/mode/clike`),
+                import(`${_esmBase}/@codemirror/language@${CM_VERSION}`),
+                import(`${_esmBase}/@codemirror/legacy-modes@${LANG_VERSION}/mode/clike`),
             ]);
             const StreamLanguage = legacyLang.StreamLanguage;
             const mode = clike[spec.mode] || clike.default?.[spec.mode];
@@ -95,7 +108,7 @@ async function loadLanguage(language) {
             return StreamLanguage.define(mode);
         }
 
-        const mod = await import(`${ESM}/${spec.pkg}@${LANG_VERSION}`);
+        const mod = await import(`${_esmBase}/${spec.pkg}@${LANG_VERSION}`);
         const fn = mod[spec.factory] || mod.default?.[spec.factory] || mod.default;
         if (typeof fn !== 'function') return null;
         return spec.opts ? fn(spec.opts) : fn();
@@ -108,10 +121,29 @@ async function loadLanguage(language) {
 async function loadOneDark() {
     if (_oneDarkPromise) return _oneDarkPromise;
     _oneDarkPromise = (async () => {
-        const mod = await import(`${ESM}/@codemirror/theme-one-dark@${CM_VERSION}`);
+        const mod = await import(`${_esmBase}/@codemirror/theme-one-dark@${CM_VERSION}`);
         return mod.oneDark || mod.default?.oneDark || mod.default;
     })();
     return _oneDarkPromise;
+}
+
+// Minimap — CodeMirror 6 has no built-in minimap, so we lazily pull the
+// community `@replit/codemirror-minimap` extension from the same ESM base.
+// Cached after first load. Returns null (and the editor renders without a
+// minimap) if the import fails — e.g. offline with no self-hosted mirror.
+async function loadMinimap() {
+    if (_minimapPromise) return _minimapPromise;
+    _minimapPromise = (async () => {
+        try {
+            const mod = await import(`${_esmBase}/@replit/codemirror-minimap`);
+            return mod.showMinimap || mod.default?.showMinimap || mod.default || null;
+        } catch (_) {
+            // Reset so a later toggle can retry (e.g. network came back).
+            _minimapPromise = null;
+            return null;
+        }
+    })();
+    return _minimapPromise;
 }
 
 function isPageDark() {
@@ -187,6 +219,21 @@ async function buildExtensions(opts, core) {
         if (oneDark) exts.push(oneDark);
     }
 
+    // Minimap (lazy, optional). Degrades to no-minimap if the package can't load.
+    if (opts.minimap) {
+        const showMinimap = await loadMinimap();
+        if (showMinimap && typeof showMinimap.compute === 'function') {
+            exts.push(showMinimap.compute([], () => ({
+                create: () => {
+                    const dom = document.createElement('div');
+                    return { dom };
+                },
+                displayText: 'characters',
+                showOverlay: 'always',
+            })));
+        }
+    }
+
     return exts;
 }
 
@@ -199,6 +246,9 @@ export async function init(elementId, options, dotNetRef) {
 
     // Wipe any previous content (HMR / re-init safety).
     host.innerHTML = '';
+
+    // Resolve the per-instance ESM base (C# EsmBase) before any import.
+    _resolveBase(options);
 
     const core = await loadCore();
     const { state, view } = core;
@@ -331,6 +381,16 @@ export async function setReadOnly(elementId, readOnly) {
     const inst = _instances.get(elementId);
     if (!inst) return;
     inst.options.readOnly = readOnly;
+    await rebuild(elementId);
+}
+
+export async function setMinimap(elementId, minimap) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    if (inst.options.minimap === minimap) return;
+    inst.options.minimap = minimap;
+    // rebuild() re-runs buildExtensions, which adds/drops the minimap extension
+    // while preserving doc + selection (it copies them into the new state).
     await rebuild(elementId);
 }
 
