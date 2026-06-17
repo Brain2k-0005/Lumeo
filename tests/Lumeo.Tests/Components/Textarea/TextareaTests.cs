@@ -159,4 +159,64 @@ public class TextareaTests : IAsyncLifetime
         var cls = cut.Find("textarea").GetAttribute("class");
         Assert.Contains("resize-y", cls);
     }
+
+    // --- #175: over-limit count warning ---
+
+    [Fact]
+    public void Count_Turns_Destructive_When_Over_MaxLength()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 5)
+            .Add(t => t.Value, "toolong"));
+
+        var counter = cut.Find("div.text-right");
+        Assert.Contains("text-destructive", counter.GetAttribute("class"));
+        Assert.Contains("7/5", counter.TextContent);
+    }
+
+    [Fact]
+    public void Count_Is_Muted_When_Within_MaxLength()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 5)
+            .Add(t => t.Value, "ok"));
+
+        var counter = cut.Find("div.text-right");
+        Assert.Contains("text-muted-foreground", counter.GetAttribute("class"));
+        Assert.DoesNotContain("text-destructive", counter.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void ShowCount_Drops_Hard_Maxlength_So_Over_Limit_Is_Reachable()
+    {
+        // With a counter the native maxlength cap must be removed, otherwise the
+        // browser blocks typing past the limit and the warning never shows.
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 5));
+
+        Assert.False(cut.Find("textarea").HasAttribute("maxlength"));
+    }
+
+    [Fact]
+    public void Without_Count_MaxLength_Stays_A_Hard_Cap()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.MaxLength, 5));
+
+        Assert.Equal("5", cut.Find("textarea").GetAttribute("maxlength"));
+    }
+
+    [Fact]
+    public void Over_Limit_Marks_Textarea_Invalid()
+    {
+        var cut = _ctx.Render<Lumeo.Textarea>(p => p
+            .Add(t => t.ShowCount, true)
+            .Add(t => t.MaxLength, 3)
+            .Add(t => t.Value, "abcd"));
+
+        Assert.Equal("true", cut.Find("textarea").GetAttribute("aria-invalid"));
+    }
 }
