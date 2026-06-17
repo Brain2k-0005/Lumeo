@@ -282,14 +282,32 @@ export const motion = {
         const d0 = calcPath();
         if (d0) { trackEl.setAttribute('d', d0); beamEl.setAttribute('d', d0); }
 
-        requestAnimationFrame(() => {
-            applyAnimation();
-            // Second rAF covers browsers that need two paint cycles
-            requestAnimationFrame(applyAnimation);
-        });
+        // Reduced motion: draw the connecting path statically (track + a quiet
+        // beam stroke) but never start the travelling dash animation. We still
+        // observe resizes so the static path stays anchored to its endpoints.
+        const reduced = prefersReducedMotion();
+        const drawStatic = () => {
+            const d = calcPath();
+            if (!d) return;
+            trackEl.setAttribute('d', d);
+            beamEl.setAttribute('d', d);
+            beamEl.style.animation = 'none';
+            beamEl.style.strokeDasharray = 'none';
+            beamEl.style.strokeDashoffset = '0';
+        };
+
+        if (reduced) {
+            requestAnimationFrame(() => { drawStatic(); requestAnimationFrame(drawStatic); });
+        } else {
+            requestAnimationFrame(() => {
+                applyAnimation();
+                // Second rAF covers browsers that need two paint cycles
+                requestAnimationFrame(applyAnimation);
+            });
+        }
 
         // Re-measure when container or nodes resize
-        const ro = new ResizeObserver(() => applyAnimation());
+        const ro = new ResizeObserver(() => (reduced ? drawStatic() : applyAnimation()));
         const container = getContainer();
         const fromEl2 = document.getElementById(fromId);
         const toEl2   = document.getElementById(toId);
