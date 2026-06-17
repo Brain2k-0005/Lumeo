@@ -341,7 +341,7 @@ public class OtpInputTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Paste_Does_Not_Pad_With_Trailing_Spaces()
+    public async Task Paste_Does_Not_Pad_With_Trailing_Spaces()
     {
         string? changed = null;
         var cut = _ctx.Render<L.OtpInput>(p => p
@@ -350,7 +350,7 @@ public class OtpInputTests : IAsyncLifetime
 
         // Drive the paste handler the way the JS interop callback would.
         var otp = cut.Instance;
-        cut.InvokeAsync(() =>
+        await cut.InvokeAsync(() =>
             (Task)typeof(L.OtpInput)
                 .GetMethod("HandlePaste", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
                 .Invoke(otp, ["123"])!);

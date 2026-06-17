@@ -104,7 +104,9 @@
             for (var i = 0; i < Options.Count; i++)
             {
                 var opt = Options[i];
-                if (_itemValues.Contains(opt.Value)) continue;
+                if (_itemValues.Contains(opt.Value))
+                    throw new InvalidOperationException(
+                        $"Duplicate SegmentedOption.Value '{opt.Value}' is not supported — each option needs a unique Value.");
                 _itemValues.Add(opt.Value);
                 _itemIds[opt.Value] = $"{_id}-opt{i}";
                 _itemDisabled[opt.Value] = opt.Disabled;
@@ -168,8 +170,13 @@
     private string GetTabIndex(string value, bool disabled)
     {
         if (disabled) return "-1";
-        if (Value == value) return "0";
-        if (string.IsNullOrEmpty(Value)
+        // A selected Value that is missing or itself disabled can't hold the tab
+        // stop — fall back to the first enabled segment so the radiogroup always
+        // has exactly one entry point.
+        var selectedIsEnabled = !string.IsNullOrEmpty(Value)
+            && _itemValues.Contains(Value) && !IsItemDisabled(Value);
+        if (selectedIsEnabled && Value == value) return "0";
+        if (!selectedIsEnabled
             && _itemValues.FirstOrDefault(v => !IsItemDisabled(v)) == value) return "0";
         return "-1";
     }
@@ -183,7 +190,7 @@
 
         // The "current" segment for navigation is the selected one, falling back
         // to the first enabled segment (which holds the lone tab stop).
-        var current = !string.IsNullOrEmpty(Value) && _itemValues.Contains(Value)
+        var current = !string.IsNullOrEmpty(Value) && _itemValues.Contains(Value) && !IsItemDisabled(Value)
             ? Value!
             : _itemValues.FirstOrDefault(v => !IsItemDisabled(v));
         if (current is null) return;
