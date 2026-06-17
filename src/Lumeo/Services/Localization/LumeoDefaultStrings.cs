@@ -282,6 +282,9 @@ internal static partial class LumeoDefaultStrings
         ["NumberInput.Decrease"] = "Decrease",
         ["NumberInput.Increase"] = "Increase",
 
+        // ── OtpInput ────────────────────────────────────────────────
+        ["OtpInput.DigitLabel"] = "Digit {0} of {1}",
+
         // ── DateTimePicker ──────────────────────────────────────────
         ["DateTimePicker.ClearDate"] = "Clear date",
 
@@ -745,6 +748,9 @@ internal static partial class LumeoDefaultStrings
         // ── NumberInput ─────────────────────────────────────────────
         ["NumberInput.Decrease"] = "Verringern",
         ["NumberInput.Increase"] = "Erhöhen",
+
+        // ── OtpInput ────────────────────────────────────────────────
+        ["OtpInput.DigitLabel"] = "Ziffer {0} von {1}",
 
         // ── DateTimePicker ──────────────────────────────────────────
         ["DateTimePicker.ClearDate"] = "Datum löschen",
